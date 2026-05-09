@@ -4,11 +4,11 @@ from chio_kb import repo_model
 
 
 def test_normalize_path_strips_workspace_prefixes(monkeypatch) -> None:
-    monkeypatch.setenv("CHIO_KB_REPO_ROOT", "/Users/connor/.codex/worktrees/2f84/arc")
+    monkeypatch.setenv("CHIO_KB_REPO_ROOT", "/workspace/chio")
     cases = {
         "workspace/crates/chio-kernel/src/kernel/mod.rs": "crates/chio-kernel/src/kernel/mod.rs",
         "/workspace/crates/chio-core-types/src/capability.rs": "crates/chio-core-types/src/capability.rs",
-        "/Users/connor/.codex/worktrees/2f84/arc/docs/README.md": "docs/README.md",
+        "/workspace/chio/docs/README.md": "docs/README.md",
         "spec/PROTOCOL.md": "spec/PROTOCOL.md",
         "": "",
         ".": "",

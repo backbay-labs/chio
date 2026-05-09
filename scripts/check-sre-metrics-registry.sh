@@ -9,9 +9,9 @@ trap 'rm -f "${registry}" "${observed}"' EXIT
 
 cut -d'|' -f1 crates/chio-metrics-spec/metrics.snapshot | sort -u > "${registry}"
 
-# W2.4: scope expanded to the six edges that consume the registry plus
-# `chio-wasm-guards`. The grep is anchored at `crates/<name>/src` to
-# avoid pulling matches out of `target/` artifacts.
+# Scope includes the edge crates that consume the registry plus
+# `chio-wasm-guards`. The grep is anchored at `crates/<name>/src` to avoid
+# pulling matches out of `target/` artifacts.
 rg --no-filename -o 'chio_[a-z0-9_]*(seconds|total|depth|bytes|ready|size)' \
   crates/chio-metrics-spec \
   crates/chio-kernel/src \

@@ -35,7 +35,20 @@ default = []
 # existing trajectory-1 M07 nightly conformance lane and is not
 # duplicated here.
 smoke = []
+# `kani` is an opt-in feature toggle for the model-checked harness
+# module (`src/kani_public_harnesses.rs`). The module body itself is
+# gated by `#[cfg(kani)]` so production builds never compile it; this
+# feature is kept available for tooling that wants to opt in without
+# invoking the Kani toolchain. No production code path depends on it.
+kani = []
 
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+
+[lints.rust]
+# `cfg(kani)` is set automatically by the Kani toolchain (see
+# `crates/chio-weights/src/kani_public_harnesses.rs`). Register the
+# cfg with check-cfg so default `cargo build` / `cargo clippy` passes
+# do not warn about an unknown cfg name.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

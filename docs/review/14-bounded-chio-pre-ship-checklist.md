@@ -115,8 +115,6 @@ Run these after the lane is implemented:
 ```bash
 rg -n "Lean 4 verified|formally verified protocol specification|P1-P5 are proven in Lean 4|non-repudiation|append-only ledger|HA clustered control plane|atomic budget enforcement|comptroller of the agent economy" README.md docs .planning
 
-node "$HOME/.codex/get-shit-done/bin/gsd-tools.cjs" roadmap analyze
-
 git diff --check -- README.md docs/review docs/release .planning
 ```
 

@@ -7,13 +7,13 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use chio_core_types::crypto::{sha256_hex, Keypair};
+use chio_core_types::crypto::{sha256_hex, Ed25519Backend, Keypair, Signature, SigningBackend};
 use chio_core_types::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
 };
 use chio_federation::{
     co_sign_with_origin, BilateralCoSigningError, CoSigningBody, DualSignedReceipt,
-    InProcessCoSigner,
+    ExpectedBilateralPeers, InProcessCoSigner, BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
 
 fn sample_action() -> ToolCallAction {
@@ -74,6 +74,84 @@ fn happy_path_dual_signs_and_verifies_on_both_sides() {
     // Both sides can verify with the same pinned peer keys.
     dual.verify(&origin_kp.public_key(), &tool_host_kp.public_key())
         .expect("dual-signed receipt verifies with both pinned peer keys");
+    dual.verify_pinned(ExpectedBilateralPeers {
+        org_a_kernel_id: origin_kernel_id,
+        org_a_public_key: &origin_kp.public_key(),
+        org_b_kernel_id: tool_host_kernel_id,
+        org_b_public_key: &tool_host_kp.public_key(),
+    })
+    .expect("dual-signed receipt verifies with independently pinned identities");
+}
+
+#[test]
+fn verify_pinned_rejects_self_declared_identity_substitution() {
+    let origin_kp = Keypair::generate();
+    let tool_host_kp = Keypair::generate();
+    let origin_kernel_id = "kernel.org-a";
+    let tool_host_kernel_id = "kernel.org-b";
+
+    let cosigner = InProcessCoSigner::new(
+        origin_kernel_id,
+        origin_kp.clone(),
+        tool_host_kp.public_key(),
+    );
+    let receipt = sample_receipt(&tool_host_kp);
+    let mut dual = co_sign_with_origin(
+        origin_kernel_id,
+        &origin_kp.public_key(),
+        tool_host_kernel_id,
+        &tool_host_kp,
+        receipt,
+        &cosigner,
+    )
+    .unwrap();
+
+    dual.org_a_kernel_id = "kernel.attacker-a".to_string();
+    dual.org_b_kernel_id = "kernel.attacker-b".to_string();
+
+    let err = dual
+        .verify_pinned(ExpectedBilateralPeers {
+            org_a_kernel_id: origin_kernel_id,
+            org_a_public_key: &origin_kp.public_key(),
+            org_b_kernel_id: tool_host_kernel_id,
+            org_b_public_key: &tool_host_kp.public_key(),
+        })
+        .expect_err("self-declared kernel IDs must not override pinned peer IDs");
+    assert_eq!(err, BilateralCoSigningError::PeerIdentityMismatch);
+}
+
+#[test]
+fn verify_pinned_rejects_duplicate_peer_keys() {
+    let origin_kp = Keypair::generate();
+    let tool_host_kp = Keypair::generate();
+    let origin_kernel_id = "kernel.org-a";
+    let tool_host_kernel_id = "kernel.org-b";
+
+    let cosigner = InProcessCoSigner::new(
+        origin_kernel_id,
+        origin_kp.clone(),
+        tool_host_kp.public_key(),
+    );
+    let receipt = sample_receipt(&tool_host_kp);
+    let dual = co_sign_with_origin(
+        origin_kernel_id,
+        &origin_kp.public_key(),
+        tool_host_kernel_id,
+        &tool_host_kp,
+        receipt,
+        &cosigner,
+    )
+    .unwrap();
+
+    let err = dual
+        .verify_pinned(ExpectedBilateralPeers {
+            org_a_kernel_id: origin_kernel_id,
+            org_a_public_key: &origin_kp.public_key(),
+            org_b_kernel_id: tool_host_kernel_id,
+            org_b_public_key: &origin_kp.public_key(),
+        })
+        .expect_err("distinct peers must not share the same verification key");
+    assert_eq!(err, BilateralCoSigningError::PeerIdentityMismatch);
 }
 
 #[test]
@@ -146,6 +224,68 @@ fn verify_fails_when_body_is_tampered() {
 }
 
 #[test]
+fn verify_fails_when_detached_signatures_cover_receipt_with_bad_embedded_signature() {
+    let origin_kp = Keypair::generate();
+    let tool_host_kp = Keypair::generate();
+    let origin_kernel_id = "kernel.org-a";
+    let tool_host_kernel_id = "kernel.org-b";
+
+    let mut receipt = sample_receipt(&tool_host_kp);
+    receipt.content_hash = sha256_hex(b"tampered-after-receipt-signing");
+    let (org_a_signature, org_b_signature) = detached_dual_signatures(
+        &receipt,
+        &origin_kp,
+        &tool_host_kp,
+        origin_kernel_id,
+        tool_host_kernel_id,
+    );
+    let dual = DualSignedReceipt {
+        schema: BILATERAL_DUAL_RECEIPT_SCHEMA.to_string(),
+        body: receipt,
+        org_a_kernel_id: origin_kernel_id.to_string(),
+        org_b_kernel_id: tool_host_kernel_id.to_string(),
+        org_a_signature,
+        org_b_signature,
+    };
+
+    let err = dual
+        .verify(&origin_kp.public_key(), &tool_host_kp.public_key())
+        .expect_err("embedded Chio receipt signature must be verified");
+    assert_eq!(err, BilateralCoSigningError::ReceiptMismatch);
+}
+
+#[test]
+fn verify_fails_when_embedded_receipt_kernel_key_is_not_tool_host_key() {
+    let origin_kp = Keypair::generate();
+    let tool_host_kp = Keypair::generate();
+    let rogue_kp = Keypair::generate();
+    let origin_kernel_id = "kernel.org-a";
+    let tool_host_kernel_id = "kernel.org-b";
+
+    let receipt = sample_receipt(&rogue_kp);
+    let (org_a_signature, org_b_signature) = detached_dual_signatures(
+        &receipt,
+        &origin_kp,
+        &tool_host_kp,
+        origin_kernel_id,
+        tool_host_kernel_id,
+    );
+    let dual = DualSignedReceipt {
+        schema: BILATERAL_DUAL_RECEIPT_SCHEMA.to_string(),
+        body: receipt,
+        org_a_kernel_id: origin_kernel_id.to_string(),
+        org_b_kernel_id: tool_host_kernel_id.to_string(),
+        org_a_signature,
+        org_b_signature,
+    };
+
+    let err = dual
+        .verify(&origin_kp.public_key(), &tool_host_kp.public_key())
+        .expect_err("embedded receipt kernel_key must be the tool-host key");
+    assert_eq!(err, BilateralCoSigningError::OrgBSignatureInvalid);
+}
+
+#[test]
 fn cosigner_rejects_forged_org_b_signature() {
     // Attacker tries to dump a receipt signed by their own key and have
     // the origin kernel co-sign it. The origin verifies Org B's declared
@@ -207,4 +347,24 @@ fn canonical_body_roundtrip_is_stable() {
     restored
         .verify(&origin_kp.public_key(), &tool_host_kp.public_key())
         .expect("round-tripped dual receipt must still verify");
+}
+
+fn detached_dual_signatures(
+    receipt: &ChioReceipt,
+    origin_kp: &Keypair,
+    tool_host_kp: &Keypair,
+    origin_kernel_id: &str,
+    tool_host_kernel_id: &str,
+) -> (Signature, Signature) {
+    let bytes = CoSigningBody::from_receipt(receipt, origin_kernel_id, tool_host_kernel_id)
+        .unwrap()
+        .canonical_bytes()
+        .unwrap();
+    let org_a_signature = Ed25519Backend::new(origin_kp.clone())
+        .sign_bytes(&bytes)
+        .unwrap();
+    let org_b_signature = Ed25519Backend::new(tool_host_kp.clone())
+        .sign_bytes(&bytes)
+        .unwrap();
+    (org_a_signature, org_b_signature)
 }

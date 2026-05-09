@@ -93,7 +93,7 @@ jobs:
           cargo kani setup
           cargo kani --version
 
-      - name: Run lanes.pr + lanes.nightly_only Kani harnesses
+      - name: Run chio-kernel-core lanes.pr + lanes.nightly_only Kani harnesses
         shell: bash
         env:
           CARGO_BUILD_JOBS: "1"
@@ -126,4 +126,24 @@ jobs:
               --default-unwind 8 --no-unwinding-checks
             echo "::endgroup::"
           done
-          echo "Nightly Kani sweep passed (${#HARNESSES[@]} harnesses)"
+          echo "Nightly chio-kernel-core Kani sweep passed (${#HARNESSES[@]} harnesses)"
+
+      # Multi-crate manifest sweep (Kani multi-crate manifest). Picks up every
+      # `[[harness]]` entry in `.kani/harnesses.toml` whose `lane = "pr"`
+      # or `lane = "nightly"`, excluding chio-kernel-core (handled
+      # above). When more crates land Kani harnesses they appear here
+      # automatically without another workflow edit.
+      - name: Run other-crate manifest sweep (lanes pr + nightly)
+        shell: bash
+        env:
+          CARGO_BUILD_JOBS: "1"
+        run: |
+          set -euo pipefail
+          for lane in pr nightly; do
+            echo "::group::run-kani-manifest.sh --list --lane ${lane}"
+            bash scripts/run-kani-manifest.sh --lane "${lane}" \
+              --exclude-crate chio-kernel-core --list
+            echo "::endgroup::"
+            bash scripts/run-kani-manifest.sh --lane "${lane}" \
+              --exclude-crate chio-kernel-core --allow-empty
+          done

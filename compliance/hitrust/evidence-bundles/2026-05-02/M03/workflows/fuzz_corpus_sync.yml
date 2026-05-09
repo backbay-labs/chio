@@ -5,7 +5,7 @@
 # diff is scanned by gitleaks; if any secret-like token is detected the sync
 # FAILS and refuses to commit (no production-issued JWTs or DIDs in seeds).
 #
-# Merge gate: CODEOWNERS rule `fuzz/corpus/**  @bb-connor` requires a
+# Merge gate: CODEOWNERS rule `fuzz/corpus/**` requires a
 # maintainer review before the PR can land.
 #
 # Required check name: fuzz_corpus_sync / sync (advisory)
@@ -34,7 +34,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CORPUS_REPO: "bb-connor/arc-fuzz-corpus"
+  CORPUS_REPO: "ORG/arc-fuzz-corpus"
   SOURCE_REF: ${{ inputs.source_ref || 'main' }}
 
 jobs:
@@ -224,9 +224,9 @@ jobs:
             printf 'land in seed corpora. If gitleaks fires, the workflow refuses\n'
             printf 'to open the PR.\n\n'
             printf '### Maintainer review gate\n\n'
-            printf "The CODEOWNERS rule %sfuzz/corpus/** @bb-connor%s requires\n" \
+            printf "The CODEOWNERS rule %sfuzz/corpus/**%s requires\n" \
               "${BT}" "${BT}"
-            printf 'a @bb-connor review before this PR can merge.\n\n'
+            printf 'a maintainer review before this PR can merge.\n\n'
             printf -- '---\n\n'
             printf "Auto-opened by %s.github/workflows/fuzz_corpus_sync.yml%s.\n" \
               "${BT}" "${BT}"

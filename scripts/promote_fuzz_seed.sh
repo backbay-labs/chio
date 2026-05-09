@@ -468,8 +468,8 @@ fi
 # Re-promotion case: when the caller passes --input pointing at the
 # canonical corpus path itself, `cmp -s` would succeed against a file
 # vs. itself and the subsequent `rm -f $INPUT` would delete the corpus
-# seed (regression: r3144325279). Detect same-file via inode comparison
-# (portable, no `realpath` dependency) and skip the cleanup in that case.
+# seed. Detect same-file via inode comparison (portable, no `realpath`
+# dependency) and skip the cleanup in that case.
 DEST="$CORPUS_DIR/$SHA.bin"
 same_file() {
     # Returns 0 when $1 and $2 reference the same on-disk file. Compares

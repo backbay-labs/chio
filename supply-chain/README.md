@@ -73,7 +73,8 @@ Full definitions and the precedence ordering live at
 
 ## Tier-1 reviewers
 
-- `@bb-connor` -- single-owner trajectory per `OWNERS.toml`. All
-  certifications in `audits.toml` are currently signed off by this owner. New
+- `Chio supply-chain reviewer` -- role identity used by the local cargo-vet
+  audit set. Cargo-vet requires a non-empty `who` value for each local
+  certification, but it does not require a personal GitHub handle. New human
   reviewers should be added to `OWNERS.toml` first, then begin signing
-  `audits.toml` entries with their handle.
+  `audits.toml` entries with the agreed reviewer identity.

@@ -1,7 +1,14 @@
 {
   "caught": 0,
   "needs_real_run": true,
-  "note": "Bootstrap placeholder. Replace with real cargo-mutants evidence in trajectory-4 wave 4. Caught >= 1 promotes the row out of weak_coverage.",
+  "note": "Bootstrap placeholder. A real conformance test at crates/chio-conformance/tests/threats/behavioral_sequence_attack.rs records a dangerous predecessor and asserts BehavioralSequenceGuard::evaluate returns Verdict::Deny, but this file is consumed by the per-row cargo-mutants evidence gate. Keep the row in bootstrap until a cargo-mutants run catches at least one behavioral_sequence_attack mutant and commits the real run timestamp.",
   "ran_at": "1970-01-01T00:00:00Z",
-  "survivors": []
+  "survivors": [],
+  "test_path": "crates/chio-conformance/tests/threats/behavioral_sequence_attack.rs",
+  "evidence_status": "conformance-only",
+  "mutation_evidence_status": "not-run",
+  "promotion_status": "not-promoted",
+  "timestamp_kind": "bootstrap-placeholder",
+  "timestamp_note": "The epoch sentinel is required while needs_real_run is true; it must be replaced with the real cargo-mutants run timestamp when mutation evidence lands.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats behavioral_sequence_attack"
 }

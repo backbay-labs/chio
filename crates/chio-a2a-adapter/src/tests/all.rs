@@ -81,8 +81,8 @@ mod tests {
         contract.allowed_authority_set.insert(authority);
     }
 
-    #[test]
-    fn a2a_contract_resolver_rejects_loopback_answers() {
+    #[tokio::test]
+    async fn a2a_contract_resolver_rejects_loopback_answers() {
         let mut contract = HttpEgressContract::permissive_for_tests("127.0.0.1:80");
         contract.deny_loopback = true;
         let resolver = A2aContractResolver { contract };
@@ -97,8 +97,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn adapter_discovers_jsonrpc_and_invokes_skill() {
+    #[tokio::test]
+    async fn adapter_discovers_jsonrpc_and_invokes_skill() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc() else {
             return;
         };
@@ -122,6 +122,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("invoke research skill");
 
         assert_eq!(
@@ -140,8 +141,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_rejects_json_tool_body_on_cross_origin_redirect() {
+    #[tokio::test]
+    async fn adapter_rejects_json_tool_body_on_cross_origin_redirect() {
         let Some(target_listener) = bind_fake_a2a_listener("redirect target A2A listener") else {
             return;
         };
@@ -229,6 +230,7 @@ mod tests {
                 json!({"message": "do not replay this tool body"}),
                 None,
             )
+            .await
             .expect_err("JSON tool body must not be replayed to cross-origin redirect target");
 
         initial_handle.join().expect("join initial redirect server");
@@ -239,8 +241,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn adapter_rejects_http_json_tool_body_on_cross_origin_redirect() {
+    #[tokio::test]
+    async fn adapter_rejects_http_json_tool_body_on_cross_origin_redirect() {
         let Some(target_listener) = bind_fake_a2a_listener("api key redirect target A2A listener")
         else {
             return;
@@ -334,6 +336,7 @@ mod tests {
                 json!({"message": "do not replay this HTTP JSON body"}),
                 None,
             )
+            .await
             .expect_err("HTTP+JSON tool body must not be replayed cross-origin");
 
         initial_handle.join().expect("join initial redirect server");
@@ -344,8 +347,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn adapter_rejects_json_tool_body_before_cross_origin_redirect_chain() {
+    #[tokio::test]
+    async fn adapter_rejects_json_tool_body_before_cross_origin_redirect_chain() {
         let Some(initial_listener) =
             bind_fake_a2a_listener("multi-hop redirect initial A2A listener")
         else {
@@ -440,6 +443,7 @@ mod tests {
                 json!({"message": "do not replay across redirect chain"}),
                 None,
             )
+            .await
             .expect_err("JSON tool body must not enter cross-origin redirect chain");
 
         initial_handle
@@ -452,8 +456,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn adapter_generic_request_auth_surfaces_apply_to_discovery_and_invoke() {
+    #[tokio::test]
+    async fn adapter_generic_request_auth_surfaces_apply_to_discovery_and_invoke() {
         let Some(server) = FakeA2aServer::spawn_http_json() else {
             return;
         };
@@ -475,6 +479,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("invoke research skill");
 
         assert_eq!(
@@ -492,8 +497,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn partner_policy_rejects_wrong_tenant_on_discovery() {
+    #[tokio::test]
+    async fn partner_policy_rejects_wrong_tenant_on_discovery() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_bearer_required() else {
             return;
         };
@@ -513,8 +518,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn task_registry_allows_follow_up_after_restart_and_rejects_unknown_tasks() {
+    #[tokio::test]
+    async fn task_registry_allows_follow_up_after_restart_and_rejects_unknown_tasks() {
         let registry_path = unique_path("chio-a2a-task-registry", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_task_follow_up() else {
             return;
@@ -536,6 +541,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("initial invoke");
         assert_eq!(initial["task"]["status"]["state"], "TASK_STATE_WORKING");
 
@@ -569,6 +575,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("follow-up invoke after restart");
         assert_eq!(follow_up["task"]["status"]["state"], "TASK_STATE_COMPLETED");
 
@@ -582,6 +589,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect_err("unknown follow-up should fail closed");
         assert!(unknown_error
             .to_string()
@@ -591,8 +599,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_invokes_http_json_binding() {
+    #[tokio::test]
+    async fn adapter_invokes_http_json_binding() {
         let Some(server) = FakeA2aServer::spawn_http_json() else {
             return;
         };
@@ -612,6 +620,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("invoke research skill over HTTP+JSON");
 
         assert_eq!(result["task"]["id"], "task-1");
@@ -622,8 +631,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_rejects_insecure_non_localhost_urls() {
+    #[tokio::test]
+    async fn adapter_rejects_insecure_non_localhost_urls() {
         let manifest_key = Keypair::generate();
         let error = A2aAdapter::discover(A2aAdapterConfig::new(
             "http://example.com",
@@ -633,8 +642,8 @@ mod tests {
         assert!(error.to_string().contains("https"));
     }
 
-    #[test]
-    fn adapter_jsonrpc_get_task_follow_up() {
+    #[tokio::test]
+    async fn adapter_jsonrpc_get_task_follow_up() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_task_follow_up() else {
             return;
         };
@@ -654,6 +663,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("start follow-up task");
         assert_eq!(initial["task"]["id"], "task-1");
         assert_eq!(initial["task"]["status"]["state"], "TASK_STATE_WORKING");
@@ -669,6 +679,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("poll A2A task");
         assert_eq!(follow_up["task"]["id"], "task-1");
         assert_eq!(follow_up["task"]["status"]["state"], "TASK_STATE_COMPLETED");
@@ -685,8 +696,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_http_json_get_task_follow_up() {
+    #[tokio::test]
+    async fn adapter_http_json_get_task_follow_up() {
         let Some(server) = FakeA2aServer::spawn_http_json_task_follow_up() else {
             return;
         };
@@ -706,6 +717,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("start follow-up task");
         assert_eq!(initial["task"]["id"], "task-1");
         assert_eq!(initial["task"]["status"]["state"], "TASK_STATE_WORKING");
@@ -721,6 +733,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("poll A2A task");
         assert_eq!(follow_up["task"]["id"], "task-1");
         assert_eq!(follow_up["task"]["status"]["state"], "TASK_STATE_COMPLETED");
@@ -737,8 +750,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_rejects_mixed_send_and_get_task_input() {
+    #[tokio::test]
+    async fn adapter_rejects_mixed_send_and_get_task_input() {
         let error = parse_tool_input(json!({
             "message": "hello",
             "get_task": { "id": "task-1" }
@@ -749,8 +762,8 @@ mod tests {
             .contains("mutually exclusive with SendMessage fields"));
     }
 
-    #[test]
-    fn adapter_rejects_mixed_send_and_subscribe_task_input() {
+    #[tokio::test]
+    async fn adapter_rejects_mixed_send_and_subscribe_task_input() {
         let error = parse_tool_input(json!({
             "message": "hello",
             "subscribe_task": { "id": "task-1" }
@@ -761,8 +774,8 @@ mod tests {
             .contains("mutually exclusive with SendMessage and `get_task` fields"));
     }
 
-    #[test]
-    fn build_send_message_request_propagates_interface_tenant() {
+    #[tokio::test]
+    async fn build_send_message_request_propagates_interface_tenant() {
         let agent_card = A2aAgentCard {
             name: "Research Agent".to_string(),
             description: "Answers research questions over A2A".to_string(),
@@ -846,8 +859,8 @@ mod tests {
         assert_eq!(request.tenant.as_deref(), Some("tenant-alpha"));
     }
 
-    #[test]
-    fn build_send_message_request_rejects_history_length_without_capability() {
+    #[tokio::test]
+    async fn build_send_message_request_rejects_history_length_without_capability() {
         let adapter = local_test_adapter(
             A2aAgentCapabilities {
                 streaming: false,
@@ -879,8 +892,8 @@ mod tests {
             .contains("state transition history support"));
     }
 
-    #[test]
-    fn get_task_rejects_history_length_without_capability() {
+    #[tokio::test]
+    async fn get_task_rejects_history_length_without_capability() {
         let adapter = local_test_adapter(
             A2aAgentCapabilities {
                 streaming: false,
@@ -983,8 +996,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn validate_send_message_response_rejects_task_without_status_state() {
+    #[tokio::test]
+    async fn validate_send_message_response_rejects_task_without_status_state() {
         let error = validate_send_message_response(A2aSendMessageResponse {
             task: Some(json!({
                 "id": "task-1"
@@ -995,8 +1008,8 @@ mod tests {
         assert!(error.to_string().contains("status.state"));
     }
 
-    #[test]
-    fn validate_stream_response_rejects_status_update_without_task_id() {
+    #[tokio::test]
+    async fn validate_stream_response_rejects_status_update_without_task_id() {
         let error = validate_stream_response(json!({
             "statusUpdate": {
                 "status": { "state": "TASK_STATE_COMPLETED" }
@@ -1006,8 +1019,8 @@ mod tests {
         assert!(error.to_string().contains("taskId"));
     }
 
-    #[test]
-    fn validate_stream_response_rejects_artifact_update_without_task_id() {
+    #[tokio::test]
+    async fn validate_stream_response_rejects_artifact_update_without_task_id() {
         let error = validate_stream_response(json!({
             "artifactUpdate": {
                 "artifact": {
@@ -1019,8 +1032,8 @@ mod tests {
         assert!(error.to_string().contains("taskId"));
     }
 
-    #[test]
-    fn build_get_task_url_appends_tenant_and_history_length() {
+    #[tokio::test]
+    async fn build_get_task_url_appends_tenant_and_history_length() {
         let url = build_get_task_url(
             "http://localhost:9000",
             "task-1",
@@ -1035,8 +1048,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn build_send_message_url_appends_tenant_path_segment() {
+    #[tokio::test]
+    async fn build_send_message_url_appends_tenant_path_segment() {
         let send_url =
             build_send_message_url("http://localhost:9000/api", Some("tenant-alpha"), false)
                 .expect("build send message URL");
@@ -1054,8 +1067,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn build_cancel_task_url_appends_tenant_path_segment() {
+    #[tokio::test]
+    async fn build_cancel_task_url_appends_tenant_path_segment() {
         let url =
             build_cancel_task_url("http://localhost:9000/api", "task-1", Some("tenant-alpha"))
                 .expect("build cancel task URL");
@@ -1066,8 +1079,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn build_push_notification_urls_append_tenant_path_segment() {
+    #[tokio::test]
+    async fn build_push_notification_urls_append_tenant_path_segment() {
         let collection_url = build_push_notification_configs_url(
             "http://localhost:9000/api",
             "task-1",
@@ -1104,8 +1117,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn adapter_invoke_stream_returns_none_without_stream_flag() {
+    #[tokio::test]
+    async fn adapter_invoke_stream_returns_none_without_stream_flag() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc() else {
             return;
         };
@@ -1124,6 +1137,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("invoke_stream should not fail");
         assert!(stream.is_none());
         let _ = adapter
@@ -1134,12 +1148,13 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("invoke blocking request");
         server.join();
     }
 
-    #[test]
-    fn adapter_jsonrpc_streaming_invocation_returns_complete_stream() {
+    #[tokio::test]
+    async fn adapter_jsonrpc_streaming_invocation_returns_complete_stream() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_streaming_complete() else {
             return;
         };
@@ -1159,6 +1174,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("invoke stream")
             .expect("stream result");
 
@@ -1186,8 +1202,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_http_json_streaming_invocation_returns_complete_stream() {
+    #[tokio::test]
+    async fn adapter_http_json_streaming_invocation_returns_complete_stream() {
         let Some(server) = FakeA2aServer::spawn_http_json_streaming_complete() else {
             return;
         };
@@ -1207,6 +1223,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("invoke stream")
             .expect("stream result");
 
@@ -1226,8 +1243,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_streaming_closure_without_terminal_state_is_incomplete() {
+    #[tokio::test]
+    async fn adapter_streaming_closure_without_terminal_state_is_incomplete() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_streaming_incomplete() else {
             return;
         };
@@ -1247,6 +1264,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("invoke stream")
             .expect("stream result");
 
@@ -1258,8 +1276,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn sse_parser_stops_after_terminal_task_state() {
+    #[tokio::test]
+    async fn sse_parser_stops_after_terminal_task_state() {
         let terminal = json!({
             "task": task_payload("TASK_STATE_COMPLETED", true)
         });
@@ -1276,8 +1294,8 @@ mod tests {
         assert_eq!(stream.chunk_count(), 1);
     }
 
-    #[test]
-    fn sse_parser_rejects_oversized_line() {
+    #[tokio::test]
+    async fn sse_parser_rejects_oversized_line() {
         let huge_text = "a".repeat(20_000);
         let event = json!({
             "message": {
@@ -1293,8 +1311,8 @@ mod tests {
         assert!(error.to_string().contains("line"));
     }
 
-    #[test]
-    fn sse_parser_enforces_contract_response_limit() {
+    #[tokio::test]
+    async fn sse_parser_enforces_contract_response_limit() {
         let working = json!({
             "task": task_payload("TASK_STATE_WORKING", false)
         });
@@ -1305,8 +1323,8 @@ mod tests {
         assert!(error.to_string().contains("response bytes"));
     }
 
-    #[test]
-    fn sse_parser_rejects_too_many_chunks() {
+    #[tokio::test]
+    async fn sse_parser_rejects_too_many_chunks() {
         let working = json!({
             "task": task_payload("TASK_STATE_WORKING", false)
         });
@@ -1322,8 +1340,8 @@ mod tests {
         assert!(error.to_string().contains("chunk"));
     }
 
-    #[test]
-    fn adapter_jsonrpc_subscribe_task_returns_complete_stream() {
+    #[tokio::test]
+    async fn adapter_jsonrpc_subscribe_task_returns_complete_stream() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_subscribe_complete() else {
             return;
         };
@@ -1342,6 +1360,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("invoke subscribe stream")
             .expect("stream result");
 
@@ -1361,8 +1380,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_http_json_subscribe_task_returns_complete_stream() {
+    #[tokio::test]
+    async fn adapter_http_json_subscribe_task_returns_complete_stream() {
         let Some(server) = FakeA2aServer::spawn_http_json_subscribe_complete() else {
             return;
         };
@@ -1381,6 +1400,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("invoke subscribe stream")
             .expect("stream result");
 
@@ -1400,8 +1420,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_subscribe_task_closure_without_terminal_state_is_incomplete() {
+    #[tokio::test]
+    async fn adapter_subscribe_task_closure_without_terminal_state_is_incomplete() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_subscribe_incomplete() else {
             return;
         };
@@ -1420,6 +1440,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("invoke subscribe stream")
             .expect("stream result");
 
@@ -1431,8 +1452,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_jsonrpc_cancel_task_returns_cancelled_task() {
+    #[tokio::test]
+    async fn adapter_jsonrpc_cancel_task_returns_cancelled_task() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_cancel_task() else {
             return;
         };
@@ -1454,6 +1475,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("cancel task");
 
         assert_eq!(result["task"]["id"], "task-1");
@@ -1466,8 +1488,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_http_json_cancel_task_returns_cancelled_task() {
+    #[tokio::test]
+    async fn adapter_http_json_cancel_task_returns_cancelled_task() {
         let Some(server) = FakeA2aServer::spawn_http_json_cancel_task() else {
             return;
         };
@@ -1489,6 +1511,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("cancel task");
 
         assert_eq!(result["task"]["id"], "task-1");
@@ -1501,8 +1524,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_jsonrpc_push_notification_config_crud_roundtrip() {
+    #[tokio::test]
+    async fn adapter_jsonrpc_push_notification_config_crud_roundtrip() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_push_notification_crud() else {
             return;
         };
@@ -1529,6 +1552,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("create push notification config");
         assert_eq!(
             created["push_notification_config"]["id"],
@@ -1546,6 +1570,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("get push notification config");
         assert_eq!(
             fetched["push_notification_config"]["url"],
@@ -1564,6 +1589,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("list push notification configs");
         assert_eq!(
             listed["push_notification_configs"]
@@ -1585,6 +1611,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("delete push notification config");
         assert_eq!(deleted["deleted"], Value::Bool(true));
 
@@ -1597,8 +1624,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_http_json_push_notification_config_crud_roundtrip() {
+    #[tokio::test]
+    async fn adapter_http_json_push_notification_config_crud_roundtrip() {
         let Some(server) = FakeA2aServer::spawn_http_json_push_notification_crud() else {
             return;
         };
@@ -1625,6 +1652,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("create push notification config");
         assert_eq!(
             created["push_notification_config"]["authentication"]["scheme"],
@@ -1642,6 +1670,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("get push notification config");
         assert_eq!(
             fetched["push_notification_config"]["id"],
@@ -1660,6 +1689,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("list push notification configs");
         assert_eq!(
             listed["push_notification_configs"][0]["authentication"]["credentials"],
@@ -1677,6 +1707,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("delete push notification config");
         assert_eq!(deleted["deleted"], Value::Bool(true));
 
@@ -1694,8 +1725,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_rejects_insecure_push_notification_callback_url() {
+    #[tokio::test]
+    async fn adapter_rejects_insecure_push_notification_callback_url() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_push_notification_capability_only() else {
             return;
         };
@@ -1717,6 +1748,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect_err("insecure callback URL should fail closed");
         assert!(error
             .to_string()
@@ -1725,8 +1757,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_oauth2_client_credentials_fetches_token_and_caches_it() {
+    #[tokio::test]
+    async fn adapter_oauth2_client_credentials_fetches_token_and_caches_it() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_oauth_client_credentials_required() else {
             return;
         };
@@ -1747,6 +1779,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("first OAuth-backed invoke");
         assert_eq!(
             first["message"]["parts"][0]["text"],
@@ -1761,6 +1794,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("second OAuth-backed invoke");
         assert_eq!(
             second["message"]["parts"][0]["text"],
@@ -1778,8 +1812,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn oauth_client_credentials_form_fallback_rejects_cross_origin_redirect() {
+    #[tokio::test]
+    async fn oauth_client_credentials_form_fallback_rejects_cross_origin_redirect() {
         let Some(target_listener) = bind_fake_a2a_listener("OAuth redirect target listener") else {
             return;
         };
@@ -1854,8 +1888,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn adapter_openid_client_credentials_fetches_discovery_and_token() {
+    #[tokio::test]
+    async fn adapter_openid_client_credentials_fetches_discovery_and_token() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_openid_client_credentials_required() else {
             return;
         };
@@ -1875,6 +1909,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("OpenID-backed invoke");
         assert_eq!(
             result["message"]["parts"][0]["text"],
@@ -1892,8 +1927,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_required_bearer_security_without_configured_token_fails_closed() {
+    #[tokio::test]
+    async fn adapter_required_bearer_security_without_configured_token_fails_closed() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_bearer_required() else {
             return;
         };
@@ -1912,14 +1947,15 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect_err("missing bearer token should fail closed");
         assert!(error.to_string().contains("missing bearer token"));
         assert_eq!(server.requests().len(), 1);
         server.join();
     }
 
-    #[test]
-    fn adapter_http_basic_security_is_negotiated_from_agent_card() {
+    #[tokio::test]
+    async fn adapter_http_basic_security_is_negotiated_from_agent_card() {
         let Some(server) = FakeA2aServer::spawn_http_json_basic_required() else {
             return;
         };
@@ -1939,6 +1975,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("HTTP Basic auth should satisfy requirement");
         assert_eq!(
             result["task"]["artifacts"][0]["parts"][0]["text"],
@@ -1954,8 +1991,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_http_basic_security_without_configured_credentials_fails_closed() {
+    #[tokio::test]
+    async fn adapter_http_basic_security_without_configured_credentials_fails_closed() {
         let (security_schemes, security_requirements) =
             agent_card_security_metadata(TestScenario::BasicRequired, "http://localhost");
         let agent_card = A2aAgentCard {
@@ -2034,8 +2071,8 @@ mod tests {
         assert!(error.to_string().contains("missing HTTP Basic credentials"));
     }
 
-    #[test]
-    fn adapter_api_key_header_security_is_negotiated_from_agent_card() {
+    #[tokio::test]
+    async fn adapter_api_key_header_security_is_negotiated_from_agent_card() {
         let Some(server) = FakeA2aServer::spawn_http_json_api_key_required() else {
             return;
         };
@@ -2055,6 +2092,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("API key header should satisfy requirement");
         assert_eq!(
             result["task"]["artifacts"][0]["parts"][0]["text"],
@@ -2068,8 +2106,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_api_key_query_security_is_negotiated_from_agent_card() {
+    #[tokio::test]
+    async fn adapter_api_key_query_security_is_negotiated_from_agent_card() {
         let Some(server) = FakeA2aServer::spawn_http_json_api_key_query_required() else {
             return;
         };
@@ -2089,6 +2127,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("API key query param should satisfy requirement");
         assert_eq!(
             result["task"]["artifacts"][0]["parts"][0]["text"],
@@ -2102,8 +2141,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_api_key_cookie_security_is_negotiated_from_agent_card() {
+    #[tokio::test]
+    async fn adapter_api_key_cookie_security_is_negotiated_from_agent_card() {
         let Some(server) = FakeA2aServer::spawn_http_json_api_key_cookie_required() else {
             return;
         };
@@ -2123,6 +2162,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("API key cookie should satisfy requirement");
         assert_eq!(
             result["task"]["artifacts"][0]["parts"][0]["text"],
@@ -2136,8 +2176,8 @@ mod tests {
         server.join();
     }
 
-    #[test]
-    fn adapter_api_key_query_security_without_configured_value_fails_closed() {
+    #[tokio::test]
+    async fn adapter_api_key_query_security_without_configured_value_fails_closed() {
         let (security_schemes, security_requirements) =
             agent_card_security_metadata(TestScenario::ApiKeyQueryRequired, "http://localhost");
         let agent_card = A2aAgentCard {
@@ -2218,8 +2258,8 @@ mod tests {
             .contains("missing API key query parameter"));
     }
 
-    #[test]
-    fn adapter_mtls_security_without_configured_identity_fails_closed() {
+    #[tokio::test]
+    async fn adapter_mtls_security_without_configured_identity_fails_closed() {
         let Some(server) = FakeA2aServer::spawn_jsonrpc_mtls_required() else {
             return;
         };
@@ -2238,14 +2278,15 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect_err("unsupported auth should fail closed");
         assert!(error.to_string().contains("mutual TLS"));
         assert_eq!(server.requests().len(), 1);
         server.join();
     }
 
-    #[test]
-    fn adapter_jsonrpc_mtls_security_uses_client_certificate_for_discovery_and_invoke() {
+    #[tokio::test]
+    async fn adapter_jsonrpc_mtls_security_uses_client_certificate_for_discovery_and_invoke() {
         ensure_rustls_crypto_provider();
         let Some(server) = FakeMtlsA2aServer::spawn_jsonrpc() else {
             return;
@@ -2270,6 +2311,7 @@ mod tests {
                 }),
                 None,
             )
+            .await
             .expect("mTLS-backed invoke");
         assert_eq!(
             result["message"]["parts"][0]["text"],

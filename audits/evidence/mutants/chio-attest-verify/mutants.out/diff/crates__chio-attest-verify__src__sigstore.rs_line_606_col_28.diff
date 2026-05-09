@@ -1,0 +1,21 @@
+--- crates/chio-attest-verify/src/sigstore.rs
++++ replace == with != in <impl VerificationPolicy for IssuerOnlyPolicy>::verify
+@@ -598,17 +598,17 @@
+ 
+         let extensions = cert
+             .tbs_certificate
+             .extensions
+             .as_ref()
+             .ok_or(PolicyError::ExtensionNotFound)?;
+ 
+         for ext in extensions.iter() {
+-            if ext.extn_id == OIDC_ISSUER_OID {
++            if ext.extn_id != /* ~ changed by cargo-mutants ~ */ OIDC_ISSUER_OID {
+                 let bytes = ext.extn_value.as_bytes();
+                 // Use the same DER-first decoder as
+                 // `read_oidc_issuer_extension`: trying raw UTF-8 first
+                 // silently mis-reads DER UTF8String wrappers because
+                 // the tag byte (0x0C) is ASCII. Decoder failure
+                 // surfaces as ExtensionNotFound to match the upstream
+                 // policy contract.
+                 let actual = match decode_oidc_issuer_value(bytes) {

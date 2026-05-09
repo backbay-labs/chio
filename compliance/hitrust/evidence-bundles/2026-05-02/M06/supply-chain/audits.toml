@@ -2,1075 +2,1075 @@
 # cargo-vet audits file
 
 [[audits.alloy-json-abi]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.8.26"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.alloy-primitives]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.8.26"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.alloy-primitives]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.5.7"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.alloy-rlp]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.3.13"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.alloy-serde]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.8.3"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.alloy-sol-macro]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.8.26"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.alloy-sol-macro-expander]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.8.26"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.alloy-sol-macro-input]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.8.26"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.alloy-sol-type-parser]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.8.26"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.alloy-sol-types]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.8.26"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.alloy-sol-types]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.5.7"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.anyhow]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.102"
 notes = "Widely used error type by dtolnay; pure Rust, no network IO or unsafe-heavy code."
 
 [[audits.asn1-rs]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.5.2"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.asn1-rs]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.6.2"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.asn1-rs-derive]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.4.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.asn1-rs-derive]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.5.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.asn1-rs-impl]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.1.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.asn1-rs-impl]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.2.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.async-trait]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.1.89"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.auditable-serde]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.8.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.auto_impl]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.3.0"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.aws-smithy-runtime-api]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.12.0"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.aws-smithy-types]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.4.7"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.base64]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.22.1"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.base64urlsafedata]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.5.2"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.bitfield]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.19.4"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.bitfield-macros]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.19.4"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.bitflags]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "2.11.0"
 notes = "Macro for typed bitflag wrappers; pure Rust, no IO."
 
 [[audits.bytes]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.11.1"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.cc]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.2.57"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.cfg-if]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.4"
 notes = "Conditional compilation helper macro; trivial code, no IO or unsafe."
 
 [[audits.chrono]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.4.44"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.coset]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.4.2"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.crossbeam-channel]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "0.5.15"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.darling_macro]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.23.0"
 notes = "Thin re-export shim for darling derive macros; no IO."
 
 [[audits.dashmap]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "5.5.3"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.dcap-rs]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.1.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.der-parser]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "8.2.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.der-parser]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "9.0.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.digest]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.10.7"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.dirs]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "6.0.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.dirs-sys]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.5.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.ed25519-dalek]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "2.2.0"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.fips204]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.4.6"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.foreign-types]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.3.2"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.foreign-types-shared]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.1.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.futures]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.3.32"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.futures-core]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.3.32"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.futures-util]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.3.32"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.generic-array]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.14.7"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.half]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.8.3"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.hashbrown]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.14.5"
 notes = "Backing implementation for std HashMap; well-audited swisstable port, no IO."
 
 [[audits.hashbrown]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.16.1"
 notes = "Backing implementation for std HashMap; well-audited swisstable port, no IO."
 
 [[audits.heck]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.5.0"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.hex]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.4.3"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.http]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.2.12"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.http]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.4.0"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.http-body]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.1"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.http-body-util]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.1.3"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.hyper]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.8.1"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.hyper-util]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.1.20"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.ident_case]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.1"
 notes = "Identifier case conversion helper for darling; pure string ops, no IO."
 
 [[audits.indexmap]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "2.13.0"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.indoc]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "2.0.7"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.inotify]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "0.9.6"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.iocuddle]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.1.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.itertools]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.10.5"
 notes = "Iterator extension trait library; pure Rust, no IO or unsafe-heavy code."
 
 [[audits.itertools]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.13.0"
 notes = "Iterator extension trait library; pure Rust, no IO or unsafe-heavy code."
 
 [[audits.itoa]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.17"
 notes = "Integer-to-string formatting by dtolnay; pure Rust, no IO."
 
 [[audits.js-sys]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.3.91"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.libc]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.2.183"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.log]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.4.29"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.lsp-types]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.94.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.memchr]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "2.8.0"
 notes = "SIMD byte-search routines by BurntSushi; pure compute, no IO."
 
 [[audits.memoffset]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.9.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.mio]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "0.8.11"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.notify]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "6.1.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.num-bigint]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.4.6"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.num-traits]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.2.19"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.num_cpus]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.17.0"
 notes = "Reads CPU count from OS APIs only; no network IO or unsafe-heavy code."
 
 [[audits.oid-registry]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.6.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.oid-registry]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.7.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.once_cell]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.21.4"
 notes = "Lazy initialization primitives by matklad; widely used, no IO."
 
 [[audits.openssl]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.10.78"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.openssl-macros]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.1.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.openssl-sys]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.9.114"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.option-ext]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.2.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.paste]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.15"
 notes = "Token-pasting macro by dtolnay; compile-time only, no IO."
 
 [[audits.pastey]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.1.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.percent-encoding]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "2.3.2"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.pin-project-lite]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.2.17"
 notes = "Pin projection macros by taiki-e; pure macro expansion, no IO."
 
 [[audits.portable-atomic]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.13.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.prettyplease]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.2.37"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.proc-macro2]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.106"
 notes = "Token tree wrapper by dtolnay; build-time dependency, no runtime IO."
 
 [[audits.proptest]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.10.0"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.pyo3]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.22.6"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.pyo3-build-config]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.22.6"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.pyo3-ffi]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.22.6"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.pyo3-macros]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.22.6"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.pyo3-macros-backend]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.22.6"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.quote]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.45"
 notes = "Macro quoting helper by dtolnay; build-time dependency, no runtime IO."
 
 [[audits.rand_core]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.6.4"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.redox_users]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.5.2"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.regex]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.12.3"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.reqwest]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.13.2"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.rs_merkle]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.5.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.rusqlite]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.39.0"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.rusticata-macros]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "4.1.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.rustls]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.23.37"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.rustls-pki-types]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.14.0"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.ryu]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.23"
 notes = "Float-to-string formatting by dtolnay; pure Rust, no IO."
 
 [[audits.scopeguard]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.2.0"
 notes = "RAII scope guard helper; trivial defer macro, no IO."
 
 [[audits.semver]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.27"
 notes = "Semver parser by dtolnay; pure parsing, no IO."
 
 [[audits.serde]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.228"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.serde_cbor_2]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.12.0-dev"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.serde_core]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.228"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.serde_derive]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.228"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.serde_json]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.149"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.sev]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "7.1.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.sha2]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.10.9"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.smallvec]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.15.1"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.spdx]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.10.9"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.subtle]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "2.6.1"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.syn]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "2.0.117"
 notes = "Rust syntax tree parser by dtolnay; build-time dependency, no runtime IO."
 
 [[audits.syn-solidity]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.8.26"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.synstructure]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.12.6"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.target-lexicon]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.12.16"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.tempfile]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "3.27.0"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.thiserror]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.69"
 notes = "Error derive macro by dtolnay; compile-time only, no IO."
 
 [[audits.thiserror]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "2.0.18"
 notes = "Error derive macro by dtolnay; compile-time only, no IO."
 
 [[audits.time]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.3.47"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.tiny-keccak]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "2.0.2"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.tokio]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.50.0"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.tokio-util]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.7.18"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.toml]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.8.23"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.topological-sort]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.2.2"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.tower]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.5.3"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.tower-layer]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.3.3"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.tower-lsp]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.20.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.tower-lsp-macros]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.9.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.tower-service]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.3.3"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.tracing]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.1.44"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.typenum]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.19.0"
 notes = "Compile-time numeric types; build-time only, no IO."
 
 [[audits.unicode-ident]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.0.24"
 notes = "Unicode XID identifier tables by dtolnay; static lookup, no IO."
 
 [[audits.unindent]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.2.4"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.url]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "2.5.8"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.utf8parse]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.2.2"
 notes = "UTF-8 byte stream parser; pure compute, no IO."
 
 [[audits.uuid]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.22.0"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.wasm-bindgen]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.2.114"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.wasm-encoder]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.227.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.wasm-metadata]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.227.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.wasmparser]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.227.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.wasmparser]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.245.1"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.wasmtime-internal-core]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "43.0.1"
 notes = "M06.P2 exemption chase-down certification. Reviewed current workspace dependency role and removed the matching audit-this-later exemption row."
 
 [[audits.webauthn-attestation-ca]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.5.2"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.webauthn-rs]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.5.2"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.webauthn-rs-core]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.5.2"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.webauthn-rs-proto]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.5.2"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.windows-sys]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "0.48.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.windows-sys]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.61.2"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."
 
 [[audits.windows-targets]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "0.48.5"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.windows_aarch64_gnullvm]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "0.48.5"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.windows_aarch64_msvc]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "0.48.5"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.windows_i686_gnu]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "0.48.5"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.windows_i686_msvc]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "0.48.5"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.windows_x86_64_gnu]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "0.48.5"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.windows_x86_64_gnullvm]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "0.48.5"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.windows_x86_64_msvc]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-run"
 version = "0.48.5"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.wit-bindgen]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.41.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.wit-bindgen-core]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.41.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.wit-bindgen-rt]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.41.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.wit-bindgen-rust]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.41.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.wit-bindgen-rust-macro]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.41.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.wit-component]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.227.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.wit-parser]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.227.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.x509-parser]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.15.1"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.x509-parser]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.16.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.zed_extension_api]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "0.7.0"
 notes = "M06.P2 cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked by M06.P4/P5."
 
 [[audits.zeroize]]
-who = "@bb-connor"
+who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
 version = "1.8.2"
 notes = "M06.P2 top-centrality certification seed. Reviewed for dependency role, declared build behavior, and no new trust-boundary expansion."

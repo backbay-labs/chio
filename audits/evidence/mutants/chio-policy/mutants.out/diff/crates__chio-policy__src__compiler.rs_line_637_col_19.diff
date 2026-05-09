@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace == with != in compile_scope
+@@ -629,17 +629,17 @@
+     let Some(ta) = &rules.tool_access else {
+         return Ok(permissive_scope());
+     };
+ 
+     if !ta.enabled {
+         return Ok(permissive_scope());
+     }
+ 
+-    if ta.default == DefaultAction::Allow {
++    if ta.default != /* ~ changed by cargo-mutants ~ */ DefaultAction::Allow {
+         if tool_access_can_safely_widen_to_wildcard(ta) {
+             return Ok(permissive_scope());
+         }
+         return Ok(ChioScope::default());
+     }
+ 
+     if ta.allow.is_empty() && ta.default == DefaultAction::Block {
+         // Block-by-default with no allowlist: empty scope

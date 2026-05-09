@@ -5,7 +5,7 @@ This document maps the remaining Chio roadmap into GSD milestone cycles.
 ## Operating Rules
 
 - `.planning/` is the execution source of truth for the active milestone.
-- [STRATEGIC_ROADMAP.md](/Users/connor/Medica/backbay/standalone/chio/docs/STRATEGIC_ROADMAP.md), [FULL_VISION_EXECUTION_PROGRAM.md](/Users/connor/Medica/backbay/standalone/chio/docs/release/FULL_VISION_EXECUTION_PROGRAM.md), and [V2_EXECUTION_BACKLOG.md](/Users/connor/Medica/backbay/standalone/chio/docs/release/V2_EXECUTION_BACKLOG.md) remain the strategic reference set.
+- [STRATEGIC_ROADMAP.md](../STRATEGIC_ROADMAP.md), [FULL_VISION_EXECUTION_PROGRAM.md](FULL_VISION_EXECUTION_PROGRAM.md), and [V2_EXECUTION_BACKLOG.md](V2_EXECUTION_BACKLOG.md) remain the strategic reference set.
 - Every phase exit must keep `cargo test --workspace` green.
 - Every milestone exit must run audit before completion.
 - Do not open the next milestone until the current milestone has either shipped or been explicitly re-scoped.

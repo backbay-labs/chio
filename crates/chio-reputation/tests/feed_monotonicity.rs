@@ -202,11 +202,10 @@ proptest! {
         );
     }
 
-    /// M09 review follow-up (PR #379, Codex/Bugbot): tier_3 must require
-    /// distinct feed evidence. Repeating the same `feed_id` with strong
-    /// values must NEVER reach tier_3, regardless of how many copies are
-    /// submitted. This is the Sybil-resistance gate the audit doc
-    /// promises.
+    /// tier_3 must require distinct feed evidence. Repeating the same
+    /// `feed_id` with strong values must NEVER reach tier_3, regardless
+    /// of how many copies are submitted. This is the Sybil-resistance
+    /// gate the audit doc promises.
     #[test]
     fn same_feed_id_repeated_never_reaches_tier_3(
         first_value in 0.80_f64..=1.0_f64,

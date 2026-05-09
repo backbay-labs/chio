@@ -4,7 +4,7 @@
 # in fuzz/target-map.toml, 30 minutes per run. Budget-checked against the
 # 1,800 min/30d cap before each rotation step.
 #
-# Storage backend: bb-connor/arc-fuzz-corpus sibling private repo, wired as a
+# Storage backend: ORG/arc-fuzz-corpus sibling private repo, wired as a
 # FUZZ_CORPUS_PAT-backed `storage-repo` action input when the secret is
 # available. No GCS.
 
@@ -113,7 +113,7 @@ jobs:
           language: rust
           sanitizer: address
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          storage-repo: https://${{ secrets.FUZZ_CORPUS_PAT }}@github.com/bb-connor/arc-fuzz-corpus.git
+          storage-repo: https://${{ secrets.FUZZ_CORPUS_PAT }}@github.com/ORG/arc-fuzz-corpus.git
 
       - name: Build ClusterFuzzLite batch fuzzer without corpus storage
         if: steps.corpus.outputs.enabled != 'true'
@@ -139,7 +139,7 @@ jobs:
           # storage-repo is an action input (not a project.yaml field) per
           # ClusterFuzzLite docs. The PAT-backed URL is required because
           # GITHUB_TOKEN cannot write the sibling private corpus repo.
-          storage-repo: https://${{ secrets.FUZZ_CORPUS_PAT }}@github.com/bb-connor/arc-fuzz-corpus.git
+          storage-repo: https://${{ secrets.FUZZ_CORPUS_PAT }}@github.com/ORG/arc-fuzz-corpus.git
           report-unreproducible-crashes: true
 
       - name: Run ClusterFuzzLite batch without corpus storage

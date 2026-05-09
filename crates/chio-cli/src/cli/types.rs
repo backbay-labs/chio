@@ -2658,10 +2658,34 @@ enum ReceiptCommands {
         cursor: Option<u64>,
     },
     /// Explain why a receipt was allowed or denied.
+    ///
+    /// When `--input-file` points at a `BilateralCoSignArtifacts` JSON
+    /// document (the federation signature-slice API emission with both a
+    /// `dualSignedReceipt` and a `dsseEnvelope`), the renderer auto-detects
+    /// the bilateral shape and prints both the legacy DualSignedReceipt
+    /// section (NON-§6-CONFORMANT per B4) and the DSSE signature-slice
+    /// section. It does not claim strict CHIODOS §6 predicate conformance.
+    ///
+    /// Pass `--inspect-bilateral` to additionally emit a structural
+    /// **inspection trace** of the envelope. The previous flag spelling
+    /// (`--explain-bilateral`) labelled the output a "full-verifier
+    /// trace" and a number of steps were marked `bounded` because the
+    /// CLI does not carry the org A / org B passport public keys;
+    /// Ed25519 signature verification was NOT performed. The new flag
+    /// emits an inspection trace (structural / schema checks only) and
+    /// is honest about the absence of cryptographic verification. The
+    /// legacy spelling `--explain-bilateral` is retained as a
+    /// deprecated alias.
     Explain {
-        /// Legacy receipt ID (`rcpt_...`) or v2 body_hash.
+        /// Legacy receipt ID (`rcpt_...`). v2 bodyHash explanation is
+        /// supported only when the v2 receipt JSON is supplied through
+        /// `--input-file`; persisted DB/control-plane bodyHash lookup is
+        /// not implemented on this CLI path. Use a sentinel (e.g.
+        /// `bilateral`) when reading a bilateral artifact via
+        /// `--input-file`; the receipt_id is informational for that path.
         receipt_id: String,
-        /// Optional JSON file containing one v1 or v2 receipt.
+        /// Optional JSON file containing one v1 or v2 receipt, or a
+        /// `BilateralCoSignArtifacts` document.
         #[arg(long)]
         input_file: Option<PathBuf>,
         /// Maximum parent depth to render.
@@ -2670,6 +2694,13 @@ enum ReceiptCommands {
         /// Maximum fanout siblings to render per level.
         #[arg(long, default_value_t = 32)]
         fanout_limit: usize,
+        /// Emit a structural inspection trace of the bilateral envelope.
+        /// Note: this trace does NOT perform Ed25519 signature
+        /// verification. For real verification, use the kernel-resident
+        /// `chio_federation::bilateral_dsse::verify_dsse_envelope`
+        /// against pinned passport keys.
+        #[arg(long, alias = "explain-bilateral", default_value_t = false)]
+        inspect_bilateral: bool,
     },
 }
 

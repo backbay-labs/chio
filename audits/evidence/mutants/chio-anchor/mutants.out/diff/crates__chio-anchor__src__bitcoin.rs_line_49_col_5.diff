@@ -1,0 +1,67 @@
+--- crates/chio-anchor/src/bitcoin.rs
++++ replace prepare_ots_submission -> Result<PreparedOtsSubmission, AnchorError> with Ok(Default::default())
+@@ -41,63 +41,17 @@
+     pub submission: PreparedOtsSubmission,
+     pub inclusion_proof: Web3SuperRootInclusion,
+ }
+ 
+ pub fn prepare_ots_submission(
+     checkpoints: &[KernelCheckpoint],
+     calendar_urls: &[String],
+ ) -> Result<PreparedOtsSubmission, AnchorError> {
+-    if checkpoints.is_empty() {
+-        return Err(AnchorError::InvalidInput(
+-            "OTS submission requires at least one checkpoint".to_string(),
+-        ));
+-    }
+-    if calendar_urls.is_empty() {
+-        return Err(AnchorError::InvalidInput(
+-            "OTS submission requires at least one calendar URL".to_string(),
+-        ));
+-    }
+-    if checkpoints
+-        .windows(2)
+-        .any(|pair| pair[1].body.checkpoint_seq != pair[0].body.checkpoint_seq.saturating_add(1))
+-    {
+-        return Err(AnchorError::InvalidInput(
+-            "OTS submission requires contiguous checkpoint sequences".to_string(),
+-        ));
+-    }
+-    let checkpoint_seqs: Vec<u64> = checkpoints
+-        .iter()
+-        .map(|checkpoint| checkpoint.body.checkpoint_seq)
+-        .collect();
+-    let checkpoint_roots: Vec<chio_core::hashing::Hash> = checkpoints
+-        .iter()
+-        .map(|checkpoint| checkpoint.body.merkle_root)
+-        .collect();
+-    let tree = MerkleTree::from_hashes(checkpoint_roots.clone())
+-        .map_err(|error| AnchorError::Verification(error.to_string()))?;
+-    let super_root = tree.root();
+-    let (Some(aggregated_checkpoint_start), Some(aggregated_checkpoint_end)) =
+-        (checkpoint_seqs.first(), checkpoint_seqs.last())
+-    else {
+-        return Err(AnchorError::Verification(
+-            "OTS submission requires at least one checkpoint".to_string(),
+-        ));
+-    };
+-    Ok(PreparedOtsSubmission {
+-        schema: "chio.anchor.ots-submission.v1".to_string(),
+-        calendar_urls: calendar_urls.to_vec(),
+-        document_hash_algorithm: "sha256".to_string(),
+-        document_digest: chio_core::hashing::sha256(super_root.as_bytes()),
+-        aggregated_checkpoint_start: *aggregated_checkpoint_start,
+-        aggregated_checkpoint_end: *aggregated_checkpoint_end,
+-        checkpoint_seqs,
+-        checkpoint_roots,
+-        super_root,
+-    })
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn inspect_ots_proof(ots_proof_b64: &str) -> Result<ParsedOtsProof, AnchorError> {
+     let bytes = BASE64_STANDARD.decode(ots_proof_b64).map_err(|error| {
+         AnchorError::InvalidInput(format!("invalid OTS base64 payload: {error}"))
+     })?;
+     let detached = DetachedTimestampFile::from_reader(bytes.as_slice())
+         .map_err(|error| AnchorError::Verification(format!("invalid OTS payload: {error}")))?;

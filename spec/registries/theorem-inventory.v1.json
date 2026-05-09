@@ -1,9 +1,9 @@
 {
   "$schema": "https://chio-protocol.dev/schemas/registries/theorem-inventory/v1",
   "version": "v1",
-  "description": "Catalog of formal theorems (Lean / TLA+ / Kani / hand-proof) that back claims in the proof manifest. Each theorem entry has a statement, dependencies, and a status. Authoritative reference for the trajectory-4 Evidence Gate.",
+  "description": "Catalog of formal theorems (Lean / TLA+ / Kani / hand-proof) that back claims in the proof manifest. Each theorem entry has a statement, dependencies, and a status.",
   "owner": "formal-methods-eng",
-  "bootstrapped_by": "trajectory-4/TRJ4-000",
+  "bootstrapped_by": "protocol-registry/v1",
   "theorems": [
     {
       "id": "theorem.capability.signature_correctness",
@@ -30,9 +30,9 @@
       "id": "theorem.revocation.cut_completeness",
       "kind": "tla_apalache",
       "status": "proven_partial",
-      "statement": "RevocationCutCompleteness over depth <= 1; trj4 T0 Phase B extends to bounded depth K >= 3 (TRJ4-015).",
+      "statement": "RevocationCutCompleteness over depth <= 1; a follow-up extension raises the bounded depth to K >= 3.",
       "depends_on": [],
-      "trj4_followup": "trajectory-4/TRJ4-015"
+      "followup": "revocation-cut-depth-extension"
     },
     {
       "id": "theorem.revocation.eventually_seen",
@@ -40,16 +40,16 @@
       "status": "advisory_only",
       "statement": "Once a revocation enters the gossip network, every honest peer eventually observes it.",
       "depends_on": [],
-      "trj4_followup": "trajectory-4/TRJ4-018"
+      "followup": "revocation-eventual-observation"
     },
     {
       "id": "theorem.attenuation.witness_soundness",
       "kind": "lean",
       "status": "assumed",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean",
-      "statement": "If verify_attenuation_witness(parent_hash, child_hash, witness) returns Ok, then there exists a parent scope and a child scope such that H(canonical(parent)) = parent_hash, H(canonical(child)) = child_hash, and child.is_subset_of(parent) holds. W1.1 chain-binding extension: the verifier additionally requires `attenuation_proof.parent_scope_hash` to match the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain), closing the inflated-parent-scope P0 soundness gap.",
-      "introduced_by": "trajectory-4/T1.1",
-      "promoted_by": "trajectory-4/wave-1.5",
+      "statement": "If verify_attenuation_witness(parent_hash, child_hash, witness) returns Ok, then there exists a parent scope and a child scope such that H(canonical(parent)) = parent_hash, H(canonical(child)) = child_hash, and child.is_subset_of(parent) holds. The verifier additionally requires `attenuation_proof.parent_scope_hash` to match the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain).",
+      "introduced_by": "capability-attenuation-chain-binding",
+      "promoted_by": "runtime-enforcement",
       "depends_on": ["theorem.attenuation.subset_correctness"]
     },
     {
@@ -57,9 +57,9 @@
       "kind": "lean",
       "status": "assumed",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",
-      "statement": "When two peers exchange chio.capabilities.v1 feature bitsets and proceed with the intersection, neither peer can be tricked into using a feature it did not advertise (confused-deputy resistance). W1.3 downgrade-attack defense: a v2 capability token presented to a peer whose negotiated max_capability_schema is v1 is rejected by the verifier's schema-ceiling check before any signature, time, or floor check runs.",
-      "introduced_by": "trajectory-4/T1.0",
-      "promoted_by": "trajectory-4/wave-1.5",
+      "statement": "When two peers exchange chio.capabilities.v1 feature bitsets and proceed with the intersection, neither peer can be tricked into using a feature it did not advertise (confused-deputy resistance). A v2 capability token presented to a peer whose negotiated max_capability_schema is v1 is rejected by the verifier's schema-ceiling check before any signature, time, or floor check runs.",
+      "introduced_by": "capability-negotiation-schema-ceiling",
+      "promoted_by": "runtime-enforcement",
       "depends_on": []
     },
     {
@@ -67,28 +67,28 @@
       "kind": "lean",
       "status": "assumed",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean",
-      "statement": "W1.2 sibling-sum budget enforcement: when BudgetRegistry::try_admit_child returns Ok for child C under parent P, the running sum of admitted child shares plus C.share is bounded by P.share. Closes the cross-hop amplification gap where two siblings could jointly oversubscribe their parent's budget despite each individual share being inside the per-token cap.",
-      "introduced_by": "trajectory-4/T1.2",
-      "promoted_by": "trajectory-4/wave-1.5",
+      "statement": "When BudgetRegistry::try_admit_child returns Ok for child C under parent P, the running sum of admitted child shares plus C.share is bounded by P.share. This rejects sibling combinations that jointly oversubscribe their parent's budget despite each individual share being inside the per-token cap.",
+      "introduced_by": "capability-budget-sibling-sum",
+      "promoted_by": "runtime-enforcement",
       "depends_on": []
     },
     {
       "id": "theorem.receipt.body_hash_input_set_pinned",
       "kind": "lean",
       "status": "assumed",
-      "statement": "For any chio.receipt.v2 body B, the set of fields contributing to body_hash is exactly fields(B) \\\\ {body_hash, signature, receipt_id}. The Lean proof regenerates from the JSON schema; any drift fails the proof. W2.1 hot-path extension: the kernel mints `ChioReceiptV2` whose `body_hash` field equals H(canonical_jcs(ReceiptV2BodyHashInput)) at production mint time, and the replay store keys on body_hash exclusively (the legacy UUIDv7 alias is non-authoritative).",
-      "introduced_by": "trajectory-4/T1.2",
-      "promoted_by": "trajectory-4/W2.1",
+      "statement": "For any chio.receipt.v2 body B, the set of fields contributing to body_hash is exactly fields(B) \\\\ {body_hash, signature, receipt_id}. The Lean proof regenerates from the JSON schema; any drift fails the proof. The kernel mints `ChioReceiptV2` whose `body_hash` field equals H(canonical_jcs(ReceiptV2BodyHashInput)) at production mint time, and the replay store keys on body_hash exclusively (the legacy UUIDv7 alias is non-authoritative).",
+      "introduced_by": "receipt-v2-body-hash",
+      "promoted_by": "receipt-v2-runtime-minting",
       "depends_on": []
     }
   ],
-  "trj4_proposed_theorems": [
+  "proposed_theorems": [
     {
       "id": "theorem.attenuation.witness_completeness",
       "kind": "lean",
       "status": "proposed",
       "statement": "If child.is_subset_of(parent) holds, then compute_attenuation_witness(parent, child) returns Ok with a witness w such that verify_attenuation_witness(H(canonical(parent)), H(canonical(child)), w) returns Ok.",
-      "introduced_by": "trajectory-4/T1.1",
+      "introduced_by": "capability-attenuation-chain-binding",
       "depends_on": ["theorem.attenuation.witness_soundness"]
     },
     {
@@ -96,7 +96,7 @@
       "kind": "lean",
       "status": "proposed",
       "statement": "Under the standard SHA-256 collision-resistance assumption, distinct ReceiptV2BodyHashInput values produce distinct body_hash values with negligible collision probability.",
-      "introduced_by": "trajectory-4/T1.2",
+      "introduced_by": "receipt-v2-body-hash",
       "depends_on": ["theorem.receipt.body_hash_input_set_pinned"]
     },
     {
@@ -104,7 +104,7 @@
       "kind": "tla_apalache",
       "status": "proposed",
       "statement": "Under the verifier rule child.dag_ordinal > max(parent.dag_ordinal) for all parents in parent_receipt_ids, the receipt DAG is acyclic across any number of independent kernel clock domains.",
-      "introduced_by": "trajectory-4/T1.2",
+      "introduced_by": "receipt-lineage-dag-proposal",
       "depends_on": []
     },
     {
@@ -112,7 +112,7 @@
       "kind": "lean",
       "status": "proposed",
       "statement": "For any Merkle tree T over leaves L_1..L_N and any inclusion proof P_i for leaf L_i, verify_inclusion(L_i, P_i, root(T)) returns Ok iff P_i is the canonical inclusion path.",
-      "introduced_by": "trajectory-4/T1.3",
+      "introduced_by": "anchor-public-witness-lane",
       "depends_on": []
     },
     {
@@ -120,7 +120,7 @@
       "kind": "lean",
       "status": "proposed",
       "statement": "Once a chio.anchor_batch.v1 root R is published to a public witness lane with verifier-trusted lane evidence at time t, any subsequent batch B' with the same checkpoint_ids but a different root R' is detectable by any verifier that queries the witness lane. OTS satisfies this theorem only after receipts carry trusted Bitcoin header or calendar-backed commitment evidence.",
-      "introduced_by": "trajectory-4/T1.3",
+      "introduced_by": "anchor-public-witness-lane",
       "depends_on": ["theorem.anchor.merkle_inclusion"]
     },
     {
@@ -128,7 +128,7 @@
       "kind": "lean",
       "status": "proposed",
       "statement": "A hybrid:<classical>:<pq>:<alg_set> signature verifies if and only if BOTH the classical and the PQ signatures verify under their respective public keys. Forgery requires breaking either primitive.",
-      "introduced_by": "trajectory-4/T2.1",
+      "introduced_by": "hybrid-pq-signature-proposal",
       "depends_on": []
     },
     {
@@ -136,15 +136,15 @@
       "kind": "lean",
       "status": "proposed",
       "statement": "If QuorumPolicy.min_tier is T, any peer admitted through KernelTrustExchange has a signed conformance_tier >= T in its accepted handshake challenge.",
-      "introduced_by": "trajectory-4/T2.1",
+      "introduced_by": "federation-conformance-tier-proposal",
       "depends_on": ["theorem.handshake.negotiation_safety"]
     },
     {
       "id": "theorem.egress.contract_enforcement",
       "kind": "assumed",
       "status": "assumed",
-      "statement": "For every outbound HTTP dispatch in the kernel/guard/adapter layer, the typed HttpEgressContract approves the target URL on the initial request, on every redirect target, and bounds the observed response body size; loopback, link-local, IPv6 ULA, unbounded redirects, and oversize responses are rejected before any byte leaves the substrate. Operationally backed by the W2.2 wiring of 16 production callers (chio-link, chio-siem, chio-a2a-adapter, chio-openapi-mcp-bridge, chio-mcp-remote) plus the workspace lint and 5 SSRF negative-conformance tests.",
-      "introduced_by": "trajectory-4/W2.2",
+      "statement": "For every outbound HTTP dispatch in the kernel/guard/adapter layer, the typed HttpEgressContract approves the target URL on the initial request, on every redirect target, and bounds the observed response body size; loopback, link-local, IPv6 ULA, unbounded redirects, and oversize responses are rejected before any byte leaves the substrate. Operationally backed by production caller wiring plus the workspace lint and SSRF negative-conformance tests.",
+      "introduced_by": "http-egress-contract",
       "depends_on": []
     }
   ]

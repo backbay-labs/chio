@@ -723,7 +723,7 @@
       "status": "assumed",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean",
       "mapsTo": ["P1"],
-      "notes": "W1.1 P0 chain-binding fix: a v2 capability token is admitted by the verifier iff its attenuation_proof.parent_scope_hash matches the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain). Closes the inflated-parent-scope soundness gap. Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs and the protocol-side check is implemented in chio_core_types::capability::CapabilityToken::validate_chain_binding."
+      "notes": "Chain-binding soundness: a v2 capability token is admitted by the verifier iff its attenuation_proof.parent_scope_hash matches the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain). Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs and the protocol-side check is implemented in chio_core_types::capability::CapabilityToken::validate_chain_binding."
     },
     {
       "id": "theorem.handshake.negotiation_safety",
@@ -732,10 +732,10 @@
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
-      "status": "assumed",
+      "status": "proven_in_part",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",
       "mapsTo": ["P3"],
-      "notes": "W1.3 downgrade-attack defense: a v2 capability token presented to a peer whose negotiated max_capability_schema is v1 is rejected by the verifier's schema-ceiling check before any signature, time, or floor check runs. Status remains `assumed` until the Lean toolchain is available in CI; the Rust shell is covered by crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs."
+      "notes": "a v2 capability token presented to a peer whose negotiated max_capability_schema is v1 is rejected by the verifier's schema-ceiling check before any signature, time, or floor check runs. This row now records an executable-model refinement: the headline theorem now states the iff `RustNegotiation.checkSchemaCeiling (some t) (some p) = admit <-> Schema.le t p = true` against an executable model whose branching mirrors the Rust function over `Option CapabilitySchemaVersion`, with explicit forward and reverse implications, four representative-input commutativity lemmas matching the Rust conformance tests, and three unknown-schema fail-closed lemmas. No `sorry` markers in the headline lemma. Lake build is not yet available in CI; the Rust shell is covered by crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs. Remaining obligations include mechanizing the wider hot-path verifier, including chain-binding, signature, crypto floor, and budgets."
     },
     {
       "id": "theorem.budget.sibling_sum_soundness",
@@ -747,7 +747,7 @@
       "status": "assumed",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean",
       "mapsTo": ["P1"],
-      "notes": "W1.2 sibling-sum budget enforcement: when the BudgetRegistry admits a child, the running sum after admission is bounded by the parent's share. Closes the cross-hop amplification gap where two siblings could jointly oversubscribe their parent's budget. Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs and the cross-hop case by crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs. The protocol-side check is implemented in chio_kernel_core::budget_split::BudgetSplit::try_admit_child."
+      "notes": "Sibling-sum budget enforcement: when the BudgetRegistry admits a child, the running sum after admission is bounded by the parent's share. This rejects cross-hop amplification where two siblings jointly oversubscribe their parent's budget. Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs and the cross-hop case by crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs. The protocol-side check is implemented in chio_kernel_core::budget_split::BudgetSplit::try_admit_child."
     },
     {
       "id": "theorem.receipt.body_hash_input_set_pinned",
@@ -758,7 +758,7 @@
       "claimClass": "bounded_model",
       "status": "assumed",
       "mapsTo": ["P4"],
-      "notes": "W2.1 receipt-id v2 plumbing fix: the kernel mints `ChioReceiptV2` whose `body_hash` field equals H(canonical_jcs(ReceiptV2BodyHashInput)) on the production hot path when the negotiated peer profile advertises `accepts_receipt_v2`. The replay store keys exclusively on body_hash; the legacy UUIDv7 alias is non-authoritative. Status remains `assumed` because the Lean toolchain is not in CI; the Rust shell is exercised by crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs which dispatches a real ChioKernel evaluate call and asserts the chio_receipts_v2 row keyed on body_hash."
+      "notes": "Receipt v2 body-hash addressing: the kernel mints `ChioReceiptV2` whose `body_hash` field equals H(canonical_jcs(ReceiptV2BodyHashInput)) on the production hot path when the negotiated peer profile advertises `accepts_receipt_v2`. The replay store keys exclusively on body_hash; the legacy UUIDv7 alias is non-authoritative. Status remains `assumed` because the Lean toolchain is not in CI; the Rust shell is exercised by crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs which dispatches a real ChioKernel evaluate call and asserts the chio_receipts_v2 row keyed on body_hash."
     }
   ]
 }

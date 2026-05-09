@@ -19,7 +19,6 @@ if ((${#matches[@]} > 0)); then
 fi
 
 m08_evidence_files=(
-  ".planning/trajectory-3/audits/M08-vendor-evidence.md"
   "compliance/hitrust/evidence-bundles/2026-05-02/M08/audit/M08-vendor-evidence.md"
 )
 m08_stale_claim_pattern='m08_final_report|final[ -]report|public[ -]report|vendor public|vendor-hosted mirror|selected vendor|SOW signed|vendor sign-off|NCC reviewer accepted|Trail of Bits.+Reply received'
@@ -61,7 +60,6 @@ done
 m09_package_path="compliance/hitrust/readiness-package/readiness-package.md"
 m09_package_sha256="a41918aacd4ae06a94a3b05fdb1718cece732a68c42bab7c2802cd58e20bef90"
 m09_evidence_files=(
-  ".planning/trajectory-3/audits/M09-vendor-evidence.md"
   "${m09_package_path}"
   "docs/external-attestation/hitrust-i1/index.md"
   "compliance/hitrust/renewal/renewal-trigger.md"

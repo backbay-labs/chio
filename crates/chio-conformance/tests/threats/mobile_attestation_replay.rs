@@ -1,3 +1,21 @@
+// Threat test for threat ID `mobile_attestation_replay`.
+//
+// Coverage strategy: present an App Attest fixture against a stale
+// server challenge, and a Play Integrity token against a replayed nonce;
+// both production verifiers must reject the replay.
+//
+// Revert-to-prove-it-fails recipes:
+//   (a) inside `verify_app_attest` in
+//       `crates/chio-custody-hw/src/attestation/app_attest.rs`,
+//       remove the challenge-comparison branch that returns
+//       `Err(AttestationError::ChallengeMismatch)`. The App Attest
+//       deny-arm assertion below fails.
+//   (b) inside `verify_play_integrity` in
+//       `crates/chio-custody-hw/src/attestation/play_integrity.rs`,
+//       remove the nonce comparison that returns
+//       `Err(AttestationError::PlayIntegrityNonceMismatch)`. The Play
+//       Integrity deny-arm assertion below fails.
+
 use std::error::Error;
 
 use chio_custody_hw::attestation::google_root::play_integrity_jwks_json;

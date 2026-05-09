@@ -1,0 +1,33 @@
+--- crates/chio-guards/src/egress_allowlist.rs
++++ replace default_allow_patterns -> Vec<String> with vec![String::new()]
+@@ -25,29 +25,17 @@
+     InvalidBlockPattern {
+         pattern: String,
+         #[source]
+         source: glob::PatternError,
+     },
+ }
+ 
+ fn default_allow_patterns() -> Vec<String> {
+-    vec![
+-        // Common AI/ML APIs
+-        "*.openai.com".to_string(),
+-        "*.anthropic.com".to_string(),
+-        "api.github.com".to_string(),
+-        // Package registries
+-        "*.npmjs.org".to_string(),
+-        "registry.npmjs.org".to_string(),
+-        "pypi.org".to_string(),
+-        "files.pythonhosted.org".to_string(),
+-        "crates.io".to_string(),
+-        "static.crates.io".to_string(),
+-    ]
++    vec![String::new()] /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Guard that controls network egress via domain allowlist.
+ ///
+ /// By default, only well-known AI API and package registry domains are
+ /// allowed. All other egress is denied (fail-closed).
+ pub struct EgressAllowlistGuard {
+     allow_patterns: Vec<Pattern>,

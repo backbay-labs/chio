@@ -13,6 +13,16 @@ name = "chio_federation"
 
 [features]
 pq = ["chio-core-types/pq"]
+# Selective-disclosure auditor view per
+# spec/CHIODOS_SELECTIVE_DISCLOSURE.md §6 BBS+ projection. Default-off
+# so the baseline chio build stays BBS+/BLS12-381-free. The feature
+# gate is named `bbs-stub` (NOT `zk`) because the implementation under
+# it is a SHA-256-commitment stub of the §5/§6 projection - it captures
+# the deterministic projection and disclose/withhold semantics but
+# provides no privacy-preserving cryptographic property. Real BLS12-381 BBS+ signing is
+# deferred; a separately named real-BBS feature can be introduced then.
+# See selective_disclosure.rs module docs.
+bbs-stub = []
 
 [dependencies]
 chio-core-types = { path = "../chio-core-types" }
@@ -23,6 +33,15 @@ chio-revocation-oracle = { path = "../chio-revocation-oracle" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+# DSSE signature-slice bilateral envelope. The strict
+# CHIODOS_BILATERAL_COSIGN_INVOCATION schema is deferred until the producer
+# receives the missing invocation fields; this slice still serialises the
+# canonical-JSON in-toto Statement as Base64 and binds keyid as SHA-256 of
+# the passport public key (hex-encoded, via the `hex` crate). These three
+# deps are used exclusively by `bilateral_dsse.rs`.
+base64 = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
 
 [dev-dependencies]
 # Integration test crates/chio-federation/tests/oracle_gossip_e2e.rs walks

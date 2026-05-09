@@ -237,7 +237,6 @@ mod tests {
 
     #[test]
     fn multiple_deltas_same_feed_cannot_reach_tier_3() {
-        // M09 review follow-up: PR #379 / Codex + Bugbot finding.
         // Two strong deltas from the same feed_id must NOT promote a
         // publisher to tier_3; the gate counts distinct feeds, not
         // slice length.

@@ -11,8 +11,7 @@ sanitizers:
   # unrecognised value (cargo-fuzz accepts address/leak/memory/thread
   # but NOT undefined / UBSan). Listing `undefined` here would let
   # OSS-Fuzz launch a build with `$SANITIZER=undefined` that always
-  # fails, breaking half the fuzzing configurations (cleanup-c11d;
-  # PR #106 review thread r3144176028 - High Severity).
+  # fails, breaking half the fuzzing configurations.
   - address
 architectures:
   - x86_64

@@ -1,9 +1,9 @@
 /**
  * Conformance: BROWSER_SUBSET_V1 selector unit tests.
  *
- * Asserts that the M08 verify-only subset (canonical: all,
+ * Asserts that the browser verify-only subset (canonical: all,
  * receipt: verify_only, capability: verify_only) selects a non-empty
- * set of case IDs and that every selected ID exists in the M01
+ * set of case IDs and that every selected ID exists in the shared
  * conformance corpus checked into `tests/bindings/vectors/`.
  *
  * The corpus path is resolved relative to the repo root via
@@ -21,7 +21,7 @@ import {
   type ConformanceManifest,
 } from "../src/browser-subset.js";
 
-// /tmp/arc-m08p2-t5/sdks/typescript/packages/conformance/test/* -> repo root.
+// Resolve from this package's test directory back to the repository root.
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..", "..", "..");
 const VECTORS = resolve(REPO_ROOT, "tests", "bindings", "vectors");
@@ -42,7 +42,7 @@ function loadManifest(): ConformanceManifest {
   };
 }
 
-describe("BROWSER_SUBSET_V1 (M08 verify-only conformance subset)", () => {
+describe("BROWSER_SUBSET_V1 (verify-only conformance subset)", () => {
   it("declares the canonical version tag", () => {
     expect(BROWSER_SUBSET_V1.tag).toBe("chio.conformance.browser-subset/v1");
     expect(BROWSER_SUBSET_TAG).toBe("chio.conformance.browser-subset/v1");
@@ -107,7 +107,7 @@ describe("BROWSER_SUBSET_V1 (M08 verify-only conformance subset)", () => {
     );
   });
 
-  it("every selected case ID exists in the M01 vector corpus", () => {
+  it("every selected case ID exists in the vector corpus", () => {
     const manifest = loadManifest();
     const selection = selector(manifest);
 
@@ -116,13 +116,13 @@ describe("BROWSER_SUBSET_V1 (M08 verify-only conformance subset)", () => {
     const capabilityIds = new Set(manifest.capability.cases.map((c) => c.id));
 
     for (const id of selection.categories.canonical) {
-      expect(canonicalIds.has(id), `canonical id ${id} missing in M01 corpus`).toBe(true);
+      expect(canonicalIds.has(id), `canonical id ${id} missing in vector corpus`).toBe(true);
     }
     for (const id of selection.categories.receipt) {
-      expect(receiptIds.has(id), `receipt id ${id} missing in M01 corpus`).toBe(true);
+      expect(receiptIds.has(id), `receipt id ${id} missing in vector corpus`).toBe(true);
     }
     for (const id of selection.categories.capability) {
-      expect(capabilityIds.has(id), `capability id ${id} missing in M01 corpus`).toBe(true);
+      expect(capabilityIds.has(id), `capability id ${id} missing in vector corpus`).toBe(true);
     }
   });
 

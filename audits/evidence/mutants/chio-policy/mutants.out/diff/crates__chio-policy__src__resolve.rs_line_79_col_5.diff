@@ -1,0 +1,37 @@
+--- crates/chio-policy/src/resolve.rs
++++ replace resolve_inner -> Result<HushSpec, ResolveError> with Ok(Default::default())
+@@ -71,33 +71,17 @@
+     spec: &HushSpec,
+     source: Option<&str>,
+     loader: &F,
+     stack: &mut Vec<String>,
+ ) -> Result<HushSpec, ResolveError>
+ where
+     F: Fn(&str, Option<&str>) -> Result<LoadedSpec, ResolveError>,
+ {
+-    let Some(reference) = spec.extends.as_deref() else {
+-        return Ok(spec.clone());
+-    };
+-
+-    let loaded = loader(reference, source)?;
+-    if let Some(index) = stack.iter().position(|entry| entry == &loaded.source) {
+-        let mut cycle = stack[index..].to_vec();
+-        cycle.push(loaded.source);
+-        return Err(ResolveError::Cycle {
+-            chain: cycle.join(" -> "),
+-        });
+-    }
+-
+-    stack.push(loaded.source.clone());
+-    let resolved_parent = resolve_inner(&loaded.spec, Some(&loaded.source), loader, stack)?;
+-    stack.pop();
+-    Ok(merge(&resolved_parent, spec))
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn load_from_filesystem(reference: &str, from: Option<&str>) -> Result<LoadedSpec, ResolveError> {
+     let path = resolve_reference_path(reference, from);
+     let canonical = canonical_path(&path)?;
+     let spec = load_spec_from_file(&canonical)?;
+     Ok(LoadedSpec {
+         source: canonical.to_string_lossy().into_owned(),

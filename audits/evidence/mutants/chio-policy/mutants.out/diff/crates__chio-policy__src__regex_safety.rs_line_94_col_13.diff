@@ -1,0 +1,20 @@
+--- crates/chio-policy/src/regex_safety.rs
++++ delete match arm '\\' in policy_regex_complexity
+@@ -86,16 +86,16 @@
+     let mut score = 0usize;
+     let mut escaped = false;
+     for ch in pattern.chars() {
+         if escaped {
+             escaped = false;
+             continue;
+         }
+         match ch {
+-            '\\' => escaped = true,
++             /* ~ changed by cargo-mutants ~ */
+             '|' | '*' | '+' | '?' => score = score.saturating_add(4),
+             '{' | '[' | '(' => score = score.saturating_add(2),
+             _ => {}
+         }
+     }
+     score
+ }

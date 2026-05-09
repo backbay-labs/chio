@@ -33,7 +33,7 @@ exclude:
 # `default-catalogers` / `select-catalogers`. The previous nested
 # `package.cataloger.{enabled,scope}` keys were not in syft's schema
 # and were silently ignored, so the stated intent here was never
-# applied (cleanup-c11d; PR #44 review thread r3142898746 - Low).
+# applied.
 scope: all-layers
 default-catalogers:
   - all

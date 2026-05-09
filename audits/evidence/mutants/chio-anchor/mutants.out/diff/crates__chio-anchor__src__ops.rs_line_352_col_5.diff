@@ -1,0 +1,49 @@
+--- crates/chio-anchor/src/ops.rs
++++ replace classify_anchor_lane -> AnchorLaneHealthStatus with Default::default()
+@@ -344,45 +344,17 @@
+ 
+ #[must_use]
+ pub fn classify_anchor_lane(
+     lane: AnchorLaneKind,
+     indexer_status: AnchorIndexerStatus,
+     controls: AnchorEmergencyControls,
+     reorg_depth: u32,
+ ) -> AnchorLaneHealthStatus {
+-    if indexer_status == AnchorIndexerStatus::Failed {
+-        return AnchorLaneHealthStatus::Failed;
+-    }
+-    match controls.mode {
+-        AnchorEmergencyMode::Halted => return AnchorLaneHealthStatus::Paused,
+-        AnchorEmergencyMode::PublishPaused if lane == AnchorLaneKind::EvmPrimary => {
+-            return AnchorLaneHealthStatus::Paused;
+-        }
+-        AnchorEmergencyMode::ProofImportOnly if lane == AnchorLaneKind::EvmPrimary => {
+-            return AnchorLaneHealthStatus::Paused;
+-        }
+-        AnchorEmergencyMode::RecoveryOnly => {
+-            return AnchorLaneHealthStatus::Recovering;
+-        }
+-        AnchorEmergencyMode::Normal
+-        | AnchorEmergencyMode::PublishPaused
+-        | AnchorEmergencyMode::ProofImportOnly => {}
+-    }
+-    if reorg_depth > 0 || indexer_status == AnchorIndexerStatus::Replaying {
+-        AnchorLaneHealthStatus::Recovering
+-    } else {
+-        match indexer_status {
+-            AnchorIndexerStatus::Healthy => AnchorLaneHealthStatus::Healthy,
+-            AnchorIndexerStatus::Lagging => AnchorLaneHealthStatus::Lagging,
+-            AnchorIndexerStatus::Drifted => AnchorLaneHealthStatus::Drifted,
+-            AnchorIndexerStatus::Replaying => AnchorLaneHealthStatus::Recovering,
+-            AnchorIndexerStatus::Failed => AnchorLaneHealthStatus::Failed,
+-        }
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn ensure_anchor_operation_allowed(
+     controls: AnchorEmergencyControls,
+     operation: AnchorOperationKind,
+ ) -> Result<(), AnchorError> {
+     if controls.allows(operation) {
+         return Ok(());

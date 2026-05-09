@@ -4,8 +4,7 @@
 # Behavior:
 #   - If cargo-mutants is not installed locally, soft-skip with exit 0
 #     and emit an install hint. CI runs the baseline on a beefy runner
-#     and uploads the report; the audit doc records "TBD until CI runs"
-#     until then.
+#     and uploads the report when the scheduled lane is available.
 #   - If cargo-mutants is available, run it scoped to the chio-kernel
 #     package with a tight per-mutant timeout and write the JSON report
 #     to .planning/audits/mutants-baseline-kernel.txt.

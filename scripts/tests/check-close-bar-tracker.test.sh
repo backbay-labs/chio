@@ -3,7 +3,7 @@
 #
 # Exercises:
 #   1. DONE row with no negative test fails the gate.
-#   2. DONE + Wired runtime path=n fails the gate (audit's "types-only" pattern).
+#   2. DONE + Wired runtime path=n fails the gate.
 #   3. Theorem-proven row with a missing .lean file fails the gate.
 #   4. Snapshot regression (snapshot DONE -> tracker PARTIAL) fails the gate.
 #   5. Baseline tracker passes the gate.
@@ -29,7 +29,7 @@ write_tracker() {
     local path="$1"
     shift
     {
-        echo "# Trj4 close-bar tracker (test fixture)"
+        echo "# close-bar tracker (test fixture)"
         echo
         echo "| ID | Title | Bucket | Wired runtime path | Negative conformance test | Theorem status | Wave | Notes |"
         echo "|----|-------|--------|--------------------|---------------------------|----------------|------|-------|"
@@ -124,11 +124,11 @@ grep -q "Bucket=DONE but Negative conformance test=NONE" "$ERR" \
 T3="$TMP_DIR/done-not-wired.md"
 S3="$TMP_DIR/done-not-wired.snapshot.json"
 write_tracker "$T3" \
-    "row-1 | t1 | DONE | n | scripts/trj4-preflight.sh | n-a | 01 | DONE but not wired"
+    "row-1 | t1 | DONE | n | scripts/check-close-bar-tracker.sh | n-a | 01 | DONE but not wired"
 write_snapshot "$S3" \
     "row-1 | t1 | NONE | n | NONE | n-a | 01 | placeholder"
-assert_fails "DONE not wired (types-only pattern)" "$T3" "$S3" 1
-grep -q "audit's types-only pattern" "$ERR" \
+assert_fails "DONE not wired" "$T3" "$S3" 1
+grep -q "runtime path not wired" "$ERR" \
     || { echo "FAIL: missing diagnostic for DONE+not-wired"; cat "$ERR"; exit 1; }
 
 # ---- Case 3: theorem-proven with missing .lean file fails -----------------
@@ -148,7 +148,7 @@ S5="$TMP_DIR/regression.snapshot.json"
 write_tracker "$T5" \
     "row-1 | t1 | PARTIAL | n | NONE | n-a | 04 | regressed from DONE"
 write_snapshot "$S5" \
-    "row-1 | t1 | DONE | y | scripts/trj4-preflight.sh | n-a | 04 | snapshot says DONE"
+    "row-1 | t1 | DONE | y | scripts/check-close-bar-tracker.sh | n-a | 04 | snapshot says DONE"
 assert_fails "regression DONE -> PARTIAL" "$T5" "$S5" 1
 grep -q "regressed DONE -> PARTIAL" "$ERR" \
     || { echo "FAIL: missing diagnostic for DONE -> PARTIAL regression"; cat "$ERR"; exit 1; }

@@ -1,0 +1,21 @@
+--- crates/chio-attest-verify/src/sigstore.rs
++++ replace + with * in certificate_validity
+@@ -472,17 +472,17 @@
+ 
+     Err(AttestError::Malformed(
+         "OIDC issuer extension is neither DER UTF8String nor printable raw UTF-8".into(),
+     ))
+ }
+ 
+ fn certificate_validity(cert: &Certificate) -> Result<(SystemTime, SystemTime), AttestError> {
+     let validity = &cert.tbs_certificate.validity;
+-    let not_before = UNIX_EPOCH + validity.not_before.to_unix_duration();
++    let not_before = UNIX_EPOCH * /* ~ changed by cargo-mutants ~ */ validity.not_before.to_unix_duration();
+     let not_after = UNIX_EPOCH + validity.not_after.to_unix_duration();
+     Ok((not_before, not_after))
+ }
+ 
+ fn verify_signature_bytes(
+     key: &CosignVerificationKey,
+     signature: &[u8],
+     msg: &[u8],

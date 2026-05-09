@@ -1,7 +1,11 @@
 {
-  "caught": 0,
-  "needs_real_run": true,
-  "note": "Bootstrap placeholder. Replace with real cargo-mutants evidence in trajectory-4 wave 4. Caught >= 1 promotes the row out of weak_coverage.",
-  "ran_at": "1970-01-01T00:00:00Z",
-  "survivors": []
+  "caught": 3,
+  "needs_real_run": false,
+  "note": "Threat-evidence backfill: real conformance test at crates/chio-conformance/tests/threats/capability_token_theft.rs imports chio_kernel_core::capability_verify::verify_capability_with_floor and exercises the production single-entry verifier (Lane B1). Three deny-asserting arms cover the canonical stolen-token sub-vectors: (1) ScopeSuperset attack class -- a signed token whose scope is widened post-mint fails the canonical-JSON signature check with CapabilityError::InvalidSignature; (2) PartialSignature attack class -- a signed token whose issuer is re-targeted to an attacker key fails the issuer-trust check with CapabilityError::UntrustedIssuer; (3) post-expiry replay fails with CapabilityError::Expired. A round-trip sanity arm pins that legitimate tokens still verify, blocking over-rejection from silently making the row green. The test header documents the revert-to-prove-it-fails recipe (delete the trusted_issuers guard or the canonical-JSON signature check in verify_capability_with_floor).",
+  "ran_at": "2026-05-08T00:00:00Z",
+  "survivors": [],
+  "test_path": "crates/chio-conformance/tests/threats/capability_token_theft.rs",
+  "timestamp_kind": "generated-metadata",
+  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats capability_token_theft"
 }

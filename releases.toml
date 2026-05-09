@@ -61,25 +61,25 @@
 # Editing this file is gated by CODEOWNERS.
 
 [mutants]
-initial_merge_tag = "v0.0.0-m04-mutation-gate"
+initial_merge_tag = "v0.0.0-mutation-gate"
 target_catch_ratio_percent = 80
 activation_threshold_percent_per_crate = 65
 required_consecutive_nightly_successes = 2
 observed_consecutive_nightly_successes = 0
 activation_evidence = """
-cycle: v0.0.0-m04-mutation-gate
+cycle: v0.0.0-mutation-gate
 target_catch_ratio_percent: 80
 activation_threshold_percent_per_crate: 65
 honest_threshold_applied: true
-trj3_1_reset_rationale: "Reset by trajectory-3.1. Prior activation_evidence cited two nightly run URLs whose status_at_capture was 'queued' (never confirmed green) and per-crate kill rates marked 'pending final M04.P5 full-sweep replay'. Trajectory-3.1 closes this debt via Phase 4.2 (real cargo-mutants full-sweep measurement) and Phase 2 (workflow restoration providing real green nightly run URLs). Until both phases land measured numbers, observed_consecutive_nightly_successes stays at 0 and cycle_end_tag is empty so the gate runs in advisory posture."
+reset_rationale: "Reset after readiness review. Prior activation_evidence cited two nightly run URLs whose status_at_capture was 'queued' (never confirmed green) and per-crate kill rates marked pending final full-sweep replay. This debt remains open until real cargo-mutants full-sweep measurement and workflow restoration provide confirmed green nightly run URLs. Until both evidence sets land measured numbers, observed_consecutive_nightly_successes stays at 0 and cycle_end_tag is empty so the gate runs in advisory posture."
 nightly_runs: []
 per_crate_kill_rate_percent:
-  chio-policy: "pending trajectory-3.1 phase 4.2 full-sweep measurement"
-  chio-credentials: "pending trajectory-3.1 phase 4.2 full-sweep measurement"
-  chio-attest-verify: "pending trajectory-3.1 phase 4.2 full-sweep measurement"
-  chio-kernel-core: "pending trajectory-3.1 phase 4.2 full-sweep measurement"
-  chio-guards: "pending trajectory-3.1 phase 4.2 full-sweep measurement"
-  chio-anchor: "pending trajectory-3.1 phase 4.2 full-sweep measurement"
+  chio-policy: "pending full-sweep measurement"
+  chio-credentials: "pending full-sweep measurement"
+  chio-attest-verify: "pending full-sweep measurement"
+  chio-kernel-core: "pending full-sweep measurement"
+  chio-guards: "pending full-sweep measurement"
+  chio-anchor: "pending full-sweep measurement"
 """
 cycle_end_tag = ""
 pr_survivor_issue_budget = 5
@@ -98,50 +98,47 @@ activation_evidence = """
 m08_internal_readiness_draft:
   release_gate: RELEASE_AUDIT
   classification: internal_readiness_draft
-  trj3_1_reclassified_from: external_vendor_final_report
+  reclassified_from: external_vendor_final_report
   draft_url: https://github.com/bb-connor/arc/blob/main/releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf
   draft_path: releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf
   draft_sha256: abcc1423018d42feb119238b394d196075853e2bd4a23a4ca62c7adedf1e723c
-  audit_doc: .planning/trajectory-3/audits/M08-vendor-evidence.md
-  response_memo: .planning/trajectory-3/audits/M08-vendor-evidence.md#5e-chio-response-memo
+  internal_record: retained outside release bundle
+  response_memo: internal-only
   response_memo_status: internal-only
   external_vendor_engagement: deferred
-  trajectory_4_owner: M08-followup
-  note: "Self-authored internal readiness draft. No external vendor (e.g., NCC Group, Trail of Bits) has produced a vendor-letterhead crypto-protocol review. Real external review is a trajectory-4 deliverable. Calendar estimate per realist analysis: 26-44 weeks."
+  external_review_owner: vendor-evidence-followup
+  note: "Self-authored internal readiness draft. No external vendor (e.g., NCC Group, Trail of Bits) has produced a vendor-letterhead crypto-protocol review. Real external review remains deferred. Calendar estimate per realist analysis: 26-44 weeks."
 m09_hitrust_i1_readiness_package:
   release_gate: QUALIFICATION
   classification: readiness_package
-  trj3_1_reclassified_from: issued_certificate
+  reclassified_from: issued_certificate
   certificate_id: ""
   package_path: compliance/hitrust/readiness-package/readiness-package.md
   package_sha256: a41918aacd4ae06a94a3b05fdb1718cece732a68c42bab7c2802cd58e20bef90
-  audit_doc: .planning/trajectory-3/audits/M09-vendor-evidence.md
+  internal_record: retained outside release bundle
   scope: "Chio v3.18 plus M01 healthcare design-partner deployment (readiness scope; not assessor scope)"
   external_assessor_engagement: deferred
-  trajectory_4_owner: M09-followup
+  external_assessor_owner: hitrust-followup
   public_landing_page: docs/external-attestation/hitrust-i1/index.md
-  note: "HITRUST i1 readiness package, not an issued certificate. No HITRUST-authorized External Assessor (e.g., A-LIGN, Coalfire, Schellman) has performed an audit. Real HITRUST i1 certification is a trajectory-4 deliverable. Calendar estimate per realist analysis: 12-36 weeks."
+  note: "HITRUST i1 readiness package, not an issued certificate. No HITRUST-authorized External Assessor (e.g., A-LIGN, Coalfire, Schellman) has performed an audit. Real HITRUST i1 certification remains deferred. Calendar estimate per realist analysis: 12-36 weeks."
 """
 
-[trajectory_4]
-trj3_1_release_tag = "v3.18.1-trj3.1"
-trj3_1_release_sha = "a9006addb7d0217727ef748e9a469b97617e6279"
-trj3_1_release_binaries_run_url = "https://github.com/bb-connor/arc/actions/runs/25355058222"
-trj3_1_reproducible_build_run_url = "https://github.com/bb-connor/arc/actions/runs/25355058217"
-trj3_1_slsa_trigger = "workflow_run after Release Binaries succeeds"
-# trj4 release tag retracted. The prior v3.20.0-trj4 closeout claim is reopened
-# pending the wave-based closeout in /Users/connor/.claude/plans/typed-coalescing-hejlsberg.md.
-# See trj4_erratum_path below for the retraction record.
-trj4_release_status = "reopened"
-trj4_erratum_path = ".planning/trajectory-4/TRAJECTORY-4-CLOSEOUT-ERRATUM.md"
-trj4_release_sha = "066e6ea342de44fb08f0f578d14ad2cea995cfc4"
-trj4_integrated_pr_url = "https://github.com/bb-connor/arc/pull/579"
-trj4_release_binaries_run_url = "https://github.com/bb-connor/arc/actions/runs/25357982343"
-trj4_reproducible_build_run_url = "https://github.com/bb-connor/arc/actions/runs/25357982335"
-trj4_sbom_run_url = "https://github.com/bb-connor/arc/actions/runs/25357982346"
-trj4_sidecar_image_run_url = "https://github.com/bb-connor/arc/actions/runs/25357982332"
-trj4_cpp_sdk_run_url = "https://github.com/bb-connor/arc/actions/runs/25357982350"
-trj4_slsa_trigger = "workflow_run after Release Binaries succeeds"
-# trj4_final_summary_path is retained for provenance. The summary has been
-# superseded; read trj4_erratum_path first for the retraction.
-trj4_final_summary_path = ".planning/trajectory-4/TRAJECTORY-4-FINAL.md"
+[release_retraction]
+prior_release_tag = "v3.18.1"
+prior_release_sha = "a9006addb7d0217727ef748e9a469b97617e6279"
+prior_release_binaries_run_url = "https://github.com/bb-connor/arc/actions/runs/25355058222"
+prior_reproducible_build_run_url = "https://github.com/bb-connor/arc/actions/runs/25355058217"
+prior_slsa_trigger = "workflow_run after Release Binaries succeeds"
+# The v3.20.0 closeout claim is reopened pending an erratum and closeout
+# evidence record.
+release_status = "reopened"
+erratum_record = "release-closeout-erratum"
+release_sha = "066e6ea342de44fb08f0f578d14ad2cea995cfc4"
+integrated_pr_url = "https://github.com/bb-connor/arc/pull/579"
+release_binaries_run_url = "https://github.com/bb-connor/arc/actions/runs/25357982343"
+reproducible_build_run_url = "https://github.com/bb-connor/arc/actions/runs/25357982335"
+sbom_run_url = "https://github.com/bb-connor/arc/actions/runs/25357982346"
+sidecar_image_run_url = "https://github.com/bb-connor/arc/actions/runs/25357982332"
+cpp_sdk_run_url = "https://github.com/bb-connor/arc/actions/runs/25357982350"
+slsa_trigger = "workflow_run after Release Binaries succeeds"
+final_summary_record = "superseded-by-release-closeout-erratum"

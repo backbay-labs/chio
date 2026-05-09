@@ -1,0 +1,37 @@
+--- crates/chio-policy/src/merge.rs
++++ replace merge_with_strategy -> HushSpec with Default::default()
+@@ -20,33 +20,17 @@
+             result
+         }
+         MergeStrategy::Merge => merge_with_strategy(base, child, false),
+         MergeStrategy::DeepMerge => merge_with_strategy(base, child, true),
+     }
+ }
+ 
+ fn merge_with_strategy(base: &HushSpec, child: &HushSpec, deep: bool) -> HushSpec {
+-    HushSpec {
+-        hushspec: child.hushspec.clone(),
+-        name: child.name.clone().or_else(|| base.name.clone()),
+-        description: child
+-            .description
+-            .clone()
+-            .or_else(|| base.description.clone()),
+-        extends: None,
+-        merge_strategy: child.merge_strategy,
+-        rules: merge_rules(&base.rules, &child.rules),
+-        extensions: if deep {
+-            merge_extensions_deep(&base.extensions, &child.extensions)
+-        } else {
+-            merge_extensions_merge(&base.extensions, &child.extensions)
+-        },
+-        metadata: child.metadata.clone().or_else(|| base.metadata.clone()),
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn merge_rules(base: &Option<Rules>, child: &Option<Rules>) -> Option<Rules> {
+     match (base, child) {
+         (_, Some(child_rules)) => {
+             let base_rules = base.as_ref().cloned().unwrap_or_default();
+             Some(Rules {
+                 forbidden_paths: child_rules

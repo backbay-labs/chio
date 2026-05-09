@@ -1,4 +1,4 @@
-//! W2.3 negative conformance test: witness-lane impersonation.
+//! Negative conformance test: witness-lane impersonation.
 //!
 //! Threats covered:
 //!

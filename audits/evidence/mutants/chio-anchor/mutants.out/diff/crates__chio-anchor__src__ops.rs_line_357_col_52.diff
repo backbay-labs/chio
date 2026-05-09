@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/ops.rs
++++ replace == with != in classify_anchor_lane
+@@ -349,17 +349,17 @@
+     controls: AnchorEmergencyControls,
+     reorg_depth: u32,
+ ) -> AnchorLaneHealthStatus {
+     if indexer_status == AnchorIndexerStatus::Failed {
+         return AnchorLaneHealthStatus::Failed;
+     }
+     match controls.mode {
+         AnchorEmergencyMode::Halted => return AnchorLaneHealthStatus::Paused,
+-        AnchorEmergencyMode::PublishPaused if lane == AnchorLaneKind::EvmPrimary => {
++        AnchorEmergencyMode::PublishPaused if lane != /* ~ changed by cargo-mutants ~ */ AnchorLaneKind::EvmPrimary => {
+             return AnchorLaneHealthStatus::Paused;
+         }
+         AnchorEmergencyMode::ProofImportOnly if lane == AnchorLaneKind::EvmPrimary => {
+             return AnchorLaneHealthStatus::Paused;
+         }
+         AnchorEmergencyMode::RecoveryOnly => {
+             return AnchorLaneHealthStatus::Recovering;
+         }

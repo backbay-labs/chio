@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace == with != in tool_patterns_overlap
+@@ -818,17 +818,17 @@
+     Ok(false)
+ }
+ 
+ fn tool_patterns_overlap(left: &str, right: &str) -> Result<bool, CompileError> {
+     if left == "*" || right == "*" {
+         return Ok(true);
+     }
+     if !contains_wildcards(left) && !contains_wildcards(right) {
+-        return Ok(left == right);
++        return Ok(left != /* ~ changed by cargo-mutants ~ */ right);
+     }
+     if glob_matches(left, right)? || glob_matches(right, left)? {
+         return Ok(true);
+     }
+     let left_prefix = literal_prefix(left);
+     let right_prefix = literal_prefix(right);
+     Ok(left_prefix.starts_with(&right_prefix) || right_prefix.starts_with(&left_prefix))
+ }

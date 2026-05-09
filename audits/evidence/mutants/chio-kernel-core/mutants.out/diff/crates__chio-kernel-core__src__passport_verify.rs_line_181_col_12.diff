@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/passport_verify.rs
++++ replace < with == in verify_parsed_passport
+@@ -173,17 +173,17 @@
+         .body
+         .issuer
+         .verify(&body_bytes, &envelope.signature)
+     {
+         return Err(VerifyError::InvalidSignature);
+     }
+ 
+     let now = clock.now_unix_secs();
+-    if now < envelope.body.issued_at {
++    if now == /* ~ changed by cargo-mutants ~ */ envelope.body.issued_at {
+         return Err(VerifyError::NotYetValid);
+     }
+     if now >= envelope.body.expires_at {
+         return Err(VerifyError::Expired);
+     }
+ 
+     Ok(VerifiedPassport {
+         subject: envelope.body.subject.clone(),

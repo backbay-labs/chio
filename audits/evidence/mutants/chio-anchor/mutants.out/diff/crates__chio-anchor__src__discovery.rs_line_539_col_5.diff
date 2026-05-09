@@ -1,0 +1,24 @@
+--- crates/chio-anchor/src/discovery.rs
++++ replace normalized_lane_labels -> Vec<&'static str> with vec![""]
+@@ -531,20 +531,17 @@
+         AnchorDiscoveryFreshnessStatus::Unknown => 1,
+         AnchorDiscoveryFreshnessStatus::Lagging => 2,
+         AnchorDiscoveryFreshnessStatus::Paused => 3,
+         AnchorDiscoveryFreshnessStatus::Stale => 4,
+     }
+ }
+ 
+ fn normalized_lane_labels(lanes: &[AnchorLaneKind]) -> Vec<&'static str> {
+-    let mut labels: Vec<_> = lanes.iter().map(|lane| lane_label(*lane)).collect();
+-    labels.sort_unstable();
+-    labels.dedup();
+-    labels
++    vec![""] /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn lane_label(lane: AnchorLaneKind) -> &'static str {
+     match lane {
+         AnchorLaneKind::EvmPrimary => "evm_primary",
+         AnchorLaneKind::BitcoinOts => "bitcoin_ots",
+         AnchorLaneKind::SolanaMemo => "solana_memo",
+     }

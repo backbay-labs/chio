@@ -512,8 +512,8 @@ portable-trust design.
 ### Per Wave Exit
 
 - Update this document
-- Update [V2_EXECUTION_BACKLOG.md](/Users/connor/Medica/backbay/standalone/chio/docs/release/V2_EXECUTION_BACKLOG.md)
-- Update [STRATEGIC_ROADMAP.md](/Users/connor/Medica/backbay/standalone/chio/docs/STRATEGIC_ROADMAP.md) only when shipped reality changes sequencing
+- Update [V2_EXECUTION_BACKLOG.md](V2_EXECUTION_BACKLOG.md)
+- Update [STRATEGIC_ROADMAP.md](../STRATEGIC_ROADMAP.md) only when shipped reality changes sequencing
 
 ---
 

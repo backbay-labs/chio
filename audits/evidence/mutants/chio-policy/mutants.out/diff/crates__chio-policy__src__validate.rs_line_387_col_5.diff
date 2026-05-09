@@ -1,0 +1,124 @@
+--- crates/chio-policy/src/validate.rs
++++ replace validate_reputation with ()
+@@ -379,120 +379,17 @@
+     }
+ }
+ 
+ fn validate_reputation(
+     ext: &Extensions,
+     errors: &mut Vec<ValidationError>,
+     warnings: &mut Vec<String>,
+ ) {
+-    let Some(reputation) = &ext.reputation else {
+-        return;
+-    };
+-
+-    if reputation.tiers.is_empty() {
+-        errors.push(ValidationError::Custom(
+-            "extensions.reputation.tiers must define at least one tier".to_string(),
+-        ));
+-    }
+-
+-    if let Some(scoring) = &reputation.scoring {
+-        if let Some(days) = scoring.temporal_decay_half_life_days {
+-            if days == 0 {
+-                errors.push(ValidationError::Custom(
+-                    "extensions.reputation.scoring.temporal_decay_half_life_days must be >= 1"
+-                        .to_string(),
+-                ));
+-            }
+-        }
+-        if let Some(ceiling) = scoring.probationary_score_ceiling {
+-            if !(0.0..=1.0).contains(&ceiling) {
+-                errors.push(ValidationError::Custom(
+-                    "extensions.reputation.scoring.probationary_score_ceiling must be in [0.0, 1.0]"
+-                        .to_string(),
+-                ));
+-            }
+-        }
+-        if let Some(weights) = &scoring.weights {
+-            validate_weight(
+-                weights.boundary_pressure,
+-                "extensions.reputation.scoring.weights.boundary_pressure",
+-                errors,
+-            );
+-            validate_weight(
+-                weights.resource_stewardship,
+-                "extensions.reputation.scoring.weights.resource_stewardship",
+-                errors,
+-            );
+-            validate_weight(
+-                weights.least_privilege,
+-                "extensions.reputation.scoring.weights.least_privilege",
+-                errors,
+-            );
+-            validate_weight(
+-                weights.history_depth,
+-                "extensions.reputation.scoring.weights.history_depth",
+-                errors,
+-            );
+-            validate_weight(
+-                weights.tool_diversity,
+-                "extensions.reputation.scoring.weights.tool_diversity",
+-                errors,
+-            );
+-            validate_weight(
+-                weights.delegation_hygiene,
+-                "extensions.reputation.scoring.weights.delegation_hygiene",
+-                errors,
+-            );
+-            validate_weight(
+-                weights.reliability,
+-                "extensions.reputation.scoring.weights.reliability",
+-                errors,
+-            );
+-            validate_weight(
+-                weights.incident_correlation,
+-                "extensions.reputation.scoring.weights.incident_correlation",
+-                errors,
+-            );
+-        }
+-    }
+-
+-    for (tier_name, tier) in &reputation.tiers {
+-        let [min_score, max_score] = tier.score_range;
+-        if !(0.0..=1.0).contains(&min_score) || !(0.0..=1.0).contains(&max_score) {
+-            errors.push(ValidationError::Custom(format!(
+-                "extensions.reputation.tiers.{tier_name}.score_range values must be in [0.0, 1.0]"
+-            )));
+-        }
+-        if min_score > max_score {
+-            errors.push(ValidationError::Custom(format!(
+-                "extensions.reputation.tiers.{tier_name}.score_range lower bound exceeds upper bound"
+-            )));
+-        }
+-        if tier.max_scope.ttl_seconds == 0 {
+-            errors.push(ValidationError::Custom(format!(
+-                "extensions.reputation.tiers.{tier_name}.max_scope.ttl_seconds must be >= 1"
+-            )));
+-        }
+-        if tier.max_scope.operations.is_empty() {
+-            warnings.push(format!(
+-                "extensions.reputation.tiers.{tier_name}.max_scope.operations is empty"
+-            ));
+-        }
+-        for operation in &tier.max_scope.operations {
+-            if !matches!(
+-                operation.as_str(),
+-                "invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate"
+-            ) {
+-                warnings.push(format!(
+-                    "extensions.reputation.tiers.{tier_name}.max_scope.operations includes unknown operation '{operation}'"
+-                ));
+-            }
+-        }
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn validate_runtime_assurance(ext: &Extensions, errors: &mut Vec<ValidationError>) {
+     let Some(runtime_assurance) = ext.runtime_assurance.as_ref() else {
+         return;
+     };
+ 
+     if runtime_assurance.tiers.is_empty() {

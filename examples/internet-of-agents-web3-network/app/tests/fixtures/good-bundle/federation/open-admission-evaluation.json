@@ -34,7 +34,7 @@
       "subject": "bff663535a5cf58658cc38595d20dc4501f6dfc076ddf07e20571d413a3ceb5a"
     },
     "command": [
-      "/Users/connor/.codex/worktrees/673b/arc/target/debug/chio",
+      "/workspace/chio/target/debug/chio",
       "--format",
       "json",
       "--control-url",

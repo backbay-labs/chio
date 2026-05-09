@@ -1,0 +1,34 @@
+--- crates/chio-weights/src/bundle.rs
++++ replace verify_model_card_bundle -> Result<VerifiedModelCard, WeightsError> with Ok(Default::default())
+@@ -70,30 +70,17 @@
+ /// already passed surfaces as [`WeightsError::Expired`].
+ pub fn verify_model_card_bundle<V: AttestVerifier + ?Sized>(
+     verifier: &V,
+     card_bytes: &[u8],
+     bundle_json: &[u8],
+     expected: &ExpectedIdentity,
+     now: DateTime<Utc>,
+ ) -> Result<VerifiedModelCard, WeightsError> {
+-    let attestation = verifier
+-        .verify_bundle(card_bytes, bundle_json, expected)
+-        .map_err(|err| WeightsError::BundleRejected(format!("{err}")))?;
+-
+-    let card = ModelCard::from_canonical_json(card_bytes)?;
+-    if card.issuer != attestation.certificate_identity {
+-        return Err(WeightsError::BundleRejected(format!(
+-            "model card issuer {:?} does not match verified certificate identity {:?}",
+-            card.issuer, attestation.certificate_identity
+-        )));
+-    }
+-    card.require_live(now)?;
+-
+-    Ok(VerifiedModelCard { card, attestation })
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     use std::path::Path;
+     use std::sync::Mutex;
+     use std::time::SystemTime;

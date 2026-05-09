@@ -1,0 +1,51 @@
+# Per-run override config for chio-policy mutation baseline.
+# Same as workspace .cargo/mutants.toml EXCEPT the additional_cargo_test_args
+# is scoped to the chio-policy package only, to avoid a pre-existing
+# unrelated test failure in chio-acp-proxy
+# (assertion failed: verdict.reason.contains("signature")...) which would
+# otherwise cause every mutant to register as caught regardless of its own
+# effect on chio-policy behavior.
+#
+# This is a methodology fix, not a test fix. The chio-acp-proxy failure is
+# pre-existing on main (commit 708c7bb33) and is out of scope for the
+# A1 mutation baseline. The CI hosted-nightly remains the authoritative
+# workspace-scope measurement.
+#
+# examine_globs mirrors the workspace .cargo/mutants.toml chio-policy
+# section (lines 99-108): the umbrella evaluate.rs (which `include!`s
+# context/engine/matchers/outcomes/tests sub-files per the workspace
+# header), plus compiler.rs, conditions.rs, detection.rs, merge.rs,
+# resolve.rs, validate.rs, regex_safety.rs, and receipt.rs as real `mod`s.
+#
+# exclude_globs mirrors workspace test/build/fuzz scaffolding plus the
+# chio-policy-specific exclusions (models.rs, version.rs, rulesets/**)
+# from the workspace config.
+
+additional_cargo_test_args = ["--package", "chio-policy"]
+timeout_multiplier = 3.0
+minimum_test_timeout = 60
+
+examine_globs = [
+    "crates/chio-policy/src/evaluate.rs",
+    "crates/chio-policy/src/compiler.rs",
+    "crates/chio-policy/src/conditions.rs",
+    "crates/chio-policy/src/detection.rs",
+    "crates/chio-policy/src/merge.rs",
+    "crates/chio-policy/src/resolve.rs",
+    "crates/chio-policy/src/validate.rs",
+    "crates/chio-policy/src/regex_safety.rs",
+    "crates/chio-policy/src/receipt.rs",
+]
+
+exclude_globs = [
+    "**/tests.rs",
+    "**/test_*.rs",
+    "**/*_test.rs",
+    "**/tests/**",
+    "**/benches/**",
+    "**/build.rs",
+    "**/fuzz.rs",
+    "crates/chio-policy/src/models.rs",
+    "crates/chio-policy/src/version.rs",
+    "crates/chio-policy/src/rulesets/**",
+]

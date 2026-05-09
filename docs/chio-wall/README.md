@@ -28,16 +28,16 @@ cargo run -p chio-wall -- control-path validate --output target/chio-wall-contro
 
 ## Document Map
 
-- [CONTROL_PATH.md](CONTROL_PATH.md) — selected buyer motion, bounded control
+- [CONTROL_PATH.md](CONTROL_PATH.md) -- selected buyer motion, bounded control
   surface, owners, non-goals, and canonical commands
-- [OPERATIONS.md](OPERATIONS.md) — fail-closed operating model and recovery
+- [OPERATIONS.md](OPERATIONS.md) -- fail-closed operating model and recovery
   posture
-- [VALIDATION_PACKAGE.md](VALIDATION_PACKAGE.md) — output layout and supported
+- [VALIDATION_PACKAGE.md](VALIDATION_PACKAGE.md) -- output layout and supported
   claim for the validation package
-- [DECISION_RECORD.md](DECISION_RECORD.md) — explicit expansion decision for
+- [DECISION_RECORD.md](DECISION_RECORD.md) -- explicit expansion decision for
   the bounded Chio-Wall lane
-- [../mercury/CHIO_WALL_BRIEF.md](../mercury/CHIO_WALL_BRIEF.md) — companion-
+- [../mercury/CHIO_WALL_BRIEF.md](../mercury/CHIO_WALL_BRIEF.md) -- companion-
   product brief and problem statement
-- [../mercury/PRODUCT_SURFACE_BOUNDARIES.md](../mercury/PRODUCT_SURFACE_BOUNDARIES.md) —
+- [../mercury/PRODUCT_SURFACE_BOUNDARIES.md](../mercury/PRODUCT_SURFACE_BOUNDARIES.md) --
   shared Chio substrate seams plus the separate MERCURY and Chio-Wall product
   boundaries

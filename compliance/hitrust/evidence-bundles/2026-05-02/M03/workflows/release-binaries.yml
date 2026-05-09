@@ -164,8 +164,7 @@ jobs:
         # subcommand; in upstream `src/cargo.rs` unknown subcommands map
         # to `Subcommand::Other`, whose `needs_docker()` returns false,
         # so the previous `cross auditable build` invocation silently
-        # fell back to the host (cleanup-c11a; PR #43 review threads
-        # r3142892200 / r3142894176). The host lacks the cross-compile
+        # fell back to the host. The host lacks the cross-compile
         # linker + sysroot, so every aarch64-linux release build failed.
         #
         # The correct pattern is to drive the cross-rs container image

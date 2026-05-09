@@ -689,11 +689,10 @@ mod tests {
 
     #[test]
     fn info_below_floor_returns_unknown_reference() {
-        // M09 review follow-up (PR #382, Codex): market_info must
-        // enforce the reputation floor so a low-tier tenant cannot
-        // retrieve metadata for an above-floor guard. The error is
-        // UnknownReference (matching the contract that the entry is
-        // simply undiscoverable for this tenant).
+        // market_info must enforce the reputation floor so a low-tier
+        // tenant cannot retrieve metadata for an above-floor guard.
+        // The error is UnknownReference, matching the contract that
+        // the entry is simply undiscoverable for this tenant.
         let dir = tempdir().expect("tmpdir");
         let path = write_catalog(dir.path(), &fixture_entries());
         let result = market_info(
@@ -707,10 +706,9 @@ mod tests {
 
     #[test]
     fn install_record_path_distinguishes_punctuation_variants() {
-        // M09 review follow-up (PR #382, Codex): two references
-        // differing only by punctuation must NOT collide on the
-        // install-record path. The previous `_`-replacement scheme
-        // was lossy; the new digest-keyed scheme is collision-free.
+        // References differing only by punctuation must NOT collide
+        // on the install-record path. The previous `_`-replacement
+        // scheme was lossy; the digest-keyed scheme is collision-free.
         let dir = tempdir().expect("tmpdir");
         let bundle = dir.path().join("bundle");
         let a = install_record_path(&bundle, "tenant", "guard-foo");
@@ -720,10 +718,9 @@ mod tests {
 
     #[test]
     fn install_record_path_traversal_inputs_stay_in_bundle_dir() {
-        // M09 review follow-up (PR #382, Bugbot): tenant_id is
-        // untrusted because market_install is `pub`. A tenant_id
-        // containing path separators or `..` segments must NOT
-        // resolve outside `bundle_dir`.
+        // tenant_id is untrusted because market_install is `pub`.
+        // A tenant_id containing path separators or `..` segments
+        // must NOT resolve outside `bundle_dir`.
         let dir = tempdir().expect("tmpdir");
         let bundle = dir.path().join("bundle");
         let evil_tenant = "../../etc/passwd";

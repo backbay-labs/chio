@@ -214,9 +214,9 @@ fn list_pending(conn: &Connection) -> Result<Vec<PendingRow>, SettleStatusError>
 }
 
 fn list_settled(conn: &Connection) -> Result<Vec<SettledRow>, SettleStatusError> {
-    // M09 review follow-up (PR #378, Bugbot): the documented CLI
-    // ordering contract is `(finalized_at, receipt_id)` across all
-    // three sections of `arc settle status`. The
+    // The documented CLI ordering contract is
+    // `(finalized_at, receipt_id)` across all three sections of
+    // `arc settle status`. The
     // `settlement_reconciliations` table only carries `updated_at`
     // (the time the reconciliation row was last modified, which can
     // drift from the receipt's finalized timestamp on retry/restage),
@@ -430,13 +430,12 @@ mod tests {
 
     #[test]
     fn settled_orders_by_receipt_finalized_at_when_receipts_table_present() {
-        // M09 review follow-up (PR #378, Bugbot): when
-        // `chio_tool_receipts` is present, list_settled must order
-        // by the receipt's finalized timestamp (`r.timestamp`), not
-        // by `settlement_reconciliations.updated_at`. This test
-        // creates two settled rows whose `updated_at` ordering is
-        // the OPPOSITE of their receipt-finalized ordering, then
-        // confirms the report follows the receipts ordering.
+        // When `chio_tool_receipts` is present, list_settled must
+        // order by the receipt's finalized timestamp (`r.timestamp`),
+        // not by `settlement_reconciliations.updated_at`. This test
+        // creates two settled rows whose `updated_at` ordering is the
+        // OPPOSITE of their receipt-finalized ordering, then confirms
+        // the report follows the receipts ordering.
         let dir = TempDir::new().expect("tempdir");
         let path = dir.path().join("ordered.sqlite");
         let conn = Connection::open(&path).expect("open db");

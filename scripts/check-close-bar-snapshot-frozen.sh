@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Trj4 close-bar snapshot-frozen gate.
+# Close-bar snapshot-frozen gate.
 #
 # The companion `check-close-bar-tracker.sh` gate compares the tracker
 # against the in-tree snapshot at `audits/evidence/close-bar-snapshot.json`
@@ -33,7 +33,13 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-TRACKER="${CHIO_CLOSE_BAR_TRACKER:-$REPO_ROOT/.planning/trajectory-4/closeout/CLOSE-BAR-TRACKER.md}"
+default_tracker() {
+    find "$REPO_ROOT/.planning" -path '*/closeout/CLOSE-BAR-TRACKER.md' -type f -print 2>/dev/null \
+        | LC_ALL=C sort \
+        | tail -n 1
+}
+
+TRACKER="${CHIO_CLOSE_BAR_TRACKER:-$(default_tracker)}"
 BASE_REF="${CHIO_CLOSE_BAR_BASE_REF:-origin/main}"
 SNAPSHOT_REL="audits/evidence/close-bar-snapshot.json"
 

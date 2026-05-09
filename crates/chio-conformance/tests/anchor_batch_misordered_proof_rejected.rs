@@ -1,9 +1,8 @@
-//! W2.3 negative conformance test: misordered Merkle audit path.
+//! Negative conformance test: misordered Merkle audit path.
 //!
-//! The audit found that the prior version of `verify_anchor_batch`
-//! short-circuited on a label compare: it checked that
-//! `inclusion.leaf_hash == sha256(canonical(checkpoint_id))` and
-//! left the rest of the audit path unverified. An adversary could
+//! A verifier that short-circuits on a label compare can check that
+//! `inclusion.leaf_hash == sha256(canonical(checkpoint_id))` while
+//! leaving the rest of the audit path unverified. An adversary could
 //! shuffle `audit_path` siblings (keeping the leaf hash itself
 //! consistent so the label check still passed) and the verifier
 //! would accept the batch even though the real Merkle re-compute
@@ -65,8 +64,8 @@ fn anchor_batch_with_reversed_audit_path_is_rejected() {
     );
 
     // Re-sign the body so the outer ed25519 signature still passes.
-    // This is the moment the audit's label-only short-circuit would
-    // have accepted the batch.
+    // This is the moment a label-only short-circuit would have
+    // accepted the batch.
     let resigned = AnchorBatch::sign(batch.body.clone(), &kp);
     let err = resigned.expect_err("re-signing must fail because Merkle re-compute fails");
     let msg = err.to_string();

@@ -8,11 +8,6 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v node >/dev/null 2>&1; then
-  echo "comptroller market-position qualification requires node on PATH" >&2
-  exit 1
-fi
-
 output_root="target/release-qualification/comptroller-market-position"
 log_root="${output_root}/logs"
 manifest_path="${output_root}/artifact-manifest.json"
@@ -42,7 +37,6 @@ run_and_log universal-control-plane ./scripts/qualify-universal-control-plane.sh
 run_and_log operator-surfaces ./scripts/qualify-comptroller-operator-surfaces.sh
 run_and_log partner-contracts ./scripts/qualify-comptroller-partner-contracts.sh
 run_and_log federation ./scripts/qualify-comptroller-federation.sh
-run_and_log planning-truth node "/Users/connor/.codex/get-shit-done/bin/gsd-tools.cjs" roadmap analyze
 
 cat >"${report_path}" <<'EOF'
 # Comptroller Market-Position Qualification Gate
@@ -69,7 +63,6 @@ Executed command set:
 - `./scripts/qualify-comptroller-operator-surfaces.sh`
 - `./scripts/qualify-comptroller-partner-contracts.sh`
 - `./scripts/qualify-comptroller-federation.sh`
-- `node "/Users/connor/.codex/get-shit-done/bin/gsd-tools.cjs" roadmap analyze`
 
 Supporting documents:
 

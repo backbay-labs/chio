@@ -12,7 +12,7 @@
 # the registry. The previous `REF "v${VERSION}"` fetched a different
 # (or non-existent) ref than the one the SHA was hashed against, so
 # consumers installing from the published registry hit a checksum
-# mismatch (cleanup-c11d; PR #94 review thread r3144022628 - P1).
+# mismatch.
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO bb-connor/arc

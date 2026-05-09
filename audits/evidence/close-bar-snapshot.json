@@ -1,6 +1,6 @@
 {
   "schema": "chio.close-bar-snapshot.v1",
-  "generated_from": ".planning/trajectory-4/closeout/build_tracker.py",
+  "generated_from": "close-bar tracker generator",
   "rows": [
     {
       "id": "DX-1",
@@ -10,7 +10,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "15",
-      "notes": "audit-derived default; ship via DX lens roadmap"
+      "notes": "default close-bar entry from DX lens roadmap"
     },
     {
       "id": "DX-2",
@@ -30,7 +30,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "15",
-      "notes": "audit-derived default; ship via DX lens roadmap"
+      "notes": "default close-bar entry from DX lens roadmap"
     },
     {
       "id": "DX-4",
@@ -40,7 +40,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "15",
-      "notes": "audit-derived default; ship via DX lens roadmap"
+      "notes": "default close-bar entry from DX lens roadmap"
     },
     {
       "id": "DX-5",
@@ -50,7 +50,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "15",
-      "notes": "audit-derived default; ship via DX lens roadmap"
+      "notes": "default close-bar entry from DX lens roadmap"
     },
     {
       "id": "DX-6",
@@ -60,7 +60,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "15",
-      "notes": "audit-derived default; ship via DX lens roadmap"
+      "notes": "default close-bar entry from DX lens roadmap"
     },
     {
       "id": "DX-7",
@@ -70,7 +70,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "15",
-      "notes": "audit-derived default; ship via DX lens roadmap"
+      "notes": "default close-bar entry from DX lens roadmap"
     },
     {
       "id": "DX-8",
@@ -80,7 +80,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "15",
-      "notes": "audit-derived default; ship via DX lens roadmap"
+      "notes": "default close-bar entry from DX lens roadmap"
     },
     {
       "id": "DX-9",
@@ -90,7 +90,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "15",
-      "notes": "audit-derived default; ship via DX lens roadmap"
+      "notes": "default close-bar entry from DX lens roadmap"
     },
     {
       "id": "DX-10",
@@ -100,7 +100,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "15",
-      "notes": "audit-derived default; ship via DX lens roadmap"
+      "notes": "default close-bar entry from DX lens roadmap"
     },
     {
       "id": "DX-11",
@@ -110,7 +110,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "15",
-      "notes": "audit-derived default; ship via DX lens roadmap"
+      "notes": "default close-bar entry from DX lens roadmap"
     },
     {
       "id": "DX-12",
@@ -120,7 +120,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "15",
-      "notes": "audit-derived default; ship via DX lens roadmap"
+      "notes": "default close-bar entry from DX lens roadmap"
     },
     {
       "id": "S-1",
@@ -150,7 +150,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "12",
-      "notes": "audit-derived default; ship via S lens roadmap"
+      "notes": "default close-bar entry from S lens roadmap"
     },
     {
       "id": "S-4",
@@ -160,7 +160,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "12",
-      "notes": "audit-derived default; ship via S lens roadmap"
+      "notes": "default close-bar entry from S lens roadmap"
     },
     {
       "id": "S-5",
@@ -170,7 +170,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "12",
-      "notes": "audit-derived default; ship via S lens roadmap"
+      "notes": "default close-bar entry from S lens roadmap"
     },
     {
       "id": "S-6",
@@ -180,7 +180,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "12",
-      "notes": "audit-derived default; ship via S lens roadmap"
+      "notes": "default close-bar entry from S lens roadmap"
     },
     {
       "id": "S-7",
@@ -200,7 +200,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "12",
-      "notes": "audit-derived default; ship via S lens roadmap"
+      "notes": "default close-bar entry from S lens roadmap"
     },
     {
       "id": "S-9",
@@ -210,7 +210,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "12",
-      "notes": "audit-derived default; ship via S lens roadmap"
+      "notes": "default close-bar entry from S lens roadmap"
     },
     {
       "id": "S-10",
@@ -220,7 +220,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "12",
-      "notes": "audit-derived default; ship via S lens roadmap"
+      "notes": "default close-bar entry from S lens roadmap"
     },
     {
       "id": "S-11",
@@ -230,7 +230,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "12",
-      "notes": "audit-derived default; ship via S lens roadmap"
+      "notes": "default close-bar entry from S lens roadmap"
     },
     {
       "id": "S-12",
@@ -240,7 +240,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "12",
-      "notes": "audit-derived default; ship via S lens roadmap"
+      "notes": "default close-bar entry from S lens roadmap"
     },
     {
       "id": "C-1",
@@ -250,7 +250,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via C lens roadmap"
+      "notes": "default close-bar entry from C lens roadmap"
     },
     {
       "id": "C-2",
@@ -260,7 +260,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via C lens roadmap"
+      "notes": "default close-bar entry from C lens roadmap"
     },
     {
       "id": "C-3",
@@ -280,7 +280,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/wave1_hot_path_enforcement.rs",
       "theorem_status": "assumed",
       "wave": "03",
-      "notes": "W1.2 + W1.5: BudgetRegistry trait + InMemoryBudgetRegistry shipped at chio-kernel-core/src/budget_split.rs; ChioKernel wires a process-scoped registry into evaluate_portable_verdict via verify_capability_full; cross-hop enforcement covered by budget_split_cross_hop_rejects_amplification.rs; theorem.budget.sibling_sum_soundness at formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean (status=assumed pending Lean toolchain)"
+      "notes": "Budget enforcement: BudgetRegistry trait + InMemoryBudgetRegistry shipped at chio-kernel-core/src/budget_split.rs; ChioKernel wires a process-scoped registry into evaluate_portable_verdict via verify_capability_full; cross-hop enforcement covered by budget_split_cross_hop_rejects_amplification.rs; theorem.budget.sibling_sum_soundness at formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean (status=assumed pending Lean toolchain)"
     },
     {
       "id": "C-5",
@@ -290,7 +290,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via C lens roadmap"
+      "notes": "default close-bar entry from C lens roadmap"
     },
     {
       "id": "C-6",
@@ -300,7 +300,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via C lens roadmap"
+      "notes": "default close-bar entry from C lens roadmap"
     },
     {
       "id": "C-7",
@@ -310,7 +310,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via C lens roadmap"
+      "notes": "default close-bar entry from C lens roadmap"
     },
     {
       "id": "C-8",
@@ -320,7 +320,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via C lens roadmap"
+      "notes": "default close-bar entry from C lens roadmap"
     },
     {
       "id": "C-9",
@@ -330,7 +330,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via C lens roadmap"
+      "notes": "default close-bar entry from C lens roadmap"
     },
     {
       "id": "C-10",
@@ -340,7 +340,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via C lens roadmap"
+      "notes": "default close-bar entry from C lens roadmap"
     },
     {
       "id": "C-11",
@@ -350,7 +350,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via C lens roadmap"
+      "notes": "default close-bar entry from C lens roadmap"
     },
     {
       "id": "C-12",
@@ -360,7 +360,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via C lens roadmap"
+      "notes": "default close-bar entry from C lens roadmap"
     },
     {
       "id": "C-13",
@@ -370,7 +370,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via C lens roadmap"
+      "notes": "default close-bar entry from C lens roadmap"
     },
     {
       "id": "P-1",
@@ -400,7 +400,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via P lens roadmap"
+      "notes": "default close-bar entry from P lens roadmap"
     },
     {
       "id": "P-4",
@@ -410,7 +410,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/anchor_batch_forged_root_rejected.rs",
       "theorem_status": "proposed",
       "wave": "02",
-      "notes": "W2.3: AnchorWitnessClient trait + RekorClient (real Sigstore HTTP) + OtsClient (OpenTimestamps calendar HTTP) shipped at crates/chio-anchor/src/witness*; WitnessState state machine (Pending/Witnessed/Stale) wired into verify_anchor_batch_with_witness_policy; 4 standalone negative-conformance tests (forged_root, misordered_proof, witness_impersonation, stale_witness_fallback) all green; theorem.anchor.merkle_inclusion + theorem.anchor.public_witness_anti_equivocation at proposed (Lean toolchain follow-up)"
+      "notes": "Public-witness anchor evidence: AnchorWitnessClient trait + RekorClient (real Sigstore HTTP) + OtsClient (OpenTimestamps calendar HTTP) shipped at crates/chio-anchor/src/witness*; WitnessState state machine (Pending/Witnessed/Stale) wired into verify_anchor_batch_with_witness_policy; 4 standalone negative-conformance tests (forged_root, misordered_proof, witness_impersonation, stale_witness_fallback) all green; theorem.anchor.merkle_inclusion + theorem.anchor.public_witness_anti_equivocation at proposed (Lean toolchain follow-up)"
     },
     {
       "id": "P-5",
@@ -440,7 +440,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via P lens roadmap"
+      "notes": "default close-bar entry from P lens roadmap"
     },
     {
       "id": "P-8",
@@ -450,7 +450,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/wave1_hot_path_enforcement.rs",
       "theorem_status": "assumed",
       "wave": "03",
-      "notes": "W1.1 + W1.5: attenuation_proof witness shipped; chain-binding rule enforced via verify_capability_full across 5 surfaces; AttenuationViolation error mapped through caller crates; theorem.attenuation.witness_soundness at formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean (status=assumed pending Lean toolchain in CI)"
+      "notes": "Capability attenuation and handshake hardening: attenuation_proof witness shipped; chain-binding rule enforced via verify_capability_full across 5 surfaces; AttenuationViolation error mapped through caller crates; theorem.attenuation.witness_soundness at formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean (status=assumed pending Lean toolchain in CI)"
     },
     {
       "id": "P-9",
@@ -460,7 +460,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via P lens roadmap"
+      "notes": "default close-bar entry from P lens roadmap"
     },
     {
       "id": "P-10",
@@ -470,7 +470,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via P lens roadmap"
+      "notes": "default close-bar entry from P lens roadmap"
     },
     {
       "id": "P-11",
@@ -490,7 +490,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via P lens roadmap"
+      "notes": "default close-bar entry from P lens roadmap"
     },
     {
       "id": "A-1",
@@ -510,7 +510,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/wave1_hot_path_enforcement.rs",
       "theorem_status": "assumed",
       "wave": "03",
-      "notes": "W1.1 + W1.5: DelegationLink.scope_hash binds each hop to the canonical authorized scope; attenuation_proof.parent_scope_hash anchored to predecessor or trust root; verify_capability_full enforces the rule on the chio-kernel hot path and on chio-kernel-browser/chio-kernel-mobile/chio-cpp-kernel-ffi/chio-ag-ui-proxy adapter surfaces"
+      "notes": "Capability attenuation and handshake hardening: DelegationLink.scope_hash binds each hop to the canonical authorized scope; attenuation_proof.parent_scope_hash anchored to predecessor or trust root; verify_capability_full enforces the rule on the chio-kernel hot path and on chio-kernel-browser/chio-kernel-mobile/chio-cpp-kernel-ffi/chio-ag-ui-proxy adapter surfaces"
     },
     {
       "id": "A-3",
@@ -520,7 +520,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via A lens roadmap"
+      "notes": "default close-bar entry from A lens roadmap"
     },
     {
       "id": "A-4",
@@ -530,7 +530,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via A lens roadmap"
+      "notes": "default close-bar entry from A lens roadmap"
     },
     {
       "id": "A-5",
@@ -540,7 +540,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via A lens roadmap"
+      "notes": "default close-bar entry from A lens roadmap"
     },
     {
       "id": "A-6",
@@ -550,7 +550,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via A lens roadmap"
+      "notes": "default close-bar entry from A lens roadmap"
     },
     {
       "id": "A-7",
@@ -560,7 +560,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via A lens roadmap"
+      "notes": "default close-bar entry from A lens roadmap"
     },
     {
       "id": "A-8",
@@ -570,7 +570,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via A lens roadmap"
+      "notes": "default close-bar entry from A lens roadmap"
     },
     {
       "id": "A-9",
@@ -580,7 +580,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via A lens roadmap"
+      "notes": "default close-bar entry from A lens roadmap"
     },
     {
       "id": "A-10",
@@ -590,7 +590,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via A lens roadmap"
+      "notes": "default close-bar entry from A lens roadmap"
     },
     {
       "id": "A-11",
@@ -600,7 +600,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via A lens roadmap"
+      "notes": "default close-bar entry from A lens roadmap"
     },
     {
       "id": "A-12",
@@ -620,7 +620,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via A lens roadmap"
+      "notes": "default close-bar entry from A lens roadmap"
     },
     {
       "id": "A-14",
@@ -630,7 +630,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "14",
-      "notes": "audit-derived default; ship via A lens roadmap"
+      "notes": "default close-bar entry from A lens roadmap"
     },
     {
       "id": "A-15",
@@ -650,7 +650,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via H lens roadmap"
+      "notes": "default close-bar entry from H lens roadmap"
     },
     {
       "id": "H-2",
@@ -660,7 +660,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via H lens roadmap"
+      "notes": "default close-bar entry from H lens roadmap"
     },
     {
       "id": "H-3",
@@ -670,7 +670,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via H lens roadmap"
+      "notes": "default close-bar entry from H lens roadmap"
     },
     {
       "id": "H-4",
@@ -680,7 +680,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via H lens roadmap"
+      "notes": "default close-bar entry from H lens roadmap"
     },
     {
       "id": "H-5",
@@ -690,7 +690,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via H lens roadmap"
+      "notes": "default close-bar entry from H lens roadmap"
     },
     {
       "id": "H-6",
@@ -700,7 +700,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via H lens roadmap"
+      "notes": "default close-bar entry from H lens roadmap"
     },
     {
       "id": "H-7",
@@ -710,7 +710,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via H lens roadmap"
+      "notes": "default close-bar entry from H lens roadmap"
     },
     {
       "id": "H-8",
@@ -720,7 +720,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via H lens roadmap"
+      "notes": "default close-bar entry from H lens roadmap"
     },
     {
       "id": "H-9",
@@ -730,7 +730,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via H lens roadmap"
+      "notes": "default close-bar entry from H lens roadmap"
     },
     {
       "id": "H-10",
@@ -740,7 +740,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via H lens roadmap"
+      "notes": "default close-bar entry from H lens roadmap"
     },
     {
       "id": "H-11",
@@ -750,7 +750,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via H lens roadmap"
+      "notes": "default close-bar entry from H lens roadmap"
     },
     {
       "id": "H-12",
@@ -760,7 +760,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via H lens roadmap"
+      "notes": "default close-bar entry from H lens roadmap"
     },
     {
       "id": "T-1",
@@ -780,7 +780,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via T lens roadmap"
+      "notes": "default close-bar entry from T lens roadmap"
     },
     {
       "id": "T-3",
@@ -790,7 +790,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via T lens roadmap"
+      "notes": "default close-bar entry from T lens roadmap"
     },
     {
       "id": "T-4",
@@ -800,7 +800,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via T lens roadmap"
+      "notes": "default close-bar entry from T lens roadmap"
     },
     {
       "id": "T-5",
@@ -810,7 +810,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via T lens roadmap"
+      "notes": "default close-bar entry from T lens roadmap"
     },
     {
       "id": "T-6",
@@ -820,7 +820,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via T lens roadmap"
+      "notes": "default close-bar entry from T lens roadmap"
     },
     {
       "id": "T-7",
@@ -830,7 +830,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via T lens roadmap"
+      "notes": "default close-bar entry from T lens roadmap"
     },
     {
       "id": "T-8",
@@ -850,7 +850,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via T lens roadmap"
+      "notes": "default close-bar entry from T lens roadmap"
     },
     {
       "id": "T-10",
@@ -860,7 +860,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via T lens roadmap"
+      "notes": "default close-bar entry from T lens roadmap"
     },
     {
       "id": "T-11",
@@ -870,7 +870,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via T lens roadmap"
+      "notes": "default close-bar entry from T lens roadmap"
     },
     {
       "id": "T-12",
@@ -880,7 +880,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "11",
-      "notes": "audit-derived default; ship via T lens roadmap"
+      "notes": "default close-bar entry from T lens roadmap"
     },
     {
       "id": "O-1",
@@ -890,7 +890,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/metrics_registry_consumed.rs",
       "theorem_status": "n-a",
       "wave": "02",
-      "notes": "W2.4 wired chio-metrics-spec into chio-mcp-edge, chio-acp-edge, chio-a2a-edge, chio-http-core, chio-anchor, chio-federation, chio-wasm-guards; gate scope expanded; smoke test drives production emission boundaries where feasible"
+      "notes": "Metrics registry hardening wired chio-metrics-spec into chio-mcp-edge, chio-acp-edge, chio-a2a-edge, chio-http-core, chio-anchor, chio-federation, chio-wasm-guards; gate scope expanded; smoke test drives production emission boundaries where feasible"
     },
     {
       "id": "O-2",
@@ -900,7 +900,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "audit-derived default; ship via O lens roadmap"
+      "notes": "default close-bar entry from O lens roadmap"
     },
     {
       "id": "O-3",
@@ -910,7 +910,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/metrics_registry_consumed.rs",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "deploy/prometheus/ has SRE alert and recording-rule artifacts; W2.4 fixes receipt-write error ratios to count only outcome=\"error\", labels HITL PendingApproval as outcome=\"pending_approval\", and keeps histogram_quantile rules on emitted _bucket families with routing labels. Deployment proof and full T1.5 rollout remain pending."
+      "notes": "deploy/prometheus/ has SRE alert and recording-rule artifacts; Metrics registry hardening fixes receipt-write error ratios to count only outcome=\"error\", labels HITL PendingApproval as outcome=\"pending_approval\", and keeps histogram_quantile rules on emitted _bucket families with routing labels. Deployment proof and full T1.5 rollout remain pending."
     },
     {
       "id": "O-4",
@@ -920,7 +920,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "audit-derived default; ship via O lens roadmap"
+      "notes": "default close-bar entry from O lens roadmap"
     },
     {
       "id": "O-5",
@@ -930,7 +930,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "audit-derived default; ship via O lens roadmap"
+      "notes": "default close-bar entry from O lens roadmap"
     },
     {
       "id": "O-6",
@@ -940,7 +940,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "audit-derived default; ship via O lens roadmap"
+      "notes": "default close-bar entry from O lens roadmap"
     },
     {
       "id": "O-7",
@@ -950,7 +950,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "audit-derived default; ship via O lens roadmap"
+      "notes": "default close-bar entry from O lens roadmap"
     },
     {
       "id": "O-8",
@@ -960,7 +960,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "audit-derived default; ship via O lens roadmap"
+      "notes": "default close-bar entry from O lens roadmap"
     },
     {
       "id": "O-9",
@@ -970,7 +970,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "audit-derived default; ship via O lens roadmap"
+      "notes": "default close-bar entry from O lens roadmap"
     },
     {
       "id": "O-10",
@@ -980,7 +980,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "audit-derived default; ship via O lens roadmap"
+      "notes": "default close-bar entry from O lens roadmap"
     },
     {
       "id": "O-11",
@@ -990,7 +990,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "audit-derived default; ship via O lens roadmap"
+      "notes": "default close-bar entry from O lens roadmap"
     },
     {
       "id": "O-12",
@@ -1000,7 +1000,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "audit-derived default; ship via O lens roadmap"
+      "notes": "default close-bar entry from O lens roadmap"
     },
     {
       "id": "O-13",
@@ -1010,7 +1010,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "audit-derived default; ship via O lens roadmap"
+      "notes": "default close-bar entry from O lens roadmap"
     },
     {
       "id": "O-14",
@@ -1030,7 +1030,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "06",
-      "notes": "audit-derived default; ship via O lens roadmap"
+      "notes": "default close-bar entry from O lens roadmap"
     },
     {
       "id": "X-1",
@@ -1040,7 +1040,7 @@
       "negative_conformance_test": "crates/chio-hosted-mcp/tests/cross_crate_pipeline.rs",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "extraction landed in trj3.2; lib.rs is pure pub-use of published library APIs; cross-crate pipeline test guards against re-introducing #[path] splice"
+      "notes": "extraction landed in the library extraction lane; lib.rs is pure pub-use of published library APIs; cross-crate pipeline test guards against re-introducing #[path] splice"
     },
     {
       "id": "X-2",
@@ -1050,7 +1050,7 @@
       "negative_conformance_test": "scripts/check-threat-coverage.sh",
       "theorem_status": "n-a",
       "wave": "02",
-      "notes": "live gate PASS at 11/9/0; trj4 flips 6 stubs + 3 mobile rows + 1 linkage; target 20/0/0"
+      "notes": "live gate PASS at 11/9/0; release-hardening flips 6 stubs + 3 mobile rows + 1 linkage; target 20/0/0"
     },
     {
       "id": "X-3",
@@ -1060,7 +1060,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via X lens roadmap"
+      "notes": "default close-bar entry from X lens roadmap"
     },
     {
       "id": "X-4",
@@ -1070,7 +1070,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via X lens roadmap"
+      "notes": "default close-bar entry from X lens roadmap"
     },
     {
       "id": "X-5",
@@ -1080,7 +1080,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via X lens roadmap"
+      "notes": "default close-bar entry from X lens roadmap"
     },
     {
       "id": "X-6",
@@ -1090,7 +1090,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via X lens roadmap"
+      "notes": "default close-bar entry from X lens roadmap"
     },
     {
       "id": "X-7",
@@ -1100,7 +1100,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via X lens roadmap"
+      "notes": "default close-bar entry from X lens roadmap"
     },
     {
       "id": "X-8",
@@ -1110,7 +1110,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via X lens roadmap"
+      "notes": "default close-bar entry from X lens roadmap"
     },
     {
       "id": "X-9",
@@ -1120,7 +1120,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via X lens roadmap"
+      "notes": "default close-bar entry from X lens roadmap"
     },
     {
       "id": "X-10",
@@ -1140,7 +1140,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via X lens roadmap"
+      "notes": "default close-bar entry from X lens roadmap"
     },
     {
       "id": "X-12",
@@ -1150,7 +1150,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via X lens roadmap"
+      "notes": "default close-bar entry from X lens roadmap"
     },
     {
       "id": "X-13",
@@ -1160,7 +1160,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via X lens roadmap"
+      "notes": "default close-bar entry from X lens roadmap"
     },
     {
       "id": "X-14",
@@ -1170,7 +1170,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via X lens roadmap"
+      "notes": "default close-bar entry from X lens roadmap"
     },
     {
       "id": "X-15",
@@ -1180,7 +1180,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "audit-derived default; ship via X lens roadmap"
+      "notes": "default close-bar entry from X lens roadmap"
     },
     {
       "id": "T1.0.E",
@@ -1200,7 +1200,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/wave1_hot_path_enforcement.rs",
       "theorem_status": "assumed",
       "wave": "03",
-      "notes": "W1.1 + W1.5: claim.capability.attenuation_proof promoted to active; manifest.handshake.capability_negotiation promoted to active; Lean theorem.attenuation.witness_soundness, theorem.handshake.negotiation_safety, theorem.budget.sibling_sum_soundness authored (status=assumed); conformance test wave1_hot_path_enforcement.rs DENY-asserts the inflated-parent attack, the v1-only-peer downgrade attack, and the oversubscribed-siblings attack through the kernel hot path"
+      "notes": "Capability attenuation and handshake hardening: claim.capability.attenuation_proof promoted to active; manifest.handshake.capability_negotiation promoted to active; Lean theorem.attenuation.witness_soundness, theorem.handshake.negotiation_safety, theorem.budget.sibling_sum_soundness authored (status=assumed); conformance test wave1_hot_path_enforcement.rs DENY-asserts the inflated-parent attack, the v1-only-peer downgrade attack, and the oversubscribed-siblings attack through the kernel hot path"
     },
     {
       "id": "T1.2.E",
@@ -1210,7 +1210,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs",
       "theorem_status": "assumed",
       "wave": "04",
-      "notes": "W2.1: claim.receipt.body_hash_addressing promoted to active; manifest.receipt.body_hash_addressing promoted to active; theorem.receipt.body_hash_input_set_pinned promoted (status=assumed); kernel hot path mints ChioReceiptV2 alongside v1; chio_receipts_v2 sqlite migration ships; multi-parent DAG (close-bar-#18) and theorem.receipt.dag_acyclicity remain open"
+      "notes": "Receipt v2 evidence: claim.receipt.body_hash_addressing promoted to active; manifest.receipt.body_hash_addressing promoted to active; theorem.receipt.body_hash_input_set_pinned promoted (status=assumed); kernel hot path mints ChioReceiptV2 alongside v1; chio_receipts_v2 sqlite migration ships; multi-parent DAG (close-bar-#18) and theorem.receipt.dag_acyclicity remain open"
     },
     {
       "id": "T1.3.E",
@@ -1220,7 +1220,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/anchor_batch_forged_root_rejected.rs",
       "theorem_status": "proposed",
       "wave": "02",
-      "notes": "W2.3: PROTOCOL.md section 6.4.1 expanded with public-witness lane semantics; spec/schemas/chio-wire/v1/anchor/batch.schema.json carries witnessState; claim.anchor.batch_continuity promoted to active; manifest.anchor.batch_continuity references all 4 conformance tests + the witness clients; theorems remain proposed pending Lean toolchain"
+      "notes": "Public-witness anchor evidence: PROTOCOL.md section 6.4.1 expanded with public-witness lane semantics; spec/schemas/chio-wire/v1/anchor/batch.schema.json carries witnessState; claim.anchor.batch_continuity promoted to active; manifest.anchor.batch_continuity references all 4 conformance tests + the witness clients; theorems remain proposed pending Lean toolchain"
     },
     {
       "id": "T2.1.E",
@@ -1240,7 +1240,7 @@
       "negative_conformance_test": "NONE",
       "theorem_status": "n-a",
       "wave": "01",
-      "notes": "CI-DEBT.md still has trj3 entries; final pass scheduled in T0 phase D"
+      "notes": "CI-DEBT.md still has legacy release entries; final pass scheduled in T0 phase D"
     },
     {
       "id": "close-bar-#2",
@@ -1314,13 +1314,13 @@
     },
     {
       "id": "close-bar-#9",
-      "title": "v3.18.1-trj3.1 tag shipped with green release-binaries + slsa + reproducible-build artifacts",
+      "title": "v3.18.1 release-hardening tag shipped with green release-binaries + slsa + reproducible-build artifacts",
       "bucket": "DONE",
       "wired_runtime_path": "y",
       "negative_conformance_test": "scripts/qualify-release.sh",
       "theorem_status": "n-a",
       "wave": "01",
-      "notes": "v3.18.1-trj3.1 tagged; release-binaries/slsa/reproducible-build workflows green at trj3 close; qualify-release.sh exits non-zero on missing artifacts"
+      "notes": "v3.18.1 release-hardening tagged; release-binaries/slsa/reproducible-build workflows green at release close; qualify-release.sh exits non-zero on missing artifacts"
     },
     {
       "id": "close-bar-#10",
@@ -1360,7 +1360,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs",
       "theorem_status": "proposed",
       "wave": "02",
-      "notes": "W1.3 wired the negotiated max_capability_schema as a verifier ceiling. FederationTrustExchange.negotiated_with stores the per-peer ceiling on FederationPeer.capabilities; verify_capability_with_negotiated_floor enforces it before signature/time/floor checks. Lean theorem theorem.handshake.negotiation_safety models the ceiling check (status pending Lean toolchain in CI)."
+      "notes": "Negotiated schema ceiling wired the negotiated max_capability_schema as a verifier ceiling. FederationTrustExchange.negotiated_with stores the per-peer ceiling on FederationPeer.capabilities; verify_capability_with_negotiated_floor enforces it before signature/time/floor checks. Lean theorem theorem.handshake.negotiation_safety models the ceiling check (status pending Lean toolchain in CI)."
     },
     {
       "id": "close-bar-#14",
@@ -1370,7 +1370,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs",
       "theorem_status": "proposed",
       "wave": "02",
-      "notes": "CapabilityToken carries a schema-tag; chio.capability.v1 and chio.capability.v2 are recognized; the verifier rejects any v2 token whose declared schema exceeds the peer-negotiated ceiling, closing the W1.3 downgrade attack."
+      "notes": "CapabilityToken carries a schema-tag; chio.capability.v1 and chio.capability.v2 are recognized; the verifier rejects any v2 token whose declared schema exceeds the peer-negotiated ceiling, closing the Negotiated schema ceiling downgrade attack."
     },
     {
       "id": "close-bar-#15",
@@ -1380,7 +1380,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/wave1_hot_path_enforcement.rs",
       "theorem_status": "assumed",
       "wave": "03",
-      "notes": "W1.1 + W1.5: attenuation witness API ships; chain-binding rule enforced via verify_capability_full across all 5 hot-path surfaces (chio-kernel, chio-kernel-browser, chio-kernel-mobile, chio-cpp-kernel-ffi, chio-ag-ui-proxy); attenuation_proof.parent_scope_hash bound to trust root or last delegation link's scope_hash; capability_features::DELEGATION_V2_CHAIN_BINDING advertised true in t1_default"
+      "notes": "Capability attenuation and handshake hardening: attenuation witness API ships; chain-binding rule enforced via verify_capability_full across all 5 hot-path surfaces (chio-kernel, chio-kernel-browser, chio-kernel-mobile, chio-cpp-kernel-ffi, chio-ag-ui-proxy); attenuation_proof.parent_scope_hash bound to trust root or last delegation link's scope_hash; capability_features::DELEGATION_V2_CHAIN_BINDING advertised true in t1_default"
     },
     {
       "id": "close-bar-#16",
@@ -1390,7 +1390,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/wave1_hot_path_enforcement.rs",
       "theorem_status": "assumed",
       "wave": "03",
-      "notes": "W1.2 + W1.5: BudgetSplit type + BudgetRegistry trait shipped; verifier consults registry on every delegated child via verify_capability_full; ChioKernel wires InMemoryBudgetRegistry into evaluate_portable_verdict; per-request InMemoryBudgetRegistry on browser/mobile/cpp/ag-ui-proxy adapter surfaces; fixed-point u16 basis-point share representation enforced at admit time"
+      "notes": "Budget enforcement: BudgetSplit type + BudgetRegistry trait shipped; verifier consults registry on every delegated child via verify_capability_full; ChioKernel wires InMemoryBudgetRegistry into evaluate_portable_verdict; per-request InMemoryBudgetRegistry on browser/mobile/cpp/ag-ui-proxy adapter surfaces; fixed-point u16 basis-point share representation enforced at admit time"
     },
     {
       "id": "close-bar-#17",
@@ -1400,7 +1400,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs",
       "theorem_status": "assumed",
       "wave": "04",
-      "notes": "W2.1: kernel mints ChioReceiptV2 on the production hot path (record_chio_receipt_with_federation) when the negotiated peer profile advertises ACCEPTS_RECEIPT_V2; chio_receipts_v2 table persists body_hash + non-authoritative legacy alias; ReceiptV2ReplaySet keys exclusively on body_hash; integration test mints, replays, tampers with alias, mismatches body_hash, and asserts v1-only fallback through ChioKernel::evaluate_tool_call_blocking"
+      "notes": "Receipt v2 evidence: kernel mints ChioReceiptV2 on the production hot path (record_chio_receipt_with_federation) when the negotiated peer profile advertises ACCEPTS_RECEIPT_V2; chio_receipts_v2 table persists body_hash + non-authoritative legacy alias; ReceiptV2ReplaySet keys exclusively on body_hash; integration test mints, replays, tampers with alias, mismatches body_hash, and asserts v1-only fallback through ChioKernel::evaluate_tool_call_blocking"
     },
     {
       "id": "close-bar-#18",
@@ -1420,7 +1420,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/anchor_batch_witness_impersonation_rejected.rs",
       "theorem_status": "proposed",
       "wave": "02",
-      "notes": "W2.3: AnchorWitnessClient trait + RekorClient (real Sigstore HTTP) + OtsClient (OpenTimestamps calendar HTTP) live in crates/chio-anchor/src/witness*; WitnessState (Pending/Witnessed/Stale) wired into verify_anchor_batch_with_witness_policy; 4 standalone negative-conformance tests at crates/chio-conformance/tests/anchor_batch_*_rejected.rs (forged_root, misordered_proof, witness_impersonation, stale_witness_fallback) all green; claim.anchor.batch_continuity promoted to active; manifest.anchor.batch_continuity references real conformance evidence; spec/PROTOCOL.md section 6.4.1 expanded with W2.3 subsection"
+      "notes": "Public-witness anchor evidence: AnchorWitnessClient trait + RekorClient (real Sigstore HTTP) + OtsClient (OpenTimestamps calendar HTTP) live in crates/chio-anchor/src/witness*; WitnessState (Pending/Witnessed/Stale) wired into verify_anchor_batch_with_witness_policy; 4 standalone negative-conformance tests at crates/chio-conformance/tests/anchor_batch_*_rejected.rs (forged_root, misordered_proof, witness_impersonation, stale_witness_fallback) all green; claim.anchor.batch_continuity promoted to active; manifest.anchor.batch_continuity references real conformance evidence; spec/PROTOCOL.md section 6.4.1 expanded with the public-witness subsection"
     },
     {
       "id": "close-bar-#20",
@@ -1430,7 +1430,7 @@
       "negative_conformance_test": "crates/chio-hosted-mcp/tests/cross_crate_pipeline.rs",
       "theorem_status": "n-a",
       "wave": "13",
-      "notes": "chio-hosted-mcp extraction landed in trj3.2; lib.rs is pure pub-use of published library APIs; cross-crate pipeline test exercises real runtime path"
+      "notes": "chio-hosted-mcp extraction landed in the library extraction lane; lib.rs is pure pub-use of published library APIs; cross-crate pipeline test exercises real runtime path"
     },
     {
       "id": "close-bar-#21",
@@ -1444,7 +1444,7 @@
     },
     {
       "id": "close-bar-#22",
-      "title": "Cargo-vet exemption count: no net-new during trj4; top-50 burn-down (target: 819 -> <= 769)",
+      "title": "Cargo-vet exemption count: no net-new during release hardening; top-50 burn-down (target: 819 -> <= 769)",
       "bucket": "PARTIAL",
       "wired_runtime_path": "n",
       "negative_conformance_test": "NONE",
@@ -1470,7 +1470,7 @@
       "negative_conformance_test": "crates/chio-conformance/tests/metrics_registry_consumed.rs",
       "theorem_status": "n-a",
       "wave": "02",
-      "notes": "W2.4 closes registry consumption and SRE-recording correctness for the touched metrics: 6 edges + chio-wasm-guards consume the registry through production emission boundaries where feasible, receipt-write burn ratios count only outcome=\"error\", HITL PendingApproval is outcome=\"pending_approval\", and histogram quantiles target emitted _bucket families. Deployment proof and full T1.5 alert-pack rollout remain pending Wave 6."
+      "notes": "Metrics registry hardening closes registry consumption and SRE-recording correctness for the touched metrics: 6 edges + chio-wasm-guards consume the registry through production emission boundaries where feasible, receipt-write burn ratios count only outcome=\"error\", HITL PendingApproval is outcome=\"pending_approval\", and histogram quantiles target emitted _bucket families. Deployment proof and full T1.5 alert-pack rollout remain pending final rollout."
     },
     {
       "id": "close-bar-#25",

@@ -18,7 +18,7 @@ Resolve the four open questions from `docs/research/chio-streaming-flink-integra
 
 **Recommendation:** Ship `ChioEvaluateFunction` (stateless, operates on `DataStream`) in v1. Defer `KeyedChioEvaluateFunction` (operates on `KeyedStream`, can read keyed state in its parameter builder) to v1.1.
 
-**Reasoning.** Keyed state needs `KeyedProcessFunction`, an explicit `StateDescriptor` surface, and checkpoint-aware access — all additional API surface to learn and test. The stateless operator already composes downstream of `keyBy().window().aggregate()` (see the `SpendSummary` example in the design doc), which covers "Chio-evaluate the aggregate" without keyed state inside the operator itself. The truly stateful case ("deny if this user was flagged in the last hour") is a v1.1 feature whose design depends on unvalidated choices about state population (CDC join? side input? prior Chio evaluation?). Shipping v1 stateless keeps the test surface tractable; checkpoint semantics alone are enough.
+**Reasoning.** Keyed state needs `KeyedProcessFunction`, an explicit `StateDescriptor` surface, and checkpoint-aware access -- all additional API surface to learn and test. The stateless operator already composes downstream of `keyBy().window().aggregate()` (see the `SpendSummary` example in the design doc), which covers "Chio-evaluate the aggregate" without keyed state inside the operator itself. The truly stateful case ("deny if this user was flagged in the last hour") is a v1.1 feature whose design depends on unvalidated choices about state population (CDC join? side input? prior Chio evaluation?). Shipping v1 stateless keeps the test surface tractable; checkpoint semantics alone are enough.
 
 **If we decide the other way:** Doubles the operator surface (two classes, two sets of lifecycle hooks, two test matrices) and forces an API decision on state population we haven't validated with a user.
 
@@ -32,9 +32,9 @@ Resolve the four open questions from `docs/research/chio-streaming-flink-integra
 
 ### Q4. Example job?
 
-**Recommendation:** Ship a minimal runnable example: `examples/flink_fraud_scoring.py` — Kafka source -> `ChioEvaluateFunction` -> Kafka sink (allow) + Kafka DLQ sink (deny) + Kafka receipt sink (2PC). Keep it under 150 lines. No synthetic infrastructure.
+**Recommendation:** Ship a minimal runnable example: `examples/flink_fraud_scoring.py` -- Kafka source -> `ChioEvaluateFunction` -> Kafka sink (allow) + Kafka DLQ sink (deny) + Kafka receipt sink (2PC). Keep it under 150 lines. No synthetic infrastructure.
 
-**Reasoning.** Other middlewares ship examples in `examples/` or docstrings; the Flink wiring (side outputs, 2PC sinks, checkpoint config, parallelism) is materially more complex and will not be guessed from the class docstring. Fraud-scoring is the canonical "why keyed windows + Chio" story and doubles as the integration-test harness we need anyway. The example does not need Docker Compose — a `FileSource` suffices, with Kafka as a documented swap. Cost: ~150 lines plus one CI test against the mini-cluster.
+**Reasoning.** Other middlewares ship examples in `examples/` or docstrings; the Flink wiring (side outputs, 2PC sinks, checkpoint config, parallelism) is materially more complex and will not be guessed from the class docstring. Fraud-scoring is the canonical "why keyed windows + Chio" story and doubles as the integration-test harness we need anyway. The example does not need Docker Compose -- a `FileSource` suffices, with Kafka as a documented swap. Cost: ~150 lines plus one CI test against the mini-cluster.
 
 **If we decide the other way:** Users hit the side-output + 2PC complexity with no reference and file issues that are really "how do I use Flink."
 
@@ -103,7 +103,7 @@ class FlinkProcessingOutcome(BaseProcessingOutcome):
     key: Any | None = None                  # Present only for KeyedChioEvaluateFunction (v1.1)
 ```
 
-`acked` shifts meaning: in brokers it means "source-side commit complete"; in Flink it means "emitted to main output." The real commit is the checkpoint barrier, which the operator does not own — so `checkpoint_id` is only populated when a `CheckpointedFunction` hook actually observes the outcome. `subtask_index` + `attempt_number` are cheap to populate and worth it for partial-failure forensics; broker middlewares have no equivalent because the broker owns partition / offset.
+`acked` shifts meaning: in brokers it means "source-side commit complete"; in Flink it means "emitted to main output." The real commit is the checkpoint barrier, which the operator does not own -- so `checkpoint_id` is only populated when a `CheckpointedFunction` hook actually observes the outcome. `subtask_index` + `attempt_number` are cheap to populate and worth it for partial-failure forensics; broker middlewares have no equivalent because the broker owns partition / offset.
 
 ### Side output tags
 
@@ -126,7 +126,7 @@ class ChioEvaluateFunction(ProcessFunction):  # PyFlink ProcessFunction
         # of primitives + pure callables (which cloudpickle handles).
 ```
 
-The operator does not take `chio_client` / `dlq_router` in its constructor (the broker pattern). PyFlink serializes the function on the JobManager and ships bytes to each Python worker; a `ChioClient` holds an `httpx.AsyncClient` / connection pool that will not survive pickle. Factories are passed through `config` and invoked inside `open()` on each worker — the same constraint every PyFlink user function imposes on collaborators.
+The operator does not take `chio_client` / `dlq_router` in its constructor (the broker pattern). PyFlink serializes the function on the JobManager and ships bytes to each Python worker; a `ChioClient` holds an `httpx.AsyncClient` / connection pool that will not survive pickle. Factories are passed through `config` and invoked inside `open()` on each worker -- the same constraint every PyFlink user function imposes on collaborators.
 
 ### Lifecycle methods
 
@@ -174,7 +174,7 @@ class ChioEvaluateFunction(ProcessFunction):
             self._loop.close()
 
     # Optional: CheckpointedFunction hook (added by mixing in
-    # CheckpointedFunction). No operator state to snapshot for v1 — the
+    # CheckpointedFunction). No operator state to snapshot for v1 -- the
     # receipt side output rides the checkpoint via the sink's 2PC. We
     # implement the hook as a no-op for forward compatibility.
     def snapshot_state(self, context: FunctionSnapshotContext) -> None:
@@ -184,7 +184,7 @@ class ChioEvaluateFunction(ProcessFunction):
         pass
 ```
 
-The async path (`async_evaluate=True`) uses `AsyncFunction` instead and does not run its own event loop per element — PyFlink drives the coroutine. Sketch:
+The async path (`async_evaluate=True`) uses `AsyncFunction` instead and does not run its own event loop per element -- PyFlink drives the coroutine. Sketch:
 
 ```python
 class ChioAsyncEvaluateFunction(AsyncFunction):
@@ -206,7 +206,7 @@ Three failure classes, same taxonomy as pulsar / pubsub / nats:
 2. **DLQ publish error** (side output emission to a full buffer or checkpoint-barrier backpressure stall). Propagate; Flink's own backpressure handles it, and on checkpoint failure the source rewinds. Never swallow.
 3. **Handler error.** Not applicable in transform mode (there is no handler). Kept on the outcome type (`handler_error: Exception | None = None`) so v1.1's callback wrapper has a field to populate.
 
-The broker invariant — "every element produces a main-output or DLQ emission" — holds as long as (a) `on_sidecar_error="deny"` in production, or (b) the user accepts task restarts on sidecar outages.
+The broker invariant -- "every element produces a main-output or DLQ emission" -- holds as long as (a) `on_sidecar_error="deny"` in production, or (b) the user accepts task restarts on sidecar outages.
 
 ### Request-id prefix
 
@@ -215,7 +215,7 @@ The broker invariant — "every element produces a main-output or DLQ emission" 
 ## Part 3: New open questions
 
 1. **Non-Kafka receipt sinks.** The 2PC story assumes a transactional Kafka sink. File / HTTP / other sinks either need `TwoPhaseCommitSinkFunction` or accept at-least-once with `request_id` dedupe. Ship a reference `ChioReceiptKafkaSink`, document the 2PC contract, or both?
-2. **Side outputs + `AsyncFunction` do not mix.** `async_invoke` cannot call `ctx.output(tag, ...)` — there is no `Context`. Workaround: emit a wrapped tuple and split downstream. Is that acceptable friction, or should v1 ship only the sync `ProcessFunction` variant?
+2. **Side outputs + `AsyncFunction` do not mix.** `async_invoke` cannot call `ctx.output(tag, ...)` -- there is no `Context`. Workaround: emit a wrapped tuple and split downstream. Is that acceptable friction, or should v1 ship only the sync `ProcessFunction` variant?
 3. **Mini-cluster testing in CI.** PyFlink's mini-cluster boots a JVM; slow / flaky on macOS ARM and some runners. Gate integration tests behind `FLINK_INTEGRATION=1` and run in a dedicated lane?
 4. **Extractor serialization.** Arbitrary callables go through cloudpickle; closures over unpicklable handles fail at `open()`-time. Document "pure function, no closures," or provide a named-field default that covers 80% of cases?
 5. **Metrics naming.** Broker middlewares expose `in_flight` as a property. Flink has a metrics group. Match OpenTelemetry conventions (`chio.evaluations.total{verdict}`) or mirror broker names verbatim?

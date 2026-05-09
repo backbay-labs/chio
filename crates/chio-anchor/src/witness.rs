@@ -1,8 +1,7 @@
 //! Public-witness lane clients for `chio.anchor_batch.v1`.
 //!
-//! W2.3 closes the audit P0 on T1.3 by providing a real
-//! [`AnchorWitnessClient`] trait, Rekor production verification, OTS
-//! advisory parsing, and the [`WitnessState`] state machine consumed by
+//! Provides the [`AnchorWitnessClient`] trait, Rekor production verification,
+//! OTS advisory parsing, and the [`WitnessState`] state machine consumed by
 //! `verify_anchor_batch_with_witness_policy`.
 //!
 //! The clients implement the actual HTTP protocols used by Rekor REST
@@ -237,7 +236,9 @@ pub enum WitnessState {
 }
 
 /// Verifier policy controlling whether the public-witness lane is
-/// advisory or load-bearing.
+/// advisory or load-bearing. [`Default::default`] is load-bearing;
+/// callers that want structural checks only must use
+/// [`WitnessPolicy::advisory`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WitnessPolicy {
@@ -252,12 +253,40 @@ pub struct WitnessPolicy {
     pub stale_window_seconds: i64,
 }
 
+impl WitnessPolicy {
+    pub const DEFAULT_STALE_WINDOW_SECONDS: i64 = 24 * 60 * 60;
+
+    /// Load-bearing public-witness policy. This is also the default so
+    /// deployments cannot accidentally rely on advisory-only semantics.
+    #[must_use]
+    pub fn require_public_witness() -> Self {
+        Self {
+            require_public_witness: true,
+            stale_window_seconds: Self::DEFAULT_STALE_WINDOW_SECONDS,
+        }
+    }
+
+    /// Explicit advisory policy for callers that only want structural
+    /// witness-state checks. This mode does not satisfy public-witness
+    /// enforcement.
+    #[must_use]
+    pub fn advisory() -> Self {
+        Self {
+            require_public_witness: false,
+            stale_window_seconds: Self::DEFAULT_STALE_WINDOW_SECONDS,
+        }
+    }
+
+    #[must_use]
+    pub fn with_stale_window_seconds(mut self, stale_window_seconds: i64) -> Self {
+        self.stale_window_seconds = stale_window_seconds;
+        self
+    }
+}
+
 impl Default for WitnessPolicy {
     fn default() -> Self {
-        WitnessPolicy {
-            require_public_witness: false,
-            stale_window_seconds: 24 * 60 * 60,
-        }
+        WitnessPolicy::require_public_witness()
     }
 }
 
@@ -484,10 +513,7 @@ mod tests {
     fn witness_policy_accepts_pending_when_advisory() {
         let batch = sample_batch();
         let state = WitnessState::Pending;
-        let policy = WitnessPolicy {
-            require_public_witness: false,
-            stale_window_seconds: 60,
-        };
+        let policy = WitnessPolicy::advisory().with_stale_window_seconds(60);
         evaluate_witness_policy(&batch, &state, &policy, 1_700_000_100).unwrap();
     }
 
@@ -516,11 +542,21 @@ mod tests {
             last_verified: 1_700_000_000,
             error: "lane down".to_string(),
         };
-        let policy = WitnessPolicy {
-            require_public_witness: false,
-            stale_window_seconds: 60,
-        };
+        let policy = WitnessPolicy::advisory().with_stale_window_seconds(60);
         evaluate_witness_policy(&batch, &state, &policy, 1_700_000_500).unwrap();
+    }
+
+    #[test]
+    fn witness_policy_default_is_load_bearing_public_witness() {
+        let policy = WitnessPolicy::default();
+        assert!(
+            policy.require_public_witness,
+            "default WitnessPolicy must be load-bearing; use WitnessPolicy::advisory() explicitly"
+        );
+        assert_eq!(
+            policy.stale_window_seconds,
+            WitnessPolicy::DEFAULT_STALE_WINDOW_SECONDS
+        );
     }
 
     #[test]
@@ -584,7 +620,7 @@ mod tests {
             receipt,
             observed_at: 1_700_000_010,
         };
-        evaluate_witness_policy(&batch, &state, &WitnessPolicy::default(), 1_700_000_100)
+        evaluate_witness_policy(&batch, &state, &WitnessPolicy::advisory(), 1_700_000_100)
             .expect("advisory mode still accepts structurally-valid Witnessed state");
     }
 
@@ -860,7 +896,7 @@ mod tests {
         ));
     }
 
-    /// P0 regression: stale admission uses the verifier-owned
+    /// Regression guard: stale admission uses the verifier-owned
     /// `verified_at` cache timestamp, not the producer-signed
     /// `last_verified` value. A producer cannot refresh a stale cache
     /// by signing a fresh artifact timestamp.

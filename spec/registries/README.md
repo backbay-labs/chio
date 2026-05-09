@@ -1,6 +1,9 @@
 # Chio specification registries
 
-This directory holds the three canonical registries the trajectory-4 Evidence Gate references. Every T1.x slice that introduces a signed artifact, a verifiable claim, or a theorem must update the relevant registry before its Evidence Gate ticket closes.
+This directory holds the three canonical registries used by verifier and
+evidence tooling. Any change that introduces a signed artifact, a verifiable
+claim, or a theorem must update the relevant registry before the claim is
+advertised as supported.
 
 ## Files
 
@@ -17,7 +20,7 @@ threat / claim ----> claim-registry ----> proof-manifest ----> theorem-inventory
                      (what we say)        (what backs it)       (what is proved)
 ```
 
-A trj4 slice closes when:
+A registry change is complete when:
 - The new artifact (or behavior) is registered in `claim-registry.v1.json`.
 - A `proof-manifest.v1.json` row ties the claim to one or more entries in `theorem-inventory.v1.json` and / or named conformance tests.
 - The referenced theorem entries are status `proven` (or explicitly status `assumed` with a deferral target).
@@ -34,6 +37,8 @@ A trj4 slice closes when:
 - `proven` - proof script accepted by the listed checker (lean / apalache / kani).
 - `assumed` - axiom or unproved assumption with `deferral_target` pointing at a tracking ticket.
 
-## Bootstrap status (trj4)
+## Bootstrap Status
 
-These three files are **bootstrapped** by `TRJ4-000` (see `.planning/trajectory-4/EXECUTION-BOARD.md`) before any Tier 1 slice begins. They start with the existing claims and theorems that trajectories 1-3 implicitly relied on; trj4 slices add new rows.
+These three files are bootstrapped as the v1 protocol registry set. They start
+with the existing claims and theorems already relied on by verifier code, and
+new protocol surfaces add rows as they become checkable.

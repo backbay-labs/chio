@@ -4,13 +4,13 @@
 
 Ready for implementation. Supporting research under `docs/research/flink/`:
 
-- `flink/01-flink-internals.md` — 2PC contract, side outputs, failure scenarios, AsyncFunction limits, checkpoint backpressure.
-- `flink/02-pyflink-api.md` — PyFlink ProcessFunction / AsyncFunction / keyed state / KafkaSink / dependency management / testing. Versions: Flink 2.2.0 (Dec 2025) stable.
-- `flink/03-operator-design.md` — config / outcome / lifecycle spec grounded in existing middleware conventions.
+- `flink/01-flink-internals.md` -- 2PC contract, side outputs, failure scenarios, AsyncFunction limits, checkpoint backpressure.
+- `flink/02-pyflink-api.md` -- PyFlink ProcessFunction / AsyncFunction / keyed state / KafkaSink / dependency management / testing. Versions: Flink 2.2.0 (Dec 2025) stable.
+- `flink/03-operator-design.md` -- config / outcome / lifecycle spec grounded in existing middleware conventions.
 
 ## Goal
 
-Ship a PyFlink-native operator that evaluates each event against a Chio capability, emits signed receipts, and routes denials to a DLQ — with the same semantics and byte-compatible envelope the other broker middlewares emit.
+Ship a PyFlink-native operator that evaluates each event against a Chio capability, emits signed receipts, and routes denials to a DLQ -- with the same semantics and byte-compatible envelope the other broker middlewares emit.
 
 ## Why native, not a shim over the Kafka middleware
 
@@ -42,8 +42,8 @@ For teams that accept a throughput cap in exchange for simpler topology, we also
 
 ### Checkpoint semantics
 
-- `KafkaSink` with `DeliveryGuarantee.EXACTLY_ONCE` implements `TwoPhaseCommitSinkFunction` internally. We do NOT write our own 2PC sink for Kafka — we configure Flink's.
-- Side outputs flow through the same barrier mechanism as the main output. A receipt emitted during `process_element` of an event before barrier N is part of checkpoint N. On success, the sink commits atomically. On failure, the source rewinds and the sink's prepared transaction aborts — so the first run's receipts are never visible (research 01 §3).
+- `KafkaSink` with `DeliveryGuarantee.EXACTLY_ONCE` implements `TwoPhaseCommitSinkFunction` internally. We do NOT write our own 2PC sink for Kafka -- we configure Flink's.
+- Side outputs flow through the same barrier mechanism as the main output. A receipt emitted during `process_element` of an event before barrier N is part of checkpoint N. On success, the sink commits atomically. On failure, the source rewinds and the sink's prepared transaction aborts -- so the first run's receipts are never visible (research 01 §3).
 - Sidecar determinism (Chio evaluates deterministically on `(policy_hash, input)`) is a correctness requirement, not a nice-to-have: re-evaluation after replay must produce byte-identical receipts or the aborted-and-redone sink writes could diverge.
 - Non-Kafka receipt sinks (HTTP receipt store, JDBC, etc.) have **no Python `TwoPhaseCommitSinkFunction` base class** (research 02 §4). Users who need non-Kafka sinks either write Java 2PC sinks, accept at-least-once with `request_id` dedupe, or write to an intermediate Kafka topic and bridge.
 
@@ -61,7 +61,7 @@ All four are now answered (research 03 §Part 1).
 
 ### 3. Minimum Flink version?
 
-**`apache-flink >= 2.2.0, < 3.0`.** Research 02 §7 is authoritative: PyFlink `AsyncFunction` shipped in Flink 2.2.0 (Dec 2025) via FLINK-38560 / 38561 / 38563 / 38591. Prior researcher claims that AsyncFunction "stabilized in 1.18" were wrong — 1.18 has Python async I/O for a different shape. We want the 2.2 `async def async_invoke` interface + `AsyncDataStream.unordered_wait_with_retry` + `AsyncRetryStrategy`.
+**`apache-flink >= 2.2.0, < 3.0`.** Research 02 §7 is authoritative: PyFlink `AsyncFunction` shipped in Flink 2.2.0 (Dec 2025) via FLINK-38560 / 38561 / 38563 / 38591. Prior researcher claims that AsyncFunction "stabilized in 1.18" were wrong -- 1.18 has Python async I/O for a different shape. We want the 2.2 `async def async_invoke` interface + `AsyncDataStream.unordered_wait_with_retry` + `AsyncRetryStrategy`.
 
 Consequence: we drop the prior doc's "1.18" floor. Users on older Flink can still use `chio_streaming.middleware` (the Kafka middleware) as an interim.
 
@@ -81,13 +81,13 @@ Full spec in `flink/03-operator-design.md`. Summary:
 
 ### Exports
 
-- `ChioAsyncEvaluateFunction(AsyncFunction)` — primary path; calls the sidecar; emits a wrapped `EvaluationResult` tuple.
-- `ChioVerdictSplitFunction(ProcessFunction)` — chained after the async one; splits by verdict into main / RECEIPT_TAG / DLQ_TAG.
-- `ChioEvaluateFunction(ProcessFunction)` — single-operator sync alternative for low-throughput cases.
-- `ChioFlinkConfig` — dataclass mirroring `ChioPulsarConsumerConfig` / `ChioPubSubConfig` conventions, with Flink-specific `subject_extractor`, `parameters_extractor`, `client_factory`, `dlq_router_factory`.
-- `FlinkProcessingOutcome` — `BaseProcessingOutcome` subclass; adds `element`, `subtask_index`, `attempt_number`, `checkpoint_id`.
-- `RECEIPT_TAG`, `DLQ_TAG` — `OutputTag("chio-receipt" / "chio-dlq", Types.PICKLED_BYTE_ARRAY())`.
-- `register_dependencies(env, *, requirements_path=None)` — helper that wraps `add_python_file` + `set_python_requirements` so users don't have to remember the incantation.
+- `ChioAsyncEvaluateFunction(AsyncFunction)` -- primary path; calls the sidecar; emits a wrapped `EvaluationResult` tuple.
+- `ChioVerdictSplitFunction(ProcessFunction)` -- chained after the async one; splits by verdict into main / RECEIPT_TAG / DLQ_TAG.
+- `ChioEvaluateFunction(ProcessFunction)` -- single-operator sync alternative for low-throughput cases.
+- `ChioFlinkConfig` -- dataclass mirroring `ChioPulsarConsumerConfig` / `ChioPubSubConfig` conventions, with Flink-specific `subject_extractor`, `parameters_extractor`, `client_factory`, `dlq_router_factory`.
+- `FlinkProcessingOutcome` -- `BaseProcessingOutcome` subclass; adds `element`, `subtask_index`, `attempt_number`, `checkpoint_id`.
+- `RECEIPT_TAG`, `DLQ_TAG` -- `OutputTag("chio-receipt" / "chio-dlq", Types.PICKLED_BYTE_ARRAY())`.
+- `register_dependencies(env, *, requirements_path=None)` -- helper that wraps `add_python_file` + `set_python_requirements` so users don't have to remember the incantation.
 
 ### Config (abbreviated)
 
@@ -129,7 +129,7 @@ Carry the canonical-JSON bytes from `build_envelope` / `DLQRouter.build_record`.
 - `open(runtime_context)`: build `ChioClient`, `DLQRouter`, `Slots(max_in_flight)`, event loop (sync variant only), metrics group. Capture `subtask_index` / `attempt_number`.
 - `async_invoke(value)` (async variant) OR `process_element(value, ctx)` (sync variant): resolve scope, call sidecar via `evaluate_with_chio`, handle `ChioStreamingError` per `on_sidecar_error`, build envelope, emit.
 - `close()`: drain loop and close HTTP session.
-- `snapshot_state` / `initialize_state`: no-ops in v1. No operator state — the receipt side output rides the sink's 2PC.
+- `snapshot_state` / `initialize_state`: no-ops in v1. No operator state -- the receipt side output rides the sink's 2PC.
 
 ### Error taxonomy
 

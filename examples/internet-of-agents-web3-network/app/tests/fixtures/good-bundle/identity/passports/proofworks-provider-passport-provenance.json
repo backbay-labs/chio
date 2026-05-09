@@ -2,7 +2,7 @@
   "budgetDb": "target/web3-example-qualification/internet-of-agents-web3-network/state/provider-budgets.sqlite3",
   "commands": {
     "challengeCreate": [
-      "/Users/connor/.codex/worktrees/673b/arc/target/debug/chio",
+      "/workspace/chio/target/debug/chio",
       "--format",
       "json",
       "passport",
@@ -18,7 +18,7 @@
       "target/web3-example-qualification/internet-of-agents-web3-network/state/provider-passport-challenges.sqlite3"
     ],
     "challengeRespond": [
-      "/Users/connor/.codex/worktrees/673b/arc/target/debug/chio",
+      "/workspace/chio/target/debug/chio",
       "--format",
       "json",
       "passport",
@@ -34,7 +34,7 @@
       "target/web3-example-qualification/internet-of-agents-web3-network/identity/presentations/provider-presentation.json"
     ],
     "challengeVerify": [
-      "/Users/connor/.codex/worktrees/673b/arc/target/debug/chio",
+      "/workspace/chio/target/debug/chio",
       "--format",
       "json",
       "passport",
@@ -48,7 +48,7 @@
       "target/web3-example-qualification/internet-of-agents-web3-network/state/provider-passport-challenges.sqlite3"
     ],
     "passportCreate": [
-      "/Users/connor/.codex/worktrees/673b/arc/target/debug/chio",
+      "/workspace/chio/target/debug/chio",
       "--format",
       "json",
       "--receipt-db",
@@ -69,7 +69,7 @@
       "https://trust.proofworks.local/receipts"
     ],
     "passportVerify": [
-      "/Users/connor/.codex/worktrees/673b/arc/target/debug/chio",
+      "/workspace/chio/target/debug/chio",
       "--format",
       "json",
       "passport",

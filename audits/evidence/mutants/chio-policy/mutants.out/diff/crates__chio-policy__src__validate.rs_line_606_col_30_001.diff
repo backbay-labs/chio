@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/validate.rs
++++ replace - with / in is_valid_duration
+@@ -598,17 +598,17 @@
+         errors.push(ValidationError::Custom(error));
+     }
+ }
+ 
+ fn is_valid_duration(value: &str) -> bool {
+     matches!(
+         value.as_bytes(),
+         [b'0'..=b'9', .., b's' | b'm' | b'h' | b'd']
+-    ) && value[..value.len() - 1]
++    ) && value[..value.len() / /* ~ changed by cargo-mutants ~ */ 1]
+         .bytes()
+         .all(|byte| byte.is_ascii_digit())
+ }
+ 
+ #[cfg(test)]
+ #[allow(clippy::expect_used, clippy::unwrap_used)]
+ mod tests {
+     use super::*;

@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ delete ! in grant_covers
+@@ -154,17 +154,17 @@
+ 
+ fn grant_covers(
+     grant: &ToolGrant,
+     tool_name: &str,
+     server_id: &str,
+     arguments: &serde_json::Value,
+ ) -> Result<bool, ScopeMatchError> {
+     if !matches_pattern(&grant.server_id, server_id)
+-        || !matches_pattern(&grant.tool_name, tool_name)
++        ||  /* ~ changed by cargo-mutants ~ */matches_pattern(&grant.tool_name, tool_name)
+         || !grant.operations.contains(&Operation::Invoke)
+     {
+         return Ok(false);
+     }
+ 
+     #[cfg(kani)]
+     let constraints_ok = if grant.constraints.is_empty() {
+         true

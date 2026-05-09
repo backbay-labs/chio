@@ -1,0 +1,27 @@
+--- crates/chio-policy/src/resolve.rs
++++ replace load_from_filesystem -> Result<LoadedSpec, ResolveError> with Ok(Default::default())
+@@ -91,23 +91,17 @@
+ 
+     stack.push(loaded.source.clone());
+     let resolved_parent = resolve_inner(&loaded.spec, Some(&loaded.source), loader, stack)?;
+     stack.pop();
+     Ok(merge(&resolved_parent, spec))
+ }
+ 
+ fn load_from_filesystem(reference: &str, from: Option<&str>) -> Result<LoadedSpec, ResolveError> {
+-    let path = resolve_reference_path(reference, from);
+-    let canonical = canonical_path(&path)?;
+-    let spec = load_spec_from_file(&canonical)?;
+-    Ok(LoadedSpec {
+-        source: canonical.to_string_lossy().into_owned(),
+-        spec,
+-    })
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn resolve_reference_path(reference: &str, from: Option<&str>) -> PathBuf {
+     let candidate = PathBuf::from(reference);
+     if candidate.is_absolute() {
+         return candidate;
+     }
+ 

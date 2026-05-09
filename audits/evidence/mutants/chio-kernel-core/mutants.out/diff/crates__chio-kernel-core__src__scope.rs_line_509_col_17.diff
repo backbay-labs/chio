@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ replace || with && in argument_contains_custom
+@@ -501,17 +501,17 @@
+ 
+     pattern_idx == pattern_chars.len()
+ }
+ 
+ fn argument_contains_custom(arguments: &serde_json::Value, key: &str, expected: &str) -> bool {
+     match arguments {
+         serde_json::Value::Object(map) => map.iter().any(|(entry_key, value)| {
+             (entry_key == key && value.as_str() == Some(expected))
+-                || argument_contains_custom(value, key, expected)
++                && /* ~ changed by cargo-mutants ~ */ argument_contains_custom(value, key, expected)
+         }),
+         serde_json::Value::Array(values) => values
+             .iter()
+             .any(|value| argument_contains_custom(value, key, expected)),
+         serde_json::Value::Null
+         | serde_json::Value::Bool(_)
+         | serde_json::Value::Number(_)
+         | serde_json::Value::String(_) => false,

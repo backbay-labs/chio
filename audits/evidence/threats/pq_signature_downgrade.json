@@ -1,7 +1,14 @@
 {
-  "caught": 0,
-  "needs_real_run": true,
-  "note": "Bootstrap placeholder. Replace with real cargo-mutants evidence in trajectory-4 wave 4. Caught >= 1 promotes the row out of weak_coverage.",
-  "ran_at": "1970-01-01T00:00:00Z",
-  "survivors": []
+  "caught": 1,
+  "needs_real_run": false,
+  "status": "partial",
+  "closure_scope": "classical-only",
+  "deferred_follow_up": "Hybrid-PQ artifact downgrade (kernel-side hybrid-prefix signing with ML-DSA-65 alongside Ed25519, and the corresponding hybrid-artifact downgrade attack vector that strips the PQ component after signing) is DEFERRED-FOLLOW-UP. The verifier-side floor REJECTION exercised here is in tree today and is the production decision for the classical-only path, but it does NOT close the hybrid-artifact downgrade sub-threat. Follow-up work must add a second test (hybrid-prefix token whose PQ half is stripped or replaced with garbage) and either split the row into pq_signature_classical_rejection_under_required and pq_hybrid_artifact_downgrade or promote this row back to coverage_state: covered once the hybrid path is exercised end-to-end.",
+  "note": "Threat-evidence backfill with partial-coverage rationale: real conformance test at crates/chio-conformance/tests/threats/pq_signature_downgrade.rs imports chio_kernel_core::capability_verify::verify_capability_with_floor and exercises the production crypto-floor enforcement that catches a downgrade attack. The deny-asserting arm presents a classical-only Ed25519 signed token under CapabilityCryptoFloor::PqRequired and asserts CapabilityError::CryptoFloorRejected; this is the front-line verifier defense that prevents an attacker from getting a classical-only token admitted on a kernel whose crypto floor is configured for hybrid PQ. A counter-vector arm verifies the same token under AllowClassical to guard against over-rejection. A floor-wire-identifier arm pins the operator-facing strings (allow_classical, allow_hybrid, pq_required) and the algebraic relations (allows_hybrid / allows_classical_only) so a rename cannot silently invalidate policy YAML loaders. SCOPE NOTE: the hybrid-PQ wire-format SIGNING path (kernel mints hybrid-prefix signatures with ML-DSA-65 alongside Ed25519) is DEFERRED-FOLLOW-UP; the verifier-side floor REJECTION exercised here is in tree today and is the production decision for the classical-only path of this threat row. PARTIAL: closed for classical-only path; hybrid-artifact downgrade deferred to follow-up coverage (see deferred_follow_up field). Header documents the revert-to-prove-it-fails recipe (replace the CryptoFloorRejected return with a no-op).",
+  "ran_at": "2026-05-08T00:00:00Z",
+  "survivors": [],
+  "test_path": "crates/chio-conformance/tests/threats/pq_signature_downgrade.rs",
+  "timestamp_kind": "generated-metadata",
+  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats pq_signature_downgrade"
 }

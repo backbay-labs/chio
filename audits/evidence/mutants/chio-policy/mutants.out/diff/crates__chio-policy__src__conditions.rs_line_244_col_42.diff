@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/conditions.rs
++++ delete ! in parse_offset_value
+@@ -236,17 +236,17 @@
+         }
+     }
+ }
+ 
+ fn parse_offset_value(s: &str) -> Option<i32> {
+     if let Some((hours, minutes)) = s.split_once(':') {
+         let hours = hours.parse::<i32>().ok()?;
+         let minutes = minutes.parse::<i32>().ok()?;
+-        if !(0..=23).contains(&hours) || !(0..=59).contains(&minutes) {
++        if !(0..=23).contains(&hours) ||  /* ~ changed by cargo-mutants ~ */(0..=59).contains(&minutes) {
+             return None;
+         }
+         Some(hours.saturating_mul(60).saturating_add(minutes))
+     } else {
+         let hours = s.parse::<i32>().ok()?;
+         if !(0..=23).contains(&hours) {
+             return None;
+         }

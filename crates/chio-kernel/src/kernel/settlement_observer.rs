@@ -75,15 +75,10 @@ impl SettlementObserverStatus {
 ///
 /// The receipt's financial metadata is canonically the
 /// `FinancialReceiptMetadata` shape (`cost_charged`, `currency`,
-/// `attempted_cost`) under `metadata.financial.*`. M09 review
-/// follow-up (PR #378, Codex): the previous version of this function
-/// looked for `approved_max`/`settlement_cap`/`amount.units` keys that
-/// no kernel-issued receipt actually carries, so settlement hooks
-/// never ran for real traffic and every priced allow receipt was
-/// reported as "outside marketplace surface". The lookup is now
-/// canonical-first, with a legacy-fallback path that still accepts
-/// the older keys for tests and external receipts that pre-date the
-/// kernel canonical shape.
+/// `attempted_cost`) under `metadata.financial.*`. Older receipts and
+/// tests may still carry `approved_max`/`settlement_cap`/`amount.units`
+/// keys, so the lookup is canonical-first with a legacy fallback for
+/// external receipts that pre-date the kernel canonical shape.
 #[must_use]
 pub fn build_observation(receipt: &ChioReceipt) -> Option<SettlementObservation> {
     use chio_core::receipt::Decision;
@@ -326,11 +321,11 @@ mod tests {
 
     #[test]
     fn build_observation_reads_canonical_financial_metadata() {
-        // M09 review follow-up (PR #378, Codex): the kernel canonical
-        // financial-metadata shape is `FinancialReceiptMetadata`
-        // (`cost_charged`, `currency`, `attempted_cost`). Receipts
-        // emitted by the kernel's normal finalize path use this
-        // shape, so the settlement observer MUST recognize it.
+        // The kernel canonical financial-metadata shape is
+        // `FinancialReceiptMetadata` (`cost_charged`, `currency`,
+        // `attempted_cost`). Receipts emitted by the kernel's normal
+        // finalize path use this shape, so the settlement observer
+        // MUST recognize it.
         let receipt = sign_with(
             serde_json::json!({
                 "financial": {

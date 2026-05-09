@@ -1,0 +1,21 @@
+--- crates/chio-weights/src/lineage.rs
++++ replace != with == in verify_model_card_anchor
+@@ -298,17 +298,17 @@
+ 
+     let card = crate::card::ModelCard::from_canonical_json(card_bytes)?;
+     if card.weights_hash != anchor.weights_hash {
+         return Err(WeightsError::BundleRejected(format!(
+             "model card anchor weights_hash mismatch: expected {:?}, got {:?}",
+             card.weights_hash, anchor.weights_hash
+         )));
+     }
+-    if card.issuer != anchor.card_issuer {
++    if card.issuer == /* ~ changed by cargo-mutants ~ */ anchor.card_issuer {
+         return Err(WeightsError::BundleRejected(format!(
+             "model card anchor card_issuer mismatch: expected {:?}, got {:?}",
+             card.issuer, anchor.card_issuer
+         )));
+     }
+     if card.expires_at != anchor.card_expires_at {
+         return Err(WeightsError::BundleRejected(format!(
+             "model card anchor card_expires_at mismatch: expected {}, got {}",

@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/discovery.rs
++++ replace == with != in build_anchor_discovery_artifact_with_runtime
+@@ -287,17 +287,17 @@
+ }
+ 
+ pub fn build_anchor_discovery_artifact_with_runtime(
+     config: &AnchorServiceConfig,
+     binding: &SignedWeb3IdentityBinding,
+     runtime_report: &AnchorRuntimeReport,
+     freshness_window_secs: u64,
+ ) -> Result<AnchorDiscoveryArtifact, AnchorError> {
+-    if freshness_window_secs == 0 {
++    if freshness_window_secs != /* ~ changed by cargo-mutants ~ */ 0 {
+         return Err(AnchorError::InvalidInput(
+             "anchor discovery freshness window must be non-zero".to_string(),
+         ));
+     }
+ 
+     let mut artifact = build_anchor_discovery_artifact(config, binding)?;
+     let chain_runtime = build_chain_runtime_states(config, runtime_report, freshness_window_secs);
+     artifact.service.service_endpoint.publication_policy =

@@ -341,8 +341,7 @@ jobs:
         # "deny", unknown-git = "deny", explicit allow-registry +
         # allow-git lists). Without this step a new dependency from an
         # unapproved registry or git repo passes CI even though the
-        # policy denies it (cleanup-c11c; PR #39 review threads
-        # r3142881621 / r3142881800).
+        # policy denies it.
         run: cargo deny check sources
       - name: cargo deny check bans
         run: cargo deny check bans

@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/bitcoin.rs
++++ replace != with == in verify_bitcoin_anchor_for_proof
+@@ -188,17 +188,17 @@
+             proof.checkpoint_statement.checkpoint_seq,
+             super_root.aggregated_checkpoint_start,
+             super_root.aggregated_checkpoint_end
+         )));
+     }
+ 
+     let expected_document_digest = chio_core::hashing::sha256(super_root.super_root.as_bytes());
+     let inspection = inspect_ots_proof(&bitcoin_anchor.ots_proof_b64)?;
+-    if inspection.digest_algorithm != "sha256" {
++    if inspection.digest_algorithm == /* ~ changed by cargo-mutants ~ */ "sha256" {
+         return Err(AnchorError::Verification(format!(
+             "OTS digest algorithm {} does not match expected sha256",
+             inspection.digest_algorithm
+         )));
+     }
+     if inspection.start_digest != expected_document_digest.to_hex_prefixed() {
+         return Err(AnchorError::Verification(
+             "OTS proof does not commit to the expected Chio super-root digest".to_string(),

@@ -40,6 +40,9 @@ pub mod card;
 pub mod error;
 pub mod lineage;
 
+#[cfg(kani)]
+mod kani_public_harnesses;
+
 pub use bundle::{verify_model_card_bundle, VerifiedModelCard};
 pub use card::{weights_hash_of, ModelCard, StringSet, CARD_VERSION_V1};
 pub use error::WeightsError;

@@ -1,0 +1,27 @@
+--- crates/chio-policy/src/detection.rs
++++ replace <impl Detector for RegexExfiltrationDetector>::detect -> DetectionResult with Default::default()
+@@ -276,23 +276,17 @@
+ impl Detector for RegexExfiltrationDetector {
+     fn name(&self) -> &str {
+         "regex_exfiltration"
+     }
+     fn category(&self) -> DetectionCategory {
+         DetectionCategory::DataExfiltration
+     }
+     fn detect(&self, input: &str) -> DetectionResult {
+-        run_patterns(
+-            &self.patterns,
+-            self.name(),
+-            self.category(),
+-            input,
+-            "exfiltration",
+-        )
++        Default::default() /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ // ---------------------------------------------------------------------------
+ // Shared pattern runner
+ // ---------------------------------------------------------------------------
+ 
+ fn run_patterns(

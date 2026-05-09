@@ -1,7 +1,14 @@
 {
-  "caught": 0,
-  "needs_real_run": true,
-  "note": "Bootstrap placeholder. Replace with real cargo-mutants evidence in trajectory-4 wave 4. Caught >= 1 promotes the row out of weak_coverage.",
-  "ran_at": "1970-01-01T00:00:00Z",
-  "survivors": []
+  "caught": 2,
+  "needs_real_run": false,
+  "status": "partial",
+  "closure_scope": "wasm-guard-only",
+  "deferred_follow_up": "Kernel tool-server sandbox-escape coverage (a malicious or compromised tool-server connection breaking out of the kernel-mediated dispatch boundary, e.g. crafted ToolServerConnection responses, malformed JSON-RPC framing escaping into the host process, or in-process tool servers attempting to read kernel memory) is DEFERRED-FOLLOW-UP. The Wasmtime guard import-violation and fuel-exhaustion vectors exercised here close the WASM guard resource and host-import containment paths but do NOT close the kernel-side dispatch sandbox boundary that Lane B0's ToolServerConnection async migration targets. Follow-up work must add a second test that exercises chio_kernel::tool_dispatch (or its successor pub fn) with an attacker-controlled ToolServerConnection asserting the kernel-boundary deny path, and either split the row into wasm_guard_host_import_escape and kernel_tool_dispatch_escape or promote this row back to coverage_state: covered once the kernel-dispatch path is exercised end-to-end.",
+  "note": "Threat-evidence backfill with partial-coverage rationale: real conformance test at crates/chio-conformance/tests/threats/tool_server_escape.rs imports chio_wasm_guards::runtime::wasmtime_backend::WasmtimeBackend and exercises the production runtime sandbox enforcement that catches a malicious tool module attempting to escape the WASM guard boundary. Two deny-asserting arms cover the sub-vectors: (1) undeclared host import -- a module importing wasi_snapshot_preview1.fd_write fails WasmtimeBackend::load_module with WasmGuardError::ImportViolation { module: \"wasi_snapshot_preview1\", name: \"fd_write\" }; (2) fuel-budget escape attempt -- a module whose evaluate body spins in an infinite loop traps under the fuel cap with WasmGuardError::FuelExhausted or fuel-related Trap. PARTIAL: closed for wasm-guard-only sandbox path; kernel-side tool-server dispatch sandbox-escape coverage deferred to follow-up coverage (see deferred_follow_up field). With Lane B0 (ToolServerConnection async-trait migration) merged the dispatch path is unified, but a focused conformance test against the kernel dispatch boundary (separate from the wasm-guard host-import boundary) is still required. A benign round-trip arm guards against over-rejection. Header documents the revert-to-prove-it-fails recipe (relax the import-validation guard in WasmtimeBackend::load_module).",
+  "ran_at": "2026-05-08T00:00:00Z",
+  "survivors": [],
+  "test_path": "crates/chio-conformance/tests/threats/tool_server_escape.rs",
+  "timestamp_kind": "generated-metadata",
+  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats tool_server_escape"
 }

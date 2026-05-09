@@ -1,0 +1,20 @@
+--- crates/chio-kernel-core/src/passport_verify.rs
++++ replace payload_bytes_hex::from_hex_nibble -> Result<u8, &'static str> with Ok(1)
+@@ -241,16 +241,11 @@
+         Ok(out)
+     }
+ 
+     const NIBBLES: [char; 16] = [
+         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+     ];
+ 
+     fn from_hex_nibble(byte: u8) -> Result<u8, &'static str> {
+-        match byte {
+-            b'0'..=b'9' => Ok(byte - b'0'),
+-            b'a'..=b'f' => Ok(byte - b'a' + 10),
+-            b'A'..=b'F' => Ok(byte - b'A' + 10),
+-            _ => Err("invalid hex character"),
+-        }
++        Ok(1) /* ~ changed by cargo-mutants ~ */
+     }
+ }

@@ -3,7 +3,7 @@
   "commandResult": {
     "capabilityLineage": 1,
     "command": [
-      "/Users/connor/.codex/worktrees/673b/arc/target/debug/chio",
+      "/workspace/chio/target/debug/chio",
       "--format",
       "json",
       "--control-url",

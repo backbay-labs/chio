@@ -1,0 +1,43 @@
+{
+  "_comment": "Stub MCP-server fixture used by `chio mcp wrap --e2e-fixture` in run-with-kb-mcp.sh --check. Mirrors the small KB-MCP read-only surface (kb.search/kb.fetch/kb.list/kb.describe). The destructive `delete_record` row is included so the replay exercises a denied frame and produces a deny mediation transcript.",
+  "tools": [
+    {
+      "name": "echo",
+      "description": "KB MCP echo (read-only). Used to confirm the bridge is up before issuing a real query.",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "text": { "type": "string" } },
+        "required": ["text"]
+      }
+    },
+    {
+      "name": "read_file",
+      "description": "Read a KB-side article by path.",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "path": { "type": "string" } },
+        "required": ["path"]
+      },
+      "annotations": { "readOnlyHint": true }
+    },
+    {
+      "name": "delete_record",
+      "description": "Destructive record removal. MUST be denied by the wrapper under the demo policy.",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "id": { "type": "string" } },
+        "required": ["id"]
+      },
+      "annotations": { "destructiveHint": true }
+    }
+  ],
+  "responses": {
+    "echo": {
+      "content": [{ "type": "text", "text": "echoed: chiodome-bilateral kb-mcp replay (line 2)" }]
+    },
+    "read_file": {
+      "content": [{ "type": "text", "text": "stub kb article: hostname" }]
+    }
+  },
+  "allow": ["echo", "read_file"]
+}

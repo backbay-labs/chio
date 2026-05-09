@@ -318,8 +318,7 @@ jobs:
               # publish-conan retry) can leave duplicate rows from earlier
               # runs; the previous `next(...)` form found only the first
               # match and left any additional duplicates untouched, so the
-              # file could remain invalid after this step (cleanup-c11d;
-              # PR #109 review thread r3144314472 - P1). Strip every
+              # file could remain invalid after this step. Strip every
               # matching tuple before re-inserting the canonical entry.
               data["versions"] = [
                   v

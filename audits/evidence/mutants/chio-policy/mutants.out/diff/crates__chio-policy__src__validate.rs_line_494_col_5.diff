@@ -1,0 +1,100 @@
+--- crates/chio-policy/src/validate.rs
++++ replace validate_runtime_assurance with ()
+@@ -486,96 +486,17 @@
+                     "extensions.reputation.tiers.{tier_name}.max_scope.operations includes unknown operation '{operation}'"
+                 ));
+             }
+         }
+     }
+ }
+ 
+ fn validate_runtime_assurance(ext: &Extensions, errors: &mut Vec<ValidationError>) {
+-    let Some(runtime_assurance) = ext.runtime_assurance.as_ref() else {
+-        return;
+-    };
+-
+-    if runtime_assurance.tiers.is_empty() {
+-        errors.push(ValidationError::Custom(
+-            "extensions.runtime_assurance.tiers must define at least one tier".to_string(),
+-        ));
+-        return;
+-    }
+-
+-    let mut seen_minimum_tiers = BTreeSet::new();
+-    let mut seen_trusted_verifiers = BTreeSet::new();
+-    for (tier_name, tier) in &runtime_assurance.tiers {
+-        if !seen_minimum_tiers.insert(tier.minimum_attestation_tier) {
+-            errors.push(ValidationError::Custom(format!(
+-                "extensions.runtime_assurance.tiers duplicates minimum_attestation_tier {:?}",
+-                tier.minimum_attestation_tier
+-            )));
+-        }
+-        if tier.max_scope.ttl_seconds == 0 {
+-            errors.push(ValidationError::Custom(format!(
+-                "extensions.runtime_assurance.tiers.{tier_name}.max_scope.ttl_seconds must be >= 1"
+-            )));
+-        }
+-        if tier.max_scope.operations.is_empty() {
+-            errors.push(ValidationError::Custom(format!(
+-                "extensions.runtime_assurance.tiers.{tier_name}.max_scope.operations is empty"
+-            )));
+-        }
+-    }
+-
+-    for (rule_name, rule) in &runtime_assurance.trusted_verifiers {
+-        if rule.schema.trim().is_empty() {
+-            errors.push(ValidationError::Custom(format!(
+-                "extensions.runtime_assurance.trusted_verifiers.{rule_name}.schema must not be empty"
+-            )));
+-        }
+-        if rule.verifier.trim().is_empty() {
+-            errors.push(ValidationError::Custom(format!(
+-                "extensions.runtime_assurance.trusted_verifiers.{rule_name}.verifier must not be empty"
+-            )));
+-        }
+-        if rule.max_evidence_age_seconds == Some(0) {
+-            errors.push(ValidationError::Custom(format!(
+-                "extensions.runtime_assurance.trusted_verifiers.{rule_name}.max_evidence_age_seconds must be >= 1"
+-            )));
+-        }
+-        for (index, attestation_type) in rule.allowed_attestation_types.iter().enumerate() {
+-            if attestation_type.trim().is_empty() {
+-                errors.push(ValidationError::Custom(format!(
+-                    "extensions.runtime_assurance.trusted_verifiers.{rule_name}.allowed_attestation_types[{index}] must not be empty"
+-                )));
+-            }
+-        }
+-        for (assertion, expected) in &rule.required_assertions {
+-            if assertion.trim().is_empty() {
+-                errors.push(ValidationError::Custom(format!(
+-                    "extensions.runtime_assurance.trusted_verifiers.{rule_name}.required_assertions keys must not be empty"
+-                )));
+-            }
+-            if expected.trim().is_empty() {
+-                errors.push(ValidationError::Custom(format!(
+-                    "extensions.runtime_assurance.trusted_verifiers.{rule_name}.required_assertions.{assertion} must not be empty"
+-                )));
+-            }
+-        }
+-
+-        let canonical_binding = (
+-            rule.schema.trim().to_string(),
+-            canonicalize_attestation_verifier(&rule.verifier),
+-        );
+-        if !seen_trusted_verifiers.insert(canonical_binding) {
+-            errors.push(ValidationError::Custom(format!(
+-                "extensions.runtime_assurance.trusted_verifiers duplicates schema/verifier binding for {} {}",
+-                rule.schema.trim(),
+-                rule.verifier.trim()
+-            )));
+-        }
+-    }
++    () /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn validate_weight(value: Option<f64>, field: &str, errors: &mut Vec<ValidationError>) {
+     if let Some(weight) = value {
+         if !(0.0..=1.0).contains(&weight) {
+             errors.push(ValidationError::Custom(format!(
+                 "{field} must be in [0.0, 1.0]"
+             )));

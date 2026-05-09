@@ -546,10 +546,10 @@ mod tests {
         assert!(matches!(result, Err(BufferBodyError::TooLarge)));
     }
 
-    /// Regression for Codex P1 "enforce body limit during collection": a
-    /// streaming body whose size hint hides its true length must abort as
-    /// soon as the running buffer crosses the configured cap, so an attacker
-    /// cannot exhaust host RAM by streaming chunks one at a time.
+    /// Regression for enforcing body limits during collection: a streaming
+    /// body whose size hint hides its true length must abort as soon as the
+    /// running buffer crosses the configured cap, so an attacker cannot
+    /// exhaust host RAM by streaming chunks one at a time.
     #[tokio::test]
     async fn buffer_request_body_aborts_streaming_body_during_collection() {
         use std::pin::Pin;
@@ -660,10 +660,10 @@ mod tests {
         assert_eq!(resp.status(), http::StatusCode::PAYLOAD_TOO_LARGE);
     }
 
-    /// Regression for Codex P2 "attach a signed receipt to oversized-body
-    /// denials": the 413 response must carry a Chio-signed deny receipt as
-    /// its JSON body (and as an extension), so an auditor can verify the
-    /// rejection was a Chio decision rather than a stray network 413.
+    /// Regression for signed oversized-body deny receipts: the 413 response
+    /// must carry a Chio-signed deny receipt as its JSON body (and as an
+    /// extension), so an auditor can verify the rejection was a Chio decision
+    /// rather than a stray network 413.
     #[tokio::test]
     async fn service_413_response_has_signed_receipt_body() {
         let (_kp, evaluator) = make_service();

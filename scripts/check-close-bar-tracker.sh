@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Trj4 close-bar tracker gate.
+# Close-bar tracker gate.
 #
-# Asserts the per-row ledger at .planning/trajectory-4/closeout/CLOSE-BAR-TRACKER.md
-# is well-formed and never regresses against the committed snapshot at
+# Asserts that the per-row close-bar ledger is well-formed and never regresses
+# against the committed snapshot at
 # audits/evidence/close-bar-snapshot.json. Emits a structured JSON summary at
 # audits/evidence/close-bar-current.json for downstream tooling.
 #
 # Failure modes (any one fails the gate):
 #   1. tracker has fewer than 153 rows;
-#   2. any row has Bucket=DONE and Wired runtime path=n (audit's "types-only" pattern);
+#   2. any row has Bucket=DONE and Wired runtime path=n;
 #   3. any Bucket=DONE row has Negative conformance test=NONE;
 #   4. any Bucket=DONE row points at a Negative conformance test file that is missing on disk;
 #   5. any Bucket=DONE row points at a Negative conformance test path that is not in the
@@ -26,7 +26,13 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-TRACKER="${CHIO_CLOSE_BAR_TRACKER:-$REPO_ROOT/.planning/trajectory-4/closeout/CLOSE-BAR-TRACKER.md}"
+default_tracker() {
+    find "$REPO_ROOT/.planning" -path '*/closeout/CLOSE-BAR-TRACKER.md' -type f -print 2>/dev/null \
+        | LC_ALL=C sort \
+        | tail -n 1
+}
+
+TRACKER="${CHIO_CLOSE_BAR_TRACKER:-$(default_tracker)}"
 SNAPSHOT="${CHIO_CLOSE_BAR_SNAPSHOT:-$REPO_ROOT/audits/evidence/close-bar-snapshot.json}"
 CURRENT_OUT="${CHIO_CLOSE_BAR_CURRENT_OUT:-$REPO_ROOT/audits/evidence/close-bar-current.json}"
 MIN_ROWS="${CHIO_CLOSE_BAR_MIN_ROWS:-153}"
@@ -144,10 +150,10 @@ for r in rows:
     if r["theorem_status"] not in ALLOWED_THEOREM:
         errors.append(f"{r['id']}: theorem_status {r['theorem_status']!r} not in {sorted(ALLOWED_THEOREM)}")
 
-    # 2. DONE + wired=n is the audit's "types-only" pattern
+    # 2. DONE + wired=n is not complete enough to count as closed.
     if r["bucket"] == "DONE" and r["wired_runtime_path"] != "y":
         errors.append(
-            f"{r['id']}: Bucket=DONE but Wired runtime path={r['wired_runtime_path']!r} (audit's types-only pattern)"
+            f"{r['id']}: Bucket=DONE but Wired runtime path={r['wired_runtime_path']!r} (runtime path not wired)"
         )
     # 3. DONE + neg-test=NONE
     if r["bucket"] == "DONE" and r["negative_conformance_test"] == "NONE":

@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/pipeline.rs
++++ replace GuardPipeline::is_empty -> bool with true
+@@ -25,17 +25,17 @@
+         self.guards.push(guard);
+     }
+ 
+     pub fn len(&self) -> usize {
+         self.guards.len()
+     }
+ 
+     pub fn is_empty(&self) -> bool {
+-        self.guards.is_empty()
++        true /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Create a default pipeline with all implemented guards using their
+     /// default configurations.
+     pub fn default_pipeline() -> Self {
+         let mut pipeline = Self::new();
+         pipeline.add(Box::new(crate::ForbiddenPathGuard::new()));
+         pipeline.add(Box::new(crate::ShellCommandGuard::new()));

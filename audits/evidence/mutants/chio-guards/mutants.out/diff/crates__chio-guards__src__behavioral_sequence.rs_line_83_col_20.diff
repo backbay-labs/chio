@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/behavioral_sequence.rs
++++ delete ! in <impl Guard for BehavioralSequenceGuard>::evaluate
+@@ -75,17 +75,17 @@
+                 }
+             }
+         }
+ 
+         // Check required predecessors.
+         if let Some(required) = self.policy.required_predecessors.get(tool_name) {
+             let invoked: HashSet<&str> = sequence.iter().map(|s| s.as_str()).collect();
+             for req in required {
+-                if !invoked.contains(req.as_str()) {
++                if  /* ~ changed by cargo-mutants ~ */invoked.contains(req.as_str()) {
+                     return Ok(Verdict::Deny);
+                 }
+             }
+         }
+ 
+         // Check forbidden transitions.
+         if let Some(last_tool) = sequence.last() {
+             for (from, to) in &self.policy.forbidden_transitions {

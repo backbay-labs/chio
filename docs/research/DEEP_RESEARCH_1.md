@@ -13,18 +13,18 @@ A credible thesis for “economic security for AI agents” is:
 
 **Economic security = (delegated authority) + (bounded spend) + (verifiable receipts) + (enforceable governance) across heterogeneous agent protocols.**
 
-This matters because the market is rapidly standardizing “connectivity” (tool access and agent-to-agent messaging), but governance is still fragmented: **MCP** standardizes tool invocation, **A2A** standardizes agent-to-agent collaboration, and **agentic commerce protocols** standardize checkout/payment handshakes—yet none of these, on their own, solves the enterprise-grade problem of **who is accountable, what was authorized, what happened, what it cost, and what liabilities attach**. citeturn9search6turn9search0turn9search3turn0search12
+This matters because the market is rapidly standardizing “connectivity” (tool access and agent-to-agent messaging), but governance is still fragmented: **MCP** standardizes tool invocation, **A2A** standardizes agent-to-agent collaboration, and **agentic commerce protocols** standardize checkout/payment handshakes--yet none of these, on their own, solves the enterprise-grade problem of **who is accountable, what was authorized, what happened, what it cost, and what liabilities attach**. citeturn9search6turn9search0turn9search3turn0search12
 
 ARC’s strategic advantage is to become the **portable “rights + receipts” layer under everything**:
 
 - Under **MCP**, ARC can enforce scoped rights and budget limits and produce tamper-evident receipts for each tool invocation (including denials). citeturn9search6turn12search11turn12search1
 - Under **A2A**, ARC can mediate delegation and provenance across multi-agent call chains, which standards bodies are explicitly discussing as an “agent identity & authorization” gap. citeturn9search0turn16view0turn12search3
-- Under **payments**, ARC can link “authorization to act” with “authorization to spend,” while keeping settlement truthful (i.e., not conflating execution success with payment settlement success). Stripe’s Shared Payment Tokens (SPTs) show the industry’s direction: time/amount bounded payment credentials, scoped to a seller, observable through lifecycle—ARC can generalize this pattern beyond commerce into “pay-per-tool / pay-per-action.” citeturn12search2turn12search9turn6search31
+- Under **payments**, ARC can link “authorization to act” with “authorization to spend,” while keeping settlement truthful (i.e., not conflating execution success with payment settlement success). Stripe’s Shared Payment Tokens (SPTs) show the industry’s direction: time/amount bounded payment credentials, scoped to a seller, observable through lifecycle--ARC can generalize this pattern beyond commerce into “pay-per-tool / pay-per-action.” citeturn12search2turn12search9turn6search31
 - Under **web-native paywalls / API monetization**, x402 (HTTP 402 payments over stablecoins) demonstrates an alternative “machine-payable HTTP” path; ARC can act as the policy kernel that decides _when_ to pay, _how much_, and _what evidence to attach_. citeturn0search12turn13search14turn0search19
 
-Regulatory timing increases urgency. The **EU AI Act** becomes broadly applicable on **2 Aug 2026**, with earlier/later phase-ins, and high-risk systems have explicit requirements for **risk management** and **record-keeping/logging**. citeturn2search10turn11search5turn11search16 In the US, entity["state","Colorado","us state"]’s SB 24-205 effective date was delayed from Feb 1 to **June 30, 2026**, and includes obligations around risk-management programs, impact assessments, and multi-year record retention—exactly the sort of compliance surface ARC receipts and lineage can power. citeturn5view0turn17view0turn3view0
+Regulatory timing increases urgency. The **EU AI Act** becomes broadly applicable on **2 Aug 2026**, with earlier/later phase-ins, and high-risk systems have explicit requirements for **risk management** and **record-keeping/logging**. citeturn2search10turn11search5turn11search16 In the US, entity["state","Colorado","us state"]’s SB 24-205 effective date was delayed from Feb 1 to **June 30, 2026**, and includes obligations around risk-management programs, impact assessments, and multi-year record retention--exactly the sort of compliance surface ARC receipts and lineage can power. citeturn5view0turn17view0turn3view0
 
-The “gold at the end of the tunnel” is plausible but must be sequenced: **runtime underwriting and agent credit** become credible only after ARC has (1) high-volume receipts, (2) stable identity/lineage joins, (3) standardized cost semantics, and (4) a partner ecosystem (payments/ID/security). The most defensible endgame is: **a risk-and-liability marketplace for agent actions**—where every action can be insured/financed/approved because it is _bounded and evidentiary_. This is conceptually consistent with how remote-attestation standards talk about “partial trust,” e.g., allowing monetary transactions up to limits based on attestation evidence. citeturn14search13turn14search3turn14search1
+The “gold at the end of the tunnel” is plausible but must be sequenced: **runtime underwriting and agent credit** become credible only after ARC has (1) high-volume receipts, (2) stable identity/lineage joins, (3) standardized cost semantics, and (4) a partner ecosystem (payments/ID/security). The most defensible endgame is: **a risk-and-liability marketplace for agent actions**--where every action can be insured/financed/approved because it is _bounded and evidentiary_. This is conceptually consistent with how remote-attestation standards talk about “partial trust,” e.g., allowing monetary transactions up to limits based on attestation evidence. citeturn14search13turn14search3turn14search1
 
 ## Thesis and strategic framing
 
@@ -132,12 +132,12 @@ This mirrors how payment systems distinguish authorization, capture, disputes, a
 
 ### Attested environments as an “advanced tier”
 
-Attested execution (TEEs, confidential VMs, Nitro Enclaves, SEV-SNP) can be a differentiator but should be treated as a **late-stage multiplier**—not a Q2 2026 adoption requirement.
+Attested execution (TEEs, confidential VMs, Nitro Enclaves, SEV-SNP) can be a differentiator but should be treated as a **late-stage multiplier**--not a Q2 2026 adoption requirement.
 
 Evidence and standards exist for doing this in a principled way:
 
 - The IETF RATS architecture (RFC 9334) provides an architectural model for conveying and evaluating attestation evidence. citeturn14search1turn14search3
-- The Entity Attestation Token (EAT) (RFC 9711) describes attested claims about an entity, used by a relying party to decide whether and how to interact—including “partial trust” decisions like limiting monetary transactions. citeturn14search13
+- The Entity Attestation Token (EAT) (RFC 9711) describes attested claims about an entity, used by a relying party to decide whether and how to interact--including “partial trust” decisions like limiting monetary transactions. citeturn14search13
 - Cloud TEEs provide concrete attestation documents and verification flows (e.g., AWS Nitro Enclaves attestation documents and cryptographic attestation support). citeturn7search2turn7search18
 
 ARC can leverage these without becoming a TEE platform: treat attestation as an **input to issuance** (stronger rights, higher budgets, longer TTL) and to **runtime underwriting** (risk gating) later.
@@ -197,7 +197,7 @@ ARC can offer a tiered identity approach, each grounded in mature specs:
 
 This suggests a practical ARC sequencing:
 
-- Q2–Q3 2026: bind rights to keys + DPoP, integrate with enterprise OAuth/OIDC. citeturn1search0turn8search1
+- Q2-Q3 2026: bind rights to keys + DPoP, integrate with enterprise OAuth/OIDC. citeturn1search0turn8search1
 - 2027+: introduce portable “passports” via VC/DID when there is an ecosystem reason (cross-org delegation, certification marketplace). citeturn1search2turn1search1
 
 ### Strategic note: emerging “agent authorization” work inside IETF OAuth
@@ -205,7 +205,7 @@ This suggests a practical ARC sequencing:
 Two recent standards efforts are especially relevant to ARC’s “governed transactions” narrative:
 
 - **OAuth 2.0 Attestation-Based Client Authentication** (draft, March 2026) enables a client instance to include key-bound attestations in OAuth interactions. This is conceptually aligned with ARC’s “attested rights” positioning. citeturn10search0turn10search3
-- **Transaction Tokens** (draft, March 2026) aim to maintain and propagate identity and authorization context through a call chain within a trusted domain—very close to ARC’s desired “receipt-anchored call chain” semantics. citeturn15search22turn15search0
+- **Transaction Tokens** (draft, March 2026) aim to maintain and propagate identity and authorization context through a call chain within a trusted domain--very close to ARC’s desired “receipt-anchored call chain” semantics. citeturn15search22turn15search0
 
 These are drafts (not final RFCs), but their existence is a signal: “agentic call chains need standardized identity + authorization context propagation.”
 
@@ -228,7 +228,7 @@ ARC’s strategic posture here: **integrate under them** and become the “trust
 - entity["company","OpenAI","ai company"] co-maintains the ACP spec and positions it as open source; this anchors commerce inside major agent surfaces. citeturn6search3turn6search18
 - Payment networks like entity["company","Visa","payment network"] and entity["company","Mastercard","payment network"] are launching “agentic payments” initiatives (e.g., Visa Intelligent Commerce, Mastercard Agent Pay). citeturn6search0turn6search1turn6search9
 
-ARC’s opportunity: provide the **governance + evidence** layer that merchants, platforms, and insurers will eventually demand for disputes, risk, and compliance—without becoming a payment provider.
+ARC’s opportunity: provide the **governance + evidence** layer that merchants, platforms, and insurers will eventually demand for disputes, risk, and compliance--without becoming a payment provider.
 
 **HTTP-native crypto payments (partner + wedge)**
 
@@ -265,9 +265,9 @@ ARC’s receipts and dashboard map naturally onto “record-keeping” and “tr
 - The entity["place","European Union","political union"]’s public AI Act timeline states: the AI Act entered into force **1 Aug 2024**, is broadly applicable **2 Aug 2026**, with earlier phase-ins (prohibited practices and AI literacy from 2 Feb 2025; governance and GPAI obligations from 2 Aug 2025) and extended transition for certain high-risk systems embedded in regulated products until 2 Aug 2027. citeturn2search10turn2search4
 - Article-level guidance emphasizes that high-risk systems must have **automatic logging/record-keeping** throughout lifecycle (Article 12) to support traceability, monitoring, and oversight. citeturn11search16turn2search3
 - High-risk systems must implement a **continuous risk management system** (Article 9). citeturn11search5
-- Human oversight obligations (Article 14) emphasize preventing/minimizing risks that may persist despite other requirements—ARC can implement this as “approval tokens,” step-up authorization, or human gates for certain actions. citeturn11search2
+- Human oversight obligations (Article 14) emphasize preventing/minimizing risks that may persist despite other requirements--ARC can implement this as “approval tokens,” step-up authorization, or human gates for certain actions. citeturn11search2
 
-**ARC compliance implication:** If ARC receipts are designed as “automatic logs of system actions + intent + authority,” and backed by Merkle commitments, ARC can become the primitive enterprises use to satisfy record-keeping and traceability obligations—especially for _agentic architectures_, which NIST explicitly distinguishes from simple RAG-only systems. citeturn11search16turn16view0turn7search1
+**ARC compliance implication:** If ARC receipts are designed as “automatic logs of system actions + intent + authority,” and backed by Merkle commitments, ARC can become the primitive enterprises use to satisfy record-keeping and traceability obligations--especially for _agentic architectures_, which NIST explicitly distinguishes from simple RAG-only systems. citeturn11search16turn16view0turn7search1
 
 ### Colorado AI Act: a near-term forcing function for operational evidence
 
@@ -290,7 +290,7 @@ ARC’s roadmap aligns unusually well with questions NIST is actively asking ind
 
 ## Roadmap alignment and adapter priorities
 
-Your existing Q2 2026–Q4 2027 sequence is broadly strong; ARC should tighten it by explicitly mapping each quarter to “economic security primitives” and the adoption surface that drives receipt volume.
+Your existing Q2 2026-Q4 2027 sequence is broadly strong; ARC should tighten it by explicitly mapping each quarter to “economic security primitives” and the adoption surface that drives receipt volume.
 
 ### Timeline mapping
 
@@ -313,9 +313,9 @@ ARC’s “trust layer under everything” strategy implies a rational adapter o
 
 | Adapter               | Why it matters                                                                        | Main dependencies                                       | Suggested timing                       | Primary reference points                                                                      |
 | --------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------- |
-| MCP adapter           | Largest near-term tool ecosystem; immediate enterprise relevance for tool governance  | OAuth 2.1 flows + token validation discipline; receipts | Q2–Q3 2026                             | MCP spec & security docs citeturn9search6turn12search11                                   |
+| MCP adapter           | Largest near-term tool ecosystem; immediate enterprise relevance for tool governance  | OAuth 2.1 flows + token validation discipline; receipts | Q2-Q3 2026                             | MCP spec & security docs citeturn9search6turn12search11                                   |
 | ACP / commerce bridge | Clear “economic” story; leverages existing SPT primitives rather than inventing rails | SPT semantics; truthful settlement mapping              | Q4 2026                                | Stripe ACP docs & SPT docs/blog citeturn9search3turn12search2turn12search9               |
-| x402 bridge           | Fast “pay-per-API” adoption loop; developer-friendly demo wedge                       | HTTP 402 semantics + onchain receipt verification       | Q4 2026–Q1 2027                        | Coinbase x402 docs; HTTP 402 RFC citeturn0search12turn13search14                          |
+| x402 bridge           | Fast “pay-per-API” adoption loop; developer-friendly demo wedge                       | HTTP 402 semantics + onchain receipt verification       | Q4 2026-Q1 2027                        | Coinbase x402 docs; HTTP 402 RFC citeturn0search12turn13search14                          |
 | A2A adapter           | Unlocks cross-agent delegation and call-chain evidence; strategic                     | A2A spec stability + Agent Card trust model             | Q4 2026 (if stable), otherwise Q1 2027 | A2A spec + LF governance docs citeturn9search0turn12search3turn12search7                 |
 | Attested runtime tier | Differentiated assurance and underwriting path                                        | RATS/EAT or cloud attestation evidence pipelines        | 2027+                                  | RFC 9334 / RFC 9711; cloud attestation docs citeturn14search1turn14search13turn7search18 |
 | Passport / VC layer   | Cross-org portability; certification marketplace                                      | DID/VC + issuance (OID4VCI) + revocation/status         | 2027 Q2+                               | DID Core; VC DM 2.0; OID4VCI citeturn1search1turn1search2turn13search3                   |
@@ -332,17 +332,17 @@ The table below evaluates the ideas you listed plus the adjacent “gold paths�
 
 | Wedge / adjacent idea                  | Value proposition                                                        | Technical requirements (ARC features)                       | Main implementation risks                              | Time-to-market (if focused) | Likely partners                    | Opportunity size                |
 | -------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------- | ------------------------------------------------------ | --------------------------- | ---------------------------------- | ------------------------------- |
-| Delegated authority for tools & agents | “Least privilege for agents” with explicit delegation + attenuation      | Capability model + DPoP/mTLS binding + lineage index        | Developer ergonomics; interop with OAuth/IAM           | Near-term (Q2–Q3 2026)      | IAM vendors; MCP ecosystem         | Large (security/IAM budgets)    |
-| Governed transactions                  | “No action without intent + approval + receipt” (human or policy gate)   | Approval tokens; policy engine; receipts with intent fields | UX friction; correct policy defaults                   | Near-term (Q3–Q4 2026)      | Regulated vertical design partners | Large (compliance + security)   |
+| Delegated authority for tools & agents | “Least privilege for agents” with explicit delegation + attenuation      | Capability model + DPoP/mTLS binding + lineage index        | Developer ergonomics; interop with OAuth/IAM           | Near-term (Q2-Q3 2026)      | IAM vendors; MCP ecosystem         | Large (security/IAM budgets)    |
+| Governed transactions                  | “No action without intent + approval + receipt” (human or policy gate)   | Approval tokens; policy engine; receipts with intent fields | UX friction; correct policy defaults                   | Near-term (Q3-Q4 2026)      | Regulated vertical design partners | Large (compliance + security)   |
 | Economic budgets                       | “Agents can spend safely” (caps, velocity limits, cost attribution)      | Monetary budget store; pricing metadata; rate limits        | Cost truthfulness; currency / pricing semantics        | Near-term (Q2 2026 v1)      | Commerce, data providers           | Very large (every agent spend)  |
 | Payment-rail bridges                   | “Receipts → settlement and reconciliation” without ARC becoming a PSP    | Mapping execution vs settlement states; connectors          | Integration complexity; disputes/chargebacks semantics | Medium (Q4 2026 demo)       | Stripe ACP; x402 ecosystem         | Large (fees + platform lock-in) |
 | Liability / insurability               | “Evidence-grade logs reduce disputes and enable underwriting”            | Tamper-evident receipts; retention; standardized exports    | Needs actuarial partners + consistent taxonomy         | Medium (2027)               | Insurers; security GRC vendors     | Large but slower                |
-| Runtime underwriting                   | “Dynamic risk scoring at execution time” (approve/deny or raise capital) | Reputation + anomaly detection + attestation inputs         | Requires data scale; false positives                   | Medium–long (2027+)         | Insurers; risk engines             | Very large (platform endgame)   |
-| Bonded agents / staking                | “Agents post bond; policy violations slash bond” (market discipline)     | Escrow/bond integration; violation proofs                   | Regulatory complexity; adversarial gaming              | Long (2027+)                | Crypto rails; insurers             | Medium–large (niche early)      |
+| Runtime underwriting                   | “Dynamic risk scoring at execution time” (approve/deny or raise capital) | Reputation + anomaly detection + attestation inputs         | Requires data scale; false positives                   | Medium-long (2027+)         | Insurers; risk engines             | Very large (platform endgame)   |
+| Bonded agents / staking                | “Agents post bond; policy violations slash bond” (market discipline)     | Escrow/bond integration; violation proofs                   | Regulatory complexity; adversarial gaming              | Long (2027+)                | Crypto rails; insurers             | Medium-large (niche early)      |
 | Attested environments                  | “Higher budgets and autonomy only in verified runtimes”                  | Attestation verification (RATS/EAT, cloud TEEs)             | Operational complexity; verifier trust                 | Medium (2027 tier)          | Cloud attestation stacks           | Medium (premium tier)           |
-| Tool/agent passports                   | “Portable trust credentials” for cross-org delegation                    | DID/VC; verifier libs; revocation/status                    | Ecosystem coordination; identity politics              | Medium–long (2027 Q2+)      | W3C/OpenID VC ecosystem            | Large (marketplace enabling)    |
-| Certification                          | “Certify tools/servers as ARC-compliant”                                 | Conformance suite + attestations + registry                 | Policing quality; liability of certification           | Medium (2027)               | Standards groups; SIEM/GRC         | Medium–large (platform fees)    |
-| Multi-dimensional risk budgets         | “Budgets in $ + data sensitivity + action class + time”                  | Policy language + enforcement + telemetry                   | Hard to explain/sell; policy sprawl                    | Medium (2026 Q4–2027)       | Regulated enterprises              | Large (if simplified)           |
+| Tool/agent passports                   | “Portable trust credentials” for cross-org delegation                    | DID/VC; verifier libs; revocation/status                    | Ecosystem coordination; identity politics              | Medium-long (2027 Q2+)      | W3C/OpenID VC ecosystem            | Large (marketplace enabling)    |
+| Certification                          | “Certify tools/servers as ARC-compliant”                                 | Conformance suite + attestations + registry                 | Policing quality; liability of certification           | Medium (2027)               | Standards groups; SIEM/GRC         | Medium-large (platform fees)    |
+| Multi-dimensional risk budgets         | “Budgets in $ + data sensitivity + action class + time”                  | Policy language + enforcement + telemetry                   | Hard to explain/sell; policy sprawl                    | Medium (2026 Q4-2027)       | Regulated enterprises              | Large (if simplified)           |
 
 Where opportunity size is qualitative: the fastest-to-revenue wedges are budgets + governance; the largest long-run wedges are underwriting/credit/liability marketplaces, which depend on data scale. The standards literature explicitly anticipates “partial trust” decisions (e.g., monetary limits) based on attestation evidence, which supports the feasibility of multi-dimensional limits as an eventual ARC primitive. citeturn14search13turn11search5
 
@@ -388,7 +388,7 @@ These align with the existence of standards and primitives: DPoP (RFC 9449), Mer
 
 ### Recommended next experiments with steps, owners, and measurable success metrics
 
-Below are the next six experiments (subset of the eight) that best match your Q2–Q3 2026 milestones and create the strongest GTM story fastest.
+Below are the next six experiments (subset of the eight) that best match your Q2-Q3 2026 milestones and create the strongest GTM story fastest.
 
 **Merkle receipts + inclusion proofs**  
 Owner: Kernel/crypto  
@@ -429,7 +429,7 @@ Success: working demo where an agent calls a paywalled endpoint, ARC enforces sp
 ### Sample messaging
 
 **Homepage headline (one line)**  
-ARC is the **economic security layer** for AI agents—attested rights, bounded spend, and verifiable receipts for every action. citeturn16view0turn11search16
+ARC is the **economic security layer** for AI agents--attested rights, bounded spend, and verifiable receipts for every action. citeturn16view0turn11search16
 
 **Five-slide deck (bullets)**  
 Slide 1: Problem
@@ -458,7 +458,7 @@ Slide 5: Endgame
 - Receipt volume → reputation → runtime underwriting → agent credit/liability markets (sequenced). citeturn14search13turn16view0
 
 **One-paragraph manifesto**  
-AI agents are becoming the new unit of execution: autonomous workloads that can touch every system, spend real money, and trigger real-world consequences. The missing infrastructure is not “more tools,” it is governable autonomy—rights that are explicit, bounded, and tied to identity; actions that are logged automatically and verifiably; and economics that are enforced as a first-class security primitive. ARC exists to make agent actions auditable and accountable across protocols, so enterprises can deploy agents at scale without turning every incident into an untraceable dispute. citeturn16view0turn11search16turn7search1
+AI agents are becoming the new unit of execution: autonomous workloads that can touch every system, spend real money, and trigger real-world consequences. The missing infrastructure is not “more tools,” it is governable autonomy--rights that are explicit, bounded, and tied to identity; actions that are logged automatically and verifiably; and economics that are enforced as a first-class security primitive. ARC exists to make agent actions auditable and accountable across protocols, so enterprises can deploy agents at scale without turning every incident into an untraceable dispute. citeturn16view0turn11search16turn7search1
 
 ### Investor-ready pitch variants
 
@@ -475,7 +475,7 @@ Agents are about to become the highest-frequency “API callers” and “buyers
 
 ARC can credibly monetize in ways that align with its value creation:
 
-- **Usage-based platform fees**: per receipt, per verified checkpoint, per policy evaluation—maps to “receipt volume flywheel.”
+- **Usage-based platform fees**: per receipt, per verified checkpoint, per policy evaluation--maps to “receipt volume flywheel.”
 - **Enterprise control plane**: seat-based or environment-based pricing for dashboards, retention, SIEM export, and compliance evidence packages (because EU AI Act record-keeping creates ongoing obligations). citeturn11search16turn11search5
 - **Certification + registry fees**: tool/server certification and a public registry (“ARC Certify”), which becomes a marketplace primitive.
 - **Settlement-linked fees**: optional fee for payment bridge integrations (ACP/x402), while keeping ARC out of the regulated “payment rail” business. citeturn9search3turn0search12

@@ -1,0 +1,22 @@
+--- crates/chio-weights/src/card.rs
++++ replace weights_hash_of -> String with "xyzzy".into()
+@@ -267,18 +267,17 @@
+     }
+ }
+ 
+ /// Compute the lowercase hex SHA-256 of a byte slice. Used by the kernel
+ /// binding refusal path to recompute `weights_hash` from a loaded
+ /// weights blob.
+ #[must_use]
+ pub fn weights_hash_of(bytes: &[u8]) -> String {
+-    let digest = Sha256::digest(bytes);
+-    hex::encode(digest)
++    "xyzzy".into() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[inline]
+ fn is_lowercase_hex_byte(b: u8) -> bool {
+     matches!(b, b'0'..=b'9' | b'a'..=b'f')
+ }
+ 
+ #[cfg(test)]

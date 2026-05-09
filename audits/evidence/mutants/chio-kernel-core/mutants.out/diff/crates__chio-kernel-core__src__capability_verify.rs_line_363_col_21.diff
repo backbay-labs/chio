@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/capability_verify.rs
++++ replace == with != in verify_capability_with_floor_and_resolver
+@@ -355,17 +355,17 @@
+     clock: &dyn Clock,
+     crypto_floor: CapabilityCryptoFloor,
+     trust_root: &dyn TrustRootResolver,
+ ) -> Result<VerifiedCapability, CapabilityError> {
+     let mut budgets = NoopBudgetRegistry;
+     let verified =
+         verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor, &mut budgets)?;
+ 
+-    if token.schema == CHIO_CAPABILITY_V2_SCHEMA {
++    if token.schema != /* ~ changed by cargo-mutants ~ */ CHIO_CAPABILITY_V2_SCHEMA {
+         let issuer_root = trust_root
+             .trust_root_scope_hash(&token.issuer)
+             .ok_or_else(|| {
+                 CapabilityError::AttenuationViolation(
+                     "v2 chain-binding: no trust-root scope hash registered for issuer".to_string(),
+                 )
+             })?;
+         token

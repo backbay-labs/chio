@@ -1,0 +1,42 @@
+--- crates/chio-kernel-core/src/normalized.rs
++++ replace <impl TryFrom<&Constraint> for NormalizedConstraint>::try_from -> Result<Self, Self::Error> with Ok(Default::default())
+@@ -531,38 +531,17 @@
+         }
+     }
+ }
+ 
+ impl TryFrom<&Constraint> for NormalizedConstraint {
+     type Error = NormalizationError;
+ 
+     fn try_from(constraint: &Constraint) -> Result<Self, Self::Error> {
+-        match constraint {
+-            Constraint::PathPrefix(value) => Ok(Self::PathPrefix(value.clone())),
+-            Constraint::DomainExact(value) => Ok(Self::DomainExact(value.clone())),
+-            Constraint::DomainGlob(value) => Ok(Self::DomainGlob(value.clone())),
+-            Constraint::RegexMatch(value) => Ok(Self::RegexMatch(value.clone())),
+-            Constraint::MaxLength(value) => Ok(Self::MaxLength(*value)),
+-            Constraint::MaxArgsSize(value) => Ok(Self::MaxArgsSize(*value)),
+-            Constraint::GovernedIntentRequired => Ok(Self::GovernedIntentRequired),
+-            Constraint::RequireApprovalAbove { threshold_units } => {
+-                Ok(Self::RequireApprovalAbove {
+-                    threshold_units: *threshold_units,
+-                })
+-            }
+-            Constraint::SellerExact(value) => Ok(Self::SellerExact(value.clone())),
+-            Constraint::MinimumRuntimeAssurance(tier) => {
+-                Ok(Self::MinimumRuntimeAssurance((*tier).into()))
+-            }
+-            Constraint::Custom(key, value) => Ok(Self::Custom(key.clone(), value.clone())),
+-            unsupported => Err(NormalizationError::UnsupportedConstraint {
+-                kind: unsupported_constraint_name(unsupported).to_string(),
+-            }),
+-        }
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ #[cfg(not(kani))]
+ fn monetary_cap_is_subset(
+     child: Option<&NormalizedMonetaryAmount>,
+     parent: Option<&NormalizedMonetaryAmount>,
+ ) -> bool {

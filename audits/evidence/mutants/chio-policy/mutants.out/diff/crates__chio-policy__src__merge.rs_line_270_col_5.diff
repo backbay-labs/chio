@@ -1,0 +1,48 @@
+--- crates/chio-policy/src/merge.rs
++++ replace merge_reputation_scoring -> Option<ReputationScoringConfig> with Some(Default::default())
+@@ -262,44 +262,17 @@
+         (None, None) => None,
+     }
+ }
+ 
+ fn merge_reputation_scoring(
+     base: &Option<ReputationScoringConfig>,
+     child: &Option<ReputationScoringConfig>,
+ ) -> Option<ReputationScoringConfig> {
+-    match (base, child) {
+-        (_, Some(child_scoring)) => {
+-            if let Some(base_scoring) = base {
+-                Some(ReputationScoringConfig {
+-                    weights: merge_reputation_weights(
+-                        &base_scoring.weights,
+-                        &child_scoring.weights,
+-                    ),
+-                    temporal_decay_half_life_days: child_scoring
+-                        .temporal_decay_half_life_days
+-                        .or(base_scoring.temporal_decay_half_life_days),
+-                    probationary_receipt_count: child_scoring
+-                        .probationary_receipt_count
+-                        .or(base_scoring.probationary_receipt_count),
+-                    probationary_score_ceiling: child_scoring
+-                        .probationary_score_ceiling
+-                        .or(base_scoring.probationary_score_ceiling),
+-                    probationary_min_days: child_scoring
+-                        .probationary_min_days
+-                        .or(base_scoring.probationary_min_days),
+-                })
+-            } else {
+-                Some(child_scoring.clone())
+-            }
+-        }
+-        (Some(base_scoring), None) => Some(base_scoring.clone()),
+-        (None, None) => None,
+-    }
++    Some(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn merge_reputation_weights(
+     base: &Option<ReputationWeights>,
+     child: &Option<ReputationWeights>,
+ ) -> Option<ReputationWeights> {
+     match (base, child) {
+         (_, Some(child_weights)) => {

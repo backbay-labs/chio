@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/bitcoin.rs
++++ replace != with == in verify_ots_proof_for_submission
+@@ -131,17 +131,17 @@
+ ) -> Result<ParsedOtsProof, AnchorError> {
+     let inspection = inspect_ots_proof(ots_proof_b64)?;
+     if inspection.digest_algorithm != submission.document_hash_algorithm {
+         return Err(AnchorError::Verification(format!(
+             "OTS digest algorithm {} does not match expected {}",
+             inspection.digest_algorithm, submission.document_hash_algorithm
+         )));
+     }
+-    if inspection.start_digest != submission.document_digest.to_hex_prefixed() {
++    if inspection.start_digest == /* ~ changed by cargo-mutants ~ */ submission.document_digest.to_hex_prefixed() {
+         return Err(AnchorError::Verification(
+             "OTS proof does not commit to the expected Chio super-root document digest".to_string(),
+         ));
+     }
+     if inspection.bitcoin_attestation_heights.is_empty() {
+         return Err(AnchorError::Verification(
+             "OTS proof is still pending and does not yet contain a Bitcoin attestation".to_string(),
+         ));
