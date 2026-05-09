@@ -145,5 +145,5 @@ jobs:
               --exclude-crate chio-kernel-core --list
             echo "::endgroup::"
             bash scripts/run-kani-manifest.sh --lane "${lane}" \
-              --exclude-crate chio-kernel-core
+              --exclude-crate chio-kernel-core --allow-empty
           done

@@ -84,7 +84,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      sed -n '2,46p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -227,7 +227,6 @@ if command -v timeout >/dev/null 2>&1; then
 fi
 
 COUNT=0
-FAILED=0
 while IFS=$'\t' read -r crate harness unwind timeout features; do
   [[ -z "$crate" ]] && continue
   COUNT=$((COUNT + 1))
@@ -263,7 +262,6 @@ while IFS=$'\t' read -r crate harness unwind timeout features; do
   fi
   set -e
   if [[ "$rc" -ne 0 ]]; then
-    FAILED=$((FAILED + 1))
     echo "::endgroup::"
     echo "FAIL: ${crate}::${harness} exited with code ${rc}" >&2
     exit "$rc"
