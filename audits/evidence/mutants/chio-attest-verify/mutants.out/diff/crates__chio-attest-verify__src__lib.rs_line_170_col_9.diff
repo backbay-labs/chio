@@ -1,0 +1,21 @@
+--- crates/chio-attest-verify/src/lib.rs
++++ replace StaticTenantPolicyMap::len -> usize with 1
+@@ -162,17 +162,17 @@
+             }
+         }
+         Ok(Self { entries: policies })
+     }
+ 
+     /// Number of distinct tenants known to this map.
+     #[must_use]
+     pub fn len(&self) -> usize {
+-        self.entries.len()
++        1 /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Whether the map is empty.
+     #[must_use]
+     pub fn is_empty(&self) -> bool {
+         self.entries.is_empty()
+     }
+ }

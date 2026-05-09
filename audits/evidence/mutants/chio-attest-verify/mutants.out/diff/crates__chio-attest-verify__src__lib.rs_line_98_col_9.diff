@@ -1,0 +1,24 @@
+--- crates/chio-attest-verify/src/lib.rs
++++ replace ExpectedIdentity::doc_hidden_inline -> Self with Default::default()
+@@ -90,20 +90,17 @@
+     /// `doc-hidden` as exempt; both signals point reviewers at this
+     /// constructor as the only sanctioned inline-regex entry point.
+     #[doc(hidden)]
+     #[must_use]
+     pub fn doc_hidden_inline(
+         certificate_identity_regexp: impl Into<String>,
+         certificate_oidc_issuer: impl Into<String>,
+     ) -> Self {
+-        Self {
+-            certificate_identity_regexp: certificate_identity_regexp.into(),
+-            certificate_oidc_issuer: certificate_oidc_issuer.into(),
+-        }
++        Default::default() /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ /// Resolves a tenant identifier into the [`ExpectedIdentity`] pinned by the
+ /// tenant's signed [`TenantPolicy`].
+ ///
+ /// Implementations are loaded once at startup (typically from a directory
+ /// of TOML policy files passed through [`TenantPolicyLoader`]) and shared

@@ -1,0 +1,42 @@
+--- crates/chio-attest-verify/src/sigstore.rs
++++ replace SigstoreVerifier::with_embedded_root -> Result<Self, AttestError> with Ok(Default::default())
+@@ -73,38 +73,17 @@
+ impl SigstoreVerifier {
+     /// Construct a verifier backed by the embedded Sigstore Public Good
+     /// Instance trust root. The TUF root is shipped in-tree under
+     /// `sigstore-root/trusted_root.json` and validated at build time by
+     /// `build.rs`. This constructor never panics on a well-formed
+     /// embedded root; a corrupted root surfaces as
+     /// [`AttestError::TrustRoot`].
+     pub fn with_embedded_root() -> Result<Self, AttestError> {
+-        let trust_root = build_trust_root()?;
+-
+-        let fulcio_root_ders: Vec<Vec<u8>> = trust_root
+-            .fulcio_certs()
+-            .map_err(|_| AttestError::TrustRoot)?
+-            .into_iter()
+-            .map(|der| der.as_ref().to_vec())
+-            .collect();
+-
+-        if fulcio_root_ders.is_empty() {
+-            return Err(AttestError::TrustRoot);
+-        }
+-
+-        let runtime = tokio::runtime::Builder::new_current_thread()
+-            .enable_all()
+-            .build()
+-            .map_err(AttestError::Io)?;
+-
+-        Ok(Self {
+-            fulcio_root_ders: Arc::new(fulcio_root_ders),
+-            runtime,
+-        })
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Internal helper that builds an [`AsyncBundleVerifier`] from a
+     /// freshly-parsed copy of the embedded trust root. A new verifier is
+     /// constructed per call so that the bundle verifier's internal state
+     /// never leaks between concurrent `verify_*` invocations. The
+     /// per-call parse cost is negligible compared with the network and
+     /// crypto work that follows in the typical `verify_bundle` flow.

@@ -1,0 +1,29 @@
+--- crates/chio-attest-verify/src/sigstore.rs
++++ replace <impl AttestVerifier for SigstoreVerifier>::verify_blob -> Result<VerifiedAttestation, AttestError> with Ok(Default::default())
+@@ -122,25 +122,17 @@
+ impl AttestVerifier for SigstoreVerifier {
+     fn verify_blob(
+         &self,
+         artifact: &Path,
+         signature: &Path,
+         certificate: &Path,
+         expected: &ExpectedIdentity,
+     ) -> Result<VerifiedAttestation, AttestError> {
+-        let artifact_bytes = fs::read(artifact)?;
+-        let signature_bytes = fs::read(signature)?;
+-        let certificate_bytes = fs::read(certificate)?;
+-        self.verify_bytes(
+-            &artifact_bytes,
+-            &signature_bytes,
+-            &certificate_bytes,
+-            expected,
+-        )
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     fn verify_bytes(
+         &self,
+         artifact: &[u8],
+         signature: &[u8],
+         certificate_pem: &[u8],
+         expected: &ExpectedIdentity,
