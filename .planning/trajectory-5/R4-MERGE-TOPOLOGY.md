@@ -106,8 +106,9 @@ records that ancestry explicitly.
 Command shape:
 
 ```bash
-git worktree add --detach /tmp/arc-r4-sim4.15uzIT/work origin/main
-git -C /tmp/arc-r4-sim4.15uzIT/work merge --no-edit --no-stat <origin/pr/N>
+SIM_WORKTREE="$(mktemp -d -t arc-r4-sim.XXXXXX)/work"
+git worktree add --detach "$SIM_WORKTREE" origin/main
+git -C "$SIM_WORKTREE" merge --no-edit --no-stat <origin/pr/N>
 ```
 
 Simulation metadata:
