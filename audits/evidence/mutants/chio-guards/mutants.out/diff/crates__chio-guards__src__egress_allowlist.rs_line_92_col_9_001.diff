@@ -1,0 +1,38 @@
+--- crates/chio-guards/src/egress_allowlist.rs
++++ replace EgressAllowlistGuard::is_allowed -> bool with false
+@@ -84,34 +84,17 @@
+             .collect::<Result<Vec<_>, _>>()?;
+         Ok(Self {
+             allow_patterns,
+             block_patterns,
+         })
+     }
+ 
+     pub fn is_allowed(&self, domain: &str) -> bool {
+-        let domain = domain.to_lowercase();
+-
+-        // Block list takes precedence.
+-        for pattern in &self.block_patterns {
+-            if pattern.matches(&domain) {
+-                return false;
+-            }
+-        }
+-
+-        // Check allow list.
+-        for pattern in &self.allow_patterns {
+-            if pattern.matches(&domain) {
+-                return true;
+-            }
+-        }
+-
+-        // Default: deny (fail-closed).
+-        false
++        false /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ impl Default for EgressAllowlistGuard {
+     fn default() -> Self {
+         Self::new()
+     }
+ }

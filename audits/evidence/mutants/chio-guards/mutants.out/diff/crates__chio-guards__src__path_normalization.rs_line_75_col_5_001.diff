@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/path_normalization.rs
++++ replace normalize_path_for_policy_with_fs -> String with String::new()
+@@ -67,17 +67,17 @@
+ }
+ 
+ /// Normalize a path for policy matching, preferring filesystem-resolved targets when possible.
+ ///
+ /// - For existing paths, this resolves symlinks via `canonicalize`.
+ /// - For non-existing write targets, this resolves the parent directory and rejoins the filename.
+ /// - Falls back to lexical normalization when resolution is not possible.
+ pub fn normalize_path_for_policy_with_fs(path: &str) -> String {
+-    resolve_path_for_policy(path).unwrap_or_else(|| normalize_path_for_policy(path))
++    String::new() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn resolve_path_for_policy(path: &str) -> Option<String> {
+     let raw = Path::new(path);
+     if let Ok(canonical) = std::fs::canonicalize(raw) {
+         return Some(normalize_path_for_policy(&canonical.to_string_lossy()));
+     }
+ 
