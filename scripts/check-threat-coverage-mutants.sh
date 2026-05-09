@@ -274,12 +274,16 @@ echo "  weak (real failures): ${#weak_hints[@]}"
 echo "  bootstrap placeholders: ${#bootstrap_hints[@]}"
 
 # Always print every hint so authors see the full picture.
-for h in "${bootstrap_hints[@]}"; do
-    echo "$h"
-done
-for h in "${weak_hints[@]}"; do
-    echo "$h" >&2
-done
+if ((${#bootstrap_hints[@]} > 0)); then
+    for h in "${bootstrap_hints[@]}"; do
+        echo "$h"
+    done
+fi
+if ((${#weak_hints[@]} > 0)); then
+    for h in "${weak_hints[@]}"; do
+        echo "$h" >&2
+    done
+fi
 
 if [[ "$fail" -eq 1 && "$DRY_RUN" -ne 1 ]]; then
     echo "" >&2
