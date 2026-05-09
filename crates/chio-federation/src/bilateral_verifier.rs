@@ -38,12 +38,14 @@
 //! * [`RevocationOracle`] / [`DemoAllowAllRevocationOracle`] - step 9.
 //! * [`PinnedEpoch`] - verifier's wall clock + epoch height.
 //! * [`VerifierConfig`] - bundles the trait objects + epoch.
-//! * [`verify_bilateral_cosign_invocation`] - runs the partial
-//!   local verifier (not full §7 conformance pending strict predicate-profile completion).
+//! * [`verify_bilateral_cosign_invocation`] - the canonical verifier for
+//!   the local bilateral DSSE signature-slice profile. This is not full
+//!   §7 conformance pending strict predicate-profile completion.
 //! * [`VerifiedBilateralCoSignInvocation`] - successful verifier output
 //!   (mirrors §7 step 17 for the steps this implementation covers).
-//! * [`VerifierError`] - fail-closed error codes mapping 1:1 to spec
-//!   §7.1 (e.g. `subject.digest_mismatch`, `peer.unpinned_or_keyid_mismatch`).
+//! * [`VerifierError`] - fail-closed error codes for the spec §7.1-compatible
+//!   subset this partial verifier can reach (e.g. `subject.digest_mismatch`,
+//!   `peer.unpinned_or_keyid_mismatch`).
 //!
 //! ## Usage from the local fixture helper
 //!
@@ -73,9 +75,12 @@ use crate::bilateral_dsse::{
 // ---------------------------------------------------------------------------
 
 /// Fail-closed error codes returned by [`verify_bilateral_cosign_invocation`].
-/// Each variant maps verbatim to a spec §7.1 code (the `Display` impl
-/// emits the code itself); kernels that surface verifier output in
-/// receipts SHOULD log the code as the canonical value.
+/// Each exposed variant maps verbatim to a spec §7.1 code (the `Display`
+/// impl emits the code itself); kernels that surface verifier output in
+/// receipts SHOULD log the code as the canonical value. Strict CHIODOS
+/// consistency errors for `totally-ordered` and `quorum-required`
+/// predicates are intentionally not exposed by this signature-slice
+/// verifier because those modes fail earlier as `predicate.schema_invalid`.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum VerifierError {
     /// `dsse.malformed` - envelope JSON is not parseable, payloadType
@@ -127,14 +132,6 @@ pub enum VerifierError {
     /// lacks a `governance_receipt_ref`.
     #[error("governance.receipt_required_missing: {0}")]
     GovernanceReceiptRequiredMissing(String),
-    /// `consistency.anchor_unverified` - a `totally-ordered` predicate's
-    /// anchor cannot be reconciled with the verifier's view.
-    #[error("consistency.anchor_unverified: {0}")]
-    ConsistencyAnchorUnverified(String),
-    /// `consistency.quorum_underpopulated` - a `quorum-required`
-    /// predicate's envelope lacks the declared quorum's signatures.
-    #[error("consistency.quorum_underpopulated: {0}")]
-    ConsistencyQuorumUnderpopulated(String),
     /// Fail-closed action-class invariant: `governance.unknown_action_class`.
     /// The predicate's `tool_name` is not registered in the verifier's
     /// `action_classes` table. The pre-fix verifier silently fell back
@@ -165,8 +162,6 @@ impl VerifierError {
             Self::PolicyVerdictDisagreement(_) => "policy.verdict_disagreement",
             Self::CapabilityLeaseExpiredOrUnknown(_) => "capability.lease_expired_or_unknown",
             Self::GovernanceReceiptRequiredMissing(_) => "governance.receipt_required_missing",
-            Self::ConsistencyAnchorUnverified(_) => "consistency.anchor_unverified",
-            Self::ConsistencyQuorumUnderpopulated(_) => "consistency.quorum_underpopulated",
             Self::UnknownActionClass { .. } => "governance.unknown_action_class",
         }
     }
@@ -174,16 +169,7 @@ impl VerifierError {
 
 impl From<BilateralCoSigningError> for VerifierError {
     fn from(e: BilateralCoSigningError) -> Self {
-        match e {
-            BilateralCoSigningError::CanonicalJson(s) => Self::StatementMalformed(s),
-            BilateralCoSigningError::OrgASignatureInvalid => {
-                Self::SignatureServerAInvalid("delegated".to_string())
-            }
-            BilateralCoSigningError::OrgBSignatureInvalid => {
-                Self::SignatureServerBInvalid("delegated".to_string())
-            }
-            other => Self::DsseMalformed(other.to_string()),
-        }
+        map_bilateral_error(e)
     }
 }
 
@@ -511,9 +497,7 @@ pub fn verify_bilateral_cosign_invocation(
         ));
     }
 
-    let (statement, statement_bytes) = envelope
-        .decode_statement()
-        .map_err(|e| VerifierError::DsseMalformed(e.to_string()))?;
+    let (statement, statement_bytes) = envelope.decode_statement().map_err(map_bilateral_error)?;
 
     // ---- Step 3: in-toto v1 schema -------------------------------------
     if statement.statement_type != STATEMENT_TYPE_V1 {
@@ -671,21 +655,8 @@ pub fn verify_bilateral_cosign_invocation(
         )));
     }
 
-    verify_dsse_envelope(envelope, &pinned_a.public_key, &pinned_b.public_key).map_err(
-        |e| match e {
-            BilateralCoSigningError::OrgASignatureInvalid => {
-                VerifierError::SignatureServerAInvalid(
-                    "PAE re-derivation under tool_server_a passport key failed".to_string(),
-                )
-            }
-            BilateralCoSigningError::OrgBSignatureInvalid => {
-                VerifierError::SignatureServerBInvalid(
-                    "PAE re-derivation under tool_server_b passport key failed".to_string(),
-                )
-            }
-            other => VerifierError::DsseMalformed(other.to_string()),
-        },
-    )?;
+    verify_dsse_envelope(envelope, &pinned_a.public_key, &pinned_b.public_key)
+        .map_err(map_bilateral_error)?;
 
     // Sanity: the statement_bytes the producer signed equal what we just
     // decoded. (Detects a verifier-side encoding drift; the upstream
@@ -855,25 +826,19 @@ pub fn verify_bilateral_cosign_invocation(
     };
 
     // ---- Step 16: consistency anchor reconciliation -------------------
-    match pred.consistency_model.as_str() {
-        "crdt-commutative" => {}
-        "totally-ordered" => {
-            return Err(VerifierError::ConsistencyAnchorUnverified(
-                "totally-ordered consistency requires verifier-side anchor reconciliation"
-                    .to_string(),
-            ));
-        }
-        "quorum-required" => {
-            return Err(VerifierError::ConsistencyQuorumUnderpopulated(
-                "quorum-required consistency is rejected until quorum metadata and signature-set verification are implemented".to_string(),
-            ));
-        }
-        other => {
-            return Err(VerifierError::PredicateSchemaInvalid(format!(
-                "consistency_model {:?} is not in {{crdt-commutative, totally-ordered, quorum-required}}",
-                other
-            )));
-        }
+    //
+    // The signature-slice profile deliberately supports only
+    // `crdt-commutative`. `verify_dsse_envelope` rejects
+    // `totally-ordered` and `quorum-required` before this point with
+    // `predicate.schema_invalid`, so this verifier does not expose
+    // unreachable `consistency.*` error codes. Strict ordered/quorum
+    // reconciliation belongs to the future CHIODOS predicate-profile
+    // implementation.
+    if pred.consistency_model != crate::bilateral_dsse::DEFAULT_CONSISTENCY_MODEL {
+        return Err(VerifierError::PredicateSchemaInvalid(format!(
+            "consistency_model {:?} is not supported by the signature-slice profile",
+            pred.consistency_model
+        )));
     }
 
     // ---- Step 17: success ---------------------------------------------
@@ -941,6 +906,36 @@ fn validate_predicate_required_fields(pred: &BilateralPredicate) -> Result<(), V
         }
     }
     Ok(())
+}
+
+fn map_bilateral_error(error: BilateralCoSigningError) -> VerifierError {
+    match error {
+        BilateralCoSigningError::OrgASignatureInvalid => VerifierError::SignatureServerAInvalid(
+            "PAE re-derivation under tool_server_a passport key failed".to_string(),
+        ),
+        BilateralCoSigningError::OrgBSignatureInvalid => VerifierError::SignatureServerBInvalid(
+            "PAE re-derivation under tool_server_b passport key failed".to_string(),
+        ),
+        BilateralCoSigningError::CanonicalJson(message) => {
+            if message.starts_with("payload json:")
+                || message.starts_with("statement.malformed")
+                || message.contains("not canonical JSON")
+            {
+                VerifierError::StatementMalformed(message)
+            } else if message.starts_with("statement.schema_invalid") {
+                VerifierError::StatementSchemaInvalid(message)
+            } else if message.starts_with("predicate.type_unrecognised") {
+                VerifierError::PredicateTypeUnrecognised(message)
+            } else if message.starts_with("predicate.schema_invalid") {
+                VerifierError::PredicateSchemaInvalid(message)
+            } else if message.starts_with("subject.digest_mismatch") {
+                VerifierError::SubjectDigestMismatch(message)
+            } else {
+                VerifierError::DsseMalformed(message)
+            }
+        }
+        other => VerifierError::DsseMalformed(other.to_string()),
+    }
 }
 
 fn canonical_json_string<T: serde::Serialize>(value: &T) -> Result<String, String> {
@@ -1181,6 +1176,32 @@ mod tests {
 
         let err = verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
         assert_eq!(err.code(), "subject.digest_mismatch");
+    }
+
+    #[test]
+    fn parseable_dsse_with_bad_statement_json_reports_statement_malformed() {
+        use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+        use base64::Engine as _;
+
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (mut envelope, receipt_store, lease_registry, governance_store, oracle, peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+        envelope.payload = BASE64_STANDARD.encode(b"{not-json");
+        let config = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+
+        let err = verify_bilateral_cosign_invocation(&envelope, &config).unwrap_err();
+        assert_eq!(err.code(), "statement.malformed");
     }
 
     /// Single-subject invariant: the §7 verifier must reject a multi-subject

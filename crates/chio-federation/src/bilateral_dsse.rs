@@ -56,7 +56,7 @@ pub const PAYLOAD_TYPE_IN_TOTO: &str = "application/vnd.in-toto+json";
 /// Predicate type for the in-toto Statement carried in the DSSE signature
 /// slice. Deliberately distinct from the strict CHIODOS bilateral
 /// invocation predicate.
-pub const PREDICATE_TYPE_BILATERAL: &str = "chio.bilateral-cosign-signature-slice.v1";
+pub const PREDICATE_TYPE_BILATERAL: &str = "chio.bilateral-signature-slice.v1";
 
 /// In-toto Statement `_type` per the v1 attestation framework (DSSE doc).
 pub const STATEMENT_TYPE_V1: &str = "https://in-toto.io/Statement/v1";
@@ -75,8 +75,7 @@ const PAE_PREFIX: &str = "DSSEv1";
 /// value is retained only for callers that need an out-of-band profile label;
 /// emitters and verifiers must rely on `payloadType`, the in-toto Statement
 /// `_type`, and `predicateType` on the signed payload.
-pub const BILATERAL_DSSE_ENVELOPE_SCHEMA: &str =
-    "chio.federation-bilateral-dsse-signature-slice-envelope.v1";
+pub const BILATERAL_DSSE_ENVELOPE_SCHEMA: &str = PREDICATE_TYPE_BILATERAL;
 
 /// Canonical in-toto subject-name prefix for signed Chio receipt bodies.
 pub const RECEIPT_SUBJECT_NAME_PREFIX: &str = "chio-receipt:";
@@ -615,8 +614,9 @@ pub fn sign_dsse_envelope_full(
 /// 2. Statement is parseable canonical JSON (`statement.malformed`).
 /// 3. `payload_type == PAYLOAD_TYPE_IN_TOTO` (PAE preimage shape).
 /// 4. `predicate_type` is `PREDICATE_TYPE_BILATERAL`.
-/// 5. `signatures` carries exactly two entries.
-/// 6. Each signature's `keyid` matches the SHA-256 of the corresponding
+/// 5. `signatures` carries exactly two entries. Their array order is not
+///    security-relevant; signatures are matched by `keyid`.
+/// 6. Each required `keyid` matches the SHA-256 of the corresponding
 ///    public key the verifier was given (`peer.unpinned_or_keyid_mismatch`).
 /// 7. Each signature, base64-decoded, is a valid Ed25519 signature over
 ///    the recomputed DSSE PAE bytes (`signature.server_*_invalid`).
@@ -734,14 +734,10 @@ pub fn verify_dsse_envelope(
 
     let pae_bytes = pae(&envelope.payload_type, &statement_bytes);
 
-    let sig_a = &envelope.signatures[0];
-    if sig_a.keyid != org_a_keyid.0 {
-        return Err(BilateralCoSigningError::OrgASignatureInvalid);
-    }
-    let sig_b = &envelope.signatures[1];
-    if sig_b.keyid != org_b_keyid.0 {
-        return Err(BilateralCoSigningError::OrgBSignatureInvalid);
-    }
+    let sig_a = signature_for_keyid(&envelope.signatures, org_a_keyid.as_str())
+        .ok_or(BilateralCoSigningError::OrgASignatureInvalid)?;
+    let sig_b = signature_for_keyid(&envelope.signatures, org_b_keyid.as_str())
+        .ok_or(BilateralCoSigningError::OrgBSignatureInvalid)?;
 
     let sig_a_bytes = decode_ed25519_signature(&sig_a.sig)
         .ok_or(BilateralCoSigningError::OrgASignatureInvalid)?;
@@ -851,6 +847,13 @@ fn decode_ed25519_signature(b64: &str) -> Option<[u8; 64]> {
     let mut out = [0u8; 64];
     out.copy_from_slice(&bytes);
     Some(out)
+}
+
+fn signature_for_keyid<'a>(
+    signatures: &'a [DsseSignature],
+    keyid: &str,
+) -> Option<&'a DsseSignature> {
+    signatures.iter().find(|signature| signature.keyid == keyid)
 }
 
 // ---------------------------------------------------------------------------
@@ -1008,7 +1011,7 @@ mod tests {
     }
 
     #[test]
-    fn verifier_rejects_swapped_signature_slots() {
+    fn verifier_accepts_reversed_signature_order_by_keyid() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -1023,9 +1026,8 @@ mod tests {
         )
         .unwrap();
         envelope.signatures.swap(0, 1);
-        let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
-            .expect_err("signature slots are ordered Org A then Org B");
-        assert_eq!(err, BilateralCoSigningError::OrgASignatureInvalid);
+        verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+            .expect("signature array order is not security-relevant");
     }
 
     #[test]

@@ -84,6 +84,14 @@ deployment but MUST NOT silently rewrite one into the other (the
 predicate type is part of the signed Statement and rewriting would
 break signature verification).
 
+Implementation status: the current `crates/chio-federation` DSSE helper
+does not emit either strict predicate type above. It emits the bounded
+`chio.bilateral-signature-slice.v1` profile, whose signed predicate is a
+local bilateral signature slice for receipt binding and peer signature
+checks. Strict CHIODOS bilateral predicate conformance remains future
+work until the producer emits every required section 5 field and removes
+signature-slice-only helper fields.
+
 ---
 
 ## 4. Subject Definition
@@ -130,6 +138,11 @@ where both kernels sign over the canonical bytes of `CoSigningBody`.
 The predicate is a JSON object with the following JSON Schema (Draft
 2020-12). Implementations MUST validate the predicate against this
 schema before signature verification.
+
+This schema is the strict CHIODOS target, not the currently emitted
+`chio.bilateral-signature-slice.v1` compatibility profile. A signature
+slice MUST NOT be described as conforming to this section unless its
+predicate validates against the schema below.
 
 ```json
 {
@@ -571,12 +584,13 @@ The chio maintainers intend the following next steps:
 4. **ITE drafting.** If the in-toto WG indicates appetite, draft an
    in-toto Enhancement (ITE) using this document as the seed text,
    carrying it through the standard ITE review process.
-5. **Reference implementation.** Land a small adapter in
-   [../crates/chio-federation/src/bilateral.rs](../crates/chio-federation/src/bilateral.rs)
-   that emits and verifies the DSSE envelope shape in section 6 under
-   the chio-namespaced fallback URI today, and switches to the
-   canonical URI on acceptance. The chio-side fixture exists; the
-   adapter is straightforward.
+5. **Reference implementation.** Replace the current
+   `chio.bilateral-signature-slice.v1` helper with a strict predicate
+   implementation that emits and verifies the section 5 body under the
+   chio-namespaced fallback URI, then switches to the canonical URI on
+   acceptance. The existing helper proves the DSSE PAE and dual-key
+   signature slice only; it is not a strict CHIODOS predicate
+   implementation.
 
 If the WG declines or the discussion stalls, this document remains the
 written record of the structural gap that motivates the
