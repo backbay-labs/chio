@@ -177,14 +177,14 @@ lane = "pr"
 # Per-crate sections land with their harness source
 # ---------------------------------------------------------------------
 # To make manifest enrollment atomic with harness source, each non-core
-# crate's `[[harness]]` block now lands in the SAME PR that adds the
-# harness source. This file (PR #607) ships the runner script, the
+# crate's `[[harness]]` block lands with the same change that adds the
+# harness source. The shared runner lane ships the runner script, the
 # schema documentation, and the chio-kernel-core lane mirror; other
-# per-crate sections arrive via:
+# per-crate sections arrive with their crate-local harnesses:
 #
-#   * chio-attest-verify  -> PR #605 (PR branch)
-#   * chio-anchor         -> PR #613 (PR branch)
-#   * chio-weights        -> PR #613 (PR branch)
+#   * chio-attest-verify
+#   * chio-anchor
+#   * chio-weights
 #
 # Integrator merges combine the per-crate sections additively. Adding a
 # new harness in the future: land the `#[kani::proof]` and the matching
@@ -192,13 +192,13 @@ lane = "pr"
 # it up without further workflow edits.
 
 # ---------------------------------------------------------------------
-# chio-attest-verify (Kani harness evidence, PR #605)
+# chio-attest-verify Kani harness evidence
 # ---------------------------------------------------------------------
 # Four public-entry harnesses pinning the trust-boundary invariants of
 # `expect_report_data` and the three TEE quote backends. Algebraic
 # `verify_quote` models reflect the post-fix production order
-# TCB -> algorithm -> report_data; a bug had inverted that order and was
-# caught + fixed in PR #605. See the harness module doc comment for
+# TCB -> algorithm -> report_data; a bug had inverted that order and is
+# pinned by this harness set. See the harness module doc comment for
 # bound parameters (default_unwind = 8, symbolic byte-arrays <= 64).
 
 [[harness]]

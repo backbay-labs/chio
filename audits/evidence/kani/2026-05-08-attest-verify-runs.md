@@ -1,9 +1,8 @@
-# chio-attest-verify Kani harness run evidence (Kani harness evidence)
+# chio-attest-verify Kani harness run evidence
 
 **Date**: 2026-05-08
-**PR**: #605 (PR branch)
 **Scope note**: bounded source-only enrollment evidence
-**Status**: DEFERRED-PARTIAL (run-evidence not committed in this PR)
+**Status**: DEFERRED-PARTIAL (run evidence not committed with this source change)
 
 ## Scope boundary
 
@@ -16,13 +15,13 @@ cryptographic verifier implementation.
 ## Required posture
 
 The proof surface must EITHER:
-1. Commit a Kani run transcript for each PR-tier harness, OR
+1. Commit a Kani run transcript for each bounded-run harness, OR
 2. Label the proof surface as partial/nightly-only in ship-bar truth.
 
 This evidence file selects option (2): the chio-attest-verify proof
 surface is labeled **MODEL-PARTIAL** for release evidence; transcripts are deferred
-to the follow-up that wires the multi-crate Kani CI workflow
-(PR #607) into a passing pipeline. Until then, the source-only enrollment
+to the follow-up that wires the multi-crate Kani CI workflow into a passing
+pipeline. Until then, the source-only enrollment
 is honest about its scope and the manifest pins exactly which harnesses
 the post-merge CI will iterate.
 
@@ -44,7 +43,7 @@ in the manifest `notes` for each entry (model-only scope note).
 
 ## Why the run transcripts are deferred
 
-1. cargo-kani 0.67.0 PR-tier runs for the chio-attest-verify backend
+1. cargo-kani 0.67.0 bounded runs for the chio-attest-verify backend
    harnesses depend on cryptographic-verification call paths
    (`Ed25519`, `X.509`, `COSE/CBOR`) that the model-only scope note deferral
    classifies as out-of-symbex-budget for synchronous PR runs without
@@ -53,9 +52,9 @@ in the manifest `notes` for each entry (model-only scope note).
    function and is tractable, but committing only one of four
    transcripts is more confusing than committing none.
 2. The multi-crate Kani CI runner (`scripts/run-kani-manifest.sh`)
-   ships in PR #607, not this PR. The transcript cadence is intended
+   ships with the shared Kani runner lane. The transcript cadence is intended
    to come from the merged-main CI iteration, not from a hand-run on
-   one PR branch.
+   one feature branch.
 3. Local cargo-kani availability (verified: `cargo kani --version`
    reports `cargo-kani 0.67.0`) does not change the
    "either-or" requirement. Picking the labeling option keeps the
@@ -67,11 +66,11 @@ The release ship-bar gate does NOT (yet) gate on Kani run
 transcripts. The Bar 1 mutation kill-rate / Bar 2 negative-conformance
 fixtures / Bar 3 demo-receipt rows it does gate on are unaffected by
 this deferral. The chio-attest-verify Kani enrollment is recorded as
-**source-only PARTIAL** in the release notes (PR #618).
+**source-only PARTIAL** in the release notes.
 
 ## Next steps
 
-1. PR #607 multi-crate runner merges; CI iterates the manifest.
+1. The multi-crate runner lands; CI iterates the manifest.
 2. CI-produced transcripts are committed under
    `audits/evidence/kani/<crate>-<harness>-<date>.txt` per the
    per-harness convention used by the chio-anchor / chio-weights
@@ -85,5 +84,5 @@ this deferral. The chio-attest-verify Kani enrollment is recorded as
 
 This evidence file documents **why no transcripts are committed** rather
 than presenting the absence as completion. The Kani enrollment is real;
-the run-evidence is deferred. PR #605 ships harness source plus manifest
+the run evidence is deferred. This branch ships harness source plus manifest
 entries; transcripts arrive from the follow-up CI iteration.
