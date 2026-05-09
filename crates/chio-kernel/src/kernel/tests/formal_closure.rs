@@ -10,7 +10,7 @@ fn formal_closure_receipt_count(path: &std::path::Path) -> u64 {
 
 fn formal_closure_kernel_with_store(prefix: &str) -> (ChioKernel, std::path::PathBuf) {
     let path = unique_receipt_db_path(prefix);
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
     (kernel, path)
 }

@@ -4443,6 +4443,10 @@ impl ReceiptStore for SqliteReceiptStore {
         self.append_chio_receipt_returning_seq(receipt).map(|_| ())
     }
 
+    fn supports_chio_receipt_v2(&self) -> bool {
+        true
+    }
+
     fn append_chio_receipt_v2(
         &self,
         receipt: &chio_core::receipt::ChioReceiptV2,
