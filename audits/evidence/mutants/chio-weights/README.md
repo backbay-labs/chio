@@ -105,14 +105,13 @@ sample.
 = 43/63 = **68.25%** (excluding 3 unviable per cargo-mutants 25.x
 convention).
 
-**Target satisfaction**: the non-`chio-attest-verify` per-crate
-target is `>= 65%` (the `releases.toml [trust_boundary_crates]`
-canonical surface keeps the >=80% target only for
-`chio-attest-verify`; every other trust-boundary crate uses the
->=65% bucket). chio-weights is not enumerated in the canonical six
-but the >=65% bucket applies because the crate is a model-card
-trust-boundary surface. **Observed 68.25% on a FULL 66/66 run;
-target met.**
+**Target satisfaction**: per `releases.toml [mutants]`, the configured
+catch-ratio target is 80% and the activation floor is 65%. The 65%
+value is a floor for early activation posture, not the per-crate
+target. chio-weights is not currently enumerated in the canonical six
+crate mutation matrix, but this evidence treats it as a model-card
+trust-boundary surface. **Observed 68.25% on a FULL 66/66 run; the
+activation floor is cleared, but the configured 80% target is not met.**
 
 ### Per-file breakdown
 
@@ -123,8 +122,9 @@ target met.**
 | `error.rs` | 2 | 0 | 0 | 0 | 100.0% |
 | `lineage.rs` | 15 | 6 | 0 | 1 | 71.43% |
 
-The crate-aggregate 68.25% kill rate clears the >=65% target;
-`card.rs` alone is at 64.10% (just under the bar). The 14 missed
+The crate-aggregate 68.25% kill rate clears the 65% activation floor
+but remains below the configured 80% target; `card.rs` alone is at
+64.10% (below even the activation floor). The 14 missed
 mutants in `card.rs` cluster on `StringSet` pure-getter methods and
 two boundary `<` comparisons (see categorisation below).
 
@@ -201,9 +201,11 @@ The chio-weights Kani harness is not yet on this branch. The mutation
 run here is against current main (`708c7bb33`). Once that harness lands,
 it exercises additional invariants
 (notably the kernel binding refusal contract) and a re-run is expected
-to score higher than 68.25% on the same `examine_globs` surface. The
-CI hosted-nightly `mutants.yml` lane (4-hour-per-crate budget) is the
-authoritative re-baseline after #613 merges.
+to score higher than 68.25% on the same `examine_globs` surface.
+`chio-weights` is not in the current `.github/workflows/mutants.yml`
+PR or nightly matrix, so the next authoritative re-baseline is a
+branch-local/manual `cargo mutants` run unless that workflow is extended
+to include `chio-weights`.
 
 ## Files in this directory
 

@@ -9,7 +9,7 @@
   "base_sha": "708c7bb33df43594f5e76542b05fca7a56d9689e",
   "command": "cargo mutants --config audits/mutation/per-crate-configs/chio-weights.toml -p chio-weights --in-place --baseline=skip --output audits/evidence/mutants/chio-weights",
   "run_status": "FULL: 66/66 mutants evaluated; cargo-mutants returned exit 2 (mutants missed; expected)",
-  "result_label": "FULL",
+  "result_label": "FULL-BELOW-TARGET",
   "evaluated": 66,
   "total_discovered": 66,
   "caught": 43,
@@ -18,8 +18,11 @@
   "unviable": 3,
   "kill_rate_percent": 68.25,
   "kill_rate_formula": "caught / (caught + missed + timeout) = 43 / (43 + 20 + 0) = 43/63 = 68.25% (excludes 3 unviable per cargo-mutants 25.x convention)",
-  "target_per_lane_a_floor_mutation_budget": 65,
-  "target_met": true,
+  "target_catch_ratio_percent": 80,
+  "activation_floor_percent": 65,
+  "activation_floor_met": true,
+  "target_met": false,
+  "target_note": "68.25% clears the 65% activation floor but does not meet the configured 80% catch-ratio target from releases.toml.",
   "examine_globs": [
     "crates/chio-weights/src/bundle.rs",
     "crates/chio-weights/src/card.rs",
@@ -99,5 +102,5 @@
     "crates/chio-weights/src/card.rs:257:9: replace ModelCard::from_canonical_json -> Result<Self, WeightsError> with Ok(Default::default())",
     "crates/chio-weights/src/bundle.rs:78:5: replace verify_model_card_bundle -> Result<VerifiedModelCard, WeightsError> with Ok(Default::default())"
   ],
-  "post_kani_rerun_note": "The chio-weights Kani harness is not yet on this branch. The mutation run here is against current main (708c7bb33). Once that harness lands, it exercises additional invariants (notably the kernel binding refusal contract) and a re-run is expected to score higher than 68.3% on the same examine_globs surface. The CI hosted-nightly mutants.yml lane (4-hour-per-crate budget) is the authoritative re-baseline after the harness lands."
+  "post_kani_rerun_note": "The chio-weights Kani harness is not yet on this branch. The mutation run here is against current main (708c7bb33). Once that harness lands, it exercises additional invariants (notably the kernel binding refusal contract) and a re-run is expected to score higher than 68.3% on the same examine_globs surface. chio-weights is not in the current .github/workflows/mutants.yml PR or nightly matrix, so the authoritative re-baseline is a branch-local/manual cargo-mutants run unless that workflow is extended to include chio-weights."
 }
