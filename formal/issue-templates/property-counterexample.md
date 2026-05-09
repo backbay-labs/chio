@@ -7,12 +7,11 @@ assignees: []
 ---
 
 <!--
-This template is referenced by the property-failure triage runbook in
-.planning/trajectory/03-capability-algebra-properties.md (Phase 3) and by
-formal/MAPPING.md. Use it whenever Apalache, Kani, or a proptest produces
-a counterexample on PR or nightly. The cross-ref gate in
-scripts/check-mapping.sh runs on every PR; the named property below MUST
-correspond to a row in formal/MAPPING.md.
+This template is referenced by formal/MAPPING.md and by the property-failure
+triage runbook. Use it whenever Apalache, Kani, or a proptest produces a
+counterexample on PR or nightly. The cross-ref gate in scripts/check-mapping.sh
+runs on every PR; the named property below MUST correspond to a row in
+formal/MAPPING.md.
 -->
 
 ## Summary
@@ -78,8 +77,8 @@ the seed line plus the minimized input.
 
 ## Triage
 
-Mark each box as you complete the corresponding step from the runbook in
-`.planning/trajectory/03-capability-algebra-properties.md`.
+Mark each box as you complete the corresponding step from the property-failure
+triage runbook.
 
 - [ ] Step 1 - regression seed persisted (proptest only) and committed in
       this PR or in the linked PR.

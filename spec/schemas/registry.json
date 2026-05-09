@@ -7,49 +7,49 @@
     {
       "schema": "chio.capabilities.v1",
       "artifactKind": "capability_negotiation",
-      "introducedBy": "trajectory-4/T1.0",
+      "introducedBy": "schema-registry/v1/capability-negotiation",
       "schemaFile": "spec/schemas/chio-wire/v1/capability/capabilities.schema.json"
     },
     {
       "schema": "chio.capability.v1",
       "artifactKind": "capability_token",
-      "introducedBy": "trajectory-4/T1.0",
+      "introducedBy": "schema-registry/v1/capability-token-v1",
       "schemaFile": "spec/schemas/chio-wire/v1/capability/token.v1.schema.json"
     },
     {
       "schema": "chio.capability.v2",
       "artifactKind": "capability_token",
-      "introducedBy": "trajectory-4/T1.0",
+      "introducedBy": "schema-registry/v1/capability-token-v2",
       "schemaFile": "spec/schemas/chio-wire/v1/capability/token.v2.schema.json"
     },
     {
       "schema": "chio.receipt.v1",
       "artifactKind": "receipt",
-      "introducedBy": "trajectory-1/M01",
+      "introducedBy": "schema-registry/v1/receipt-v1",
       "schemaFile": "spec/schemas/chio-wire/v1/receipt/record.schema.json"
     },
     {
       "schema": "chio.receipt.v2",
       "artifactKind": "receipt",
-      "introducedBy": "trajectory-4/T1.2",
+      "introducedBy": "schema-registry/v1/receipt-v2-body-hash",
       "schemaFile": "spec/schemas/chio-wire/v1/receipt/v2.schema.json"
     },
     {
       "schema": "chio.receipt_lineage_statement.v1",
       "artifactKind": "receipt_lineage",
-      "introducedBy": "trajectory-3/M04",
+      "introducedBy": "schema-registry/v1/receipt-lineage-v1",
       "schemaFile": "spec/schemas/chio-wire/v1/receipt/record.schema.json"
     },
     {
       "schema": "chio.receipt_lineage_statement.v2",
       "artifactKind": "receipt_lineage",
-      "introducedBy": "trajectory-4/T1.2",
+      "introducedBy": "schema-registry/v1/receipt-lineage-v2",
       "schemaFile": "spec/schemas/chio-wire/v1/receipt/lineage_statement.v2.schema.json"
     },
     {
       "schema": "chio.anchor_batch.v1",
       "artifactKind": "anchor_batch",
-      "introducedBy": "trajectory-4/T1.3",
+      "introducedBy": "schema-registry/v1/anchor-batch-v1",
       "schemaFile": "spec/schemas/chio-wire/v1/anchor/batch.schema.json"
     }
   ]

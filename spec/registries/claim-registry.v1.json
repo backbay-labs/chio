@@ -1,16 +1,16 @@
 {
   "$schema": "https://chio-protocol.dev/schemas/registries/claim-registry/v1",
   "version": "v1",
-  "description": "Canonical registry of verifiable claims that a Chio kernel can make on behalf of a tenant. Authoritative reference for the trajectory-4 Evidence Gate (see .planning/trajectory-4/SYNTHESIS-V2-INTEGRATED-PLAN.md). Every signed artifact and every behavioral guarantee a verifier can check has a row here.",
+  "description": "Canonical registry of verifiable claims that a Chio kernel can make on behalf of a tenant. Every signed artifact and every behavioral guarantee a verifier can check has a row here.",
   "owner": "protocol-eng",
-  "bootstrapped_by": "trajectory-4/TRJ4-000",
+  "bootstrapped_by": "protocol-registry/v1",
   "claims": [
     {
       "id": "claim.capability.signed_authority",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-wire/v1/capability/token.schema.json",
       "summary": "A CapabilityToken carries a signature from the issuing authority over the canonical body.",
-      "introduced_in": "trajectory-1.M01",
+      "introduced_in": "capability-token-v1",
       "proof_manifest_ref": "manifest.capability.signed_authority"
     },
     {
@@ -18,7 +18,7 @@
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-wire/v1/receipt/record.schema.json",
       "summary": "A receipt carries the kernel's signed verdict for a single mediated tool call.",
-      "introduced_in": "trajectory-1.M01",
+      "introduced_in": "receipt-v1",
       "proof_manifest_ref": "manifest.receipt.signed_decision"
     },
     {
@@ -26,7 +26,7 @@
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-wire/v1/capability/token.schema.json",
       "summary": "A delegated child capability scope is a subset of its parent (no privilege amplification).",
-      "introduced_in": "trajectory-2.M04",
+      "introduced_in": "delegated-capability-v1",
       "proof_manifest_ref": "manifest.attenuation.subset"
     },
     {
@@ -34,7 +34,7 @@
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-wire/v1/capability/capabilities.schema.json",
       "summary": "Peers exchange a feature bitset and a maximum capability-token schema at handshake time. The verifier rejects inbound tokens whose schema exceeds the negotiated ceiling, blocking a v1-only Mallory from forcing a v2-aware Alice to parse v2-only fields.",
-      "introduced_in": "trajectory-4/W1.3",
+      "introduced_in": "capability-negotiation-schema-ceiling",
       "depends_on_theorems": ["theorem.handshake.negotiation_safety"],
       "proof_manifest_ref": "manifest.handshake.capability_negotiation"
     },
@@ -42,8 +42,8 @@
       "id": "claim.capability.budget_split",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-wire/v1/capability/token.v2.schema.json",
-      "summary": "A v2 CapabilityToken's budget_share_bps is enforced not just per-token (<= 10000 bps) but as a sibling-sum across delegated children of a common parent. The verifier consults a BudgetRegistry at the verify step and rejects any child whose admission would push the running sum past the parent's own share. Closes the W1.2 cross-hop amplification gap.",
-      "introduced_in": "trajectory-4/W1.2",
+      "summary": "A v2 CapabilityToken's budget_share_bps is enforced not just per-token (<= 10000 bps) but as a sibling-sum across delegated children of a common parent. The verifier consults a BudgetRegistry at the verify step and rejects any child whose admission would push the running sum past the parent's own share.",
+      "introduced_in": "capability-budget-sibling-sum",
       "depends_on_theorems": ["theorem.budget.sibling_sum_soundness"],
       "proof_manifest_ref": "manifest.capability.budget_split"
     },
@@ -51,8 +51,8 @@
       "id": "claim.capability.attenuation_proof",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-wire/v1/capability/token.v2.schema.json",
-      "summary": "A v2 CapabilityToken carries an on-the-wire attenuation_proof witness; verifiers check the witness hashes and subset relation fail closed AND require attenuation_proof.parent_scope_hash to be bound to the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain). Closes the W1.1 P0 inflated-parent-scope soundness gap.",
-      "introduced_in": "trajectory-4/W1.1",
+      "summary": "A v2 CapabilityToken carries an on-the-wire attenuation_proof witness; verifiers check the witness hashes and subset relation fail closed AND require attenuation_proof.parent_scope_hash to be bound to the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain).",
+      "introduced_in": "capability-attenuation-chain-binding",
       "depends_on_theorems": ["theorem.attenuation.witness_soundness"],
       "proof_manifest_ref": "manifest.capability.attenuation_proof"
     },
@@ -61,7 +61,7 @@
       "status": "enforced",
       "schema_artifact": "crates/chio-egress-contract/src/lib.rs",
       "summary": "Every kernel/guard/adapter outbound HTTP path declares a typed HttpEgressContract and runs through chio_egress_contract::send_with_contract (or the URL-only enforce_url helper for non-reqwest substrates) before bytes leave the substrate. The contract validates target URL on the initial request, every redirect target, and the response body size; loopback, link-local, IPv6 ULA, unbounded redirects, and oversize responses fail closed. A workspace lint at scripts/check-http-egress-contract.sh catches regressions; new callers must thread the contract through their config.",
-      "introduced_in": "trajectory-4/W2.2",
+      "introduced_in": "http-egress-contract",
       "depends_on_theorems": ["theorem.egress.contract_enforcement"],
       "proof_manifest_ref": "manifest.http.egress_contract"
     },
@@ -70,27 +70,27 @@
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-wire/v1/anchor/batch.schema.json",
       "summary": "A chio.anchor_batch.v1 signs a Merkle root over N receipts/checkpoints and can bind that root to a public witness lane through AnchorWitnessClient. Per-receipt local signatures stay authoritative. The enforced subset recomputes Merkle roots/proofs, checks witness root/body-hash binding, verifies Rekor signed-entry timestamps, rejects sync self-asserted Witnessed under require_public_witness, rejects OTS marker-only receipts as advisory until trusted Bitcoin header or calendar-backed commitment evidence exists, and admits Stale only from a verifier-owned batch_body_hash -> verified_at cache. Rekor Merkle inclusion-proof checking, OTS trusted-header verification, and formal public-witness anti-equivocation remain proposed evidence.",
-      "introduced_in": "trajectory-4/W2.3",
+      "introduced_in": "anchor-public-witness-lane",
       "proof_manifest_ref": "manifest.anchor.batch_continuity"
     },
     {
       "id": "claim.receipt.body_hash_addressing",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-wire/v1/receipt/v2.schema.json",
-      "summary": "A v2 receipt is content-addressed by body_hash := H(canonical_jcs(ReceiptV2BodyHashInput)) where the input set strictly excludes body_hash, signature, and the legacy UUIDv7 receipt_id. The kernel mints `ChioReceiptV2` on the production hot path when the negotiated peer profile advertises `accepts_receipt_v2`; the legacy UUIDv7 alias is non-authoritative for replay (replay key is body_hash). Closes the W2.1 plumbing-only finding on T1.2.",
-      "introduced_in": "trajectory-4/T1.2",
-      "promoted_in": "trajectory-4/W2.1",
+      "summary": "A v2 receipt is content-addressed by body_hash := H(canonical_jcs(ReceiptV2BodyHashInput)) where the input set strictly excludes body_hash, signature, and the legacy UUIDv7 receipt_id. The kernel mints `ChioReceiptV2` on the production hot path when the negotiated peer profile advertises `accepts_receipt_v2`; the legacy UUIDv7 alias is non-authoritative for replay (replay key is body_hash).",
+      "introduced_in": "receipt-v2-body-hash",
+      "promoted_in": "receipt-v2-runtime-minting",
       "depends_on_theorems": ["theorem.receipt.body_hash_input_set_pinned"],
       "proof_manifest_ref": "manifest.receipt.body_hash_addressing"
     }
   ],
-  "trj4_proposed_claims": [
+  "proposed_claims": [
     {
       "id": "claim.receipt.dag_acyclicity",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-wire/v1/receipt/lineage_statement.v2.schema.json",
       "summary": "Multi-parent receipt lineage carries a signed dag_ordinal + HLC triple; verifier predicate child.dag_ordinal > max(parent.dag_ordinal) rejects cycles across independent kernel clock domains.",
-      "introduced_by": "trajectory-4/T1.2",
+      "introduced_by": "receipt-lineage-dag-proposal",
       "depends_on_theorems": ["theorem.receipt.dag_acyclicity"],
       "proof_manifest_ref": "manifest.receipt.dag_acyclicity"
     },
@@ -100,7 +100,7 @@
       "schema_artifact_proposed": "spec/schemas/chio-wire/v1/capability/token.schema.json",
       "related_schema_artifacts": ["spec/schemas/signature.v1.json"],
       "summary": "Capability tokens, federation handshake envelopes, and receipts accept a hybrid:<classical>:<pq>:<alg_set> signature wire format with the algorithm enum value 'hybrid'.",
-      "introduced_by": "trajectory-4/T2.1",
+      "introduced_by": "hybrid-pq-signature-proposal",
       "depends_on_theorems": ["theorem.signature.hybrid_soundness"],
       "proof_manifest_ref": "manifest.signature.hybrid_pq"
     },
@@ -109,7 +109,7 @@
       "status": "proposed",
       "schema_artifact_proposed": "crates/chio-federation/src/trust_establishment.rs",
       "summary": "Federation handshakes bind a Bronze, Silver, or Gold conformance tier into the signed challenge, and quorum policy rejects peers below min_tier before admission.",
-      "introduced_by": "trajectory-4/T2.1",
+      "introduced_by": "federation-conformance-tier-proposal",
       "depends_on_theorems": ["theorem.federation.conformance_tier_gate"],
       "proof_manifest_ref": "manifest.federation.conformance_tier"
     }

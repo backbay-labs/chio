@@ -1,4 +1,4 @@
-//! W2.3 negative conformance test: stale witness-lane fallback.
+//! Negative conformance test: stale witness-lane fallback.
 //!
 //! Threat: the public-witness lane (Rekor or OTS) goes down. The
 //! verifier still holds a previously-witnessed receipt for batch B0
@@ -434,7 +434,7 @@ fn require_public_witness_admits_stale_when_previously_verified() {
         .expect("previously-verified stale receipt is admissible");
 }
 
-/// P0 regression: stale admission uses the verifier-owned
+/// Regression guard: stale admission uses the verifier-owned
 /// `verified_at` cache timestamp, not the producer-signed
 /// `last_verified` value. A producer cannot refresh a stale cache by
 /// signing a fresh artifact timestamp.

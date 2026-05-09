@@ -75,34 +75,38 @@ pub fn built_in_signed_artifact_registry() -> Vec<SignedArtifactSchemaEntry> {
         (
             CHIO_CAPABILITIES_SCHEMA,
             "capability_negotiation",
-            "trajectory-4/T1.0",
+            "schema-registry/v1/capability-negotiation",
         ),
         (
             CHIO_CAPABILITY_V1_SCHEMA,
             "capability_token",
-            "trajectory-4/T1.0",
+            "schema-registry/v1/capability-token-v1",
         ),
         (
             CHIO_CAPABILITY_V2_SCHEMA,
             "capability_token",
-            "trajectory-4/T1.0",
+            "schema-registry/v1/capability-token-v2",
         ),
-        ("chio.receipt.v1", "receipt", "trajectory-1/M01"),
-        (CHIO_RECEIPT_V2_SCHEMA, "receipt", "trajectory-4/T1.2"),
+        ("chio.receipt.v1", "receipt", "schema-registry/v1/receipt-v1"),
+        (
+            CHIO_RECEIPT_V2_SCHEMA,
+            "receipt",
+            "schema-registry/v1/receipt-v2-body-hash",
+        ),
         (
             CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA,
             "receipt_lineage",
-            "trajectory-3/M04",
+            "schema-registry/v1/receipt-lineage-v1",
         ),
         (
             CHIO_RECEIPT_LINEAGE_STATEMENT_V2_SCHEMA,
             "receipt_lineage",
-            "trajectory-4/T1.2",
+            "schema-registry/v1/receipt-lineage-v2",
         ),
         (
             CHIO_ANCHOR_BATCH_V1_SCHEMA,
             "anchor_batch",
-            "trajectory-4/T1.3",
+            "schema-registry/v1/anchor-batch-v1",
         ),
     ]
     .into_iter()

@@ -1,9 +1,9 @@
-# M06 Apalache Kernel-State Subset
+# Apalache Kernel-State Subset
 
-This directory contains the trajectory-3 M06 Apalache-shaped TLA+ subset. It
-does not replace the broader TLC-shaped models in `formal/tla/`. It extracts
-the four trust-boundary invariants selected in D04 and keeps their state
-spaces bounded enough for hosted CI.
+This directory contains the focused Apalache-shaped TLA+ subset. It does not
+replace the broader TLC-shaped models in `formal/tla/`. It extracts the four
+trust-boundary invariants selected for the kernel-state subset and keeps their
+state spaces bounded enough for hosted CI.
 
 ## Bounds
 
@@ -13,7 +13,7 @@ All specs extend `Common.tla` and use the same reference bounds:
 - `CapSet = 1..6`
 - `EpochMax = 4`
 
-The common bounds mirror the M06 audit runner contract: hosted
+The common bounds mirror the bounded CI runner contract: hosted
 `ubuntu-24.04`, Apalache installed by `tools/install-apalache.sh`, Z3 default
 solver, and 30 minute per-invariant timeout in CI.
 

@@ -26,7 +26,7 @@ write_tracker() {
     local path="$1"
     shift
     {
-        echo "# Trj4 close-bar tracker (test fixture)"
+        echo "# close-bar tracker (test fixture)"
         echo
         echo "| ID | Title | Bucket | Wired runtime path | Negative conformance test | Theorem status | Wave | Notes |"
         echo "|----|-------|--------|--------------------|---------------------------|----------------|------|-------|"

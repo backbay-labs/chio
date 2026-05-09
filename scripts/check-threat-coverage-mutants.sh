@@ -81,7 +81,7 @@
 # Bootstrap expiry:
 #   The `needs_real_run: true` accommodation is bounded by
 #   BOOTSTRAP_EXPIRES_DATE (default 2026-08-01, 90 days out from
-#   wave-0.5 hardening). After that date the script treats every
+#   the threat-coverage hardening pass). After that date the script treats every
 #   `needs_real_run: true` evidence file as a bootstrap_expired
 #   failure. CHIO_BOOTSTRAP_EXPIRY=YYYY-MM-DD overrides for local
 #   development and tests.

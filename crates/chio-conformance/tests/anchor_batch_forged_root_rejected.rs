@@ -1,4 +1,4 @@
-//! W2.3 negative conformance test: anchor-batch forged Merkle root.
+//! Negative conformance test: anchor-batch forged Merkle root.
 //!
 //! Threat: an adversary mints a batch, recomputes the Merkle root
 //! over a different leaf set (or substitutes the root with a
@@ -57,7 +57,7 @@ fn anchor_batch_with_forged_tree_root_is_rejected_by_verifier() {
     batch.body.tree_root = forged_root;
     batch.body.witness.root = forged_root;
     // Re-sign so the outer signature now validates against the
-    // mutated body. This is the exact attack the audit warned about:
+    // mutated body. This is the attack shape the verifier must reject:
     // an adversary who controls the signer can rebuild the body but
     // CANNOT rebuild the inclusion proofs without knowing every
     // original leaf, so the Merkle re-compute MUST fail.

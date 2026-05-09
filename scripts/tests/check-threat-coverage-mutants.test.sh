@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Self-test for scripts/check-threat-coverage-mutants.sh.
 #
-# Owner: trajectory-4 wave-0 / E0.4.
+# Owner: threat-coverage evidence gate.
 #
-# Exercises the four scenarios spelled out in the E0.4 plan:
+# Exercises the core threat-coverage evidence scenarios:
 #
 #   1. A row with valid evidence (caught >= 1) PASSES.
 #   2. A row with `needs_real_run: true` produces a downgrade hint
@@ -190,7 +190,7 @@ write_evidence "no_coveredby_threat" 5 false
 assert_fails "no coveredBy fails the gate" run_mutants_gate
 grep -q "WEAK: no_coveredby_threat should be marked weak_coverage; reason=no_coveredby" "$ERR"
 
-# Case 7 (wave-0.5 hardening): bootstrap placeholder AFTER expiry FAILS with
+# Case 7: bootstrap placeholder AFTER expiry FAILS with
 # reason=bootstrap_expired. CHIO_BOOTSTRAP_EXPIRY=1970-01-01 forces the
 # accommodation to be expired regardless of today's date.
 reset_fixture
@@ -206,7 +206,7 @@ grep -q "WEAK: expired_bootstrap_threat should be marked weak_coverage; reason=b
 CHIO_BOOTSTRAP_EXPIRY="2099-01-01" \
     assert_passes "bootstrap placeholder still valid before expiry" run_mutants_gate
 
-# Case 8 (wave-0.5 hardening): needs_real_run=true with non-1970 ran_at is
+# Case 8: needs_real_run=true with non-1970 ran_at is
 # rejected as inconsistent_bootstrap.
 reset_fixture
 write_model_single "inconsistent_bootstrap_threat" "covered"
@@ -215,7 +215,7 @@ assert_fails "inconsistent bootstrap (real ran_at + needs_real_run) fails" run_m
 grep -q "WEAK: inconsistent_bootstrap_threat should be marked weak_coverage; reason=inconsistent_bootstrap" "$ERR" \
     || { echo "FAIL: missing inconsistent_bootstrap diagnostic"; cat "$ERR"; exit 1; }
 
-# Case 9 (wave-0.5 hardening): CI=true + --dry-run is rejected (exit 2).
+# Case 9: CI=true + --dry-run is rejected (exit 2).
 reset_fixture
 write_model_single "ci_dryrun_threat" "covered"
 write_evidence "ci_dryrun_threat" 1 false
@@ -223,7 +223,7 @@ CI=true assert_fails "CI=true forbids --dry-run" run_mutants_gate --dry-run
 grep -q "dry-run is not allowed in CI" "$ERR" \
     || { echo "FAIL: missing CI dry-run diagnostic"; cat "$ERR"; exit 1; }
 
-# Case 10 (R4 P1-004): partial rows are still gated by per-row mutants
+# Case 10: partial rows are still gated by per-row mutants
 # evidence. The row can remain partial, but the defended sub-vector must
 # have present, non-placeholder evidence with caught >= 1.
 reset_fixture
@@ -235,7 +235,7 @@ with open(sys.argv[1], "w") as fh:
         "name": "Partial With Deferred",
         "surfaces": ["native_chio"],
         "coverage_state": "partial",
-        "deferred_to": "trajectory-6.closure",
+        "deferred_to": "future-threat-coverage-closure",
         "coveredBy": ["crates/chio-conformance/tests/threats/partial_with_deferred.rs"],
     }]}, fh)
     fh.write("\n")
@@ -249,7 +249,7 @@ assert_passes "partial-with-deferred row with evidence passes" run_mutants_gate
 grep -q "passed: 1" "$OUT" \
     || { echo "FAIL: partial row with evidence should be counted as passed"; cat "$OUT"; exit 1; }
 
-# Case 11 (R4 P2-002): exact-midnight timestamps must be explicitly
+# Case 11: exact-midnight timestamps must be explicitly
 # labeled. A generated metadata timestamp can pass when it is honest
 # about not being a command wall-clock.
 reset_fixture

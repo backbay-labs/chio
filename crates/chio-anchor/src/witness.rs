@@ -1,8 +1,7 @@
 //! Public-witness lane clients for `chio.anchor_batch.v1`.
 //!
-//! W2.3 closes the audit P0 on T1.3 by providing a real
-//! [`AnchorWitnessClient`] trait, Rekor production verification, OTS
-//! advisory parsing, and the [`WitnessState`] state machine consumed by
+//! Provides the [`AnchorWitnessClient`] trait, Rekor production verification,
+//! OTS advisory parsing, and the [`WitnessState`] state machine consumed by
 //! `verify_anchor_batch_with_witness_policy`.
 //!
 //! The clients implement the actual HTTP protocols used by Rekor REST
@@ -860,7 +859,7 @@ mod tests {
         ));
     }
 
-    /// P0 regression: stale admission uses the verifier-owned
+    /// Regression guard: stale admission uses the verifier-owned
     /// `verified_at` cache timestamp, not the producer-signed
     /// `last_verified` value. A producer cannot refresh a stale cache
     /// by signing a fresh artifact timestamp.
