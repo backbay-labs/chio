@@ -32,7 +32,7 @@ fn planned_call(
 /// step is reported allowed individually.
 #[test]
 fn plan_evaluation_all_steps_allowed() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-a",
         vec!["read_file", "write_file", "list_dir"],
@@ -99,7 +99,7 @@ fn plan_evaluation_all_steps_allowed() {
 /// exercised; the HTTP end-to-end test covers the literal step-3 case.
 #[test]
 fn plan_evaluation_middle_step_out_of_scope() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-a",
         vec!["read_file", "write_file"],
@@ -164,7 +164,7 @@ fn plan_evaluation_middle_step_out_of_scope() {
 /// their own independent verdicts.
 #[test]
 fn plan_evaluation_first_step_denied_does_not_short_circuit() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-a",
         vec!["read_file", "write_file"],
@@ -230,7 +230,7 @@ fn plan_evaluation_model_metadata_scoped_per_step() {
         ChioScope, Constraint, ModelMetadata, Operation, ToolGrant,
     };
 
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-a",
         vec!["sensitive_read", "casual_read"],
@@ -346,7 +346,7 @@ fn plan_evaluation_model_metadata_scoped_per_step() {
 /// mismatch reason.
 #[test]
 fn plan_evaluation_capability_id_mismatch_denies_every_step() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -385,7 +385,7 @@ fn plan_evaluation_capability_id_mismatch_denies_every_step() {
 /// canonical stop reason regardless of scope.
 #[test]
 fn plan_evaluation_denies_all_steps_when_kernel_stopped() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();

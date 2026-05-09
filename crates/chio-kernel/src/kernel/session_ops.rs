@@ -640,6 +640,61 @@ impl ChioKernel {
         result
     }
 
+    /// Async-native variant for hosts that already run inside a Tokio runtime.
+    ///
+    /// This path avoids the synchronous dispatch bridge, so current-thread
+    /// runtimes do not convert nested-flow tool calls into bridge errors. The
+    /// synchronous entrypoint remains for blocking edges and still fails before
+    /// side effects when a current-thread runtime is entered.
+    pub async fn evaluate_tool_call_operation_with_nested_flow_client_async<C: NestedFlowClient>(
+        &self,
+        context: &OperationContext,
+        operation: &ToolCallOperation,
+        client: &mut C,
+    ) -> Result<ToolCallResponse, KernelError> {
+        self.validate_web3_evidence_prerequisites()?;
+        self.begin_session_request(context, OperationKind::ToolCall, true)?;
+
+        let request = ToolCallRequest {
+            request_id: context.request_id.to_string(),
+            capability: operation.capability.clone(),
+            tool_name: operation.tool_name.clone(),
+            server_id: operation.server_id.clone(),
+            agent_id: context.agent_id.clone(),
+            arguments: operation.arguments.clone(),
+            dpop_proof: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: operation.model_metadata.clone(),
+            federated_origin_kernel_id: None,
+        };
+
+        let result = self
+            .evaluate_tool_call_with_nested_flow_client_async(context, &request, client)
+            .await;
+        let terminal_state = match &result {
+            Ok(response) => response.terminal_state.clone(),
+            Err(KernelError::RequestCancelled { request_id, reason })
+                if request_id == &context.request_id =>
+            {
+                self.with_session_mut(&context.session_id, |session| {
+                    session.request_cancellation(&context.request_id)?;
+                    Ok(())
+                })?;
+                OperationTerminalState::Cancelled {
+                    reason: reason.clone(),
+                }
+            }
+            _ => OperationTerminalState::Completed,
+        };
+        self.complete_session_request_with_terminal_state(
+            &context.session_id,
+            &context.request_id,
+            terminal_state,
+        )?;
+        result
+    }
+
     /// Evaluate a normalized operation against a specific session.
     ///
     /// This is the higher-level entry point that future JSON-RPC or MCP edges

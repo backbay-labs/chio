@@ -67,7 +67,9 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
         "remote_mcp admin boundary file must exist",
     );
     assert!(
-        !repo_root().join("crates/chio-cli/src/remote_mcp.rs").exists(),
+        !repo_root()
+            .join("crates/chio-cli/src/remote_mcp.rs")
+            .exists(),
         "remote_mcp ownership must live in chio-mcp-remote, not be inlined in chio-cli",
     );
 

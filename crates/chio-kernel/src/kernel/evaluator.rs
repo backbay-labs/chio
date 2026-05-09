@@ -2,9 +2,10 @@
 //!
 //! Defines the [`ToolEvaluator`] trait that names the four logical phases of
 //! a tool-call evaluation (capability validation, guard pipeline, dispatch,
-//! receipt signing). The default [`BlockingToolEvaluator`] wraps the existing
-//! synchronous helpers; async-native implementations can override individual
-//! phase methods without re-shaping the public surface.
+//! receipt signing). The public `ChioKernel::evaluate_tool_call().await`
+//! entrypoint uses the async-native kernel path directly. The
+//! [`BlockingToolEvaluator`] remains for compatibility surfaces that
+//! intentionally enter the synchronous bridge.
 
 use crate::kernel::ChioKernel;
 use crate::{
@@ -99,13 +100,16 @@ pub trait ToolEvaluator: Send + Sync {
     }
 }
 
-/// Default [`ToolEvaluator`] implementation: delegates the entire pipeline
-/// to the existing synchronous flow on [`ChioKernel`].
+/// Compatibility [`ToolEvaluator`] implementation: delegates the entire
+/// pipeline to the synchronous flow on [`ChioKernel`].
 ///
 /// Inside a multi-threaded tokio runtime the call is wrapped in
 /// `tokio::task::block_in_place` so the worker thread is released back to
 /// the scheduler while the synchronous body runs. Outside such a runtime
-/// (current-thread runtime, or no runtime at all) the call is direct.
+/// the call is direct; if that direct path enters a current-thread runtime,
+/// the kernel bridge returns a typed sync-bridge incompatibility error before
+/// dispatch side effects.
+#[allow(dead_code)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct BlockingToolEvaluator;
 

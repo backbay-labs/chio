@@ -1183,11 +1183,14 @@ The repository ships these primary runtime entrypoints:
 These surfaces intentionally share the same core receipt, capability,
 revocation, and policy primitives rather than defining separate trust models.
 
-`chio receipt explain <receipt-id>` accepts legacy receipt aliases and v2
-`bodyHash` values. It renders the signed decision, policy hash, guard evidence,
-parent receipt set, batch witness reference when present, and a repair hint for
-denials or incomplete receipts. It is a local CLI narrator, not a replacement
-for signature verification.
+`chio receipt explain <receipt-id>` accepts legacy receipt aliases from the
+local receipt DB or control plane. v2 `bodyHash` explanation is supported only
+when the full v2 receipt JSON is supplied with `--input-file`; this CLI path
+does not yet implement persisted v2 DB or control-plane lookup by `bodyHash`.
+It renders the signed decision, policy hash, guard evidence, parent receipt
+set, batch witness reference when present, and a repair hint for denials or
+incomplete receipts. It is a local CLI narrator, not a replacement for
+signature verification.
 
 ### 8.2 MCP Compatibility
 

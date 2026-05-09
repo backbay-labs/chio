@@ -42,7 +42,7 @@ fn federated_request_produces_dual_signed_receipt_verifiable_by_both_orgs() {
     let origin_kernel_id = "kernel.org-a";
 
     // Build the tool-host kernel (Org B) on the test-local keypair.
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let tool_host_public_key = kernel.config.keypair.public_key();
     let tool_host_kernel_id = "kernel.org-b";
     kernel.set_federation_local_kernel_id(tool_host_kernel_id);
@@ -110,7 +110,9 @@ fn federated_request_produces_dual_signed_receipt_verifiable_by_both_orgs() {
 
 #[test]
 fn non_federated_request_leaves_no_dual_signed_artifact_behind() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
+    let path = unique_receipt_db_path("non-federated-no-dual-signed");
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-local",
         vec!["file_read"],
@@ -140,7 +142,7 @@ fn federated_request_without_pinned_peer_fails_closed() {
     let origin_kp = Keypair::generate();
     let origin_kernel_id = "kernel.org-a";
 
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.set_federation_local_kernel_id("kernel.org-b");
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-fed",
@@ -189,7 +191,7 @@ fn federated_request_without_pinned_peer_fails_closed_pre_dispatch() {
     // The missing-cosigner-with-fresh-peer scenario is exercised by the
     // sibling test below.
     let origin_kernel_id = "kernel.org-a";
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.set_federation_local_kernel_id("kernel.org-b");
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-fed",
@@ -235,7 +237,7 @@ fn federated_request_with_fresh_peer_but_missing_cosigner_fails_closed_post_disp
     let origin_kernel_id = "kernel.org-a";
     let tool_host_kernel_id = "kernel.org-b";
 
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.set_federation_local_kernel_id(tool_host_kernel_id);
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-fed",

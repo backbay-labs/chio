@@ -2595,7 +2595,7 @@ fn finish_receipt_for_explain(
         return Ok(matches.remove(0));
     }
     Err(CliError::cli_other_error(format!(
-        "receipt `{receipt_id}` not found in paginated receipt rows from {source}; use --input-file for direct v2 body_hash lookup"
+        "receipt `{receipt_id}` not found in paginated receipt rows from {source}; persisted v2 bodyHash lookup is not implemented on this path, so use --input-file with the v2 receipt JSON"
     )))
 }
 

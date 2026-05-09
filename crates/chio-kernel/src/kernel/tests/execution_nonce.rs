@@ -20,7 +20,7 @@ use crate::execution_nonce::{
 };
 
 fn kernel_with_nonce() -> (ChioKernel, Keypair, ChioScope, ExecutionNonceConfig) {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
     let cfg = ExecutionNonceConfig {
         nonce_ttl_secs: 30,
@@ -188,7 +188,7 @@ fn disabled_mode_allows_tool_calls_without_nonce() {
     // A kernel with no execution_nonce_config installed: the allow
     // response must still succeed and the nonce slot must be absent.
     // This is the backward-compat guarantee for existing deployments.
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
     let agent_kp = make_keypair();
     let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
@@ -207,7 +207,7 @@ fn disabled_mode_allows_tool_calls_without_nonce() {
 fn require_presented_nonce_denies_when_missing_in_strict_mode() {
     // Build a kernel in strict mode and then call the gate helper
     // directly to prove that missing nonces fail closed.
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
     let cfg = ExecutionNonceConfig {
         nonce_ttl_secs: 30,
