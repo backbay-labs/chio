@@ -69,7 +69,12 @@ pub const PREDICATE_BODY_SCHEMA: &str = "chio.bilateral-cosign.signature-slice.v
 /// Fixed prefix tag of the DSSE Pre-Authentication Encoding (DSSE v1).
 const PAE_PREFIX: &str = "DSSEv1";
 
-/// Wire schema for [`DsseEnvelope`] when carried over chiodos federation.
+/// Historical profile identifier for the Chio bilateral DSSE signature-slice.
+///
+/// Standard DSSE envelopes do not carry a top-level `schema` member. This
+/// value is retained only for callers that need an out-of-band profile label;
+/// emitters and verifiers must rely on `payloadType`, the in-toto Statement
+/// `_type`, and `predicateType` on the signed payload.
 pub const BILATERAL_DSSE_ENVELOPE_SCHEMA: &str =
     "chio.federation-bilateral-dsse-signature-slice-envelope.v1";
 
