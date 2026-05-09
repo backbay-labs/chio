@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/ops.rs
++++ replace == with != in AnchorEmergencyControls::allows
+@@ -86,17 +86,17 @@
+     pub fn allows(&self, operation: AnchorOperationKind) -> bool {
+         match self.mode {
+             AnchorEmergencyMode::Normal => true,
+             AnchorEmergencyMode::PublishPaused => operation != AnchorOperationKind::PublishRoot,
+             AnchorEmergencyMode::ProofImportOnly => {
+                 operation == AnchorOperationKind::ImportSecondaryProof
+             }
+             AnchorEmergencyMode::RecoveryOnly => {
+-                operation == AnchorOperationKind::ConfirmPublication
++                operation != /* ~ changed by cargo-mutants ~ */ AnchorOperationKind::ConfirmPublication
+             }
+             AnchorEmergencyMode::Halted => false,
+         }
+     }
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]

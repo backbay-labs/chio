@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/bundle.rs
++++ delete ! in verify_proof_bundle
+@@ -68,17 +68,17 @@
+         .map_err(|error| AnchorError::Verification(error.to_string()))?;
+     lanes.push(AnchorVerificationLane {
+         lane: AnchorLaneKind::EvmPrimary,
+         verified: true,
+         note: "primary EVM proof verified against Chio receipt and checkpoint truth".to_string(),
+     });
+ 
+     if bundle.primary_proof.bitcoin_anchor.is_some() {
+-        if !bundle.secondary_lanes.contains(&AnchorLaneKind::BitcoinOts) {
++        if  /* ~ changed by cargo-mutants ~ */bundle.secondary_lanes.contains(&AnchorLaneKind::BitcoinOts) {
+             return Err(AnchorError::Verification(
+                 "bundle includes Bitcoin anchor data but does not declare the Bitcoin OTS lane"
+                     .to_string(),
+             ));
+         }
+         let inspection = verify_bitcoin_anchor_for_proof(&bundle.primary_proof)?;
+         // The `is_some()` guard above already proved bitcoin_anchor is
+         // present, so the `.as_ref()` map is the live branch in

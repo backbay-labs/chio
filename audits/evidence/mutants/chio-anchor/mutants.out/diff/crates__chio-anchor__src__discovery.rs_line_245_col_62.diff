@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/discovery.rs
++++ replace && with || in verify_proof_bundle_with_discovery
+@@ -237,17 +237,17 @@
+         AnchorDiscoveryFreshnessStatus::Paused | AnchorDiscoveryFreshnessStatus::Stale
+     ) {
+         return Err(AnchorError::Verification(format!(
+             "discovery freshness state {} does not permit bundle verification",
+             freshness_status_label(freshness.status)
+         )));
+     }
+ 
+-    if policy.requires_witness_or_immutable_anchor_reference && policy.secondary_lanes.is_empty() {
++    if policy.requires_witness_or_immutable_anchor_reference || /* ~ changed by cargo-mutants ~ */ policy.secondary_lanes.is_empty() {
+         return Err(AnchorError::Verification(
+             "discovery policy requires witness or immutable anchor support but declares no secondary lanes".to_string(),
+         ));
+     }
+ 
+     let actual_lanes = normalized_lane_labels(&bundle.secondary_lanes);
+     let expected_lanes = normalized_lane_labels(&policy.secondary_lanes);
+     if actual_lanes != expected_lanes {

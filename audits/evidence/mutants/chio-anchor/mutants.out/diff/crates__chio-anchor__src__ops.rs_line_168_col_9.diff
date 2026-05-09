@@ -1,0 +1,46 @@
+--- crates/chio-anchor/src/ops.rs
++++ replace AnchorIndexerCursor::from_sequences -> Self with Default::default()
+@@ -160,42 +160,17 @@
+     pub checked_at: u64,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub note: Option<String>,
+ }
+ 
+ impl AnchorIndexerCursor {
+     #[must_use]
+     pub fn from_sequences(input: AnchorIndexerCursorInput) -> Self {
+-        let lag_checkpoints = input
+-            .canonical_checkpoint_seq
+-            .saturating_sub(input.indexed_checkpoint_seq);
+-        let status = if input.failed {
+-            AnchorIndexerStatus::Failed
+-        } else if input.replaying {
+-            AnchorIndexerStatus::Replaying
+-        } else if lag_checkpoints == 0 {
+-            AnchorIndexerStatus::Healthy
+-        } else if lag_checkpoints <= 3 {
+-            AnchorIndexerStatus::Lagging
+-        } else {
+-            AnchorIndexerStatus::Drifted
+-        };
+-        Self {
+-            service_id: input.service_id,
+-            lane: input.lane,
+-            chain_id: input.chain_id,
+-            indexed_checkpoint_seq: input.indexed_checkpoint_seq,
+-            canonical_checkpoint_seq: input.canonical_checkpoint_seq,
+-            lag_checkpoints,
+-            indexed_block_number: input.indexed_block_number,
+-            status,
+-            checked_at: input.checked_at,
+-            note: input.note,
+-        }
++        Default::default() /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub struct AnchorIndexerCursorInput {
+     pub service_id: String,
+     pub lane: AnchorLaneKind,
+     pub chain_id: Option<String>,

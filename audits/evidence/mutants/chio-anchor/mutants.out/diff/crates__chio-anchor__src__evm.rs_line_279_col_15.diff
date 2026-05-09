@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/evm.rs
++++ replace != with == in confirm_root_publication
+@@ -271,17 +271,17 @@
+         .get("blockHash")
+         .and_then(Value::as_str)
+         .ok_or_else(|| AnchorError::Rpc("receipt missing blockHash".to_string()))?
+         .to_string();
+     let status = receipt
+         .get("status")
+         .and_then(Value::as_str)
+         .ok_or_else(|| AnchorError::Rpc("receipt missing status".to_string()))?;
+-    if status != "0x1" {
++    if status == /* ~ changed by cargo-mutants ~ */ "0x1" {
+         return Err(AnchorError::Rpc(format!(
+             "publication transaction {} failed with status {}",
+             tx_hash, status
+         )));
+     }
+ 
+     let operator = Address::from_str(&target.operator_address)
+         .map_err(|error| AnchorError::InvalidInput(error.to_string()))?;

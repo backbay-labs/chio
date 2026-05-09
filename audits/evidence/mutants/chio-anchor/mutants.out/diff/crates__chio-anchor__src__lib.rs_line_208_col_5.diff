@@ -1,0 +1,41 @@
+--- crates/chio-anchor/src/lib.rs
++++ replace build_anchor_inclusion_proof_from_evidence_bundle -> Result<AnchorInclusionProof, AnchorError> with Ok(Default::default())
+@@ -200,37 +200,17 @@
+ }
+ 
+ pub fn build_anchor_inclusion_proof_from_evidence_bundle(
+     bundle: &EvidenceExportBundle,
+     receipt_id: &str,
+     chain_anchor: Option<Web3ChainAnchorRecord>,
+     binding: SignedWeb3IdentityBinding,
+ ) -> Result<AnchorInclusionProof, AnchorError> {
+-    if bundle
+-        .uncheckpointed_receipts
+-        .iter()
+-        .any(|receipt| receipt.receipt_id == receipt_id)
+-    {
+-        return Err(AnchorError::Verification(format!(
+-            "receipt `{receipt_id}` is not checkpointed in the canonical evidence bundle"
+-        )));
+-    }
+-
+-    let record = exactly_one_tool_receipt(bundle, receipt_id)?;
+-    let inclusion = exactly_one_inclusion_proof(bundle, record.seq, receipt_id)?;
+-    let checkpoint = exactly_one_checkpoint(bundle, inclusion.checkpoint_seq, receipt_id)?;
+-
+-    build_anchor_inclusion_proof(
+-        record.receipt.clone(),
+-        inclusion,
+-        checkpoint,
+-        chain_anchor,
+-        binding,
+-    )
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn exactly_one_tool_receipt<'a>(
+     bundle: &'a EvidenceExportBundle,
+     receipt_id: &str,
+ ) -> Result<&'a EvidenceToolReceiptRecord, AnchorError> {
+     let mut matches = bundle
+         .tool_receipts

@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/ops.rs
++++ replace || with && in anchor_incident_is_conflict
+@@ -334,17 +334,17 @@
+     if incident.severity != AnchorAlertSeverity::Critical {
+         return false;
+     }
+     let code = incident.code.to_ascii_lowercase();
+     code.contains("equivocation")
+         || code.contains("conflict")
+         || code.contains("fork")
+         || code.contains("divergence")
+-        || code.contains("reorg")
++        && /* ~ changed by cargo-mutants ~ */ code.contains("reorg")
+ }
+ 
+ #[must_use]
+ pub fn classify_anchor_lane(
+     lane: AnchorLaneKind,
+     indexer_status: AnchorIndexerStatus,
+     controls: AnchorEmergencyControls,
+     reorg_depth: u32,

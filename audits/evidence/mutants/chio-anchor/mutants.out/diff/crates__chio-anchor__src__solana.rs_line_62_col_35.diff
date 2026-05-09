@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/solana.rs
++++ replace || with && in prepare_solana_memo_publication
+@@ -54,17 +54,17 @@
+     }
+ }
+ 
+ pub fn prepare_solana_memo_publication(
+     checkpoint: &KernelCheckpoint,
+     chain_id: &str,
+     operator_pubkey: &str,
+ ) -> Result<PreparedSolanaMemoPublication, AnchorError> {
+-    if chain_id.trim().is_empty() || operator_pubkey.trim().is_empty() {
++    if chain_id.trim().is_empty() && /* ~ changed by cargo-mutants ~ */ operator_pubkey.trim().is_empty() {
+         return Err(AnchorError::InvalidInput(
+             "Solana publication requires chain_id and operator_pubkey".to_string(),
+         ));
+     }
+     Ok(PreparedSolanaMemoPublication {
+         schema: "chio.anchor.solana-memo-publication.v1".to_string(),
+         chain_id: chain_id.to_string(),
+         operator_pubkey: operator_pubkey.to_string(),

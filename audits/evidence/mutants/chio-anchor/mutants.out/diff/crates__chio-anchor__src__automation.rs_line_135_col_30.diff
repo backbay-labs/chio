@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/automation.rs
++++ replace < with > in assess_anchor_automation_execution
+@@ -127,17 +127,17 @@
+     execution: &AnchorAutomationExecution,
+ ) -> Result<(), AnchorError> {
+     if job.job_id != execution.job_id {
+         return Err(AnchorError::Verification(format!(
+             "anchor automation execution {} does not match job {}",
+             execution.job_id, job.job_id
+         )));
+     }
+-    if execution.executed_at < execution.fired_at {
++    if execution.executed_at > /* ~ changed by cargo-mutants ~ */ execution.fired_at {
+         return Err(AnchorError::Verification(
+             "anchor automation execution cannot complete before it fired".to_string(),
+         ));
+     }
+     if execution.observed_checkpoint_seq != job.checkpoint_seq {
+         return Err(AnchorError::Verification(format!(
+             "anchor automation observed checkpoint {} does not match expected {}",
+             execution.observed_checkpoint_seq, job.checkpoint_seq

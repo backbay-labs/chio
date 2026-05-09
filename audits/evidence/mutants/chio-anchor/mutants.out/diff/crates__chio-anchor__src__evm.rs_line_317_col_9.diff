@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/evm.rs
++++ replace || with && in confirm_root_publication
+@@ -309,17 +309,17 @@
+         .map_err(|error| AnchorError::Rpc(error.to_string()))?;
+     let stored = IChioRootRegistry::getRootCall::abi_decode_returns(&entry_bytes)
+         .map_err(|error| AnchorError::Serialization(error.to_string()))?;
+     if stored.checkpointSeq != checkpoint.body.checkpoint_seq
+         || stored.batchStartSeq != checkpoint.body.batch_start_seq
+         || stored.batchEndSeq != checkpoint.body.batch_end_seq
+         || stored.treeSize != checkpoint.body.tree_size as u64
+         || stored.merkleRoot != hash_to_b256(&checkpoint.body.merkle_root)
+-        || stored.operatorKeyHash != operator_key_hash(binding)
++        && /* ~ changed by cargo-mutants ~ */ stored.operatorKeyHash != operator_key_hash(binding)
+     {
+         return Err(AnchorError::Verification(
+             "root registry entry does not match the checkpoint being confirmed".to_string(),
+         ));
+     }
+ 
+     Ok(EvmPublicationReceipt {
+         tx_hash: tx_hash.to_string(),

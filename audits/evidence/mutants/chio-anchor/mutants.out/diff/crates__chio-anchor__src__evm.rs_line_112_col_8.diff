@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/evm.rs
++++ delete ! in prepare_root_publication
+@@ -104,17 +104,17 @@
+     format!("0x{}", hex::encode(operator_key_hash(binding).as_slice()))
+ }
+ 
+ pub fn prepare_root_publication(
+     target: &EvmAnchorTarget,
+     checkpoint: &KernelCheckpoint,
+     binding: &SignedWeb3IdentityBinding,
+ ) -> Result<PreparedEvmRootPublication, AnchorError> {
+-    if !binding
++    if  /* ~ changed by cargo-mutants ~ */binding
+         .certificate
+         .purpose
+         .contains(&Web3KeyBindingPurpose::Anchor)
+     {
+         return Err(AnchorError::InvalidBinding(
+             "binding certificate does not include anchor purpose".to_string(),
+         ));
+     }

@@ -1,0 +1,22 @@
+--- crates/chio-anchor/src/evm.rs
++++ replace parse_hex_u64 -> Result<u64, AnchorError> with Ok(0)
+@@ -618,18 +618,17 @@
+         .is_ok_and(|address| address.is_loopback())
+ }
+ 
+ fn hash_to_b256(hash: &chio_core::hashing::Hash) -> B256 {
+     FixedBytes::from(*hash.as_bytes())
+ }
+ 
+ fn parse_hex_u64(value: &str) -> Result<u64, AnchorError> {
+-    u64::from_str_radix(value.trim_start_matches("0x"), 16)
+-        .map_err(|error| AnchorError::Rpc(error.to_string()))
++    Ok(0) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use std::io::{Read, Write};
+     use std::net::TcpListener;
+     use std::sync::{Arc, Mutex};
+     use std::thread;

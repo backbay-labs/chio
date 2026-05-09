@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/evm.rs
++++ replace != with == in inspect_publication_guard
+@@ -388,17 +388,17 @@
+ 
+     Ok(EvmPublicationGuard {
+         chain_id: target.chain_id.clone(),
+         operator_address: target.operator_address.clone(),
+         publisher_address: target.publisher_address.clone(),
+         latest_checkpoint_seq,
+         next_checkpoint_seq_min: latest_checkpoint_seq.saturating_add(1),
+         publisher_authorized,
+-        requires_delegate_authorization: target.publisher_address != target.operator_address,
++        requires_delegate_authorization: target.publisher_address == /* ~ changed by cargo-mutants ~ */ target.operator_address,
+     })
+ }
+ 
+ pub async fn ensure_publication_ready(
+     target: &EvmAnchorTarget,
+     checkpoint_seq: u64,
+     egress_contract: &HttpEgressContract,
+ ) -> Result<EvmPublicationGuard, AnchorError> {

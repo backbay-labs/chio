@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/evm.rs
++++ replace != with == in prepare_root_publication
+@@ -124,17 +124,17 @@
+         .iter()
+         .any(|chain| chain == &target.chain_id)
+     {
+         return Err(AnchorError::InvalidBinding(format!(
+             "binding certificate does not cover {}",
+             target.chain_id
+         )));
+     }
+-    if binding.certificate.settlement_address != target.operator_address {
++    if binding.certificate.settlement_address == /* ~ changed by cargo-mutants ~ */ target.operator_address {
+         return Err(AnchorError::InvalidBinding(format!(
+             "binding settlement address {} does not match operator address {}",
+             binding.certificate.settlement_address, target.operator_address
+         )));
+     }
+     let operator = Address::from_str(&target.operator_address)
+         .map_err(|error| AnchorError::InvalidInput(error.to_string()))?;
+     let call = IChioRootRegistry::publishRootCall {

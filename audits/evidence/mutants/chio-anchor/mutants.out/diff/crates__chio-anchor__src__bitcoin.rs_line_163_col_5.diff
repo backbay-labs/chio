@@ -1,0 +1,74 @@
+--- crates/chio-anchor/src/bitcoin.rs
++++ replace verify_bitcoin_anchor_for_proof -> Result<ParsedOtsProof, AnchorError> with Ok(Default::default())
+@@ -155,70 +155,17 @@
+         }
+     }
+     Ok(inspection)
+ }
+ 
+ pub fn verify_bitcoin_anchor_for_proof(
+     proof: &AnchorInclusionProof,
+ ) -> Result<ParsedOtsProof, AnchorError> {
+-    let bitcoin_anchor = proof.bitcoin_anchor.as_ref().ok_or_else(|| {
+-        AnchorError::Verification("proof does not include Bitcoin anchor data".to_string())
+-    })?;
+-    if bitcoin_anchor.method != "opentimestamps" {
+-        return Err(AnchorError::Verification(format!(
+-            "unsupported Bitcoin anchor method {}",
+-            bitcoin_anchor.method
+-        )));
+-    }
+-    if bitcoin_anchor.bitcoin_block_hash.trim().is_empty() {
+-        return Err(AnchorError::Verification(
+-            "Bitcoin anchor block hash must be non-empty".to_string(),
+-        ));
+-    }
+-
+-    let super_root = proof.super_root_inclusion.as_ref().ok_or_else(|| {
+-        AnchorError::Verification(
+-            "Bitcoin anchor verification requires super-root inclusion metadata".to_string(),
+-        )
+-    })?;
+-    if proof.checkpoint_statement.checkpoint_seq < super_root.aggregated_checkpoint_start
+-        || proof.checkpoint_statement.checkpoint_seq > super_root.aggregated_checkpoint_end
+-    {
+-        return Err(AnchorError::Verification(format!(
+-            "checkpoint {} falls outside aggregated Bitcoin super-root range {}-{}",
+-            proof.checkpoint_statement.checkpoint_seq,
+-            super_root.aggregated_checkpoint_start,
+-            super_root.aggregated_checkpoint_end
+-        )));
+-    }
+-
+-    let expected_document_digest = chio_core::hashing::sha256(super_root.super_root.as_bytes());
+-    let inspection = inspect_ots_proof(&bitcoin_anchor.ots_proof_b64)?;
+-    if inspection.digest_algorithm != "sha256" {
+-        return Err(AnchorError::Verification(format!(
+-            "OTS digest algorithm {} does not match expected sha256",
+-            inspection.digest_algorithm
+-        )));
+-    }
+-    if inspection.start_digest != expected_document_digest.to_hex_prefixed() {
+-        return Err(AnchorError::Verification(
+-            "OTS proof does not commit to the expected Chio super-root digest".to_string(),
+-        ));
+-    }
+-    if !inspection
+-        .bitcoin_attestation_heights
+-        .contains(&bitcoin_anchor.bitcoin_block_height)
+-    {
+-        return Err(AnchorError::Verification(format!(
+-            "OTS proof does not attest to Bitcoin block height {}",
+-            bitcoin_anchor.bitcoin_block_height
+-        )));
+-    }
+-    Ok(inspection)
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn attach_bitcoin_anchor(
+     proof: &AnchorInclusionProof,
+     submission: &PreparedOtsSubmission,
+     bitcoin_block_height: u64,
+     bitcoin_block_hash: String,
+     ots_proof_b64: String,
