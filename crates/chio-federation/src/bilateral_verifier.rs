@@ -35,7 +35,7 @@
 //! * [`ReceiptStore`] / [`InMemoryReceiptStore`] - step 7 lookup.
 //! * [`CapabilityLeaseRegistry`] / [`InMemoryLeaseRegistry`] - step 14.
 //! * [`GovernanceReceiptStore`] / [`InMemoryGovernanceReceiptStore`] - step 15.
-//! * [`RevocationOracle`] / [`AllowAllRevocationOracle`] - step 9.
+//! * [`RevocationOracle`] / [`DemoAllowAllRevocationOracle`] - step 9.
 //! * [`PinnedEpoch`] - verifier's wall clock + epoch height.
 //! * [`VerifierConfig`] - bundles the trait objects + epoch.
 //! * [`verify_bilateral_cosign_invocation`] - runs the partial
@@ -282,10 +282,12 @@ pub trait RevocationOracle: Send + Sync {
     fn is_active_at_epoch(&self, fingerprint: &Keyid, epoch_height: u64) -> bool;
 }
 
+/// Demo-only revocation oracle that treats every passport key as active.
+/// Production verifiers must provide a real revocation source.
 #[derive(Debug, Clone, Default)]
-pub struct AllowAllRevocationOracle;
+pub struct DemoAllowAllRevocationOracle;
 
-impl RevocationOracle for AllowAllRevocationOracle {
+impl RevocationOracle for DemoAllowAllRevocationOracle {
     fn is_active_at_epoch(&self, _fingerprint: &Keyid, _epoch_height: u64) -> bool {
         true
     }
@@ -1053,7 +1055,7 @@ mod tests {
         InMemoryReceiptStore,
         InMemoryLeaseRegistry,
         InMemoryGovernanceReceiptStore,
-        AllowAllRevocationOracle,
+        DemoAllowAllRevocationOracle,
         PeerPinSet,
     ) {
         let envelope = sign_dsse_envelope_full(
@@ -1080,7 +1082,7 @@ mod tests {
         });
 
         let governance_store = InMemoryGovernanceReceiptStore::new();
-        let revocation_oracle = AllowAllRevocationOracle;
+        let revocation_oracle = DemoAllowAllRevocationOracle;
 
         let mut peer_pin_set = PeerPinSet::new();
         peer_pin_set.insert(PinnedPeer {
@@ -1299,7 +1301,7 @@ mod tests {
             scope_digest_hex: None,
         });
         let governance_store = InMemoryGovernanceReceiptStore::new();
-        let oracle = AllowAllRevocationOracle;
+        let oracle = DemoAllowAllRevocationOracle;
 
         let config = config(
             &peer_pin_set,
@@ -1528,7 +1530,7 @@ mod tests {
             scope_digest_hex: None,
         });
         let governance_store = InMemoryGovernanceReceiptStore::new();
-        let oracle = AllowAllRevocationOracle;
+        let oracle = DemoAllowAllRevocationOracle;
         let mut peers = PeerPinSet::new();
         peers.insert(PinnedPeer {
             kernel_id: "did:chio:org-a".to_string(),
@@ -1588,7 +1590,7 @@ mod tests {
             scope_digest_hex: Some(scope_value),
         });
         let governance_store = InMemoryGovernanceReceiptStore::new();
-        let oracle = AllowAllRevocationOracle;
+        let oracle = DemoAllowAllRevocationOracle;
         let mut peers = PeerPinSet::new();
         peers.insert(PinnedPeer {
             kernel_id: "did:chio:org-a".to_string(),
@@ -1656,7 +1658,7 @@ mod tests {
             kernel_id: "did:chio:governance".to_string(),
             canonical_json: governance_json,
         });
-        let oracle = AllowAllRevocationOracle;
+        let oracle = DemoAllowAllRevocationOracle;
         let mut peers = PeerPinSet::new();
         peers.insert(PinnedPeer {
             kernel_id: "did:chio:org-a".to_string(),

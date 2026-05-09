@@ -1,15 +1,15 @@
-//! Runs the production hot path end-to-end:
+//! Runs the local bilateral fixture path end-to-end:
 //!
 //! 1. Construct two kernel keypairs (the two `did:chio` identities).
 //! 2. Build a `ChioReceipt` for the invocation Org A's agent made
 //!    against a tool hosted by Org B.
-//! 3. Drive `chio_federation::execute_bilateral_invocation`, which:
+//! 3. Drive `chio_federation::execute_local_bilateral_invocation_fixture`, which:
 //!    - Drives the legacy `co_sign_with_origin` hop to produce the
 //!      legacy `DualSignedReceipt`.
 //!    - Calls `sign_dsse_envelope_full` to produce the DSSE
 //!      signature-slice envelope, with the predicate extensions
 //!      (`capability_lease_ref`, `policy_evaluation_summary`) the
-//!      partial verifier requires.
+//!      partial local verifier requires.
 //!    - Runs `verify_bilateral_cosign_invocation` (the partial
 //!      local verifier covering a subset of §7) against the
 //!      freshly-signed envelope.
@@ -24,10 +24,10 @@ use chio_core_types::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
 };
 use chio_federation::{
-    execute_bilateral_invocation, ActionClassKind, AllowAllRevocationOracle,
-    BilateralCoSigningProtocol, BilateralInvocationRequest, BilateralPredicateExtensions,
-    CapabilityLeaseRef, InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry,
-    InMemoryReceiptStore, InProcessCoSigner, PeerPinSet, PinnedEpoch, PinnedPeer,
+    execute_local_bilateral_invocation_fixture, ActionClassKind, BilateralCoSigningProtocol,
+    BilateralPredicateExtensions, CapabilityLeaseRef, DemoAllowAllRevocationOracle,
+    InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, InProcessCoSigner,
+    LocalBilateralInvocationFixtureRequest, PeerPinSet, PinnedEpoch, PinnedPeer,
     PolicyEvaluationSummary, PolicyVerdict, ResolvedLease, UnknownActionClassPolicy,
     VerifierConfig,
 };
@@ -76,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let governance_store = InMemoryGovernanceReceiptStore::new();
-    let revocation_oracle = AllowAllRevocationOracle;
+    let revocation_oracle = DemoAllowAllRevocationOracle;
 
     let mut peer_pin_set = PeerPinSet::new();
     peer_pin_set.insert(PinnedPeer {
@@ -124,7 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // ---- 6. Drive the kernel-boundary helper -------------------------
-    let request = BilateralInvocationRequest {
+    let request = LocalBilateralInvocationFixtureRequest {
         origin_kernel_id,
         origin_keypair: &kp_origin,
         tool_host_kernel_id,
@@ -157,7 +157,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         unknown_action_class_policy: UnknownActionClassPolicy::Reject,
     };
 
-    let outcome = execute_bilateral_invocation(request, &config)?;
+    let outcome = execute_local_bilateral_invocation_fixture(request, &config)?;
 
     // ---- 7. Print results --------------------------------------------
     println!();
