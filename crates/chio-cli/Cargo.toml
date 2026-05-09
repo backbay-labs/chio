@@ -16,6 +16,7 @@ name = "chio"
 path = "src/bin/chio.rs"
 
 [dependencies]
+async-trait = { workspace = true }
 chio-appraisal = { path = "../chio-appraisal" }
 chio-arena = { path = "../chio-arena" }
 chio-api-protect = { path = "../chio-api-protect" }

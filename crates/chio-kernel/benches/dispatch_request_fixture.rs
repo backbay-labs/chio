@@ -20,9 +20,6 @@ impl DispatchAllowFixture {
     pub fn new() -> Self {
         let mut kernel = ChioKernel::new(make_config());
         kernel.register_tool_server(Box::new(BenchToolServer));
-        // Hold the dispatch-path bench at v1 receipt baseline. W2.1 v2
-        // body_hash receipt minting is a measurable extra cost that
-        // belongs in its own bench, not bundled into dispatch_allow.
         kernel.set_receipt_v2_default(false);
 
         let subject = Keypair::generate();
@@ -118,6 +115,7 @@ fn make_request(capability: &CapabilityToken) -> ToolCallRequest {
 
 struct BenchToolServer;
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for BenchToolServer {
     fn server_id(&self) -> &str {
         SERVER_ID
@@ -127,7 +125,7 @@ impl ToolServerConnection for BenchToolServer {
         vec![TOOL_NAME.to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,

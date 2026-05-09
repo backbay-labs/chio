@@ -38,6 +38,7 @@ struct EchoServer {
     tool: String,
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for EchoServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -45,7 +46,7 @@ impl ToolServerConnection for EchoServer {
     fn tool_names(&self) -> Vec<String> {
         vec![self.tool.clone()]
     }
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,

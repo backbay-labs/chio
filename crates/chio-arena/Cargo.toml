@@ -12,6 +12,7 @@ publish = false
 name = "chio_arena"
 
 [dependencies]
+async-trait = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-kernel = { path = "../chio-kernel" }
 chio-replay-corpus = { path = "../chio-replay-corpus" }

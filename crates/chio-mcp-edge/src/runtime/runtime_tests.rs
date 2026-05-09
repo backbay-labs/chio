@@ -38,6 +38,7 @@ struct AsyncEventServerConnection(Arc<AsyncEventServer>);
 struct DocsResourceProvider;
 struct ExamplePromptProvider;
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for EchoServer {
     fn server_id(&self) -> &str {
         "srv"
@@ -51,7 +52,7 @@ impl ToolServerConnection for EchoServer {
         ]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: Value,
@@ -70,6 +71,7 @@ impl ToolServerConnection for EchoServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for StreamingEchoServer {
     fn server_id(&self) -> &str {
         "stream-srv"
@@ -82,7 +84,7 @@ impl ToolServerConnection for StreamingEchoServer {
         ]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: Value,
@@ -95,7 +97,7 @@ impl ToolServerConnection for StreamingEchoServer {
         }))
     }
 
-    fn invoke_stream(
+    async fn invoke_stream(
         &self,
         tool_name: &str,
         _arguments: Value,
@@ -125,6 +127,7 @@ impl ToolServerConnection for StreamingEchoServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for UrlRequiredServer {
     fn server_id(&self) -> &str {
         "url-srv"
@@ -134,7 +137,7 @@ impl ToolServerConnection for UrlRequiredServer {
         vec!["authorize".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         _arguments: Value,
@@ -152,6 +155,7 @@ impl ToolServerConnection for UrlRequiredServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for CancelledServer {
     fn server_id(&self) -> &str {
         "cancel-srv"
@@ -161,7 +165,7 @@ impl ToolServerConnection for CancelledServer {
         vec!["cancel".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         _arguments: Value,
@@ -180,6 +184,7 @@ impl AsyncEventServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for AsyncEventServerConnection {
     fn server_id(&self) -> &str {
         "srv"
@@ -193,7 +198,7 @@ impl ToolServerConnection for AsyncEventServerConnection {
         ]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: Value,
@@ -205,7 +210,7 @@ impl ToolServerConnection for AsyncEventServerConnection {
         }))
     }
 
-    fn drain_events(&self) -> Result<Vec<ToolServerEvent>, KernelError> {
+    async fn drain_events(&self) -> Result<Vec<ToolServerEvent>, KernelError> {
         let mut events = self.0.events.lock().unwrap();
         Ok(std::mem::take(&mut *events))
     }
