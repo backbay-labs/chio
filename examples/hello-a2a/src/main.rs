@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 struct HelloStreamServer;
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for HelloStreamServer {
     fn server_id(&self) -> &str {
         "hello-a2a-srv"

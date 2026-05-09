@@ -166,7 +166,7 @@ struct HttpKernelCapabilityState {
 
 struct HttpAuthorizationServer;
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for HttpAuthorizationServer {
     fn server_id(&self) -> &str {
         HTTP_AUTHORITY_SERVER_ID

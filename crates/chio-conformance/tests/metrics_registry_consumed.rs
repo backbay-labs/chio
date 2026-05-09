@@ -33,7 +33,7 @@ static RECEIPT_METRICS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 struct MetricsToolServer;
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl chio_kernel::ToolServerConnection for MetricsToolServer {
     fn server_id(&self) -> &str {
         "metrics-srv"
