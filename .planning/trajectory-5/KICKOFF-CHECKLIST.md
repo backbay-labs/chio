@@ -14,8 +14,9 @@ does not authorize `v0.1.0-bounded-chiodome`.
   `main`.
 - [x] The old aggregate ship-bar wording is superseded by the claim-by-claim
   assurance matrix in `SHIP-BAR-TRACKER.md`.
-- [x] Release status is normalized to
-  `releases.toml` `[v0_1_0_bounded_chiodome].release_status`.
+- [x] Release status is normalized to the optional
+  `releases.toml` `[v0_1_0_bounded_chiodome].release_status` namespace, but PR
+  #620 does not author that root package truth.
 - [x] Executable gates do not depend on `tickets.md`.
 
 ## Planning Artifacts
@@ -38,8 +39,9 @@ executable release or assurance gate.
 
 ## Executable Checks
 
-- [x] `scripts/bounded-release-preflight.sh` exists. It validates planning consistency and
-  the release-key namespace contract. It does not check `tickets.md`.
+- [x] `.planning/trajectory-5/tools/planning-preflight.sh` exists. It validates
+  planning consistency and the root release/config boundary. It does not check
+  `tickets.md`.
 - [x] `scripts/check-bounded-ship-bar.sh` exists. The filename is kept for
   compatibility; the script now checks assurance claims.
 - [x] `scripts/tests/check-bounded-ship-bar.test.sh` covers strict and diagnostic
@@ -62,16 +64,15 @@ The only bounded package status key is:
 release_status = "blocked_pending_lane_b_integration"
 ```
 
-`[trajectory_5]` may contain planning metadata such as `planning_status`,
-paths, and evidence pointers. It must not contain the release-status or tag
-truth for the bounded package.
+`[trajectory_5]` must not be added to root `releases.toml` by this planning PR.
+Planning inventory stays under `.planning/trajectory-5/**`.
 
 ## Verification
 
 Run:
 
 ```bash
-bash scripts/bounded-release-preflight.sh
+bash .planning/trajectory-5/tools/planning-preflight.sh
 bash scripts/tests/check-bounded-ship-bar.test.sh
 bash scripts/check-bounded-ship-bar.sh --diagnostic
 ```

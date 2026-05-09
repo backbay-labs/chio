@@ -27,7 +27,7 @@ branches.
 
 | Milestone | Owner lane | Exit condition |
 |---|---|---|
-| B-integrated | Lane B | Four hot-path primitives integrated with negative conformance evidence. |
+| B-integrated | Lane B | Hot-path primitives integrated with production-call-path conformance evidence; B4 full DSSE PAE conformance is not satisfied by the interim signature-slice fixture alone. |
 | A-assurance-attached | Lane A | Mutation/threat/formal evidence is re-evaluated against the integrated source state. |
 | C-canary-ran | Lane C | Bounded chiodome canary runs after Lane B and produces pinned fixtures. |
 | package-regenerated | #618 | Release notes and package metadata regenerated from merged `main`. |
@@ -42,12 +42,14 @@ branches.
 
 ## Release Status
 
-The bounded package status is recorded only in:
+The bounded package status namespace, if root package metadata is recorded by
+the release owner after merged-main regeneration, is:
 
 ```toml
 [v0_1_0_bounded_chiodome]
 release_status = "blocked_pending_lane_b_integration"
 ```
 
-The timeline does not authorize a tag. It tells the integrator which evidence
-must exist before a human release owner can evaluate packaging.
+PR #620 does not write that root status. The timeline does not authorize a tag.
+It tells the integrator which evidence must exist before a human release owner
+can evaluate packaging.

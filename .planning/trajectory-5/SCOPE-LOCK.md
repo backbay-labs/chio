@@ -32,7 +32,9 @@ The in-scope catalog is normative in `debate/00-SYNTHESIS.md` and re-stated here
 | Anchor-batch async-only when public witness required: gate `crates/chio-anchor/src/batch.rs:227-235` sync wrapper at runtime (the load-bearing defense); add `scripts/check-anchor-batch-async-witness.sh` as best-effort fast-feedback documentation. | protocol | release work-B3 | TRJ4-140..147 + T1.3.E |
 | **DSSE-conformant bilateral signing (B4 sub-lane added per R4 BLOCKER 1)**: introduce Ed25519-over-DSSE-PAE-of-in-toto-Statement signing as the production §6-conformant artifact. Adds new module `crates/chio-federation/src/bilateral_dsse.rs`. Existing `crates/chio-federation/src/bilateral.rs::DualSignedReceipt::verify` (line 108) is NOT replaced; it coexists with explicit non-§6 disclaimer (single-version transition or cohabitation, choice in `lane-b-wiring/dsse-bilateral-signing.md`). Spec citation: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 + §7 step 11-12. The R4 finding observed that the legacy `CoSigningBody` preimage (lines 41-77) shares zero bytes with the §6 DSSE PAE preimage; Lane C's prior "Option A two-signature" framing was insufficient. | protocol / federation | release work-B4 | (R4 BLOCKER 1 promotion) |
 
-Each primitive closes with: enforced call site + spec MUST citation + signed negative conformance test that fails when wiring is removed. No Evidence Gate row closes without all three.
+Each primitive closes with: enforced call site, spec MUST citation, and a
+production-call-path conformance test that fails when wiring is removed. No
+Evidence Gate row closes without all three.
 
 ### Lane C -- One forcing demo
 
@@ -43,7 +45,7 @@ Each primitive closes with: enforced call site + spec MUST citation + signed neg
 | Anchored through `crates/chio-anchor::Web3CheckpointStatement` (no new live deployment required). | federation | release work-C3 |
 | Selective-disclosure auditor view behind `bbs-stub` Cargo feature flag. No new spec ratification. | federation | release work-C4 |
 | Wrapped at the user surface by `chio mcp serve --policy` against the local KB MCP stack at `ops/knowledge-base/`. Receipts dogfooded through `chio receipt explain`. | cli | release work-C5 |
-| `examples/chiodome-bilateral/` end-to-end canary fixture after Lane B integration; bounded package metadata under `[v0_1_0_bounded_chiodome]`. | examples | release work-C6 |
+| `examples/chiodome-bilateral/` end-to-end canary fixture after Lane B integration; optional bounded package metadata under `[v0_1_0_bounded_chiodome]` only when the package owner regenerates from merged `main`. | examples | release work-C6 |
 
 ## Out of scope (verbatim from synthesis, with elaboration)
 

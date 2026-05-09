@@ -153,7 +153,7 @@ crates/chio-cli/src/cli/trust_commands.rs:2432:    let report = explain_receipt_
 | Anchored through `crates/chio-anchor::Web3CheckpointStatement` | not exercised | anchored (no live deployment) |
 | Selective-disclosure auditor view (behind `zk` Cargo feature flag) | none | runs (or deferred to v0.2 per R6) |
 | Wrapped at `chio mcp serve --policy` against `ops/knowledge-base/` via `mcp-remote` | none | wrapped |
-| Bounded package status recorded in `releases.toml` `[v0_1_0_bounded_chiodome]` | `release_status = "blocked_pending_lane_b_integration"` | `release_status = "canary_assurance_complete"` only after Lane B integration, canary regeneration from merged `main`, and integrated merge SHA recording |
+| Bounded package status recorded in `releases.toml` `[v0_1_0_bounded_chiodome]` | ABSENT IN #620; package truth is not authored by the planning PR | `release_status = "canary_assurance_complete"` only after Lane B integration, canary regeneration from merged `main`, and integrated merge SHA recording |
 
 ## Re-measurement protocol (release close)
 
@@ -168,8 +168,9 @@ The release work closeout wave runs:
 3. `chio receipt explain` golden output committed under
    `examples/chiodome-bilateral/golden/<receipt-body-hash>.txt`;
    matches the explain output for the captured receipt.
-4. `releases.toml` `[trajectory_5]` carries
-   `[v0_1_0_bounded_chiodome].release_status` is moved only by the release owner.
+4. If package metadata is recorded, root `releases.toml`
+   `[v0_1_0_bounded_chiodome].release_status` and `integrated_merge_sha`
+   are moved only by the release owner after merged-main regeneration.
 5. `.github/workflows/chiodome-demo-continuous.yml` (release work-C6.3) is
    green for 7 consecutive nights pre-tag.
 6. `tools/diff-stable.py` (or Rust binary) (release work-C6.4) verifies the

@@ -6,9 +6,9 @@
 # evidence close gate for the assurance matrix. It is not a product
 # release or tag gate.
 #
-#   - bounded-release-preflight.sh: planning control-plane consistency.
-#   - check-bounded-ship-bar.sh (this file): evidence presence and shape
-#     for Lane B integration, Lane A assurance, and Lane C canary.
+# Planning consistency lives under `.planning/trajectory-5/`. This root
+# checker stays artifact-only: evidence presence and shape for Lane B
+# integration, Lane A assurance, and Lane C canary.
 #
 # The script is deliberately presence-and-shape oriented. It is NOT a
 # replacement for cargo test / cargo mutants / the demo runner; those
@@ -16,16 +16,19 @@
 #
 # Claim A (Lane A): per-crate mutation kill-rate JSONs for each
 # trust-boundary crate listed in `releases.toml [mutants]`. Crates
-# without a measured baseline JSON FAIL. A numeric kill-rate alone is
-# not enough to close the claim: the JSON must also prove target_met=true,
+# without a measured baseline JSON remain PARTIAL/PENDING. A numeric
+# kill-rate alone is not enough to close the claim: the JSON must also
+# prove target_met=true,
 # an explicit full-scope result label, complete evaluated counts, and no
 # partial/subset/interrupted/hand-picked scope markers.
 #
-# Claim B (Lane B): four signed negative conformance fixture files under
-# `crates/chio-conformance/tests/`. Missing files FAIL.
+# Claim B (Lane B): source-PR conformance fixture files under
+# `crates/chio-conformance/tests/`. Missing source-branch artifacts are
+# reported as PARTIAL/PENDING, not as release-truth failures in #620.
 #
 # Claim C (Lane C): demo directory + pinned canary fixture artifacts under
-# `examples/chiodome-bilateral/`. Missing artifacts FAIL.
+# `examples/chiodome-bilateral/`. Missing future source artifacts remain
+# PARTIAL/PENDING in #620.
 #
 # Run from the chio repo root: `bash scripts/check-bounded-ship-bar.sh`.
 # Output is one OK/FAIL/PARTIAL line per evidence check.
@@ -307,7 +310,7 @@ bar1_evidence_root="audits/evidence/mutants"
 
 banner_json="$bar1_evidence_root/banner.json"
 if [ ! -f "$banner_json" ]; then
-  failure "Claim A banner artifact missing ($banner_json)"
+  partial "Claim A banner artifact pending ($banner_json)"
 elif command -v jq >/dev/null 2>&1; then
   if jq -e '
     (.observed == true)
@@ -327,7 +330,7 @@ fi
 for crate in "${bar1_crates[@]}"; do
   json_glob="$bar1_evidence_root/$crate"
   if [ ! -d "$json_glob" ]; then
-    failure "Claim A $crate BASELINE-GAP (no $json_glob/ directory)"
+    partial "Claim A $crate BASELINE-GAP (no $json_glob/ directory yet)"
     continue
   fi
   # Pick the most-recent baseline JSON in the per-crate directory.
@@ -340,7 +343,7 @@ for crate in "${bar1_crates[@]}"; do
     latest_json=$(printf '%s\n' "${json_files[@]}" | sort | tail -1)
   fi
   if [ -z "$latest_json" ] || [ ! -f "$latest_json" ]; then
-    failure "Claim A $crate BASELINE-GAP (no JSON under $json_glob/)"
+    partial "Claim A $crate BASELINE-GAP (no JSON under $json_glob/ yet)"
     continue
   fi
   rate=$(kill_rate_for_json "$latest_json")
@@ -380,7 +383,7 @@ done
 # a triage_status value.
 threats_dir="audits/evidence/threats"
 if [ ! -d "$threats_dir" ]; then
-  failure "Claim A threats directory missing ($threats_dir)"
+  partial "Claim A threats directory pending ($threats_dir)"
 else
   threat_count=0
   threat_real=0
@@ -402,7 +405,7 @@ else
     fi
   done
   if [ "$threat_count" -eq 0 ]; then
-    failure "Claim A threats directory has zero JSON files"
+    partial "Claim A threats directory has zero JSON files"
   elif [ "$threat_real" -eq "$threat_count" ]; then
     ok "Claim A threats $threat_real of $threat_count with caught>=1, non-1970 ran_at, needs_real_run=false, and triage_status"
   else
@@ -410,31 +413,49 @@ else
   fi
 fi
 
-printf '\n[Claim B] Lane B -- four signed negative conformance fixtures\n'
+printf '\n[Claim B] Lane B -- production-call-path conformance fixtures\n'
 
-# Filenames mirror `SHIP-BAR-TRACKER.md` Claim B machine-readable signal row.
-bar2_fixtures=(
-  "b1_capability_v2_single_entry_no_bypass.rs"
-  "b2_receipt_v2_failclosed_under_negotiated_v2.rs"
-  "b3_anchor_batch_sync_path_rejected_under_public_witness.rs"
-  "b4_bilateral_dsse_pae_only_is_conformant.rs"
-)
 bar2_root="crates/chio-conformance/tests"
 
-for fixture in "${bar2_fixtures[@]}"; do
-  fpath="$bar2_root/$fixture"
-  if [ -f "$fpath" ]; then
-    # Each fixture must carry the negative-conformance annotation per
-    # SHIP-BAR-TRACKER.md Claim B machine-readable signal row.
-    if grep -q -E 'negative-conformance' "$fpath" 2>/dev/null; then
-      ok "Claim B $fixture present with negative-conformance annotation"
-    else
-      partial "Claim B $fixture present but missing negative-conformance annotation"
-    fi
+claim_b_fixture() {
+  local label="$1"
+  local fixture="$2"
+  local fpath="$bar2_root/$fixture"
+  if [ ! -f "$fpath" ]; then
+    partial "Claim B $label pending: $fixture not present in this planning tree"
+    return 0
+  fi
+  if grep -q -E 'negative-conformance|MUST fail|Spec MUST|Spec anchor|Reverts-to-fail proof|Production call path' "$fpath" 2>/dev/null; then
+    ok "Claim B $label fixture present with upstream evidence marker ($fixture)"
   else
-    failure "Claim B $fixture missing ($fpath)"
+    partial "Claim B $label fixture present but missing upstream evidence marker ($fixture)"
+  fi
+}
+
+claim_b_fixture "B1 single-entry verifier" "b1_capability_v2_single_entry_no_bypass.rs"
+claim_b_fixture "B2 receipt v2 pre-dispatch fail-closed" "b2_receipt_v2_failclosed_pre_dispatch.rs"
+claim_b_fixture "B3 anchor-batch async-only" "b3_anchor_batch_sync_path_rejected_under_public_witness.rs"
+
+b4_interim_fixture="$bar2_root/b4_bilateral_dsse_signature_slice.rs"
+b4_full_found=0
+for b4_candidate in "$bar2_root"/b4_bilateral_dsse_*.rs; do
+  [ -f "$b4_candidate" ] || continue
+  if [ "$b4_candidate" = "$b4_interim_fixture" ]; then
+    continue
+  fi
+  if grep -q -E 'negative-conformance|full DSSE PAE|DSSE PAE conformance|Spec MUST|Reverts-to-fail proof|Production call path' "$b4_candidate" 2>/dev/null; then
+    ok "Claim B B4 full DSSE PAE conformance fixture present ($(basename "$b4_candidate"))"
+    b4_full_found=1
+    break
   fi
 done
+if [ "$b4_full_found" -eq 1 ]; then
+  :
+elif [ -f "$b4_interim_fixture" ]; then
+  partial "Claim B B4 has interim signature-slice fixture only; full DSSE PAE conformance fixture pending"
+else
+  partial "Claim B B4 full DSSE PAE conformance fixture pending"
+fi
 
 # The async-witness fast-feedback shell script must also exist (per
 # SHIP-BAR-TRACKER.md Claim B machine-readable signal: "scripts/check-
@@ -448,7 +469,7 @@ if [ -f "$async_witness_script" ]; then
     failure "Claim B $async_witness_script present but exits nonzero"
   fi
 else
-  failure "Claim B $async_witness_script missing"
+  partial "Claim B $async_witness_script pending"
 fi
 
 printf '\n[Claim C] Lane C -- post-Lane-B canary fixture\n'
@@ -457,7 +478,7 @@ bar3_demo_dir="examples/chiodome-bilateral"
 if [ -d "$bar3_demo_dir" ]; then
   ok "Claim C demo directory present ($bar3_demo_dir)"
 else
-  failure "Claim C demo directory missing ($bar3_demo_dir)"
+  partial "Claim C demo directory pending ($bar3_demo_dir)"
 fi
 
 # Demo recipe: either a Makefile or a `Cargo.toml` example entry.
@@ -466,7 +487,7 @@ if [ -f "$bar3_demo_dir/Makefile" ]; then
 elif [ -f "$bar3_demo_dir/Cargo.toml" ]; then
   ok "Claim C demo recipe present (Cargo.toml example)"
 else
-  failure "Claim C demo recipe missing (no Makefile or Cargo.toml under $bar3_demo_dir)"
+  partial "Claim C demo recipe pending (no Makefile or Cargo.toml under $bar3_demo_dir)"
 fi
 
 # Two-kernel transcripts.
@@ -480,10 +501,10 @@ if [ -d "$transcripts_dir" ]; then
   if [ "$transcript_count" -ge 2 ]; then
     ok "Claim C two-kernel transcripts present ($transcript_count file(s) under $transcripts_dir/)"
   else
-    failure "Claim C transcripts incomplete ($transcript_count file(s) under $transcripts_dir/; expected at least 2)"
+    partial "Claim C transcripts pending ($transcript_count file(s) under $transcripts_dir/; expected at least 2)"
   fi
 else
-  failure "Claim C transcripts directory missing ($transcripts_dir/)"
+  partial "Claim C transcripts directory pending ($transcripts_dir/)"
 fi
 
 # `chio receipt explain` golden output.
@@ -497,10 +518,10 @@ if [ -d "$golden_dir" ]; then
   if [ "$golden_count" -gt 0 ]; then
     ok "Claim C golden file present ($golden_count file(s) under $golden_dir/)"
   else
-    failure "Claim C golden directory empty ($golden_dir/)"
+    partial "Claim C golden directory pending ($golden_dir/)"
   fi
 else
-  failure "Claim C golden directory missing ($golden_dir/)"
+  partial "Claim C golden directory pending ($golden_dir/)"
 fi
 
 # Pinned canary fixture set under the v0.1.0-bounded-chiodome package id.
@@ -510,7 +531,7 @@ for pinned_name in receipt.json envelope.json checkpoint.json; do
   if [ -f "$pinned_path" ]; then
     ok "Claim C pinned fixture present ($pinned_path)"
   else
-    failure "Claim C pinned fixture missing ($pinned_path)"
+    partial "Claim C pinned fixture pending ($pinned_path)"
   fi
 done
 
@@ -521,7 +542,7 @@ if [ -f releases.toml ]; then
   release_status=$(toml_value "v0_1_0_bounded_chiodome" "release_status")
   integrated_merge_sha=$(toml_value "v0_1_0_bounded_chiodome" "integrated_merge_sha")
   if [ -z "$release_status" ]; then
-    failure "Claim C releases.toml missing [v0_1_0_bounded_chiodome].release_status"
+    partial "Claim C bounded package release_status not recorded by this planning PR"
   elif printf '%s' "$release_status" | grep -q -E 'blocked|pending|partial|not_ready'; then
     partial "Claim C bounded package release_status is not assurance-complete ($release_status)"
   else
@@ -535,7 +556,7 @@ if [ -f releases.toml ]; then
     partial "Claim C releases.toml integrated_merge_sha is not recorded (${integrated_merge_sha:-missing})"
   fi
 else
-  failure "Claim C releases.toml missing"
+  partial "Claim C releases.toml missing; bounded package status remains pending"
 fi
 
 printf '\n----- check-bounded assurance summary -----\n'

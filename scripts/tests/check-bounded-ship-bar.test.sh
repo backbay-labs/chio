@@ -87,15 +87,19 @@ for i in $(seq 1 20); do
 EOF
 done
 
-# Bar 2 fixtures: presence + negative-conformance annotation.
+# Bar 2 fixtures: current upstream fixture names + evidence markers.
 mkdir -p "$WORK/crates/chio-conformance/tests"
 for f in b1_capability_v2_single_entry_no_bypass.rs \
-         b2_receipt_v2_failclosed_under_negotiated_v2.rs \
-         b3_anchor_batch_sync_path_rejected_under_public_witness.rs \
-         b4_bilateral_dsse_pae_only_is_conformant.rs; do
-    printf '// negative-conformance fixture\nfn main() {}\n' \
+         b2_receipt_v2_failclosed_pre_dispatch.rs \
+         b3_anchor_batch_sync_path_rejected_under_public_witness.rs; do
+    printf '// Spec MUST fixture with reverts-to-fail proof\nfn main() {}\n' \
         > "$WORK/crates/chio-conformance/tests/$f"
 done
+# B4 is intentionally an interim source-branch fixture in the current upstream
+# set, so the checker reports it as PARTIAL/PENDING rather than a full Claim B
+# close.
+printf '// signature-slice fixture; full DSSE PAE conformance pending\nfn main() {}\n' \
+    > "$WORK/crates/chio-conformance/tests/b4_bilateral_dsse_signature_slice.rs"
 # Companion async-witness script.
 printf '#!/usr/bin/env bash\nexit 0\n' \
     > "$WORK/scripts/check-anchor-batch-async-witness.sh"
@@ -206,9 +210,11 @@ EOF
 
 # ---------------------------------------------------------------------
 # Stage 5: sanity -- a real FAIL row exits 1 in either mode.
-# Trigger by removing one Bar 2 fixture so the script records a FAIL.
+# Trigger by making the async-witness companion exit nonzero.
 # ---------------------------------------------------------------------
-rm "$WORK/crates/chio-conformance/tests/b1_capability_v2_single_entry_no_bypass.rs"
+printf '#!/usr/bin/env bash\nexit 7\n' \
+    > "$WORK/scripts/check-anchor-batch-async-witness.sh"
+chmod +x "$WORK/scripts/check-anchor-batch-async-witness.sh"
 rc=0
 bash "$GATE" --diagnostic >"$OUT" 2>"$ERR" || rc=$?
 if [ "$rc" -ne 1 ]; then

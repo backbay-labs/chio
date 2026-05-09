@@ -15,8 +15,9 @@ release/tag vehicle. Trajectory 5 is an assurance and integration program.
 - Lane C is a canary demo after Lane B, not a release driver.
 - #618 release packaging remains last and must be regenerated from merged
   `main`.
-- The bounded package status lives in
-  `releases.toml` `[v0_1_0_bounded_chiodome].release_status`.
+- The bounded package status namespace is
+  `releases.toml` `[v0_1_0_bounded_chiodome].release_status`, but PR #620 does
+  not author that root package truth.
 
 ## Readiness Posture
 
@@ -41,7 +42,7 @@ but it validates assurance evidence rather than release-tag readiness.
 
 ## Executable Checks
 
-- `bash scripts/bounded-release-preflight.sh`
+- `bash .planning/trajectory-5/tools/planning-preflight.sh`
 - `bash scripts/tests/check-bounded-ship-bar.test.sh`
 - `bash scripts/check-bounded-ship-bar.sh --diagnostic`
 

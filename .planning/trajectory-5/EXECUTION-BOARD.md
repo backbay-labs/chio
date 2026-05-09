@@ -6,10 +6,10 @@ This board is planning metadata. It is not an executable release gate.
 
 | Order | Lane | Work | Exit condition |
 |---:|---|---|---|
-| 1 | B | Source integration for B0/B1/B2/B3/B4. | Source branches merge cleanly and four negative conformance fixtures exist. |
+| 1 | B | Source integration for B0/B1/B2/B3/B4. | Source branches merge cleanly and production-call-path conformance fixtures exist; B4 needs full DSSE PAE conformance, not only the interim signature-slice regression. |
 | 2 | A | Assurance addendum. | Mutation, threat, Kani, TLA+, and Lean rows are rerun or explicitly partial against the integrated source state. |
 | 3 | C | Canary demo. | `examples/chiodome-bilateral/` canary runs after Lane B and writes pinned fixtures. |
-| 4 | #618 | Package regeneration. | Release notes, fixtures, and `[v0_1_0_bounded_chiodome]` metadata are regenerated from merged `main`. |
+| 4 | #618 | Package regeneration. | Release notes, fixtures, and any `[v0_1_0_bounded_chiodome]` root metadata are regenerated from merged `main` by the package owner. |
 
 ## Lane B Source Integration
 

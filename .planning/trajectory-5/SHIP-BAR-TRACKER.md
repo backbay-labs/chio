@@ -5,8 +5,9 @@ scripts and review links point here. Its contract is now claim-by-claim
 assurance, not a product-release declaration and not tag authorization.
 
 PR #620 is the planning-truth owner for this matrix. It does not ship
-`v0.1.0-bounded-chiodome`. The bounded package status lives only at
-`releases.toml` `[v0_1_0_bounded_chiodome].release_status`.
+`v0.1.0-bounded-chiodome`. The bounded package status namespace is
+`releases.toml` `[v0_1_0_bounded_chiodome].release_status`, but PR #620 does
+not author that root package truth.
 
 ## Integration Order
 
@@ -29,9 +30,9 @@ The current release architecture is ordered as follows:
 
 | Claim | Allowed wording | Forbidden wording | Required preconditions | Machine evidence | Script checks | Current status |
 |---|---|---|---|---|---|---|
-| **B. Lane B hot-path enforcement** | Four hot-path primitives have production-call-path negative conformance evidence. | "The release is ready because the planning bar is green." | B0 -> B1/B2/B3/B4 integrated from a clean source branch. | Four files under `crates/chio-conformance/tests/`: `b1_capability_v2_single_entry_no_bypass.rs`, `b2_receipt_v2_failclosed_under_negotiated_v2.rs`, `b3_anchor_batch_sync_path_rejected_under_public_witness.rs`, `b4_bilateral_dsse_pae_only_is_conformant.rs`. Each contains a `negative-conformance` annotation. `scripts/check-anchor-batch-async-witness.sh` exists and exits 0. | `scripts/check-bounded-ship-bar.sh` Claim B block. | PARTIAL until the Lane B PRs merge, fixtures are regenerated from merged `main`, and integrated checks are green. |
+| **B. Lane B hot-path enforcement** | Four hot-path primitives have production-call-path conformance evidence, with B4 still pending full DSSE PAE conformance. | "The release is ready because the planning bar is green." | B0 -> B1/B2/B3/B4 integrated from a clean source branch. | Current upstream fixture names are `b1_capability_v2_single_entry_no_bypass.rs`, `b2_receipt_v2_failclosed_pre_dispatch.rs`, `b3_anchor_batch_sync_path_rejected_under_public_witness.rs`, and interim `b4_bilateral_dsse_signature_slice.rs`. B4 remains pending until a full DSSE PAE conformance fixture exists. `scripts/check-anchor-batch-async-witness.sh` exists and exits 0. | `scripts/check-bounded-ship-bar.sh` Claim B block. | PARTIAL/PENDING until the Lane B PRs merge, B4 full conformance lands, fixtures are regenerated from merged `main`, and integrated checks are green. |
 | **A. Lane A assurance addendum** | Mutation and threat evidence provide an assurance addendum with explicit partial rows. | "The mutation floor shipped" when any row is partial, subset-limited, budget-capped, or missing full-scope metadata. | Lane B source integration is not blocked by Lane A evidence; Lane A attaches after source ownership is clean. | `audits/evidence/mutants/banner.json`; per-crate JSON under `audits/evidence/mutants/<crate>/`; 20 threat JSON files under `audits/evidence/threats/` with `caught >= 1`, non-1970 `ran_at`, `needs_real_run:false`, and `triage_status`. | `scripts/check-bounded-ship-bar.sh` Claim A block. | PARTIAL. Existing per-crate numbers include full and partial samples; hosted-nightly full-scope reruns remain authoritative. |
-| **C. Lane C canary demo** | The bounded chiodome canary runs after Lane B and produces inspectable fixtures. | "v0.1.0-bounded-chiodome is a release tag vehicle for Trajectory 5." | Lane B integrated first; Lane C rebased on that source state; canary fixtures regenerated from merged `main`. | `examples/chiodome-bilateral/` with recipe, at least two transcript JSON files, golden explain output, and pinned `receipt.json`, `envelope.json`, `checkpoint.json` under `fixtures/v0.1.0-bounded-chiodome/`. `releases.toml` `[v0_1_0_bounded_chiodome]` records `release_status` and a non-pending 40-hex `integrated_merge_sha` before any assurance-complete status. | `scripts/check-bounded-ship-bar.sh` Claim C block. | BLOCKED/PARTIAL. The canary remains downstream of Lane B and #618 packaging remains last. |
+| **C. Lane C canary demo** | The bounded chiodome canary runs after Lane B and produces inspectable fixtures. | "v0.1.0-bounded-chiodome is a release tag vehicle for Trajectory 5." | Lane B integrated first; Lane C rebased on that source state; canary fixtures regenerated from merged `main`. | `examples/chiodome-bilateral/` with recipe, at least two transcript JSON files, golden explain output, and pinned `receipt.json`, `envelope.json`, `checkpoint.json` under `fixtures/v0.1.0-bounded-chiodome/`. If root package metadata exists, `releases.toml` `[v0_1_0_bounded_chiodome]` records `release_status` and a non-pending 40-hex `integrated_merge_sha` before any assurance-complete status. | `scripts/check-bounded-ship-bar.sh` Claim C block. | BLOCKED/PARTIAL. The canary remains downstream of Lane B and #618 packaging remains last. |
 
 ## Gate Semantics
 
@@ -44,14 +45,16 @@ The gate must never depend on lane ticket inventories, issue trackers, or
 gates can only depend on evidence artifacts, scripts, source files, and
 machine-readable release-status keys.
 
-`scripts/bounded-release-preflight.sh` is a planning consistency preflight.
-It is not a release close gate.
+`.planning/trajectory-5/tools/planning-preflight.sh` is a planning consistency
+preflight. It is not a root release close gate.
 
 ## Release-Key Contract
 
-Do not add tag or release-state keys directly under `[trajectory_5]`.
+Do not add `[trajectory_5]`, tag state, release state, or planning inventory to
+root `releases.toml` in this PR.
 
-The only bounded chiodome status namespace is:
+The only bounded chiodome status namespace, when the package owner records root
+truth, is:
 
 ```toml
 [v0_1_0_bounded_chiodome]

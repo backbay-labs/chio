@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Trajectory 5 planning preflight.
 #
-# This script checks the planning control plane and the release-status
+# This script checks the planning control plane and the release-boundary
 # namespace contract. It is not the release close gate and deliberately
 # does not depend on lane ticket inventories. Ticket files can track
 # work, but executable gates must not pass or fail because tickets.md
@@ -12,19 +12,19 @@
 #   Gate 3: templates and architecture docs present
 #   Gate 4: Wave-2 reviews + Wave-3 fix logs + Wave-4 closeout + Wave-2 sign-off ledgers
 #   Gate 5: OWNERS.toml human_assignment populated for all three lanes
-#   Gate 6: releases.toml [trajectory_5] planning block and
-#           [v0_1_0_bounded_chiodome].release_status exist
+#   Gate 6: root release/config boundary is clean
 #   Gate 7: assurance baseline measurements present
 #   Gate 8: drift-cleanup checks (no LB-* aliases in Depends-on rows;
 #           no live Option A design references; ToolServer mentions
 #           confined to retraction notes)
 #
-# Run from the chio repo root: `bash scripts/bounded-release-preflight.sh`.
+# Run from the chio repo root:
+# `bash .planning/trajectory-5/tools/planning-preflight.sh`.
 # Output is one OK/FAIL line per check. Exit 0 if all PASS, 1 otherwise.
 
 set -uo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$repo_root"
 
 fail=0
@@ -197,31 +197,21 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Gate 6: releases.toml has planning block and bounded package status
+# Gate 6: root release/config boundary is clean
 # ---------------------------------------------------------------------------
-printf '\n[Gate 6] releases.toml status blocks\n'
+printf '\n[Gate 6] root release/config boundary\n'
 if [ ! -f releases.toml ]; then
   failure "releases.toml is missing"
 else
   if grep -q -E '^\[trajectory_5\]' releases.toml; then
-    ok "releases.toml has [trajectory_5] section"
+    failure "releases.toml must not carry [trajectory_5] planning inventory"
   else
-    failure "releases.toml is missing [trajectory_5] section"
+    ok "releases.toml has no [trajectory_5] planning section"
   fi
-  if grep -q -E '^planning_status[[:space:]]*=' releases.toml; then
-    ok "releases.toml has trajectory_5 planning_status set"
+  if grep -q -E '^trj5_|^planning_status[[:space:]]*=' releases.toml; then
+    failure "releases.toml contains Trajectory 5 planning keys"
   else
-    failure "releases.toml is missing trajectory_5 planning_status"
-  fi
-  if grep -q -E '^trj5_baseline_sha[[:space:]]*=' releases.toml; then
-    ok "releases.toml has trj5_baseline_sha set"
-  else
-    failure "releases.toml is missing trj5_baseline_sha"
-  fi
-  if grep -q -E '^\[v0_1_0_bounded_chiodome\]' releases.toml; then
-    ok "releases.toml has [v0_1_0_bounded_chiodome] section"
-  else
-    failure "releases.toml is missing [v0_1_0_bounded_chiodome] section"
+    ok "releases.toml has no Trajectory 5 planning keys"
   fi
   if awk '
     /^\[v0_1_0_bounded_chiodome\]/ { in_section = 1; next }
@@ -229,9 +219,19 @@ else
     in_section && /^release_status[[:space:]]*=/ { found = 1 }
     END { exit(found ? 0 : 1) }
   ' releases.toml; then
-    ok "releases.toml has [v0_1_0_bounded_chiodome].release_status set"
+    ok "releases.toml bounded package status is present when package owner adds it"
   else
-    failure "releases.toml is missing [v0_1_0_bounded_chiodome].release_status"
+    ok "releases.toml bounded package status absent; #620 does not author package truth"
+  fi
+  if awk '
+    /^\[v0_1_0_bounded_chiodome\]/ { in_section = 1; next }
+    /^\[/ { in_section = 0 }
+    in_section && /^integrated_merge_sha[[:space:]]*=/ { found = 1 }
+    END { exit(found ? 0 : 1) }
+  ' releases.toml; then
+    ok "releases.toml bounded package integrated_merge_sha key is present when package owner adds it"
+  else
+    ok "releases.toml bounded package integrated_merge_sha absent; package owner records it after merged-main regeneration"
   fi
 fi
 
@@ -273,6 +273,7 @@ tool_server_hits=$(grep -rn -E 'ToolServer\b' .planning/trajectory-5/ 2>/dev/nul
   | grep -v SharedUpstreamToolServer \
   | grep -v register_tool_server \
   | grep -v tool_server_escape \
+  | grep -v /tools/planning-preflight.sh \
   | grep -v /reviews/ \
   | grep -v /debate/ || true)
 if [ -z "$tool_server_hits" ]; then
@@ -336,13 +337,13 @@ fi
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
-printf '\n----- bounded-release-preflight summary -----\n'
+printf '\n----- planning-preflight summary -----\n'
 printf 'checks run: %d\n' "$checks"
 printf 'failures:   %d\n' "$fail"
 if [ "$fail" -eq 0 ]; then
-  printf '\nbounded release preflight: PASS\n'
+  printf '\nplanning preflight: PASS\n'
   exit 0
 else
-  printf '\nbounded release preflight: %d FAIL(s)\n' "$fail"
+  printf '\nplanning preflight: %d FAIL(s)\n' "$fail"
   exit 1
 fi

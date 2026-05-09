@@ -25,7 +25,7 @@ PR #620 owns planning control data:
 - `.planning/trajectory-5/**`
 - release architecture and merge-topology records
 - assurance matrix wording
-- planning preflight script registration
+- planning-local preflight script registration
 - the executable assurance checker and its regression test
 
 PR #620 does not own:
@@ -50,24 +50,26 @@ claim.
 
 ## Release-Key Namespace
 
-Do not add release-state or tag-state keys under `[trajectory_5]`.
+Do not add Trajectory 5 planning inventory, release-state, or tag-state keys to
+root `releases.toml` in this PR.
 
-`[trajectory_5]` is planning metadata only. The bounded chiodome package status
-is:
+The bounded chiodome package status, if and when the release-package owner
+records it, is:
 
 ```toml
 [v0_1_0_bounded_chiodome]
 release_status = "blocked_pending_lane_b_integration"
 ```
 
-This status does not authorize a product release. It records whether the
-bounded canary evidence is complete enough for a human release owner to decide
-whether #618 can be regenerated from merged `main`.
+PR #620 does not author that root status. It records the boundary: #618 or the
+release owner may add package truth only after Lane B integration and merged-main
+canary regeneration.
 
 ## Gate Semantics
 
-`scripts/bounded-release-preflight.sh` checks planning consistency and the release-key
-namespace contract. It does not depend on `tickets.md`.
+`.planning/trajectory-5/tools/planning-preflight.sh` checks planning consistency
+and the root release/config boundary. It does not depend on `tickets.md` and is
+not wired as a root release gate.
 
 `scripts/check-bounded-ship-bar.sh` checks evidence artifacts only:
 
@@ -77,7 +79,8 @@ namespace contract. It does not depend on `tickets.md`.
 - Lane B negative conformance fixtures under `crates/chio-conformance/tests/`
 - `scripts/check-anchor-batch-async-witness.sh`
 - Lane C canary fixtures under `examples/chiodome-bilateral/`
-- `[v0_1_0_bounded_chiodome].release_status` and `integrated_merge_sha`
+- optional `[v0_1_0_bounded_chiodome].release_status` and
+  `integrated_merge_sha` if the package owner has recorded them
 
 Planning docs can track tickets. Executable gates cannot pass or fail because a
 ticket file exists.

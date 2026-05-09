@@ -72,10 +72,10 @@ the root README mutation banner, and Lane A triage scripts belong to #603.
    the older #608 conflict note as current.
 5. Lane C is a canary only until Lane B is merged and evidence is rerun.
    Rebase #614, #615, and #617 after #610 and #612 land.
-6. #618 release packaging is last. Regenerate release notes, fixtures,
-   the assurance matrix, and `releases.toml` from merged `main`; only then
-   evaluate whether the bounded package can move out of
-   `[v0_1_0_bounded_chiodome].release_status = "blocked_pending_lane_b_integration"`.
+6. #618 release packaging is last. Regenerate release notes, fixtures, and the
+   assurance matrix from merged `main`. If package metadata is authored, root
+   `releases.toml` `[v0_1_0_bounded_chiodome]` is updated by the release owner
+   then, not by #620.
 
 ## Fix Wave 2 Lane B Sequencing
 
@@ -174,7 +174,7 @@ the current branch-tip SHAs.
 | R6-P0-003 | Closed. The integration order is Lane B, then Lane A assurance, then Lane C canary. |
 | R6-P0-004 | Closed. Executable gates do not use lane ticket inventories as release evidence. |
 | R6-P1-005 | Closed. The old aggregate bar is replaced by `SHIP-BAR-TRACKER.md` claim-by-claim assurance matrix. |
-| R6-P2-001 | Closed. Bounded package status is normalized to `[v0_1_0_bounded_chiodome].release_status`. |
+| R6-P2-001 | Closed. Bounded package status namespace is documented as `[v0_1_0_bounded_chiodome].release_status`; #620 does not author root package truth. |
 | R6-P2-002 | Closed. The load-bearing mutation evidence path is `audits/evidence/mutants/**`. |
 | R6-P2-003 | Closed. The current checker is `scripts/check-bounded-ship-bar.sh`; stale script names are not part of the load-bearing contract. |
 | R6-P2-007 | Closed. Lane C is a post-Lane-B canary. |

@@ -1,27 +1,29 @@
-# Trajectory 5 closeout
+# Trajectory 5 integration map
 
-Status: R6 release-architecture corrected; release integration still blocked.
+Status: R7 planning-boundary corrected; release integration still blocked.
 
-This document is a historical closeout map for release work. R4 supersedes the
-previous merge-order language for release purposes. The current planning
-ownership record, replacement strategy, and local merge simulation live in
-`R4-MERGE-TOPOLOGY.md`.
+This document is a historical integration map for release work. It is not a
+release ledger and it is not proof that #620 contains the source/evidence
+artifacts named below. R4 supersedes the previous merge-order language for
+release purposes. The current planning ownership record and replacement
+strategy live in `R4-MERGE-TOPOLOGY.md`.
 
-The numbers
-below are taken from the actual PR titles, the post-cleanup-wave state
-of `baselines/BAR-1-MUTATION.md`, and the midpoint security audit at
-`reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`. Where a bar
-is honestly partial, this document says so. The integrator decides
-merge order; this document gives them the map.
+The numbers below are taken from actual PR titles, source-branch review
+records, baseline files, and the midpoint security audit at
+`reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`. Where a bar is
+honestly partial or absent from #620, this document says so. The integrator
+decides merge order; this document gives them the map.
 
 R6 correction: read the rows below as assurance evidence, not as product
 release claims. The current order is Lane B integration first, Lane A
 assurance addendum second, Lane C canary after Lane B, and #618 packaging last
 from merged `main`.
 
-## What landed
+## What source branches report
 
-This trajectory prepared three coupled lanes on open PR branches.
+This trajectory prepared three coupled lanes on open PR branches. #620 carries
+the planning and assurance matrix only. It does not vendor the source PR
+artifacts listed in this section.
 
 ### Lane A (the floor)
 
@@ -97,12 +99,13 @@ Reject for unknown tool names (was Routine fail-open; audit P0-006).
 
 ### Lane C (the demo)
 
-A two-kernel cross-org bilateral cosigned invocation example at
-`examples/chiodome-bilateral/` (PRs #614, #615, #617) runs end-to-end
-with deterministic seeded keypairs (cleanup-wave fix to audit
-P0-015); produces a real signed `ChioReceipt`, §6 DSSE envelope, and
-a `Web3CheckpointStatement` whose merkle root uses RFC6962 leaf
-hashing (cleanup-wave fix to audit P0-013).
+The two-kernel cross-org bilateral cosigned invocation example at
+`examples/chiodome-bilateral/` is source-branch evidence from PRs #614, #615,
+and #617, not a runnable artifact in #620. It remains pending until those
+branches merge after Lane B and the canary fixtures are regenerated from merged
+`main`. The claimed source-branch target is deterministic seeded keypairs, a
+real signed `ChioReceipt`, a DSSE envelope, and a `Web3CheckpointStatement`
+whose merkle root uses RFC6962 leaf hashing.
 
 `chio receipt --inspect-bilateral` (renamed from `--explain-bilateral`
 after the audit caught the over-claim of cryptographic verification
@@ -112,7 +115,7 @@ structured selective-disclosure placeholder that is explicitly labeled
 NOT zero-knowledge; real BBS+ is deferred. KB MCP integration (PR #614)
 uses an `mcp-remote` stdio bridge against `:8111/mcp/`; the wrap path
 produces mediation transcripts (not kernel-signed receipts) so C3 is
-honestly labeled PARTIAL in the release.
+honestly labeled PARTIAL in the release map.
 
 ## Assurance Reconciliation
 
@@ -143,37 +146,37 @@ Claim A closes only after the hosted-nightly authoritative run lands;
 this trajectory delivered the measurement infrastructure, the floor
 exists, and the gaps are honestly tagged.
 
-### Claim B -- four Lane B primitives protected by signed negative conformance: PARTIAL
+### Claim B -- Lane B primitives protected by production-call-path conformance: PARTIAL/PENDING
 
-Four signed negative conformance fixtures are expected from open PR
-branches under `crates/chio-conformance/tests/`, each exercising the
-production call path:
+Open source PR branches are expected to provide conformance fixtures under
+`crates/chio-conformance/tests/`, each exercising the production call path.
+These files are not present in #620:
 
 - `b1_capability_v2_single_entry_no_bypass`
-- `b2_receipt_v2_failclosed_pre_dispatch` (cleanup-wave revision of
-  the original post-dispatch fixture per audit P0-001)
+- `b2_receipt_v2_failclosed_pre_dispatch`
 - `b3_anchor_batch_sync_path_rejected_under_public_witness`
-- `b4_bilateral_dsse_pae_only_is_conformant`
+- B4 is still pending full DSSE PAE conformance. The current upstream evidence
+  found during R7 review is the interim `b4_bilateral_dsse_signature_slice`
+  fixture, which explicitly does not claim full §6 predicate conformance.
 
-Each fixture contains a `// negative-conformance: ...` annotation per
-the Claim B machine-readable signal in `SHIP-BAR-TRACKER.md`. Claim B
-remains PARTIAL until those PRs merge, dependent branches rebase,
-fixtures are regenerated from merged `main`, and checks are green on
-the integrated merge SHA.
+Claim B remains PARTIAL/PENDING until those PRs merge, dependent branches
+rebase, B4 full DSSE PAE conformance lands, fixtures are regenerated from
+merged `main`, and checks are green on the integrated merge SHA.
 
 ### Claim C -- chiodome bilateral canary demo: PARTIAL
 
-The demo runner and receipt rendering are branch-local evidence. They
-do not make Claim C assurance-complete until #614/#615/#617/#618 merge,
-fixtures are regenerated from merged `main`, and checks are green on
-the integrated merge SHA.
+The demo runner and receipt rendering are branch-local evidence and are absent
+from the #620 tree. They do not make Claim C assurance-complete until
+#614/#615/#617/#618 merge, fixtures are regenerated from merged `main`, and
+checks are green on the integrated merge SHA.
 
 C3 (KB-MCP-mediated receipts) is PARTIAL: the wrap path produces
 mediation transcripts, not kernel-signed receipts. The old release-bar
-honesty wording is superseded by `SHIP-BAR-TRACKER.md`. Bounded package
-status lives in `releases.toml` `[v0_1_0_bounded_chiodome].release_status`
-after the integrator regenerates it from merged `main` per the merge sequence
-below.
+honesty wording is superseded by `SHIP-BAR-TRACKER.md`. Bounded package status
+may live in root `releases.toml`
+`[v0_1_0_bounded_chiodome].release_status` only after the release owner
+regenerates it from merged `main` per the merge sequence below. PR #620 does
+not author that root package truth.
 
 ## Audit closure
 
