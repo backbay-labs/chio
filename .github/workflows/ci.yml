@@ -476,19 +476,35 @@ jobs:
             --config=formal/tla/MCDelegationDepthBound.cfg \
             formal/tla/DelegationDepthBound.tla
 
-  # PR-tier Kani lane for the public chio-kernel-core harnesses listed under
-  # `[lanes.pr]` in formal/rust-verification/kani-public-harnesses.toml.
-  # Each harness is invoked with `cargo kani -p chio-kernel-core --lib
-  # --harness <h> --default-unwind 8 --no-unwinding-checks`.
-  # On PRs, narrows to harnesses whose source line was changed (via
-  # scripts/kani-changed-harnesses.sh). Falls back to the full lane if the
-  # diff base cannot be resolved or a proof-relevant file changed. Pushes
-  # to main always run the full lane.
+  # PR-tier Kani lane. Iterates the multi-crate manifest at
+  # `.kani/harnesses.toml` (schema chio.kani.multi-crate.v1, landed by
+  # Kani multi-crate manifest). Each `[[harness]]` entry whose `lane = "pr"` is run with
+  #   cargo kani -p <crate> --lib --harness <name> \
+  #     --default-unwind <unwind> --no-unwinding-checks
+  # under a per-harness `timeout(1)` budget.
+  #
+  # chio-kernel-core retains its dedicated narrowing pass (for PRs we
+  # restrict the chio-kernel-core sweep to harnesses whose source line
+  # was changed via `scripts/kani-changed-harnesses.sh`); the v1
+  # `[lanes.pr]` block in formal/rust-verification/kani-public-harnesses.toml
+  # is the source of truth for that script and must mirror the
+  # chio-kernel-core entries in `.kani/harnesses.toml`.
+  #
+  # All other crates in the manifest (chio-attest-verify today, with
+  # chio-anchor + chio-weights to be added by their respective PRs) are
+  # iterated by `scripts/run-kani-manifest.sh` against the multi-crate
+  # manifest. Their PR-lane sets are small (~4 harnesses each at the
+  # time of writing) so we run the full per-crate set on every PR; if a
+  # crate grows beyond the PR budget we will add per-crate narrowing
+  # mirroring the chio-kernel-core pattern.
+  #
+  # Pushes to main run the full chio-kernel-core lane plus all
+  # non-chio-kernel-core manifest entries.
   kani-public-pr:
-    name: kani-public-pr (lanes.pr harnesses)
+    name: kani-public-pr (multi-crate)
     # owner: M03
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     concurrency:
       group: ${{ github.event_name == 'pull_request' && format('pr-{0}-kani-public-pr', github.ref) || format('main-{0}-kani-public-pr', github.sha) }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -543,7 +559,64 @@ jobs:
             echo "Non-PR event ($GH_EVENT); running full lanes.pr sweep."
           fi
 
-      - name: Run lanes.pr Kani harnesses
+      - name: Validate multi-crate manifest schema and parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+
+          try:
+              import tomllib
+          except ModuleNotFoundError:
+              import tomli as tomllib
+
+          multi = tomllib.loads(
+              Path(".kani/harnesses.toml").read_text(encoding="utf-8")
+          )
+          schema = multi.get("schema")
+          if schema != "chio.kani.multi-crate.v1":
+              sys.stderr.write(
+                  f"ci.yml: unexpected manifest schema {schema!r}\n"
+              )
+              sys.exit(1)
+
+          legacy = tomllib.loads(
+              Path(
+                  "formal/rust-verification/kani-public-harnesses.toml"
+              ).read_text(encoding="utf-8")
+          )
+          legacy_pr = set(legacy["lanes"]["pr"]["harnesses"])
+          multi_kc_pr = {
+              e["harness"]
+              for e in multi.get("harness", [])
+              if e["crate"] == "chio-kernel-core" and e["lane"] == "pr"
+          }
+          if legacy_pr != multi_kc_pr:
+              missing_in_multi = legacy_pr - multi_kc_pr
+              missing_in_legacy = multi_kc_pr - legacy_pr
+              sys.stderr.write(
+                  "chio-kernel-core PR-lane parity mismatch between "
+                  ".kani/harnesses.toml and formal/rust-verification/"
+                  "kani-public-harnesses.toml:\n"
+              )
+              if missing_in_multi:
+                  sys.stderr.write(
+                      f"  missing from multi-crate manifest: {sorted(missing_in_multi)}\n"
+                  )
+              if missing_in_legacy:
+                  sys.stderr.write(
+                      f"  missing from legacy manifest: {sorted(missing_in_legacy)}\n"
+                  )
+              sys.exit(1)
+          print(
+              f"manifest parity ok: {len(multi_kc_pr)} chio-kernel-core PR harnesses, "
+              f"{sum(1 for e in multi.get('harness', []) if e['lane'] == 'pr')} total PR harnesses"
+          )
+          PY
+
+      - name: Run chio-kernel-core PR sweep (with narrowing)
         shell: bash
         env:
           CARGO_BUILD_JOBS: "1"
@@ -581,7 +654,7 @@ jobs:
 
           if [[ "${#HARNESSES[@]}" -eq 0 ]]; then
             if [[ "$KANI_NARROW" == "true" ]]; then
-              echo "kani-changed-harnesses.sh emitted no harnesses; PR did not touch lanes.pr surface. Skipping sweep."
+              echo "kani-changed-harnesses.sh emitted no harnesses; PR did not touch chio-kernel-core lanes.pr surface. Skipping chio-kernel-core sweep."
               exit 0
             fi
             echo "lanes.pr is empty in kani-public-harnesses.toml" >&2
@@ -589,12 +662,28 @@ jobs:
           fi
 
           for harness in "${HARNESSES[@]}"; do
-            echo "::group::cargo kani --harness ${harness}"
+            echo "::group::cargo kani chio-kernel-core::${harness}"
             cargo kani -p chio-kernel-core --lib --harness "${harness}" \
               --default-unwind 8 --no-unwinding-checks
             echo "::endgroup::"
           done
-          echo "lanes.pr Kani sweep passed (${#HARNESSES[@]} harnesses, narrow=${KANI_NARROW})"
+          echo "chio-kernel-core PR sweep passed (${#HARNESSES[@]} harnesses, narrow=${KANI_NARROW})"
+
+      - name: Run other-crate manifest sweep (chio-attest-verify, chio-anchor, chio-weights, ...)
+        shell: bash
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: |
+          set -euo pipefail
+          # Surface the matched set first so reviewers can see exactly
+          # which (crate, harness) pairs are about to run.
+          echo "::group::run-kani-manifest.sh --list (lane=pr, exclude chio-kernel-core)"
+          bash scripts/run-kani-manifest.sh --lane pr \
+            --exclude-crate chio-kernel-core --list
+          echo "::endgroup::"
+          bash scripts/run-kani-manifest.sh --lane pr \
+            --exclude-crate chio-kernel-core --allow-empty
 
   # Regression-test deletion guard. Detects deletion of fuzz-promoted
   # regression tests under tests/regression_*.rs or

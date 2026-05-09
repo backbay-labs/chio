@@ -1,0 +1,192 @@
+schema = "chio.kani.multi-crate.v1"
+
+# Multi-crate Kani harness manifest (Kani multi-crate manifest).
+#
+# Each `[[harness]]` entry pins one (crate, harness) pair the CI
+# `kani-public-pr` job iterates. The job invokes the harness with:
+#
+#     cargo kani -p <crate> --lib --harness <name> \
+#       --default-unwind <default_unwind> --no-unwinding-checks
+#
+# Wrapped under a per-harness wall-clock cap of `timeout_secs`.
+#
+# Lanes:
+#   * lane = "pr"      Always runs on every PR and on push-to-main.
+#   * lane = "nightly" Runs only in the nightly Kani sweep workflow.
+#
+# This file is the source of truth for the multi-crate sweep. The
+# legacy `formal/rust-verification/kani-public-harnesses.toml` retains
+# the v1 chio-kernel-core schema for backwards-compatible consumers
+# (`scripts/check-kani-public-core.sh` and the M06 evidence bundle
+# expect `[lanes.pr]`); the entries below for chio-kernel-core mirror
+# that lane so there is exactly one place to extend the sweep.
+#
+# Adding a harness:
+#   1. Land the `#[kani::proof]` in `crates/<crate>/src/<file>.rs`,
+#      gated by `#[cfg(kani)]`.
+#   2. Append a `[[harness]]` block here.
+#   3. The CI workflow auto-iterates; no workflow edit required.
+#
+# Schema:
+#   crate           string  Cargo package name (-p flag value).
+#   harness         string  Symbol passed to `--harness`.
+#   default_unwind  int     Value for `--default-unwind`.
+#   timeout_secs    int     Per-harness wall-clock cap.
+#   lane            string  "pr" | "nightly".
+#   features        list    Optional Cargo features (e.g. ["pq"]).
+#   notes           string  Free-form comment for future maintainers.
+
+# ---------------------------------------------------------------------
+# chio-kernel-core (TRJ4 floor, originally landed)
+# ---------------------------------------------------------------------
+# Mirrors `[lanes.pr]` of formal/rust-verification/kani-public-harnesses.toml.
+# Per-harness wall-clock figures (Apple M-series, hot cargo cache,
+# kani 0.67.0): see that file's comment block. CI runner overhead is
+# typically 2-3x; the heaviest harness (`public_verify_capability...`)
+# is ~31s locally and stays well under the 1800s cap.
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_verify_capability_rejects_untrusted_issuer_before_signature"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+notes = "Concrete Ed25519 + canonical-JSON path; heaviest in the lane (~31s local)."
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_normalized_scope_subset_rejects_widened_child"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_normalized_scope_subset_rejects_value_widened_child"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_normalized_scope_subset_rejects_identity_mismatch"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_resolve_matching_grants_rejects_out_of_scope_request"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_resolve_matching_grants_preserves_wildcard_matching"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_evaluate_rejects_untrusted_issuer_before_dispatch"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_sign_receipt_rejects_kernel_key_mismatch_before_signing"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_sign_receipt_accepts_matching_kernel_key"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_scope_intersection_associative"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_revocation_predicate_idempotent"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_delegation_chain_step"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_receipt_roundtrip"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_budget_checked_add_no_overflow"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_delegate_no_widen"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_delegation_receipt_canonical"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_revocation_view_freshness"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_oracle_inclusion_soundness"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+
+# ---------------------------------------------------------------------
+# Per-crate sections land with their harness source
+# ---------------------------------------------------------------------
+# To make manifest enrollment atomic with harness source, each non-core
+# crate's `[[harness]]` block now lands in the SAME PR that adds the
+# harness source. This file (PR #607) ships the runner script, the
+# schema documentation, and the chio-kernel-core lane mirror; other
+# per-crate sections arrive via:
+#
+#   * chio-attest-verify  -> PR #605 (PR branch)
+#   * chio-anchor         -> PR #613 (PR branch)
+#   * chio-weights        -> PR #613 (PR branch)
+#
+# Integrator merges combine the per-crate sections additively. Adding a
+# new harness in the future: land the `#[kani::proof]` and the matching
+# `[[harness]]` block in the same PR; the multi-crate runner will pick
+# it up without further workflow edits.
