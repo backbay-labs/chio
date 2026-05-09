@@ -61,10 +61,10 @@ pub const PREDICATE_TYPE_BILATERAL: &str = "chio.bilateral-cosign-signature-slic
 /// In-toto Statement `_type` per the v1 attestation framework (DSSE doc).
 pub const STATEMENT_TYPE_V1: &str = "https://in-toto.io/Statement/v1";
 
-/// `_type` field of the chio-bilateral signature-slice predicate body.
-/// Distinct from `predicateType` so verifiers can distinguish this local
-/// profile from a generic in-toto Statement.
-pub const PREDICATE_BODY_SCHEMA: &str = "chio.bilateral-cosign.signature-slice.v1";
+/// Schema discriminator carried by the chio-bilateral signature-slice
+/// predicate body. It intentionally matches `predicateType` so the signed
+/// artifact has a single verifier-facing profile identifier.
+pub const PREDICATE_BODY_SCHEMA: &str = PREDICATE_TYPE_BILATERAL;
 
 /// Fixed prefix tag of the DSSE Pre-Authentication Encoding (DSSE v1).
 const PAE_PREFIX: &str = "DSSEv1";
@@ -162,8 +162,8 @@ pub struct KernelIdentity {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct BilateralPredicate {
-    /// Internal schema discriminator (`PREDICATE_BODY_SCHEMA`). Distinct
-    /// from `predicateType` on the parent Statement.
+    /// Internal schema discriminator (`PREDICATE_BODY_SCHEMA`), matching
+    /// `predicateType` on the parent Statement.
     pub schema: String,
     pub invocation_id: String,
     /// Origin kernel (Org A) identity.
@@ -344,7 +344,7 @@ pub fn build_predicate(
 /// produce a different digest than the producer signed, breaking
 /// cross-impl resolution. Hashing the body lets verifiers re-derive
 /// the subject from any source that exposes the body (the receipt
-/// store's signed wrapper, an audit log, or a peer's re-emission).
+/// store's signed wrapper, a receipt log, or a peer's re-emission).
 pub fn build_statement(
     receipt: &ChioReceipt,
     predicate: BilateralPredicate,
@@ -524,7 +524,7 @@ pub fn verify_dsse_envelope(
     // `passport_key_fingerprint` for both tool servers. Without this
     // check, a signer could produce a validly signed envelope whose
     // predicate names different passport fingerprints, and downstream §7
-    // peer-pinning / audit steps would act on identities that were never
+    // peer-pinning / verification steps would act on identities that were never
     // verified.
     if statement.predicate.tool_server_a.passport_key_fingerprint != org_a_keyid {
         return Err(BilateralCoSigningError::OrgASignatureInvalid);
@@ -629,6 +629,12 @@ fn validate_signature_slice_predicate(
                 pred.co_sign
             )))
         }
+    }
+    if pred.consistency_model != DEFAULT_CONSISTENCY_MODEL {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "predicate.schema_invalid: consistency_model {:?} is not supported by the signature-slice profile",
+            pred.consistency_model
+        )));
     }
     if !VALID_CROSS_ORG_VISIBILITY.contains(&pred.cross_org_visibility.as_str()) {
         return Err(BilateralCoSigningError::CanonicalJson(format!(
@@ -936,6 +942,35 @@ mod tests {
         let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
             .expect_err("embedded receipt kernel_key must equal Org B passport key");
         assert_eq!(err, BilateralCoSigningError::OrgBSignatureInvalid);
+    }
+
+    #[test]
+    fn verifier_rejects_ordered_or_quorum_consistency_claims_without_anchor_metadata() {
+        for unsupported in ["totally-ordered", "quorum-required"] {
+            let kp_a = Keypair::generate();
+            let kp_b = Keypair::generate();
+            let receipt = sample_receipt(&kp_b);
+            let mut envelope = sign_dsse_envelope(
+                &receipt,
+                &kp_a,
+                &kp_b,
+                "kernel.org-a",
+                "kernel.org-b",
+                "file_read",
+                1_734_000_000_000,
+            )
+            .unwrap();
+            let (mut statement, _) = envelope.decode_statement().unwrap();
+            statement.predicate.consistency_model = unsupported.to_string();
+            let bytes = statement.canonical_bytes().unwrap();
+            resign_payload(&mut envelope, &kp_a, &kp_b, &bytes);
+
+            let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+                .expect_err("signature-slice profile cannot verify ordered/quorum claims");
+            assert!(err.to_string().contains(&format!(
+                "consistency_model \"{unsupported}\" is not supported"
+            )));
+        }
     }
 
     #[test]

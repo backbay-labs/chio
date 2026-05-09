@@ -2822,6 +2822,7 @@ dependencies = [
  "chio-weights",
  "chrono",
  "coset",
+ "jsonschema",
  "jsonwebtoken",
  "p256 0.13.2",
  "rand 0.8.5",

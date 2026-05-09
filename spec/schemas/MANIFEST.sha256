@@ -21,6 +21,7 @@ c2294ed17e1346c080939aae047b0d57f0d1ca5b59412832fe4d76c082f3fdfb  spec/schemas/c
 c9f0cbe7eb59041f05396d952b00ba422113902a37a5088f7eb63a77b9a609ea  spec/schemas/chio-wire/v1/error/internal_error.schema.json
 e142b9bf8a04a984b287e4ff9dab0570125eecd09f00727a2864a9618cf8ffea  spec/schemas/chio-wire/v1/error/policy_denied.schema.json
 d9f8a43f8a1dfc375364b92a5f983e7d7debe72a903db89f6155df318c866ae1  spec/schemas/chio-wire/v1/error/tool_server_error.schema.json
+a712682051b66a3e954c0d3851863de832c0f2d92c2041ec497af4bd52865393  spec/schemas/chio-wire/v1/federation/bilateral-signature-slice.schema.json
 78394af0a841d39a9382cd824f4d4ece37ea2d3ffd1435ffd187f3af59350052  spec/schemas/chio-wire/v1/jsonrpc/notification.schema.json
 565af2941966f3ddc021ac5d07dadbc00920c5468a5e87b4844b51bbd9dc28bf  spec/schemas/chio-wire/v1/jsonrpc/request.schema.json
 b4b9b387137cfb25e009443c1240e516752fe7f6b57fbfe66ee818d23ce0b8a8  spec/schemas/chio-wire/v1/jsonrpc/response.schema.json
