@@ -1,0 +1,21 @@
+--- crates/chio-weights/src/card.rs
++++ replace StringSet::is_empty -> bool with true
+@@ -109,17 +109,17 @@
+     #[must_use]
+     pub fn len(&self) -> usize {
+         self.0.len()
+     }
+ 
+     /// True if no items are present.
+     #[must_use]
+     pub fn is_empty(&self) -> bool {
+-        self.0.is_empty()
++        true /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Borrow the underlying `BTreeSet` (canonical iteration order).
+     #[must_use]
+     pub fn as_set(&self) -> &BTreeSet<String> {
+         &self.0
+     }
+ 

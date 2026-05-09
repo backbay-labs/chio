@@ -1,0 +1,21 @@
+--- crates/chio-weights/src/lineage.rs
++++ replace != with == in verify_model_card_anchor
+@@ -234,17 +234,17 @@
+     let expected_hex = sha256_hex(&anchor_projection_bytes(card_bytes, attestation)?);
+     if expected_hex != anchor.digest.hex {
+         return Err(WeightsError::BundleRejected(format!(
+             "model card anchor digest mismatch: expected {expected_hex}, got {}",
+             anchor.digest.hex
+         )));
+     }
+     let card_sha = sha256_hex(card_bytes);
+-    if card_sha != anchor.card_canonical_sha256 {
++    if card_sha == /* ~ changed by cargo-mutants ~ */ anchor.card_canonical_sha256 {
+         return Err(WeightsError::BundleRejected(format!(
+             "model card anchor card_canonical_sha256 mismatch: expected {card_sha}, got {}",
+             anchor.card_canonical_sha256
+         )));
+     }
+     let expected_subject_sha = hex::encode(attestation.subject_digest_sha256);
+     if expected_subject_sha != anchor.attestation_subject_sha256 {
+         return Err(WeightsError::BundleRejected(format!(

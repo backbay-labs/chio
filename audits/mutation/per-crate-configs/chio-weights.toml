@@ -1,0 +1,57 @@
+# Per-run override config for chio-weights mutation baseline.
+#
+# chio-weights is NOT one of the six canonical trust-boundary crates
+# enumerated in `releases.toml [trust_boundary_crates]` (those are
+# chio-policy, chio-credentials, chio-attest-verify, chio-kernel-core,
+# chio-guards, chio-anchor). The crate is the M10 phase 4 model-card
+# surface (signed weights cards, cosign bundle helper, kernel binding
+# refusal, arc bind --card) and IS a trust-boundary surface for the
+# purposes of release work-A1: a malformed `weights_hash`, an out-of-set
+# capability scope, or a banned tool intersection MUST cause the
+# kernel to refuse a provider bind. Mutation kill on this crate is
+# therefore the right honest signal even though the crate is not in
+# the canonical six.
+#
+# This config mirrors `chio-policy.toml` and `chio-attest-verify.toml`
+# in shape:
+#   * additional_cargo_test_args is scoped to `--package chio-weights`
+#     to avoid the pre-existing chio-acp-proxy test failure
+#     (`kernel_capability_checker_rejects_untrusted_and_tampered_tokens`
+#     asserts `verdict.reason.contains("signature") || ...("untrusted")`,
+#     but the runtime now returns `"trusted CA"` wording). That failure
+#     is on `main` at SHA 708c7bb33 and is out of scope for the A1
+#     mutation baseline. Without this scope override, every mutant on
+#     chio-weights would register as caught regardless of whether the
+#     mutation actually changed chio-weights behavior, producing a
+#     measurement of ~100% with no signal value.
+#   * timeout_multiplier and minimum_test_timeout match the workspace
+#     `.cargo/mutants.toml`.
+#   * examine_globs covers all four production source files of the
+#     crate (bundle, card, error, lineage). lib.rs is omitted because
+#     it is a re-export-only umbrella with no logic to mutate.
+#
+# The chio-guards "hand-picked subset" anti-pattern is explicitly avoided:
+# every
+# `pub mod` in `crates/chio-weights/src/` that contains logic is
+# included.
+
+additional_cargo_test_args = ["--package", "chio-weights"]
+timeout_multiplier = 3.0
+minimum_test_timeout = 60
+
+examine_globs = [
+    "crates/chio-weights/src/bundle.rs",
+    "crates/chio-weights/src/card.rs",
+    "crates/chio-weights/src/error.rs",
+    "crates/chio-weights/src/lineage.rs",
+]
+
+exclude_globs = [
+    "**/tests.rs",
+    "**/test_*.rs",
+    "**/*_test.rs",
+    "**/tests/**",
+    "**/benches/**",
+    "**/build.rs",
+    "**/fuzz.rs",
+]

@@ -1,0 +1,21 @@
+--- crates/chio-weights/src/lineage.rs
++++ replace != with == in anchor_model_card
+@@ -161,17 +161,17 @@
+ /// that accidentally hands the helper a stale byte slice.
+ pub fn anchor_model_card(
+     verified: &VerifiedModelCard,
+     card_bytes: &[u8],
+     graph_schema: &str,
+     signer_hint: Option<&str>,
+ ) -> Result<ModelCardLineageAnchor, WeightsError> {
+     let decoded = crate::card::ModelCard::from_canonical_json(card_bytes)?;
+-    if decoded != verified.card {
++    if decoded == /* ~ changed by cargo-mutants ~ */ verified.card {
+         return Err(WeightsError::Encoding(
+             "card_bytes do not match verified.card; refusing to anchor stale bytes".to_string(),
+         ));
+     }
+ 
+     let projection = anchor_projection_bytes(card_bytes, &verified.attestation)?;
+     let digest_hex = sha256_hex(&projection);
+ 

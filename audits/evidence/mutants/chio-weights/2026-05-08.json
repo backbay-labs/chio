@@ -1,0 +1,106 @@
+{
+  "crate": "chio-weights",
+  "ran_at": "2026-05-08T16:21:25Z",
+  "ran_finished_at": "2026-05-08T16:28:14Z",
+  "tool": "cargo-mutants",
+  "tool_version": "25.3.1",
+  "test_scope": "package-only (cargo test --verbose --package=chio-weights@0.1.0 --package chio-weights; verified empirically by inspecting cargo-mutants debug log during the run; same scope methodology as the other per-crate mutation baselines)",
+  "wall_clock": "6m 41s (per cargo-mutants stdout summary line)",
+  "base_sha": "708c7bb33df43594f5e76542b05fca7a56d9689e",
+  "command": "cargo mutants --config audits/mutation/per-crate-configs/chio-weights.toml -p chio-weights --in-place --baseline=skip --output audits/evidence/mutants/chio-weights",
+  "run_status": "FULL: 66/66 mutants evaluated; cargo-mutants returned exit 2 (mutants missed; expected)",
+  "result_label": "FULL-BELOW-TARGET",
+  "evaluated": 66,
+  "total_discovered": 66,
+  "caught": 43,
+  "missed": 20,
+  "timeout": 0,
+  "unviable": 3,
+  "kill_rate_percent": 68.25,
+  "kill_rate_formula": "caught / (caught + missed + timeout) = 43 / (43 + 20 + 0) = 43/63 = 68.25% (excludes 3 unviable per cargo-mutants 25.x convention)",
+  "target_catch_ratio_percent": 80,
+  "activation_floor_percent": 65,
+  "activation_floor_met": true,
+  "target_met": false,
+  "target_note": "68.25% clears the 65% activation floor but does not meet the configured 80% catch-ratio target from releases.toml.",
+  "examine_globs": [
+    "crates/chio-weights/src/bundle.rs",
+    "crates/chio-weights/src/card.rs",
+    "crates/chio-weights/src/error.rs",
+    "crates/chio-weights/src/lineage.rs"
+  ],
+  "examine_glob_coverage_note": "All four logic-bearing source files in crates/chio-weights/src/ are covered. lib.rs is omitted because it is a re-export-only umbrella with no logic to mutate. This avoids the chio-guards hand-picked-subset anti-pattern: every pub mod with logic is included.",
+  "per_file_breakdown": {
+    "crates/chio-weights/src/bundle.rs": {"caught": 1, "missed": 0, "timeout": 0, "unviable": 1, "kill_rate_percent": 100.0},
+    "crates/chio-weights/src/card.rs": {"caught": 25, "missed": 14, "timeout": 0, "unviable": 1, "kill_rate_percent": 64.10},
+    "crates/chio-weights/src/error.rs": {"caught": 2, "missed": 0, "timeout": 0, "unviable": 0, "kill_rate_percent": 100.0},
+    "crates/chio-weights/src/lineage.rs": {"caught": 15, "missed": 6, "timeout": 0, "unviable": 1, "kill_rate_percent": 71.43}
+  },
+  "missed_mutants": [
+    "crates/chio-weights/src/card.rs:237:16: replace < with <= in ModelCard::require_live",
+    "crates/chio-weights/src/card.rs:226:28: replace < with <= in ModelCard::validate",
+    "crates/chio-weights/src/card.rs:123:9: replace StringSet::as_set -> &BTreeSet<String> with Box::leak(Box::new(BTreeSet::new()))",
+    "crates/chio-weights/src/card.rs:123:9: replace StringSet::as_set -> &BTreeSet<String> with Box::leak(Box::new(BTreeSet::from_iter([\"xyzzy\".into()])))",
+    "crates/chio-weights/src/card.rs:123:9: replace StringSet::as_set -> &BTreeSet<String> with Box::leak(Box::new(BTreeSet::from_iter([String::new()])))",
+    "crates/chio-weights/src/card.rs:111:9: replace StringSet::len -> usize with 0",
+    "crates/chio-weights/src/card.rs:111:9: replace StringSet::len -> usize with 1",
+    "crates/chio-weights/src/card.rs:117:9: replace StringSet::is_empty -> bool with true",
+    "crates/chio-weights/src/card.rs:117:9: replace StringSet::is_empty -> bool with false",
+    "crates/chio-weights/src/card.rs:100:9: replace StringSet::contains -> bool with false",
+    "crates/chio-weights/src/card.rs:100:9: replace StringSet::contains -> bool with true",
+    "crates/chio-weights/src/card.rs:105:9: replace StringSet::iter -> impl Iterator<Item =&str> with ::std::iter::once(\"\")",
+    "crates/chio-weights/src/card.rs:105:9: replace StringSet::iter -> impl Iterator<Item =&str> with ::std::iter::empty()",
+    "crates/chio-weights/src/card.rs:105:9: replace StringSet::iter -> impl Iterator<Item =&str> with ::std::iter::once(\"xyzzy\")",
+    "crates/chio-weights/src/lineage.rs:124:5: replace anchor_projection_bytes -> Result<Vec<u8>, WeightsError> with Ok(vec![])",
+    "crates/chio-weights/src/lineage.rs:124:5: replace anchor_projection_bytes -> Result<Vec<u8>, WeightsError> with Ok(vec![0])",
+    "crates/chio-weights/src/lineage.rs:124:5: replace anchor_projection_bytes -> Result<Vec<u8>, WeightsError> with Ok(vec![1])",
+    "crates/chio-weights/src/lineage.rs:146:5: replace sha256_hex -> String with String::new()",
+    "crates/chio-weights/src/lineage.rs:146:5: replace sha256_hex -> String with \"xyzzy\".into()",
+    "crates/chio-weights/src/lineage.rs:288:12: delete ! in verify_model_card_anchor"
+  ],
+  "missed_mutant_categories": {
+    "stringset_getter_no_dedicated_test": {
+      "count": 11,
+      "files": ["card.rs"],
+      "lines": [100, 105, 111, 117, 123],
+      "summary": "StringSet::contains/iter/len/is_empty/as_set are pure getters wrapping a BTreeSet. There are no unit tests that exercise the getter functions directly with their declared semantics; they are exercised indirectly through ModelCard validation, which only tests the boolean outcome (rejected/accepted), not the precise count, iteration order, or set membership returned. Replacing the getters with constants (false/true/0/1/empty/once) does not change the outer accept/reject decision in any test.",
+      "follow_up": "Add unit tests in card.rs that exercise StringSet::contains, ::iter, ::len, ::is_empty, and ::as_set directly with assertions on the exact return value (cardinality, contained elements). Estimated 6-8 short test functions; closes 11 of 20 missed mutants."
+    },
+    "boundary_condition_replace_lt_with_le": {
+      "count": 2,
+      "files": ["card.rs"],
+      "lines": [226, 237],
+      "summary": "ModelCard::validate at card.rs:226 rejects only when `expires_at < issued_at` (so exactly-equal `expires_at == issued_at` is currently accepted as a zero-duration card); ModelCard::require_live at card.rs:237 accepts only when `now < expires_at` (so exactly-equal `now == expires_at` is currently rejected as Expired). Replacing `<` with `<=` flips each boundary: line 226 would start rejecting equal timestamps, line 237 would start accepting them. The test suite has no fixture landing exactly on either boundary, so the mutations are silent.",
+      "follow_up": "Add two card.rs unit tests pinning the current accept/reject semantics: (a) ModelCard::validate with expires_at == issued_at MUST currently return Ok(()) (zero-duration card is permitted), so a test asserting Ok(()) catches the `< -> <=` mutation at line 226; (b) ModelCard::require_live with now == expires_at MUST currently return WeightsError::Expired, so a test asserting Expired catches the `< -> <=` mutation at line 237. The polarity matters: pinning these to today's behavior (not the desired strict semantics) is what kills the mutants. Estimated 2 short test functions; closes 2 of 20 missed mutants."
+    },
+    "anchor_projection_bytes_constant_returns": {
+      "count": 3,
+      "files": ["lineage.rs"],
+      "lines": [124],
+      "summary": "anchor_projection_bytes returns Result<Vec<u8>, WeightsError>. Replacing with Ok(vec![]) / Ok(vec![0]) / Ok(vec![1]) is missed because verify_model_card_anchor compares byte slices but the call sites that anchor a card and then verify the returned anchor compute both the produced and expected projection through this same helper, so a constant short-circuit on both sides matches. The lineage_anchor.rs published_card_anchor_verifies_round_trip test only round-trips through the same helper.",
+      "follow_up": "Add a lineage.rs unit test that pins anchor_projection_bytes to a known good fixture (hard-coded golden bytes for a known card+attestation pair) and asserts byte-equality against the helper output. Estimated 1 test function; closes 3 of 20 missed mutants."
+    },
+    "sha256_hex_constant_returns": {
+      "count": 2,
+      "files": ["lineage.rs"],
+      "lines": [146],
+      "summary": "sha256_hex is a private helper around hex::encode(Sha256::digest(_)). Replacing with String::new() or \"xyzzy\".into() is missed because the helper is called twice on the same input on both sides of the verification (anchor produces, verifier recomputes), so a constant short-circuit on both sides agrees with itself.",
+      "follow_up": "Add a lineage.rs unit test that locks sha256_hex against a published RFC 6234 / NIST FIPS 180-4 vector (e.g. SHA-256(\"abc\") = ba7816bf...). Estimated 1 test function; closes 2 of 20 missed mutants."
+    },
+    "verify_model_card_anchor_negation_delete": {
+      "count": 1,
+      "files": ["lineage.rs"],
+      "lines": [288],
+      "summary": "verify_model_card_anchor at line 288 has a `!` that is being deleted by the mutator. The deletion does not flip a tested branch in any test fixture, suggesting the negated condition either always evaluates the same way under tested fixtures or the negation is on a defensive check (e.g. a fast-path return) that never triggers in tests.",
+      "follow_up": "Read lineage.rs:288 in detail to identify the exact condition and add a test fixture that exercises both branches. Estimated 1 test function; closes 1 of 20 missed mutants."
+    },
+    "summary_estimate": "All 20 missed mutants are addressable by adding ~10-12 short, focused unit tests to card.rs (StringSet getters, boundary conditions) and lineage.rs (anchor_projection_bytes / sha256_hex golden fixtures, verify_model_card_anchor negation branch). The test additions are deferred to a follow-up PR; this PR's scope is the BASELINE measurement only. Closing the gap would push the kill rate from 68.3% toward 100% on this surface."
+  },
+  "timeout_mutants": [],
+  "unviable_mutants": [
+    "crates/chio-weights/src/lineage.rs:168:5: replace anchor_model_card -> Result<ModelCardLineageAnchor, WeightsError> with Ok(Default::default())",
+    "crates/chio-weights/src/card.rs:257:9: replace ModelCard::from_canonical_json -> Result<Self, WeightsError> with Ok(Default::default())",
+    "crates/chio-weights/src/bundle.rs:78:5: replace verify_model_card_bundle -> Result<VerifiedModelCard, WeightsError> with Ok(Default::default())"
+  ],
+  "post_kani_rerun_note": "The chio-weights Kani harness is not yet on this branch. The mutation run here is against current main (708c7bb33). Once that harness lands, it exercises additional invariants (notably the kernel binding refusal contract) and a re-run is expected to score higher than 68.3% on the same examine_globs surface. chio-weights is not in the current .github/workflows/mutants.yml PR or nightly matrix, so the authoritative re-baseline is a branch-local/manual cargo-mutants run unless that workflow is extended to include chio-weights."
+}
