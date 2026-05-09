@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ replace <= with > in resolve_matching_grants
+@@ -116,17 +116,17 @@
+                 u8::from(grant.server_id == server_id),
+                 u8::from(grant.tool_name == tool_name),
+                 grant.constraints.len(),
+             ),
+         });
+     }
+ 
+     #[cfg(kani)]
+-    if matches.len() <= 1 {
++    if matches.len() > /* ~ changed by cargo-mutants ~ */ 1 {
+         // A zero-or-one element vector is already sorted; this keeps Kani
+         // focused on grant coverage rather than allocator internals.
+         return Ok(matches);
+     }
+ 
+     matches.sort_by(|left, right| {
+         right
+             .specificity

@@ -1,0 +1,22 @@
+--- crates/chio-kernel-core/src/capability_verify.rs
++++ replace verify_capability_with_trusted -> Result<VerifiedCapability, CapabilityError> with Ok(Default::default())
+@@ -259,18 +259,17 @@
+ pub fn verify_capability_with_trusted<I>(
+     token: &CapabilityToken,
+     trusted_issuers: I,
+     clock: &dyn Clock,
+ ) -> Result<VerifiedCapability, CapabilityError>
+ where
+     I: IntoIterator<Item = PublicKey>,
+ {
+-    let trusted: Vec<PublicKey> = trusted_issuers.into_iter().collect();
+-    verify_capability(token, &trusted, clock)
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Convenience wrapper around [`verify_capability_with_floor`] for callers that
+ /// build the trusted issuer set lazily. Uses a [`NoopBudgetRegistry`]; new
+ /// callers that care about sibling-sum enforcement should call
+ /// [`verify_capability_with_floor`] with their own registry.
+ pub fn verify_capability_with_trusted_and_floor<I>(
+     token: &CapabilityToken,

@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ replace < with == in wildcard_matches
+@@ -490,17 +490,17 @@
+             pattern_idx = star_position + 1;
+             match_idx += 1;
+             candidate_idx = match_idx;
+         } else {
+             return false;
+         }
+     }
+ 
+-    while pattern_idx < pattern_chars.len() && pattern_chars[pattern_idx] == '*' {
++    while pattern_idx == /* ~ changed by cargo-mutants ~ */ pattern_chars.len() && pattern_chars[pattern_idx] == '*' {
+         pattern_idx += 1;
+     }
+ 
+     pattern_idx == pattern_chars.len()
+ }
+ 
+ fn argument_contains_custom(arguments: &serde_json::Value, key: &str, expected: &str) -> bool {
+     match arguments {

@@ -1,0 +1,21 @@
+--- crates/chio-kernel-core/src/normalized.rs
++++ replace == with != in monetary_cap_is_subset
+@@ -564,17 +564,17 @@
+ #[cfg(not(kani))]
+ fn monetary_cap_is_subset(
+     child: Option<&NormalizedMonetaryAmount>,
+     parent: Option<&NormalizedMonetaryAmount>,
+ ) -> bool {
+     let child_units = child.map(|cap| cap.units).unwrap_or(0);
+     let parent_units = parent.map(|cap| cap.units).unwrap_or(0);
+     let currency_matches = match (child, parent) {
+-        (Some(child_cap), Some(parent_cap)) => child_cap.currency == parent_cap.currency,
++        (Some(child_cap), Some(parent_cap)) => child_cap.currency != /* ~ changed by cargo-mutants ~ */ parent_cap.currency,
+         _ => false,
+     };
+     monetary_cap_is_subset_by_parts(
+         child.is_some(),
+         child_units,
+         parent.is_some(),
+         parent_units,
+         currency_matches,

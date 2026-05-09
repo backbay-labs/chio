@@ -1,0 +1,51 @@
+# Per-run override config for chio-kernel-core mutation baseline.
+# Same as workspace .cargo/mutants.toml EXCEPT the additional_cargo_test_args
+# is scoped to the chio-kernel-core package only, to avoid a pre-existing
+# unrelated test failure in chio-acp-proxy
+# (assertion failed: verdict.reason.contains("signature")...) which would
+# otherwise cause every mutant to register as caught regardless of its own
+# effect on chio-kernel-core behavior.
+#
+# This is a methodology fix, not a test fix. The chio-acp-proxy failure is
+# pre-existing on main (commit 708c7bb33) and is out of scope for the
+# A1 mutation baseline. The CI hosted-nightly remains the authoritative
+# workspace-scope measurement.
+#
+# examine_globs mirrors the workspace .cargo/mutants.toml chio-kernel-core
+# section: evaluate.rs, capability_verify.rs, scope.rs, receipts.rs,
+# passport_verify.rs, guard.rs, normalized.rs (all real `mod` declarations).
+#
+# exclude_globs mirrors workspace test/build/fuzz scaffolding plus the
+# chio-kernel-core platform/formal exclusions (clock.rs, rng.rs,
+# formal_aeneas.rs, formal_core.rs, kani_harnesses.rs,
+# kani_public_harnesses.rs).
+
+additional_cargo_test_args = ["--package", "chio-kernel-core"]
+timeout_multiplier = 3.0
+minimum_test_timeout = 60
+
+examine_globs = [
+    "crates/chio-kernel-core/src/evaluate.rs",
+    "crates/chio-kernel-core/src/capability_verify.rs",
+    "crates/chio-kernel-core/src/scope.rs",
+    "crates/chio-kernel-core/src/receipts.rs",
+    "crates/chio-kernel-core/src/passport_verify.rs",
+    "crates/chio-kernel-core/src/guard.rs",
+    "crates/chio-kernel-core/src/normalized.rs",
+]
+
+exclude_globs = [
+    "**/tests.rs",
+    "**/test_*.rs",
+    "**/*_test.rs",
+    "**/tests/**",
+    "**/benches/**",
+    "**/build.rs",
+    "**/fuzz.rs",
+    "crates/chio-kernel-core/src/clock.rs",
+    "crates/chio-kernel-core/src/rng.rs",
+    "crates/chio-kernel-core/src/formal_aeneas.rs",
+    "crates/chio-kernel-core/src/formal_core.rs",
+    "crates/chio-kernel-core/src/kani_harnesses.rs",
+    "crates/chio-kernel-core/src/kani_public_harnesses.rs",
+]

@@ -1,28 +1,20 @@
-# cargo-mutants writes per-mutant log files (one cargo test transcript
-# per mutant) under mutants.out/log/. These are useful for debugging a
-# specific mutant locally but should not be committed:
-# - they are very large (29MB+ per crate)
-# - they have absolute paths in them (workspace-rooted)
-# - the structured outcome is captured in caught.txt / missed.txt /
-#   timeout.txt / unviable.txt and the per-crate <date>.json summary,
-#   which IS committed.
+# cargo-mutants writes per-mutant logs under mutants.out/log/ in the
+# nested layout and logs/ in the direct --output layout. They are useful
+# for local debugging but are large and include workspace-absolute paths.
 **/mutants.out/log/
 **/log/
 **/logs/
 
-# debug.log carries the same per-mutant detail and the cargo-mutants
-# version-specific timing trace. Not committed.
+# debug.log carries the same per-mutant trace detail.
 **/mutants.out/debug.log
 **/debug.log
 
-# lock.json embeds operator identity (hostname + username) and absolute
-# workspace paths (cargo-mutants 25.x writes both as plain JSON fields).
-# It is regenerated on every run, so we don't need it under VCS.
+# lock.json embeds operator identity, hostnames, and absolute paths.
 **/mutants.out/lock.json
 **/lock.json
 
-# outcomes.json embeds workspace-absolute argv paths and per-mutant
-# console transcripts. The committed caught/missed/timeout/unviable text
-# files plus the per-crate <date>.json summary are the durable evidence.
+# outcomes.json embeds argv paths and per-mutant console transcripts.
+# The committed evidence is the dated JSON summary plus caught/missed/
+# timeout/unviable text files and evaluated mutant diffs.
 **/mutants.out/outcomes.json
 **/outcomes.json

@@ -1,0 +1,32 @@
+--- crates/chio-kernel-core/src/scope.rs
++++ replace memory_store_allowlist_matches -> bool with false
+@@ -607,28 +607,17 @@
+         serde_json::Value::Null
+         | serde_json::Value::Bool(_)
+         | serde_json::Value::Number(_)
+         | serde_json::Value::Object(_) => false,
+     }
+ }
+ 
+ fn memory_store_allowlist_matches(arguments: &serde_json::Value, allowed: &[String]) -> bool {
+-    let mut observed = ObservedStringValues::default();
+-    collect_memory_store_values(arguments, &mut observed);
+-    if observed.invalid {
+-        return false;
+-    }
+-    if !observed.saw_relevant_key {
+-        return true;
+-    }
+-    observed
+-        .values
+-        .iter()
+-        .all(|value| allowed.iter().any(|allowed_value| allowed_value == value))
++    false /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn collect_memory_store_values(arguments: &serde_json::Value, out: &mut ObservedStringValues) {
+     match arguments {
+         serde_json::Value::Object(map) => {
+             for (key, value) in map {
+                 if is_memory_store_key(key) {
+                     let before = out.values.len();
