@@ -49,7 +49,7 @@ impl EchoToolServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for EchoToolServer {
     fn server_id(&self) -> &str {
         &self.server_id

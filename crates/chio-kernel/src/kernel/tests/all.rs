@@ -1249,6 +1249,10 @@ struct EventDrainServer {
     events: Vec<ToolServerEvent>,
 }
 
+struct FailingEventDrainServer {
+    id: String,
+}
+
 struct NestedFlowServer {
     id: String,
 }
@@ -1296,6 +1300,12 @@ impl EventDrainServer {
             id: id.to_string(),
             events,
         }
+    }
+}
+
+impl FailingEventDrainServer {
+    fn new(id: &str) -> Self {
+        Self { id: id.to_string() }
     }
 }
 
@@ -1446,7 +1456,7 @@ impl PaymentAdapter for PrepaidSettledPaymentAdapter {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for EchoServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1467,31 +1477,7 @@ impl ToolServerConnection for EchoServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
-impl ToolServerConnection for SideEffectServer {
-    fn server_id(&self) -> &str {
-        &self.id
-    }
-
-    fn tool_names(&self) -> Vec<String> {
-        self.tools.clone()
-    }
-
-    async fn invoke(
-        &self,
-        tool_name: &str,
-        arguments: serde_json::Value,
-        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
-    ) -> Result<serde_json::Value, KernelError> {
-        self.invocations.fetch_add(1, Ordering::SeqCst);
-        Ok(serde_json::json!({
-            "tool": tool_name,
-            "echo": arguments,
-        }))
-    }
-}
-
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for EventDrainServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1515,7 +1501,31 @@ impl ToolServerConnection for EventDrainServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
+impl ToolServerConnection for FailingEventDrainServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    async fn invoke(
+        &self,
+        tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Err(KernelError::ToolNotRegistered(tool_name.to_string()))
+    }
+
+    async fn drain_events(&self) -> Result<Vec<ToolServerEvent>, KernelError> {
+        Err(KernelError::Internal("drain failed".to_string()))
+    }
+}
+
+#[async_trait::async_trait]
 impl ToolServerConnection for NestedFlowServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1607,7 +1617,7 @@ impl ToolServerConnection for NestedFlowServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for IncompleteServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1629,7 +1639,7 @@ impl ToolServerConnection for IncompleteServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for StreamingServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -5501,7 +5511,7 @@ impl MonetaryCostServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for MonetaryCostServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -5535,7 +5545,7 @@ impl ToolServerConnection for MonetaryCostServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for FailingMonetaryServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -5565,7 +5575,7 @@ impl ToolServerConnection for FailingMonetaryServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for CountingMonetaryServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -9926,7 +9936,7 @@ async fn async_evaluate_tool_call_supports_shared_kernel_concurrency() {
         max_concurrent: Arc<AtomicUsize>,
     }
 
-    #[async_trait::async_trait(?Send)]
+    #[async_trait::async_trait]
     impl ToolServerConnection for ConcurrentServer {
         fn server_id(&self) -> &str {
             "srv"
@@ -11040,6 +11050,27 @@ fn async_tool_server_event_drain_current_thread_preserves_events() {
             "events",
             vec![ToolServerEvent::ResourcesListChanged],
         )));
+
+        let events = kernel.drain_tool_server_events_async().await.unwrap();
+
+        assert_eq!(events, vec![ToolServerEvent::ResourcesListChanged]);
+    });
+}
+
+#[test]
+fn async_tool_server_event_drain_preserves_partial_events_after_error() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    rt.block_on(async {
+        let mut kernel = ChioKernel::new(make_config());
+        kernel.register_tool_server(Box::new(EventDrainServer::new(
+            "events",
+            vec![ToolServerEvent::ResourcesListChanged],
+        )));
+        kernel.register_tool_server(Box::new(FailingEventDrainServer::new("fails")));
 
         let events = kernel.drain_tool_server_events_async().await.unwrap();
 

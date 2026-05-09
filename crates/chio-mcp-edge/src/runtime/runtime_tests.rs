@@ -38,7 +38,7 @@ struct AsyncEventServerConnection(Arc<AsyncEventServer>);
 struct DocsResourceProvider;
 struct ExamplePromptProvider;
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for EchoServer {
     fn server_id(&self) -> &str {
         "srv"
@@ -71,7 +71,7 @@ impl ToolServerConnection for EchoServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for StreamingEchoServer {
     fn server_id(&self) -> &str {
         "stream-srv"
@@ -127,7 +127,7 @@ impl ToolServerConnection for StreamingEchoServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for UrlRequiredServer {
     fn server_id(&self) -> &str {
         "url-srv"
@@ -155,7 +155,7 @@ impl ToolServerConnection for UrlRequiredServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for CancelledServer {
     fn server_id(&self) -> &str {
         "cancel-srv"
@@ -184,7 +184,7 @@ impl AsyncEventServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for AsyncEventServerConnection {
     fn server_id(&self) -> &str {
         "srv"
