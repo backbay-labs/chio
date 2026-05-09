@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/lib.rs
++++ replace == with != in exactly_one_inclusion_proof
+@@ -252,17 +252,17 @@
+ fn exactly_one_inclusion_proof<'a>(
+     bundle: &'a EvidenceExportBundle,
+     receipt_seq: u64,
+     receipt_id: &str,
+ ) -> Result<&'a ReceiptInclusionProof, AnchorError> {
+     let mut matches = bundle
+         .inclusion_proofs
+         .iter()
+-        .filter(|proof| proof.receipt_seq == receipt_seq);
++        .filter(|proof| proof.receipt_seq != /* ~ changed by cargo-mutants ~ */ receipt_seq);
+     let Some(inclusion) = matches.next() else {
+         return Err(AnchorError::Verification(format!(
+             "receipt `{receipt_id}` is missing an inclusion proof in the canonical evidence bundle"
+         )));
+     };
+     if matches.next().is_some() {
+         return Err(AnchorError::Verification(format!(
+             "receipt `{receipt_id}` has multiple inclusion proofs in the canonical evidence bundle"

@@ -1,0 +1,21 @@
+--- crates/chio-attest-verify/src/sigstore.rs
++++ replace match guard other.type_id == OTHERNAME_OID with true in match_identity
+@@ -406,17 +406,17 @@
+     let Some((_critical, san)) = san_match else {
+         return Err(AttestError::IdentityMismatch);
+     };
+ 
+     for name in san.0.iter() {
+         let candidate: Option<String> = match name {
+             GeneralName::Rfc822Name(s) => Some(s.as_str().to_owned()),
+             GeneralName::UniformResourceIdentifier(s) => Some(s.as_str().to_owned()),
+-            GeneralName::OtherName(other) if other.type_id == OTHERNAME_OID => {
++            GeneralName::OtherName(other) if true /* ~ changed by cargo-mutants ~ */ => {
+                 std::str::from_utf8(other.value.value())
+                     .ok()
+                     .map(|s| s.to_owned())
+             }
+             _ => None,
+         };
+ 
+         if let Some(candidate) = candidate {

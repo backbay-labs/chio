@@ -1,0 +1,78 @@
+--- crates/chio-anchor/src/functions.rs
++++ replace assess_functions_verification -> Result<FunctionsFallbackAssessment, AnchorError> with Ok(Default::default())
+@@ -247,74 +247,17 @@
+         note,
+     })
+ }
+ 
+ pub fn assess_functions_verification(
+     request: &PreparedFunctionsVerificationRequest,
+     response: &FunctionsVerificationResponse,
+ ) -> Result<FunctionsFallbackAssessment, AnchorError> {
+-    if request.request_id != response.request_id {
+-        return Err(AnchorError::Verification(format!(
+-            "Functions response {} does not match request {}",
+-            response.request_id, request.request_id
+-        )));
+-    }
+-    if request.target.chain_id != response.target_chain_id {
+-        return Err(AnchorError::Verification(format!(
+-            "Functions response chain {} does not match request chain {}",
+-            response.target_chain_id, request.target.chain_id
+-        )));
+-    }
+-    if response.returned_bytes > request.policy.max_return_bytes {
+-        return Err(AnchorError::Verification(format!(
+-            "Functions response size {} exceeds maximum {}",
+-            response.returned_bytes, request.policy.max_return_bytes
+-        )));
+-    }
+-    if response.receipt_batch_root != request.receipt_batch_root {
+-        return Err(AnchorError::Verification(
+-            "Functions response batch root does not match prepared request".to_string(),
+-        ));
+-    }
+-    if response.status == FunctionsFallbackStatus::Verified
+-        && response.verified_receipt_count != request.receipt_count
+-    {
+-        return Err(AnchorError::Verification(format!(
+-            "Functions response verified {} receipts but request expected {}",
+-            response.verified_receipt_count, request.receipt_count
+-        )));
+-    }
+-
+-    let accepted = matches!(response.status, FunctionsFallbackStatus::Verified);
+-    let rejection_reason = if accepted {
+-        None
+-    } else {
+-        Some(match response.status {
+-            FunctionsFallbackStatus::Rejected => {
+-                "DON result rejected the receipt batch".to_string()
+-            }
+-            FunctionsFallbackStatus::Unsupported => {
+-                "requested verification mode remains outside the bounded Functions surface"
+-                    .to_string()
+-            }
+-            FunctionsFallbackStatus::Verified => unreachable!(),
+-        })
+-    };
+-
+-    Ok(FunctionsFallbackAssessment {
+-        request_id: request.request_id.clone(),
+-        accepted,
+-        status: response.status,
+-        receipt_batch_root: request.receipt_batch_root,
+-        challenge_window_secs: request.policy.challenge_window_secs,
+-        direct_fund_release_allowed: request.policy.allow_direct_fund_release,
+-        receipt_event_log_required: request.policy.require_receipt_event_log,
+-        rejection_reason,
+-    })
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use chio_core::crypto::Keypair;
+     use chio_core::hashing::Hash;
+     use chio_core::receipt::{
+         ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction,

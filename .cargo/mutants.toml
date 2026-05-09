@@ -125,6 +125,8 @@ examine_globs = [
     "crates/chio-guards/src/response_sanitization.rs",
     "crates/chio-guards/src/data_flow.rs",
     "crates/chio-guards/src/behavioral_sequence.rs",
+    "crates/chio-guards/src/text_utils.rs",
+    "crates/chio-guards/src/spider_sense.rs",
     "crates/chio-guards/src/behavioral_profile.rs",
     "crates/chio-guards/src/agent_velocity.rs",
     "crates/chio-guards/src/velocity.rs",
@@ -186,15 +188,15 @@ exclude_globs = [
     "crates/chio-policy/src/models.rs", # rationale: excluded helper or verification surface.
     "crates/chio-policy/src/version.rs", # rationale: excluded helper or verification surface.
     "crates/chio-policy/src/rulesets/**", # rationale: excluded helper or verification surface.
-    # chio-guards: pure types, pure helpers, advisory-by-design guards,
-    # and the external/ adapter tree (remote-process bridges, integration-
-    # tested rather than mutation-tested).
-    # rationale: these files are helper, advisory, or process-bridge surfaces
-    # with better coverage from integration and adapter tests than mutants.
+    # chio-guards: pure types, advisory-by-design guards, and the external/
+    # adapter tree (remote-process bridges, integration-tested rather than
+    # mutation-tested). text_utils.rs and spider_sense.rs are intentionally
+    # not excluded because they feed or emit deny decisions.
+    # rationale: these remaining files are helper, advisory, or process-bridge
+    # surfaces with better coverage from integration and adapter tests than
+    # mutants.
     "crates/chio-guards/src/action.rs", # rationale: excluded helper or verification surface.
-    "crates/chio-guards/src/text_utils.rs", # rationale: excluded helper or verification surface.
     "crates/chio-guards/src/advisory.rs", # rationale: excluded helper or verification surface.
-    "crates/chio-guards/src/spider_sense.rs", # rationale: excluded helper or verification surface.
     "crates/chio-guards/src/external/**", # rationale: excluded helper or verification surface.
     # chio-anchor: fuzz harness is covered by the fuzz lane.
     # rationale: fuzz harness code is the oracle input surface, not the target

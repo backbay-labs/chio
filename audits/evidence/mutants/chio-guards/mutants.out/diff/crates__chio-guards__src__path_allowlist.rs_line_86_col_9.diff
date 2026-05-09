@@ -1,0 +1,41 @@
+--- crates/chio-guards/src/path_allowlist.rs
++++ replace PathAllowlistGuard::matches_allowlist -> bool with true
+@@ -78,37 +78,17 @@
+         }
+     }
+ 
+     fn matches_any(patterns: &[Pattern], path: &str) -> bool {
+         patterns.iter().any(|p| p.matches(path))
+     }
+ 
+     fn matches_allowlist(&self, patterns: &[Pattern], path: &str) -> bool {
+-        let lexical_path = normalize_path_for_policy(path);
+-        let resolved_path = normalize_path_for_policy_with_fs(path);
+-        let lexical_abs_path = normalize_path_for_policy_lexical_absolute(path);
+-
+-        let resolved_differs_from_lexical_target = lexical_abs_path
+-            .as_deref()
+-            .map(|abs| abs != resolved_path.as_str())
+-            .unwrap_or(resolved_path != lexical_path);
+-
+-        if resolved_differs_from_lexical_target {
+-            // When resolution changes the target (e.g. symlink traversal), require the
+-            // resolved path to match to prevent lexical-path allowlist bypasses.
+-            return Self::matches_any(patterns, &resolved_path);
+-        }
+-
+-        Self::matches_any(patterns, &lexical_path)
+-            || Self::matches_any(patterns, &resolved_path)
+-            || lexical_abs_path
+-                .as_deref()
+-                .map(|abs| Self::matches_any(patterns, abs))
+-                .unwrap_or(false)
++        true /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     fn path_within_root(candidate: &str, root: &str) -> bool {
+         if candidate == root {
+             return true;
+         }
+ 
+         if root == "/" {

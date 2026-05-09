@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/lib.rs
++++ replace == with != in exactly_one_tool_receipt
+@@ -230,17 +230,17 @@
+ 
+ fn exactly_one_tool_receipt<'a>(
+     bundle: &'a EvidenceExportBundle,
+     receipt_id: &str,
+ ) -> Result<&'a EvidenceToolReceiptRecord, AnchorError> {
+     let mut matches = bundle
+         .tool_receipts
+         .iter()
+-        .filter(|record| record.receipt.id == receipt_id);
++        .filter(|record| record.receipt.id != /* ~ changed by cargo-mutants ~ */ receipt_id);
+     let Some(record) = matches.next() else {
+         return Err(AnchorError::Verification(format!(
+             "receipt `{receipt_id}` is missing from the canonical evidence bundle"
+         )));
+     };
+     if matches.next().is_some() {
+         return Err(AnchorError::Verification(format!(
+             "receipt `{receipt_id}` appears multiple times in the canonical evidence bundle"

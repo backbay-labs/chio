@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/data_flow.rs
++++ replace >= with < in <impl Guard for DataFlowGuard>::evaluate
+@@ -61,17 +61,17 @@
+         if let Some(max_read) = self.config.max_bytes_read {
+             if flow.total_bytes_read >= max_read {
+                 return Ok(Verdict::Deny);
+             }
+         }
+ 
+         // Check bytes written limit.
+         if let Some(max_written) = self.config.max_bytes_written {
+-            if flow.total_bytes_written >= max_written {
++            if flow.total_bytes_written < /* ~ changed by cargo-mutants ~ */ max_written {
+                 return Ok(Verdict::Deny);
+             }
+         }
+ 
+         // Check total I/O limit.
+         if let Some(max_total) = self.config.max_bytes_total {
+             let total = flow
+                 .total_bytes_read

@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/path_normalization.rs
++++ replace == with != in normalize_path_for_policy
+@@ -17,17 +17,17 @@
+     let is_absolute = path.starts_with('/');
+ 
+     let mut segments: Vec<&str> = Vec::new();
+     for segment in path.split('/') {
+         if segment.is_empty() || segment == "." {
+             continue;
+         }
+ 
+-        if segment == ".." {
++        if segment != /* ~ changed by cargo-mutants ~ */ ".." {
+             if let Some(last) = segments.last().copied() {
+                 if last != ".." {
+                     segments.pop();
+                     continue;
+                 }
+             }
+             if !is_absolute {
+                 segments.push(segment);

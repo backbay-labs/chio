@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/discovery.rs
++++ replace match guard lane_is_stale with true in classify_discovery_status
+@@ -514,17 +514,17 @@
+             Some(_) if lane_is_paused => AnchorDiscoveryFreshnessStatus::Paused,
+             Some(_) if lane_is_lagging => AnchorDiscoveryFreshnessStatus::Lagging,
+             Some(_) => AnchorDiscoveryFreshnessStatus::Current,
+         },
+         AnchorEmergencyMode::PublishPaused
+         | AnchorEmergencyMode::ProofImportOnly
+         | AnchorEmergencyMode::RecoveryOnly
+         | AnchorEmergencyMode::Halted => match lane {
+-            Some(_) if lane_is_stale => AnchorDiscoveryFreshnessStatus::Stale,
++            Some(_) if true /* ~ changed by cargo-mutants ~ */ => AnchorDiscoveryFreshnessStatus::Stale,
+             _ => AnchorDiscoveryFreshnessStatus::Paused,
+         },
+     }
+ }
+ 
+ fn freshness_status_rank(status: AnchorDiscoveryFreshnessStatus) -> u8 {
+     match status {
+         AnchorDiscoveryFreshnessStatus::Current => 0,

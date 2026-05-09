@@ -1,0 +1,46 @@
+--- crates/chio-guards/src/path_allowlist.rs
++++ replace PathAllowlistGuard::matches_session_roots -> bool with false
+@@ -117,42 +117,17 @@
+ 
+         candidate
+             .strip_prefix(root)
+             .map(|suffix| suffix.starts_with('/'))
+             .unwrap_or(false)
+     }
+ 
+     fn matches_session_roots(&self, path: &str, session_roots: &[String]) -> bool {
+-        if session_roots.is_empty() {
+-            return false;
+-        }
+-
+-        let lexical_path = normalize_path_for_policy(path);
+-        let resolved_path = normalize_path_for_policy_with_fs(path);
+-        let lexical_abs_path = normalize_path_for_policy_lexical_absolute(path);
+-        let resolved_differs_from_lexical_target = lexical_abs_path
+-            .as_deref()
+-            .map(|abs| abs != resolved_path.as_str())
+-            .unwrap_or(resolved_path != lexical_path);
+-
+-        if resolved_differs_from_lexical_target {
+-            return session_roots
+-                .iter()
+-                .any(|root| Self::path_within_root(&resolved_path, root));
+-        }
+-
+-        session_roots.iter().any(|root| {
+-            Self::path_within_root(&lexical_path, root)
+-                || Self::path_within_root(&resolved_path, root)
+-                || lexical_abs_path
+-                    .as_deref()
+-                    .map(|abs| Self::path_within_root(abs, root))
+-                    .unwrap_or(false)
+-        })
++        false /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     pub fn is_file_access_allowed(&self, path: &str) -> bool {
+         if !self.enabled {
+             return true;
+         }
+         self.matches_allowlist(&self.file_access_allow, path)
+     }

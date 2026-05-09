@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/bundle.rs
++++ delete ! in verify_proof_bundle
+@@ -111,17 +111,17 @@
+     } else if bundle.secondary_lanes.contains(&AnchorLaneKind::BitcoinOts) {
+         return Err(AnchorError::Verification(
+             "bundle declares Bitcoin OTS lane but the primary proof lacks bitcoin anchor data"
+                 .to_string(),
+         ));
+     }
+ 
+     if let Some(solana) = bundle.solana_anchor.as_ref() {
+-        if !bundle.secondary_lanes.contains(&AnchorLaneKind::SolanaMemo) {
++        if  /* ~ changed by cargo-mutants ~ */bundle.secondary_lanes.contains(&AnchorLaneKind::SolanaMemo) {
+             return Err(AnchorError::Verification(
+                 "bundle includes Solana anchor data but does not declare the Solana memo lane"
+                     .to_string(),
+             ));
+         }
+         verify_solana_anchor(&bundle.primary_proof, solana)?;
+         lanes.push(AnchorVerificationLane {
+             lane: AnchorLaneKind::SolanaMemo,

@@ -1,0 +1,25 @@
+--- crates/chio-anchor/src/lib.rs
++++ replace receipt_inclusion_from_kernel -> Web3ReceiptInclusion with Default::default()
+@@ -163,21 +163,17 @@
+             previous_checkpoint_sha256: statement.previous_checkpoint_sha256.clone(),
+             kernel_key: statement.kernel_key.clone(),
+         },
+         signature: statement.signature.clone(),
+     }
+ }
+ 
+ pub fn receipt_inclusion_from_kernel(proof: &ReceiptInclusionProof) -> Web3ReceiptInclusion {
+-    Web3ReceiptInclusion {
+-        checkpoint_seq: proof.checkpoint_seq,
+-        merkle_root: proof.merkle_root,
+-        proof: proof.proof.clone(),
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn build_anchor_inclusion_proof(
+     receipt: chio_core::receipt::ChioReceipt,
+     inclusion: &ReceiptInclusionProof,
+     checkpoint: &KernelCheckpoint,
+     chain_anchor: Option<Web3ChainAnchorRecord>,
+     binding: SignedWeb3IdentityBinding,

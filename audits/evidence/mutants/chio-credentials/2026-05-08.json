@@ -1,0 +1,43 @@
+{
+  "crate": "chio-credentials",
+  "ran_at": "2026-05-08T04:28:52.699405Z",
+  "tool": "cargo-mutants",
+  "tool_version": "25.3.1",
+  "test_scope": "workspace (additional_cargo_test_args from .cargo/mutants.toml: --workspace --exclude chio-cpp-kernel-ffi)",
+  "examine_scope": "exclude-13-included-files",
+  "examine_scope_note": "PARTIAL -- crate uses include!() to fold 13 production files into lib.rs. cargo-mutants discovers source files via mod declarations only and does not see include!()d files as separate units. The 28 mutants here cover lib.rs (umbrella ~4 lines of top-level fns) and trust_tier.rs only. Decision-capable credential verification logic in the 13 uncovered files is OUTSIDE the mutation surface for this run. Restructuring include!() into mod declarations is trj6 follow-up; until then this baseline is PARTIAL and target satisfaction is NOT established at the crate level. See audits/evidence/mutation exclusion audit/exclude-audit.md Findings summary structural notes.",
+  "uncovered_files": [
+    "crates/chio-credentials/src/artifact.rs",
+    "crates/chio-credentials/src/passport.rs",
+    "crates/chio-credentials/src/cross_issuer.rs",
+    "crates/chio-credentials/src/portable_sd_jwt.rs",
+    "crates/chio-credentials/src/portable_jwt_vc.rs",
+    "crates/chio-credentials/src/challenge.rs",
+    "crates/chio-credentials/src/registry.rs",
+    "crates/chio-credentials/src/presentation.rs",
+    "crates/chio-credentials/src/policy.rs",
+    "crates/chio-credentials/src/oid4vci.rs",
+    "crates/chio-credentials/src/oid4vp.rs",
+    "crates/chio-credentials/src/discovery.rs",
+    "crates/chio-credentials/src/portable_reputation.rs"
+  ],
+  "result_label": "PARTIAL",
+  "result_label_reason": "major decision code outside mutation surface (13 include!()d files)",
+  "caught": 20,
+  "missed": 0,
+  "timeout": 7,
+  "unviable": 1,
+  "kill_rate_percent": 74.07,
+  "kill_rate_percent_scope": "lib.rs (umbrella) + trust_tier.rs only",
+  "missed_mutants": [],
+  "timeout_mutants": [
+    "crates/chio-credentials/src/lib.rs:66:9: replace || with && in is_supported_passport_presentation_challenge_schema",
+    "crates/chio-credentials/src/lib.rs:61:12: replace == with != in is_supported_passport_verifier_policy_schema",
+    "crates/chio-credentials/src/lib.rs:61:47: replace || with && in is_supported_passport_verifier_policy_schema",
+    "crates/chio-credentials/src/lib.rs:65:5: replace is_supported_passport_presentation_challenge_schema -> bool with false",
+    "crates/chio-credentials/src/lib.rs:57:12: replace == with != in is_supported_passport_schema",
+    "crates/chio-credentials/src/lib.rs:57:41: replace == with != in is_supported_passport_schema",
+    "crates/chio-credentials/src/lib.rs:61:5: replace is_supported_passport_verifier_policy_schema -> bool with true"
+  ],
+  "target_met": false
+}
