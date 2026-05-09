@@ -39,7 +39,7 @@ KB MCP plus the Chio CLI.
 cargo run --bin chiodome-bilateral-demo
 
 # Reproducible run (matches pinned fixture hashes; this is what the
-# release-packaging branch verifies):
+# fixture-regeneration check verifies):
 cargo run --bin chiodome-bilateral-demo -- --release-fixture-seed=42
 # or, equivalently:
 CHIODOME_DEMO_FIXTURE_SEED=42 cargo run --bin chiodome-bilateral-demo
@@ -118,7 +118,7 @@ SQLite receipt store. Set `CHIODOME_DEMO_ASSERT_RECEIPTS=1` and export
 the assertion call is `chio --receipt-db ${CHIO_RECEIPT_DB} receipt
 list --limit 1`, which prints one JSON-line receipt per row.
 `CHIODOME_DEMO_ASSERT_RECEIPTS=1` without `CHIO_RECEIPT_DB` is a hard
-error (the script exits 1). The R2W5 fix replaced the previous
+error (the script exits 1). The current script replaced the previous
 "empty `${CHIO_RECEIPT_DIR}` directory" assertion with this DB-backed
 one because the kernel now persists receipts to the SQLite store, not
 the mediation-transcript directory.

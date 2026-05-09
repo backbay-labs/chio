@@ -49,7 +49,7 @@ against the checked-in fixtures.
 This directory ships **real** end-to-end run output. The `receipt.json`,
 `envelope.json`, and `checkpoint.json` here were produced by
 `cargo run --bin chiodome-bilateral-demo -- --release-fixture-seed=42`
-against the worktree this PR opens; they include real Ed25519 signatures
+against the repository checkout; they include real Ed25519 signatures
 over the canonical body bytes. The fixed `timestamp`, `tool_name`,
 `capability_id`, ids, **and (under the seed) the keypairs and signatures**
 are deterministic and byte-stable across runs.

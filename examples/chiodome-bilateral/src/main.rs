@@ -183,7 +183,7 @@ fn main() -> Result<(), Box<dyn StdError>> {
 
     // 7. Final assertion: at least one receipt was emitted (KB MCP demo
     //    contract from `kb-mcp-integration.md`). For the cross-org refund
-    //    branch this is the receipt we just signed; for the KB MCP branch
+    //    path this is the receipt we just signed; for the KB MCP path
     //    each tool call appends one more.
     if !matches!(receipt.decision, Decision::Allow) {
         return Err("scenario expects an Allow receipt for the refund".into());
