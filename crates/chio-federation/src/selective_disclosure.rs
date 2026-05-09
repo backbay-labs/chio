@@ -512,6 +512,8 @@ pub fn verify_audit_view(
     // the disclosure set from the disclosed indices on the view.
     let projection = project_receipt_body(pinned)?;
     let disclosed_indices: Vec<u8> = view.disclosed.iter().map(|m| m.index).collect();
+    let disclosure = DisclosureSet(disclosed_indices);
+    validate_disclosure_set(&disclosure)?;
     // For each disclosed message in the view, the bytes MUST match the
     // pinned projection. This is the "auditor sees what the projection
     // allows" check - a producer who tried to alter the disclosed
@@ -540,7 +542,7 @@ pub fn verify_audit_view(
             ));
         }
     }
-    let recomputed = proof_commitment(&DisclosureSet(disclosed_indices), &projection)?;
+    let recomputed = proof_commitment(&disclosure, &projection)?;
     if hex::encode(recomputed) != view.proof_bytes_hex {
         return Err(SelectiveDisclosureError::ProofBindingFailed);
     }
@@ -655,6 +657,24 @@ mod tests {
         let kp = Keypair::generate();
         let body = sample_body(&kp);
         let result = project_audit_view(&body, &DisclosureSet(vec![5, 5]));
+        assert!(matches!(
+            result,
+            Err(SelectiveDisclosureError::DisclosureDuplicateIndex(5))
+        ));
+    }
+
+    #[test]
+    fn audit_view_verify_rejects_duplicate_disclosed_index_with_matching_stub_proof() {
+        let kp = Keypair::generate();
+        let body = sample_body(&kp);
+        let mut view = project_audit_view(&body, &DisclosureSet(vec![5])).unwrap();
+        view.disclosed.push(view.disclosed[0].clone());
+        let projection = project_receipt_body(&body).unwrap();
+        let proof = proof_commitment(&DisclosureSet(vec![5, 5]), &projection).unwrap();
+        view.proof_bytes_hex = hex::encode(proof);
+
+        let result = verify_audit_view(&view, &body);
+
         assert!(matches!(
             result,
             Err(SelectiveDisclosureError::DisclosureDuplicateIndex(5))
