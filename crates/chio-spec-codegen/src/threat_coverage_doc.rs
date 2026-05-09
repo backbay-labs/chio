@@ -212,15 +212,12 @@ pub fn render_threat_coverage_doc(
          `audits/evidence/threats/<id>.json`).\n\n"
     ));
     body.push_str(
-        "**Hardening note**: 9 of the originally-claimed 20 covered rows \
-         passed the gate on file-exists + no-`unimplemented!()` alone, \
-         with weak or meta-only assertions in the backing test. The \
-         hardening pass adds per-row cargo-mutants requirements and \
-         real negative-conformance bodies; two of those rows were \
-         further demoted to `Partial` because the test only exercises \
-         one sub-vector of the named threat (see the `deferred_to` \
-         field in each row's threat-model entry and the partial \
-         evidence file in `audits/evidence/threats/<id>.json`).\n\n",
+        "**Hardening note**: rows may have in-tree conformance tests and \
+         adversarial corpus cases without being release-closed. The strict \
+         hardening pass requires per-row mutation evidence before a row can \
+         stay in `Covered` or `Partial`; rows whose evidence is bootstrap, \
+         generated metadata, or not promoted are rendered as `Pending` with \
+         a `deferred_to` owner until real cargo-mutants evidence lands.\n\n",
     );
     body.push_str(
         "Coverage states:\n\
@@ -234,10 +231,11 @@ pub fn render_threat_coverage_doc(
            defends only part of the attack surface; the residual gap is \
            documented in the follow-up evidence record that owns the \
            partial coverage.\n\
-         - `Pending` - no backing test yet; the threat-model-coverage \
-           CI gate accepts the entry because it is explicitly marked \
-           `pending` in the JSON, but a green test must land before \
-           the owning milestone closes.\n\
+         - `Pending` - not release-closed yet. A backing test may already \
+           exist, but the row lacks promoted cargo-mutants evidence or has \
+           an explicitly deferred residual sub-vector. The threat-model \
+           coverage gate accepts the entry only when `deferred_to` names \
+           the owning follow-up.\n\
          - `Weak Coverage` - a backing test file exists but mutation-\
            testing evidence is missing or shows zero kills. The row \
            must be raised to `Covered` with real evidence under \

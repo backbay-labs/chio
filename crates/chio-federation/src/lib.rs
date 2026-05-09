@@ -34,18 +34,19 @@ pub use bilateral::{
     co_sign_with_origin, co_sign_with_origin_full, execute_local_bilateral_invocation_fixture,
     BilateralCoSignArtifacts, BilateralCoSigningError, BilateralCoSigningProtocol,
     BilateralInvocationError, BilateralInvocationOutcome, CoSigningBody, CoSigningRequest,
-    CoSigningResponse, DualSignedReceipt, ExpectedBilateralPeers, InProcessCoSigner,
-    LocalBilateralInvocationFixtureRequest, BILATERAL_COSIGNING_SCHEMA,
-    BILATERAL_DUAL_RECEIPT_SCHEMA,
+    CoSigningResponse, DsseCoSigningRequest, DsseCoSigningResponse, DualSignedReceipt,
+    ExpectedBilateralPeers, InProcessCoSigner, LocalBilateralInvocationFixtureRequest,
+    BILATERAL_COSIGNING_SCHEMA, BILATERAL_DSSE_COSIGNING_SCHEMA, BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
 pub use bilateral_dsse::{
     build_predicate, build_predicate_full, build_statement, pae, receipt_subject_name,
-    sign_dsse_envelope, sign_dsse_envelope_full, verify_dsse_envelope, BilateralPredicate,
-    BilateralPredicateExtensions, CapabilityLeaseRef, DsseEnvelope, DsseSignature, DsseStatement,
-    GovernanceReceiptRef, HashRecord, KernelIdentity, Keyid, PolicyEvaluationSummary,
-    PolicyVerdict, StatementSubject, SubjectDigest, BILATERAL_DSSE_ENVELOPE_SCHEMA,
-    DEFAULT_CONSISTENCY_MODEL, DEFAULT_COSIGN_MODE, DEFAULT_CROSS_ORG_VISIBILITY,
-    PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
+    sign_dsse_envelope, sign_dsse_envelope_full, sign_dsse_envelope_with_cosigner,
+    verify_dsse_envelope, BilateralPredicate, BilateralPredicateExtensions, CapabilityLeaseRef,
+    DsseEnvelope, DsseSignature, DsseStatement, GovernanceReceiptRef, HashRecord, KernelIdentity,
+    Keyid, PolicyEvaluationSummary, PolicyVerdict, StatementSubject, SubjectDigest,
+    BILATERAL_DSSE_ENVELOPE_SCHEMA, DEFAULT_CONSISTENCY_MODEL, DEFAULT_COSIGN_MODE,
+    DEFAULT_CROSS_ORG_VISIBILITY, PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA,
+    PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
 };
 pub use bilateral_verifier::{
     verify_bilateral_cosign_invocation, ActionClassKind, CapabilityLeaseRegistry,

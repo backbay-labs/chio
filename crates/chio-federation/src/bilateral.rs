@@ -239,6 +239,45 @@ pub struct CoSigningResponse {
     pub org_a_signature: Signature,
 }
 
+pub const BILATERAL_DSSE_COSIGNING_SCHEMA: &str = "chio.bilateral.dsse-cosigning.v1";
+
+/// Request sent from the tool-host kernel (Org B) to the origin kernel
+/// (Org A) asking it to sign a DSSE PAE preimage. Org B's signature over
+/// the same bytes is included so Org A can authenticate the exact payload
+/// it is asked to co-sign.
+#[derive(Debug, Clone)]
+pub struct DsseCoSigningRequest {
+    pub schema: String,
+    pub org_a_kernel_id: String,
+    pub org_b_kernel_id: String,
+    pub pae_bytes: Vec<u8>,
+    pub org_b_signature: Signature,
+}
+
+impl DsseCoSigningRequest {
+    pub fn new(
+        org_a_kernel_id: String,
+        org_b_kernel_id: String,
+        pae_bytes: Vec<u8>,
+        org_b_signature: Signature,
+    ) -> Self {
+        Self {
+            schema: BILATERAL_DSSE_COSIGNING_SCHEMA.to_string(),
+            org_a_kernel_id,
+            org_b_kernel_id,
+            pae_bytes,
+            org_b_signature,
+        }
+    }
+}
+
+/// Response from the origin kernel (Org A) carrying its DSSE signature.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DsseCoSigningResponse {
+    pub schema: String,
+    pub org_a_signature: Signature,
+}
+
 /// Errors surfaced by the bilateral co-signing protocol. All variants are
 /// fail-closed: on any error the kernel MUST refuse to persist a dual-signed
 /// receipt for the failing exchange.
@@ -286,6 +325,19 @@ pub trait BilateralCoSigningProtocol: Send + Sync {
         &self,
         request: &CoSigningRequest,
     ) -> Result<CoSigningResponse, BilateralCoSigningError>;
+
+    /// Request a DSSE PAE co-signature for the bilateral invocation
+    /// envelope. Implementations should verify Org B's signature over
+    /// `request.pae_bytes` before returning Org A's signature.
+    fn request_dsse_cosignature(
+        &self,
+        request: &DsseCoSigningRequest,
+    ) -> Result<DsseCoSigningResponse, BilateralCoSigningError> {
+        let _ = request;
+        Err(BilateralCoSigningError::UnsupportedSchema(
+            BILATERAL_DSSE_COSIGNING_SCHEMA.to_string(),
+        ))
+    }
 }
 
 /// In-process reference implementation of [`BilateralCoSigningProtocol`].
@@ -363,6 +415,37 @@ impl BilateralCoSigningProtocol for InProcessCoSigner {
             .map_err(|e| BilateralCoSigningError::TransportFailure(e.to_string()))?;
         Ok(CoSigningResponse {
             schema: BILATERAL_COSIGNING_SCHEMA.to_string(),
+            org_a_signature: signature,
+        })
+    }
+
+    fn request_dsse_cosignature(
+        &self,
+        request: &DsseCoSigningRequest,
+    ) -> Result<DsseCoSigningResponse, BilateralCoSigningError> {
+        if request.schema != BILATERAL_DSSE_COSIGNING_SCHEMA {
+            return Err(BilateralCoSigningError::UnsupportedSchema(
+                request.schema.clone(),
+            ));
+        }
+        if request.org_a_kernel_id != self.origin_kernel_id {
+            return Err(BilateralCoSigningError::UnknownPeer(
+                request.org_a_kernel_id.clone(),
+            ));
+        }
+        if !self
+            .tool_host_public_key
+            .verify(&request.pae_bytes, &request.org_b_signature)
+        {
+            return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+        }
+
+        let backend = Ed25519Backend::new(self.origin_keypair.clone());
+        let signature = backend
+            .sign_bytes(&request.pae_bytes)
+            .map_err(|e| BilateralCoSigningError::TransportFailure(e.to_string()))?;
+        Ok(DsseCoSigningResponse {
+            schema: BILATERAL_DSSE_COSIGNING_SCHEMA.to_string(),
             org_a_signature: signature,
         })
     }

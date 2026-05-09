@@ -64,6 +64,8 @@ fn federated_request_produces_dual_signed_receipt_verifiable_by_both_orgs() {
     let tool_host_public_key = kernel.config.keypair.public_key();
     let tool_host_kernel_id = "kernel.org-b";
     kernel.set_federation_local_kernel_id(tool_host_kernel_id);
+    let path = unique_receipt_db_path("federated-dual-signed-receipt");
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
 
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-fed",
@@ -124,6 +126,16 @@ fn federated_request_produces_dual_signed_receipt_verifiable_by_both_orgs() {
     // Either org can independently verify the receipt chain.
     dual.verify(&origin_kp.public_key(), &tool_host_public_key)
         .expect("dual-signed receipt must verify against both pinned peer keys");
+
+    let envelope = kernel
+        .federation_dsse_envelope(&response.receipt.id)
+        .expect("DSSE envelope must exist for federated request");
+    chio_federation::verify_dsse_envelope(
+        &envelope,
+        &origin_kp.public_key(),
+        &tool_host_public_key,
+    )
+    .expect("DSSE envelope must verify against both pinned peer keys");
 }
 
 #[test]
@@ -193,6 +205,84 @@ fn federation_cosigner_not_called_when_local_v2_persistence_fails() {
 }
 
 #[test]
+fn federated_v1_without_receipt_store_denies_before_dispatch_or_cosign() {
+    let origin_kp = Keypair::generate();
+    let origin_kernel_id = "kernel.org-a";
+    let tool_host_kernel_id = "kernel.org-b";
+    let mut kernel = make_kernel(make_config());
+    kernel.set_receipt_v2_default(true);
+    kernel.set_federation_local_kernel_id(tool_host_kernel_id);
+
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-fed",
+        vec!["file_read"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let trust = KernelTrustExchange::new(tool_host_kernel_id, kernel.config.keypair.clone())
+        .with_trusted_peer(origin_kernel_id, origin_kp.public_key());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut peer = handshake_and_pin(&trust, origin_kernel_id, &origin_kp, now);
+    peer.capabilities = CapabilityNegotiation::v1_default();
+    let kernel = kernel.with_federation_peers(vec![peer]);
+    let mut kernel = kernel;
+
+    let cosigner_calls = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_federation_cosigner(std::sync::Arc::new(CountingRejectingCosigner {
+        calls: std::sync::Arc::clone(&cosigner_calls),
+    }));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-fed", "file_read")]),
+        300,
+    );
+    let mut request = make_request_with_arguments(
+        "req-fed-v1-no-store",
+        &cap,
+        "file_read",
+        "srv-fed",
+        serde_json::json!({ "path": "/data/fed.txt" }),
+    );
+    request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
+
+    let response = kernel
+        .evaluate_tool_call_blocking(&request)
+        .expect("missing federated receipt persistence must produce a signed deny response");
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.unwrap_or_default();
+    assert!(
+        reason.contains("receipt persistence") && reason.contains("durable"),
+        "unexpected deny reason: {reason}"
+    );
+    assert_eq!(
+        invocations.load(Ordering::SeqCst),
+        0,
+        "tool must not run without durable federated receipt persistence"
+    );
+    assert_eq!(
+        cosigner_calls.load(Ordering::SeqCst),
+        0,
+        "cosigner must not run before durable local receipt state exists"
+    );
+    assert!(
+        kernel.dual_signed_receipt(&response.receipt.id).is_none(),
+        "dual-signed receipt must not be produced for a pre-dispatch denial"
+    );
+    assert!(
+        kernel.federation_dsse_envelope(&response.receipt.id).is_none(),
+        "DSSE envelope must not be produced for a pre-dispatch denial"
+    );
+}
+
+#[test]
 fn non_federated_request_leaves_no_dual_signed_artifact_behind() {
     let mut kernel = make_kernel(make_config());
     let path = unique_receipt_db_path("non-federated-no-dual-signed");
@@ -219,6 +309,7 @@ fn non_federated_request_leaves_no_dual_signed_artifact_behind() {
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
     assert_eq!(response.verdict, Verdict::Allow);
     assert!(kernel.dual_signed_receipt(&response.receipt.id).is_none());
+    assert!(kernel.federation_dsse_envelope(&response.receipt.id).is_none());
 }
 
 #[test]
@@ -323,6 +414,8 @@ fn federated_request_with_fresh_peer_but_missing_cosigner_fails_closed_post_disp
 
     let mut kernel = make_kernel(make_config());
     kernel.set_federation_local_kernel_id(tool_host_kernel_id);
+    let path = unique_receipt_db_path("federated-missing-cosigner");
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-fed",
         vec!["file_read"],

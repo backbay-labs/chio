@@ -1,0 +1,52 @@
+{
+  "schema": "chio.mutation-banner.v1",
+  "observed": true,
+  "ran_at": "2026-05-08T00:00:00Z",
+  "status": "partial-baseline",
+  "release_closure": "pending-full-promoted-sweeps",
+  "summary": "Six trust-boundary crates have observed partial or below-target mutation baselines. These values are not release-complete and do not activate blocking release claims.",
+  "per_crate": [
+    {
+      "crate": "chio-policy",
+      "kill_rate_percent": 80.21,
+      "target_met": false,
+      "evidence": "audits/evidence/mutants/chio-policy/2026-05-08.json",
+      "status": "partial-interrupted"
+    },
+    {
+      "crate": "chio-credentials",
+      "kill_rate_percent": 74.07,
+      "target_met": false,
+      "evidence": "audits/evidence/mutants/chio-credentials/2026-05-08.json",
+      "status": "partial-include-surface"
+    },
+    {
+      "crate": "chio-attest-verify",
+      "kill_rate_percent": 44.12,
+      "target_met": false,
+      "evidence": "audits/evidence/mutants/chio-attest-verify/2026-05-08.json",
+      "status": "full-below-target"
+    },
+    {
+      "crate": "chio-kernel-core",
+      "kill_rate_percent": 73.58,
+      "target_met": false,
+      "evidence": "audits/evidence/mutants/chio-kernel-core/2026-05-08.json",
+      "status": "partial-interrupted"
+    },
+    {
+      "crate": "chio-guards",
+      "kill_rate_percent": 78.18,
+      "target_met": false,
+      "evidence": "audits/evidence/mutants/chio-guards/2026-05-08.json",
+      "status": "partial-subset"
+    },
+    {
+      "crate": "chio-anchor",
+      "kill_rate_percent": 69.44,
+      "target_met": false,
+      "evidence": "audits/evidence/mutants/chio-anchor/2026-05-08.json",
+      "status": "partial-interrupted"
+    }
+  ]
+}

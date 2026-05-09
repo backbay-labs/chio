@@ -74,12 +74,12 @@ honest_threshold_applied: true
 reset_rationale: "Reset after readiness review. Prior activation_evidence cited two nightly run URLs whose status_at_capture was 'queued' (never confirmed green) and per-crate kill rates marked pending final full-sweep replay. This debt remains open until real cargo-mutants full-sweep measurement and workflow restoration provide confirmed green nightly run URLs. Until both evidence sets land measured numbers, observed_consecutive_nightly_successes stays at 0 and cycle_end_tag is empty so the gate runs in advisory posture."
 nightly_runs: []
 per_crate_kill_rate_percent:
-  chio-policy: "pending full-sweep measurement"
-  chio-credentials: "pending full-sweep measurement"
-  chio-attest-verify: "pending full-sweep measurement"
-  chio-kernel-core: "pending full-sweep measurement"
-  chio-guards: "pending full-sweep measurement"
-  chio-anchor: "pending full-sweep measurement"
+  chio-policy: "80.21 observed on partial interrupted sweep (314/418 evaluated); target_met=false"
+  chio-credentials: "74.07 observed on partial include-surface subset; target_met=false"
+  chio-attest-verify: "44.12 full below target on prior baseline; target_met=false"
+  chio-kernel-core: "73.58 observed on partial interrupted sweep (62/343 evaluated); target_met=false"
+  chio-guards: "78.18 observed on hand-picked subset; target_met=false"
+  chio-anchor: "69.44 observed on partial interrupted sweep (214/262 evaluated); target_met=false"
 """
 cycle_end_tag = ""
 pr_survivor_issue_budget = 5
@@ -92,6 +92,12 @@ trust_boundary_crates = [
     "chio-guards",
     "chio-anchor",
 ]
+
+[v0_1_0_bounded_chiodome]
+release_status = "blocked_pending_full_assurance_gate"
+integrated_merge_sha = "2afeb07a1febacd1323f6903fc96d7f764254420"
+fixture_set = "examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome"
+status_note = "Trajectory 5.1 regenerated deterministic canary fixtures from merged main and recorded the integrated SHA. Package release remains blocked because Lane A mutation evidence and C5 selective-disclosure proof support are not release-complete."
 
 [release_audit]
 activation_evidence = """

@@ -1,0 +1,206 @@
+{
+  "schema": "chio.bounded-assurance-manifest.v1",
+  "integrated_merge_sha": "2afeb07a1febacd1323f6903fc96d7f764254420",
+  "commands": [
+    {
+      "command": "bash scripts/check-threat-coverage.sh",
+      "exit_code": 0,
+      "artifacts": [
+        {
+          "path": "spec/security/chio-threat-model.v1.json",
+          "sha256": "0d81d4325c0db71580cdb66dc4327fa91ced6ebe284f3d004e30d424027694e6"
+        },
+        {
+          "path": "docs/security/threat-coverage.md",
+          "sha256": "7557037333124d5cf636e0d1ff30aed006a4a7978f24f2bfdd708abc861c6c1b"
+        }
+      ]
+    },
+    {
+      "command": "bash scripts/check-threat-coverage-mutants.sh",
+      "exit_code": 0,
+      "artifacts": [
+        {
+          "path": "spec/security/chio-threat-model.v1.json",
+          "sha256": "0d81d4325c0db71580cdb66dc4327fa91ced6ebe284f3d004e30d424027694e6"
+        },
+        {
+          "path": "audits/evidence/mutants/banner.json",
+          "sha256": "7b5928e60b446dd1da4f60bf02465eeece1e35b465b500725048fc1fc7ed4d2a"
+        }
+      ]
+    },
+    {
+      "command": "python3 scripts/check-apalache-formal-slice.py && apalache-mc check --length=6 over the four formal/apalache safety configs",
+      "exit_code": 0,
+      "artifacts": [
+        {
+          "path": "audits/evidence/formal/2026-05-09-trajectory-5-1-apalache-lean.md",
+          "sha256": "beb57c33df5522591dc852ea752a4415e2cde0df939766d4086048ba7621f707"
+        }
+      ]
+    },
+    {
+      "command": "bash scripts/run-kani-manifest.sh --list && bash scripts/run-kani-manifest.sh --dry-run",
+      "exit_code": 0,
+      "artifacts": [
+        {
+          "path": "audits/evidence/kani/2026-05-09-trajectory-5-1-manifest.md",
+          "sha256": "92a855919dccd1397d5aa9d6e9e2ffaf004f4b7b3e323a293ad23f9b6c9dba18"
+        },
+        {
+          "path": ".kani/harnesses.toml",
+          "sha256": "ca486942caa017e193b2227b7564a4a98bc94626e5caf7479bb2595e25aaaa01"
+        }
+      ]
+    },
+    {
+      "command": "cargo test -p chiodome-bilateral-example",
+      "exit_code": 0,
+      "artifacts": [
+        {
+          "path": "audits/evidence/chiodome/2026-05-09-trajectory-5-1-canary.md",
+          "sha256": "97751168ad0d9b08363182a4e17df921b4eaa653de9faad76e45e842b492a395"
+        }
+      ]
+    }
+  ],
+  "fixture_hashes": [
+    {
+      "path": "README.md",
+      "sha256": "da4374e7813c73a4b99861d5077719ec0360f0f4b928d95ca544d0b42993e2a6"
+    },
+    {
+      "path": "releases.toml",
+      "sha256": "a5df1f8269961ef4d527deaf945574ebdf02d0d3a0536b94fae5d09671998628"
+    },
+    {
+      "path": "audits/evidence/mutants/banner.json",
+      "sha256": "7b5928e60b446dd1da4f60bf02465eeece1e35b465b500725048fc1fc7ed4d2a"
+    },
+    {
+      "path": "audits/evidence/mutants/chio-policy/2026-05-08.json",
+      "sha256": "91e4ef409d646dc3c480cbc2b1fb1de5f1e95ca6e9cd9b2f8723728d23ef49c9"
+    },
+    {
+      "path": "audits/evidence/mutants/chio-credentials/2026-05-08.json",
+      "sha256": "91a1b55cc9d8d6b3f046b0e60b78a6bf3b7c8111a70b468eae92d6563dbd1877"
+    },
+    {
+      "path": "audits/evidence/mutants/chio-attest-verify/2026-05-08.json",
+      "sha256": "16fd9dcd53ba6e39cf8f3e95d712dcaf53d5631a1889fa5efc7deb11a311396c"
+    },
+    {
+      "path": "audits/evidence/mutants/chio-kernel-core/2026-05-08.json",
+      "sha256": "b172434f036d817a9335f848f3e37b8bceaed83033151e1907215412a245ad8a"
+    },
+    {
+      "path": "audits/evidence/mutants/chio-guards/2026-05-08.json",
+      "sha256": "c62648722d2b405fe70eafe19f1eb49f0fd1514a02ffd13a0272bdeaa8cba635"
+    },
+    {
+      "path": "audits/evidence/mutants/chio-anchor/2026-05-08.json",
+      "sha256": "51971fe8527212686c7af07b57ce73249eb82d256e3ef2ddd3a7acf20d49b726"
+    },
+    {
+      "path": "spec/security/chio-threat-model.v1.json",
+      "sha256": "0d81d4325c0db71580cdb66dc4327fa91ced6ebe284f3d004e30d424027694e6"
+    },
+    {
+      "path": "docs/security/threat-coverage.md",
+      "sha256": "7557037333124d5cf636e0d1ff30aed006a4a7978f24f2bfdd708abc861c6c1b"
+    },
+    {
+      "path": "audits/evidence/kani/2026-05-09-trajectory-5-1-manifest.md",
+      "sha256": "92a855919dccd1397d5aa9d6e9e2ffaf004f4b7b3e323a293ad23f9b6c9dba18"
+    },
+    {
+      "path": "audits/evidence/formal/2026-05-09-trajectory-5-1-apalache-lean.md",
+      "sha256": "beb57c33df5522591dc852ea752a4415e2cde0df939766d4086048ba7621f707"
+    },
+    {
+      "path": "crates/chio-kernel/src/kernel/mod.rs",
+      "sha256": "a1c8b3f2fbccbd1567343c8c64ff8b9811fc5172541b2346aa94aab117b7bf69"
+    },
+    {
+      "path": "crates/chio-kernel/src/kernel/responses.rs",
+      "sha256": "3eb92ddec16ce574e337ee3731c3669dc87a045e8303c6e8f0c3293bb8e2096a"
+    },
+    {
+      "path": "crates/chio-kernel/src/kernel/session_ops.rs",
+      "sha256": "94cd33c56e9d66904f3566a84f77f5ce109bd0d6e91a03a40aae4dbcd967e51f"
+    },
+    {
+      "path": "crates/chio-federation/src/bilateral.rs",
+      "sha256": "7860506466ad64e303132b8dce5dbaf998b54f2703a4406591bef8850eaee1cf"
+    },
+    {
+      "path": "crates/chio-federation/src/bilateral_dsse.rs",
+      "sha256": "5bf31f03513ab76b2e610760e8f406e8dd156d640a24b6317a336e2f67dd958a"
+    },
+    {
+      "path": "crates/chio-conformance/tests/b2_receipt_v2_failclosed_pre_dispatch.rs",
+      "sha256": "593987dbf5da6845a1ff4a3a531819b4875c66876ce415b54fb068f25e60439a"
+    },
+    {
+      "path": "crates/chio-conformance/tests/b4_bilateral_dsse_pae_conformance.rs",
+      "sha256": "a70712e04da6598a8cadc0c06d9b487df3afadbb92396bccbf1d10f665cf0421"
+    },
+    {
+      "path": "audits/evidence/chiodome/2026-05-09-trajectory-5-1-canary.md",
+      "sha256": "97751168ad0d9b08363182a4e17df921b4eaa653de9faad76e45e842b492a395"
+    },
+    {
+      "path": "examples/chiodome-bilateral/README.md",
+      "sha256": "bc1327b113e46f053b9889cd4cae759a77d6ed262e1dc9bc1c3970304ea5bf1e"
+    },
+    {
+      "path": "examples/chiodome-bilateral/policy.yaml",
+      "sha256": "a2c1686129ff9e6e636db711e5492703c5a049f20266b136b945eaec97caa6e3"
+    },
+    {
+      "path": "examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/receipt.json",
+      "sha256": "2e299d17846bbe940f1d579cfa0ceff9d3c7ad07a3f57e63b741aa81144ef323"
+    },
+    {
+      "path": "examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/envelope.json",
+      "sha256": "734ded44c8419ce41b8c4ef43f68da63bf7d43178ccc2978c51cd9d45b5adb39"
+    },
+    {
+      "path": "examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/checkpoint.json",
+      "sha256": "64d0c8809641872ca14476009f5cd7bf669adc8ed9e63a507111074b1bd2a097"
+    },
+    {
+      "path": "examples/chiodome-bilateral/golden/receipt-explain.txt",
+      "sha256": "f9b7831eba62385dd38dc1573c03909248020788906a203d4512f52908cc6832"
+    },
+    {
+      "path": "examples/chiodome-bilateral/transcripts/mediation-frame-001.json",
+      "sha256": "8f50db26ccef1cd161689a5cc276584331c5210105a1c92fb0abf6e63c85a3c9"
+    },
+    {
+      "path": "examples/chiodome-bilateral/transcripts/mediation-frame-002.json",
+      "sha256": "678041b6c22370a8770e8a45170ab2d5d8bbffaa89e56b6f5316c882b928bbb3"
+    },
+    {
+      "path": ".planning/trajectory-5.1/README.md",
+      "sha256": "97fca0ed2a81e84120d5be32670195c31feec8beaa6af009796662d37cd8de14"
+    },
+    {
+      "path": ".planning/trajectory-5.1/TICKETS.md",
+      "sha256": "bcb87cd8cc3fc976e704483170d37466802338fd2ff3e65f97a71b9570c95f9a"
+    },
+    {
+      "path": ".planning/trajectory-5.1/OWNERS.toml",
+      "sha256": "37a80f85bb613fceec79cb9aa75cf5c63df030784da2f7a835fa671b7dc3d140"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-05-09-trajectory-5-1-design.md",
+      "sha256": "7ec9d8cd7ba03ab57fc9f3096f36b9100c9d590ca3ed0b058225867c663e96bb"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-05-09-trajectory-5-1.md",
+      "sha256": "a9756e4c3ad7eb511c60c8af4c0800d9ccf0b623090842e90b24d0fb383e944a"
+    }
+  ]
+}

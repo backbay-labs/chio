@@ -86,6 +86,22 @@ pub(crate) fn current_scoped_receipt_tenant_id() -> Option<String> {
     RECEIPT_TENANT_ID_SCOPE.with(|slot| slot.borrow().clone())
 }
 
+pub(crate) struct ScopedKernelReceiptTenantId {
+    request_id: String,
+    tenant_ids: Arc<DashMap<String, String>>,
+    previous: Option<String>,
+}
+
+impl Drop for ScopedKernelReceiptTenantId {
+    fn drop(&mut self) {
+        if let Some(previous) = self.previous.take() {
+            self.tenant_ids.insert(self.request_id.clone(), previous);
+        } else {
+            self.tenant_ids.remove(&self.request_id);
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ReceiptFederationAdmission {
     pub remote_kernel_id: Option<String>,
@@ -134,6 +150,94 @@ impl Drop for ScopedKernelReceiptFederationAdmission {
             self.admissions.insert(self.request_id.clone(), previous);
         } else {
             self.admissions.remove(&self.request_id);
+        }
+    }
+}
+
+const POST_ADMISSION_DROP_REASON: &str = "tool evaluation future dropped after monetary admission";
+
+struct PostAdmissionDropGuard<'a> {
+    kernel: &'a ChioKernel,
+    request: &'a ToolCallRequest,
+    cap: &'a CapabilityToken,
+    matched_grant_index: Option<usize>,
+    charge_result: Option<&'a BudgetChargeResult>,
+    payment_authorization: Option<&'a PaymentAuthorization>,
+    extra_metadata: Option<serde_json::Value>,
+    armed: bool,
+}
+
+impl<'a> PostAdmissionDropGuard<'a> {
+    fn new(
+        kernel: &'a ChioKernel,
+        request: &'a ToolCallRequest,
+        cap: &'a CapabilityToken,
+        matched_grant_index: Option<usize>,
+        charge_result: Option<&'a BudgetChargeResult>,
+        payment_authorization: Option<&'a PaymentAuthorization>,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Self {
+        Self {
+            kernel,
+            request,
+            cap,
+            matched_grant_index,
+            charge_result,
+            payment_authorization,
+            extra_metadata,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for PostAdmissionDropGuard<'_> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let Some(charge) = self.charge_result else {
+            return;
+        };
+
+        let unwind = self.kernel.unwind_aborted_monetary_invocation(
+            self.request,
+            self.cap,
+            self.charge_result,
+            self.payment_authorization,
+        );
+        let extra_metadata = match &unwind {
+            Ok(Some(reverse)) => self.kernel.merge_budget_receipt_metadata(
+                self.extra_metadata.clone(),
+                self.kernel
+                    .budget_execution_receipt_metadata(charge, Some(("reversed", reverse))),
+            ),
+            Ok(None) => self.extra_metadata.clone(),
+            Err(error) => {
+                warn!(
+                    request_id = %self.request.request_id,
+                    reason = %redacted!(error),
+                    "failed to unwind dropped post-admission monetary invocation"
+                );
+                self.extra_metadata.clone()
+            }
+        };
+
+        if let Err(error) = self.kernel.build_cancelled_response_with_metadata(
+            self.request,
+            POST_ADMISSION_DROP_REASON,
+            current_unix_timestamp(),
+            self.matched_grant_index,
+            extra_metadata,
+        ) {
+            warn!(
+                request_id = %self.request.request_id,
+                reason = %redacted!(&error),
+                "failed to record cancellation receipt for dropped post-admission invocation"
+            );
         }
     }
 }
@@ -1239,6 +1343,14 @@ pub struct ChioKernel {
     /// in-memory; persistent storage plugs in via the federation-state
     /// APIs already in chio-federation.
     federation_dual_receipts: DashMap<String, chio_federation::DualSignedReceipt>,
+    /// Phase 20.4 DSSE signature-slice envelopes, indexed by ChioReceipt.id.
+    /// These are emitted through the federation cosigner protocol rather than
+    /// by loading Org A private key material in the tool-host kernel.
+    federation_dsse_envelopes: DashMap<String, chio_federation::DsseEnvelope>,
+    /// Request-keyed tenant scope for receipts. The thread-local tenant scope
+    /// is still available for legacy sync builders, but async evaluate futures
+    /// can resume on a different worker after dispatch.
+    receipt_tenant_ids: Arc<DashMap<String, String>>,
     /// Request-keyed copy of the receipt-version admission snapshot.
     /// Thread-local admission state is still kept for legacy sync builders,
     /// but async evaluate futures may resume on a different Tokio worker
@@ -1603,6 +1715,35 @@ impl ChioKernel {
         .flatten()
     }
 
+    pub(crate) fn scope_receipt_tenant_id_for_request(
+        &self,
+        request_id: &str,
+        tenant_id: Option<String>,
+    ) -> ScopedKernelReceiptTenantId {
+        let previous = match tenant_id {
+            Some(tenant_id) => self
+                .receipt_tenant_ids
+                .insert(request_id.to_string(), tenant_id),
+            None => self
+                .receipt_tenant_ids
+                .remove(request_id)
+                .map(|(_, previous)| previous),
+        };
+        ScopedKernelReceiptTenantId {
+            request_id: request_id.to_string(),
+            tenant_ids: Arc::clone(&self.receipt_tenant_ids),
+            previous,
+        }
+    }
+
+    pub(crate) fn receipt_tenant_id_for_request(&self, request_id: Option<&str>) -> Option<String> {
+        request_id.and_then(|request_id| {
+            self.receipt_tenant_ids
+                .get(request_id)
+                .map(|entry| entry.value().clone())
+        })
+    }
+
     fn with_session_mut<R>(
         &self,
         session_id: &SessionId,
@@ -1692,6 +1833,8 @@ impl ChioKernel {
             capability_trust_roots_write_lock: Mutex::new(()),
             federation_cosigner: None,
             federation_dual_receipts: DashMap::new(),
+            federation_dsse_envelopes: DashMap::new(),
+            receipt_tenant_ids: Arc::new(DashMap::new()),
             receipt_federation_admissions: Arc::new(DashMap::new()),
             federation_local_kernel_id: ArcSwap::from_pointee(Option::<String>::None),
             signing_task,
@@ -1735,6 +1878,22 @@ impl ChioKernel {
         if !store.supports_chio_receipt_v2() {
             return Err(KernelError::Internal(
                 "v2 receipt persistence unavailable: configured receipt store is not v2-capable"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn ensure_federated_receipt_persistence_ready(
+        &self,
+        remote_kernel_id: Option<&str>,
+    ) -> Result<(), KernelError> {
+        if remote_kernel_id.is_none() {
+            return Ok(());
+        }
+        if self.receipt_store.is_none() {
+            return Err(KernelError::Internal(
+                "federated receipt persistence unavailable: no durable receipt store configured"
                     .to_string(),
             ));
         }
@@ -2312,6 +2471,15 @@ impl ChioKernel {
             .map(|entry| entry.value().clone())
     }
 
+    pub fn federation_dsse_envelope(
+        &self,
+        receipt_id: &str,
+    ) -> Option<chio_federation::DsseEnvelope> {
+        self.federation_dsse_envelopes
+            .get(receipt_id)
+            .map(|entry| entry.value().clone())
+    }
+
     /// Local kernel identifier used in bilateral co-signing. Falls back
     /// to the hex encoding of the signing public key.
     pub fn federation_local_kernel_id(&self) -> String {
@@ -2373,9 +2541,23 @@ impl ChioKernel {
             cosigner.as_ref(),
         )
         .map_err(|e| KernelError::Internal(format!("bilateral co-sign failed: {e}")))?;
+        let dsse_envelope = chio_federation::sign_dsse_envelope_with_cosigner(
+            receipt,
+            &peer.public_key,
+            &self.config.keypair,
+            origin_kernel_id,
+            &local_kernel_id,
+            &request.tool_name,
+            current_unix_timestamp().saturating_mul(1000),
+            chio_federation::BilateralPredicateExtensions::default(),
+            cosigner.as_ref(),
+        )
+        .map_err(|e| KernelError::Internal(format!("bilateral DSSE co-sign failed: {e}")))?;
 
         self.federation_dual_receipts
             .insert(receipt.id.clone(), dual);
+        self.federation_dsse_envelopes
+            .insert(receipt.id.clone(), dsse_envelope);
         Ok(())
     }
 
@@ -3125,6 +3307,8 @@ impl ChioKernel {
         // (if any) and install it for the remainder of this evaluation so
         // every receipt `build_and_sign_receipt` signs picks up the tag.
         let tenant_id = self.resolve_tenant_id_for_session(session_id);
+        let _tenant_request_scope =
+            self.scope_receipt_tenant_id_for_request(&request.request_id, tenant_id.clone());
         let _tenant_scope = scope_receipt_tenant_id(tenant_id);
 
         let now = current_unix_timestamp();
@@ -3359,6 +3543,24 @@ impl ChioKernel {
             );
         }
 
+        if let Err(error) = self.ensure_federated_receipt_persistence_ready(
+            request.federated_origin_kernel_id.as_deref(),
+        ) {
+            let msg = error.to_string();
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&msg),
+                "federated receipt persistence unavailable pre-dispatch"
+            );
+            return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
+        }
+
         let (matched_grant_index, charge_result) = match self.check_and_increment_budget(
             &request.request_id,
             cap,
@@ -3552,10 +3754,21 @@ impl ChioKernel {
 
         let tool_started_at = Instant::now();
         let has_monetary = charge_result.is_some();
-        let (tool_output, reported_cost) = match self
+        let mut post_admission_drop_guard = PostAdmissionDropGuard::new(
+            self,
+            request,
+            cap,
+            Some(matched_grant_index),
+            charge_result.as_ref(),
+            payment_authorization.as_ref(),
+            extra_metadata.clone(),
+        );
+        let dispatch_result = self
             .dispatch_tool_call_with_cost(request, has_monetary)
-            .await
-        {
+            .await;
+        post_admission_drop_guard.disarm();
+        drop(post_admission_drop_guard);
+        let (tool_output, reported_cost) = match dispatch_result {
             Ok(result) => result,
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
                 let _ = self.unwind_aborted_monetary_invocation(
@@ -3696,6 +3909,8 @@ impl ChioKernel {
         // receipt signed while this nested-flow evaluation is in flight
         // carries the correct tenant tag.
         let tenant_id = self.resolve_tenant_id_for_session(Some(&parent_context.session_id));
+        let _tenant_request_scope =
+            self.scope_receipt_tenant_id_for_request(&request.request_id, tenant_id.clone());
         let _tenant_scope = scope_receipt_tenant_id(tenant_id);
 
         let now = current_unix_timestamp();
@@ -3855,6 +4070,20 @@ impl ChioKernel {
             let msg = error.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "failed to persist capability lineage");
             return self.build_deny_response(request, &msg, now, None);
+        }
+
+        if let Err(error) = self.ensure_federated_receipt_persistence_ready(
+            request.federated_origin_kernel_id.as_deref(),
+        ) {
+            let msg = error.to_string();
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&msg),
+                "federated receipt persistence unavailable pre-dispatch (nested flow)"
+            );
+            return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
+                request, &msg, now, None, None,
+            );
         }
 
         let (matched_grant_index, charge_result) = match self.check_and_increment_budget(
@@ -4017,6 +4246,15 @@ impl ChioKernel {
 
         let tool_started_at = Instant::now();
         let mut child_receipts = Vec::new();
+        let mut post_admission_drop_guard = PostAdmissionDropGuard::new(
+            self,
+            request,
+            cap,
+            Some(matched_grant_index),
+            charge_result.as_ref(),
+            payment_authorization.as_ref(),
+            None,
+        );
         let tool_output_result = {
             let server = self.tool_servers.get(&request.server_id).ok_or_else(|| {
                 KernelError::ToolNotRegistered(format!(
@@ -4056,6 +4294,8 @@ impl ChioKernel {
                 Err(error) => Err(error),
             }
         };
+        post_admission_drop_guard.disarm();
+        drop(post_admission_drop_guard);
         self.record_child_receipts(child_receipts)?;
         let tool_output = match tool_output_result {
             Ok(output) => output,
@@ -7048,6 +7288,7 @@ fn tool_grant_covers_target(grant: &ToolGrant, server_id: &str, tool_name: &str)
 
 /// Parameters for building a receipt.
 pub(crate) struct ReceiptParams<'a> {
+    request_id: Option<&'a str>,
     capability_id: &'a str,
     tool_name: &'a str,
     server_id: &'a str,

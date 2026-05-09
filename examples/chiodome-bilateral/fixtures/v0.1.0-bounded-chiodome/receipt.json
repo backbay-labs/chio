@@ -1,0 +1,37 @@
+{
+  "id": "rcpt-c-refund-demo-0001",
+  "timestamp": 1730000000,
+  "capability_id": "cap-org-a-refund-demo",
+  "tool_server": "srv-org-b-payments",
+  "tool_name": "payments.refund",
+  "action": {
+    "parameters": {
+      "amount_minor_units": 5000,
+      "currency": "USD",
+      "order_id": "ord-9c1f-2a40",
+      "reason": "customer-requested"
+    },
+    "parameter_hash": "07b3c4fbb5953805c7b798dcf4e8deda4ec24d16be146861d7a30ea1ed47b037"
+  },
+  "decision": {
+    "verdict": "allow"
+  },
+  "content_hash": "c0ca94d9b70f9a9dc129fac407c0da835fe8b0c2363b1173c77edb718a2fc69f",
+  "policy_hash": "policy-c-demo",
+  "metadata": {
+    "financial": {
+      "budget_remaining": 95000,
+      "budget_total": 100000,
+      "cost_charged": 5000,
+      "currency": "USD",
+      "delegation_depth": 1,
+      "grant_index": 0,
+      "payment_reference": "refund-demo-0001",
+      "root_budget_holder": "tenant-org-a",
+      "settlement_status": "pending"
+    }
+  },
+  "tenant_id": "tenant-org-a",
+  "kernel_key": "e08a8e8decf2772e856c02ca9ae61fb6954118b1025bd5bad574ead68ef043a7",
+  "signature": "cc5fb34ac46b864fd477e290d0c1da0b3eb0e46a86c51d91354bc672ece647252c503931a020ddab8b0aecbce6d414022117dc3f96cd70e324e3df139abb780f"
+}

@@ -14,7 +14,7 @@
   <em>Capability validation, fail-closed policy, budgets, and signed receipts</em>
   <!-- chio-mutants-banner:start -->
   <br/>
-  <strong>Mutation kill: 31%</strong> - six-crate trust-boundary mutation baseline, mixed sweep/shard n=375 viable mutants - 2026-04-29
+  <strong>Mutation evidence: partial baselines recorded</strong> - six trust-boundary crates, observed 44.12%-80.21%, release closure pending full promoted sweeps - 2026-05-08
   <!-- chio-mutants-banner:end -->
 </p>
 

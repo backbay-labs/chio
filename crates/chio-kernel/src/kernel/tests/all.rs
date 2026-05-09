@@ -5468,6 +5468,11 @@ struct CountingMonetaryServer {
     invocations: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
+struct PendingMonetaryServer {
+    id: String,
+    started: std::sync::Arc<tokio::sync::Notify>,
+}
+
 struct StaticPriceOracle {
     rates: std::collections::BTreeMap<(String, String), Result<ExchangeRate, PriceOracleError>>,
 }
@@ -5614,6 +5619,37 @@ impl ToolServerConnection for CountingMonetaryServer {
         self.invocations
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(serde_json::json!({"result": "ok"}))
+    }
+
+    async fn invoke_with_cost(
+        &self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+        bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<(serde_json::Value, Option<ToolInvocationCost>), KernelError> {
+        let value = self.invoke(tool_name, arguments, bridge).await?;
+        Ok((value, None))
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for PendingMonetaryServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        vec!["compute".to_string()]
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        self.started.notify_waiters();
+        std::future::pending::<Result<serde_json::Value, KernelError>>().await
     }
 
     async fn invoke_with_cost(
@@ -6625,6 +6661,148 @@ fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocati
         .unwrap();
     assert_eq!(usage.invocation_count, 0);
     assert_eq!(usage.committed_cost_units().unwrap(), 0);
+}
+
+#[derive(Clone)]
+struct TrackingPaymentAdapter {
+    authorized: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    released: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    refunded: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl TrackingPaymentAdapter {
+    fn new() -> Self {
+        Self {
+            authorized: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            released: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            refunded: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        }
+    }
+}
+
+impl PaymentAdapter for TrackingPaymentAdapter {
+    fn authorize(
+        &self,
+        _request: &PaymentAuthorizeRequest,
+    ) -> Result<PaymentAuthorization, PaymentError> {
+        self.authorized
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(PaymentAuthorization {
+            authorization_id: "auth_tracking".to_string(),
+            settled: false,
+            metadata: serde_json::json!({ "adapter": "tracking" }),
+        })
+    }
+
+    fn capture(
+        &self,
+        authorization_id: &str,
+        _amount_units: u64,
+        _currency: &str,
+        _reference: &str,
+    ) -> Result<PaymentResult, PaymentError> {
+        Ok(PaymentResult {
+            transaction_id: authorization_id.to_string(),
+            settlement_status: RailSettlementStatus::Settled,
+            metadata: serde_json::json!({ "adapter": "tracking" }),
+        })
+    }
+
+    fn release(
+        &self,
+        authorization_id: &str,
+        _reference: &str,
+    ) -> Result<PaymentResult, PaymentError> {
+        self.released
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(PaymentResult {
+            transaction_id: authorization_id.to_string(),
+            settlement_status: RailSettlementStatus::Released,
+            metadata: serde_json::json!({ "adapter": "tracking" }),
+        })
+    }
+
+    fn refund(
+        &self,
+        transaction_id: &str,
+        _amount_units: u64,
+        _currency: &str,
+        _reference: &str,
+    ) -> Result<PaymentResult, PaymentError> {
+        self.refunded
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(PaymentResult {
+            transaction_id: transaction_id.to_string(),
+            settlement_status: RailSettlementStatus::Refunded,
+            metadata: serde_json::json!({ "adapter": "tracking" }),
+        })
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dropping_async_evaluate_after_monetary_admission_unwinds_budget_payment_and_receipt() {
+    let started = std::sync::Arc::new(tokio::sync::Notify::new());
+    let payment = TrackingPaymentAdapter::new();
+    let mut kernel = make_kernel(make_monetary_config());
+    kernel.set_payment_adapter(Box::new(payment.clone()));
+    kernel.register_tool_server(Box::new(PendingMonetaryServer {
+        id: "cost-srv".to_string(),
+        started: std::sync::Arc::clone(&started),
+    }));
+
+    let agent_kp = Keypair::generate();
+    let grant = make_monetary_grant("cost-srv", "compute", 100, 1000, "USD");
+    let cap = kernel
+        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
+        .unwrap();
+    let request = ToolCallRequest {
+        request_id: "req-drop-after-admission".to_string(),
+        capability: cap.clone(),
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: agent_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+
+    let kernel = std::sync::Arc::new(kernel);
+    let eval = {
+        let kernel = std::sync::Arc::clone(&kernel);
+        tokio::spawn(async move { kernel.evaluate_tool_call(&request).await })
+    };
+
+    tokio::time::timeout(Duration::from_secs(1), started.notified())
+        .await
+        .expect("pending monetary tool should be invoked before abort");
+    eval.abort();
+    let join = eval.await.expect_err("aborted evaluation should not complete");
+    assert!(join.is_cancelled());
+
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
+    assert_eq!(usage.invocation_count, 0);
+    assert_eq!(usage.committed_cost_units().unwrap(), 0);
+    assert_eq!(
+        payment
+            .authorized
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert_eq!(
+        payment.released.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert_eq!(
+        payment.refunded.load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(receipt_log.len(), 1);
+    assert!(receipt_log.get(0).unwrap().is_cancelled());
 }
 
 #[test]

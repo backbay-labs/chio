@@ -250,6 +250,7 @@ impl ChioKernel {
         })?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {
+            request_id: None,
             capability_id: &operation.capability.id,
             tool_name: "resources/read",
             server_id: "session",
@@ -713,6 +714,8 @@ impl ChioKernel {
         // because the value matches, but it keeps non-tool-call branches
         // (e.g. evaluate_resource_read) covered.
         let tenant_id = self.resolve_tenant_id_for_session(Some(&context.session_id));
+        let _tenant_request_scope = self
+            .scope_receipt_tenant_id_for_request(context.request_id.as_str(), tenant_id.clone());
         let _tenant_scope = scope_receipt_tenant_id(tenant_id);
 
         self.validate_web3_evidence_prerequisites()?;

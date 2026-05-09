@@ -114,6 +114,7 @@ impl ChioKernel {
                 })?;
 
             let receipt = self.build_and_sign_receipt(ReceiptParams {
+                request_id: Some(&request.request_id),
                 capability_id: &cap.id,
                 tool_name: &request.tool_name,
                 server_id: &request.server_id,
@@ -215,6 +216,7 @@ impl ChioKernel {
         })?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {
+            request_id: Some(&request.request_id),
             capability_id: &cap.id,
             tool_name: &request.tool_name,
             server_id: &request.server_id,
@@ -823,6 +825,7 @@ impl ChioKernel {
         )?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {
+            request_id: Some(&request.request_id),
             capability_id: &cap.id,
             tool_name: &request.tool_name,
             server_id: &request.server_id,
@@ -936,6 +939,27 @@ impl ChioKernel {
         )
     }
 
+    /// Build a Deny response for pre-dispatch receipt persistence admission.
+    /// Federated dispatches require a durable local receipt store before any
+    /// tool side effect, even when the negotiated receipt version is v1.
+    pub(crate) fn build_receipt_persistence_failclosed_deny_response_with_metadata(
+        &self,
+        request: &ToolCallRequest,
+        reason: &str,
+        timestamp: u64,
+        matched_grant_index: Option<usize>,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        self.build_local_v1_failclosed_deny_response_with_metadata(
+            request,
+            reason,
+            timestamp,
+            matched_grant_index,
+            extra_metadata,
+            "kernel.receipt_persistence",
+        )
+    }
+
     pub(crate) fn build_deny_response_with_metadata(
         &self,
         request: &ToolCallRequest,
@@ -958,6 +982,7 @@ impl ChioKernel {
         )?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {
+            request_id: Some(&request.request_id),
             capability_id: &cap.id,
             tool_name: &request.tool_name,
             server_id: &request.server_id,
@@ -1031,6 +1056,7 @@ impl ChioKernel {
         )?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {
+            request_id: Some(&request.request_id),
             capability_id: &cap.id,
             tool_name: &request.tool_name,
             server_id: &request.server_id,
@@ -1125,6 +1151,7 @@ impl ChioKernel {
         )?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {
+            request_id: Some(&request.request_id),
             capability_id: &cap.id,
             tool_name: &request.tool_name,
             server_id: &request.server_id,
@@ -1230,6 +1257,7 @@ impl ChioKernel {
         })?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {
+            request_id: Some(&request.request_id),
             capability_id: &cap.id,
             tool_name: &request.tool_name,
             server_id: &request.server_id,
@@ -1435,7 +1463,8 @@ impl ChioKernel {
         // Phase 1.5 multi-tenant receipt isolation: resolve tenant_id for
         // this receipt. Precedence:
         //   1. An explicit override on `ReceiptParams` (currently unused).
-        //   2. The active scoped tenant context set by the evaluate path
+        //   2. The request-keyed tenant context set by the evaluate path.
+        //   3. The active scoped tenant context set by the evaluate path
         //      from `session.auth_context().enterprise_identity.tenant_id`.
         //
         // Tenant_id is never taken from a caller-provided field on the
@@ -1444,6 +1473,7 @@ impl ChioKernel {
         let tenant_id = params
             .tenant_id
             .clone()
+            .or_else(|| self.receipt_tenant_id_for_request(params.request_id))
             .or_else(current_scoped_receipt_tenant_id);
 
         let body = ChioReceiptBody {

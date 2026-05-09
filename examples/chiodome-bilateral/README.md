@@ -68,7 +68,7 @@ What lands on disk:
 After the demo writes `fixtures/receipt.json`, point the explainer at it:
 
 ```
-cargo run -p chio-cli -- receipt explain --input-file examples/chiodome-bilateral/fixtures/receipt.json
+cargo run -p chio-cli -- receipt explain --input-file examples/chiodome-bilateral/fixtures/receipt.json rcpt-c-refund-demo-0001
 ```
 
 The CLI prints decision provenance, evidence, financial metadata, and the

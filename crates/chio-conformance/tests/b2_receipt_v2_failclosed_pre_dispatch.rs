@@ -28,7 +28,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use chio_core::capability::{ChioScope, Operation, ToolGrant};
+use chio_core::capability::{CapabilityNegotiation, ChioScope, Operation, ToolGrant};
 use chio_core::crypto::Keypair;
 use chio_federation::FederationPeer;
 use chio_kernel::runtime::{NestedFlowBridge, ToolCallRequest, ToolServerConnection};
@@ -62,7 +62,7 @@ struct CountingToolServer {
     counter: Arc<InvocationCounter>,
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for CountingToolServer {
     fn server_id(&self) -> &str {
         &self.server_id
@@ -100,6 +100,13 @@ fn unique_db_path(prefix: &str) -> std::path::PathBuf {
 fn make_kernel_with_counter(
     receipt_store_path: &std::path::Path,
 ) -> (ChioKernel, Arc<InvocationCounter>) {
+    let (mut kernel, counter) = make_kernel_without_receipt_store_with_counter();
+    let store = SqliteReceiptStore::open(receipt_store_path).unwrap();
+    kernel.set_receipt_store(Box::new(store));
+    (kernel, counter)
+}
+
+fn make_kernel_without_receipt_store_with_counter() -> (ChioKernel, Arc<InvocationCounter>) {
     let config = KernelConfig {
         keypair: Keypair::generate(),
         ca_public_keys: vec![],
@@ -115,8 +122,6 @@ fn make_kernel_with_counter(
         retention_config: None,
     };
     let mut kernel = ChioKernel::new(config);
-    let store = SqliteReceiptStore::open(receipt_store_path).unwrap();
-    kernel.set_receipt_store(Box::new(store));
 
     let counter = Arc::new(InvocationCounter::new());
     let server = CountingToolServer {
@@ -177,6 +182,60 @@ fn stale_v2_capable_peer(remote_kernel_id: &str) -> FederationPeer {
         rotation_due: 1_700_000_001,
         capabilities: chio_core::capability::CapabilityNegotiation::t1_default(),
     }
+}
+
+fn fresh_v1_peer(remote_kernel_id: &str) -> FederationPeer {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let remote_kp = Keypair::generate();
+    FederationPeer {
+        kernel_id: remote_kernel_id.to_string(),
+        public_key: remote_kp.public_key(),
+        conformance_tier: chio_federation::ConformanceTier::Bronze,
+        established_at: now.saturating_sub(1),
+        rotation_due: now.saturating_add(300),
+        capabilities: CapabilityNegotiation::v1_default(),
+    }
+}
+
+#[test]
+fn federated_v1_without_receipt_store_does_not_invoke_tool() {
+    let (kernel, counter) = make_kernel_without_receipt_store_with_counter();
+    let remote_kernel_id = "kernel.org-v1-no-store-pre-dispatch";
+    let kernel = kernel.with_federation_peers(vec![fresh_v1_peer(remote_kernel_id)]);
+
+    let agent_kp = Keypair::generate();
+    let cap = kernel
+        .issue_capability(&agent_kp.public_key(), make_scope(), 300)
+        .unwrap();
+    let request = make_request(
+        "req-b2-v1-no-store-pre-dispatch",
+        &cap,
+        Some(remote_kernel_id.to_string()),
+    );
+
+    let result = kernel.evaluate_tool_call_blocking(&request);
+    let reason = match result {
+        Ok(response) => {
+            assert_eq!(response.verdict, Verdict::Deny);
+            response.reason.unwrap_or_default()
+        }
+        Err(error) => error.to_string(),
+    };
+
+    assert_eq!(
+        counter.invocations.load(Ordering::SeqCst),
+        0,
+        "federated dispatch without durable receipt storage MUST fail before tool invocation; \
+         saw {} invocations",
+        counter.invocations.load(Ordering::SeqCst)
+    );
+    assert!(
+        reason.contains("receipt persistence") && reason.contains("durable"),
+        "expected durable receipt persistence denial, got: {reason}"
+    );
 }
 
 #[test]

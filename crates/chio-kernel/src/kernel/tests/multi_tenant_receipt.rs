@@ -89,6 +89,36 @@ fn session_tenant_id_is_stamped_on_tool_call_receipt() {
 }
 
 #[test]
+fn request_keyed_tenant_scope_survives_missing_thread_local_scope() {
+    let kernel = make_kernel(make_config());
+    let _request_scope =
+        kernel.scope_receipt_tenant_id_for_request("req-tenant-map", Some("tenant-map".to_string()));
+    let _thread_scope = scope_receipt_tenant_id(None);
+
+    let receipt = kernel
+        .build_and_sign_receipt(ReceiptParams {
+            request_id: Some("req-tenant-map"),
+            capability_id: "cap-tenant-map",
+            tool_name: "read_file",
+            server_id: "srv-a",
+            decision: Decision::Allow,
+            action: ToolCallAction::from_parameters(serde_json::json!({
+                "path": "/app/src/main.rs",
+            }))
+            .unwrap(),
+            content_hash: "0".repeat(64),
+            metadata: None,
+            timestamp: 1_700_000_100,
+            trust_level: chio_core::TrustLevel::default(),
+            tenant_id: None,
+        })
+        .unwrap();
+
+    assert_eq!(receipt.tenant_id.as_deref(), Some("tenant-map"));
+    assert!(receipt.verify_signature().unwrap());
+}
+
+#[test]
 fn session_without_tenant_id_produces_untagged_receipt() {
     let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));

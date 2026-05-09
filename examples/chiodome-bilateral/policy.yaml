@@ -35,6 +35,9 @@ rules:
       - kb.describe
       - knowledge_base.search
       - knowledge_base.fetch
+      # Replay fixture read-only tools used by --check mode.
+      - echo
+      - read_file
 
   # Secret-pattern guard stays on for the bridge's outputs. KB articles
   # that quote tokens or keys (e.g. example snippets) get redacted before
