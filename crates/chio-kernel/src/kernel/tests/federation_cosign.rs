@@ -146,8 +146,8 @@ fn federation_cosigner_not_called_when_local_v2_persistence_fails() {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let peer = handshake_and_pin(&trust, origin_kernel_id, &origin_kp, now)
-        .with_capabilities(CapabilityNegotiation::t1_default());
+    let mut peer = handshake_and_pin(&trust, origin_kernel_id, &origin_kp, now);
+    peer.capabilities = CapabilityNegotiation::t1_default();
     let kernel = kernel.with_federation_peers(vec![peer]);
     let mut kernel = kernel;
 
