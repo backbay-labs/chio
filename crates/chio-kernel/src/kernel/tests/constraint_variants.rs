@@ -9,7 +9,7 @@
 /// one whose `store` value is in the allowlist.
 #[test]
 fn kernel_denies_memory_write_to_disallowed_store() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("mem", vec!["memory_write"])));
 
     let agent_kp = make_keypair();
@@ -71,7 +71,7 @@ fn kernel_denies_memory_write_to_disallowed_store() {
 /// non-regressing nature of the new variant.
 #[test]
 fn kernel_allows_action_when_unaffected_by_new_constraint() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["ping"])));
 
     let agent_kp = make_keypair();
@@ -115,7 +115,7 @@ fn kernel_allows_action_when_unaffected_by_new_constraint() {
 /// because the kernel delegates parsing.
 #[test]
 fn kernel_records_constraint_and_defers_to_data_guard() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("db", vec!["sql_query"])));
 
     let agent_kp = make_keypair();
@@ -163,7 +163,7 @@ fn kernel_records_constraint_and_defers_to_data_guard() {
 /// A model listed in `allowed_model_ids` is admitted.
 #[test]
 fn kernel_allows_tool_call_when_model_is_in_allowlist() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["invoke"])));
 
     let agent_kp = make_keypair();
@@ -214,7 +214,7 @@ fn kernel_allows_tool_call_when_model_is_in_allowlist() {
 /// A model not in `allowed_model_ids` is denied.
 #[test]
 fn kernel_denies_tool_call_when_model_is_not_in_allowlist() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["invoke"])));
 
     let agent_kp = make_keypair();
@@ -267,7 +267,7 @@ fn kernel_denies_tool_call_when_model_is_not_in_allowlist() {
 /// denied. This is the roadmap acceptance criterion.
 #[test]
 fn kernel_denies_tool_call_when_model_safety_tier_is_below_minimum() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["invoke"])));
 
     let agent_kp = make_keypair();
@@ -312,7 +312,7 @@ fn kernel_denies_tool_call_when_model_safety_tier_is_below_minimum() {
 /// protects against a caller forgetting to declare their model.
 #[test]
 fn kernel_denies_tool_call_when_model_metadata_is_missing_but_required() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["invoke"])));
 
     let agent_kp = make_keypair();
@@ -353,7 +353,7 @@ fn kernel_denies_tool_call_when_model_metadata_is_missing_but_required() {
 /// site.
 #[test]
 fn kernel_allows_tool_call_without_model_metadata_when_grant_has_no_model_constraint() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["invoke"])));
 
     let agent_kp = make_keypair();
@@ -394,7 +394,7 @@ fn kernel_allows_tool_call_without_model_metadata_when_grant_has_no_model_constr
 /// contain a string matching any supplied regex pattern.
 #[test]
 fn kernel_denies_memory_write_matching_deny_pattern() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("mem", vec!["memory_write"])));
 
     let agent_kp = make_keypair();

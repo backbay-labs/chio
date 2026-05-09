@@ -12,6 +12,7 @@ publish = false
 name = "chio_http_core"
 
 [dependencies]
+async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }

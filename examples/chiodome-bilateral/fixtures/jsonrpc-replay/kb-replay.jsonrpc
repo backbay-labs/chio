@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":0,"method":"initialize","params":{}}
+{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"echo","arguments":{"text":"chiodome-bilateral kb-mcp replay (line 2)"}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"/etc/hostname"}}}
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"delete_record","arguments":{"id":"unsafe-write-must-deny"}}}

@@ -13,6 +13,7 @@ publish = false
 name = "chio_mcp_adapter"
 
 [dependencies]
+async-trait = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-mcp-edge = { path = "../chio-mcp-edge" }
 chio-kernel = { path = "../chio-kernel" }

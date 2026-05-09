@@ -30,7 +30,7 @@ fn kernel_with_memory_tools() -> (
     ChioScope,
     Arc<crate::memory_provenance::InMemoryMemoryProvenanceStore>,
 ) {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-mem",
         vec!["memory_write", "memory_read"],
@@ -196,7 +196,7 @@ fn memory_provenance_hook_is_noop_when_store_absent() {
     // Sanity check: memory-shaped tool calls keep working in backward-
     // compatible mode (no provenance store installed) and produce no
     // memory_provenance metadata on either write or read receipts.
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-mem",
         vec!["memory_write", "memory_read"],

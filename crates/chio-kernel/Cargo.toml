@@ -60,7 +60,9 @@ chio-market = { path = "../chio-market" }
 chio-open-market = { path = "../chio-open-market" }
 chio-settle = { path = "../chio-settle" }
 arc-swap = { workspace = true }
+async-trait = { workspace = true }
 dashmap = { workspace = true }
+futures = "0.3"
 regex = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }

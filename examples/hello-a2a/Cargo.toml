@@ -9,6 +9,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+async-trait = { workspace = true }
 chio-a2a-edge = { path = "../../crates/chio-a2a-edge" }
 chio-core = { path = "../../crates/chio-core" }
 chio-kernel = { path = "../../crates/chio-kernel" }

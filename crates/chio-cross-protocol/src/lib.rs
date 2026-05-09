@@ -1576,6 +1576,7 @@ mod tests {
         }
     }
 
+    #[async_trait::async_trait]
     impl ToolServerConnection for MockToolServer {
         fn server_id(&self) -> &str {
             "test-srv"
@@ -1585,7 +1586,7 @@ mod tests {
             vec!["echo".to_string()]
         }
 
-        fn invoke(
+        async fn invoke(
             &self,
             _tool_name: &str,
             _arguments: Value,

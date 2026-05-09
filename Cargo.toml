@@ -126,6 +126,7 @@ members = [
     # Examples
     "examples/bilateral-invocation",
     "examples/cross-provider-policy",
+    "examples/chiodome-bilateral",
     "examples/guards/enriched-inspector",
     "examples/guards/tool-gate",
     "examples/hello-a2a",
@@ -195,6 +196,7 @@ strip = "symbols"
 panic = "abort"
 
 [workspace.dependencies]
+async-trait = "0.1"
 aws-sdk-bedrockruntime = { version = "1.130.0", default-features = false, features = [
     "default-https-client",
     "rt-tokio",
