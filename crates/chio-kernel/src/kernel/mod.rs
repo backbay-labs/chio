@@ -3138,7 +3138,7 @@ impl ChioKernel {
                 request_id = %request.request_id,
                 "emergency stop active -- denying evaluate_tool_call"
             );
-            return self.build_deny_response_with_metadata(
+            return self.build_emergency_stop_deny_response_with_metadata(
                 request,
                 EMERGENCY_STOP_DENY_REASON,
                 now,
@@ -3708,7 +3708,13 @@ impl ChioKernel {
                 request_id = %request.request_id,
                 "emergency stop active -- denying evaluate_tool_call (nested flow)"
             );
-            return self.build_deny_response(request, EMERGENCY_STOP_DENY_REASON, now, None);
+            return self.build_emergency_stop_deny_response_with_metadata(
+                request,
+                EMERGENCY_STOP_DENY_REASON,
+                now,
+                None,
+                None,
+            );
         }
 
         // The pre-dispatch receipt-version admission gate must run on the

@@ -892,6 +892,28 @@ impl ChioKernel {
         )
     }
 
+    /// Build a Deny response for the emergency stop gate. The stopped-kernel
+    /// path must not perform federation peer lookup or remote co-signing,
+    /// because the kill switch is stronger than negotiation state and must
+    /// always surface the emergency reason.
+    pub(crate) fn build_emergency_stop_deny_response_with_metadata(
+        &self,
+        request: &ToolCallRequest,
+        reason: &str,
+        timestamp: u64,
+        matched_grant_index: Option<usize>,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        self.build_local_v1_failclosed_deny_response_with_metadata(
+            request,
+            reason,
+            timestamp,
+            matched_grant_index,
+            extra_metadata,
+            "kernel",
+        )
+    }
+
     /// Build a Deny response for pre-dispatch v2 persistence admission.
     /// The request negotiated v2, but the kernel cannot durably persist
     /// v2 receipts, so dispatch must not run. The denial is local v1
