@@ -204,6 +204,7 @@ fn make_request(
 /// A tool server that echoes its inputs back as the result.
 struct EchoServer(&'static str);
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for EchoServer {
     fn server_id(&self) -> &str {
         self.0
@@ -211,7 +212,7 @@ impl ToolServerConnection for EchoServer {
     fn tool_names(&self) -> Vec<String> {
         vec!["*".to_string()]
     }
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,

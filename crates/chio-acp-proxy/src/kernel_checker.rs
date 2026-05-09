@@ -94,6 +94,7 @@ impl AcpAuthorityToolServer {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for AcpAuthorityToolServer {
     fn server_id(&self) -> &str {
         &self.server_id
@@ -107,7 +108,7 @@ impl ToolServerConnection for AcpAuthorityToolServer {
         ]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: Value,

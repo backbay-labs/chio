@@ -12,6 +12,7 @@ publish = false
 name = "chio_tower"
 
 [dependencies]
+async-trait = { workspace = true }
 chio-core-types = { path = "../chio-core-types" }
 chio-http-core = { path = "../chio-http-core" }
 chio-kernel = { path = "../chio-kernel" }

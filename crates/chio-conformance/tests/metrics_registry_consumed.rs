@@ -1,8 +1,3 @@
-//! W2.4 smoke test: each of the six edges + `chio-wasm-guards` consumes
-//! the workspace metric registry, and each registry-keyed metric series
-//! is actually emitted to the Prometheus exposition under a synthetic
-//! load for production-exercised outcomes.
-//!
 //! The test runs the production emission path on each edge (not just a
 //! constant reference) and then scrapes the per-edge Prometheus body to
 //! assert (a) the registry-keyed metric name is present and (b) the
@@ -38,6 +33,7 @@ static RECEIPT_METRICS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 struct MetricsToolServer;
 
+#[async_trait::async_trait(?Send)]
 impl chio_kernel::ToolServerConnection for MetricsToolServer {
     fn server_id(&self) -> &str {
         "metrics-srv"
@@ -47,7 +43,7 @@ impl chio_kernel::ToolServerConnection for MetricsToolServer {
         vec!["echo".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         _tool_name: &str,
         arguments: Value,
