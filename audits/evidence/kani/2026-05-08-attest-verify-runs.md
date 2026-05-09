@@ -54,7 +54,7 @@ in the manifest `notes` for each entry (model-only scope note).
 2. The multi-crate Kani CI runner (`scripts/run-kani-manifest.sh`)
    ships with the shared Kani runner lane. The transcript cadence is intended
    to come from the merged-main CI iteration, not from a hand-run on
-   one feature branch.
+   one bounded evidence run.
 3. Local cargo-kani availability (verified: `cargo kani --version`
    reports `cargo-kani 0.67.0`) does not change the
    "either-or" requirement. Picking the labeling option keeps the
@@ -84,5 +84,5 @@ this deferral. The chio-attest-verify Kani enrollment is recorded as
 
 This evidence file documents **why no transcripts are committed** rather
 than presenting the absence as completion. The Kani enrollment is real;
-the run evidence is deferred. This branch ships harness source plus manifest
+the run evidence is deferred. This evidence set ships harness source plus manifest
 entries; transcripts arrive from the follow-up CI iteration.

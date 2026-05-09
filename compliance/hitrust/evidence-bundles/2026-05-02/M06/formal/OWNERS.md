@@ -7,7 +7,7 @@ liveness lane). It lives next to the formal artifacts under `formal/` so
 ownership stays close to the code being proved.
 
 Under the current single-owner trajectory, both slots resolve to
-`@bb-connor`. The literal `TBD-primary` and `TBD-backup` placeholders are
+`the formal review group`. The literal `TBD-primary` and `TBD-backup` placeholders are
 preserved in the rows below so external contributors fill them in when
 they arrive (and so the M03 P1 gate-check grep for those tokens
 continues to pass).
@@ -16,8 +16,8 @@ continues to pass).
 
 | Role            | Handle        | Notes                                              |
 | --------------- | ------------- | -------------------------------------------------- |
-| Primary owner   | TBD-primary   | Resolves to `@bb-connor` under single-owner mode.  |
-| Backup owner    | TBD-backup    | Resolves to `@bb-connor` under single-owner mode.  |
+| Primary owner   | TBD-primary   | Resolves to `the formal review group` under single-owner mode.  |
+| Backup owner    | TBD-backup    | Resolves to `the formal review group` under single-owner mode.  |
 
 When the project staffs up, replace `TBD-primary` and `TBD-backup` with
 real GitHub handles (for example `@alice` and `@bob`) and update

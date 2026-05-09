@@ -1,7 +1,7 @@
 {
   "caught": 0,
   "needs_real_run": true,
-  "note": "Bootstrap placeholder. The conformance test at crates/chio-conformance/tests/threats/delegation_chain_abuse.rs exercises this threat row against production code, but no cargo-mutants command transcript or run timestamp is committed on this branch. This file is consumed by scripts/check-threat-coverage-mutants.sh, so it must remain needs_real_run=true with caught=0 until a real cargo-mutants run catches at least one mutant and records timestamp_kind=cargo-mutants-run.",
+  "note": "Bootstrap placeholder. The conformance test at crates/chio-conformance/tests/threats/delegation_chain_abuse.rs exercises this threat row against production code, but no cargo-mutants command transcript or run timestamp is committed in this evidence set. This file is consumed by scripts/check-threat-coverage-mutants.sh, so it must remain needs_real_run=true with caught=0 until a real cargo-mutants run catches at least one mutant and records timestamp_kind=cargo-mutants-run.",
   "ran_at": "1970-01-01T00:00:00Z",
   "survivors": [],
   "test_path": "crates/chio-conformance/tests/threats/delegation_chain_abuse.rs",

@@ -2,7 +2,7 @@
 
 This file records the post-test-uplift mutation evidence state for
 `chio-attest-verify`. The prior baseline established a 44.12% kill rate
-on 68 viable mutants (86 discovered, 18 unviable). This branch adds 29
+on 68 viable mutants (86 discovered, 18 unviable). This evidence set adds 29
 sigstore negative-path tests targeting surviving mutants from that baseline.
 
 ## Rerun Status
@@ -11,9 +11,9 @@ sigstore negative-path tests targeting surviving mutants from that baseline.
 "closed gap" claim in the PR description is based on a focused-line
 local rerun (mutants on lines the PR touched only); it is NOT a
 crate-level baseline. The integrator MUST commit a fresh full-crate
-`cargo mutants -p chio-attest-verify` run on this branch before
+`cargo mutants -p chio-attest-verify` run against this evidence set before
 `audits/mutation/2026-05-08-per-crate-baseline.md` and
-the planning-owned mutation baseline may record an
+the audit-owned mutation baseline may record an
 updated kill-rate row.
 
 Until that rerun lands, the aggregate continues to use the prior baseline

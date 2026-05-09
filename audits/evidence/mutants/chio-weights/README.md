@@ -12,7 +12,7 @@ BASELINE-GAP row.
 |---|---|
 | Crate | `chio-weights` |
 | Date | 2026-05-08 |
-| Run context | feature branch |
+| Evidence scope | local evidence run |
 | Base SHA | `708c7bb33df43594f5e76542b05fca7a56d9689e` (current main) |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | 6m 41s (per cargo-mutants stdout summary line) |
@@ -197,14 +197,14 @@ unviable mutants are excluded from the kill-rate denominator.
 
 ## Post-Kani rerun note
 
-The chio-weights Kani harness is not yet on this branch. The mutation
+The chio-weights Kani harness is not yet in this evidence set. The mutation
 run here is against current main (`708c7bb33`). Once that harness lands,
 it exercises additional invariants
 (notably the kernel binding refusal contract) and a re-run is expected
 to score higher than 68.25% on the same `examine_globs` surface.
 `chio-weights` is not in the current `.github/workflows/mutants.yml`
 PR or nightly matrix, so the next authoritative re-baseline is a
-branch-local/manual `cargo mutants` run unless that workflow is extended
+local/manual `cargo mutants` run unless that workflow is extended
 to include `chio-weights`.
 
 ## Files in this directory
@@ -217,16 +217,14 @@ to include `chio-weights`.
   `mutants.json`, and per-mutant `diff/` patches). The per-mutant
   `log/` directory, `debug.log`, `outcomes.json`, and `lock.json`
   produced by cargo-mutants are NOT committed; they contain large
-  transcripts, operator identity, hostnames, argv paths, and
-workspace-absolute paths. This matches the reference layout used by the
+  transcripts and local process metadata. This matches the reference layout used by the
 other per-crate mutation baselines.
 
 ## Reproducibility
 
 `mutants.out/lock.json` and `mutants.out/outcomes.json` are intentionally
 omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
-operator identity, hostnames, workspace-absolute paths, argv paths, and
-per-mutant console transcripts in those files. The committed evidence is
+local process metadata and per-mutant console transcripts in those files. The committed evidence is
 the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
 `unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
 

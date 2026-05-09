@@ -15,7 +15,7 @@ Two issues rise to P1: (a) the companion `examples/hello-spring-boot` was not
 updated when the wrapper moved, so that composite build is now broken, and
 (b) the root `settings.gradle.kts` omits the version-catalog `from(...)`
 block referenced by `03-build-infra.md`, yet accessors resolve because
-`gradle/libs.versions.toml` is picked up by Gradle 8.x convention — this is
+`gradle/libs.versions.toml` is picked up by Gradle 8.x convention -- this is
 fragile and will break if the catalog is renamed or Gradle 9 tightens.
 Several P2/P3 items around `api` semantics on the Kotlin-only module,
 CI not invoking `spotlessCheck`, module READMEs, and a large pile of
@@ -275,7 +275,7 @@ one-release compat shim.
   classes are compiled, and the plan's `@Tag("integration")` is applied
   to both MiniCluster tests.
 - `CanonicalJsonTest.kt` covers Vector 1 (nested Unicode), Vector 2 (emoji
-  surrogate pair), Vector 3 (null map values) — the exact three the review
+  surrogate pair), Vector 3 (null map values) -- the exact three the review
   brief asked about. Expected bytes match
   `json.dumps({"arr":[1,"two",{"k":3}],"flag":true,"null_field":null}, sort_keys=True, separators=(",",":"))`.
 - `FakeRuntimeContext.kt` (230 lines) provides a proper mock of

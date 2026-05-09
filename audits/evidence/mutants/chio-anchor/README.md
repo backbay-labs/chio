@@ -23,12 +23,12 @@ rerun-after-merge follow-up (see "Open follow-ups" below).
 |---|---|
 | Crate | `chio-anchor` |
 | Date | 2026-05-08 |
-| Branch | evidence branch |
+| Evidence scope | local evidence run |
 | Base SHA | `708c7bb33df43594f5e76542b05fca7a56d9689e` (main baseline used for this run) |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | 60m 31s (capped; partial) |
 | Run started | 2026-05-08T12:07:59Z |
-| Run finished | 2026-05-08T13:08:30Z (terminated by 60-minute operator-imposed cap) |
+| Run finished | 2026-05-08T13:08:30Z (terminated by 60-minute configured cap) |
 | Mutants discovered | 262 |
 | Mutants evaluated | 214 |
 | Mutants remaining | 48 |
@@ -271,8 +271,7 @@ authoritative post-merge number; this 69.44% is the pre-B3/A3 seed.
   Intentionally not committed; regenerate locally when argv-level replay
   evidence is needed.
 - `mutants.out/lock.json` - run start time + tool version. Intentionally
-  not committed because cargo-mutants records operator identity and
-  workspace-absolute paths in this file.
+  not committed because cargo-mutants records local process metadata in this file.
 - `mutants.out/diff/*.diff` - per-mutant source diff (one per evaluated
   mutant).
 
@@ -284,8 +283,7 @@ absolute paths).
 
 `mutants.out/lock.json` and `mutants.out/outcomes.json` are intentionally
 omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
-operator identity, hostnames, workspace-absolute paths, argv paths, and
-per-mutant console transcripts in those files. The committed evidence is
+local process metadata and per-mutant console transcripts in those files. The committed evidence is
 the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
 `unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
 

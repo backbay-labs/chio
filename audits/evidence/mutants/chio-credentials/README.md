@@ -76,8 +76,7 @@ where present) reflect the PARTIAL label.
 
 `mutants.out/lock.json` and `mutants.out/outcomes.json` are intentionally
 omitted by `audits/evidence/mutants/.gitignore`: cargo-mutants records
-operator identity, hostnames, workspace-absolute paths, argv paths, and
-per-mutant console transcripts in those files. The committed evidence is
+local process metadata and per-mutant console transcripts in those files. The committed evidence is
 the dated JSON summary plus `caught.txt`, `missed.txt`, `timeout.txt`,
 `unviable.txt`, `mutants.json`, and per-mutant `diff/` patches.
 

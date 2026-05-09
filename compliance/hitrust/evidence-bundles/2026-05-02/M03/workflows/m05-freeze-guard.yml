@@ -105,7 +105,7 @@ jobs:
               echo "freeze label [M05] present in PR title; allowing in-milestone work"
             elif [[ "${PR_TITLE}" == \[M05-bypass\]* ]]; then
               echo "freeze bypass label [M05-bypass] present in PR title; allowing hotfix path"
-              echo "Reminder: hotfix bypass requires @bb-connor review and a Bypass-log entry"
+              echo "Reminder: hotfix bypass requires maintainer review and a Bypass-log entry"
               echo "in .planning/audits/M05-async-kernel.md."
             else
               echo "ERROR: PR touches M05-frozen paths but title does not begin with [M05] or [M05-bypass]" >&2

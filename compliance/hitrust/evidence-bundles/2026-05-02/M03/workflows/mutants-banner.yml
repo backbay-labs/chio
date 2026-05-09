@@ -39,10 +39,9 @@ jobs:
             Opened by `mutants-banner.yml` from the committed trust-boundary
             mutation baseline.
 
-            Reviewer: @bb-connor.
+            Reviewer: maintainer review required.
 
             This PR only refreshes the README scoped mutation baseline from
             `docs/fuzzing/trust-boundary-mutants-baseline.toml`. Merge
             remains a maintainer action.
           commit-message: "chore(mutants): update kill-score banner"
-          reviewers: bb-connor

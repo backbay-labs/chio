@@ -24,7 +24,7 @@ short-run tier until its dedicated lane completes.
 | Host           | macOS aarch64 (Apple silicon)        |
 | cargo-kani     | 0.67.0                               |
 | Rust toolchain | nightly-2025-11-21 (kani-pinned)     |
-| Branch         | evidence branch |
+| Evidence scope | local evidence run |
 | HEAD at run    | (filled in below per-harness)        |
 
 Each block records the command, `VERIFICATION:` line, total checks,
