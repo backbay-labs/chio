@@ -2659,7 +2659,10 @@ enum ReceiptCommands {
     },
     /// Explain why a receipt was allowed or denied.
     Explain {
-        /// Legacy receipt ID (`rcpt_...`) or v2 body_hash.
+        /// Legacy receipt ID (`rcpt_...`). v2 bodyHash explanation is
+        /// supported only when the v2 receipt JSON is supplied through
+        /// `--input-file`; persisted DB/control-plane bodyHash lookup is
+        /// not implemented on this CLI path.
         receipt_id: String,
         /// Optional JSON file containing one v1 or v2 receipt.
         #[arg(long)]

@@ -1255,8 +1255,11 @@ pub struct ChioKernel {
     budget_registry: Mutex<chio_kernel_core::InMemoryBudgetRegistry>,
     /// Defaults to `true` so a freshly-constructed kernel that has not
     /// yet observed peer feature bitsets still mints v2 receipts.
-    /// Operators that need the previous v1-only behavior call
-    /// [`ChioKernel::set_receipt_v2_default`] with `false`.
+    /// Release load-bearing paths must leave this enabled. Operators
+    /// that need the previous v1-only behavior may call
+    /// [`ChioKernel::set_receipt_v2_default`] with `false`, but that is
+    /// a compatibility downgrade only and named v2 peers still fail
+    /// closed through negotiation.
     kernel_receipt_v2_default: AtomicBool,
     receipt_v2_replay: Mutex<chio_core::receipt::ReceiptV2ReplaySet>,
     receipt_v2_dag_ordinal: AtomicU64,
@@ -1680,6 +1683,11 @@ impl ChioKernel {
         }
     }
 
+    /// Set the local no-profile receipt default.
+    ///
+    /// This is not a release safety valve for v2 persistence. Negotiated
+    /// v2 peers still require v2 receipts, and persistence failure on a
+    /// v2-minting path aborts before the legacy fallback is appended.
     pub fn set_receipt_v2_default(&self, accepts_v2: bool) {
         self.kernel_receipt_v2_default
             .store(accepts_v2, Ordering::SeqCst);
