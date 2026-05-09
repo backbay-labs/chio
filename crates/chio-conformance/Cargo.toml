@@ -130,7 +130,7 @@ zeroize = "1"
 # trait surface; tiny_http stages the mock Rekor server.
 chio-anchor = { version = "0.1.0", path = "../chio-anchor" }
 async-trait = "0.1"
-# W2.3 PR #594 review (HIGH-3): negative conformance test
+# Negative conformance test
 # anchor_batch_witness_impersonation_rejected.rs forges a Rekor SET
 # under an attacker-held P-256 key to prove the verifier rejects it.
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem"] }
