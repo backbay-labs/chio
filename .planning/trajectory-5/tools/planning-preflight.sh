@@ -118,6 +118,7 @@ check_file ".planning/trajectory-5/TIMELINE.md"
 check_file ".planning/trajectory-5/KICKOFF-CHECKLIST.md"
 check_file ".planning/trajectory-5/OWNERS.toml"
 check_file ".planning/trajectory-5/READINESS.md"
+check_file ".planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml"
 
 # ---------------------------------------------------------------------------
 # Gate 2: per-lane PLAN.md / README.md

@@ -30,6 +30,10 @@
 # `examples/chiodome-bilateral/`. Missing future source artifacts remain
 # PARTIAL/PENDING in #620.
 #
+# Claim C5 (selective disclosure): C5 must carry a machine-readable boundary.
+# Deferred status is PARTIAL. A future evidence-complete status is accepted only
+# when the implementation crate, feature, and auditor-view fixtures exist.
+#
 # Run from the chio repo root: `bash scripts/check-bounded-ship-bar.sh`.
 # Output is one OK/FAIL/PARTIAL line per evidence check.
 #
@@ -534,6 +538,69 @@ for pinned_name in receipt.json envelope.json checkpoint.json; do
     partial "Claim C pinned fixture pending ($pinned_path)"
   fi
 done
+
+# C5 selective disclosure is optional only when explicitly deferred. Without a
+# marker, release-facing prose can drift into a false proof claim. With a marker
+# that claims evidence completion, real implementation and fixture evidence must
+# exist in the tree.
+c5_marker=".planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml"
+if [ ! -f "$c5_marker" ]; then
+  partial "Claim C5 selective-disclosure boundary marker pending ($c5_marker)"
+else
+  c5_status=$(toml_value "c5_selective_disclosure" "status" "$c5_marker")
+  c5_impl_crate=$(toml_value "c5_selective_disclosure" "implementation_crate" "$c5_marker")
+  c5_feature=$(toml_value "c5_selective_disclosure" "feature" "$c5_marker")
+  c5_proof_path=$(toml_value "c5_selective_disclosure" "proof_path" "$c5_marker")
+  c5_predicate_failed_path=$(toml_value "c5_selective_disclosure" "predicate_failed_path" "$c5_marker")
+  c5_release_claim_allowed=$(toml_value "c5_selective_disclosure" "release_claim_allowed" "$c5_marker")
+
+  case "$c5_status" in
+    deferred_*|blocked_*|pending|partial|not_ready)
+      partial "Claim C5 selective-disclosure boundary is not release-complete ($c5_status)"
+      ;;
+    evidence_complete|complete)
+      c5_missing=()
+      if [ -z "$c5_impl_crate" ] || [ "$c5_impl_crate" = "deferred" ] || [ ! -f "$c5_impl_crate/Cargo.toml" ]; then
+        c5_missing+=("implementation_crate=${c5_impl_crate:-missing}")
+      fi
+      if [ -z "$c5_feature" ] || [ "$c5_feature" = "deferred" ]; then
+        c5_missing+=("feature=${c5_feature:-missing}")
+      elif [ -n "$c5_impl_crate" ] && [ -f "$c5_impl_crate/Cargo.toml" ] \
+        && ! grep -q -E "^[[:space:]]*$c5_feature[[:space:]]*=" "$c5_impl_crate/Cargo.toml"; then
+        c5_missing+=("feature $c5_feature missing from $c5_impl_crate/Cargo.toml")
+      fi
+      if [ -z "$c5_proof_path" ] || [ "$c5_proof_path" = "deferred" ] || [ ! -f "$c5_proof_path" ]; then
+        c5_missing+=("proof_path=${c5_proof_path:-missing}")
+      fi
+      if [ -z "$c5_predicate_failed_path" ] || [ "$c5_predicate_failed_path" = "deferred" ] || [ ! -f "$c5_predicate_failed_path" ]; then
+        c5_missing+=("predicate_failed_path=${c5_predicate_failed_path:-missing}")
+      fi
+      if [ "$c5_release_claim_allowed" != "yes" ]; then
+        c5_missing+=("release_claim_allowed=${c5_release_claim_allowed:-missing}")
+      fi
+
+      if [ "${#c5_missing[@]}" -eq 0 ]; then
+        ok "Claim C5 selective-disclosure evidence complete ($c5_marker)"
+      else
+        c5_joined=""
+        for c5_reason in "${c5_missing[@]}"; do
+          if [ -z "$c5_joined" ]; then
+            c5_joined="$c5_reason"
+          else
+            c5_joined="$c5_joined; $c5_reason"
+          fi
+        done
+        failure "Claim C5 marker claims evidence_complete but evidence is missing ($c5_joined)"
+      fi
+      ;;
+    "")
+      partial "Claim C5 selective-disclosure boundary marker has no status ($c5_marker)"
+      ;;
+    *)
+      partial "Claim C5 selective-disclosure boundary status is not recognized ($c5_status)"
+      ;;
+  esac
+fi
 
 # releases.toml carries the bounded package status under its own table.
 # A tag alone is insufficient; the canary metadata must be tied to an

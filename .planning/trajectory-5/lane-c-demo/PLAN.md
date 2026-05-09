@@ -6,9 +6,9 @@ range. Tickets implementing each sub-lane are in planning docs.
 
 The single guiding principle from `00-SYNTHESIS.md` lines 173-175:
 the demo composes existing primitives. New code is rare, narrow, and
-named. Where new code appears (DSSE adapter, BBS+ projection, demo
-example crate), it is bounded by an existing spec section and an
-existing crate's API surface.
+named. Where future code appears, it must be bounded by an existing spec
+section and an existing crate's API surface. This planning branch does not
+itself create a release claim.
 
 ---
 
@@ -42,7 +42,9 @@ existing crate's API surface.
   runs the handshake, pins the ladder intersection artefact (in
   memory; written to fixtures), and executes one refund.
 - The fixtures directory is empty after scenario reset and populated
-  with the six artifacts after a successful run.
+  with the five current artifacts after a successful run. C5 selective
+  disclosure is deferred unless the status marker is changed and the gate
+  verifies real proof evidence.
 - Reviewer can read the scenario in `examples/chiodome-bilateral/README.md`
   and reproduce it with `./smoke.sh` from a clean checkout.
 
@@ -258,54 +260,42 @@ W3.
 
 ---
 
-## C5. Selective disclosure auditor view (bbs-stub feature)
+## C5. Selective disclosure auditor view (deferred boundary)
 
 ### Scope
 
-- New workspace member `crates/chio-federation/` behind a default-off
-  Cargo feature `bbs-stub`. Lives next to
-  `crates/chio-attest-verify/` per
-  `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` section 2.1.
-- Implements the spec section 6.2 `chio.bbs-projection.step.v1`
-  projection over the demo refund's `StepRecord`.
-- Implements the spec section 8 envelope schema
-  `chio.selective-disclosure-proof.v1`.
-- One frozen predicate evaluated by the auditor:
-  `cmp(refund_amount_minor, <=, 25000, scale=2)` per spec section
-  6.4 worked example (matching `CHIODOS_LADDER` section 5.2's
-  `blast_radius_cap` of 10000 for `credit.facility_bind`; 25000
-  picks an explicit-deny adversarial fixture as well).
-- BBS+ implementation pins per spec section 3:
-  `bbs-2023` cryptosuite, `bls12-381-sha-256` ciphersuite.
-- Auditor view fixtures under
-  `examples/chiodome-bilateral/fixtures/auditor-view/` are produced
-  only when the `bbs-stub` feature is on; otherwise the demo gracefully
-  prints `[selective-disclosure: bbs-stub feature not enabled]`.
+- C5 is deferred to v0.2 in this branch. The current canary plan does not
+  implement, ship, or claim a selective-disclosure auditor view.
+- The normative spec currently names `crates/chio-zk-receipts/` behind a
+  default-off `zk` feature. This branch does not provide that crate or feature.
+- `crates/chio-federation/` exists as a federation crate, but its current
+  `Cargo.toml` does not define `bbs-stub` and does not assemble BBS+/AnonCreds
+  dependencies.
+- The machine-readable boundary is
+  `.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml`.
+  Deferred status is PARTIAL under `scripts/check-bounded-ship-bar.sh`.
 
 ### Acceptance
 
-- `cargo test -p chio-federation --features bbs-stub` passes the spec
-  section 6.4 worked example end-to-end.
-- The demo's auditor predicate verifies under `--features bbs-stub` and
-  fails closed when the predicate would otherwise reveal a wholesale
-  field (spec section 7.4).
-- Bounded-claim text in `selective-disclosure.md` is verbatim in
-  `release-bar.md` and the example README.
+- `scripts/check-bounded-ship-bar.sh` reports C5 as PARTIAL while the marker
+  records `status = "deferred_to_v0_2"`.
+- If a future branch changes C5 to `evidence_complete`, the gate fails unless
+  the implementation crate, feature, proof fixture, negative fixture, and
+  `release_claim_allowed = "yes"` are all present.
+- Release-facing docs carry no product, zk, BBS+, BBS, or proof claim for C5
+  while the marker is deferred.
 
 ### Evidence
 
-- `examples/chiodome-bilateral/fixtures/auditor-view/proof.json` -
-  the `chio.selective-disclosure-proof.v1` envelope.
-- `examples/chiodome-bilateral/fixtures/auditor-view/predicate-failed.json`
-  - the negative case.
+- `.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml`
+  records the current deferral.
+- `scripts/check-bounded-ship-bar.sh` enforces the boundary.
 
 ### Lane A/B dependencies
 
-- None. The bbs-stub feature is independent of Lane A and B; it is the only
-  Lane C subsection where Lane B does not provide forcing-function
-  enforcement. This is called out as bounded-claim language in
-  `selective-disclosure.md`: the auditor view is a local proof, not
-  a transparency-log artefact.
+- None for the current canary because C5 is deferred. A future C5 branch needs
+  protocol-owner coordination if it diverges from the spec's `chio-zk-receipts`
+  and `zk` feature naming.
 
 ### Week range
 
@@ -313,50 +303,34 @@ W4.
 
 ---
 
-## C6. v0.1.0-bounded-chiodome release packaging
+## C6. v0.1.0-bounded-chiodome packaging boundary
 
 ### Scope
 
-- Tag `v0.1.0-bounded-chiodome` per
-  `00-SYNTHESIS.md` line 131-132.
-- Release notes at `RELEASE_NOTES.md` (a copy of `release-bar.md` text
-  with formatting for the GitHub release body).
-- CI job `chio-demo-smoke` becomes required on `main` (via
-  `.github/workflows/` extension).
-- A signed tarball of `examples/chiodome-bilateral/fixtures/` ships
-  with the release as `chiodome-bilateral-fixtures-v0.1.0.tar.gz`,
-  produced by the production kernel - no hand-written fixtures.
-- README banner updated to reference the demo as a runnable artifact
-  ("see `examples/chiodome-bilateral/`").
-- `RELEASE_AUDIT.md` gets a new row documenting:
-  - What is claimed
-  - What is not claimed (chiefly: this is not a transparency-log
-    artefact; the auditor proof is local; settlement runs against a
-    `LocalDevnetDeployment`)
-  - Pointers to bounded-claim sources
+- This branch does not tag, publish release notes, require a CI check, produce a
+  signed tarball, or update root release audit truth.
+- `release-bar.md` is a release-truth boundary for future release editing, not
+  a GitHub release body.
+- #618 packaging remains last and must regenerate any release artifacts from
+  merged `main` after Lane B, Lane A evidence, Lane C canary evidence, and C5
+  status are settled.
 
 ### Acceptance
 
-- Tag is signed; CI smoke is required; tarball is reproducible from
-  `./smoke.sh && tar -czf ...`.
-- `RELEASE_AUDIT.md` row references the tag and the demo path.
-- The four release work ship-bar conditions
-  (`00-SYNTHESIS.md` lines 148-158) are observably true for Lane C:
-  - Demo runs end-to-end
-  - Receipts are inspectable with `chio receipt explain`
-  - Demo run is captured as a fixture in `examples/`
+- No release claim is made by #620.
+- Future packaging remains blocked until the ship-bar gate sees complete
+  canary evidence and package metadata from merged source.
 
 ### Evidence
 
-- The tag in `git`.
-- The release tarball in repo releases.
-- The CI required-check status on main.
+- `release-bar.md` records the current non-claim boundary.
+- `scripts/check-bounded-ship-bar.sh` reports the current evidence state.
 
 ### Lane A/B dependencies
 
-- Hard dep on Lane B's three negative conformance fixtures being
-  green; the release notes reference them by file path. If they are
-  red, the release is not bounded - it is theatre.
+- Hard dep on Lane B's negative conformance fixtures being
+  green before any future package claim. If they are red, the package claim is
+  not bounded.
 - Hard dep on Lane A's mutation banner reading the real number; the
   bounded-claim language in `release-bar.md` quotes the banner
   verbatim.
@@ -377,8 +351,8 @@ W4.
 | C2 cosign | L+L (6 tickets; consumes Lane B B4 for signing surface) | Medium (depends on B4 close; verifier work + architecture cut) |
 | C3 KB MCP | M+L (4 tickets; uses mcp-remote stdio bridge) | Low-Medium (review finding 2 resolved via bridge; HushSpec YAML simpler than fictional schema) |
 | C4 receipt explain | L+S (2 tickets; bumped per review finding 9) | Low (extends existing explain function; bilateral chain walk is the new work) |
-| C5 bbs-stub feature | M+L+L (3 tickets) | Medium-High (R6 may force deferral to v0.2 if BBS+ deps don't resolve) |
-| C6 release | S+S+S+S+S (5 tickets; includes continuous CI hook) | Low (ceremonial, but all of the above must land) |
+| C5 selective-disclosure boundary | XS now; future scope deferred | Deferred to v0.2 unless real implementation and fixtures land |
+| C6 packaging boundary | XS now; future release owner scope | Blocked until integrated evidence exists |
 
 ### Forcing-function gates between Lanes
 

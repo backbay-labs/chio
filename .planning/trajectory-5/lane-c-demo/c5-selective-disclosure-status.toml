@@ -1,0 +1,16 @@
+# Machine-readable release-truth boundary for Lane C C5.
+#
+# The ship-bar checker treats deferred_* and blocked_* statuses as PARTIAL.
+# If a future branch changes status to evidence_complete, the checker also
+# requires real implementation and fixture evidence before the row can pass.
+
+[c5_selective_disclosure]
+status = "deferred_to_v0_2"
+deferral_target = "v0.2.0-bounded-chiodome"
+reason = "No chio-zk-receipts crate, no zk or bbs-stub selective-disclosure feature, no BBS+/AnonCreds dependency evidence, and no auditor-view proof fixtures exist in this branch."
+spec_authority = "spec/CHIODOS_SELECTIVE_DISCLOSURE.md"
+implementation_crate = "deferred"
+feature = "deferred"
+proof_path = "deferred"
+predicate_failed_path = "deferred"
+release_claim_allowed = "no"

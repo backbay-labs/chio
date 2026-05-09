@@ -137,7 +137,7 @@ plays, and whether the demo introduces new code in it.
 | `chio-settle` | `LocalDevnetDeployment` for the on-chain leg | No - consumes existing config |
 | `chio-mcp-adapter` | `chio mcp serve --policy` proxy to KB MCP via `mcp-remote` stdio bridge | No - consumes existing adapter |
 | `chio-cli` | `Mcp::Serve` and `Receipt::Explain` commands | Yes - extended explain path; new snapshot tests |
-| `chio-federation` | BBS+ projections and disclosure envelope (gated on R6 BBS+ dep resolution) | Yes - NEW workspace member behind `bbs-stub` feature; deferable to v0.2 if R6 fires |
+| C5 selective disclosure | Deferred auditor-view boundary | No current implementation; `c5-selective-disclosure-status.toml` records v0.2 deferral |
 | `chio-conformance` | Lane B-owned negative conformance fixtures | No - Lane B owns this; Lane C cites it |
 | `examples/chiodome-bilateral` | The demo example crate | Yes - NEW example crate |
 
@@ -147,8 +147,9 @@ plays, and whether the demo introduces new code in it.
   signing, PAE function). Lane C adds a Lane-C-side predicate helper
   and the §7 verifier inside the same module (or as a sibling
   module if the file grows).
-- One new workspace member (`chio-federation`); deferable to v0.2
-  per RISK-REGISTER R6 if BBS+ deps don't resolve.
+- No current C5 workspace member or feature is claimed in this branch.
+  Selective disclosure is deferred to v0.2 unless a future branch adds the
+  implementation and fixture evidence required by the gate.
 - One new example crate (`examples/chiodome-bilateral`) including
   an example-local minimal `chiodos-ladder` primitive (review finding 5a).
 - One snapshot-test file in `chio-cli/tests/`.
@@ -235,28 +236,16 @@ Lane B's anchor-batch async-only enforcement is what makes this real:
 without it, the demo could be silently using the sync path and the
 "public witness" claim is false.
 
-### Selective disclosure envelope (artifact #6)
+### Selective disclosure envelope (C5 deferred)
 
-`crates/chio-federation/src/envelope.rs` (NEW) emits the
-`chio.selective-disclosure-proof.v1` envelope per
-`spec/CHIODOS_SELECTIVE_DISCLOSURE.md` section 8. The demo's
-auditor predicate is
+C5 is deferred to v0.2 in this branch. The current architecture does not claim
+that `crates/chio-federation` emits a selective-disclosure envelope, does not
+claim a `bbs-stub` feature, and does not claim auditor-view proof fixtures.
 
-```
-cmp(refund_amount_minor, <=, 25000, scale=2)
-```
-
-per spec section 6.4 worked example. The auditor learns nothing
-beyond the predicate outcome plus disclosed step fields (index 0
-`step_index`, index 2 `tool_name`, index 5 `outcome`).
-
-This artifact only emits when the `bbs-stub` feature is on. Without it the
-demo prints
-
-```
-[selective-disclosure: built without --features bbs-stub; this demo's
- v0.1 bounded label notes the auditor view is gated on the feature]
-```
+The normative spec currently points to a `chio-zk-receipts` crate behind a
+default-off `zk` feature. A future C5 implementation must either follow that
+shape or land a protocol-owner-approved spec update before changing the
+machine-readable marker to evidence-complete.
 
 ## Lane B primitives the demo MUST exercise
 

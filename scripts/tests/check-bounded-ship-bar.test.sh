@@ -109,6 +109,7 @@ chmod +x "$WORK/scripts/check-anchor-batch-async-witness.sh"
 mkdir -p "$WORK/examples/chiodome-bilateral/transcripts"
 mkdir -p "$WORK/examples/chiodome-bilateral/golden"
 mkdir -p "$WORK/examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome"
+mkdir -p "$WORK/.planning/trajectory-5/lane-c-demo"
 printf 'all:\n\t@echo demo\n' > "$WORK/examples/chiodome-bilateral/Makefile"
 printf '{"transcript":"a"}\n' \
     > "$WORK/examples/chiodome-bilateral/transcripts/a.json"
@@ -122,6 +123,16 @@ printf '{"envelope":"v0.1.0"}\n' \
     > "$WORK/examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/envelope.json"
 printf '{"checkpoint":"v0.1.0"}\n' \
     > "$WORK/examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/checkpoint.json"
+cat > "$WORK/.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml" <<'EOF'
+[c5_selective_disclosure]
+status = "deferred_to_v0_2"
+deferral_target = "v0.2.0-bounded-chiodome"
+implementation_crate = "deferred"
+feature = "deferred"
+proof_path = "deferred"
+predicate_failed_path = "deferred"
+release_claim_allowed = "no"
+EOF
 
 # releases.toml carries the bounded package release_status entry.
 # Use the blocked status so Claim C fires PARTIAL too -- this
@@ -150,6 +161,11 @@ if ! grep -q -E '^PARTIAL Claim A chio-policy' "$OUT"; then
     cat "$OUT" >&2
     exit 1
 fi
+if ! grep -q -E '^PARTIAL Claim C5 selective-disclosure boundary is not release-complete' "$OUT"; then
+    echo "FAIL: stage 2 missing PARTIAL Claim C5 selective-disclosure boundary line" >&2
+    cat "$OUT" >&2
+    exit 1
+fi
 if ! grep -q 'assurance-gate mode' "$OUT"; then
     echo "FAIL: stage 2 missing 'assurance-gate mode' summary line" >&2
     cat "$OUT" >&2
@@ -170,6 +186,11 @@ if [ "$rc" -ne 0 ]; then
 fi
 if ! grep -q -E '^WARN Claim A chio-policy' "$OUT"; then
     echo "FAIL: stage 3 missing 'WARN Claim A chio-policy' line (diagnostic-mode marker)" >&2
+    cat "$OUT" >&2
+    exit 1
+fi
+if ! grep -q -E '^WARN Claim C5 selective-disclosure boundary is not release-complete' "$OUT"; then
+    echo "FAIL: stage 3 missing 'WARN Claim C5 selective-disclosure boundary' line" >&2
     cat "$OUT" >&2
     exit 1
 fi
@@ -224,5 +245,35 @@ if [ "$rc" -ne 1 ]; then
 fi
 echo "ok: stage 5 real FAIL row exits 1 even under --diagnostic (rc=1)"
 
-# Stage 6 (cleanup) is implicit via `trap rm -rf $WORK`.
+# ---------------------------------------------------------------------
+# Stage 6: a marker that claims C5 evidence_complete without real evidence
+# is a release-truth failure, even in diagnostic mode.
+# ---------------------------------------------------------------------
+printf '#!/usr/bin/env bash\nexit 0\n' \
+    > "$WORK/scripts/check-anchor-batch-async-witness.sh"
+chmod +x "$WORK/scripts/check-anchor-batch-async-witness.sh"
+cat > "$WORK/.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml" <<'EOF'
+[c5_selective_disclosure]
+status = "evidence_complete"
+implementation_crate = "crates/chio-zk-receipts"
+feature = "zk"
+proof_path = "examples/chiodome-bilateral/fixtures/auditor-view/proof.json"
+predicate_failed_path = "examples/chiodome-bilateral/fixtures/auditor-view/predicate-failed.json"
+release_claim_allowed = "yes"
+EOF
+rc=0
+bash "$GATE" --diagnostic >"$OUT" 2>"$ERR" || rc=$?
+if [ "$rc" -ne 1 ]; then
+    echo "FAIL: stage 6 --diagnostic with false C5 evidence_complete: expected rc=1, got rc=$rc" >&2
+    echo "--- stdout ---" >&2; cat "$OUT" >&2
+    exit 1
+fi
+if ! grep -q 'Claim C5 marker claims evidence_complete but evidence is missing' "$OUT"; then
+    echo "FAIL: stage 6 missing false C5 evidence_complete diagnostic" >&2
+    cat "$OUT" >&2
+    exit 1
+fi
+echo "ok: stage 6 false C5 evidence_complete marker exits 1 even under --diagnostic (rc=1)"
+
+# Stage 7 (cleanup) is implicit via `trap rm -rf $WORK`.
 echo "PASS: check-bounded-ship-bar behavioral regression test"

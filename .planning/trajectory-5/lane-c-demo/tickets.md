@@ -576,138 +576,58 @@ IDs current at W3 close.
 
 ---
 
-## C5 - Selective disclosure (bbs-stub feature; deferable per R6)
+## C5 - Selective disclosure (deferred boundary)
 
-**Scope guard (review finding 6):** if BBS+ Cargo dependencies
-(`bbs-2023` cryptosuite, `bls12_381`, AnonCreds v2 RangeStatement)
-cannot be assembled within the release work window or force a chio MSRV
-bump that does not pass review, C5 is DROPPED from
-`v0.1.0-bounded-chiodome` and shipped as `v0.2.0-bounded-chiodome`.
-This decision is owned by the Lane C lead with sign-off by the release work
-owner; criteria are in `architecture/RISK-REGISTER.md` R6.
+**Scope guard (review finding 6):** C5 is deferred to v0.2 in #620. The current
+branch records the release-truth boundary and does not implement or claim
+selective-disclosure, zk, BBS+, BBS, or auditor-view proof support.
 
-### release work-C5.1 - `chio-federation` skeleton + dep-tree validation
+### release work-C5.1 - C5 deferral marker + dep-tree boundary
 
-- **Scope:** New workspace member `crates/chio-federation/` with
-  Cargo feature `bbs-stub` default-off. Sibling to
-  `crates/chio-attest-verify/`. **Critical pre-flight:** the W1
-  Lane C deliverable is to commit a Cargo.toml skeleton that
-  resolves against the current MSRV. If `cargo metadata` does not
-  succeed with `--features bbs-stub`, R6 fires immediately and C5 is
-  dropped per the scope guard above.
-- **Files:** `crates/chio-federation/{Cargo.toml,src/lib.rs}`;
-  workspace `Cargo.toml`; root feature declaration.
-- **Effort:** M
+- **Scope:** Keep C5 out of release claims unless a future implementation branch
+  adds the crate, feature, dependencies, and fixtures required by the gate.
+- **Files:** `.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml`;
+  `selective-disclosure.md`; `release-bar.md`;
+  `scripts/check-bounded-ship-bar.sh`.
+- **Effort:** XS
 - **Depends on:** none (independent of Lane B/A)
-- **Owner-class:** federation-eng
+- **Owner-class:** planning/release-truth
 
 #### Acceptance
 
-1. **Production wiring**: `cargo build -p chio-federation`
-   succeeds; `cargo build -p chio-federation --features bbs-stub`
-   succeeds against the current MSRV without bumping it.
-   - Enforced call site: `crates/chio-federation/src/lib.rs`
-2. **Spec MUST**: "Implementations MUST pin the `bbs-2023`
-   cryptosuite parameters".
-   - Citation: `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` §3.
-3. **Negative conformance test**: not applicable at skeleton stage.
-4. **Audit-doc evidence**: dep-tree resolution recorded; if R6
-   fires, escalation note is captured.
-5. **Banner update**: bounded-claim text acknowledges
-   "cryptosuite at W3C CR-stage, not Recommendation-stage".
-
-### release work-C5.2 - Workflow + step projections (`chio.bbs-projection.*.v1`)
-
-- **Scope:** Implement spec section 6.1 alphabetical projection of
-  `WorkflowReceiptBody` and section 6.2 step-record projection.
-  Stop step projection at index 8 (v0.1; indices 9-13 are gated on
-  chio-workflow v0.2 per spec §6.2 lines 274-277). Hash-to-scalar
-  per spec §5.2. (Merges W1's C5.2 and C5.3.)
-- **Files:** `crates/chio-federation/src/projection.rs`.
-- **Effort:** L
-- **Depends on:** release work-C5.1
-- **Owner-class:** federation-eng
-
-#### Acceptance
-
-1. **Production wiring**: projection function callable; spec §6.4
-   worked example reproduces bit-for-bit on a known fixture.
-   - Enforced call site:
-     `crates/chio-federation/src/projection.rs`
-2. **Spec MUST**: "Verifiers MUST replay the projection
-   alphabetically".
-   - Citation: `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` §6.1, §6.2
-     (lines to be filled in by audit-doc owner).
-3. **Negative conformance test**:
-   `crates/chio-federation/tests/spec_64_worked_example.rs`
-   - Imports the projection function directly.
-   - Asserts the §6.4 example bit-for-bit.
-4. **Audit-doc evidence**: projection-replay test green.
-5. **Banner update**: not applicable.
-
-### release work-C5.3 - Disclosure envelope + auditor view fixture
-
-- **Scope:** Implement spec §8 envelope schema
-  `chio.selective-disclosure-proof.v1` with JSON Schema validation,
-  BBS+ proof bytes, and the eight-clause ceiling on AND-only
-  predicates (§7.3). Generate
-  `examples/chiodome-bilateral/fixtures/auditor-view/proof.json`
-  and `predicate-failed.json` under the `bbs-stub` feature. Without `bbs-stub`,
-  the demo prints the bounded-claim disclaimer and exits 0.
-  (Merges W1's C5.4 and C5.5.)
-- **Files:** `crates/chio-federation/src/envelope.rs`;
-  `crates/chio-federation/src/predicates.rs`;
-  `examples/chiodome-bilateral/src/auditor.rs`;
-  `examples/chiodome-bilateral/fixtures/auditor-view/{proof.json,predicate-failed.json}`.
-- **Effort:** L
-- **Depends on:** release work-C5.2, release work-C3.4
-- **Owner-class:** federation-eng + demo-eng
-
-#### Acceptance
-
-1. **Production wiring**: envelope construction + verification;
-   demo emits the auditor-view fixtures under `--features bbs-stub`.
-   - Enforced call site:
-     `crates/chio-federation/src/envelope.rs`,
-     `examples/chiodome-bilateral/src/auditor.rs`.
-2. **Spec MUST**: "Auditor-view envelopes MUST validate against the
-   §8 JSON Schema".
-   - Citation: `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` §8 (lines).
-3. **Negative conformance test**:
-   `crates/chio-conformance/tests/c_zk_disclosure_unauthorized_view_rejected.rs`
-   - Imports `chio_zk_receipts::envelope` directly.
-   - Round-trip + adversarial-amount predicate-failed case.
-4. **Audit-doc evidence**: both fixtures verify under spec §9
-   verification algorithm.
-5. **Banner update**: bounded-claim language in
-   `selective-disclosure.md` is verbatim in `release-bar.md`.
+1. **Production wiring**: no production wiring claim in #620.
+2. **Spec MUST**: marker records the current mismatch between the spec's
+   `chio-zk-receipts` / `zk` shape and the current branch state.
+3. **Negative conformance test**: `scripts/tests/check-bounded-ship-bar.test.sh`
+   proves a false `evidence_complete` marker fails the gate.
+4. **Audit-doc evidence**: ship-bar diagnostic output reports C5 as PARTIAL.
+5. **Banner update**: `release-bar.md` forbids C5 proof claims while deferred.
 
 ---
 
-## C6 - Release packaging
+## C6 - Packaging boundary
 
-### release work-C6.1 - `RELEASE_NOTES.md` + `RELEASE_AUDIT.md` row
+### release work-C6.1 - Release-truth boundary
 
-- **Scope:** Copy `release-bar.md` text into `RELEASE_NOTES.md`,
-  format for GitHub release body. Append a row to
-  `RELEASE_AUDIT.md` documenting what is and is not claimed by
-  `v0.1.0-bounded-chiodome`. Reference Lane B fixtures
-  (B1.6 / B2.5 / B3.5 / B4.x), Lane A floor banner, demo path.
-  (Merges W1's C6.1 and C6.4.)
-- **Files:** `RELEASE_NOTES.md`; `RELEASE_AUDIT.md`.
-- **Effort:** S
-- **Depends on:** release work-C2.6, release work-C3.4, release work-C4.2
-- **Owner-class:** demo-eng
+- **Scope:** Keep `release-bar.md` as release-truth boundary prose, not release
+  notes. It records what future packaging must prove before any
+  `v0.1.0-bounded-chiodome` claim exists.
+- **Files:** `.planning/trajectory-5/lane-c-demo/release-bar.md`.
+- **Effort:** XS
+- **Depends on:** C5 marker boundary
+- **Owner-class:** planning/release-truth
 
 #### Acceptance
 
-1. **Production wiring**: notes + audit row published with the tag.
-   - Enforced call site: not applicable (release artifacts).
-2. **Spec MUST**: not applicable (release).
+1. **Production wiring**: no tag, release note, tarball, or release audit row
+   is claimed by #620.
+   - Enforced call site: `release-bar.md` forbidden-claims section.
+2. **Spec MUST**: not applicable.
 3. **Negative conformance test**: not applicable.
-4. **Audit-doc evidence**: notes match `release-bar.md` content;
-   bounded-claim language preserved verbatim.
-5. **Banner update**: README references the release tag.
+4. **Audit-doc evidence**: `scripts/check-bounded-ship-bar.sh --diagnostic`
+   reports partial rows rather than ready/release status.
+5. **Banner update**: README states the branch does not tag or authorize the
+   package.
 
 ### release work-C6.2 - `chio-demo-smoke` PR-gating CI workflow
 
@@ -732,7 +652,7 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 2. **Spec MUST**: not applicable (CI infra).
 3. **Negative conformance test**: workflow itself fails red if any
    fixture is hand-edited (mtime check) or if the smoke produces
-   fewer than the expected six artifacts.
+   fewer than the expected non-deferred artifacts.
 4. **Audit-doc evidence**: workflow run URL captured.
 5. **Banner update**: README references the demo path and CI gate.
 
@@ -761,8 +681,8 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 2. **Spec MUST**: not applicable (CI infra).
 3. **Negative conformance test**: workflow itself goes red when
    any of the four Lane B negative conformance fixtures regress.
-4. **Audit-doc evidence**: green for 7 consecutive nights before
-   the v0.1.0-bounded-chiodome tag goes out.
+4. **Audit-doc evidence**: seven-night evidence is a future packaging
+   prerequisite, not a #620 claim.
 5. **Banner update**: README references the continuous gate.
 
 ### release work-C6.4 - Diff-stable fixture tarball
@@ -794,28 +714,27 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
 4. **Audit-doc evidence**: two consecutive run hashes recorded.
 5. **Banner update**: not applicable.
 
-### release work-C6.5 - Tag and ship
+### release work-C6.5 - Future tag boundary
 
-- **Scope:** Sign-tag `v0.1.0-bounded-chiodome` after CI green and
-  Lane B fixtures green. Publish release with notes and tarball.
-  Release tag does NOT ship unless the four Lane B negative
-  conformance fixtures (B1.6, B2.5, B3.5, B4.5) are green and the
-  continuous workflow has been green for 7 consecutive nights.
+- **Scope:** #620 does not sign-tag or publish. Future packaging remains blocked
+  unless Lane B negative conformance fixtures (B1.6, B2.5, B3.5, B4.5), Lane C
+  canary evidence, Lane A evidence, package metadata, and C5 status are all
+  evidenced from merged source.
 - **Files:** none in tree (operational).
-- **Effort:** S
+- **Effort:** XS in #620; future packaging owner scope later.
 - **Depends on:** release work-C6.1..4 + release work-B1.6, release work-B2.5, release work-B3.5,
   bilateral DSSE signing item + Lane A's mutation banner reading the real number.
-- **Owner-class:** demo-eng
+- **Owner-class:** release owner
 
 #### Acceptance
 
-1. **Production wiring**: tag exists; release artifacts are
-   published; tag is referenced from `RELEASE_AUDIT.md`.
-   - Enforced call site: git tag.
-2. **Spec MUST**: not applicable (release).
+1. **Production wiring**: branch records no tag or release artifact claim.
+   - Enforced call site: `release-bar.md` forbidden-claims section.
+2. **Spec MUST**: not applicable.
 3. **Negative conformance test**: not applicable.
-4. **Audit-doc evidence**: tag SHA + release URL recorded.
-5. **Banner update**: README banner reflects the tag.
+4. **Audit-doc evidence**: future tag SHA + release URL must be recorded by a
+   packaging owner, not #620.
+5. **Banner update**: no tag banner is added by #620.
 
 ---
 
@@ -829,10 +748,9 @@ owner; criteria are in `architecture/RISK-REGISTER.md` R6.
   ticket
 - C4: 2 (release work-C4.1, C4.2) - merged W1's C4.3 snapshot test into
   C4.1 acceptance; merged W1's C4.4 doc with T1.6 close
-- C5: 3 (release work-C5.1 .. C5.3) - merged W1's C5.2+C5.3 (projections)
-  and C5.4+C5.5 (envelope + fixtures)
-- C6: 5 (release work-C6.1 .. C6.5) - merged W1's C6.1+C6.4 (notes + audit
-  row); added C6.3 continuous workflow; added C6.4 diff-stable
+- C5: 1 current boundary ticket; implementation deferred to v0.2.
+- C6: 5 boundary/planning tickets; tag/release publication is future packaging
+  owner scope after integrated evidence exists.
 
 **Total: 24 tickets** (within the 22-26 final target after R1 §11.7
 merge guidance). The list is fine-grained where each ticket maps
