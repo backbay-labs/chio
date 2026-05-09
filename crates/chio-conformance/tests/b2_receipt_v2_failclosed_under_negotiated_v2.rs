@@ -112,7 +112,7 @@ fn make_kernel(receipt_store_path: &std::path::Path) -> ChioKernel {
         keypair: Keypair::generate(),
         ca_public_keys: vec![],
         max_delegation_depth: 5,
-        policy_hash: "release work-b2-failclosed-policy".to_string(),
+        policy_hash: "policy-b2-failclosed".to_string(),
         allow_sampling: false,
         allow_sampling_tool_use: false,
         allow_elicitation: false,

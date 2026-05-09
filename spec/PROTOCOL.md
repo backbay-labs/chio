@@ -773,7 +773,7 @@ now mints v2 receipts at production mint time when peer negotiation selects v2.
   computed over the typed `ReceiptV2SigningBody { bodyHash, body }` wrapper.
   Either form of mismatch (wrong `bodyHash` field, signature over the wrong
   body) fails closed. This matches the T1.2 audit closure.
-- **Negotiation downgrade (post-release work-B2 hardening).**
+- **Negotiation downgrade (v2 hardening).**
   - When the peer profile advertises only v1 (no `ACCEPTS_RECEIPT_V2`) and
     is pinned fresh, the kernel mints only the v1 UUIDv7 receipt. This is
     the spec-conformant v1-only profile; advisory dispatches that name no
@@ -785,7 +785,7 @@ now mints v2 receipts at production mint time when peer negotiation selects v2.
     `KernelError::ReceiptNegotiationDowngrade` whose
     `NegotiationDowngradeReason` enumerates the failure mode (currently
     `PeerNotPinnedFresh`). The kernel MUST NOT mint a v1 receipt as a
-    silent fallback. This is a tightening introduced by release work-B2: it adds a
+    silent fallback. This hardening adds a
     new normative MUST to a section that previously contained only
     descriptive prose ("the kernel falls back"). The "stale or
     never-pinned" enumeration is part of the MUST so a future
@@ -1048,6 +1048,23 @@ Each batch carries a `WitnessState` lifecycle:
     window -> accept (the receipt is still authoritative for already-witnessed
     batches).
   - `require_public_witness: false` -> accept all states (advisory mode).
+
+Producers and consumers MUST route load-bearing public-witness verification
+through `verify_anchor_batch_with_witness_policy_async` whenever
+`require_public_witness=true`. The synchronous entry point
+`verify_anchor_batch_with_witness_policy` MUST reject any policy carrying
+`require_public_witness=true` at runtime, before structural verification,
+regardless of `WitnessState`. The synchronous wrapper is reserved for
+advisory-mode callers (`require_public_witness=false`) that intentionally
+treat witness state as non-binding. This is a tightening of the per-state
+arrow rules above: making the routing rule load-bearing decouples it from
+the per-state table so a future state addition cannot accidentally re-open
+the bypass. The runtime gate at
+`crates/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`
+returning `AnchorError::SyncRouteRequiresAdvisoryPolicy` is the load-bearing
+enforcement; the companion `scripts/check-anchor-batch-async-witness.sh`
+lint is best-effort fast feedback only and does not provide a soundness
+guarantee.
 
 Rejection criteria the W2.3 negative-conformance suite exercises:
 
