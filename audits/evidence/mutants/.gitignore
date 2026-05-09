@@ -2,6 +2,7 @@
 # nested layout and logs/ in the direct --output layout. They are useful
 # for local debugging but are large and include workspace-absolute paths.
 **/mutants.out/log/
+**/log/
 **/logs/
 
 # debug.log carries the same per-mutant trace detail.

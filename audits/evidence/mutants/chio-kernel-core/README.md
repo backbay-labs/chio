@@ -91,20 +91,21 @@ denominator): **39 / (39 + 14 + 0) = 39/53 = 73.58%**.
 
 ## Target
 
-Per `lane-a-floor/mutation-budget.md` and `audits/T0.B-substrate-
-hardening.md`: chio-kernel-core is a `>=65%` target crate.
+Per `releases.toml [mutants]`, the configured catch-ratio target is
+80% and the activation floor is 65%. The 65% value is a floor for
+early activation posture, not the per-crate target.
 
-**Measured 73.58% over 62 of 343 mutants; target >=65%; PARTIAL;
-crate-level target NOT satisfied pending a full run.**
+**Measured 73.58% over 62 of 343 mutants; PARTIAL; crate-level target
+NOT satisfied pending a full run.** The observed subset clears the 65%
+activation floor but misses the configured 80% target.
 
-The 281 not-evaluated mutants would need to flip proportions wildly
-(>=82 missed of the remaining 281) to drop the kill rate below 65%
-on the full 343, which would require ~29% of the unevaluated set to
-be missed (the observed missed rate on the evaluated set is
-14/53 = 26%). The result is suggestive but the partial sample
-**cannot retire the crate target** per the audit's chio-guards
-lesson on hand-picked subsets - this is a proportional time-budget
-truncation, not a hand-picked subset, but it remains PARTIAL.
+If all 281 not-evaluated mutants are viable, the full-run 65% floor
+would fail at 103 or more additional misses (103/281 = 36.7% of the
+remaining set), not 82. The configured 80% target would allow at most
+52 additional misses. The result is suggestive but the partial sample
+**cannot retire the crate target** per the audit's chio-guards lesson
+on truncated subsets. This is a proportional time-budget truncation,
+not a hand-picked subset, but it remains PARTIAL.
 
 A full sweep on CI hosted-nightly mutants.yml (4-hour-per-crate
 budget) is the authoritative measurement.
@@ -170,8 +171,9 @@ flake-driven (0 timeouts; deterministic suite).
 chio-kernel-core is the largest trust-boundary crate and contains
 the kernel's hot-path admission logic (`verify_capability_full`,
 capability_verify.rs). The 73.58% measurement (over 62 evaluated
-mutants) **clears the 65% target on the partial** but **cannot
-retire the crate baseline** because:
+mutants) clears the 65% activation floor on the partial subset, misses
+the configured 80% target, and **cannot retire the crate baseline**
+because:
 
 - 281 of 343 mutants (82% of the surface) are unevaluated.
 - The audit's chio-guards lesson is explicit: hand-picked or

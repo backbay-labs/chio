@@ -36,8 +36,9 @@
   "total_discovered": 343,
   "evaluated": 62,
   "kill_rate_formula": "caught / (caught + missed + timeout) = 39 / (39 + 14 + 0) = 39/53 = 73.58% (excludes 9 unviable per cargo-mutants 25.x convention)",
-  "target_per_lane_a_floor_mutation_budget": 65,
+  "target_catch_ratio_percent": 80,
+  "activation_floor_percent": 65,
   "target_met": false,
   "result_label": "PARTIAL",
-  "target_explanation": "PARTIAL: 62/343 evaluated; cannot retire crate target on 18% surface; partial result clears 65% threshold but full-surface number is unknown"
+  "target_explanation": "PARTIAL: 62/343 evaluated; cannot retire crate target on 18% surface. The observed subset clears the 65% activation floor but misses the configured 80% target. If all 281 remaining mutants are viable, the full-run 65% floor fails at 103 or more additional misses; the configured 80% target allows at most 52 additional misses."
 }
