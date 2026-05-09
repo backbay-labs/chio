@@ -90,17 +90,17 @@ denominator): **227 / (227 + 56 + 0) = 227/283 = 80.21%**.
 
 ## Target
 
-Per `lane-a-floor/mutation-budget.md` and `audits/T0.B-substrate-
-hardening.md` line 16: chio-policy is a `>=65%` target crate
-("substrate eng owner-class").
+Per `releases.toml [mutants]`, the configured catch-ratio target is
+80% and the activation floor is 65%. The 65% value is a floor for
+early activation posture, not the per-crate target.
 
-**Measured 80.21% over 314 of 418 mutants; target >=65%; crate-level
-target NOT satisfied by this run.** The dated JSON summary is the
-authoritative machine-readable result and records `target_met: false`
-with `result_label: "PARTIAL"`. The 104 not-evaluated mutants leave
-the full-crate kill rate unknown, so this partial run cannot retire
-the chio-policy baseline even though the evaluated subset clears the
-numeric threshold.
+**Measured 80.21% over 314 of 418 mutants; configured target 80%;
+crate-level target NOT satisfied by this run.** The dated JSON summary
+is the authoritative machine-readable result and records
+`target_met: false` with `result_label: "PARTIAL"`. The 104
+not-evaluated mutants leave the full-crate kill rate unknown, so this
+partial run cannot retire the chio-policy baseline even though the
+evaluated subset clears both numeric values.
 
 ## Surviving-mutant categorization
 

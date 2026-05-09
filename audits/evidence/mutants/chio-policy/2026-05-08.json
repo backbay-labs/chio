@@ -13,7 +13,9 @@
   "unviable": 31,
   "kill_rate_percent": 80.21,
   "kill_rate_formula": "caught / (caught + missed + timeout) = 227 / (227 + 56 + 0) = 227/283 = 80.21% (excludes 31 unviable per cargo-mutants 25.x convention)",
-  "target_per_lane_a_floor_mutation_budget": 65,
+  "target_catch_ratio_percent": 80,
+  "activation_floor_percent": 65,
+  "activation_floor_note": "65% is the activation floor from releases.toml, not the configured per-crate target. This partial run clears both numeric values on the evaluated subset but cannot satisfy the crate-level target until all 418 discovered mutants are evaluated.",
   "target_met": false,
   "missed_mutants": [
     "crates/chio-policy/src/conditions.rs:221:9: delete match arm \"US/Pacific\" | \"PST\" in parse_timezone_offset",
