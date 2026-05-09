@@ -1244,6 +1244,11 @@ struct StreamingServer {
     chunks: Vec<serde_json::Value>,
 }
 
+struct EventDrainServer {
+    id: String,
+    events: Vec<ToolServerEvent>,
+}
+
 struct NestedFlowServer {
     id: String,
 }
@@ -1281,6 +1286,15 @@ impl SideEffectServer {
             id: id.to_string(),
             tools: tools.into_iter().map(String::from).collect(),
             invocations,
+        }
+    }
+}
+
+impl EventDrainServer {
+    fn new(id: &str, events: Vec<ToolServerEvent>) -> Self {
+        Self {
+            id: id.to_string(),
+            events,
         }
     }
 }
@@ -1474,6 +1488,30 @@ impl ToolServerConnection for SideEffectServer {
             "tool": tool_name,
             "echo": arguments,
         }))
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+impl ToolServerConnection for EventDrainServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    async fn invoke(
+        &self,
+        tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Err(KernelError::ToolNotRegistered(tool_name.to_string()))
+    }
+
+    async fn drain_events(&self) -> Result<Vec<ToolServerEvent>, KernelError> {
+        Ok(self.events.clone())
     }
 }
 
@@ -9964,23 +10002,36 @@ async fn async_evaluate_tool_call_supports_shared_kernel_concurrency() {
     federated_origin_kernel_id: None,
     };
 
-    let task_a = {
+    let thread_a = {
         let kernel = kernel.clone();
         let request = make_request("req-a");
-        tokio::spawn(async move { kernel.evaluate_tool_call(&request).await })
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async move { kernel.evaluate_tool_call(&request).await })
+        })
     };
-    let task_b = {
+    let thread_b = {
         let kernel = kernel.clone();
         let request = make_request("req-b");
-        tokio::spawn(async move { kernel.evaluate_tool_call(&request).await })
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async move { kernel.evaluate_tool_call(&request).await })
+        })
     };
 
     let (response_a, response_b) = tokio::time::timeout(Duration::from_secs(2), async move {
-        tokio::try_join!(task_a, task_b)
+        let response_a = thread_a.join().expect("thread a should not panic");
+        let response_b = thread_b.join().expect("thread b should not panic");
+        (response_a, response_b)
     })
     .await
-    .expect("shared kernel evaluation should not deadlock")
-    .unwrap();
+    .expect("shared kernel evaluation should not deadlock");
 
     let response_a = response_a.unwrap();
     let response_b = response_b.unwrap();
@@ -10925,4 +10976,99 @@ fn sync_bridge_current_thread_diagnostic_only_advertises_multithread_runtime() {
     assert!(!report.message.contains("evaluate_tool_call"));
     assert!(report.suggested_fix.contains("multi-thread Tokio runtime"));
     assert!(!report.suggested_fix.contains("API directly"));
+}
+
+#[test]
+fn async_evaluate_current_thread_runtime_bypasses_sync_bridge() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    rt.block_on(async {
+        let mut kernel = make_kernel(make_config());
+        let agent_kp = Keypair::generate();
+        kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
+        let cap = kernel
+            .issue_capability(&agent_kp.public_key(), make_scope(vec![make_grant("srv", "echo")]), 3600)
+            .unwrap();
+        let request = make_request("req-async-current-thread", &cap, "echo", "srv");
+
+        let response = kernel.evaluate_tool_call(&request).await.unwrap();
+
+        assert_eq!(response.verdict, Verdict::Allow);
+        assert_eq!(kernel.receipt_log().len(), 1);
+    });
+}
+
+#[test]
+fn blocking_evaluate_current_thread_runtime_fails_before_receipt_side_effects() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    rt.block_on(async {
+        let mut kernel = make_kernel(make_config());
+        let agent_kp = Keypair::generate();
+        kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
+        let cap = kernel
+            .issue_capability(&agent_kp.public_key(), make_scope(vec![make_grant("srv", "echo")]), 3600)
+            .unwrap();
+        let request = make_request("req-blocking-current-thread", &cap, "echo", "srv");
+
+        let error = kernel.evaluate_tool_call_blocking(&request).unwrap_err();
+
+        assert!(matches!(
+            error,
+            KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime
+        ));
+        assert_eq!(kernel.receipt_log().len(), 0);
+    });
+}
+
+#[test]
+fn async_tool_server_event_drain_current_thread_preserves_events() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    rt.block_on(async {
+        let mut kernel = make_kernel(make_config());
+        kernel.register_tool_server(Box::new(EventDrainServer::new(
+            "events",
+            vec![ToolServerEvent::ResourcesListChanged],
+        )));
+
+        let events = kernel.drain_tool_server_events_async().await.unwrap();
+
+        assert_eq!(events, vec![ToolServerEvent::ResourcesListChanged]);
+    });
+}
+
+#[test]
+fn sync_tool_server_event_queue_current_thread_returns_error_not_empty_success() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    rt.block_on(async {
+        let mut kernel = make_kernel(make_config());
+        kernel.register_tool_server(Box::new(EventDrainServer::new(
+            "events",
+            vec![ToolServerEvent::ResourcesListChanged],
+        )));
+        let session_id = kernel.open_session("agent".to_string(), Vec::new());
+        kernel.activate_session(&session_id).unwrap();
+
+        let error = kernel.queue_session_tool_server_events(&session_id).unwrap_err();
+
+        assert!(matches!(
+            error,
+            KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime
+        ));
+        assert!(kernel.drain_session_late_events(&session_id).unwrap().is_empty());
+    });
 }
