@@ -28,7 +28,13 @@
 #            "caught": <int>,
 #            "survivors": [<string>, ...],
 #            "ran_at": "<iso8601>",
-#            "needs_real_run": <bool, optional>
+#            "needs_real_run": <bool, optional>,
+#            "timestamp_kind": "cargo-mutants-run" | "bootstrap-placeholder"
+#                | "generated-metadata" (optional),
+#            "evidence_status": "cargo-mutants-run" | "conformance-only"
+#                (optional),
+#            "mutation_evidence_status": "complete" | "not-run" (optional),
+#            "promotion_status": "promoted" | "not-promoted" (optional)
 #          }
 #
 #      A row with `needs_real_run: true` is treated as
@@ -37,6 +43,12 @@
 #      does NOT exit 1 on bootstrap placeholders (this is the
 #      temporary scaffolding accommodation that lets the PR land
 #      while wave 4 backfills real evidence).
+#
+#      Generated conformance metadata is not mutation evidence. A row
+#      whose metadata says `generated-metadata`, `conformance-only`,
+#      `not-run`, or `not-promoted` cannot pass the mutants evidence
+#      gate by flipping `needs_real_run` to false and `caught` to a
+#      positive number.
 #
 #   3. If the evidence file is missing, emit a downgrade hint with
 #      reason `missing_evidence` and exit 1 (unless `--dry-run`).
@@ -63,6 +75,8 @@
 #   - `inconsistent_bootstrap` - needs_real_run is true with a non-1970
 #     `ran_at` timestamp (the audit's P3 finding); a real timestamp
 #     contradicts the placeholder claim
+#   - `non_mutants_metadata` - the row tries to pass with generated,
+#     conformance-only, not-run, bootstrap, or not-promoted metadata
 #
 # Modes:
 #   - default: any non-bootstrap downgrade hint causes exit 1.
@@ -184,8 +198,10 @@ for t in doc.get("threats", []):
 PY
 }
 
-# Read the evidence file and emit `<caught>\t<needs_real_run>\t<ran_at>` where
-# needs_real_run is "1" or "0". Returns nonzero exit if file missing.
+# Read the evidence file and emit a tab-separated record:
+#   <caught> <needs_real_run> <ran_at> <survivor_count> <timestamp_kind>
+#   <evidence_status> <mutation_evidence_status> <promotion_status>
+# where needs_real_run is "1" or "0". Returns nonzero exit if file missing.
 read_evidence() {
     local evidence_file="$1"
     if [[ ! -f "$evidence_file" ]]; then
@@ -201,7 +217,17 @@ with open(sys.argv[1]) as fh:
 caught = int(data.get("caught", 0))
 needs_real_run = bool(data.get("needs_real_run", False))
 ran_at = (data.get("ran_at") or "").strip()
-print(f"{caught}\t{1 if needs_real_run else 0}\t{ran_at}")
+survivors = data.get("survivors") or []
+if not isinstance(survivors, list):
+    survivors = [str(survivors)]
+timestamp_kind = (data.get("timestamp_kind") or "").strip()
+evidence_status = (data.get("evidence_status") or "").strip()
+mutation_evidence_status = (data.get("mutation_evidence_status") or "").strip()
+promotion_status = (data.get("promotion_status") or "").strip()
+print(
+    f"{caught}\t{1 if needs_real_run else 0}\t{ran_at}\t{len(survivors)}\t"
+    f"{timestamp_kind}\t{evidence_status}\t{mutation_evidence_status}\t{promotion_status}"
+)
 PY
 }
 
@@ -236,6 +262,11 @@ while IFS=$'\t' read -r tid state has_coveredby; do
     caught="$(printf '%s' "$evidence_record" | cut -f1)"
     needs_real_run="$(printf '%s' "$evidence_record" | cut -f2)"
     ran_at="$(printf '%s' "$evidence_record" | cut -f3)"
+    survivor_count="$(printf '%s' "$evidence_record" | cut -f4)"
+    timestamp_kind="$(printf '%s' "$evidence_record" | cut -f5)"
+    evidence_status="$(printf '%s' "$evidence_record" | cut -f6)"
+    mutation_evidence_status="$(printf '%s' "$evidence_record" | cut -f7)"
+    promotion_status="$(printf '%s' "$evidence_record" | cut -f8)"
 
     if [[ "$needs_real_run" == "1" ]]; then
         # Bootstrap placeholder consistency: the audit's P3 finding requires
@@ -244,6 +275,31 @@ while IFS=$'\t' read -r tid state has_coveredby; do
         # is internally inconsistent.
         if [[ "$ran_at" != "1970-01-01T00:00:00Z" ]]; then
             weak_hints+=("WEAK: $tid should be marked weak_coverage; reason=inconsistent_bootstrap (needs_real_run=true requires ran_at=1970-01-01T00:00:00Z, got ${ran_at:-<missing>})")
+            fail=1
+            continue
+        fi
+        if [[ "${caught:-0}" -ne 0 || "${survivor_count:-0}" -ne 0 ]]; then
+            weak_hints+=("WEAK: $tid should be marked weak_coverage; reason=inconsistent_bootstrap (needs_real_run=true requires caught=0 and no survivors)")
+            fail=1
+            continue
+        fi
+        if [[ -n "$timestamp_kind" && "$timestamp_kind" != "bootstrap-placeholder" ]]; then
+            weak_hints+=("WEAK: $tid should be marked weak_coverage; reason=inconsistent_bootstrap (needs_real_run=true requires timestamp_kind=bootstrap-placeholder, got $timestamp_kind)")
+            fail=1
+            continue
+        fi
+        if [[ -n "$evidence_status" && "$evidence_status" != "conformance-only" ]]; then
+            weak_hints+=("WEAK: $tid should be marked weak_coverage; reason=inconsistent_bootstrap (needs_real_run=true requires evidence_status=conformance-only, got $evidence_status)")
+            fail=1
+            continue
+        fi
+        if [[ -n "$mutation_evidence_status" && "$mutation_evidence_status" != "not-run" ]]; then
+            weak_hints+=("WEAK: $tid should be marked weak_coverage; reason=inconsistent_bootstrap (needs_real_run=true requires mutation_evidence_status=not-run, got $mutation_evidence_status)")
+            fail=1
+            continue
+        fi
+        if [[ -n "$promotion_status" && "$promotion_status" != "not-promoted" ]]; then
+            weak_hints+=("WEAK: $tid should be marked weak_coverage; reason=inconsistent_bootstrap (needs_real_run=true requires promotion_status=not-promoted, got $promotion_status)")
             fail=1
             continue
         fi
@@ -256,6 +312,17 @@ while IFS=$'\t' read -r tid state has_coveredby; do
         fi
         # Bootstrap placeholder still valid. Emit hint but DO NOT raise fail.
         bootstrap_hints+=("WEAK: $tid should be marked weak_coverage; reason=bootstrap_placeholder")
+        continue
+    fi
+
+    if [[ -n "$timestamp_kind" && "$timestamp_kind" != "cargo-mutants-run" ]]; then
+        weak_hints+=("WEAK: $tid should be marked weak_coverage; reason=non_mutants_metadata (timestamp_kind=$timestamp_kind cannot pass as cargo-mutants evidence)")
+        fail=1
+        continue
+    fi
+    if [[ "$evidence_status" == "conformance-only" || "$mutation_evidence_status" == "not-run" || "$promotion_status" == "not-promoted" ]]; then
+        weak_hints+=("WEAK: $tid should be marked weak_coverage; reason=non_mutants_metadata (metadata is ${evidence_status:-unspecified}/${mutation_evidence_status:-unspecified}/${promotion_status:-unspecified})")
+        fail=1
         continue
     fi
 
