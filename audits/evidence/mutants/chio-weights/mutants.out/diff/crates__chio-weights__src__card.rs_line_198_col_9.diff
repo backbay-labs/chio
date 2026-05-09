@@ -1,0 +1,55 @@
+--- crates/chio-weights/src/card.rs
++++ replace ModelCard::validate -> Result<(), WeightsError> with Ok(())
+@@ -190,51 +190,17 @@
+         };
+         card.validate()?;
+         Ok(card)
+     }
+ 
+     /// Re-run structural validation. Called by [`Self::new`] and exposed for
+     /// post-deserialisation use.
+     pub fn validate(&self) -> Result<(), WeightsError> {
+-        if self.card_version != CARD_VERSION_V1 {
+-            return Err(WeightsError::SchemaRejected(format!(
+-                "card_version must be {CARD_VERSION_V1:?}, got {:?}",
+-                self.card_version
+-            )));
+-        }
+-        if self.weights_hash.len() != 64 || !self.weights_hash.bytes().all(is_lowercase_hex_byte) {
+-            return Err(WeightsError::SchemaRejected(format!(
+-                "weights_hash must be 64 lowercase hex chars, got {:?}",
+-                self.weights_hash
+-            )));
+-        }
+-        if self.allowed_capability_set.contains_empty() {
+-            return Err(WeightsError::SchemaRejected(
+-                "allowed_capability_set entries must be non-empty strings".to_string(),
+-            ));
+-        }
+-        if self.banned_tools.contains_empty() {
+-            return Err(WeightsError::SchemaRejected(
+-                "banned_tools entries must be non-empty strings".to_string(),
+-            ));
+-        }
+-        if self.training_data_class.is_empty() {
+-            return Err(WeightsError::MissingField("training_data_class"));
+-        }
+-        if self.issuer.is_empty() {
+-            return Err(WeightsError::MissingField("issuer"));
+-        }
+-        if self.expires_at < self.issued_at {
+-            return Err(WeightsError::SchemaRejected(format!(
+-                "expires_at ({}) precedes issued_at ({})",
+-                self.expires_at, self.issued_at,
+-            )));
+-        }
+-        Ok(())
++        Ok(()) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Verifier-side liveness check.
+     pub fn require_live(&self, now: DateTime<Utc>) -> Result<(), WeightsError> {
+         if now < self.expires_at {
+             Ok(())
+         } else {
+             Err(WeightsError::Expired {

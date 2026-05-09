@@ -1,0 +1,63 @@
+--- crates/chio-weights/src/lineage.rs
++++ replace anchor_model_card -> Result<ModelCardLineageAnchor, WeightsError> with Ok(Default::default())
+@@ -160,59 +160,17 @@
+ /// model card carried by `verified.card`. This guards against a caller
+ /// that accidentally hands the helper a stale byte slice.
+ pub fn anchor_model_card(
+     verified: &VerifiedModelCard,
+     card_bytes: &[u8],
+     graph_schema: &str,
+     signer_hint: Option<&str>,
+ ) -> Result<ModelCardLineageAnchor, WeightsError> {
+-    let decoded = crate::card::ModelCard::from_canonical_json(card_bytes)?;
+-    if decoded != verified.card {
+-        return Err(WeightsError::Encoding(
+-            "card_bytes do not match verified.card; refusing to anchor stale bytes".to_string(),
+-        ));
+-    }
+-
+-    let projection = anchor_projection_bytes(card_bytes, &verified.attestation)?;
+-    let digest_hex = sha256_hex(&projection);
+-
+-    // Fail-closed: M10 P5.T1 never has a real signature payload to record,
+-    // so we MUST NOT construct `SigningState::Signed { signature_hex: "" }`
+-    // here. Doing so would let a verifier matching `SigningState::Signed
+-    // { .. }` treat the anchor as authenticated even though no M03 hybrid
+-    // signature exists. Until M03 plumbs a real payload through this
+-    // helper, a signer hint produces `UnsignedSignerStubbed` so verifiers
+-    // see an explicit unsigned variant.
+-    let signing = match signer_hint {
+-        Some(algorithm) => SigningState::UnsignedSignerStubbed {
+-            algorithm: algorithm.to_string(),
+-        },
+-        None => SigningState::UnsignedSoftDepAbsent,
+-    };
+-
+-    Ok(ModelCardLineageAnchor {
+-        schema_version: MODEL_CARD_ANCHOR_SCHEMA.to_string(),
+-        graph_schema: graph_schema.to_string(),
+-        canonical_source: CanonicalSource::EquivalenceShim,
+-        digest: FrontierDigest {
+-            algo: "sha256".to_string(),
+-            hex: digest_hex,
+-        },
+-        signing,
+-        card_canonical_sha256: sha256_hex(card_bytes),
+-        attestation_subject_sha256: hex::encode(verified.attestation.subject_digest_sha256),
+-        certificate_identity: verified.attestation.certificate_identity.clone(),
+-        certificate_oidc_issuer: verified.attestation.certificate_oidc_issuer.clone(),
+-        rekor_log_index: verified.attestation.rekor_log_index,
+-        rekor_inclusion_verified: verified.attestation.rekor_inclusion_verified,
+-        weights_hash: verified.card.weights_hash.clone(),
+-        card_issuer: verified.card.issuer.clone(),
+-        card_expires_at: verified.card.expires_at,
+-    })
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Recompute the anchor's digest from the given inputs and reject if it
+ /// does not match `anchor.digest`. Consumers reading an anchor from the
+ /// public registry call this to verify the proof against the original
+ /// inputs without trusting the registry's stored digest.
+ pub fn verify_model_card_anchor(
+     anchor: &ModelCardLineageAnchor,

@@ -1,0 +1,21 @@
+--- crates/chio-weights/src/card.rs
++++ replace < with == in ModelCard::validate
+@@ -218,17 +218,17 @@
+             ));
+         }
+         if self.training_data_class.is_empty() {
+             return Err(WeightsError::MissingField("training_data_class"));
+         }
+         if self.issuer.is_empty() {
+             return Err(WeightsError::MissingField("issuer"));
+         }
+-        if self.expires_at < self.issued_at {
++        if self.expires_at == /* ~ changed by cargo-mutants ~ */ self.issued_at {
+             return Err(WeightsError::SchemaRejected(format!(
+                 "expires_at ({}) precedes issued_at ({})",
+                 self.expires_at, self.issued_at,
+             )));
+         }
+         Ok(())
+     }
+ 

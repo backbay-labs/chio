@@ -1,0 +1,21 @@
+--- crates/chio-weights/src/bundle.rs
++++ replace != with == in verify_model_card_bundle
+@@ -75,17 +75,17 @@
+     expected: &ExpectedIdentity,
+     now: DateTime<Utc>,
+ ) -> Result<VerifiedModelCard, WeightsError> {
+     let attestation = verifier
+         .verify_bundle(card_bytes, bundle_json, expected)
+         .map_err(|err| WeightsError::BundleRejected(format!("{err}")))?;
+ 
+     let card = ModelCard::from_canonical_json(card_bytes)?;
+-    if card.issuer != attestation.certificate_identity {
++    if card.issuer == /* ~ changed by cargo-mutants ~ */ attestation.certificate_identity {
+         return Err(WeightsError::BundleRejected(format!(
+             "model card issuer {:?} does not match verified certificate identity {:?}",
+             card.issuer, attestation.certificate_identity
+         )));
+     }
+     card.require_live(now)?;
+ 
+     Ok(VerifiedModelCard { card, attestation })

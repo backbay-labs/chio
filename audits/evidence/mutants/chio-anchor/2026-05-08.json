@@ -50,6 +50,7 @@
     "crates/chio-anchor/src/ops.rs:370:42: replace == with != in classify_anchor_lane",
     "crates/chio-anchor/src/evm.rs:100:5: replace operator_key_hash -> B256 with Default::default()",
     "crates/chio-anchor/src/evm.rs:104:5: replace operator_key_hash_hex -> String with \"xyzzy\".into()",
+    "crates/chio-anchor/src/evm.rs:313:9: replace || with && in confirm_root_publication",
     "crates/chio-anchor/src/evm.rs:314:9: replace || with && in confirm_root_publication",
     "crates/chio-anchor/src/evm.rs:317:9: replace || with && in confirm_root_publication",
     "crates/chio-anchor/src/evm.rs:542:5: replace validate_rpc_egress_contract -> Result<(), AnchorError> with Ok(())",

@@ -61,6 +61,12 @@ for crate in "$@"; do
   t=$(wc -l < "${out_dir}/timeout.txt"  2>/dev/null | tr -d ' ' || echo 0)
   u=$(wc -l < "${out_dir}/unviable.txt" 2>/dev/null | tr -d ' ' || echo 0)
   c=${c:-0}; m=${m:-0}; t=${t:-0}; u=${u:-0}
+  evaluated=$((c + m + t + u))
+  total_discovered="null"
+  if [ -f "${out_dir}/mutants.json" ]; then
+    total_discovered=$(jq 'length' "${out_dir}/mutants.json" 2>/dev/null || echo "null")
+    total_discovered=${total_discovered:-null}
+  fi
 
   out_file="${EVIDENCE_DIR}/${crate}/${DATE}.json"
   previous_summary=""
@@ -176,6 +182,8 @@ for crate in "$@"; do
     --argjson missed "${m}" \
     --argjson timeout "${t}" \
     --argjson unviable "${u}" \
+    --argjson evaluated "${evaluated}" \
+    --argjson total_discovered "${total_discovered}" \
     --arg kill_rate "${rate}" \
     --rawfile missed_text "${missed_path}" \
     --rawfile timeout_text "${timeout_path}" \
@@ -199,10 +207,20 @@ for crate in "$@"; do
     })
     | if (($target | type) == "number") and ($rate != null) then
         ($target | if . > 1 then . else . * 100 end) as $target_percent
-        | . + {
-            target_met: ($rate >= $target_percent),
-            result_label: (if $rate >= $target_percent then "FULL" else "FULL-BELOW-TARGET" end)
-          }
+        | if (($total_discovered | type) == "number") and ($total_discovered > 0) and ($evaluated < $total_discovered) then
+            . + {
+              evaluated: $evaluated,
+              total_discovered: $total_discovered,
+              target_met: false,
+              result_label: "PARTIAL",
+              result_label_reason: "partial cargo-mutants output; numeric threshold cannot retire crate target until every discovered mutant is evaluated"
+            }
+          else
+            . + {
+              target_met: ($rate >= $target_percent),
+              result_label: (if $rate >= $target_percent then "FULL" else "FULL-BELOW-TARGET" end)
+            }
+          end
       else
         .
       end' > "${out_file}"

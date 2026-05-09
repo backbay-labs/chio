@@ -1,0 +1,21 @@
+--- crates/chio-weights/src/lineage.rs
++++ delete ! in verify_model_card_anchor
+@@ -280,17 +280,17 @@
+     // Defense-in-depth: no local verifier is wired for lineage signature
+     // payloads yet. Reject every imported Signed state so arbitrary hex
+     // cannot be promoted into public trust evidence.
+     if let SigningState::Signed {
+         algorithm,
+         signature_hex,
+     } = &anchor.signing
+     {
+-        if !is_lowercase_hex_signature_payload(signature_hex) {
++        if  /* ~ changed by cargo-mutants ~ */is_lowercase_hex_signature_payload(signature_hex) {
+             return Err(WeightsError::BundleRejected(
+                 "model card anchor signing state was Signed but signature_hex was empty or not lower-case hexadecimal"
+                     .to_string(),
+             ));
+         }
+         return Err(WeightsError::BundleRejected(format!(
+             "model card anchor signing algorithm {algorithm:?} is not verified by this build"
+         )));

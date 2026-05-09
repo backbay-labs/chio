@@ -1,0 +1,22 @@
+--- crates/chio-weights/src/lineage.rs
++++ replace sha256_hex -> String with "xyzzy".into()
+@@ -138,18 +138,17 @@
+     });
+     chio_core_types::canonical::canonical_json_bytes(&payload)
+         .map_err(|err| WeightsError::Encoding(format!("anchor projection encode: {err}")))
+ }
+ 
+ /// SHA-256 hex of a byte slice. Mirrors the lineage anchor surface so the
+ /// digest representation is consistent across both anchor formats.
+ fn sha256_hex(bytes: &[u8]) -> String {
+-    let digest = Sha256::digest(bytes);
+-    hex::encode(digest)
++    "xyzzy".into() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Build a [`ModelCardLineageAnchor`] from a verified model card.
+ ///
+ /// `card_bytes` MUST be the canonical-JSON byte slice the cosign bundle
+ /// was signed over (i.e. the same bytes passed to
+ /// [`crate::bundle::verify_model_card_bundle`]). `signer_hint` records the
+ /// PQ-hybrid signing state in the same shape used by
