@@ -1,11 +1,14 @@
 {
-  "caught": 5,
-  "needs_real_run": false,
-  "note": "Threat-evidence backfill: real conformance test at crates/chio-conformance/tests/threats/ssrf_via_http_substrate.rs imports chio_http_core::HttpEgressContract and exercises the production enforce_url/enforce_attempt fail-closed surface against five distinct attack inputs. Each input asserts a typed HttpEgressError variant: LoopbackDenied (127.0.0.1), LinkLocalDenied (169.254.169.254 instance metadata), Ipv6UlaDenied (fd00::/8), RedirectLimitExceeded (chained redirect), and ResponseTooLarge (oversized body). The header in that file documents the revert-to-prove-it-fails recipe (flip an early-return guard inside enforce_url in chio-http-core/src/lib.rs).",
-  "ran_at": "2026-05-08T00:00:00Z",
+  "caught": 0,
+  "needs_real_run": true,
+  "note": "Bootstrap placeholder. The conformance test at crates/chio-conformance/tests/threats/ssrf_via_http_substrate.rs exercises this threat row against production code, but no cargo-mutants command transcript or run timestamp is committed on this branch. This file is consumed by scripts/check-threat-coverage-mutants.sh, so it must remain needs_real_run=true with caught=0 until a real cargo-mutants run catches at least one mutant and records timestamp_kind=cargo-mutants-run.",
+  "ran_at": "1970-01-01T00:00:00Z",
   "survivors": [],
   "test_path": "crates/chio-conformance/tests/threats/ssrf_via_http_substrate.rs",
-  "timestamp_kind": "generated-metadata",
-  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
-  "reproduction_command": "cargo test -p chio-conformance --test threats ssrf_via_http_substrate"
+  "timestamp_kind": "bootstrap-placeholder",
+  "timestamp_note": "The epoch sentinel is required while needs_real_run is true; replace it with the real cargo-mutants run timestamp only when mutation evidence lands.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats ssrf_via_http_substrate",
+  "evidence_status": "conformance-only",
+  "mutation_evidence_status": "not-run",
+  "promotion_status": "not-promoted"
 }

@@ -1,11 +1,14 @@
 {
-  "caught": 4,
-  "needs_real_run": false,
-  "note": "Threat-evidence backfill: real conformance test at crates/chio-conformance/tests/threats/delegation_chain_abuse.rs imports chio_kernel_core::verify_capability_with_floor + verify_capability_with_trusted_and_floor production code, then drives FOUR delegation-specific deny branches plus a sanity round-trip. Critically, the unknown-parent test exercises the delegation-chain-specific budget admit path: it builds a delegated CapabilityToken with a non-empty `delegation_chain` referencing a parent capability id that the InMemoryBudgetRegistry has never seen, and asserts CapabilityError::BudgetSplitRejected(BudgetSplitError::UnknownParent). The other deny branches (UntrustedIssuer, InvalidSignature, Expired) also use non-empty delegation chains so the test set covers regressions in delegated-scope/lineage handling, not just root-token verification. The header documents the revert-to-prove-it-fails recipe (swallow the `?` on `try_admit_child` inside verify_capability_with_floor in chio-kernel-core/src/capability_verify.rs, or delete the trusted-issuer guard).",
-  "ran_at": "2026-05-08T00:00:00Z",
+  "caught": 0,
+  "needs_real_run": true,
+  "note": "Bootstrap placeholder. The conformance test at crates/chio-conformance/tests/threats/delegation_chain_abuse.rs exercises this threat row against production code, but no cargo-mutants command transcript or run timestamp is committed on this branch. This file is consumed by scripts/check-threat-coverage-mutants.sh, so it must remain needs_real_run=true with caught=0 until a real cargo-mutants run catches at least one mutant and records timestamp_kind=cargo-mutants-run.",
+  "ran_at": "1970-01-01T00:00:00Z",
   "survivors": [],
   "test_path": "crates/chio-conformance/tests/threats/delegation_chain_abuse.rs",
-  "timestamp_kind": "generated-metadata",
-  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
-  "reproduction_command": "cargo test -p chio-conformance --test threats delegation_chain_abuse"
+  "timestamp_kind": "bootstrap-placeholder",
+  "timestamp_note": "The epoch sentinel is required while needs_real_run is true; replace it with the real cargo-mutants run timestamp only when mutation evidence lands.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats delegation_chain_abuse",
+  "evidence_status": "conformance-only",
+  "mutation_evidence_status": "not-run",
+  "promotion_status": "not-promoted"
 }

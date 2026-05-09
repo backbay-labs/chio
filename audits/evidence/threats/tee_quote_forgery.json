@@ -1,11 +1,14 @@
 {
-  "caught": 4,
-  "needs_real_run": false,
-  "note": "Threat-evidence backfill (batch 2, hardened by batch 3): the conformance test at crates/chio-conformance/tests/threats/tee_quote_forgery.rs covers the chio-tee-frame tenant-signature surface through four production deny arms that import chio_tee_frame::schema::{validate_signed, verify_tenant_sig}: (1) verifier-key swap, (2) request_blob_sha256 tampering, (3) forged 64-byte tenant_sig, and (4) cross-TEE misbinding by rebinding tee_id after signing. All four deny arms assert SchemaError::TenantSigVerification, so caught:4 is restricted to production attack-deny assertions. The genuine-frame round-trip and validator-evidence file pins are retained as supplementary regression nets and are not counted as deny vectors. The validator pin asserts the seven covered_by_tests files cited in spec/security/chio-threat-model.v1.json remain in tree with named fixtures. Revert-to-prove-it-fails recipes: replace verify_tenant_sig in chio-tee-frame/src/schema.rs with `Ok(())` to break the four tenant-signature deny arms, or delete or rename one of the cited validator tests to break the evidence-pin arm.",
-  "ran_at": "2026-05-08T00:00:00Z",
+  "caught": 0,
+  "needs_real_run": true,
+  "note": "Bootstrap placeholder. The conformance test at crates/chio-conformance/tests/threats/tee_quote_forgery.rs exercises this threat row against production code, but no cargo-mutants command transcript or run timestamp is committed on this branch. This file is consumed by scripts/check-threat-coverage-mutants.sh, so it must remain needs_real_run=true with caught=0 until a real cargo-mutants run catches at least one mutant and records timestamp_kind=cargo-mutants-run.",
+  "ran_at": "1970-01-01T00:00:00Z",
   "survivors": [],
   "test_path": "crates/chio-conformance/tests/threats/tee_quote_forgery.rs",
-  "timestamp_kind": "generated-metadata",
-  "timestamp_note": "ran_at is a normalized batch date for this evidence JSON. No command wall-clock transcript was committed, so ran_at must not be interpreted as the real cargo test or cargo-mutants start/finish time.",
-  "reproduction_command": "cargo test -p chio-conformance --test threats tee_quote_forgery"
+  "timestamp_kind": "bootstrap-placeholder",
+  "timestamp_note": "The epoch sentinel is required while needs_real_run is true; replace it with the real cargo-mutants run timestamp only when mutation evidence lands.",
+  "reproduction_command": "cargo test -p chio-conformance --test threats tee_quote_forgery",
+  "evidence_status": "conformance-only",
+  "mutation_evidence_status": "not-run",
+  "promotion_status": "not-promoted"
 }
