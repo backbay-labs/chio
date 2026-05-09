@@ -87,7 +87,11 @@ pub fn built_in_signed_artifact_registry() -> Vec<SignedArtifactSchemaEntry> {
             "capability_token",
             "schema-registry/v1/capability-token-v2",
         ),
-        ("chio.receipt.v1", "receipt", "schema-registry/v1/receipt-v1"),
+        (
+            "chio.receipt.v1",
+            "receipt",
+            "schema-registry/v1/receipt-v1",
+        ),
         (
             CHIO_RECEIPT_V2_SCHEMA,
             "receipt",

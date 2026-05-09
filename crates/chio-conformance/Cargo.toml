@@ -171,7 +171,6 @@ wat = "1.246"
 # drive validate_signed and verify_tenant_sig deny branches with forged
 # tenant signatures.
 chio-tee-frame = { version = "0.1.0", path = "../chio-tee-frame" }
-base64 = { workspace = true }
 
 [lints.clippy]
 unwrap_used = "deny"
