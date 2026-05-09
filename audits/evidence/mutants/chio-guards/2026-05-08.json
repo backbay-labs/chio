@@ -12,7 +12,7 @@
     "crates/chio-guards/src/text_utils.rs",
     "crates/chio-guards/src/spider_sense.rs"
   ],
-  "subset_invalidation_reason": "Per P0-020 cleanup wave, both files have been re-included in audits/mutation/per-crate-configs/chio-guards.toml examine_globs (they are decision-capable per audits/evidence/mutation exclusion audit/exclude-audit.md). The 119-mutant subset measured here did NOT mutate either file, so the next mutation run must re-measure the full corrected surface; this subset's 78.2% kill rate is invalid for those two files.",
+  "subset_invalidation_reason": "Both files have been re-included in audits/mutation/per-crate-configs/chio-guards.toml examine_globs (they are decision-capable per audits/evidence/mutation exclusion audit/exclude-audit.md). The 119-mutant subset measured here did NOT mutate either file, so the next mutation run must re-measure the full corrected surface; this subset's 78.2% kill rate is invalid for those two files.",
   "caught": 86,
   "missed": 24,
   "timeout": 0,

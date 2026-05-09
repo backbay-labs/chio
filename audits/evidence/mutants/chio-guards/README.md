@@ -8,16 +8,16 @@ hand-picked subset of 119 of 1291 total mutants (8 of 27 files, 9.2%
 crate surface). It is NOT a crate-level kill rate and does NOT retire
 the >=65% target.** Target satisfaction at the crate level requires
 EITHER a full run OR a pre-registered statistically defensible
-sampling scheme. See the "Cleanup-wave note" section below.
+sampling scheme. See the "Config correction note" section below.
 
 The prior config excluded `text_utils.rs` and `spider_sense.rs` as
 "advisory/helper". Both files are decision-capable and have been
-re-included in the chio-guards examine_globs by the cleanup-wave
+re-included in the chio-guards examine_globs by the config correction
 commit. **The 119-mutant subset measured here is INVALID for those
 two files** (they were not mutated). The next mutation run after the
 config update will re-measure the corrected surface; this README's
 78.2% number stands only for the 8 files in the prior subset, not
-the 10-file post-cleanup surface.
+the 10-file corrected surface.
 
 ## Run metadata
 
@@ -25,7 +25,7 @@ the 10-file post-cleanup surface.
 |---|---|
 | Crate | `chio-guards` |
 | Date | 2026-05-08 |
-| Branch | `PR branch` |
+| Run context | feature branch |
 | Base SHA | `708c7bb33df43594f5e76542b05fca7a56d9689e` (main tip) |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | 58m 5s |
@@ -95,20 +95,20 @@ override is necessary for two reasons:
 
 The `test_scope` field in `2026-05-08.json` is `"package-only
 (--package chio-guards)"`, distinguishing this from the workspace-scope
-chio-credentials run (PR #603). The `examine_scope` field is
-`"boundary-enforcing-core-subset (8 of 27 files; 119 of 1291 total
-mutants in workspace .cargo/mutants.toml)"` to flag the
-session-scope override.
+workspace-scope chio-credentials run. The `examine_scope` field is
+`"hand-picked-subset (8 of 27 files; 119 of 1291 total mutants in
+workspace .cargo/mutants.toml; 9.2% surface)"` to flag the
+session-scope override and match the JSON summary.
 
-## Test-scope deviation from the chio-credentials run (PR #603)
+## Test-scope deviation from the chio-credentials run
 
-PR #603's `chio-credentials` baseline ran with the workspace
+The `chio-credentials` baseline ran with the workspace
 `.cargo/mutants.toml` (which sets
 `additional_cargo_test_args = ["--workspace", "--exclude", "chio-cpp-kernel-ffi"]`).
 That works for `chio-credentials` because its lib.rs mutations affect
 relatively few downstream packages.
 
-For `chio-guards` (and `chio-attest-verify`, PR #619), the
+For `chio-guards` (and `chio-attest-verify`), the
 workspace-wide test harness contains a **pre-existing failing test**
 unrelated to this crate:
 
@@ -183,7 +183,7 @@ The pass-through caveat in the per-crate budget framework is a
 methodology hedge for categorizing surviving mutants; it does NOT
 cover claiming target met on a partial run.
 
-### Cleanup-wave note (text_utils + spider_sense)
+### Config correction note (text_utils + spider_sense)
 
 The prior config excluded `text_utils.rs` and `spider_sense.rs` as
 "advisory/helper". Both files are decision-capable per
@@ -200,7 +200,7 @@ The prior config excluded `text_utils.rs` and `spider_sense.rs` as
   The file's module-level doc-comment lists three explicit
   `Verdict::Deny` paths (lines 10-28). It is NOT advisory.
 
-The cleanup wave re-included both files in
+The config correction re-included both files in
 `audits/mutation/per-crate-configs/chio-guards.toml`
 `examine_globs`. The 119-mutant subset committed here did NOT
 mutate either file; the next mutation run is required to re-measure
@@ -338,7 +338,7 @@ load-bearing for close.
   subset (1172 deferred mutants); these are owned by the CI
   hosted-nightly run.
 - `releases.toml [per_crate_kill_rate_percent]` update; a partial
-  3-of-6 update would weaken audit signal; will land once all six
+  3-of-6 update would weaken release signal; will land once all six
   trust-boundary crates have measured baselines.
 
 ## Files in this directory

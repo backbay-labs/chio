@@ -18,11 +18,10 @@
 # directory for the per-crate override convention.
 #
 # ============================================================
-# Cleanup-wave revision (2026-05-08)
+# Config correction (2026-05-08)
 # ============================================================
 #
-# This config was revised in the audit-cleanup wave to address two
-# findings:
+# This config was revised to address two measurement issues:
 #
 # - The prior subset (8 of 27 files; 119 of 1291 mutants; 9.2%
 #   surface) cannot retire a crate-level `>= 65%` target. The 78.2%
@@ -125,7 +124,7 @@ examine_globs = [
     "crates/chio-guards/src/secret_leak.rs",
     "crates/chio-guards/src/data_flow.rs",
     "crates/chio-guards/src/behavioral_sequence.rs",
-    # Re-included in the 2026-05-08 cleanup wave; both are
+    # Re-included in the 2026-05-08 config correction; both are
     # decision-capable per audits/evidence/mutation exclusion audit/exclude-audit.md.
     "crates/chio-guards/src/text_utils.rs",
     "crates/chio-guards/src/spider_sense.rs",
