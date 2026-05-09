@@ -6,6 +6,10 @@
 //! entrypoint uses the async-native kernel path directly. The
 //! [`BlockingToolEvaluator`] remains for compatibility surfaces that
 //! intentionally enter the synchronous bridge.
+//!
+//! This migration is a containment slice, not the final durable async
+//! architecture. The kernel still needs a later cancellation-safe finalization
+//! design for futures dropped after budget admission or tool dispatch.
 
 use crate::kernel::ChioKernel;
 use crate::{

@@ -204,7 +204,7 @@ fn make_request(
 /// A tool server that echoes its inputs back as the result.
 struct EchoServer(&'static str);
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for EchoServer {
     fn server_id(&self) -> &str {
         self.0
