@@ -19,8 +19,7 @@ name: slsa
 # `push: tags: v*.*.*`, whose triggering ref is `refs/tags/v...` and
 # matches no branch pattern; the previous `branches: [main, ...]`
 # filter therefore silently dropped every tag-driven release and SLSA
-# provenance was never generated for actual releases (cleanup-c11b;
-# PR #46 review thread r3142900224 - High Severity).
+# provenance was never generated for actual releases.
 #
 # The replacement triggers on every successful `Release Binaries` run
 # regardless of ref shape. The `collect-digests` job below performs

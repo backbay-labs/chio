@@ -132,7 +132,7 @@ max_days=$(( today_days + 90 ))
 # form: "target|reason|upstream_issue|sunset". Empty/comment lines and
 # the documented `skips = []` sentinel are ignored. Anything else is
 # rejected as a parse error so typos like `[[skip]]` (singular) cannot
-# silently pass the gate (regression: r3144336375).
+# silently pass the gate.
 parsed="$(awk '
 BEGIN {
     in_entry = 0
@@ -152,8 +152,7 @@ function emit(   _) {
 # Strip a single inline `#` comment from the right side of a value while
 # respecting double-quoted strings. Without this guard a fragment-bearing
 # URL like "https://example/issues/1#issuecomment-2" loses everything
-# from `#` onward and the closing quote, breaking validation
-# (regression: r3144340128).
+# from `#` onward and the closing quote, breaking validation.
 function strip_inline_comment(s,    i, n, c, in_quotes, out, len) {
     n = length(s)
     in_quotes = 0
@@ -232,7 +231,6 @@ fi
 # caller can map them to the documented exit-code contract:
 #   exit 1 = at least one policy violation
 #   exit 2 = at least one structural parse failure
-# (regression: r3144336377 / r3144340129).
 parse_errors=0
 policy_errors=0
 total=0

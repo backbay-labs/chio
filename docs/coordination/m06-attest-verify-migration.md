@@ -241,9 +241,8 @@ satisfies all four conditions:
    valid gate, because the required `chio-attest-verify` dependency
    itself depends on `sigstore` (`crates/chio-attest-verify/Cargo.toml`),
    so the transitive grep would always fire and keep the migration
-   permanently red even when M06 follows the intended architecture
-   (cleanup-c11d; PR #74 review thread r3143034863). Use a
-   direct-dependency check instead, e.g.
+   permanently red even when M06 follows the intended architecture. Use
+   a direct-dependency check instead, e.g.
    `cargo tree -p chio-guard-registry --depth 1 | grep -E 'sigstore(-rs)?'`
    or, equivalently, `awk` on the `[dependencies]` block of
    `crates/chio-guard-registry/Cargo.toml`.

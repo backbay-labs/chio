@@ -18,6 +18,7 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
+gsd_tools="${GSD_TOOLS:-${HOME}/.codex/get-shit-done/bin/gsd-tools.cjs}"
 output_root="target/release-qualification/universal-control-plane"
 log_root="${output_root}/logs"
 manifest_path="${output_root}/artifact-manifest.json"
@@ -56,7 +57,7 @@ run_and_log kernel-authority \
 run_and_log control-plane-authority \
   cargo test -p chio-openai-adapter -p chio-acp-proxy
 run_and_log planning-truth \
-  node "/Users/connor/.codex/get-shit-done/bin/gsd-tools.cjs" roadmap analyze
+  node "${gsd_tools}" roadmap analyze
 
 cat >"${report_path}" <<'EOF'
 # Universal Control-Plane Qualification Gate
@@ -90,7 +91,7 @@ Executed command set:
 - `cargo test -p chio-cross-protocol -p chio-mcp-edge -p chio-a2a-edge -p chio-acp-edge`
 - `cargo test -p chio-http-core -p chio-api-protect -p chio-tower`
 - `cargo test -p chio-openai-adapter -p chio-acp-proxy`
-- `node "/Users/connor/.codex/get-shit-done/bin/gsd-tools.cjs" roadmap analyze`
+- `node "${GSD_TOOLS:-$HOME/.codex/get-shit-done/bin/gsd-tools.cjs}" roadmap analyze`
 
 Supporting documents:
 

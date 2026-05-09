@@ -59,13 +59,13 @@ ignore = [
 
 # NOTE: cargo-deny 0.16 enforces an explicit allow-list only; unlisted licenses
 # are denied by default. The `unlicensed`, `copyleft`, `allow-osi-fsf-free`, and
-# `default` keys from prior config were removed (cargo-deny PR #611).
+# `default` keys from prior config were removed because cargo-deny 0.16
+# enforces an explicit allow-list only.
 [licenses]
 confidence-threshold = 0.93
 # Workspace-wide allow-list. Strictly permissive: no GPL / AGPL / LGPL /
-# EUPL or other strong copyleft, and MPL-2.0 is NOT in the global list
-# (cleanup-c11c; PR #28 review threads r3142866284 / r3142870711). MPL-2.0
-# is file-level (weak) copyleft - it does not infect statically-linked
+# EUPL or other strong copyleft, and MPL-2.0 is NOT in the global list.
+# MPL-2.0 is file-level (weak) copyleft - it does not infect statically-linked
 # consumers - but admitting it globally would silently green-light any
 # new MPL-2.0 dependency without explicit review. Instead the uniffi
 # family (which is the only legitimate consumer in the graph today) is
@@ -123,8 +123,8 @@ allow = ["CDLA-Permissive-2.0"]
 name = "webpki-root-certs"
 allow = ["CDLA-Permissive-2.0"]
 
-# uniffi family: weak-copyleft MPL-2.0 (cleanup-c11c). Pinned per crate
-# instead of widening the global allow list. Each crate is named below
+# uniffi family: weak-copyleft MPL-2.0. Pinned per crate instead of
+# widening the global allow list. Each crate is named below
 # (cargo-deny does not support glob `name` matchers for exceptions). Add
 # a sibling block for any new uniffi sub-crate that lands; do not move
 # MPL-2.0 back into [licenses].allow without CODEOWNERS sign-off.

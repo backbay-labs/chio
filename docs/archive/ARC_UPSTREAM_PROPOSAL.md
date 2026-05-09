@@ -133,7 +133,7 @@ Cross-ref with `/tmp/chio-debate/DEBATER_B_RIGORIST.md` §3: every file cited (h
 
 ## 6. Arc-side implementation plan (Option A paths)
 
-One focused PR against arc. Files (all under `/Users/connor/Medica/backbay/standalone/arc/`):
+One focused PR against arc. Files (all under the repository root):
 
 1. **`crates/arc-policy/src/models.rs`** - add `Rules.velocity`, `Rules.human_in_loop`, `Extensions.chio`; add 2 new default helpers; add 1 enum + 8 structs per §§1-3. All new fields `Option<T>` - no existing policy breaks.
 2. **`crates/arc-policy/src/compiler.rs`** - add `compile_velocity_rule()` returning `(Option<VelocityConfig>, Option<AgentVelocityConfig>)` (mechanical map to existing `arc-guards` types). Extend `compile_tool_constraints` (line 584) to emit `Constraint::RequireApprovalAbove { threshold_units: rule.approve_above.unwrap_or(0) }` when `rules.human_in_loop` matches. `extensions.chio` is passthrough (not compiled).

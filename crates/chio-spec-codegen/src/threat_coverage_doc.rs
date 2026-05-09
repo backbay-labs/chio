@@ -170,9 +170,8 @@ pub fn render_threat_coverage_doc(
     body.push_str(
         "**Wave 4 hardening note**: 9 of the 20 covered rows currently \
          pass the gate on file-exists + no-`unimplemented!()` alone, with \
-         weak or meta-only assertions in the backing test. Wave 4 of the \
-         trj4 closeout plan (see `/Users/connor/.claude/plans/typed-coalescing-hejlsberg.md` \
-         and `.planning/trajectory-4/TRAJECTORY-4-CLOSEOUT-ERRATUM.md`) \
+         weak or meta-only assertions in the backing test. The trajectory-4 \
+         closeout erratum (`.planning/trajectory-4/TRAJECTORY-4-CLOSEOUT-ERRATUM.md`) \
          hardens these rows by adding per-row cargo-mutants requirements \
          and real negative-conformance bodies; the gate stays at 20 \
          covered through that work.\n\n",

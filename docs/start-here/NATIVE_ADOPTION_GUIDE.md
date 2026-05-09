@@ -6,10 +6,10 @@ This guide closes the gap between the current wrapped-MCP path and the first sup
 
 The supported path for coding agents today is:
 
-1. start from [`examples/policies/canonical-hushspec.yaml`](/Users/connor/Medica/backbay/standalone/chio/examples/policies/canonical-hushspec.yaml)
+1. start from [`examples/policies/canonical-hushspec.yaml`](../../examples/policies/canonical-hushspec.yaml)
 2. wrap the existing MCP server with `chio mcp serve --policy ./policy.yaml`
 3. prove one deny, one allow, and one receipt with
-   [`docs/guides/MIGRATING-FROM-MCP.md`](/Users/connor/Medica/backbay/standalone/chio/docs/guides/MIGRATING-FROM-MCP.md)
+   [`docs/guides/MIGRATING-FROM-MCP.md`](../guides/MIGRATING-FROM-MCP.md)
 
 Do that first. Native authoring is the next supported step after the wrapped
 path is already behaving correctly.
@@ -60,7 +60,7 @@ not change:
 
 ## Example
 
-The maintained example is [examples/hello-tool](/Users/connor/Medica/backbay/standalone/chio/examples/hello-tool), which now uses `NativeChioServiceBuilder` instead of hand-assembling only a manifest.
+The maintained example is [examples/hello-tool](../../examples/hello-tool), which now uses `NativeChioServiceBuilder` instead of hand-assembling only a manifest.
 
 The flow is:
 

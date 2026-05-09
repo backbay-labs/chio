@@ -416,7 +416,7 @@ where `t0 = timestamp_unix_ms` and `half_life = decay_half_life_secs`.
 For `t <= t0`, `s(t) = confidence`. The formula is identical to the
 swarm-team-six reference (`docs/PHEROMONES.md` section 3) and to
 `PheromoneDeposit::strength_at` in
-`/Users/connor/backbay/swarm-team-six/crates/swarm-pheromone/src/substrate.rs`.
+`crates/swarm-pheromone/src/substrate.rs`.
 
 A deposit is **evaporated** when `s(t) < evaporation_floor`. The
 substrate-level `evaporation_floor` default is `0.01`; per-deposit

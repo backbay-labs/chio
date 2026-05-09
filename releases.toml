@@ -130,7 +130,7 @@ trj3_1_release_binaries_run_url = "https://github.com/bb-connor/arc/actions/runs
 trj3_1_reproducible_build_run_url = "https://github.com/bb-connor/arc/actions/runs/25355058217"
 trj3_1_slsa_trigger = "workflow_run after Release Binaries succeeds"
 # trj4 release tag retracted. The prior v3.20.0-trj4 closeout claim is reopened
-# pending the wave-based closeout in /Users/connor/.claude/plans/typed-coalescing-hejlsberg.md.
+# pending the trajectory-4 erratum and closeout evidence.
 # See trj4_erratum_path below for the retraction record.
 trj4_release_status = "reopened"
 trj4_erratum_path = ".planning/trajectory-4/TRAJECTORY-4-CLOSEOUT-ERRATUM.md"

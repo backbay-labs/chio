@@ -5,7 +5,7 @@
     "challengeExpiresAt": "2026-04-24T01:57:59Z",
     "challengeId": "31d14b539a79494a0ee830abf15eda2951e96b8256a55d101e1aadcf3fc601a0",
     "command": [
-      "/Users/connor/.codex/worktrees/673b/arc/target/debug/chio",
+      "/workspace/chio/target/debug/chio",
       "--format",
       "json",
       "passport",

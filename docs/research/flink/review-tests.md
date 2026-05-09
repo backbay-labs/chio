@@ -159,7 +159,7 @@ File: the Pulsar suite has `test_handler_shutdown_signals_propagate` parametrize
 9. Add a session-scoped teardown that removes the surrogate from `sys.modules`.
 
 Relevant paths:
-- `/Users/connor/Medica/backbay/standalone/arc/sdks/python/chio-streaming/tests/test_flink.py`
-- `/Users/connor/Medica/backbay/standalone/arc/sdks/python/chio-streaming/src/chio_streaming/flink.py`
-- `/Users/connor/Medica/backbay/standalone/arc/sdks/python/chio-streaming/tests/test_pulsar.py` (reference patterns)
-- `/Users/connor/Medica/backbay/standalone/arc/docs/research/chio-streaming-flink-integration.md` (spec)
+- `sdks/python/chio-streaming/tests/test_flink.py`
+- `sdks/python/chio-streaming/src/chio_streaming/flink.py`
+- `sdks/python/chio-streaming/tests/test_pulsar.py` (reference patterns)
+- `docs/research/chio-streaming-flink-integration.md` (spec)

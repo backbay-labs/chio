@@ -68,12 +68,12 @@ This means:
   implicitly at the client
 
 You can save this as `tutorial-policy.yaml` or reuse
-[examples/docker/policy.yaml](/Users/connor/Medica/backbay/standalone/chio/examples/docker/policy.yaml).
+[examples/docker/policy.yaml](../../examples/docker/policy.yaml).
 
 ## 4. Wrap A Tool
 
 The upstream demo tool is a tiny MCP server that exposes `echo_text`:
-[examples/docker/mock_mcp_server.py](/Users/connor/Medica/backbay/standalone/chio/examples/docker/mock_mcp_server.py).
+[examples/docker/mock_mcp_server.py](../../examples/docker/mock_mcp_server.py).
 
 To put Chio in front of it without Docker:
 
@@ -190,16 +190,16 @@ What this does:
   explain where the child authority came from
 
 For a fuller walkthrough of the federated inputs, see
-[docs/AGENT_PASSPORT_GUIDE.md](/Users/connor/Medica/backbay/standalone/chio/docs/AGENT_PASSPORT_GUIDE.md).
+[docs/AGENT_PASSPORT_GUIDE.md](../AGENT_PASSPORT_GUIDE.md).
 
 ## 8. Run The Framework Examples
 
 With the demo stack still running, the framework examples all target the same
 defaults:
 
-- [examples/anthropic-sdk/README.md](/Users/connor/Medica/backbay/standalone/chio/examples/anthropic-sdk/README.md)
-- [examples/langchain/README.md](/Users/connor/Medica/backbay/standalone/chio/examples/langchain/README.md)
-- [examples/openai-compatible/README.md](/Users/connor/Medica/backbay/standalone/chio/examples/openai-compatible/README.md)
+- [examples/anthropic-sdk/README.md](../../examples/anthropic-sdk/README.md)
+- [examples/langchain/README.md](../../examples/langchain/README.md)
+- [examples/openai-compatible/README.md](../../examples/openai-compatible/README.md)
 
 They all:
 
