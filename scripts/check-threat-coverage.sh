@@ -16,13 +16,14 @@
 #
 #   3. carries `coverage_state: partial` plus a non-empty
 #      `deferred_to` reference AND a populated test body at
-#      `crates/chio-conformance/tests/threats/<id>.rs`. A partial
-#      row is honest reporting that one sub-vector of the threat is
-#      closed by a real test today while another sub-vector is
-#      deferred. The companion evidence file
-#      `audits/evidence/threats/<id>.json` is expected to record
-#      `status: "partial"`, `closure_scope: "<scope>"`, and
-#      `deferred_follow_up: "<rationale>"`.
+#      `crates/chio-conformance/tests/threats/<id>.rs`, plus a
+#      companion evidence file at
+#      `audits/evidence/threats/<id>.json` recording
+#      `status: "partial"`, `closure_scope: "<scope>"`,
+#      `deferred_follow_up: "<rationale>"`, `caught >= 1`, and
+#      `needs_real_run: false`. A partial row is honest reporting
+#      that one sub-vector of the threat is closed by evidence today
+#      while another sub-vector is deferred.
 #
 # Fails closed: `weak_coverage` is never accepted (the row must
 # either be raised to `covered` with real mutation-testing
@@ -47,6 +48,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 THREAT_MODEL="${CHIO_THREAT_MODEL_PATH:-$REPO_ROOT/spec/security/chio-threat-model.v1.json}"
 STUBS_DIR="${CHIO_THREAT_STUBS_DIR:-$REPO_ROOT/crates/chio-conformance/tests/threats}"
+EVIDENCE_DIR="${CHIO_THREAT_EVIDENCE_DIR:-$REPO_ROOT/audits/evidence/threats}"
 
 if [[ ! -f "$THREAT_MODEL" ]]; then
     echo "error: threat model not found at $THREAT_MODEL" >&2
@@ -80,6 +82,43 @@ PY
         jq -r '.threats[] | "\(.id // "" | gsub("^\\s+|\\s+$"; ""))\t\(.coverage_state // "" | gsub("^\\s+|\\s+$"; ""))\t\(.deferred_to // "" | gsub("^\\s+|\\s+$"; ""))"' "$THREAT_MODEL"
     else
         echo "error: need python3 or jq to parse threat-model JSON" >&2
+        exit 1
+    fi
+}
+
+read_partial_evidence() {
+    local evidence_file="$1"
+    if [[ ! -f "$evidence_file" ]]; then
+        return 1
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$evidence_file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1]) as fh:
+    data = json.load(fh)
+
+print(
+    "\t".join([
+        str(data.get("status") or "").strip(),
+        str(data.get("closure_scope") or "").strip(),
+        str(data.get("deferred_follow_up") or "").strip(),
+        str(int(data.get("caught", 0))),
+        "1" if bool(data.get("needs_real_run", False)) else "0",
+    ])
+)
+PY
+    elif command -v jq >/dev/null 2>&1; then
+        jq -r '[
+          (.status // "" | gsub("^\\s+|\\s+$"; "")),
+          (.closure_scope // "" | gsub("^\\s+|\\s+$"; "")),
+          (.deferred_follow_up // "" | gsub("^\\s+|\\s+$"; "")),
+          ((.caught // 0) | tostring),
+          (if (.needs_real_run // false) then "1" else "0" end)
+        ] | @tsv' "$evidence_file"
+    else
+        echo "error: need python3 or jq to parse partial evidence JSON" >&2
         exit 1
     fi
 }
@@ -120,6 +159,36 @@ while IFS=$'\t' read -r id state deferred_to; do
             fi
             if sed 's://.*::' "$stub_partial" | grep -q 'unimplemented!'; then
                 uncovered+=("$id (coverage_state partial requires the closed sub-vector test body to be populated; $stub_partial still calls unimplemented!())")
+                continue
+            fi
+            evidence_partial="$EVIDENCE_DIR/$id.json"
+            if ! partial_record="$(read_partial_evidence "$evidence_partial" 2>/dev/null)"; then
+                uncovered+=("$id (coverage_state partial requires an evidence file at $evidence_partial)")
+                continue
+            fi
+            partial_status="$(printf '%s' "$partial_record" | cut -f1)"
+            partial_scope="$(printf '%s' "$partial_record" | cut -f2)"
+            partial_follow_up="$(printf '%s' "$partial_record" | cut -f3)"
+            partial_caught="$(printf '%s' "$partial_record" | cut -f4)"
+            partial_needs_real_run="$(printf '%s' "$partial_record" | cut -f5)"
+            if [[ "$partial_status" != "partial" ]]; then
+                uncovered+=("$id (coverage_state partial requires status=partial in $evidence_partial)")
+                continue
+            fi
+            if [[ -z "$partial_scope" ]]; then
+                uncovered+=("$id (coverage_state partial requires a non-empty closure_scope in $evidence_partial)")
+                continue
+            fi
+            if [[ -z "$partial_follow_up" ]]; then
+                uncovered+=("$id (coverage_state partial requires a non-empty deferred_follow_up in $evidence_partial)")
+                continue
+            fi
+            if [[ "${partial_caught:-0}" -lt 1 ]]; then
+                uncovered+=("$id (coverage_state partial requires caught >= 1 in $evidence_partial for the closed sub-vector)")
+                continue
+            fi
+            if [[ "$partial_needs_real_run" == "1" ]]; then
+                uncovered+=("$id (coverage_state partial cannot use a bootstrap placeholder; $evidence_partial has needs_real_run=true)")
                 continue
             fi
             partial+=("$id -> $deferred_to")
