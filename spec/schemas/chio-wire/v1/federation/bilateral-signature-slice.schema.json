@@ -95,11 +95,39 @@
         "receipt_canonical_json": {
           "type": "string",
           "minLength": 2
+        },
+        "capability_lease_ref": {
+          "$ref": "#/$defs/capabilityLeaseRef"
+        },
+        "policy_evaluation_summary": {
+          "$ref": "#/$defs/policyEvaluationSummary"
+        },
+        "governance_receipt_ref": {
+          "$ref": "#/$defs/governanceReceiptRef"
+        },
+        "consistency_anchor": {
+          "type": "string",
+          "minLength": 1
         }
       }
     }
   },
   "$defs": {
+    "hashRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg", "value"],
+      "properties": {
+        "alg": {
+          "type": "string",
+          "const": "sha256"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
     "kernelIdentity": {
       "type": "object",
       "additionalProperties": false,
@@ -116,6 +144,86 @@
         "alg": {
           "type": "string",
           "const": "ed25519"
+        }
+      }
+    },
+    "capabilityLeaseRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lease_id", "issuer", "expires_at_unix_ms"],
+      "properties": {
+        "lease_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issuer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expires_at_unix_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scope_digest": {
+          "$ref": "#/$defs/hashRecord"
+        }
+      }
+    },
+    "policyVerdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "policy_id", "policy_version"],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["allow", "deny"]
+        },
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale_code": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "policyEvaluationSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["server_a_verdict", "server_b_verdict"],
+      "properties": {
+        "server_a_verdict": {
+          "$ref": "#/$defs/policyVerdict"
+        },
+        "server_b_verdict": {
+          "$ref": "#/$defs/policyVerdict"
+        },
+        "joint_disposition": {
+          "type": "string",
+          "enum": ["allow", "deny"]
+        }
+      }
+    },
+    "governanceReceiptRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receipt_id", "kernel_id", "digest"],
+      "properties": {
+        "receipt_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kernel_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "$ref": "#/$defs/hashRecord"
         }
       }
     }

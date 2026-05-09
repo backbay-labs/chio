@@ -25,6 +25,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
@@ -32,8 +33,8 @@ use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use chio_federation::{
     execute_local_bilateral_invocation_fixture, receipt_subject_name, ActionClassKind,
-    AllowAllRevocationOracle, BilateralCoSigningProtocol, BilateralInvocationError,
-    BilateralPredicateExtensions, CapabilityLeaseRef, DenyListRevocationOracle, DsseEnvelope,
+    BilateralCoSigningProtocol, BilateralInvocationError, BilateralPredicateExtensions,
+    CapabilityLeaseRef, DemoAllowAllRevocationOracle, DenyListRevocationOracle, DsseEnvelope,
     GovernanceReceiptRef, GovernanceReceiptStore, HashRecord, InMemoryGovernanceReceiptStore,
     InMemoryLeaseRegistry, InMemoryReceiptStore, InProcessCoSigner, Keyid,
     LocalBilateralInvocationFixtureRequest, PeerPinSet, PinnedEpoch, PinnedPeer,
@@ -109,7 +110,7 @@ struct Setup {
     receipt_store: InMemoryReceiptStore,
     lease_registry: InMemoryLeaseRegistry,
     governance_store: InMemoryGovernanceReceiptStore,
-    revocation_oracle: AllowAllRevocationOracle,
+    revocation_oracle: DemoAllowAllRevocationOracle,
     peer_pin_set: PeerPinSet,
     cosigner: InProcessCoSigner,
 }
@@ -131,7 +132,7 @@ fn setup() -> Setup {
     });
 
     let governance_store = InMemoryGovernanceReceiptStore::new();
-    let revocation_oracle = AllowAllRevocationOracle;
+    let revocation_oracle = DemoAllowAllRevocationOracle;
 
     let mut peer_pin_set = PeerPinSet::new();
     peer_pin_set.insert(PinnedPeer {
@@ -261,6 +262,43 @@ fn happy_path_full_invocation_runs_end_to_end() {
     assert_eq!(outcome.verified.resolved_receipt.id, setup.receipt.id);
     // Both legacy and DSSE signature-slice artifacts populated.
     assert_eq!(outcome.artifacts.dsse_envelope.signatures.len(), 2);
+}
+
+#[test]
+fn full_fixture_statement_validates_against_signature_slice_schema() {
+    let setup = setup();
+    let outcome = run_default(&setup).unwrap_or_else(|e| panic!("happy path: {e:?}"));
+    let statement_bytes = BASE64_STANDARD
+        .decode(&outcome.artifacts.dsse_envelope.payload)
+        .unwrap();
+    let statement_json: serde_json::Value = serde_json::from_slice(&statement_bytes).unwrap();
+    assert!(
+        statement_json["predicate"]["capability_lease_ref"].is_object(),
+        "full fixture must emit verifier-required capability_lease_ref"
+    );
+    assert!(
+        statement_json["predicate"]["policy_evaluation_summary"].is_object(),
+        "full fixture must emit verifier-required policy_evaluation_summary"
+    );
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("crate lives under <repo>/crates/chio-conformance");
+    let schema_path = repo_root
+        .join("spec/schemas/chio-wire/v1/federation/bilateral-signature-slice.schema.json");
+    let schema_text = std::fs::read_to_string(&schema_path).expect("read profile schema");
+    let schema: serde_json::Value =
+        serde_json::from_str(&schema_text).expect("parse profile schema");
+    let validator = jsonschema::validator_for(&schema).expect("compile signature-slice schema");
+    let errors: Vec<String> = validator
+        .iter_errors(&statement_json)
+        .map(|err| err.to_string())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "full local fixture Statement must validate against registered schema: {errors:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------

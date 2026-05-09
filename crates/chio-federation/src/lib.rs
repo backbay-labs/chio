@@ -41,8 +41,8 @@ pub use bilateral_dsse::{
     PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
 };
 pub use bilateral_verifier::{
-    verify_bilateral_cosign_invocation, ActionClassKind, AllowAllRevocationOracle,
-    CapabilityLeaseRegistry, DenyListRevocationOracle, GovernanceReceiptStore,
+    verify_bilateral_cosign_invocation, ActionClassKind, CapabilityLeaseRegistry,
+    DemoAllowAllRevocationOracle, DenyListRevocationOracle, GovernanceReceiptStore,
     InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, PeerPinSet,
     PinnedEpoch, PinnedPeer, ReceiptStore, ResolvedGovernanceReceipt, ResolvedLease,
     RevocationOracle, UnknownActionClassPolicy, VerifiedBilateralCoSignInvocation, VerifierConfig,
