@@ -1311,6 +1311,7 @@ impl A2aAdapter {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for A2aAdapter {
     fn server_id(&self) -> &str {
         &self.manifest.server_id
@@ -1324,7 +1325,7 @@ impl ToolServerConnection for A2aAdapter {
             .collect()
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: Value,
@@ -1344,7 +1345,7 @@ impl ToolServerConnection for A2aAdapter {
         Ok(response)
     }
 
-    fn invoke_stream(
+    async fn invoke_stream(
         &self,
         tool_name: &str,
         arguments: Value,

@@ -1,0 +1,18 @@
+[package]
+name = "bilateral-invocation"
+description = "Bilateral co-signed invocation demo with a partial local verifier over the resulting DSSE signature-slice envelope"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+chio-core-types = { version = "0.1.0", path = "../../crates/chio-core-types" }
+chio-federation = { version = "0.1.0", path = "../../crates/chio-federation" }
+serde_json = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

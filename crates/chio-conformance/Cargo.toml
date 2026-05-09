@@ -51,6 +51,12 @@ path = "src/bin/chio_native_conformance_fixture.rs"
 # directories through `ConformanceRunOptions`.
 default = ["in-repo-fixtures"]
 in-repo-fixtures = []
+# Opt-in selective-disclosure conformance test. Forwards to
+# chio-federation's `bbs-stub` feature so the projection module compiles.
+# The feature is `bbs-stub`, not `zk`, because the implementation is a
+# SHA-256-commitment stub without any privacy-preserving cryptographic property; this is a
+# separate CI matrix entry, not the default build path.
+bbs-stub = ["chio-federation/bbs-stub"]
 
 [dependencies]
 chio-core = { package = "chio-core-types", version = "0.1.0", path = "../chio-core-types" }
@@ -100,8 +106,19 @@ chio-http-session = { version = "0.1.0", path = "../chio-http-session" }
 chio-guards = { version = "0.1.0", path = "../chio-guards" }
 chio-weights = { version = "0.1.0", path = "../chio-weights" }
 base64ct = { workspace = true, features = ["alloc"] }
+# Negative conformance fixture: `b4_bilateral_dsse_signature_slice.rs`
+# re-encodes signature bytes in base64 to forge a DSSE envelope;
+# chio-federation's DSSE envelope wire format is RFC 4648 standard
+# base64 (workspace-pinned `base64` crate).
+base64 = { workspace = true }
+# c5_selective_disclosure_stub.rs hex-decodes disclosed message bytes;
+# c2_bilateral_invocation_partial_verifier.rs hex-encodes canonical-JSON
+# SHA-256 governance receipt digests. Keep the workspace-pinned crate so
+# test and producer encodings match.
+hex = { workspace = true }
 coset = { workspace = true }
 jsonwebtoken = { workspace = true }
+jsonschema = { workspace = true }
 sha2 = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 # M05.P5.T3: threat-model coverage tests load curated adversarial
@@ -130,8 +147,8 @@ zeroize = "1"
 # trait surface; tiny_http stages the mock Rekor server.
 chio-anchor = { version = "0.1.0", path = "../chio-anchor" }
 async-trait = "0.1"
-# W2.3 PR #594 review (HIGH-3): negative conformance test
-# anchor_batch_witness_impersonation_rejected.rs forges a Rekor SET
+# Negative conformance test: anchor_batch_witness_impersonation_rejected.rs
+# forges a Rekor SET
 # under an attacker-held P-256 key to prove the verifier rejects it.
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem"] }
 rand = { workspace = true }

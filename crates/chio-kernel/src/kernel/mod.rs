@@ -49,6 +49,9 @@ pub const EMERGENCY_STOP_DENY_REASON: &str = "kernel emergency stop active";
 thread_local! {
     static RECEIPT_TENANT_ID_SCOPE: std::cell::RefCell<Option<String>> =
         const { std::cell::RefCell::new(None) };
+    static RECEIPT_FEDERATION_ADMISSION_SCOPE:
+        std::cell::RefCell<Option<ReceiptFederationAdmission>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// Guard returned by [`scope_receipt_tenant_id`]. Restores the previously
@@ -81,6 +84,42 @@ pub(crate) fn scope_receipt_tenant_id(tenant_id: Option<String>) -> ScopedReceip
 /// body picks up the tag without rewiring every builder signature.
 pub(crate) fn current_scoped_receipt_tenant_id() -> Option<String> {
     RECEIPT_TENANT_ID_SCOPE.with(|slot| slot.borrow().clone())
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ReceiptFederationAdmission {
+    pub remote_kernel_id: Option<String>,
+    pub receipt_version: KernelReceiptVersion,
+    pub peer: Option<chio_federation::FederationPeer>,
+}
+
+/// Guard returned by [`scope_receipt_federation_admission`]. Restores the
+/// previously active admission snapshot when dropped.
+pub(crate) struct ScopedReceiptFederationAdmission {
+    previous: Option<ReceiptFederationAdmission>,
+}
+
+impl Drop for ScopedReceiptFederationAdmission {
+    fn drop(&mut self) {
+        let previous = self.previous.take();
+        RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| {
+            *slot.borrow_mut() = previous;
+        });
+    }
+}
+
+/// Install the receipt-version and peer-key decision made at admission time.
+/// Persistence and federation cosigning must use this snapshot rather than
+/// re-resolving freshness after the tool has already produced side effects.
+pub(crate) fn scope_receipt_federation_admission(
+    admission: Option<ReceiptFederationAdmission>,
+) -> ScopedReceiptFederationAdmission {
+    let previous = RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| slot.replace(admission));
+    ScopedReceiptFederationAdmission { previous }
+}
+
+pub(crate) fn current_scoped_receipt_federation_admission() -> Option<ReceiptFederationAdmission> {
+    RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| slot.borrow().clone())
 }
 
 /// Extract tenant_id from a session's authenticated auth context.
@@ -177,6 +216,56 @@ impl LocalReceiptArtifact {
     }
 }
 
+/// Bridge a sync caller to the now-async tool-server dispatch path.
+///
+/// Calling `futures::executor::block_on` from inside a current-thread
+/// Tokio runtime parks the very thread that the runtime needs to drive
+/// its reactor / timer wheel, and any tool-server future that awaits
+/// Tokio I/O (the production case once `chio-mcp-remote` and
+/// `chio-mcp-adapter` are wired in) deadlocks silently. Tokio refuses
+/// to nest `block_on` calls precisely because of this, but
+/// `futures::executor::block_on` is a different executor that does not
+/// see the surrounding runtime, so the deadlock manifests as a hung
+/// tool call rather than a typed error.
+///
+/// We now explicitly distinguish three cases:
+///   1. Multi-thread runtime active: use `block_in_place` so Tokio can
+///      move the blocking work off the runtime threads. This is the
+///      production-supported path.
+///   2. Current-thread runtime active: refuse fail-closed with
+///      [`KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime`].
+///      Sync callers are expected to move the host to a multi-thread runtime
+///      or call an async-native kernel entrypoint instead of this bridge.
+///   3. No runtime active: drive the future with a non-tokio executor.
+///      No surrounding runtime exists to deadlock; tool-server impls
+///      that need Tokio I/O will simply fail when they try to spawn
+///      tasks, which is the correct, observable failure mode.
+fn block_on_async_tool_dispatch<F, T>(future: F) -> Result<T, KernelError>
+where
+    F: std::future::Future<Output = Result<T, KernelError>>,
+{
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(|| handle.block_on(future))
+        }
+        Ok(_handle) => {
+            // Current-thread runtime active. Bridging here would deadlock
+            // any tool-server future that awaits Tokio I/O because we
+            // would park the runtime's only worker thread. Surface a
+            // typed error so the caller sees the architectural
+            // incompatibility instead of a silent hang.
+            Err(KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime)
+        }
+        Err(_) => {
+            // No Tokio runtime active. The future cannot collide with a
+            // surrounding reactor; the non-tokio executor is the safe
+            // bridge. This is the path the in-process, compute-only
+            // tool servers used in unit tests rely on.
+            futures::executor::block_on(future)
+        }
+    }
+}
+
 fn extract_session_anchor_reference_from_metadata(
     metadata: Option<&serde_json::Value>,
 ) -> Option<chio_core::session::SessionAnchorReference> {
@@ -234,6 +323,29 @@ impl StructuredErrorReport {
             suggested_fix: suggested_fix.into(),
         }
     }
+}
+
+/// The current variants enumerate the spec-MUST cases that the kernel
+/// fails closed on. Additional variants may be added as further
+/// downgrade modes are wired into the spec; the enum is non-exhaustive
+/// from the public API perspective so a future variant does not break
+/// downstream `match` arms compiled against an older version.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum NegotiationDowngradeReason {
+    /// The dispatch named a federation peer, but no matching peer is
+    /// pinned fresh (the peer is either stale or has never been pinned).
+    /// Spec PROTOCOL.md section 6 lines 737-741 (post-B2 normative MUST)
+    /// requires the kernel to fail closed instead of silently downgrading
+    /// to a v1 receipt.
+    #[error(
+        "named federation peer {remote_kernel_id} is not pinned fresh \
+         (stale or never-pinned)"
+    )]
+    PeerNotPinnedFresh {
+        /// The `remote_kernel_id` carried on the request.
+        remote_kernel_id: String,
+    },
 }
 
 /// Errors that can occur during kernel operations.
@@ -396,6 +508,46 @@ pub enum KernelError {
     /// expired, or replayed).
     #[error("approval rejected: {0}")]
     ApprovalRejected(String),
+
+    /// receipt for a request that named a federation peer expected to
+    /// be v2-capable, but the peer-pin freshness check ruled the
+    /// negotiated v2 receipt unattainable. Per PROTOCOL.md section 6
+    /// rather than silently downgrade to a v1 receipt.
+    ///
+    /// Enforcement site:
+    /// `crates/chio-kernel/src/kernel/mod.rs:kernel_receipt_version_for_remote`.
+    #[error(
+        "receipt negotiation downgrade rejected: expected {expected:?}, \
+         actual {actual:?}, reason: {reason}"
+    )]
+    ReceiptNegotiationDowngrade {
+        /// The receipt version the kernel would prefer for this dispatch
+        /// (typically `V2BodyHash`).
+        expected: KernelReceiptVersion,
+        /// The receipt version the legacy warn-and-downgrade path would
+        /// have selected (typically `V1Legacy`).
+        actual: KernelReceiptVersion,
+        /// Structured reason describing why the v2 negotiation cannot be
+        /// honored.
+        reason: NegotiationDowngradeReason,
+    },
+
+    /// The sync `evaluate_tool_call` path was invoked from a context
+    /// where the only available Tokio runtime is a current-thread
+    /// runtime. The async tool-dispatch path cannot be safely driven
+    /// on a current-thread runtime: bridging via
+    /// `futures::executor::block_on` parks the caller's thread, and
+    /// Tokio I/O timers / reactor wakers cannot progress on the same
+    /// parked thread. Returning a typed error rather than deadlocking
+    /// lets callers move the dispatch onto a multi-thread runtime.
+    /// The public async `evaluate_tool_call` path is still backed by the
+    /// blocking evaluator on this branch, so it is not a current-thread
+    /// escape hatch.
+    #[error(
+        "sync tool-dispatch bridge cannot drive an async tool server on a current-thread \
+         Tokio runtime; switch the host to a multi-thread Tokio runtime"
+    )]
+    SyncBridgeIncompatibleWithCurrentThreadRuntime,
 }
 
 impl KernelError {
@@ -660,6 +812,25 @@ impl KernelError {
                 "CHIO-KERNEL-APPROVAL-REJECTED",
                 serde_json::json!({ "reason": reason }),
                 "Obtain a fresh approval token bound to this exact request and retry once a human approver has signed it.",
+            ),
+            Self::ReceiptNegotiationDowngrade {
+                expected,
+                actual,
+                reason,
+            } => self.report_with_context(
+                "CHIO-KERNEL-RECEIPT-NEGOTIATION-DOWNGRADE",
+                serde_json::json!({
+                    "expected": format!("{expected:?}"),
+                    "actual": format!("{actual:?}"),
+                    "reason": reason.to_string(),
+                }),
+                "Re-pin the named federation peer with a fresh handshake before retrying, \
+                 or route the request without naming a remote so the kernel-level default applies.",
+            ),
+            Self::SyncBridgeIncompatibleWithCurrentThreadRuntime => self.report_with_context(
+                "CHIO-KERNEL-SYNC-BRIDGE-INCOMPATIBLE",
+                serde_json::json!({}),
+                "Move the host process to a multi-thread Tokio runtime so block_in_place can drive async tool dispatch. The public async evaluate_tool_call path is still backed by the blocking evaluator on this branch and is not a current-thread runtime workaround.",
             ),
         }
     }
@@ -1036,15 +1207,6 @@ pub struct ChioKernel {
     /// locally signing the receipt to obtain the origin kernel's
     /// co-signature. Absent in non-federated deployments.
     federation_peers: ArcSwap<HashMap<String, chio_federation::FederationPeer>>,
-    /// Wave 1.1 chain-binding trust-root registry. Maps a trusted
-    /// capability issuer's public key (hex form) to the SHA-256 hex of
-    /// its root authority scope. The hosted verifier consults this map
-    /// when a v2 capability token is presented: the token's
-    /// `attenuation_proof.parent_scope_hash` MUST match either the
-    /// registered root (direct issue) or the predecessor delegation
-    /// link's `scope_hash` (delegated). Issuers absent from the map
-    /// fail-closed for v2 tokens; v1 tokens are unaffected.
-    ///
     /// `ArcSwap` so trust-root rotations can land without holding a
     /// kernel mutex. Hex-keyed because `chio_core::PublicKey` does not
     /// implement `Hash`.
@@ -1088,44 +1250,19 @@ pub struct ChioKernel {
     /// shape is feature-flag agnostic; consultation is gated by
     /// `cfg(feature = "delegation_v2")` on the read path.
     revocation_view: Option<std::sync::Arc<chio_kernel_core::RevocationView>>,
-    /// W1.2 sibling-sum budget registry. Tracks admitted child shares
-    /// against each parent capability so a delegated chain cannot mint
-    /// two children whose `budget_share_bps` jointly exceed the parent's
-    /// own share. Wrapped in `Mutex` because the registry interface
-    /// takes `&mut dyn BudgetRegistry`; contention is negligible
-    /// because the lock is held only for the duration of one
-    /// `try_admit_child` call inside the verifier.
     budget_registry: Mutex<chio_kernel_core::InMemoryBudgetRegistry>,
-    /// W2.1 receipt-version default. When `true`, the kernel mints a
-    /// `ChioReceiptV2` body_hash-addressed receipt alongside the v1
-    /// receipt that callers continue to receive in the `ToolCallResponse`.
-    /// The legacy UUIDv7 alias on the v2 receipt is set to the v1
-    /// receipt's id; replay identity is exclusively `body_hash`.
-    ///
     /// Defaults to `true` so a freshly-constructed kernel that has not
     /// yet observed peer feature bitsets still mints v2 receipts.
-    /// Operators that need the previous v1-only behavior call
-    /// [`ChioKernel::set_receipt_v2_default`] with `false`.
+    /// Release load-bearing paths must leave this enabled. Operators
+    /// that need the previous v1-only behavior may call
+    /// [`ChioKernel::set_receipt_v2_default`] with `false`, but that is
+    /// a compatibility downgrade only and named v2 peers still fail
+    /// closed through negotiation.
     kernel_receipt_v2_default: AtomicBool,
-    /// W2.1 in-memory v2 replay set keyed exclusively on `body_hash`.
-    /// The legacy UUIDv7 alias is non-authoritative and never consulted
-    /// by `insert`. Wrapped in `Mutex` because the type is small and
-    /// contention is bounded by the receipt mint rate; persistent
-    /// stores additionally enforce uniqueness on the `body_hash`
-    /// column.
     receipt_v2_replay: Mutex<chio_core::receipt::ReceiptV2ReplaySet>,
-    /// W2.1 monotonic counter that supplies the `dag_ordinal` field on
-    /// every minted v2 receipt. Initialized at zero on kernel start;
-    /// rotation across kernel restarts is fine because the v2 chain_id
-    /// is the federation kernel id, which uniquely scopes ordinals.
     receipt_v2_dag_ordinal: AtomicU64,
 }
 
-/// W2.1 per-session receipt-version selector populated from the
-/// negotiation handshake at receipt-mint time. The kernel branches on
-/// this value when constructing a receipt: `V1Legacy` mints only the
-/// existing v1 UUIDv7 receipt while `V2BodyHash` additionally mints a
-/// signed `ChioReceiptV2` and persists it in the v2 replay store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KernelReceiptVersion {
     /// Peer is v1-only or no negotiation profile is in scope: emit
@@ -1544,57 +1681,112 @@ impl ChioKernel {
         }
     }
 
-    /// W2.1: configure whether this kernel defaults to minting
-    /// body_hash-addressed v2 receipts when no per-session peer profile
-    /// is in scope. Tests and v1-only deployments can flip this off so
-    /// the kernel falls back to UUIDv7-only minting.
+    /// Set the local no-profile receipt default.
+    ///
+    /// This is not a release safety valve for v2 persistence. Negotiated
+    /// v2 peers still require v2 receipts, and persistence failure on a
+    /// v2-minting path aborts before the legacy fallback is appended.
     pub fn set_receipt_v2_default(&self, accepts_v2: bool) {
         self.kernel_receipt_v2_default
             .store(accepts_v2, Ordering::SeqCst);
     }
 
-    /// W2.1: read the kernel-level receipt-version default.
     #[must_use]
     pub fn receipt_v2_default(&self) -> bool {
         self.kernel_receipt_v2_default.load(Ordering::SeqCst)
     }
 
-    /// W2.1: resolve the [`KernelReceiptVersion`] for a request.
-    ///
+    pub(crate) fn ensure_chio_receipt_v2_persistence_ready(&self) -> Result<(), KernelError> {
+        let Some(store) = self.receipt_store.as_ref() else {
+            return Err(KernelError::Internal(
+                "v2 receipt persistence unavailable: no durable v2-capable receipt store configured"
+                    .to_string(),
+            ));
+        };
+        if !store.supports_chio_receipt_v2() {
+            return Err(KernelError::Internal(
+                "v2 receipt persistence unavailable: configured receipt store is not v2-capable"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Resolve and snapshot the receipt-version decision at the admission
+    /// boundary. The returned snapshot must be carried through receipt
+    /// persistence and federation cosigning; persistence must not re-resolve
+    /// peer freshness after the tool has already executed.
+    pub(crate) fn kernel_receipt_admission_for_remote(
+        &self,
+        remote_kernel_id: Option<&str>,
+        now: u64,
+    ) -> Result<ReceiptFederationAdmission, KernelError> {
+        if let Some(remote) = remote_kernel_id {
+            if let Some(peer) = self.federation_peer(remote, now) {
+                let receipt_version = KernelReceiptVersion::from_capabilities(&peer.capabilities);
+                return Ok(ReceiptFederationAdmission {
+                    remote_kernel_id: Some(remote.to_string()),
+                    receipt_version,
+                    peer: Some(peer),
+                });
+            }
+            // PROTOCOL.md section 6 (normative MUST): when a federation
+            // peer is named but is not pinned fresh, the kernel MUST
+            // reject the dispatch rather than warn-and-downgrade to v1.
+            //
+            // `expected` reports the kernel's CONFIGURED default, not a
+            // hardcoded `V2BodyHash`. On a v1-default kernel both
+            // `expected` and `actual` are `V1Legacy`, which is the
+            // accurate diagnostic - the kernel still rejects the
+            // dispatch because the peer was never pinned fresh, and
+            // operator observability sees the truthful version pair
+            // instead of a fictitious V2 expectation.
+            let expected = if self.receipt_v2_default() {
+                KernelReceiptVersion::V2BodyHash
+            } else {
+                KernelReceiptVersion::V1Legacy
+            };
+            return Err(KernelError::ReceiptNegotiationDowngrade {
+                expected,
+                actual: KernelReceiptVersion::V1Legacy,
+                reason: NegotiationDowngradeReason::PeerNotPinnedFresh {
+                    remote_kernel_id: remote.to_string(),
+                },
+            });
+        }
+        let receipt_version = if self.receipt_v2_default() {
+            KernelReceiptVersion::V2BodyHash
+        } else {
+            KernelReceiptVersion::V1Legacy
+        };
+        Ok(ReceiptFederationAdmission {
+            remote_kernel_id: None,
+            receipt_version,
+            peer: None,
+        })
+    }
+
     /// The resolution order is:
-    /// 1. If a federated peer is named on the request, the peer's
-    ///    negotiated `accepts_receipt_v2` feature flag wins.
-    /// 2. Otherwise, the kernel-level default
-    ///    (`kernel_receipt_v2_default`) supplies the answer.
+    /// 1. If a federated peer is named on the request and a matching
+    ///    peer is pinned fresh, the peer's negotiated
+    ///    `accepts_receipt_v2` feature flag wins.
+    /// 2. If a federated peer is named but no matching peer is pinned
+    ///    fresh (stale or never-pinned), the kernel **fails closed**
+    ///    with [`KernelError::ReceiptNegotiationDowngrade`]. PROTOCOL.md
+    ///    section 6 (normative MUST) requires the kernel to reject the
+    ///    dispatch rather than silently downgrade a v2-expected request
+    ///    to v1.
+    /// 3. Otherwise (no remote named), the kernel-level default
+    ///    ([`Self::receipt_v2_default`]) supplies the answer.
     pub fn kernel_receipt_version_for_remote(
         &self,
         remote_kernel_id: Option<&str>,
         now: u64,
-    ) -> KernelReceiptVersion {
-        if let Some(remote) = remote_kernel_id {
-            if let Some(peer) = self.federation_peer(remote, now) {
-                return KernelReceiptVersion::from_capabilities(&peer.capabilities);
-            }
-            // Named peer that isn't pinned fresh: fall back to v1 with
-            // a warning log so operators see the negotiation downgrade.
-            tracing::warn!(
-                target: "chio_kernel.receipt_v2",
-                remote_kernel_id = remote,
-                "v2 receipt minting falling back to v1 because federation peer is not pinned fresh"
-            );
-            return KernelReceiptVersion::V1Legacy;
-        }
-        if self.receipt_v2_default() {
-            KernelReceiptVersion::V2BodyHash
-        } else {
-            KernelReceiptVersion::V1Legacy
-        }
+    ) -> Result<KernelReceiptVersion, KernelError> {
+        self.kernel_receipt_admission_for_remote(remote_kernel_id, now)
+            .map(|admission| admission.receipt_version)
     }
 
-    /// W2.1: probe the in-memory v2 replay set for a body_hash. The
-    /// persistent store may also contain the body_hash; both are
-    /// consulted by [`ChioKernel::record_chio_receipt_v2`] before a
-    /// new v2 receipt is admitted.
     pub fn contains_chio_receipt_v2_body_hash(&self, body_hash: &str) -> bool {
         match self.receipt_v2_replay.lock() {
             Ok(replay) => replay.contains_body_hash(body_hash),
@@ -1602,11 +1794,6 @@ impl ChioKernel {
         }
     }
 
-    /// W2.1: snapshot a v2 receipt body_hash for tooling lookups
-    /// (returns true if present in either the in-memory replay set or
-    /// the persistent store). Replay-rejection in the mint path uses
-    /// [`Self::record_chio_receipt_v2`] which performs the
-    /// fail-closed insert.
     pub fn chio_receipt_v2_seen(&self, body_hash: &str) -> Result<bool, KernelError> {
         if self.contains_chio_receipt_v2_body_hash(body_hash) {
             return Ok(true);
@@ -1623,8 +1810,6 @@ impl ChioKernel {
         Ok(false)
     }
 
-    /// W2.1: record a v2 receipt fail-closed.
-    ///
     /// Inserts into the in-memory replay set first; replay rejection
     /// short-circuits the persistent write so a tampered alias on a
     /// previously-seen body_hash cannot resurface as a fresh receipt.
@@ -1635,6 +1820,7 @@ impl ChioKernel {
         receipt: &chio_core::receipt::ChioReceiptV2,
         legacy_receipt_id_alias: Option<&str>,
     ) -> Result<(), KernelError> {
+        self.ensure_chio_receipt_v2_persistence_ready()?;
         let inserted = {
             let mut replay = match self.receipt_v2_replay.lock() {
                 Ok(guard) => guard,
@@ -1679,8 +1865,6 @@ impl ChioKernel {
         Ok(())
     }
 
-    /// W2.1: monotonic dag_ordinal allocator. Increments on every
-    /// admitted v2 receipt minted by this kernel.
     pub(crate) fn next_v2_dag_ordinal(&self) -> u64 {
         self.receipt_v2_dag_ordinal.fetch_add(1, Ordering::SeqCst)
     }
@@ -1931,14 +2115,6 @@ impl ChioKernel {
         self
     }
 
-    /// Wave 1.1 chain-binding trust-root registration. Each entry maps a
-    /// trusted capability issuer's public key to the canonical-JSON
-    /// SHA-256 hex of that issuer's root authority scope. The verifier
-    /// uses this to bind v2 `attenuation_proof.parent_scope_hash` to a
-    /// verifier-known authority hash on direct-issue tokens, closing
-    /// the W1.1 P0 soundness gap. Issuers without an entry fail-closed
-    /// for v2 tokens; v1 tokens remain unaffected.
-    ///
     /// Builder-style so deployments can chain
     /// `.with_capability_trust_roots(...)` onto `ChioKernel::new(config)`.
     #[must_use]
@@ -2003,14 +2179,6 @@ impl ChioKernel {
         }
     }
 
-    /// Resolve the capability negotiation profile that should gate the
-    /// W1.3 schema-ceiling check on the hot path. When no remote
-    /// federation peer is in scope (the most common case for a hosted
-    /// kernel evaluating a local capability), the kernel's own v2
-    /// profile applies: v2 tokens are admitted, v1 tokens are admitted.
-    /// When a federation peer is identified by `remote_kernel_id`, the
-    /// peer's most recent negotiated profile is returned, which may
-    /// downgrade the ceiling to v1.
     pub(crate) fn capability_negotiation_for_remote(
         &self,
         remote_kernel_id: Option<&str>,
@@ -2094,20 +2262,23 @@ impl ChioKernel {
     /// Phase 20.3 post-sign hook. Invoked immediately after
     /// [`Self::build_and_sign_receipt`] so the local (tool-host)
     /// signature has already landed in the `ChioReceipt`. When
-    /// `federated_origin_kernel_id` is set and the peer is pinned fresh,
-    /// this dispatches the receipt to the cosigner, assembles a
-    /// [`chio_federation::DualSignedReceipt`], and stashes it for
-    /// retrieval via [`Self::dual_signed_receipt`].
+    /// `federated_origin_kernel_id` is set and the admission-time peer
+    /// snapshot is available, this dispatches the receipt to the
+    /// cosigner, assembles a [`chio_federation::DualSignedReceipt`],
+    /// and stashes it for retrieval via [`Self::dual_signed_receipt`].
     ///
-    /// Fail-closed: any error from the peer lookup or the cosigner is
+    /// Fail-closed: any error from peer resolution or the cosigner is
     /// surfaced as a [`KernelError::Internal`] so operators see the
     /// federation drift rather than silently shipping a receipt without
-    /// the remote signature. Non-federated requests (`None` origin) are
-    /// a no-op.
+    /// the remote signature. Production evaluate paths pass the
+    /// admission-time snapshot; legacy direct record callers still get a
+    /// fresh-peer fallback. Non-federated requests (`None` origin) are a
+    /// no-op.
     pub(crate) fn apply_federation_cosign(
         &self,
         request: &crate::runtime::ToolCallRequest,
         receipt: &chio_core::receipt::ChioReceipt,
+        admitted_peer: Option<&chio_federation::FederationPeer>,
     ) -> Result<(), KernelError> {
         let Some(origin_kernel_id) = request.federated_origin_kernel_id.as_ref() else {
             return Ok(());
@@ -2118,11 +2289,16 @@ impl ChioKernel {
                 request_id = request.request_id,
             )));
         };
-        let now = current_unix_timestamp();
-        let Some(peer) = self.federation_peer(origin_kernel_id, now) else {
-            return Err(KernelError::Internal(format!(
-                "federation peer {origin_kernel_id} is not pinned or has gone stale"
-            )));
+        let peer = match admitted_peer {
+            Some(peer) if peer.kernel_id == *origin_kernel_id => peer.clone(),
+            _ => {
+                let now = current_unix_timestamp();
+                self.federation_peer(origin_kernel_id, now).ok_or_else(|| {
+                    KernelError::Internal(format!(
+                        "federation peer {origin_kernel_id} is not pinned fresh and no admission-time peer snapshot is in scope"
+                    ))
+                })?
+            }
         };
 
         let local_kernel_id = self.federation_local_kernel_id();
@@ -2155,7 +2331,6 @@ impl ChioKernel {
     /// Phase 1.4 acceptance. When a future revision adds `revoke_all`,
     /// this method should call it; until then, capability revocation is
     /// delegated to natural expiration.
-    ///
     pub fn emergency_stop(&self, reason: &str) -> Result<(), KernelError> {
         let now = current_unix_timestamp();
         // Record the timestamp first so any concurrent reader that observes
@@ -2436,6 +2611,21 @@ impl ChioKernel {
 
     /// Open a new logical session for an agent and bind any capabilities that
     /// were issued during setup to that session.
+    ///
+    /// Design note: unlike the hosted-tool and nested-flow dispatch
+    /// paths, this surface deliberately does NOT call
+    /// [`Self::admit_capability_budget`] after the pre-admit verifier
+    /// pass. Read-only resource/prompt operations
+    /// (`subscribe_resource`, `read_resource`, `get_prompt`,
+    /// `complete`) are not economic actions: they neither consume the
+    /// caller's per-tool invocation budget nor reserve the caller's
+    /// share against its parent in the sibling-sum registry.
+    /// PROTOCOL.md section "Single-entry capability verifier" already
+    /// authorises this split as MAY: the MUST is that every surface
+    /// traverses `verify_capability_full` exactly once (which this
+    /// helper does); the authoritative admit phase is reserved for
+    /// surfaces that actually execute a side-effecting action against
+    /// the budget.
     fn validate_non_tool_capability(
         &self,
         capability: &CapabilityToken,
@@ -2449,9 +2639,9 @@ impl ChioKernel {
                 EMERGENCY_STOP_DENY_REASON.to_string(),
             ));
         }
-        self.verify_capability_signature(capability)
-            .map_err(|_| KernelError::InvalidSignature)?;
-        check_time_bounds(capability, current_unix_timestamp())?;
+        let now = current_unix_timestamp();
+        self.verify_capability_full_pre_admit(capability, None, now)
+            .map_err(KernelError::GuardDenied)?;
         self.check_revocation(capability)?;
         self.validate_delegation_admission(capability)?;
         check_subject_binding(capability, agent_id)?;
@@ -2478,12 +2668,8 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
     ) -> Result<ToolCallResponse, KernelError> {
-        // Route through the ToolEvaluator trait so async-native step bodies
-        // can be swapped in without touching this call site. The default
-        // BlockingToolEvaluator delegates to the existing sync pipeline; semantics
-        // are byte-identical.
-        use crate::kernel::evaluator::{BlockingToolEvaluator, ToolEvaluator};
-        BlockingToolEvaluator.evaluate(self, request).await
+        self.evaluate_tool_call_async_with_session_context(request, None, None, None)
+            .await
     }
 
     pub async fn evaluate_tool_call_with_metadata(
@@ -2491,9 +2677,7 @@ impl ChioKernel {
         request: &ToolCallRequest,
         extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
-        use crate::kernel::evaluator::{BlockingToolEvaluator, ToolEvaluator};
-        BlockingToolEvaluator
-            .evaluate_with_metadata(self, request, extra_metadata)
+        self.evaluate_tool_call_async_with_session_context(request, None, extra_metadata, None)
             .await
     }
 
@@ -2530,6 +2714,7 @@ impl ChioKernel {
     /// `evaluate_tool_call_sync_with_session_roots` to
     /// `evaluate_tool_call_sync_inner` and marked it `#[doc(hidden)]`; this
     /// shim continues to expose the crate-internal sync surface.
+    #[allow(dead_code)]
     pub(crate) fn evaluate_tool_call_sync(
         &self,
         request: &ToolCallRequest,
@@ -2700,14 +2885,26 @@ impl ChioKernel {
         let now = current_unix_timestamp();
         let cap = &req.planner_capability;
 
+        // Design note: plan-evaluation is a PREVIEW path -- it answers
+        // "if this plan ran, would each step be allowed?" without
+        // dispatching the underlying tool calls. Calling
+        // [`Self::admit_capability_budget`] here would consume
+        // sibling-sum budget for plans that may never execute, which
+        // is the opposite of preview semantics. The pre-admit verifier
+        // pass below covers the spec MUST (every surface traverses
+        // `verify_capability_full` exactly once); the authoritative
+        // admit phase is reserved for the actual hosted-tool /
+        // nested-flow dispatch paths in
+        // `evaluate_tool_call_*_with_session_context`.
+        //
         // Capability-wide checks repeat per-step so a failure here is
         // still reflected in every step's verdict, keeping the per-step
         // output self-contained.
-        if let Err(reason) = self.verify_capability_signature(cap) {
+        if let Err(reason) = self.verify_capability_full_pre_admit(cap, None, now) {
             return StepVerdict {
                 step_index: index,
                 verdict: StepVerdictKind::Denied,
-                reason: Some(format!("signature verification failed: {reason}")),
+                reason: Some(format!("capability verification failed: {reason}")),
                 guard: None,
             };
         }
@@ -2847,6 +3044,21 @@ impl ChioKernel {
         extra_metadata: Option<serde_json::Value>,
         session_id: Option<&SessionId>,
     ) -> Result<ToolCallResponse, KernelError> {
+        block_on_async_tool_dispatch(self.evaluate_tool_call_async_with_session_context(
+            request,
+            session_filesystem_roots,
+            extra_metadata,
+            session_id,
+        ))
+    }
+
+    async fn evaluate_tool_call_async_with_session_context(
+        &self,
+        request: &ToolCallRequest,
+        session_filesystem_roots: Option<&[String]>,
+        extra_metadata: Option<serde_json::Value>,
+        session_id: Option<&SessionId>,
+    ) -> Result<ToolCallResponse, KernelError> {
         // Resolve tenant_id from the session's enterprise identity context
         // (if any) and install it for the remainder of this evaluation so
         // every receipt `build_and_sign_receipt` signs picks up the tag.
@@ -2855,9 +3067,59 @@ impl ChioKernel {
 
         let now = current_unix_timestamp();
 
+        // Receipt-version negotiation is a TRUST-BOUNDARY admission check
+        // that must run BEFORE any dispatch path AND before the
+        // emergency-stop deny helper. The admission snapshot is scoped for
+        // every receipt builder below so persistence and federation cosign
+        // use the peer/version/key material admitted before side effects.
+        // PROTOCOL.md section 6 normative MUST.
+        let receipt_admission = match self
+            .kernel_receipt_admission_for_remote(request.federated_origin_kernel_id.as_deref(), now)
+        {
+            Ok(admission) => admission,
+            Err(error) => {
+                let msg = error.to_string();
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&msg),
+                    "receipt-version negotiation failed pre-dispatch"
+                );
+                return self.build_negotiation_failclosed_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
+                );
+            }
+        };
+        let receipt_mints_v2 = receipt_admission.receipt_version.mints_v2();
+        let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
+
+        if receipt_mints_v2 {
+            if let Err(error) = self.ensure_chio_receipt_v2_persistence_ready() {
+                let msg = error.to_string();
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&msg),
+                    "receipt v2 persistence unavailable pre-dispatch"
+                );
+                return self.build_receipt_v2_persistence_failclosed_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
+                );
+            }
+        }
+
         // Phase 1.4 emergency kill switch: every evaluate path checks the flag
         // BEFORE capability validation, guard evaluation, or budget mutation so
-        // a stopped kernel cannot be coerced into doing any work.
+        // a stopped kernel cannot be coerced into doing any work. The
+        // negotiation gate above means the federation lookup inside
+        // `build_deny_response_with_metadata` is now safe to run for
+        // emergency-stopped requests.
         if self.is_emergency_stopped() {
             warn!(
                 request_id = %request.request_id,
@@ -2883,19 +3145,13 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
-        // Wave 1.5 hot-path wiring: route through the full verifier so
-        // hosted requests enforce the W1.3 schema ceiling and W1.1
-        // chain-binding feature negotiation from the pinned federation peer.
-        // The sibling-sum registry mutation is still deferred below so
-        // earlier denial paths do not consume the parent's share.
-        //
-        // Round-3 codex P2 fix: signature is verified first (no budget
-        // mutation); the actual `admit_capability_budget` call is
-        // deferred until all subsequent checks (time, revocation,
-        // delegation-admission, subject, scope, guards) have passed.
-        // Otherwise a denied call would still consume the parent's
-        // share, starving later valid siblings.
-        if let Err(reason) = self.verify_capability_full_without_budget_admit(
+        // Signature is verified first (no budget mutation); the actual
+        // `admit_capability_budget` call is deferred until all
+        // subsequent checks (time, revocation, delegation-admission,
+        // subject, scope, guards) have passed. Otherwise a denied call
+        // would still consume the parent's share, starving later valid
+        // siblings.
+        if let Err(reason) = self.verify_capability_full_pre_admit(
             cap,
             request.federated_origin_kernel_id.as_deref(),
             now,
@@ -3165,11 +3421,6 @@ impl ChioKernel {
             );
         }
 
-        // Round-3 codex P2 fix: now that signature, time, revocation,
-        // delegation-admission, subject, scope, and guards have all
-        // passed, commit the W1.2 sibling-sum budget admission. Doing
-        // this here (rather than upfront with signature verification)
-        // means a denied call no longer consumes the parent's share.
         if let Err(reason) = self.admit_capability_budget(cap) {
             let msg = format!("sibling-sum budget admission failed: {reason}");
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
@@ -3238,7 +3489,8 @@ impl ChioKernel {
         let tool_started_at = Instant::now();
         let has_monetary = charge_result.is_some();
         let (tool_output, reported_cost) = match self
-            .dispatch_tool_call_with_cost_sync(request, has_monetary)
+            .dispatch_tool_call_with_cost(request, has_monetary)
+            .await
         {
             Ok(result) => result,
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
@@ -3363,6 +3615,19 @@ impl ChioKernel {
         request: &ToolCallRequest,
         client: &mut C,
     ) -> Result<ToolCallResponse, KernelError> {
+        block_on_async_tool_dispatch(self.evaluate_tool_call_with_nested_flow_client_async(
+            parent_context,
+            request,
+            client,
+        ))
+    }
+
+    async fn evaluate_tool_call_with_nested_flow_client_async<C: NestedFlowClient>(
+        &self,
+        parent_context: &OperationContext,
+        request: &ToolCallRequest,
+        client: &mut C,
+    ) -> Result<ToolCallResponse, KernelError> {
         // Phase 1.5: install the parent session's tenant_id so every
         // receipt signed while this nested-flow evaluation is in flight
         // carries the correct tenant tag.
@@ -3370,6 +3635,43 @@ impl ChioKernel {
         let _tenant_scope = scope_receipt_tenant_id(tenant_id);
 
         let now = current_unix_timestamp();
+
+        // The pre-dispatch receipt-version admission gate must run on the
+        // nested-flow path too. The admission snapshot is scoped for the
+        // receipt builders below so a peer that expires during nested tool
+        // execution does not change the already-admitted version or key.
+        let receipt_admission = match self
+            .kernel_receipt_admission_for_remote(request.federated_origin_kernel_id.as_deref(), now)
+        {
+            Ok(admission) => admission,
+            Err(error) => {
+                let msg = error.to_string();
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&msg),
+                    "receipt-version negotiation failed pre-dispatch (nested flow)"
+                );
+                return self.build_negotiation_failclosed_deny_response_with_metadata(
+                    request, &msg, now, None, None,
+                );
+            }
+        };
+        let receipt_mints_v2 = receipt_admission.receipt_version.mints_v2();
+        let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
+
+        if receipt_mints_v2 {
+            if let Err(error) = self.ensure_chio_receipt_v2_persistence_ready() {
+                let msg = error.to_string();
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&msg),
+                    "receipt v2 persistence unavailable pre-dispatch (nested flow)"
+                );
+                return self.build_receipt_v2_persistence_failclosed_deny_response_with_metadata(
+                    request, &msg, now, None, None,
+                );
+            }
+        }
 
         // Phase 1.4 emergency kill switch: the nested-flow path also deny-fast
         // so sampling/elicitation-bearing tool calls cannot slip past while
@@ -3393,14 +3695,10 @@ impl ChioKernel {
 
         let cap = &request.capability;
 
-        // Wave 1.5 hot-path wiring: route through the full verifier so
-        // nested hosted requests enforce the same W1.3 schema ceiling and
-        // W1.1 chain-binding feature negotiation as the main hosted path.
-        //
-        // Round-3 codex P2 fix: signature first; the budget admission
-        // is deferred until after all subsequent checks pass, so a
-        // denied call no longer consumes the parent's share.
-        if let Err(reason) = self.verify_capability_full_without_budget_admit(
+        // Signature first; the budget admission is deferred until
+        // after all subsequent checks pass, so a denied call no longer
+        // consumes the parent's share.
+        if let Err(reason) = self.verify_capability_full_pre_admit(
             cap,
             request.federated_origin_kernel_id.as_deref(),
             now,
@@ -3593,9 +3891,6 @@ impl ChioKernel {
             return self.build_deny_response(request, &msg, now, Some(matched_grant_index));
         }
 
-        // Round-3 codex P2 fix: nested-flow path also defers W1.2 budget
-        // admission until after all preceding checks pass, mirroring the
-        // main hosted hot path.
         if let Err(reason) = self.admit_capability_budget(cap) {
             let msg = format!("sibling-sum budget admission failed: {reason}");
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
@@ -3666,20 +3961,23 @@ impl ChioKernel {
                 client,
             };
 
-            match server.invoke_stream(
-                &request.tool_name,
-                request.arguments.clone(),
-                Some(&mut bridge),
-            ) {
-                Ok(Some(stream)) => Ok(ToolServerOutput::Stream(stream)),
-                Ok(None) => match server.invoke(
+            match server
+                .invoke_stream(
                     &request.tool_name,
                     request.arguments.clone(),
                     Some(&mut bridge),
-                ) {
-                    Ok(result) => Ok(ToolServerOutput::Value(result)),
-                    Err(error) => Err(error),
-                },
+                )
+                .await
+            {
+                Ok(Some(stream)) => Ok(ToolServerOutput::Stream(stream)),
+                Ok(None) => server
+                    .invoke(
+                        &request.tool_name,
+                        request.arguments.clone(),
+                        Some(&mut bridge),
+                    )
+                    .await
+                    .map(ToolServerOutput::Value),
                 Err(error) => Err(error),
             }
         };
@@ -3867,19 +4165,41 @@ impl ChioKernel {
         self.post_invocation_pipeline.len()
     }
 
-    pub fn drain_tool_server_events(&self) -> Vec<ToolServerEvent> {
+    pub async fn drain_tool_server_events_async(
+        &self,
+    ) -> Result<Vec<ToolServerEvent>, KernelError> {
         let mut events = Vec::new();
         for (server_id, server) in &self.tool_servers {
-            match server.drain_events() {
+            match server.drain_events().await {
                 Ok(mut server_events) => events.append(&mut server_events),
-                Err(error) => warn!(
-                    server_id = %server_id,
-                    reason = %redacted!(&error),
-                    "failed to drain tool server events"
-                ),
+                Err(error) => {
+                    warn!(
+                        server_id = %server_id,
+                        reason = %redacted!(&error),
+                        "failed to drain tool server events"
+                    );
+                    return Err(error);
+                }
             }
         }
-        events
+        Ok(events)
+    }
+
+    pub fn try_drain_tool_server_events(&self) -> Result<Vec<ToolServerEvent>, KernelError> {
+        block_on_async_tool_dispatch(self.drain_tool_server_events_async())
+    }
+
+    pub fn drain_tool_server_events(&self) -> Vec<ToolServerEvent> {
+        match self.try_drain_tool_server_events() {
+            Ok(events) => events,
+            Err(error) => {
+                warn!(
+                    reason = %redacted!(&error),
+                    "failed to drain tool server events"
+                );
+                Vec::new()
+            }
+        }
     }
 
     pub fn register_session_pending_url_elicitation(
@@ -3943,7 +4263,20 @@ impl ChioKernel {
         &self,
         session_id: &SessionId,
     ) -> Result<(), KernelError> {
-        let events = self.drain_tool_server_events();
+        let events = self.try_drain_tool_server_events()?;
+        self.with_session_mut(session_id, |session| {
+            for event in events {
+                session.queue_tool_server_event(event);
+            }
+            Ok(())
+        })
+    }
+
+    pub async fn queue_session_tool_server_events_async(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<(), KernelError> {
+        let events = self.drain_tool_server_events_async().await?;
         self.with_session_mut(session_id, |session| {
             for event in events {
                 session.queue_tool_server_event(event);
@@ -4002,37 +4335,10 @@ impl ChioKernel {
         trusted
     }
 
-    fn verify_capability_signature(&self, cap: &CapabilityToken) -> Result<(), String> {
-        let trusted = self.trusted_issuer_keys();
-
-        if !trusted.contains(&cap.issuer) {
-            return Err("signer public key not found among trusted CAs".to_string());
-        }
-
-        match cap.verify_signature_with_floor(capability_crypto_floor(self.capability_crypto_floor))
-        {
-            Ok(true) => {}
-            Ok(false) => return Err("signature did not verify".to_string()),
-            Err(e) => return Err(e.to_string()),
-        }
-
-        // Wave 1.1 chain-binding: when a v2 token is presented, additionally
-        // require `attenuation_proof.parent_scope_hash` to bind to the
-        // registered trust-root scope hash (or the predecessor link).
-        // v1 tokens are unaffected (chain-binding is a v2-only check).
-        if cap.schema == chio_core::capability::CHIO_CAPABILITY_V2_SCHEMA {
-            let snapshot = self.capability_trust_roots.load_full();
-            let issuer_root = snapshot.get(&cap.issuer.to_hex()).cloned().ok_or_else(|| {
-                "v2 chain-binding: no trust-root scope hash registered for issuer".to_string()
-            })?;
-            cap.validate_chain_binding(&issuer_root)
-                .map_err(|err| err.to_string())?;
-        }
-
-        Ok(())
-    }
-
-    fn verify_capability_full_without_budget_admit(
+    /// Spec: PROTOCOL.md introduces a MUST that production kernels
+    /// route every capability admission through `verify_capability_full`;
+    /// this wrapper is the kernel-side enforcement of that MUST.
+    fn verify_capability_full_pre_admit(
         &self,
         cap: &CapabilityToken,
         remote_kernel_id: Option<&str>,
@@ -4057,40 +4363,23 @@ impl ChioKernel {
         .map_err(|error| chio_kernel_core::KernelCoreError::InvalidCapability(error).deny_reason())
     }
 
-    /// Wave 1.5 hot-path wiring: signature + chain-binding verification
-    /// with W1.2 sibling-sum budget admission against the kernel's
-    /// persistent registry.
-    ///
-    /// The hosted `evaluate_tool_call_*` paths historically called
-    /// [`Self::verify_capability_signature`], which only enforced the
-    /// signature, crypto-floor, and v2 chain-binding rule. The
-    /// portable verdict path
-    /// ([`chio_kernel_core::evaluate_with_full_floor`]) additionally
-    /// runs the sibling-sum admit step, so production hosted tool
-    /// calls bypassed budget enforcement. This wrapper closes that
-    /// gap by invoking the same admit step that
-    /// [`Self::evaluate_portable_verdict`] uses, threading the
-    /// kernel's long-lived `budget_registry` through. The lock is
+    /// The hosted `evaluate_tool_call_*` paths route the full chain
+    /// through [`Self::verify_capability_full_pre_admit`], which runs
+    /// the production verifier with `NoopBudgetRegistry` so a token
+    /// that subsequently fails any other check does not consume the
+    /// parent's share. This method then performs the deferred admit
+    /// against the kernel's long-lived `budget_registry`. The lock is
     /// held only for the duration of the admit call, matching the
     /// portable hot path.
     ///
     /// Errors are returned as plain strings so the caller can route
     /// them through the existing deny-response paths without taking
     /// a `KernelError` dependency on the verifier shape.
-    /// Idempotently admit `cap`'s budget share against its parent in the
-    /// kernel's persistent registry. Split from
-    /// [`Self::verify_capability_with_budget_admit`] so hosted call sites
-    /// can defer admission until after time-bound, revocation, subject,
-    /// scope, and guard checks have all passed. Otherwise a token that
-    /// is signed but expired/revoked/scope-mismatched still consumed the
-    /// parent's share when the request was about to be denied, starving
-    /// later valid siblings (PR #593 round-3 codex P2).
+    ///
+    /// The split between pre-admit verification and budget admission
+    /// enforces the ordering rule "signature first, admit last", so a
+    /// denied request never starves later valid siblings.
     fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<(), String> {
-        // W1.2 sibling-sum admit. Only fires for tokens that carry a
-        // delegation chain; root-issued tokens have nothing to split.
-        // The proposed share matches the portable hot path: a missing
-        // `budget_share_bps` is interpreted as a request for the full
-        // parent share so oversubscription is still detected.
         if let Some(parent_link) = cap.delegation_chain.last() {
             use chio_kernel_core::BudgetRegistry;
             let proposed_share = cap
@@ -4142,14 +4431,6 @@ impl ChioKernel {
         session_filesystem_roots: Option<&'a [String]>,
     ) -> chio_kernel_core::EvaluationVerdict {
         let trusted = self.trusted_issuer_keys();
-        // Wave 1.5 hot-path wiring: enforce the W1.3 negotiated schema
-        // ceiling and the W1.1 chain-binding rule on the same hot path
-        // that already enforces signature, floor, time bounds, and W1.2
-        // sibling-sum budget admission. Hold the budget-registry lock
-        // for the duration of the verify step so two concurrent
-        // delegations cannot both observe the same residual headroom
-        // and admit beyond the parent's share. The registry is internally
-        // a deterministic BTreeMap; no async work happens under the lock.
         let peer_profile = self
             .capability_negotiation_for_remote(None, clock.now_unix_secs())
             .unwrap_or_else(|_| chio_core::capability::CapabilityNegotiation::t1_default());
@@ -4174,12 +4455,6 @@ impl ChioKernel {
         )
     }
 
-    /// W1.2: register a parent capability's `budget_share_bps` so
-    /// subsequent delegations are admitted against it. Hosted callers
-    /// should invoke this when a fresh capability enters the system
-    /// (issuance, federation gossip). Re-registering the same parent
-    /// with the same share is idempotent. The registry is the same one
-    /// consulted by [`Self::evaluate_portable_verdict`].
     pub fn register_budget_parent(
         &self,
         parent_token_id: String,
@@ -4193,8 +4468,6 @@ impl ChioKernel {
         budgets.register_parent(parent_token_id, parent_share_bps)
     }
 
-    /// W1.2: drop a parent's split from the registry. Idempotent on
-    /// unknown ids so revocation races do not abort verification.
     pub fn evict_budget_parent(&self, parent_token_id: &str) {
         use chio_kernel_core::BudgetRegistry;
         let mut budgets = match self.budget_registry.lock() {
@@ -4229,13 +4502,6 @@ impl ChioKernel {
         // no-op (`Ok(())`) when no view is installed.
         #[cfg(feature = "delegation_v2")]
         delegation::consult_revocation_view(cap, self.revocation_view.as_ref())?;
-
-        if cap.schema == chio_core::capability::CHIO_CAPABILITY_V2_SCHEMA {
-            return Err(KernelError::DelegationInvalid(
-                "v2 chain-binding requires a trust-root resolver on the production kernel path"
-                    .to_string(),
-            ));
-        }
 
         if cap.delegation_chain.is_empty() {
             return Ok(());
@@ -6395,24 +6661,7 @@ impl ChioKernel {
     }
 
     /// Forward the validated request and optionally report actual invocation cost.
-    ///
-    /// Async-native dispatch entrypoint used by `ToolEvaluator::dispatch`.
-    /// Delegates to the sync helper while the tool-server trait remains
-    /// sync-only, preserving the exact dispatch and cost-accounting semantics.
     pub(crate) async fn dispatch_tool_call_with_cost(
-        &self,
-        request: &ToolCallRequest,
-        has_monetary_grant: bool,
-    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
-        self.dispatch_tool_call_with_cost_sync(request, has_monetary_grant)
-    }
-
-    /// Forward the validated request and optionally report actual invocation cost.
-    ///
-    /// When `has_monetary_grant` is true, calls `invoke_with_cost` so the server
-    /// can report the actual cost incurred. For non-monetary grants the standard
-    /// dispatch path is used and cost is always None.
-    fn dispatch_tool_call_with_cost_sync(
         &self,
         request: &ToolCallRequest,
         has_monetary_grant: bool,
@@ -6425,20 +6674,35 @@ impl ChioKernel {
         })?;
 
         // Try streaming first regardless of monetary mode.
-        if let Some(stream) =
-            server.invoke_stream(&request.tool_name, request.arguments.clone(), None)?
+        if let Some(stream) = server
+            .invoke_stream(&request.tool_name, request.arguments.clone(), None)
+            .await?
         {
             return Ok((ToolServerOutput::Stream(stream), None));
         }
 
         if has_monetary_grant {
-            let (value, cost) =
-                server.invoke_with_cost(&request.tool_name, request.arguments.clone(), None)?;
+            let (value, cost) = server
+                .invoke_with_cost(&request.tool_name, request.arguments.clone(), None)
+                .await?;
             Ok((ToolServerOutput::Value(value), cost))
         } else {
-            let value = server.invoke(&request.tool_name, request.arguments.clone(), None)?;
+            let value = server
+                .invoke(&request.tool_name, request.arguments.clone(), None)
+                .await?;
             Ok((ToolServerOutput::Value(value), None))
         }
+    }
+
+    /// Synchronous dispatch shim used by the legacy
+    /// `evaluate_tool_call_blocking` path while it still exists.
+    #[allow(dead_code)]
+    pub(crate) fn dispatch_tool_call_with_cost_blocking(
+        &self,
+        request: &ToolCallRequest,
+        has_monetary_grant: bool,
+    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
+        block_on_async_tool_dispatch(self.dispatch_tool_call_with_cost(request, has_monetary_grant))
     }
 
     /// Build a denial response, including FinancialReceiptMetadata when the

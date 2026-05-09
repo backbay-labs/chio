@@ -78,7 +78,8 @@ fn build_service(public_key_hex: String) -> chio_mcp_adapter::NativeChioService 
         .expect("build native Chio service")
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     println!("=== Chio hello-tool example ===\n");
 
     let server_kp = Keypair::generate();
@@ -126,6 +127,7 @@ fn main() {
 
     let greeting = service
         .invoke("greet", serde_json::json!({ "name": "World" }), None)
+        .await
         .expect("invoke greet");
     println!("\nTool invocation:");
     println!("  Input:  {{\"name\":\"World\"}}");
@@ -150,7 +152,7 @@ fn main() {
     );
 
     service.emit_event(ToolServerEvent::ResourcesListChanged);
-    let events = service.drain_events().expect("drain events");
+    let events = service.drain_events().await.expect("drain events");
     println!("\nLate events:");
     println!("  Count: {}", events.len());
 

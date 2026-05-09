@@ -1,20 +1,4 @@
-//! Wave 1.5 hot-path enforcement test.
-//!
-//! Exercises the three Wave 1 attack scenarios (W1.1 inflated parent
-//! scope, W1.3 v2-token-to-v1-only-peer downgrade, W1.2 oversubscribed
-//! siblings) through the REAL chio-kernel hot path
-//! (`ChioKernel::evaluate_portable_verdict`) where possible, or
-//! through the same `verify_capability_full` entry point that the hot
-//! path delegates to. The point is to lock the wiring in place: any
-//! future PR that breaks the chain-binding, schema-ceiling, or
-//! sibling-sum hooks on the public hot-path entry point will fail this
-//! test fail-closed.
-//!
 //! Layout:
-//!
-//! - `kernel_hot_path_rejects_inflated_parent_scope` -- W1.1 chain-binding.
-//! - `kernel_hot_path_rejects_v2_token_to_v1_only_peer` -- W1.3 schema ceiling.
-//! - `kernel_hot_path_rejects_oversubscribed_siblings` -- W1.2 sibling sum.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -80,6 +64,7 @@ fn make_kernel(issuer: Keypair) -> ChioKernel {
 
 struct EchoToolServer;
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for EchoToolServer {
     fn server_id(&self) -> &str {
         "srv"
@@ -89,7 +74,7 @@ impl ToolServerConnection for EchoToolServer {
         vec!["tool".to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         arguments: serde_json::Value,
@@ -188,9 +173,6 @@ fn hosted_request(request_id: &str, capability: &CapabilityToken) -> ToolCallReq
 
 #[test]
 fn kernel_hot_path_rejects_inflated_parent_scope() {
-    // W1.1 chain-binding: a v2 token whose attenuation_proof claims
-    // parent_scope_hash == H(scope_BIGGER) but whose issuer's true
-    // authority is scope_X must be denied by the kernel hot path.
     let scope_x = scope_with(vec![grant(vec![Operation::Invoke, Operation::Delegate])]);
     let scope_bigger = scope_with(vec![grant(vec![
         Operation::Invoke,
@@ -262,12 +244,6 @@ fn kernel_hot_path_rejects_inflated_parent_scope() {
 
 #[test]
 fn kernel_hot_path_rejects_v2_token_to_v1_only_peer() {
-    // W1.3 schema ceiling: a v2 token presented across a peer
-    // negotiation profile capped at v1 must be denied before any
-    // signature work. We exercise this through the same
-    // `verify_capability_full` entry point the kernel hot path uses
-    // (via chio_kernel_core directly, with a pinned v1-only peer
-    // profile that the local kernel would not normally use).
     let scope = scope_with(vec![grant(vec![Operation::Invoke])]);
     let issuer = Keypair::generate();
     let subject = Keypair::generate();
@@ -341,10 +317,6 @@ fn kernel_hot_path_rejects_v2_token_to_v1_only_peer() {
 
 #[test]
 fn kernel_hot_path_rejects_oversubscribed_siblings() {
-    // W1.2 sibling-sum enforcement: a parent at 5000 bps cannot back
-    // two children at 4000 bps each. The second child must DENY at
-    // the kernel hot path, even though each per-token share is inside
-    // the 10000-bps cap.
     let parent_scope = scope_with(vec![grant(vec![
         Operation::Invoke,
         Operation::Delegate,
@@ -445,10 +417,6 @@ fn kernel_hot_path_rejects_oversubscribed_siblings() {
     );
 }
 
-/// Wave 1.5 PR #593 review fix: a delegated child token whose parent
-/// was never explicitly registered in the budget registry must fail
-/// closed. The verifier must not fabricate a missing parent share at
-/// `MAX_BUDGET_SHARE_BPS`.
 #[test]
 fn delegated_child_without_pre_registered_parent_fails_closed() {
     let parent_scope = scope_with(vec![grant(vec![
@@ -534,9 +502,6 @@ fn delegated_child_without_pre_registered_parent_fails_closed() {
     );
 }
 
-/// Wave 1.5 PR #593 review fix: sibling-sum checks require a registered
-/// parent. A fresh registry must reject the first delegated child with
-/// `UnknownParent` instead of auto-registering a fabricated parent share.
 #[test]
 fn unregistered_parent_rejects_first_sibling_fail_closed() {
     let parent_scope = scope_with(vec![grant(vec![
@@ -626,10 +591,6 @@ fn unregistered_parent_rejects_first_sibling_fail_closed() {
     );
 }
 
-/// Wave 1.5 PR #593 review fix: when the negotiated peer profile
-/// disables `delegation_v2_chain_binding`, the verifier must reject v2
-/// tokens fail-closed. It must not skip trust-root resolution and allow
-/// v2 without chain binding.
 #[test]
 fn chain_binding_disabled_rejects_v2_token() {
     let scope = scope_with(vec![grant(vec![Operation::Invoke])]);

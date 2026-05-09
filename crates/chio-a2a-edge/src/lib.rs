@@ -27,6 +27,58 @@ pub use metrics::{
     RECEIPT_WRITE_OUTCOME_ERROR, RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL,
 };
 
+/// Sentinel error returned by [`block_on_tool_server_invoke`] when the
+/// passthrough is invoked from inside a current-thread Tokio runtime.
+/// Mirrors `chio_kernel::KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime`:
+/// polling an async tool-server future with `futures::executor::block_on`
+/// on the only worker thread can deadlock indefinitely if the future
+/// awaits Tokio I/O. The kernel bridge refuses this case fail-closed,
+/// and the edge shims must match instead of reintroducing the
+/// deadlock through the `compatibility-surface` feature.
+#[cfg(any(test, feature = "compatibility-surface"))]
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "sync bridge incompatible with current-thread Tokio runtime: \
+     block_on under a current-thread reactor would deadlock the only worker thread; \
+     move the host to a multi-thread runtime or call the async surface directly"
+)]
+pub struct SyncBridgeIncompatibleWithCurrentThreadRuntime;
+
+/// Mirrors `chio_kernel::kernel::block_on_async_tool_dispatch`: on a
+/// multi-thread runtime use `block_in_place` so we yield the runtime;
+/// on a current-thread runtime fail-closed with
+/// [`SyncBridgeIncompatibleWithCurrentThreadRuntime`] instead of
+/// silently parking the only worker thread; with no runtime active,
+/// drive the future with the non-tokio `futures::executor::block_on`.
+#[cfg(any(test, feature = "compatibility-surface"))]
+fn block_on_tool_server_invoke<F, T>(
+    future: F,
+) -> Result<T, SyncBridgeIncompatibleWithCurrentThreadRuntime>
+where
+    F: std::future::Future<Output = T>,
+{
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            Ok(tokio::task::block_in_place(|| handle.block_on(future)))
+        }
+        Ok(_handle) => {
+            // Current-thread runtime active. Bridging here would deadlock
+            // any tool-server future that awaits Tokio I/O. Surface a
+            // typed error so callers see the architectural
+            // incompatibility instead of a silent hang. The passthrough
+            // call site converts this into a Failed task response.
+            Err(SyncBridgeIncompatibleWithCurrentThreadRuntime)
+        }
+        Err(_) => {
+            // No Tokio runtime active. The future cannot collide with a
+            // surrounding reactor; the non-tokio executor is the safe
+            // bridge. This is the path the in-process, compute-only
+            // tool servers used in unit tests rely on.
+            Ok(futures::executor::block_on(future))
+        }
+    }
+}
+
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -737,7 +789,23 @@ impl ChioA2aEdge {
         let arguments = extract_arguments_from_message(&request.message);
         let task_id = self.next_task_id();
 
-        match server.invoke(&tool_name, arguments, None) {
+        let invoke_result =
+            match crate::block_on_tool_server_invoke(server.invoke(&tool_name, arguments, None)) {
+                Ok(inner) => inner,
+                Err(bridge_err) => {
+                    // Fail-closed mirror of the kernel sync-bridge gate:
+                    // current-thread runtime detected, refuse to deadlock.
+                    let msg = bridge_err.to_string();
+                    return Ok(TaskResponse {
+                        id: task_id,
+                        status: TaskStatus::Failed,
+                        status_message: Some(msg.clone()),
+                        message: None,
+                        metadata: Some(passthrough_metadata(Some(&msg))),
+                    });
+                }
+            };
+        match invoke_result {
             Ok(result) => {
                 let response_parts = result_to_parts(&result);
                 Ok(TaskResponse {
@@ -1421,9 +1489,6 @@ fn task_response_from_orchestrated(
     annotate_authoritative_a2a_metadata(&mut metadata, response.output.as_ref());
     let receipt_metadata = Some(metadata);
 
-    // W2.4: emit `chio_receipt_write_total` at the A2A receipt-sink
-    // boundary. PendingApproval is normal HITL flow, so it must not feed
-    // infrastructure error burn-rate numerators.
     crate::metrics::record_receipt_write_verdict(response.verdict);
 
     match response.verdict {
@@ -1631,6 +1696,7 @@ mod tests {
         response: Value,
     }
 
+    #[async_trait::async_trait(?Send)]
     impl ToolServerConnection for MockToolServer {
         fn server_id(&self) -> &str {
             &self.server_id
@@ -1640,7 +1706,7 @@ mod tests {
             self.tools.clone()
         }
 
-        fn invoke(
+        async fn invoke(
             &self,
             _tool_name: &str,
             _arguments: Value,
@@ -1652,6 +1718,7 @@ mod tests {
 
     struct FailingToolServer;
 
+    #[async_trait::async_trait(?Send)]
     impl ToolServerConnection for FailingToolServer {
         fn server_id(&self) -> &str {
             "fail-srv"
@@ -1661,7 +1728,7 @@ mod tests {
             vec!["fail_tool".to_string()]
         }
 
-        fn invoke(
+        async fn invoke(
             &self,
             _tool_name: &str,
             _arguments: Value,
@@ -1673,6 +1740,7 @@ mod tests {
 
     struct StreamingToolServer;
 
+    #[async_trait::async_trait(?Send)]
     impl ToolServerConnection for StreamingToolServer {
         fn server_id(&self) -> &str {
             "stream-srv"
@@ -1682,7 +1750,7 @@ mod tests {
             vec!["stream".to_string()]
         }
 
-        fn invoke(
+        async fn invoke(
             &self,
             _tool_name: &str,
             _arguments: Value,
@@ -1691,7 +1759,7 @@ mod tests {
             Ok(json!({"result": "fallback"}))
         }
 
-        fn invoke_stream(
+        async fn invoke_stream(
             &self,
             _tool_name: &str,
             _arguments: Value,

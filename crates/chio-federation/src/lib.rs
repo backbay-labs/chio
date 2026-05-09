@@ -10,8 +10,17 @@ pub use chio_listing as listing;
 pub use chio_open_market as open_market;
 
 pub mod bilateral;
+pub mod bilateral_dsse;
+pub mod bilateral_verifier;
 pub mod metrics;
 pub mod revocation_gossip;
+// spec/CHIODOS_SELECTIVE_DISCLOSURE.md §6 BBS+ projection. Default-off
+// behind the honestly-named `bbs-stub` feature: the implementation is a
+// STUB BBS+ that captures the deterministic projection and
+// disclose/withhold semantics but offers no privacy-preserving cryptographic property.
+// Real BLS12-381 BBS+ signing is deferred.
+#[cfg(feature = "bbs-stub")]
+pub mod selective_disclosure;
 pub mod trust_establishment;
 
 pub use metrics::{
@@ -22,9 +31,29 @@ pub use metrics::{
 };
 
 pub use bilateral::{
-    co_sign_with_origin, BilateralCoSigningError, BilateralCoSigningProtocol, CoSigningBody,
-    CoSigningRequest, CoSigningResponse, DualSignedReceipt, InProcessCoSigner,
-    BILATERAL_COSIGNING_SCHEMA, BILATERAL_DUAL_RECEIPT_SCHEMA,
+    co_sign_with_origin, co_sign_with_origin_full, execute_local_bilateral_invocation_fixture,
+    BilateralCoSignArtifacts, BilateralCoSigningError, BilateralCoSigningProtocol,
+    BilateralInvocationError, BilateralInvocationOutcome, CoSigningBody, CoSigningRequest,
+    CoSigningResponse, DualSignedReceipt, ExpectedBilateralPeers, InProcessCoSigner,
+    LocalBilateralInvocationFixtureRequest, BILATERAL_COSIGNING_SCHEMA,
+    BILATERAL_DUAL_RECEIPT_SCHEMA,
+};
+pub use bilateral_dsse::{
+    build_predicate, build_predicate_full, build_statement, pae, receipt_subject_name,
+    sign_dsse_envelope, sign_dsse_envelope_full, verify_dsse_envelope, BilateralPredicate,
+    BilateralPredicateExtensions, CapabilityLeaseRef, DsseEnvelope, DsseSignature, DsseStatement,
+    GovernanceReceiptRef, HashRecord, KernelIdentity, Keyid, PolicyEvaluationSummary,
+    PolicyVerdict, StatementSubject, SubjectDigest, BILATERAL_DSSE_ENVELOPE_SCHEMA,
+    DEFAULT_CONSISTENCY_MODEL, DEFAULT_COSIGN_MODE, DEFAULT_CROSS_ORG_VISIBILITY,
+    PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
+};
+pub use bilateral_verifier::{
+    verify_bilateral_cosign_invocation, ActionClassKind, CapabilityLeaseRegistry,
+    DemoAllowAllRevocationOracle, DenyListRevocationOracle, GovernanceReceiptStore,
+    InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, PeerPinSet,
+    PinnedEpoch, PinnedPeer, ReceiptStore, ResolvedGovernanceReceipt, ResolvedLease,
+    RevocationOracle, UnknownActionClassPolicy, VerifiedBilateralCoSignInvocation, VerifierConfig,
+    VerifierError,
 };
 pub use revocation_gossip::{
     respond_to_catchup, RevocationCatchupHistory, RevocationCatchupRequest,
@@ -32,6 +61,12 @@ pub use revocation_gossip::{
     RevocationGossipPushQueue, RevocationRootGossip, REVOCATION_CATCHUP_MAX_EPOCHS,
     REVOCATION_CATCHUP_REQUEST_SCHEMA, REVOCATION_CATCHUP_RESPONSE_SCHEMA,
     REVOCATION_ROOT_GOSSIP_BATCH_SCHEMA, REVOCATION_ROOT_GOSSIP_SCHEMA,
+};
+#[cfg(feature = "bbs-stub")]
+pub use selective_disclosure::{
+    project_audit_view, verify_audit_view, BbsAuditView, BbsMessage, DisclosedFields,
+    DisclosedMessage, DisclosureSet, SelectiveDisclosureError, AUDIT_VIEW_SCHEMA_STUB,
+    PROJECTION_VERSION_RECEIPT_V1,
 };
 pub use trust_establishment::{
     ConformanceEvidence, ConformanceTier, FederationPeer, FederationPeerStore, HandshakeChallenge,

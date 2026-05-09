@@ -1916,6 +1916,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bilateral-invocation"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-federation",
+ "serde_json",
+]
+
+[[package]]
 name = "bincode"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2401,6 +2410,7 @@ name = "chio-a2a-adapter"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
+ "async-trait",
  "base64 0.22.1",
  "chio-core-types",
  "chio-egress-contract",
@@ -2422,15 +2432,18 @@ dependencies = [
 name = "chio-a2a-edge"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-core-types",
  "chio-cross-protocol",
  "chio-kernel",
  "chio-manifest",
  "chio-mcp-edge",
  "chio-metrics-spec",
+ "futures",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
 ]
 
@@ -2439,15 +2452,18 @@ name = "chio-acp-edge"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
+ "async-trait",
  "chio-core-types",
  "chio-cross-protocol",
  "chio-kernel",
  "chio-manifest",
  "chio-mcp-edge",
  "chio-metrics-spec",
+ "futures",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
 ]
 
@@ -2455,6 +2471,7 @@ dependencies = [
 name = "chio-acp-proxy"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-core-types",
  "chio-cross-protocol",
  "chio-kernel",
@@ -2569,6 +2586,7 @@ dependencies = [
 name = "chio-arena"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-core-types",
  "chio-kernel",
  "chio-replay-corpus",
@@ -2680,6 +2698,7 @@ name = "chio-cli"
 version = "0.1.0"
 dependencies = [
  "async-stream",
+ "async-trait",
  "axum 0.8.8",
  "base64 0.22.1",
  "chio-acp-proxy",
@@ -2690,6 +2709,7 @@ dependencies = [
  "chio-conformance",
  "chio-control-plane",
  "chio-core",
+ "chio-core-types",
  "chio-credentials",
  "chio-credit",
  "chio-data-guards",
@@ -2813,6 +2833,8 @@ dependencies = [
  "chio-weights",
  "chrono",
  "coset",
+ "hex",
+ "jsonschema",
  "jsonwebtoken",
  "p256 0.13.2",
  "rand 0.8.5",
@@ -2979,6 +3001,7 @@ dependencies = [
 name = "chio-cross-protocol"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-core-types",
  "chio-kernel",
  "chio-manifest",
@@ -3054,6 +3077,7 @@ dependencies = [
 name = "chio-e2e"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-core-types",
  "chio-guards",
  "chio-kernel",
@@ -3150,14 +3174,17 @@ dependencies = [
 name = "chio-federation"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chio-core-types",
  "chio-kernel-core",
  "chio-listing",
  "chio-metrics-spec",
  "chio-open-market",
  "chio-revocation-oracle",
+ "hex",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 1.0.69",
 ]
 
@@ -3299,6 +3326,7 @@ dependencies = [
 name = "chio-http-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-core",
  "chio-core-types",
  "chio-cross-protocol",
@@ -3335,6 +3363,7 @@ name = "chio-kernel"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
+ "async-trait",
  "base64 0.22.1",
  "chio-appraisal",
  "chio-core",
@@ -3359,6 +3388,7 @@ dependencies = [
  "criterion",
  "dashmap 6.1.0",
  "dhat",
+ "futures",
  "loom",
  "lru",
  "opentelemetry-semantic-conventions",
@@ -3517,6 +3547,7 @@ name = "chio-mcp-adapter"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
+ "async-trait",
  "chio-core-types",
  "chio-kernel",
  "chio-manifest",
@@ -3547,6 +3578,7 @@ name = "chio-mcp-edge"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
+ "async-trait",
  "chio-core-types",
  "chio-cross-protocol",
  "chio-kernel",
@@ -3565,6 +3597,7 @@ name = "chio-mcp-remote"
 version = "0.1.0"
 dependencies = [
  "async-stream",
+ "async-trait",
  "axum 0.8.8",
  "base64 0.22.1",
  "chio-control-plane",
@@ -3669,6 +3702,7 @@ dependencies = [
 name = "chio-openai-adapter"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-core-types",
  "chio-cross-protocol",
  "chio-kernel",
@@ -3698,6 +3732,7 @@ name = "chio-openapi-mcp-bridge"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
+ "async-trait",
  "chio-core-types",
  "chio-egress-contract",
  "chio-kernel",
@@ -3707,6 +3742,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
 ]
 
@@ -3970,6 +4006,7 @@ dependencies = [
 name = "chio-tower"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum 0.8.8",
  "bytes",
  "chio-core-types",
@@ -4123,6 +4160,19 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tracing",
+]
+
+[[package]]
+name = "chiodome-bilateral-example"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-federation",
+ "chio-web3",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -6047,6 +6097,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 name = "hello-a2a"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-a2a-edge",
  "chio-core",
  "chio-kernel",
@@ -6058,6 +6109,7 @@ dependencies = [
 name = "hello-acp"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-acp-edge",
  "chio-core",
  "chio-kernel",
@@ -6069,6 +6121,7 @@ dependencies = [
 name = "hello-mcp"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-core",
  "chio-kernel",
  "chio-manifest",
@@ -6086,6 +6139,7 @@ dependencies = [
  "chio-mcp-adapter",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

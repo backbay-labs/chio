@@ -166,6 +166,7 @@ struct HttpKernelCapabilityState {
 
 struct HttpAuthorizationServer;
 
+#[async_trait::async_trait(?Send)]
 impl ToolServerConnection for HttpAuthorizationServer {
     fn server_id(&self) -> &str {
         HTTP_AUTHORITY_SERVER_ID
@@ -175,7 +176,7 @@ impl ToolServerConnection for HttpAuthorizationServer {
         vec![HTTP_AUTHORITY_TOOL_NAME.to_string()]
     }
 
-    fn invoke(
+    async fn invoke(
         &self,
         tool_name: &str,
         _arguments: serde_json::Value,
@@ -305,11 +306,6 @@ impl HttpAuthority {
         &self,
         input: HttpAuthorityInput<'_>,
     ) -> Result<HttpAuthorityEvaluation, HttpAuthorityError> {
-        // W2.4: emit `chio_guard_evaluations_total` and observe
-        // `chio_kernel_decision_latency_seconds` at the verdict-edge
-        // dispatch boundary. Errors emerging from `prepare` or
-        // `sign_decision_receipt` are recorded under the error counter so
-        // operators can spot fail-closed paths.
         let started_at = std::time::Instant::now();
         let result = self.prepare(input).and_then(|prepared| {
             let receipt = self.sign_decision_receipt(&prepared)?;

@@ -16,6 +16,7 @@ name = "chio"
 path = "src/bin/chio.rs"
 
 [dependencies]
+async-trait = { workspace = true }
 chio-appraisal = { path = "../chio-appraisal" }
 chio-arena = { path = "../chio-arena" }
 chio-api-protect = { path = "../chio-api-protect" }
@@ -85,6 +86,7 @@ uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 chio-credit = { path = "../chio-credit" }
+chio-core-types = { path = "../chio-core-types" }
 chio-open-market = { path = "../chio-open-market" }
 chio-settle = { path = "../chio-settle" }
 insta = { version = "1.42", features = ["json", "redactions"] }

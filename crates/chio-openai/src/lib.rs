@@ -558,6 +558,7 @@ mod tests {
         response: Value,
     }
 
+    #[async_trait::async_trait(?Send)]
     impl ToolServerConnection for MockToolServer {
         fn server_id(&self) -> &str {
             "test-srv"
@@ -567,7 +568,7 @@ mod tests {
             vec!["get_weather".to_string(), "search".to_string()]
         }
 
-        fn invoke(
+        async fn invoke(
             &self,
             _tool_name: &str,
             _arguments: Value,
@@ -579,6 +580,7 @@ mod tests {
 
     struct FailingServer;
 
+    #[async_trait::async_trait(?Send)]
     impl ToolServerConnection for FailingServer {
         fn server_id(&self) -> &str {
             "fail-srv"
@@ -588,7 +590,7 @@ mod tests {
             vec!["fail".to_string()]
         }
 
-        fn invoke(
+        async fn invoke(
             &self,
             _tool_name: &str,
             _arguments: Value,

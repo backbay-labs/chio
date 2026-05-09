@@ -405,17 +405,57 @@ the issuer's actual upstream parent capability. Concretely:
 The portable verifier entrypoint
 `chio_kernel_core::verify_capability_with_floor_and_trust_root(token,
 trusted_issuers, clock, crypto_floor, trust_root_scope_hash)` enforces
-the rule in isolation. Production kernels SHOULD prefer the Wave 1.5
-composite entrypoint
+the rule in isolation. Production kernels MUST route every inbound
+capability admission through the composite entrypoint
 `chio_kernel_core::verify_capability_full(token, trusted_issuers,
 clock, crypto_floor, peer, trust_root, budgets)`, which chains the W1.3
 schema-ceiling check, the W1.1 chain-binding check, and the W1.2
 sibling-sum budget admission alongside signature, floor, and time-bound
-verification. Both rejection paths surface `CapabilityError::AttenuationViolation`
-with the offending hashes formatted as hex. The check costs a single hash
-comparison on the happy path and runs after the basic signature, time,
-and crypto-floor checks (the chain binding is meaningful only once those
-succeed).
+verification. The earlier partial entry points
+(`verify_capability_with_floor`,
+`verify_capability_with_negotiated_floor`,
+`verify_capability_with_floor_and_trust_root`,
+`verify_capability_with_floor_and_resolver`) remain available for
+isolated unit tests and bounded research adapters; they MUST NOT be
+the sole verifier on a production hot path because each one leaves
+at least one required defense un-wired and the resulting bypass is
+silent. Kernel implementations MAY split the call into two phases --
+a pre-admit pass with `NoopBudgetRegistry` followed by an authoritative
+admit against the persistent registry once every other check has
+passed -- but every reachable kernel surface (hosted tool dispatch,
+plan-step pre-flight, session/resource/prompt operations, federated
+nested-flow bridges) MUST traverse `verify_capability_full` exactly
+once per admission decision.
+
+The two-phase split is intentionally asymmetric. The pre-admit
+verifier pass (signature + crypto-floor + W1.3 schema-ceiling + W1.1
+chain-binding + time-window) MUST run on every surface listed above.
+The authoritative budget admit phase (W1.2 sibling-sum) MUST run on
+hosted tool dispatch and federated nested-flow bridges -- the surfaces
+that actually execute a side-effecting action against the budget --
+and MAY be omitted on plan-step pre-flight (which is a verdict-only
+preview that does not dispatch the underlying tools) and on
+session/resource/prompt operations (which are read-only metadata
+exchanges that do not consume the caller's invocation budget). Kernel
+implementations that omit the admit phase on these stateless surfaces
+MUST document the omission alongside the surface helper. The
+`b1_capability_v2_single_entry_no_bypass.rs` fixture asserts the
+pre-admit pass MUST; the W1.2 sibling-sum admit MUST is asserted by
+the hosted-dispatch admit fixtures (e.g.
+`budget_split_cross_hop_rejects_amplification.rs`,
+`wave1_hot_path_enforcement.rs`). Both rejection paths surface
+`CapabilityError::AttenuationViolation` with the offending hashes
+formatted as hex. The check costs a single hash comparison on the
+happy path and runs after the basic signature, time, and crypto-floor
+checks (the chain binding is meaningful only once those succeed).
+
+The MUST above is enforced by the conformance fixture
+`crates/chio-conformance/tests/b1_capability_v2_single_entry_no_bypass.rs`,
+which constructs a v2 capability whose `attenuation_proof.parent_scope_hash`
+does not bind to any registered trust root and asserts that the
+production hosted dispatch path returns a deny verdict. If a future
+refactor reintroduces a kernel-side verifier shortcut that bypasses
+`verify_capability_full`, that fixture must fail.
 
 Worked example. An issuer with trust-root authority hash `H_root` mints
 a v2 capability directly (empty `delegation_chain`). The verifier accepts
@@ -713,8 +753,7 @@ without relying on one global clock.
 
 #### Receipt v2 body_hash addressing (W2.1)
 
-Wave 2.1 closes the audit's "types-only, hot path unwired" finding on T1.2 by
-wiring the producer side. The verifier-side check landed in Wave 1; the kernel
+This section records producer-side wiring for T1.2. The verifier-side check is already present; the kernel
 now mints v2 receipts at production mint time when peer negotiation selects v2.
 
 - **Mint path.** `ChioKernel::record_chio_receipt_with_federation` is the
@@ -734,10 +773,29 @@ now mints v2 receipts at production mint time when peer negotiation selects v2.
   computed over the typed `ReceiptV2SigningBody { bodyHash, body }` wrapper.
   Either form of mismatch (wrong `bodyHash` field, signature over the wrong
   body) fails closed. This matches the T1.2 audit closure.
-- **Negotiation downgrade.** When the peer profile is v1-only or when no
-  federation peer is pinned fresh for the request, the kernel falls back to
-  minting only the v1 UUIDv7 receipt. The downgrade emits a structured
-  warning so operators can see receipt-version regressions in observability.
+- **Negotiation downgrade (v2 hardening).**
+  - When the peer profile advertises only v1 (no `ACCEPTS_RECEIPT_V2`) and
+    is pinned fresh, the kernel mints only the v1 UUIDv7 receipt. This is
+    the spec-conformant v1-only profile; advisory dispatches that name no
+    federation peer remain governed by the kernel-level
+    `kernel_receipt_v2_default` setting.
+  - When the request names a federation peer but no matching peer is pinned
+    fresh for that `remote_kernel_id` (whether stale or never-pinned), the
+    kernel MUST reject the dispatch with a typed
+    `KernelError::ReceiptNegotiationDowngrade` whose
+    `NegotiationDowngradeReason` enumerates the failure mode (currently
+    `PeerNotPinnedFresh`). The kernel MUST NOT mint a v1 receipt as a
+    silent fallback. This hardening adds a
+    new normative MUST to a section that previously contained only
+    descriptive prose ("the kernel falls back"). The "stale or
+    never-pinned" enumeration is part of the MUST so a future
+    implementation cannot read "not pinned fresh" as "stale only" and
+    re-introduce a bypass for the never-pinned path.
+  - The pre-B2 warn-and-continue behaviour (a `tracing::warn!` event
+    followed by a v1 fallback) is removed. Operators retain the
+    structured `KernelError::ReceiptNegotiationDowngrade` as the
+    observability signal; the dispatch fails closed instead of silently
+    minting a downgraded receipt.
 
 ### 6.1 Decisions
 
@@ -991,6 +1049,23 @@ Each batch carries a `WitnessState` lifecycle:
     batches).
   - `require_public_witness: false` -> accept all states (advisory mode).
 
+Producers and consumers MUST route load-bearing public-witness verification
+through `verify_anchor_batch_with_witness_policy_async` whenever
+`require_public_witness=true`. The synchronous entry point
+`verify_anchor_batch_with_witness_policy` MUST reject any policy carrying
+`require_public_witness=true` at runtime, before structural verification,
+regardless of `WitnessState`. The synchronous wrapper is reserved for
+advisory-mode callers (`require_public_witness=false`) that intentionally
+treat witness state as non-binding. This is a tightening of the per-state
+arrow rules above: making the routing rule load-bearing decouples it from
+the per-state table so a future state addition cannot accidentally re-open
+the bypass. The runtime gate at
+`crates/chio-anchor/src/batch.rs::verify_anchor_batch_with_witness_policy`
+returning `AnchorError::SyncRouteRequiresAdvisoryPolicy` is the load-bearing
+enforcement; the companion `scripts/check-anchor-batch-async-witness.sh`
+lint is best-effort fast feedback only and does not provide a soundness
+guarantee.
+
 Rejection criteria the W2.3 negative-conformance suite exercises:
 
 - forged Merkle root (real Merkle re-compute, not a label compare): rebuilding
@@ -1108,11 +1183,14 @@ The repository ships these primary runtime entrypoints:
 These surfaces intentionally share the same core receipt, capability,
 revocation, and policy primitives rather than defining separate trust models.
 
-`chio receipt explain <receipt-id>` accepts legacy receipt aliases and v2
-`bodyHash` values. It renders the signed decision, policy hash, guard evidence,
-parent receipt set, batch witness reference when present, and a repair hint for
-denials or incomplete receipts. It is a local CLI narrator, not a replacement
-for signature verification.
+`chio receipt explain <receipt-id>` accepts legacy receipt aliases from the
+local receipt DB or control plane. v2 `bodyHash` explanation is supported only
+when the full v2 receipt JSON is supplied with `--input-file`; this CLI path
+does not yet implement persisted v2 DB or control-plane lookup by `bodyHash`.
+It renders the signed decision, policy hash, guard evidence, parent receipt
+set, batch witness reference when present, and a repair hint for denials or
+incomplete receipts. It is a local CLI narrator, not a replacement for
+signature verification.
 
 ### 8.2 MCP Compatibility
 

@@ -19,6 +19,7 @@ default = []
 fuzz = ["dep:arbitrary"]
 
 [dependencies]
+async-trait = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-egress-contract = { path = "../chio-egress-contract" }
 chio-kernel = { path = "../chio-kernel" }
@@ -30,6 +31,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 arbitrary = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
 
 [lints.clippy]
 unwrap_used = "deny"

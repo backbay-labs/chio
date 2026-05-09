@@ -12,6 +12,7 @@ publish = false
 name = "chio_mcp_remote"
 
 [dependencies]
+async-trait = { workspace = true }
 chio-control-plane = { path = "../chio-control-plane" }
 chio-core = { package = "chio-core-types", path = "../chio-core-types" }
 chio-egress-contract = { path = "../chio-egress-contract", features = ["reqwest-egress"] }
