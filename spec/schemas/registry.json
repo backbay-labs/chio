@@ -53,7 +53,7 @@
       "schemaFile": "spec/schemas/chio-wire/v1/anchor/batch.schema.json"
     },
     {
-      "schema": "chio.bilateral-cosign-signature-slice.v1",
+      "schema": "chio.bilateral-signature-slice.v1",
       "artifactKind": "bilateral_dsse_signature_slice",
       "introducedBy": "federation-dsse-slice",
       "schemaFile": "spec/schemas/chio-wire/v1/federation/bilateral-signature-slice.schema.json"
