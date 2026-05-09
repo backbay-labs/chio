@@ -269,6 +269,48 @@ fn signature_slice_profile_is_registered_as_signed_artifact_schema() {
     );
 }
 
+#[test]
+fn emitted_statement_validates_against_registered_signature_slice_schema() {
+    let kp_a = Keypair::generate();
+    let kp_b = Keypair::generate();
+    let receipt = sample_receipt(&kp_b);
+    let envelope = sign_dsse_envelope(
+        &receipt,
+        &kp_a,
+        &kp_b,
+        ORG_A_KERNEL_ID,
+        ORG_B_KERNEL_ID,
+        "file_read",
+        1_734_000_000_000,
+    )
+    .unwrap();
+    let statement_bytes = BASE64_STANDARD.decode(&envelope.payload).unwrap();
+    let statement_json: serde_json::Value = serde_json::from_slice(&statement_bytes).unwrap();
+    assert!(
+        statement_json["predicate"]["receipt_canonical_json"].is_string(),
+        "emitted receipt_canonical_json is a canonical JSON string, not a nested object"
+    );
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("crate lives under <repo>/crates/chio-conformance");
+    let schema_path = repo_root
+        .join("spec/schemas/chio-wire/v1/federation/bilateral-signature-slice.schema.json");
+    let schema_text = std::fs::read_to_string(&schema_path).expect("read profile schema");
+    let schema: serde_json::Value =
+        serde_json::from_str(&schema_text).expect("parse profile schema");
+    let validator = jsonschema::validator_for(&schema).expect("compile signature-slice schema");
+    let errors: Vec<String> = validator
+        .iter_errors(&statement_json)
+        .map(|err| err.to_string())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "emitted signature-slice Statement must validate against registered schema: {errors:?}"
+    );
+}
+
 /// Tampering with the payload changes the DSSE PAE preimage that the
 /// signatures cover; the verifier MUST reject.
 #[test]
