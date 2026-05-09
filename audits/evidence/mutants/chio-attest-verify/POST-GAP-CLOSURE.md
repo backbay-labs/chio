@@ -1,10 +1,9 @@
-# chio-attest-verify mutation evidence (post-gap-closure, PR #625)
+# chio-attest-verify mutation evidence (post-gap-closure)
 
 This file records the post-test-uplift mutation evidence state for
-`chio-attest-verify`. The PR #619 baseline established a 44.12% kill
-rate on 68 viable mutants (86 discovered, 18 unviable). PR #625 adds
-29 sigstore negative-path tests targeting surviving mutants from that
-baseline.
+`chio-attest-verify`. The prior baseline established a 44.12% kill rate
+on 68 viable mutants (86 discovered, 18 unviable). This branch adds 29
+sigstore negative-path tests targeting surviving mutants from that baseline.
 
 ## Rerun Status
 
@@ -17,8 +16,8 @@ crate-level baseline. The integrator MUST commit a fresh full-crate
 `.planning/trajectory-5/baselines/BAR-1-MUTATION.md` may record an
 updated kill-rate row.
 
-Until that rerun lands, the aggregate continues to use the PR #619
-baseline (44.12%).
+Until that rerun lands, the aggregate continues to use the prior baseline
+(44.12%).
 
 ## How to Capture Evidence
 
