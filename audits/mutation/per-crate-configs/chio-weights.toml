@@ -30,8 +30,8 @@
 #     crate (bundle, card, error, lineage). lib.rs is omitted because
 #     it is a re-export-only umbrella with no logic to mutate.
 #
-# The auditor-flagged "hand-picked subset" anti-pattern from
-# chio-guards (PR #621, 9.2% of surface) is explicitly avoided: every
+# The chio-guards "hand-picked subset" anti-pattern is explicitly avoided:
+# every
 # `pub mod` in `crates/chio-weights/src/` that contains logic is
 # included.
 

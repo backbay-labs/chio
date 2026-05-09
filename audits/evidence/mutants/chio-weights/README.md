@@ -1,4 +1,4 @@
-# chio-weights mutation baseline (release work-A1)
+# chio-weights mutation baseline
 
 This directory holds the per-mutant cargo-mutants output for the
 `chio-weights` crate (the M10 phase 4 model-card surface: signed
@@ -12,7 +12,7 @@ BASELINE-GAP row.
 |---|---|
 | Crate | `chio-weights` |
 | Date | 2026-05-08 |
-| Branch | `PR branch` |
+| Run context | feature branch |
 | Base SHA | `708c7bb33df43594f5e76542b05fca7a56d9689e` (current main) |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | 6m 41s (per cargo-mutants stdout summary line) |
@@ -38,7 +38,7 @@ below.
 
 ## Test-scope deviation rationale
 
-Same rationale as PR #619 (chio-attest-verify) and PR #623
+Same package-only rationale as the chio-attest-verify and chio-policy
 (chio-policy): the workspace test harness contains a pre-existing
 failing test in `chio-acp-proxy` unrelated to chio-weights:
 
@@ -67,7 +67,7 @@ debug log, which recorded the actual test invocation as
 `cargo test --verbose --package=chio-weights@0.1.0 --package chio-weights`
 (no `--workspace`). The full `debug.log` is not committed (see
 "Files in this directory" below); this matches the reference layout
-in PR #619 / #622 / #623.
+used by the other per-crate mutation baselines.
 
 ## Examine-globs surface
 
@@ -85,7 +85,7 @@ crates/chio-weights/src/lineage.rs
 38-48: `pub mod bundle / card / error / lineage` plus `pub use`
 re-exports) with no logic to mutate.
 
-This avoids the chio-guards (PR #621) "hand-picked subset"
+This avoids the chio-guards "hand-picked subset"
 anti-pattern: every `pub mod` containing logic is included, so the
 measurement is a true crate-level baseline rather than a partial
 sample.
@@ -195,11 +195,11 @@ These are unviable because `VerifiedModelCard`, `ModelCard`, and
 substitution does not type-check. Per cargo-mutants 25.x convention,
 unviable mutants are excluded from the kill-rate denominator.
 
-## Post-#613 rerun note
+## Post-Kani rerun note
 
-PR #613 (chio-weights Kani harness) is open against main and not yet
-merged. The mutation run here is against current main (`708c7bb33`).
-Once #613 lands, the Kani harness exercises additional invariants
+The chio-weights Kani harness is not yet on this branch. The mutation
+run here is against current main (`708c7bb33`). Once that harness lands,
+it exercises additional invariants
 (notably the kernel binding refusal contract) and a re-run is expected
 to score higher than 68.25% on the same `examine_globs` surface. The
 CI hosted-nightly `mutants.yml` lane (4-hour-per-crate budget) is the
@@ -216,9 +216,8 @@ authoritative re-baseline after #613 merges.
   `log/` directory, `debug.log`, `outcomes.json`, and `lock.json`
   produced by cargo-mutants are NOT committed; they contain large
   transcripts, operator identity, hostnames, argv paths, and
-  workspace-absolute paths. This matches the chio-attest-verify
-  (PR #619), chio-anchor (PR #622), and chio-policy (PR #623)
-  reference layouts.
+workspace-absolute paths. This matches the reference layout used by the
+other per-crate mutation baselines.
 
 ## Reproducibility
 

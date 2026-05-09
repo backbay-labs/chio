@@ -4,7 +4,7 @@
   "ran_finished_at": "2026-05-08T16:28:14Z",
   "tool": "cargo-mutants",
   "tool_version": "25.3.1",
-  "test_scope": "package-only (cargo test --verbose --package=chio-weights@0.1.0 --package chio-weights; verified empirically by inspecting cargo-mutants debug log during the run; same scope methodology as PR #619 / #623)",
+  "test_scope": "package-only (cargo test --verbose --package=chio-weights@0.1.0 --package chio-weights; verified empirically by inspecting cargo-mutants debug log during the run; same scope methodology as the other per-crate mutation baselines)",
   "wall_clock": "6m 41s (per cargo-mutants stdout summary line)",
   "base_sha": "708c7bb33df43594f5e76542b05fca7a56d9689e",
   "command": "cargo mutants --config audits/mutation/per-crate-configs/chio-weights.toml -p chio-weights --in-place --baseline=skip --output audits/evidence/mutants/chio-weights",
@@ -26,7 +26,7 @@
     "crates/chio-weights/src/error.rs",
     "crates/chio-weights/src/lineage.rs"
   ],
-  "examine_glob_coverage_note": "All four logic-bearing source files in crates/chio-weights/src/ are covered. lib.rs is omitted because it is a re-export-only umbrella with no logic to mutate. This avoids the chio-guards (PR #621) hand-picked-subset anti-pattern: every pub mod with logic is included.",
+  "examine_glob_coverage_note": "All four logic-bearing source files in crates/chio-weights/src/ are covered. lib.rs is omitted because it is a re-export-only umbrella with no logic to mutate. This avoids the chio-guards hand-picked-subset anti-pattern: every pub mod with logic is included.",
   "per_file_breakdown": {
     "crates/chio-weights/src/bundle.rs": {"caught": 1, "missed": 0, "timeout": 0, "unviable": 1, "kill_rate_percent": 100.0},
     "crates/chio-weights/src/card.rs": {"caught": 25, "missed": 14, "timeout": 0, "unviable": 1, "kill_rate_percent": 64.10},
@@ -99,5 +99,5 @@
     "crates/chio-weights/src/card.rs:257:9: replace ModelCard::from_canonical_json -> Result<Self, WeightsError> with Ok(Default::default())",
     "crates/chio-weights/src/bundle.rs:78:5: replace verify_model_card_bundle -> Result<VerifiedModelCard, WeightsError> with Ok(Default::default())"
   ],
-  "post_pr613_rerun_note": "PR #613 (chio-weights Kani harness) is open against main and not yet merged. The mutation run here is against current main (708c7bb33). Once PR #613 lands, the Kani harness exercises additional invariants (notably the kernel binding refusal contract) and a re-run is expected to score higher than 68.3% on the same examine_globs surface. The CI hosted-nightly mutants.yml lane (4-hour-per-crate budget) is the authoritative re-baseline after #613 merges."
+  "post_kani_rerun_note": "The chio-weights Kani harness is not yet on this branch. The mutation run here is against current main (708c7bb33). Once that harness lands, it exercises additional invariants (notably the kernel binding refusal contract) and a re-run is expected to score higher than 68.3% on the same examine_globs surface. The CI hosted-nightly mutants.yml lane (4-hour-per-crate budget) is the authoritative re-baseline after the harness lands."
 }
