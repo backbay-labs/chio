@@ -11,6 +11,7 @@ pub use chio_open_market as open_market;
 
 pub mod bilateral;
 pub mod bilateral_dsse;
+pub mod bilateral_verifier;
 pub mod metrics;
 pub mod revocation_gossip;
 pub mod trust_establishment;
@@ -23,17 +24,28 @@ pub use metrics::{
 };
 
 pub use bilateral::{
-    co_sign_with_origin, co_sign_with_origin_full, BilateralCoSignArtifacts,
-    BilateralCoSigningError, BilateralCoSigningProtocol, CoSigningBody, CoSigningRequest,
-    CoSigningResponse, DualSignedReceipt, InProcessCoSigner, BILATERAL_COSIGNING_SCHEMA,
-    BILATERAL_DUAL_RECEIPT_SCHEMA,
+    co_sign_with_origin, co_sign_with_origin_full, execute_bilateral_invocation,
+    BilateralCoSignArtifacts, BilateralCoSigningError, BilateralCoSigningProtocol,
+    BilateralInvocationError, BilateralInvocationOutcome, BilateralInvocationRequest,
+    CoSigningBody, CoSigningRequest, CoSigningResponse, DualSignedReceipt, InProcessCoSigner,
+    BILATERAL_COSIGNING_SCHEMA, BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
 pub use bilateral_dsse::{
-    build_predicate, build_statement, pae, receipt_subject_name, sign_dsse_envelope,
-    verify_dsse_envelope, BilateralPredicate, DsseEnvelope, DsseSignature, DsseStatement,
-    KernelIdentity, Keyid, StatementSubject, SubjectDigest, BILATERAL_DSSE_ENVELOPE_SCHEMA,
+    build_predicate, build_predicate_full, build_statement, pae, receipt_subject_name,
+    sign_dsse_envelope, sign_dsse_envelope_full, verify_dsse_envelope, BilateralPredicate,
+    BilateralPredicateExtensions, CapabilityLeaseRef, DsseEnvelope, DsseSignature, DsseStatement,
+    GovernanceReceiptRef, HashRecord, KernelIdentity, Keyid, PolicyEvaluationSummary,
+    PolicyVerdict, StatementSubject, SubjectDigest, BILATERAL_DSSE_ENVELOPE_SCHEMA,
     DEFAULT_CONSISTENCY_MODEL, DEFAULT_COSIGN_MODE, DEFAULT_CROSS_ORG_VISIBILITY,
     PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
+};
+pub use bilateral_verifier::{
+    verify_bilateral_cosign_invocation, ActionClassKind, AllowAllRevocationOracle,
+    CapabilityLeaseRegistry, DenyListRevocationOracle, GovernanceReceiptStore,
+    InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, PeerPinSet,
+    PinnedEpoch, PinnedPeer, ReceiptStore, ResolvedGovernanceReceipt, ResolvedLease,
+    RevocationOracle, UnknownActionClassPolicy, VerifiedBilateralCoSignInvocation, VerifierConfig,
+    VerifierError,
 };
 pub use revocation_gossip::{
     respond_to_catchup, RevocationCatchupHistory, RevocationCatchupRequest,

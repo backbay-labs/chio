@@ -1916,6 +1916,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bilateral-invocation"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-federation",
+ "serde_json",
+]
+
+[[package]]
 name = "bincode"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2822,6 +2831,7 @@ dependencies = [
  "chio-weights",
  "chrono",
  "coset",
+ "hex",
  "jsonwebtoken",
  "p256 0.13.2",
  "rand 0.8.5",

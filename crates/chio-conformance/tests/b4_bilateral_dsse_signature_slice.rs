@@ -9,8 +9,8 @@
 //! ## What this fixture checks
 //!
 //! 1. **Byte-level non-overlap**: the legacy `CoSigningBody` canonical bytes
-//!    and the DSSE PAE preimage bytes share zero positions (byte-stream
-//!    inequivalence).
+//!    and the DSSE PAE preimage bytes share zero positions (the byte-stream
+//!    inequivalence the R4 review surfaced).
 //! 2. **Signature-slice verifier accepts the envelope** under matching public keys.
 //! 3. **Tampered payload bytes are rejected** (changes LEN(payload) and the
 //!    payload bytes; PAE preimage diverges).
@@ -48,9 +48,9 @@ fn sample_action() -> ToolCallAction {
 
 fn sample_receipt(tool_host_kp: &Keypair) -> ChioReceipt {
     let body = ChioReceiptBody {
-        id: "rcpt-b4-fixture".to_string(),
+        id: "rcpt-bilateral-b4-fixture".to_string(),
         timestamp: 1_734_000_000,
-        capability_id: "cap-b4".to_string(),
+        capability_id: "cap-bilateral-b4".to_string(),
         tool_server: "srv-orgb-files".to_string(),
         tool_name: "file_read".to_string(),
         action: sample_action(),
@@ -73,11 +73,11 @@ const ORG_B_KERNEL_ID: &str = "kernel.org-b";
 // Tests
 // ---------------------------------------------------------------------------
 
-/// Concrete byte-level proof: the legacy `CoSigningBody` canonical bytes
-/// and the DSSE PAE preimage share zero header bytes; their shapes are
-/// entirely incompatible. A single signature cannot authenticate both,
-/// which is precisely why this path must be separate from the legacy receipt
-/// preimage.
+/// Concrete byte-level proof for R4 finding 1: the legacy `CoSigningBody`
+/// canonical bytes and the DSSE PAE preimage share zero header bytes; their
+/// shapes are entirely incompatible. A single signature cannot authenticate
+/// both, which is precisely why this path must be separate from the legacy
+/// receipt preimage.
 #[test]
 fn legacy_preimage_and_dsse_pae_preimage_share_zero_bytes() {
     let kp_a = Keypair::generate();
@@ -158,7 +158,7 @@ fn signature_slice_verifier_accepts_freshly_signed_envelope() {
     assert_eq!(statement.subject.len(), 1);
     assert_eq!(statement.subject[0].name, receipt_subject_name(&receipt.id));
 
-    // Fingerprint binding: the fingerprint declared in the predicate
+    // Spec §7 step 8 partial: the fingerprint declared in the predicate
     // matches the keyid the verifier derives from the public key.
     let want_a = Keyid::from_public_key(&kp_a.public_key());
     let want_b = Keyid::from_public_key(&kp_b.public_key());
@@ -248,9 +248,9 @@ fn tampered_pae_bytes_rejected_by_signature_slice_verifier() {
     );
 }
 
-/// Payload-type is part of the PAE preimage. A verifier that accepts a swapped
-/// payload-type would let an attacker reuse a signature against a
-/// differently-typed payload.
+/// Payload-type is part of the PAE preimage. A verifier that accepts a
+/// swapped payload-type would let an attacker
+/// reuse a signature against a differently-typed payload.
 #[test]
 fn mismatched_payload_type_rejected_by_signature_slice_verifier() {
     let kp_a = Keypair::generate();
@@ -279,8 +279,8 @@ fn mismatched_payload_type_rejected_by_signature_slice_verifier() {
 
 /// Cross-shape attack: an adversary takes the bytes of a legacy
 /// `DualSignedReceipt` signature (which authenticates `canonical_json
-/// (CoSigningBody)`) and stuffs them into a DSSE envelope's `signatures`
-/// array. The signature-slice verifier MUST reject because the legacy
+/// (CoSigningBody)`) and stuffs them into a DSSE envelope's
+/// `signatures` array. The signature-slice verifier MUST reject because the legacy
 /// signature does not authenticate the DSSE PAE preimage.
 #[test]
 fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
@@ -309,7 +309,7 @@ fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
         &kp_a.public_key(),
         &kp_b.public_key(),
     )
-    .expect("hot-path-emitted DSSE envelope must verify under §6");
+    .expect("hot-path-emitted DSSE envelope must verify under the signature-slice verifier");
 
     // Forge: build a DSSE envelope shape but stuff it with the legacy
     // signature bytes. The legacy signatures authenticate
@@ -327,8 +327,8 @@ fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
     assert!(
         result.is_err(),
         "DSSE envelope forged from legacy DualSignedReceipt signatures MUST \
-         fail §6 verification (the two preimages share zero bytes, \
-         so a legacy signature cannot authenticate the §6 preimage)"
+         fail signature-slice verification (R4 BLOCKER 1: the two preimages share zero bytes, \
+         so a legacy signature cannot authenticate the DSSE preimage)"
     );
 }
 
@@ -358,7 +358,7 @@ fn hot_path_emits_both_artifacts_and_each_verifies() {
         .verify(&kp_a.public_key(), &kp_b.public_key())
         .expect("legacy DualSignedReceipt verifies under legacy verifier");
 
-    // The signature-slice verifier accepts the DSSE artifact.
+    // Signature-slice verifier accepts the DSSE artifact.
     verify_dsse_envelope(
         &artifacts.dsse_envelope,
         &kp_a.public_key(),
@@ -378,17 +378,17 @@ fn hot_path_emits_both_artifacts_and_each_verifies() {
     let dsse_preimage = artifacts.dsse_envelope.pae_bytes().unwrap();
     assert!(
         !contains_subsequence(&dsse_preimage, &legacy_preimage),
-        "the §6 PAE preimage does NOT contain the legacy preimage as a \
+        "the DSSE PAE preimage does NOT contain the legacy preimage as a \
          substring; the two surfaces are not collapsible"
     );
 }
 
-/// Spec §6 PAE format check: the helper is deterministic and matches the
+/// DSSE PAE format check: the helper is deterministic and matches the
 /// "DSSEv1 LEN(type) SP type SP LEN(body) SP body" wire form.
 #[test]
 fn pae_helper_matches_spec_format() {
     // Known vector: payloadType "application/x" (13 bytes), payload "hello"
-    // (5 bytes). Spec §6 line 342: "DSSEv1 SP LEN(type) SP type SP
+    // (5 bytes): "DSSEv1 SP LEN(type) SP type SP
     // LEN(body) SP body".
     let bytes = pae("application/x", b"hello");
     assert_eq!(
@@ -412,13 +412,15 @@ fn pae_helper_matches_spec_format() {
 }
 
 /// Spec §7 step 7 substrate: the `subject[0].digest.sha256` field equals
-/// the SHA-256 of the canonical-JSON of the underlying receipt body.
-/// The subject digest binds the receipt BODY (canonical JSON of
-/// `ChioReceiptBody`), not the full signed `ChioReceipt` wrapper.
-/// Resolving the receipt from a store (which exposes the body for
-/// re-verification) and re-hashing the body must reproduce this
-/// digest. Hashing the full wrapper would fold in the signature bytes,
-/// which the verifier cannot reproduce from a body-only re-emission.
+/// the SHA-256 of the canonical-JSON of the underlying receipt body. A
+/// verifier resolving the receipt via the predicate's
+/// P0-004 fix (audit 2026-05-08): the subject digest binds the
+/// receipt BODY (canonical JSON of `ChioReceiptBody`), not the full
+/// signed `ChioReceipt` wrapper. Resolving the receipt from a store
+/// (which exposes the body for re-verification) and re-hashing the
+/// body must reproduce this digest. Hashing the full wrapper would
+/// fold in the signature bytes, which the verifier cannot reproduce
+/// from a body-only re-emission.
 #[test]
 fn statement_subject_digest_matches_canonical_receipt_body_hash() {
     let kp_a = Keypair::generate();
@@ -442,13 +444,13 @@ fn statement_subject_digest_matches_canonical_receipt_body_hash() {
     let want = chio_core::crypto::sha256_hex(&canonical_body);
     assert_eq!(
         statement.subject[0].digest.sha256, want,
-        "subject[0].digest.sha256 MUST equal sha256(canonical_json(receipt.body())); \
-         cross-impl resolution from a body-only receipt store relies on this binding."
+        "subject[0].digest.sha256 MUST equal sha256(canonical_json(receipt.body())) \
+         per P0-004 fix; cross-impl resolution from a body-only receipt store relies \
+         on this binding."
     );
 
     // Belt-and-suspenders: hashing the full signed wrapper must NOT
-    // match. A wrapper-hash match would mean the body/wrapper binding
-    // had regressed silently.
+    // match. If it did, P0-004 would have regressed silently.
     let canonical_full = canonical_json_bytes(&receipt).unwrap();
     let full_digest = chio_core::crypto::sha256_hex(&canonical_full);
     assert_ne!(
@@ -489,12 +491,13 @@ fn statement_subject_name_is_canonical_receipt_name_and_raw_id_is_rejected() {
     );
 }
 
-/// The bilateral envelope profile pins exactly ONE subject. Accepting
-/// a multi-subject envelope would let a signer insert a second
-/// arbitrary subject; any verifier walking the full subject list (the
-/// in-toto convention for membership) would then resolve a different
-/// receipt than the producer signed. The empty-list case is rejected
-/// for the same reason: there must be exactly one subject.
+/// P0-005 fix (audit 2026-05-08): the bilateral envelope profile
+/// pins exactly ONE subject. The pre-fix verifier rejected the
+/// empty-list case but accepted multi-subject envelopes and bound
+/// only `subject[0]`. A signer could insert a second arbitrary
+/// subject and any verifier walking the full subject list (the
+/// in-toto convention for membership) would resolve a different
+/// receipt than the producer signed.
 #[test]
 fn dsse_envelope_with_two_subjects_is_rejected() {
     use chio_federation::bilateral_dsse::{DsseStatement, StatementSubject, SubjectDigest};

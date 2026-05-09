@@ -47,15 +47,15 @@ use crate::bilateral::BilateralCoSigningError;
 // Constants (DSSE signature-slice profile)
 // ---------------------------------------------------------------------------
 
-/// DSSE v1 payload type used by chiodos bilateral signature-slice envelopes.
+/// DSSE v1 payload type used by chiodos bilateral envelopes.
 ///
 /// The literal string is part of the PAE preimage: changing it changes the
 /// signed bytes.
 pub const PAYLOAD_TYPE_IN_TOTO: &str = "application/vnd.in-toto+json";
 
 /// Predicate type for the in-toto Statement carried in the DSSE signature
-/// slice. Deliberately distinct from the strict CHIODOS bilateral invocation
-/// predicate.
+/// slice. Deliberately distinct from the strict CHIODOS bilateral
+/// invocation predicate.
 pub const PREDICATE_TYPE_BILATERAL: &str = "chio.bilateral-cosign-signature-slice.v1";
 
 /// In-toto Statement `_type` per the v1 attestation framework (DSSE doc).
@@ -103,10 +103,10 @@ pub struct Keyid(pub String);
 impl Keyid {
     /// Compute the DSSE keyid for the given public key.
     ///
-    /// Hashes raw key material (not hex-encoded bytes). An earlier
-    /// revision hashed `to_hex().as_bytes()` for Ed25519, which produced
-    /// a different fingerprint than any peer that hashes raw key material and caused
-    /// cross-implementation envelopes to be silently rejected.
+    /// Hash the raw public-key bytes. Hashing the hex string instead
+    /// would produce a different fingerprint than peers that follow
+    /// the raw-key convention, causing cross-implementation envelopes
+    /// to be rejected.
     #[must_use]
     pub fn from_public_key(public_key: &PublicKey) -> Self {
         use chio_core_types::crypto::SigningAlgorithm;
@@ -129,11 +129,11 @@ impl Keyid {
 
 /// In-toto Statement `subject` entry: the receipt body that the bilateral
 /// co-signature attests. The digest is the SHA-256 of the canonical-JSON
-/// encoding of the receipt body, hex-lowercase.
+/// encoding of the receipt body, hex-lowercase per spec §7 step 7.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StatementSubject {
-    /// Canonical subject name for the underlying receipt.
+    /// Identifier of the underlying receipt (e.g. `ChioReceipt::id`).
     pub name: String,
     /// `{"sha256": "<hex>"}` per spec.
     pub digest: SubjectDigest,
@@ -184,6 +184,99 @@ pub struct BilateralPredicate {
     /// external pointer (mirroring the existing `CoSigningBody`
     /// `receipt_canonical_json` pattern).
     pub receipt_canonical_json: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_lease_ref: Option<CapabilityLeaseRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_evaluation_summary: Option<PolicyEvaluationSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub governance_receipt_ref: Option<GovernanceReceiptRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consistency_anchor: Option<String>,
+}
+
+/// Capability lease reference, per spec §5 (`capability_lease_ref`).
+/// Carries the lease id, issuing kernel, and an absolute Unix-ms
+/// expiry that the §7 step 14 verifier compares against the verifier's
+/// pinned-epoch wall clock.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct CapabilityLeaseRef {
+    /// Globally-unique lease id. The verifier (step 14) MUST resolve
+    /// this against a trusted lease registry; an unresolvable id
+    /// fails-closed with `capability.lease_expired_or_unknown`.
+    pub lease_id: String,
+    /// `did:chio` identifier of the kernel that minted the lease. Step
+    /// 14 verifies the resolved registry record's issuer matches.
+    pub issuer: String,
+    /// Absolute lease expiry in Unix milliseconds. Step 14 enforces
+    /// `expires_at_unix_ms > pinned_epoch.now`; a non-strictly-greater
+    /// value is rejected as expired.
+    pub expires_at_unix_ms: u64,
+    /// Optional SHA-256 of the canonical-JSON encoding of the
+    /// capability scope (`{"alg":"sha256","value":"..."}`). When
+    /// present the registry record's scope digest MUST match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_digest: Option<HashRecord>,
+}
+
+/// SHA-256 hash record (`{"alg":"sha256","value":"<hex>"}`) used by
+/// `tool_args_hash`, `capability_lease_ref.scope_digest`, and
+/// `governance_receipt_ref.digest` per spec §5.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct HashRecord {
+    pub alg: String,
+    /// Hex-lowercase 64-character SHA-256.
+    pub value: String,
+}
+
+/// Single kernel's policy verdict, per spec §5 (`policyVerdict`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct PolicyVerdict {
+    /// `"allow"` or `"deny"`. Step 13 of the §7 verifier requires the
+    /// two kernels' verdicts to be equal.
+    pub verdict: String,
+    /// Identifier of the policy that produced the verdict.
+    pub policy_id: String,
+    /// Version of the policy (e.g. `"v1.2.0"` or a content hash).
+    pub policy_version: String,
+    /// Optional rationale code (verifier-opaque; logged for audit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale_code: Option<String>,
+}
+
+/// Joint policy evaluation summary covering both kernels, per spec
+/// §5 (`policy_evaluation_summary`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct PolicyEvaluationSummary {
+    /// Org A (origin kernel) policy verdict.
+    pub server_a_verdict: PolicyVerdict,
+    /// Org B (tool-host kernel) policy verdict.
+    pub server_b_verdict: PolicyVerdict,
+    /// Joint disposition; spec §5 line 213 says it MUST equal `"allow"`
+    /// only when both verdicts are `"allow"`. Optional on the wire so
+    /// callers that haven't computed it can still emit a predicate;
+    /// the §7 step 13 verifier still cross-checks the two
+    /// `server_*_verdict` strings directly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joint_disposition: Option<String>,
+}
+
+/// Governance receipt reference, per spec §5 (`governance_receipt_ref`).
+/// REQUIRED when the action-class is declared `receipt-backed` in the
+/// local ladder manifest (§7 step 15).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct GovernanceReceiptRef {
+    /// Globally-unique receipt id. The verifier (step 15) resolves
+    /// this against a governance receipt store.
+    pub receipt_id: String,
+    /// `did:chio` identifier of the kernel that issued the receipt.
+    pub kernel_id: String,
+    /// SHA-256 of the canonical-JSON of the resolved receipt body.
+    pub digest: HashRecord,
 }
 
 /// In-toto Statement carried inside the DSSE envelope's `payload` (after
@@ -332,19 +425,67 @@ pub fn build_predicate(
         cross_org_visibility: DEFAULT_CROSS_ORG_VISIBILITY.to_string(),
         timestamp_unix_ms,
         receipt_canonical_json,
+        capability_lease_ref: None,
+        policy_evaluation_summary: None,
+        governance_receipt_ref: None,
+        consistency_anchor: None,
     })
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BilateralPredicateExtensions {
+    /// Spec §5 `capability_lease_ref`; required by §7 step 14.
+    pub capability_lease_ref: Option<CapabilityLeaseRef>,
+    /// Spec §5 `policy_evaluation_summary`; required by §7 step 13.
+    pub policy_evaluation_summary: Option<PolicyEvaluationSummary>,
+    /// Spec §5 `governance_receipt_ref`; required by §7 step 15 when
+    /// the action-class is `receipt-backed`.
+    pub governance_receipt_ref: Option<GovernanceReceiptRef>,
+    /// Spec §5 `consistency_anchor`; required by §7 step 16 for
+    /// non-`crdt-commutative` consistency models.
+    pub consistency_anchor: Option<String>,
+    /// Override `consistency_model`. None = `DEFAULT_CONSISTENCY_MODEL`
+    /// (`crdt-commutative`).
+    pub consistency_model: Option<String>,
+    /// Override `cross_org_visibility`. None =
+    /// `DEFAULT_CROSS_ORG_VISIBILITY` (`federated`).
+    pub cross_org_visibility: Option<String>,
+}
+
+pub fn build_predicate_full(
+    receipt: &ChioReceipt,
+    org_a: KernelIdentity,
+    org_b: KernelIdentity,
+    tool_name: &str,
+    timestamp_unix_ms: u64,
+    extensions: BilateralPredicateExtensions,
+) -> Result<BilateralPredicate, BilateralCoSigningError> {
+    let mut predicate = build_predicate(receipt, org_a, org_b, tool_name, timestamp_unix_ms)?;
+    if let Some(model) = extensions.consistency_model {
+        predicate.consistency_model = model;
+    }
+    if let Some(vis) = extensions.cross_org_visibility {
+        predicate.cross_org_visibility = vis;
+    }
+    predicate.capability_lease_ref = extensions.capability_lease_ref;
+    predicate.policy_evaluation_summary = extensions.policy_evaluation_summary;
+    predicate.governance_receipt_ref = extensions.governance_receipt_ref;
+    predicate.consistency_anchor = extensions.consistency_anchor;
+    Ok(predicate)
 }
 
 /// Build the in-toto Statement carrying the bilateral predicate.
 ///
-/// The subject digest binds the receipt BODY (`ChioReceiptBody`), not
-/// the full signed wrapper. Hashing the full `ChioReceipt` (including
-/// the envelope's `signature` field) would make the verifier's
-/// "resolve the receipt from a store and re-derive the subject" path
-/// produce a different digest than the producer signed, breaking
-/// cross-impl resolution. Hashing the body lets verifiers re-derive
-/// the subject from any source that exposes the body (the receipt
-/// store's signed wrapper, an audit log, or a peer's re-emission).
+/// P0-004 fix (audit 2026-05-08): the subject digest binds the
+/// receipt BODY (`ChioReceiptBody`), not the full signed wrapper.
+/// An earlier revision hashed the full `ChioReceipt` (including the
+/// envelope's `signature` field), which made the verifier's "resolve
+/// the receipt from a store and re-derive the subject" path produce a
+/// different digest than the producer signed -- cross-impl resolution
+/// silently broke. Hashing the body fixes the binding so verifiers
+/// can re-derive the subject from any source that exposes the body
+/// (the receipt store's signed wrapper, an audit log, or a peer's
+/// re-emission).
 pub fn build_statement(
     receipt: &ChioReceipt,
     predicate: BilateralPredicate,
@@ -387,12 +528,35 @@ pub fn sign_dsse_envelope(
     tool_name: &str,
     timestamp_unix_ms: u64,
 ) -> Result<DsseEnvelope, BilateralCoSigningError> {
+    sign_dsse_envelope_full(
+        receipt,
+        org_a_keypair,
+        org_b_keypair,
+        org_a_kernel_id,
+        org_b_kernel_id,
+        tool_name,
+        timestamp_unix_ms,
+        BilateralPredicateExtensions::default(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn sign_dsse_envelope_full(
+    receipt: &ChioReceipt,
+    org_a_keypair: &Keypair,
+    org_b_keypair: &Keypair,
+    org_a_kernel_id: &str,
+    org_b_kernel_id: &str,
+    tool_name: &str,
+    timestamp_unix_ms: u64,
+    extensions: BilateralPredicateExtensions,
+) -> Result<DsseEnvelope, BilateralCoSigningError> {
     let org_a_pub = org_a_keypair.public_key();
     let org_b_pub = org_b_keypair.public_key();
     let org_a_keyid = Keyid::from_public_key(&org_a_pub);
     let org_b_keyid = Keyid::from_public_key(&org_b_pub);
 
-    let predicate = build_predicate(
+    let predicate = build_predicate_full(
         receipt,
         KernelIdentity {
             kernel_id: org_a_kernel_id.to_string(),
@@ -406,6 +570,7 @@ pub fn sign_dsse_envelope(
         },
         tool_name,
         timestamp_unix_ms,
+        extensions,
     )?;
 
     let statement = build_statement(receipt, predicate)?;
@@ -497,12 +662,14 @@ pub fn verify_dsse_envelope(
     }
     validate_signature_slice_predicate(&statement.predicate)?;
 
-    // The bilateral envelope profile binds exactly ONE subject (the
-    // receipt body). Accepting a multi-subject envelope would let a
-    // signer insert an arbitrary second subject digest; any verifier
-    // walking the full subject list (the spec-conformant behavior for
-    // in-toto subject membership) would then resolve a different
-    // receipt than the producer signed.
+    // P0-005 fix (audit 2026-05-08): the bilateral envelope profile
+    // binds exactly ONE subject (the receipt body). The pre-fix
+    // verifier only rejected the empty-list case, so a multi-subject
+    // envelope was accepted and only `subject[0]` was bound. A
+    // signer could insert an arbitrary second subject digest and
+    // verifiers that walked the full subject list (which is the
+    // spec-conformant behavior for in-toto subject membership) would
+    // resolve a different receipt than the producer signed.
     if statement.subject.len() != 1 {
         return Err(BilateralCoSigningError::CanonicalJson(format!(
             "statement.malformed: bilateral envelope must carry exactly 1 subject, got {}",
@@ -523,9 +690,9 @@ pub fn verify_dsse_envelope(
     // Bind verified keyids to the predicate's declared
     // `passport_key_fingerprint` for both tool servers. Without this
     // check, a signer could produce a validly signed envelope whose
-    // predicate names different passport fingerprints, and downstream §7
-    // peer-pinning / audit steps would act on identities that were never
-    // verified.
+    // predicate names different passport fingerprints, and downstream
+    // peer-pinning and audit steps would act on identities that were
+    // never verified.
     if statement.predicate.tool_server_a.passport_key_fingerprint != org_a_keyid {
         return Err(BilateralCoSigningError::OrgASignatureInvalid);
     }
@@ -698,9 +865,9 @@ mod tests {
 
     fn sample_receipt(kp: &Keypair) -> ChioReceipt {
         let body = ChioReceiptBody {
-            id: "rcpt-release work-b4-sample".to_string(),
+            id: "rcpt-bilateral-b4-sample".to_string(),
             timestamp: 1_734_000_000,
-            capability_id: "cap-release work-b4".to_string(),
+            capability_id: "cap-bilateral-b4".to_string(),
             tool_server: "srv-orgb-files".to_string(),
             tool_name: "file_read".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"k":"v"})).unwrap(),
@@ -748,7 +915,7 @@ mod tests {
             .expect("envelope must verify under matching public keys");
         assert_eq!(
             statement.predicate_type, PREDICATE_TYPE_BILATERAL,
-            "predicate type emitted by hot path"
+            "predicate type emitted by bilateral hot path"
         );
         assert_eq!(statement.subject.len(), 1);
         assert_eq!(statement.subject[0].name, receipt_subject_name(&receipt.id));
@@ -778,10 +945,11 @@ mod tests {
 
     #[test]
     fn keyid_is_sha256_of_raw_ed25519_public_key_bytes() {
-        // The spec's keyid contract is SHA-256 of RAW key material
-        // (Ed25519 = 32 verifying-key bytes). Hashing `to_hex().as_bytes()`
-        // would silently break cross-implementation interop; this test
-        // pins the raw-bytes invariant.
+        // P0-003 fix (audit 2026-05-08): the spec's keyid contract is
+        // SHA-256 of RAW key material (Ed25519 = 32 verifying-key
+        // bytes). An earlier revision hashed `to_hex().as_bytes()`
+        // which silently broke cross-implementation interop. This
+        // test pins the raw-bytes invariant.
         let kp = Keypair::generate();
         let pk = kp.public_key();
         let keyid = Keyid::from_public_key(&pk);
