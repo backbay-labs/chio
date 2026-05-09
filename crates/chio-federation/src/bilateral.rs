@@ -4,10 +4,17 @@
 //! both kernels need to sign the same receipt so that either org can
 //! independently verify the chain. This module defines the wire-level
 //! [`CoSigningRequest`] / [`CoSigningResponse`] envelope, the
-//! [`DualSignedReceipt`] artifact (which carries both signatures side-by-
-//! side without mutating the core `ChioReceipt` body), and a
+//! legacy [`DualSignedReceipt`] compatibility artifact (which carries both
+//! signatures side-by-side without mutating the core `ChioReceipt` body), and a
 //! [`BilateralCoSigningProtocol`] trait that the kernel calls after it
 //! signs a receipt locally.
+//!
+//! The canonical verification API for new bilateral artifacts is
+//! [`crate::bilateral_verifier::verify_bilateral_cosign_invocation`] over a
+//! [`crate::bilateral_dsse::DsseEnvelope`]. `DualSignedReceipt::verify*`
+//! remains a compatibility adapter for the older detached-signature
+//! envelope only; it is not a DSSE verifier and must not be used as the
+//! authorization or audit verifier for the signature-slice profile.
 //!
 //! ## Design notes
 //!
@@ -434,12 +441,18 @@ fn co_sign_with_origin_inner(
     Ok(dual)
 }
 
-/// Contains the legacy `DualSignedReceipt` plus the DSSE signature-slice
-/// artifact. Neither artifact is a strict CHIODOS bilateral invocation
-/// predicate; see `crate::bilateral_dsse` module docs.
+/// Contains the legacy `DualSignedReceipt` compatibility adapter plus the
+/// canonical DSSE signature-slice artifact. Neither artifact is a strict
+/// CHIODOS bilateral invocation predicate; see `crate::bilateral_dsse`
+/// module docs.
 #[derive(Debug, Clone)]
 pub struct BilateralCoSignArtifacts {
+    /// Compatibility-only legacy artifact for callers that still consume
+    /// the old `CoSigningBody` preimage. New verifier paths must use
+    /// `dsse_envelope`.
     pub dual_signed_receipt: DualSignedReceipt,
+    /// Canonical bilateral verification artifact for this crate's
+    /// signature-slice profile.
     pub dsse_envelope: crate::bilateral_dsse::DsseEnvelope,
 }
 
