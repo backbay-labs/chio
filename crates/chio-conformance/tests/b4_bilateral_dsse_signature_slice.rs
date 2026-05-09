@@ -35,8 +35,7 @@ use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction,
 use chio_federation::bilateral::{co_sign_with_origin_full, CoSigningBody, InProcessCoSigner};
 use chio_federation::bilateral_dsse::{
     pae, receipt_subject_name, sign_dsse_envelope, verify_dsse_envelope, DsseEnvelope, Keyid,
-    BILATERAL_DSSE_ENVELOPE_SCHEMA, PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA,
-    PREDICATE_TYPE_BILATERAL,
+    PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL,
 };
 
 // ---------------------------------------------------------------------------
@@ -195,10 +194,14 @@ fn emitted_predicate_is_explicit_signature_slice_not_chiodos_invocation_schema()
         .expect("signature-slice verifier must accept envelope");
     let predicate_json = serde_json::to_value(&statement.predicate).unwrap();
 
-    assert_eq!(
-        envelope.schema.as_deref(),
-        Some(BILATERAL_DSSE_ENVELOPE_SCHEMA)
+    let envelope_json = serde_json::to_value(&envelope).unwrap();
+    assert!(
+        envelope_json.get("schema").is_none(),
+        "standard DSSE envelope wire JSON must not carry Chio schema metadata"
     );
+    assert!(envelope_json.get("payloadType").is_some());
+    assert!(envelope_json.get("payload").is_some());
+    assert!(envelope_json.get("signatures").is_some());
     assert_eq!(statement.predicate_type, PREDICATE_TYPE_BILATERAL);
     assert_eq!(predicate_json["schema"], PREDICATE_BODY_SCHEMA);
     assert_ne!(

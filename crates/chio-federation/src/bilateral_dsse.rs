@@ -223,8 +223,6 @@ pub struct DsseSignature {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DsseEnvelope {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub schema: Option<String>,
     pub payload_type: String,
     /// Base64 (standard alphabet) of canonical-JSON of [`DsseStatement`].
     pub payload: String,
@@ -419,7 +417,6 @@ pub fn sign_dsse_envelope(
         .map_err(|e| BilateralCoSigningError::TransportFailure(e.to_string()))?;
 
     let envelope = DsseEnvelope {
-        schema: Some(BILATERAL_DSSE_ENVELOPE_SCHEMA.to_string()),
         payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
         payload: BASE64_STANDARD.encode(&statement_bytes),
         signatures: vec![
