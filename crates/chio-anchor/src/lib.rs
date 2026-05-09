@@ -123,6 +123,13 @@ pub enum AnchorError {
 
     #[error("verification error: {0}")]
     Verification(String),
+
+    /// when the caller passes a [`crate::WitnessPolicy`] with
+    /// `require_public_witness=true`. Per PROTOCOL.md section
+    /// [`crate::verify_anchor_batch_with_witness_policy_async`]. The sync
+    /// wrapper is reserved for advisory mode (`require_public_witness=false`).
+    #[error("synchronous witness-policy path requires advisory mode (require_public_witness=false); use verify_anchor_batch_with_witness_policy_async")]
+    SyncRouteRequiresAdvisoryPolicy,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

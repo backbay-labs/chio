@@ -210,6 +210,9 @@ jobs:
           bash ./scripts/check-http-egress-contract.sh
           bash ./scripts/tests/check-http-egress-contract.test.sh
 
+      - name: Anchor batch async witness lint
+        run: bash ./scripts/check-anchor-batch-async-witness.sh
+
       - name: Workspace proof report
         env:
           CARGO_BUILD_JOBS: "1"
