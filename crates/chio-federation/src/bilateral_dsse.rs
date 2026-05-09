@@ -82,6 +82,8 @@ pub const DEFAULT_CROSS_ORG_VISIBILITY: &str = "federated";
 
 pub const DEFAULT_COSIGN_MODE: &str = "bilateral_required";
 
+pub const VALID_CROSS_ORG_VISIBILITY: &[&str] = &["private", "treaty_only", "federated", "public"];
+
 // ---------------------------------------------------------------------------
 // Public types (kept narrow; see module docs §"Bounded scope" for exclusions)
 // ---------------------------------------------------------------------------
@@ -402,6 +404,9 @@ pub fn build_predicate(
     tool_name: &str,
     timestamp_unix_ms: u64,
 ) -> Result<BilateralPredicate, BilateralCoSigningError> {
+    if receipt.tool_name != tool_name {
+        return Err(BilateralCoSigningError::ReceiptMismatch);
+    }
     let receipt_canonical = canonical_json_bytes(receipt)
         .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?;
     let receipt_canonical_json = String::from_utf8(receipt_canonical)
@@ -634,6 +639,12 @@ pub fn verify_dsse_envelope(
     }
 
     let (statement, statement_bytes) = envelope.decode_statement()?;
+    let canonical_statement_bytes = statement.canonical_bytes()?;
+    if canonical_statement_bytes != statement_bytes {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "statement.malformed: payload is not canonical JSON".to_string(),
+        ));
+    }
 
     if statement.statement_type != STATEMENT_TYPE_V1 {
         return Err(BilateralCoSigningError::CanonicalJson(format!(
@@ -647,6 +658,7 @@ pub fn verify_dsse_envelope(
             statement.predicate_type
         )));
     }
+    validate_signature_slice_predicate(&statement.predicate)?;
 
     // P0-005 fix (audit 2026-05-08): the bilateral envelope profile
     // binds exactly ONE subject (the receipt body). The pre-fix
@@ -670,8 +682,6 @@ pub fn verify_dsse_envelope(
         )));
     }
 
-    let pae_bytes = pae(&envelope.payload_type, &statement_bytes);
-
     let org_a_keyid = Keyid::from_public_key(org_a_public_key);
     let org_b_keyid = Keyid::from_public_key(org_b_public_key);
 
@@ -692,10 +702,46 @@ pub fn verify_dsse_envelope(
         return Err(BilateralCoSigningError::OrgBSignatureInvalid);
     }
 
-    let sig_a = find_signature_by_keyid(&envelope.signatures, &org_a_keyid)
-        .ok_or(BilateralCoSigningError::OrgASignatureInvalid)?;
-    let sig_b = find_signature_by_keyid(&envelope.signatures, &org_b_keyid)
-        .ok_or(BilateralCoSigningError::OrgBSignatureInvalid)?;
+    let embedded_receipt = decode_embedded_receipt(&statement.predicate)?;
+    if embedded_receipt.id != statement.predicate.invocation_id {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "predicate.schema_invalid: invocation_id {:?} does not match embedded receipt id {:?}",
+            statement.predicate.invocation_id, embedded_receipt.id
+        )));
+    }
+    if embedded_receipt.tool_name != statement.predicate.tool_name {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "predicate.schema_invalid: tool_name {:?} does not match embedded receipt tool_name {:?}",
+            statement.predicate.tool_name, embedded_receipt.tool_name
+        )));
+    }
+    if embedded_receipt.kernel_key != *org_b_public_key {
+        return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+    }
+    let receipt_signature_valid = embedded_receipt
+        .verify_signature()
+        .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?;
+    if !receipt_signature_valid {
+        return Err(BilateralCoSigningError::ReceiptMismatch);
+    }
+    let embedded_receipt_digest = receipt_body_digest_hex(&embedded_receipt)?;
+    if statement.subject[0].digest.sha256 != embedded_receipt_digest {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "subject.digest_mismatch: subject digest {} != sha256(canonical_json(embedded_receipt.body())) {}",
+            statement.subject[0].digest.sha256, embedded_receipt_digest
+        )));
+    }
+
+    let pae_bytes = pae(&envelope.payload_type, &statement_bytes);
+
+    let sig_a = &envelope.signatures[0];
+    if sig_a.keyid != org_a_keyid.0 {
+        return Err(BilateralCoSigningError::OrgASignatureInvalid);
+    }
+    let sig_b = &envelope.signatures[1];
+    if sig_b.keyid != org_b_keyid.0 {
+        return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+    }
 
     let sig_a_bytes = decode_ed25519_signature(&sig_a.sig)
         .ok_or(BilateralCoSigningError::OrgASignatureInvalid)?;
@@ -717,11 +763,78 @@ pub fn verify_dsse_envelope(
     Ok(statement)
 }
 
-fn find_signature_by_keyid<'a>(
-    signatures: &'a [DsseSignature],
-    keyid: &Keyid,
-) -> Option<&'a DsseSignature> {
-    signatures.iter().find(|s| s.keyid == keyid.0)
+fn validate_signature_slice_predicate(
+    pred: &BilateralPredicate,
+) -> Result<(), BilateralCoSigningError> {
+    if pred.schema != PREDICATE_BODY_SCHEMA {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "predicate.schema_invalid: schema {:?} is not {:?}",
+            pred.schema, PREDICATE_BODY_SCHEMA
+        )));
+    }
+    if pred.tool_server_a.alg != "ed25519" {
+        return Err(BilateralCoSigningError::OrgASignatureInvalid);
+    }
+    if pred.tool_server_b.alg != "ed25519" {
+        return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+    }
+    if !is_sha256_hex(pred.tool_server_a.passport_key_fingerprint.as_str())
+        || !is_sha256_hex(pred.tool_server_b.passport_key_fingerprint.as_str())
+    {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: passport_key_fingerprint is not 64 lowercase hex"
+                .to_string(),
+        ));
+    }
+    match pred.co_sign.as_str() {
+        "bilateral_required" | "bilateral_if_cross_org" => {}
+        _ => {
+            return Err(BilateralCoSigningError::CanonicalJson(format!(
+                "predicate.schema_invalid: co_sign {:?} is not supported",
+                pred.co_sign
+            )))
+        }
+    }
+    if !VALID_CROSS_ORG_VISIBILITY.contains(&pred.cross_org_visibility.as_str()) {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "predicate.schema_invalid: cross_org_visibility {:?} is unsupported",
+            pred.cross_org_visibility
+        )));
+    }
+    Ok(())
+}
+
+fn decode_embedded_receipt(
+    pred: &BilateralPredicate,
+) -> Result<ChioReceipt, BilateralCoSigningError> {
+    let receipt: ChioReceipt = serde_json::from_str(&pred.receipt_canonical_json)
+        .map_err(|e| BilateralCoSigningError::CanonicalJson(format!("receipt json: {e}")))?;
+    let canonical = canonical_json_bytes(&receipt)
+        .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?;
+    let canonical_json = String::from_utf8(canonical)
+        .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?;
+    if canonical_json != pred.receipt_canonical_json {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: receipt_canonical_json is not canonical".to_string(),
+        ));
+    }
+    Ok(receipt)
+}
+
+fn receipt_body_digest_hex(receipt: &ChioReceipt) -> Result<String, BilateralCoSigningError> {
+    let body = receipt.body();
+    let body_canonical = canonical_json_bytes(&body)
+        .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?;
+    let mut hasher = Sha256::new();
+    hasher.update(&body_canonical);
+    Ok(hex::encode(hasher.finalize()))
+}
+
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
 fn decode_ed25519_signature(b64: &str) -> Option<[u8; 64]> {
@@ -886,5 +999,144 @@ mod tests {
         envelope.payload_type = "application/json".to_string();
         let result = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn verifier_rejects_swapped_signature_slots() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let mut envelope = sign_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "kernel.org-a",
+            "kernel.org-b",
+            "file_read",
+            1_734_000_000_000,
+        )
+        .unwrap();
+        envelope.signatures.swap(0, 1);
+        let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+            .expect_err("signature slots are ordered Org A then Org B");
+        assert_eq!(err, BilateralCoSigningError::OrgASignatureInvalid);
+    }
+
+    #[test]
+    fn verifier_rejects_noncanonical_statement_payload_even_if_resigned() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let mut envelope = sign_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "kernel.org-a",
+            "kernel.org-b",
+            "file_read",
+            1_734_000_000_000,
+        )
+        .unwrap();
+        let (statement, _) = envelope.decode_statement().unwrap();
+        let noncanonical = serde_json::to_vec_pretty(&statement).unwrap();
+        resign_payload(&mut envelope, &kp_a, &kp_b, &noncanonical);
+
+        let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+            .expect_err("non-canonical payload bytes must be rejected");
+        assert!(err.to_string().contains("not canonical JSON"));
+    }
+
+    #[test]
+    fn verifier_rejects_invalid_embedded_receipt_signature_even_if_dsse_resigned() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let mut envelope = sign_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "kernel.org-a",
+            "kernel.org-b",
+            "file_read",
+            1_734_000_000_000,
+        )
+        .unwrap();
+        let (mut statement, _) = envelope.decode_statement().unwrap();
+        let mut embedded: ChioReceipt =
+            serde_json::from_str(&statement.predicate.receipt_canonical_json).unwrap();
+        embedded.content_hash = sha256_hex(b"tampered-content");
+        statement.predicate.receipt_canonical_json =
+            String::from_utf8(canonical_json_bytes(&embedded).unwrap()).unwrap();
+        let bytes = statement.canonical_bytes().unwrap();
+        resign_payload(&mut envelope, &kp_a, &kp_b, &bytes);
+
+        let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+            .expect_err("embedded receipt signature must be checked");
+        assert_eq!(err, BilateralCoSigningError::ReceiptMismatch);
+    }
+
+    #[test]
+    fn verifier_rejects_embedded_receipt_not_signed_by_tool_host() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let rogue_kp = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let rogue_receipt = sample_receipt(&rogue_kp);
+        let mut envelope = sign_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "kernel.org-a",
+            "kernel.org-b",
+            "file_read",
+            1_734_000_000_000,
+        )
+        .unwrap();
+        let (mut statement, _) = envelope.decode_statement().unwrap();
+        statement.predicate.receipt_canonical_json =
+            String::from_utf8(canonical_json_bytes(&rogue_receipt).unwrap()).unwrap();
+        statement.subject[0].digest.sha256 = receipt_body_digest_hex(&rogue_receipt).unwrap();
+        let bytes = statement.canonical_bytes().unwrap();
+        resign_payload(&mut envelope, &kp_a, &kp_b, &bytes);
+
+        let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+            .expect_err("embedded receipt kernel_key must equal Org B passport key");
+        assert_eq!(err, BilateralCoSigningError::OrgBSignatureInvalid);
+    }
+
+    #[test]
+    fn signer_rejects_tool_name_that_does_not_match_receipt() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let err = sign_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "kernel.org-a",
+            "kernel.org-b",
+            "file_write",
+            1_734_000_000_000,
+        )
+        .expect_err("producer must bind predicate.tool_name to receipt.tool_name");
+        assert_eq!(err, BilateralCoSigningError::ReceiptMismatch);
+    }
+
+    fn resign_payload(
+        envelope: &mut DsseEnvelope,
+        kp_a: &Keypair,
+        kp_b: &Keypair,
+        statement_bytes: &[u8],
+    ) {
+        envelope.payload = BASE64_STANDARD.encode(statement_bytes);
+        let pae_bytes = pae(PAYLOAD_TYPE_IN_TOTO, statement_bytes);
+        let sig_a = Ed25519Backend::new(kp_a.clone())
+            .sign_bytes(&pae_bytes)
+            .unwrap();
+        let sig_b = Ed25519Backend::new(kp_b.clone())
+            .sign_bytes(&pae_bytes)
+            .unwrap();
+        envelope.signatures[0].sig = BASE64_STANDARD.encode(sig_a.to_bytes());
+        envelope.signatures[1].sig = BASE64_STANDARD.encode(sig_b.to_bytes());
     }
 }

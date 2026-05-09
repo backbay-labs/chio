@@ -128,6 +128,16 @@ impl DualSignedReceipt {
         if !org_b_public_key.verify(&bytes, &self.org_b_signature) {
             return Err(BilateralCoSigningError::OrgBSignatureInvalid);
         }
+        let receipt_signature_valid = self
+            .body
+            .verify_signature()
+            .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?;
+        if !receipt_signature_valid {
+            return Err(BilateralCoSigningError::ReceiptMismatch);
+        }
+        if self.body.kernel_key != *org_b_public_key {
+            return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+        }
         Ok(())
     }
 }
@@ -381,6 +391,11 @@ pub struct BilateralCoSignArtifacts {
 /// the DSSE signature-slice predicate binds them. `tool_name` is typically
 /// `receipt.tool_name`; `timestamp_unix_ms` is the wall-clock at
 /// canonicalisation (Org B-side).
+///
+/// Scope boundary: this helper is an in-process API/demo slice because it
+/// takes the origin kernel private key to produce the DSSE Org A signature.
+/// Production tool-host paths must route that DSSE signature through an
+/// origin-kernel cosigner before making this the default hot path.
 #[allow(clippy::too_many_arguments)]
 pub fn co_sign_with_origin_full(
     origin_kernel_id: &str,
@@ -422,7 +437,10 @@ pub fn co_sign_with_origin_full(
 pub struct BilateralInvocationRequest<'a> {
     /// `did:chio` identifier of the origin kernel (Org A).
     pub origin_kernel_id: &'a str,
-    /// Origin kernel's signing keypair.
+    /// Origin kernel's signing keypair. This keeps the current
+    /// signature-slice implementation scoped to in-process API/demo use.
+    /// A production default hot path must replace this with a DSSE-capable
+    /// origin cosigner so Org B never needs Org A private key material.
     pub origin_keypair: &'a Keypair,
     /// `did:chio` identifier of the tool-host kernel (Org B).
     pub tool_host_kernel_id: &'a str,
