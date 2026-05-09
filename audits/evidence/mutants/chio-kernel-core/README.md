@@ -1,9 +1,10 @@
 # chio-kernel-core mutation baseline (release work-A1)
 
 This directory holds the per-mutant cargo-mutants output for the
-`chio-kernel-core` crate; the seed measurement that retires the
+`chio-kernel-core` crate. This is a partial seed measurement for the
 `BASELINE-GAP` row in `audits/mutation/2026-05-08-per-crate-baseline.md`
-for the largest trust-boundary crate.
+for the largest trust-boundary crate; it does not retire that gap until
+the full sweep lands.
 
 ## Run metadata
 
@@ -129,11 +130,13 @@ mutants in ~45-60 min based on the early-run pace.
 
 ## Surviving-mutant categorization
 
-By file (all 14 missed mutants are reachable-but-uncovered):
+By file (12 missed mutants are reachable test gaps; 2 missed mutants are
+Kani-only and out of scope for this normal `cargo test --package
+chio-kernel-core` run):
 
 | File | Missed |
 |---|---|
-| `crates/chio-kernel-core/src/normalized.rs` | 7 |
+| `crates/chio-kernel-core/src/normalized.rs` | 7 (5 reachable, 2 `cfg(kani)` out of scope) |
 | `crates/chio-kernel-core/src/scope.rs` | 5 |
 | `crates/chio-kernel-core/src/capability_verify.rs` | 1 |
 | `crates/chio-kernel-core/src/passport_verify.rs` | 1 |
@@ -144,9 +147,11 @@ By function:
   Boolean operator and `==` mutants on subset-of computation.
 - `pattern_covers` (line 621): 1 missed (`-> true` replacement).
 - `monetary_cap_is_subset_bounded_kani` (line 615): 1 missed
-  (`<=` -> `>` operator).
+  (`<=` -> `>` operator). This function is guarded by `#[cfg(kani)]`
+  and is out of scope for the normal cargo-test mutation command.
 - `normalized_operations_subset_bounded_kani` (line 589): 1 missed
-  (`-> true` replacement).
+  (`-> true` replacement). This function is guarded by `#[cfg(kani)]`
+  and is out of scope for the normal cargo-test mutation command.
 - `looks_like_path` in `scope.rs` (lines 411, 415): 2 missed
   (delete `!`, replace `||` with `&&`).
 - `argument_contains_custom` (line 506): 1 missed (`-> true`).
@@ -157,8 +162,8 @@ By function:
 - `from_hex_nibble` in `passport_verify.rs` (line 252): 1 missed
   (delete match arm `b'A'..=b'F'`).
 
-All 14 are "reachable-but-uncovered" (test gaps, not unreachable
-code). 0 are flake-driven (0 timeouts; deterministic suite).
+The other 12 missed mutants are reachable-but-uncovered test gaps. 0 are
+flake-driven (0 timeouts; deterministic suite).
 
 ## Why this matters
 

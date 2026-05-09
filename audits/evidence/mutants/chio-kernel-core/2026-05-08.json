@@ -26,6 +26,12 @@
     "crates/chio-kernel-core/src/normalized.rs:261:20: delete ! in NormalizedScope::is_subset_of"
   ],
   "timeout_mutants": [],
+  "out_of_scope_mutants": [
+    "crates/chio-kernel-core/src/normalized.rs:615:29: replace <= with > in monetary_cap_is_subset_bounded_kani",
+    "crates/chio-kernel-core/src/normalized.rs:589:5: replace normalized_operations_subset_bounded_kani -> bool with true"
+  ],
+  "out_of_scope_reason": "These mutants are inside #[cfg(kani)] functions, while the recorded cargo-mutants command runs normal cargo test --package chio-kernel-core without --cfg kani.",
+  "reachable_missed": 12,
   "run_status": "PARTIAL: interrupted at 62/343 (18.1%); cargo-mutants returned exit interrupted; resource contention with parallel chio-attest-verify and chio-weights runs slowed local pace far below CI hosted-nightly. Per-mutant tests took 7-50s each; expected ~40-90 min for full sweep but ran ~40 min before manual kill against session-budget.",
   "total_discovered": 343,
   "evaluated": 62,
