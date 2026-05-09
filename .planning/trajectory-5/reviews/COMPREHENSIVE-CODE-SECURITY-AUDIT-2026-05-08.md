@@ -234,7 +234,7 @@ Recommended release posture: keep #618 blocked until foundational PRs are merged
 
 - PR: #620
 - Files: `.planning/trajectory-5/OWNERS.toml`, `.planning/trajectory-5/SHIP-BAR-TRACKER.md`
-- Evidence: Lane C ownership covers `examples/bounded-chiodome/**`, while the actual demo path is `examples/chiodome-bilateral/**`. The ship-bar tracker says it is consumed by `scripts/check-release work-ship-bar.sh`, but that script is not added.
+- Evidence: Lane C ownership covers `examples/bounded-chiodome/**`, while the actual demo path is `examples/chiodome-bilateral/**`. The assurance tracker is consumed by `scripts/check-bounded-ship-bar.sh`.
 - Impact: owner routing misses the main demo artifact and the advertised close gate is a paper gate.
 - Fix: add the correct demo path to OWNERS and either add the ship-bar checker or point the tracker at the implemented preflight gate.
 

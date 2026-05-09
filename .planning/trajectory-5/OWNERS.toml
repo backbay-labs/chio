@@ -3,16 +3,15 @@
 # Owner-classes only. Human assignment to owner-classes is a Wave-2 deliverable
 # and gates kickoff (see KICKOFF-CHECKLIST.md).
 #
-# Format mirrors trajectory-3 OWNERS.toml. Trj5 is the "honesty trajectory":
-# three coupled lanes, no separate brand from the trj4 wave plan, one ship-bar
-# visible from outside (per debate/00-SYNTHESIS.md).
+# Format mirrors trajectory-3 OWNERS.toml. R6 correction: Trj5 is planning
+# and assurance control data, not a product release or tag vehicle.
 #
 # ---------------------------------------------------------------------------
 # AUTONOMOUS EXECUTION NOTE (baseline kickoff, 2026-05-08)
 # ---------------------------------------------------------------------------
 #
 # Trj5 executes autonomously: agent waves orchestrated by Claude pick up and
-# close tickets. The `human_assignment` field on each lane below is the
+# close planning tickets. The `human_assignment` field on each lane below is the
 # escalation path (a real GitHub handle), NOT the implementer. The actual
 # ticket execution happens via `automation_coordinator` agent waves, gated by the
 # `execution_mode = "autonomous"` field.
@@ -25,7 +24,7 @@
 # When an autonomous wave hits one of the eleven canonical halt triggers
 # (READINESS.md "Autonomous Orchestration Cadence"), control routes to
 # `human_assignment` for review and unblock. Otherwise wave-to-wave handoff
-# is by ticket-state transitions in planning docs and Wave-N closeout docs in
+# is by planning-state transitions and Wave-N closeout docs in
 # `closeout/wave-NN-summary.md`.
 #
 # The `coordination_owner` field on `[overlaps]` rows mediates merge order
@@ -55,7 +54,7 @@ parallelizable = true
 primary_role = "substrate-rust"
 secondary_roles = ["formal-tla", "formal-lean", "formal-kani", "threat-modeling", "quality-rust"]
 owner_globs = [
-  "audits/evidence/mutation/**",
+  "audits/evidence/mutants/**",
   "audits/evidence/threats/**",
   ".cargo/mutants.toml",
   "mutants-baseline.toml",
@@ -73,7 +72,7 @@ owner_globs = [
 ]
 reviewer = "release owner"
 review_x2 = true
-ship_bar = "Bar 1"
+assurance_claim = "Claim A"
 trj4_absorbed = ["TRJ4-010", "TRJ4-011", "TRJ4-012", "TRJ4-013", "TRJ4-014", "TRJ4-015", "TRJ4-016", "TRJ4-017", "TRJ4-018", "TRJ4-019", "TRJ4-040", "TRJ4-041", "TRJ4-042", "TRJ4-043", "TRJ4-044", "TRJ4-045", "TRJ4-046", "TRJ4-047", "TRJ4-048", "TRJ4-049"]
 human_assignment = "release owner"
 execution_mode = "autonomous"
@@ -106,7 +105,7 @@ owner_globs = [
 ]
 reviewer = "release owner"
 review_x2 = true
-ship_bar = "Bar 2"
+assurance_claim = "Claim B"
 trj4_absorbed = ["TRJ4-100", "TRJ4-101", "TRJ4-102", "TRJ4-103", "TRJ4-104", "TRJ4-T1.0.E", "TRJ4-120", "TRJ4-121", "TRJ4-122", "TRJ4-123", "TRJ4-124", "TRJ4-125", "TRJ4-126", "TRJ4-127", "TRJ4-128", "TRJ4-129", "TRJ4-130", "TRJ4-131", "TRJ4-T1.2.E", "TRJ4-140", "TRJ4-141", "TRJ4-142", "TRJ4-143", "TRJ4-144", "TRJ4-145", "TRJ4-146", "TRJ4-147", "TRJ4-T1.3.E"]
 human_assignment = "release owner"
 execution_mode = "autonomous"
@@ -132,7 +131,7 @@ owner_globs = [
 ]
 reviewer = "release owner"
 review_x2 = true
-ship_bar = "Bar 3"
+assurance_claim = "Claim C"
 trj4_absorbed = []
 human_assignment = "release owner"
 execution_mode = "autonomous"

@@ -1,6 +1,6 @@
 # Trajectory 5 closeout
 
-Status: R4 topology corrected; release integration still blocked.
+Status: R6 release-architecture corrected; release integration still blocked.
 
 This document is a historical closeout map for release work. R4 supersedes the
 previous merge-order language for release purposes. The current planning
@@ -13,6 +13,11 @@ of `baselines/BAR-1-MUTATION.md`, and the midpoint security audit at
 `reviews/COMPREHENSIVE-CODE-SECURITY-AUDIT-2026-05-08.md`. Where a bar
 is honestly partial, this document says so. The integrator decides
 merge order; this document gives them the map.
+
+R6 correction: read the rows below as assurance evidence, not as product
+release claims. The current order is Lane B integration first, Lane A
+assurance addendum second, Lane C canary after Lane B, and #618 packaging last
+from merged `main`.
 
 ## What landed
 
@@ -109,9 +114,9 @@ uses an `mcp-remote` stdio bridge against `:8111/mcp/`; the wrap path
 produces mediation transcripts (not kernel-signed receipts) so C3 is
 honestly labeled PARTIAL in the release.
 
-## Ship-bar reconciliation
+## Assurance Reconciliation
 
-### Bar 1 -- mutation kill-rate floor + threat evidence: PARTIAL
+### Claim A -- mutation kill-rate floor + threat evidence: PARTIAL
 
 Per-crate state (numbers from PR titles + `BAR-1-MUTATION.md` aggregate):
 
@@ -134,11 +139,11 @@ Threat-evidence: 20 of 20 rows have real attack-call deny tests with
 non-1970 `ran_at` and `caught >= 1`. Two rows (`pq_signature_downgrade`,
 `tool_server_escape`) carry partial sub-vector closure as documented.
 
-Bar 1 closes only after the hosted-nightly authoritative run lands;
+Claim A closes only after the hosted-nightly authoritative run lands;
 this trajectory delivered the measurement infrastructure, the floor
 exists, and the gaps are honestly tagged.
 
-### Bar 2 -- four Lane B primitives protected by signed negative conformance: PARTIAL
+### Claim B -- four Lane B primitives protected by signed negative conformance: PARTIAL
 
 Four signed negative conformance fixtures are expected from open PR
 branches under `crates/chio-conformance/tests/`, each exercising the
@@ -151,23 +156,24 @@ production call path:
 - `b4_bilateral_dsse_pae_only_is_conformant`
 
 Each fixture contains a `// negative-conformance: ...` annotation per
-the Bar 2 machine-readable signal in `SHIP-BAR-TRACKER.md`. Bar 2
+the Claim B machine-readable signal in `SHIP-BAR-TRACKER.md`. Claim B
 remains PARTIAL until those PRs merge, dependent branches rebase,
 fixtures are regenerated from merged `main`, and checks are green on
 the integrated merge SHA.
 
-### Bar 3 -- chiodome bilateral demo end-to-end: PARTIAL
+### Claim C -- chiodome bilateral canary demo: PARTIAL
 
 The demo runner and receipt rendering are branch-local evidence. They
-do not make the release bar DONE until #614/#615/#617/#618 merge,
+do not make Claim C assurance-complete until #614/#615/#617/#618 merge,
 fixtures are regenerated from merged `main`, and checks are green on
 the integrated merge SHA.
 
 C3 (KB-MCP-mediated receipts) is PARTIAL: the wrap path produces
-mediation transcripts, not kernel-signed receipts. The release-bar
-honesty matrix lives in `releases.toml [trajectory_5]` and is the
-authoritative status source after the integrator regenerates it from
-merged `main` per the merge sequence below.
+mediation transcripts, not kernel-signed receipts. The old release-bar
+honesty wording is superseded by `SHIP-BAR-TRACKER.md`. Bounded package
+status lives in `releases.toml` `[v0_1_0_bounded_chiodome].release_status`
+after the integrator regenerates it from merged `main` per the merge sequence
+below.
 
 ## Audit closure
 
@@ -181,7 +187,7 @@ The remaining items are integrator-only:
   sequence below.
 - **P0-026** (release package #618 last): integrator merges #618
   last and regenerates fixtures, release notes, and
-  `releases.toml [trajectory_5]` from merged `main`.
+  `releases.toml [v0_1_0_bounded_chiodome]` from merged `main`.
 - **P0-007 partial** (predicate schema completion for the bilateral
   verifier): downgraded to "partial local verifier"; tracked in
   `crates/chio-federation/NOTES.md`; full schema completion deferred.
@@ -204,7 +210,7 @@ Use `R4-MERGE-TOPOLOGY.md` as the current truth. The short form is:
 
 1. #620 is the sole planning owner for `.planning/trajectory-5/**`.
 2. Release-source integration starts with Lane B enforcement on a clean branch.
-3. Evidence PRs merge after branch ownership is clean.
+3. Lane A assurance evidence merges after branch ownership is clean.
 4. #608 and #616 remain active, not superseded, until the threat owner
    collapses or rebases the threat series.
 5. #618 release packaging remains last and must be regenerated from merged

@@ -1,48 +1,47 @@
 #!/usr/bin/env bash
-# Bounded release ship-bar checker.
+# Trajectory 5 assurance checker.
 #
-# Verifies the per-bar machine-readable signals enumerated in
+# Verifies the claim-by-claim machine-readable signals enumerated in
 # `.planning/trajectory-5/SHIP-BAR-TRACKER.md`. This script is the
-# closing-bar companion to `scripts/bounded-release-preflight.sh` (which gates
-# kickoff). Together they form the release close gate:
+# evidence close gate for the assurance matrix. It is not a product
+# release or tag gate.
 #
-#   - bounded-release-preflight.sh: planning artifacts, OWNERS, releases.toml,
-#     review trail, drift cleanup.
-#   - check-bounded-ship-bar.sh (this file): per-bar evidence presence
-#     for the three closing bars.
+#   - bounded-release-preflight.sh: planning control-plane consistency.
+#   - check-bounded-ship-bar.sh (this file): evidence presence and shape
+#     for Lane B integration, Lane A assurance, and Lane C canary.
 #
 # The script is deliberately presence-and-shape oriented. It is NOT a
 # replacement for cargo test / cargo mutants / the demo runner; those
 # produce the artifacts this script then verifies are committed.
 #
-# Bar 1 (Lane A): per-crate mutation kill-rate JSONs for each
+# Claim A (Lane A): per-crate mutation kill-rate JSONs for each
 # trust-boundary crate listed in `releases.toml [mutants]`. Crates
 # without a measured baseline JSON FAIL. A numeric kill-rate alone is
-# not enough to close the bar: the JSON must also prove target_met=true,
+# not enough to close the claim: the JSON must also prove target_met=true,
 # an explicit full-scope result label, complete evaluated counts, and no
 # partial/subset/interrupted/hand-picked scope markers.
 #
-# Bar 2 (Lane B): four signed negative conformance fixture files under
+# Claim B (Lane B): four signed negative conformance fixture files under
 # `crates/chio-conformance/tests/`. Missing files FAIL.
 #
-# Bar 3 (Lane C): demo directory + a pinned receipt fixture under
+# Claim C (Lane C): demo directory + pinned canary fixture artifacts under
 # `examples/chiodome-bilateral/`. Missing artifacts FAIL.
 #
 # Run from the chio repo root: `bash scripts/check-bounded-ship-bar.sh`.
-# Output is one OK/FAIL/PARTIAL line per check.
+# Output is one OK/FAIL/PARTIAL line per evidence check.
 #
 # Exit modes:
-#   * Default (release-gate mode): PARTIAL is treated as a FAIL. The
-#     release closes only when every bar is fully MET, so the close
-#     gate must reject any bar that is still in baseline / in-progress
-#     state. Exits 1 if any partial OR failure row is recorded.
+#   * Default (assurance-gate mode): PARTIAL is treated as a FAIL. The
+#     assurance claim is complete only when every evidence row is fully
+#     MET, so the gate rejects any baseline / in-progress row. Exits 1
+#     if any partial OR failure row is recorded.
 #   * `--diagnostic` (opt-in): PARTIAL is reported but does not
 #     contribute to the exit status. Use during Wave-1 baseline
 #     measurement and other in-progress windows where the operator
 #     wants the honest snapshot without flipping the gate red. Real
 #     FAIL rows still flip the gate red.
 #
-# The strict default is required release-gate behaviour. The diagnostic
+# The strict default is the audit's required behaviour. The diagnostic
 # flag is opt-in and clearly labelled in the summary footer.
 
 set -uo pipefail
@@ -50,7 +49,7 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root" || exit 1
 
-# Default mode: PARTIAL counts as a failure (release-gate strict).
+# Default mode: PARTIAL counts as a failure (assurance-gate strict).
 # `--diagnostic` flips this to advisory, where PARTIAL is reported but
 # does not count toward the failure tally.
 diagnostic_mode=0
@@ -83,8 +82,8 @@ ok() {
 partial() {
   # PARTIAL prints with a clear marker so it never reads as a clean
   # MET row. In diagnostic mode the gate stays green; in default
-  # release-gate mode the gate flips red so we cannot ship while bars
-  # are still in baseline state.
+  # assurance-gate mode the gate flips red while claims are still in
+  # baseline state.
   if [ "$diagnostic_mode" -eq 1 ]; then
     printf 'WARN %s (PARTIAL, diagnostic-mode-only)\n' "$1"
   else
@@ -98,6 +97,25 @@ failure() {
   printf 'FAIL %s\n' "$1"
   fail=$((fail + 1))
   checks=$((checks + 1))
+}
+
+toml_value() {
+  local section="$1"
+  local key="$2"
+  local path="${3:-releases.toml}"
+  if [ ! -f "$path" ]; then
+    return 0
+  fi
+  awk -v section="$section" -v key="$key" '
+    $0 == "[" section "]" { in_section = 1; next }
+    /^\[/ { in_section = 0 }
+    in_section && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      sub(/^[^=]*=[[:space:]]*/, "")
+      gsub(/^[[:space:]]*"|"[[:space:]]*$/, "")
+      print
+      exit
+    }
+  ' "$path"
 }
 
 # kill_rate_for_json reads the per-crate mutation JSON and prints the
@@ -115,12 +133,12 @@ kill_rate_for_json() {
   local rate
   if command -v jq >/dev/null 2>&1; then
     rate=$(jq -r '
-      if (.kill_rate_percent // empty) != null and (.kill_rate_percent != "") then
+      if ((.kill_rate_percent? // "") != "") then
         (.kill_rate_percent | tostring)
-      elif (.kill_rate // empty) != null and (.kill_rate != "") then
+      elif ((.kill_rate? // "") != "") then
         (.kill_rate | tostring)
-      elif ((.caught // empty) != null) and ((.viable // empty) != null) and (.viable != 0) then
-        ((.caught * 10000 / .viable | floor) / 100 | tostring)
+      elif ((.caught? // null) != null) and ((.viable? // null) != null) and ((.viable | tonumber) != 0) then
+        (((.caught | tonumber) * 10000 / (.viable | tonumber) | floor) / 100 | tostring)
       else
         ""
       end
@@ -263,7 +281,7 @@ EOF
   printf '%s' "$joined"
 }
 
-printf '\n[Bar 1] Lane A -- per-crate mutation kill-rate baselines\n'
+printf '\n[Claim A] Lane A -- mutation and threat-evidence assurance\n'
 
 # Trust-boundary crate list mirrors `releases.toml [mutants]
 # trust_boundary_crates`. Keep these in sync.
@@ -279,23 +297,37 @@ bar1_crates=(
 # Activation floor (per `releases.toml` activation_threshold_percent_per_crate).
 bar1_floor_pct=65
 # Per-crate target (per `releases.toml` target_catch_ratio_percent and
-# `SHIP-BAR-TRACKER.md` Bar 1 chio-attest-verify >=80% requirement).
+# `SHIP-BAR-TRACKER.md` Claim A chio-attest-verify >=80% requirement).
 bar1_target_chio_attest_verify_pct=80
 
-# Lane A planning entries (mutation evidence item / A1.3) write evidence under
-# audits/evidence/mutants/<crate>/ (plural). audits/evidence/mutation/
-# (singular) was an earlier-draft location. Probe the plural directory
-# first, fall back to the singular for legacy commits.
-if [ -d "audits/evidence/mutants" ]; then
-  bar1_evidence_root="audits/evidence/mutants"
+# Lane A writes release-cycle evidence under
+# audits/evidence/mutants/<crate>/ (plural). Earlier singular paths are
+# stale and are not accepted by the assurance gate.
+bar1_evidence_root="audits/evidence/mutants"
+
+banner_json="$bar1_evidence_root/banner.json"
+if [ ! -f "$banner_json" ]; then
+  failure "Claim A banner artifact missing ($banner_json)"
+elif command -v jq >/dev/null 2>&1; then
+  if jq -e '
+    (.observed == true)
+    and ((.ran_at // "") != "")
+    and ((.ran_at // "") != "1970-01-01T00:00:00Z")
+    and (((.per_crate // []) | type) == "array")
+    and (((.per_crate // []) | length) >= 6)
+  ' "$banner_json" >/dev/null 2>&1; then
+    ok "Claim A banner artifact is observed and has per-crate entries"
+  else
+    partial "Claim A banner artifact exists but is not release-complete ($banner_json)"
+  fi
 else
-  bar1_evidence_root="audits/evidence/mutation"
+  ok "Claim A banner artifact present ($banner_json; jq unavailable for shape check)"
 fi
 
 for crate in "${bar1_crates[@]}"; do
   json_glob="$bar1_evidence_root/$crate"
   if [ ! -d "$json_glob" ]; then
-    failure "Bar1 $crate BASELINE-GAP (no $json_glob/ directory)"
+    failure "Claim A $crate BASELINE-GAP (no $json_glob/ directory)"
     continue
   fi
   # Pick the most-recent baseline JSON in the per-crate directory.
@@ -308,17 +340,17 @@ for crate in "${bar1_crates[@]}"; do
     latest_json=$(printf '%s\n' "${json_files[@]}" | sort | tail -1)
   fi
   if [ -z "$latest_json" ] || [ ! -f "$latest_json" ]; then
-    failure "Bar1 $crate BASELINE-GAP (no JSON under $json_glob/)"
+    failure "Claim A $crate BASELINE-GAP (no JSON under $json_glob/)"
     continue
   fi
   rate=$(kill_rate_for_json "$latest_json")
   if [ -z "$rate" ]; then
-    failure "Bar1 $crate JSON exists ($latest_json) but no kill_rate field"
+    failure "Claim A $crate JSON exists ($latest_json) but no kill_rate field"
     continue
   fi
   metadata_reasons=$(bar1_metadata_reasons_for_json "$latest_json")
   if [ -n "$metadata_reasons" ]; then
-    partial "Bar1 $crate metadata not release-complete in $latest_json (${metadata_reasons}; measured ${rate}%)"
+    partial "Claim A $crate metadata not release-complete in $latest_json (${metadata_reasons}; measured ${rate}%)"
     continue
   fi
   # Use awk for floating-point comparison.
@@ -328,28 +360,27 @@ for crate in "${bar1_crates[@]}"; do
     meets_target=$(awk -v r="$rate" -v t="$bar1_target_chio_attest_verify_pct" \
       'BEGIN { print (r + 0 >= t + 0) ? "yes" : "no" }')
     if [ "$meets_target" = "yes" ]; then
-      ok "Bar1 $crate measured ${rate}% (>= ${bar1_target_chio_attest_verify_pct}% target)"
+      ok "Claim A $crate measured ${rate}% (>= ${bar1_target_chio_attest_verify_pct}% target)"
     elif [ "$meets_floor" = "yes" ]; then
-      partial "Bar1 $crate measured ${rate}% (below ${bar1_target_chio_attest_verify_pct}% target, above ${bar1_floor_pct}% floor)"
+      partial "Claim A $crate measured ${rate}% (below ${bar1_target_chio_attest_verify_pct}% target, above ${bar1_floor_pct}% floor)"
     else
-      partial "Bar1 $crate measured ${rate}% (below ${bar1_floor_pct}% floor; baseline recorded honestly)"
+      partial "Claim A $crate measured ${rate}% (below ${bar1_floor_pct}% floor; baseline recorded honestly)"
     fi
   else
     if [ "$meets_floor" = "yes" ]; then
-      ok "Bar1 $crate measured ${rate}% (>= ${bar1_floor_pct}% floor)"
+      ok "Claim A $crate measured ${rate}% (>= ${bar1_floor_pct}% floor)"
     else
-      partial "Bar1 $crate measured ${rate}% (below ${bar1_floor_pct}% floor; baseline recorded honestly)"
+      partial "Claim A $crate measured ${rate}% (below ${bar1_floor_pct}% floor; baseline recorded honestly)"
     fi
   fi
 done
 
-# Bar 1 also requires the threats directory; bounded-release-preflight.sh already
-# checks count == 20. Here we additionally verify each file has
-# `caught >= 1` and a non-1970 `ran_at` (the SHIP-BAR-TRACKER.md
-# machine-readable signal).
+# Claim A also requires threat evidence. Each file must carry real
+# caught evidence, a non-1970 run timestamp, needs_real_run:false, and
+# a triage_status value.
 threats_dir="audits/evidence/threats"
 if [ ! -d "$threats_dir" ]; then
-  failure "Bar1 threats directory missing ($threats_dir)"
+  failure "Claim A threats directory missing ($threats_dir)"
 else
   threat_count=0
   threat_real=0
@@ -359,25 +390,29 @@ else
     if command -v jq >/dev/null 2>&1; then
       caught=$(jq -r '.caught // 0' "$tjson" 2>/dev/null || echo 0)
       ran_at=$(jq -r '.ran_at // ""' "$tjson" 2>/dev/null || echo "")
+      needs_real_run=$(jq -r '.needs_real_run // true' "$tjson" 2>/dev/null || echo true)
+      triage_status=$(jq -r '.triage_status // ""' "$tjson" 2>/dev/null || echo "")
       if [ "$(awk -v c="$caught" 'BEGIN { print (c + 0 >= 1) ? "yes" : "no" }')" = "yes" ] \
          && [ -n "$ran_at" ] \
-         && [ "$ran_at" != "1970-01-01T00:00:00Z" ]; then
+         && [ "$ran_at" != "1970-01-01T00:00:00Z" ] \
+         && [ "$needs_real_run" = "false" ] \
+         && [ -n "$triage_status" ]; then
         threat_real=$((threat_real + 1))
       fi
     fi
   done
   if [ "$threat_count" -eq 0 ]; then
-    failure "Bar1 threats directory has zero JSON files"
+    failure "Claim A threats directory has zero JSON files"
   elif [ "$threat_real" -eq "$threat_count" ]; then
-    ok "Bar1 threats $threat_real of $threat_count with caught>=1 and non-1970 ran_at"
+    ok "Claim A threats $threat_real of $threat_count with caught>=1, non-1970 ran_at, needs_real_run=false, and triage_status"
   else
-    partial "Bar1 threats $threat_real of $threat_count with real evidence (rest still placeholders)"
+    partial "Claim A threats $threat_real of $threat_count with complete triaged evidence (rest still placeholders)"
   fi
 fi
 
-printf '\n[Bar 2] Lane B -- four signed negative conformance fixtures\n'
+printf '\n[Claim B] Lane B -- four signed negative conformance fixtures\n'
 
-# Filenames mirror `SHIP-BAR-TRACKER.md` Bar 2 "Machine-readable signal" row.
+# Filenames mirror `SHIP-BAR-TRACKER.md` Claim B machine-readable signal row.
 bar2_fixtures=(
   "b1_capability_v2_single_entry_no_bypass.rs"
   "b2_receipt_v2_failclosed_under_negotiated_v2.rs"
@@ -390,44 +425,48 @@ for fixture in "${bar2_fixtures[@]}"; do
   fpath="$bar2_root/$fixture"
   if [ -f "$fpath" ]; then
     # Each fixture must carry the negative-conformance annotation per
-    # SHIP-BAR-TRACKER.md Bar 2 "Machine-readable signal" row.
+    # SHIP-BAR-TRACKER.md Claim B machine-readable signal row.
     if grep -q -E 'negative-conformance' "$fpath" 2>/dev/null; then
-      ok "Bar2 $fixture present with negative-conformance annotation"
+      ok "Claim B $fixture present with negative-conformance annotation"
     else
-      partial "Bar2 $fixture present but missing negative-conformance annotation"
+      partial "Claim B $fixture present but missing negative-conformance annotation"
     fi
   else
-    failure "Bar2 $fixture missing ($fpath)"
+    failure "Claim B $fixture missing ($fpath)"
   fi
 done
 
 # The async-witness fast-feedback shell script must also exist (per
-# SHIP-BAR-TRACKER.md Bar 2 machine-readable signal: "scripts/check-
+# SHIP-BAR-TRACKER.md Claim B machine-readable signal: "scripts/check-
 # anchor-batch-async-witness.sh MUST exist and exit 0 in CI"). Presence
-# is the bar; CI validates exit 0 separately.
+# is not enough; the companion must also exit 0.
 async_witness_script="scripts/check-anchor-batch-async-witness.sh"
 if [ -f "$async_witness_script" ]; then
-  ok "Bar2 $async_witness_script present (fast-feedback companion)"
+  if bash "$async_witness_script" >/dev/null 2>&1; then
+    ok "Claim B $async_witness_script present and exits 0 (fast-feedback companion)"
+  else
+    failure "Claim B $async_witness_script present but exits nonzero"
+  fi
 else
-  failure "Bar2 $async_witness_script missing"
+  failure "Claim B $async_witness_script missing"
 fi
 
-printf '\n[Bar 3] Lane C -- bilateral demo end-to-end fixture\n'
+printf '\n[Claim C] Lane C -- post-Lane-B canary fixture\n'
 
 bar3_demo_dir="examples/chiodome-bilateral"
 if [ -d "$bar3_demo_dir" ]; then
-  ok "Bar3 demo directory present ($bar3_demo_dir)"
+  ok "Claim C demo directory present ($bar3_demo_dir)"
 else
-  failure "Bar3 demo directory missing ($bar3_demo_dir)"
+  failure "Claim C demo directory missing ($bar3_demo_dir)"
 fi
 
 # Demo recipe: either a Makefile or a `Cargo.toml` example entry.
 if [ -f "$bar3_demo_dir/Makefile" ]; then
-  ok "Bar3 demo recipe present (Makefile)"
+  ok "Claim C demo recipe present (Makefile)"
 elif [ -f "$bar3_demo_dir/Cargo.toml" ]; then
-  ok "Bar3 demo recipe present (Cargo.toml example)"
+  ok "Claim C demo recipe present (Cargo.toml example)"
 else
-  failure "Bar3 demo recipe missing (no Makefile or Cargo.toml under $bar3_demo_dir)"
+  failure "Claim C demo recipe missing (no Makefile or Cargo.toml under $bar3_demo_dir)"
 fi
 
 # Two-kernel transcripts.
@@ -438,13 +477,13 @@ if [ -d "$transcripts_dir" ]; then
     [ -f "$transcript_file" ] || continue
     transcript_count=$((transcript_count + 1))
   done
-  if [ "$transcript_count" -gt 0 ]; then
-    ok "Bar3 transcripts present ($transcript_count file(s) under $transcripts_dir/)"
+  if [ "$transcript_count" -ge 2 ]; then
+    ok "Claim C two-kernel transcripts present ($transcript_count file(s) under $transcripts_dir/)"
   else
-    failure "Bar3 transcripts directory empty ($transcripts_dir/)"
+    failure "Claim C transcripts incomplete ($transcript_count file(s) under $transcripts_dir/; expected at least 2)"
   fi
 else
-  failure "Bar3 transcripts directory missing ($transcripts_dir/)"
+  failure "Claim C transcripts directory missing ($transcripts_dir/)"
 fi
 
 # `chio receipt explain` golden output.
@@ -456,73 +495,82 @@ if [ -d "$golden_dir" ]; then
     golden_count=$((golden_count + 1))
   done
   if [ "$golden_count" -gt 0 ]; then
-    ok "Bar3 golden file present ($golden_count file(s) under $golden_dir/)"
+    ok "Claim C golden file present ($golden_count file(s) under $golden_dir/)"
   else
-    failure "Bar3 golden directory empty ($golden_dir/)"
+    failure "Claim C golden directory empty ($golden_dir/)"
   fi
 else
-  failure "Bar3 golden directory missing ($golden_dir/)"
+  failure "Claim C golden directory missing ($golden_dir/)"
 fi
 
-# Pinned receipt fixture under the v0.1.0-bounded-chiodome release tag.
-pinned_receipt="$bar3_demo_dir/fixtures/v0.1.0-bounded-chiodome/receipt.json"
-if [ -f "$pinned_receipt" ]; then
-  ok "Bar3 pinned receipt fixture present ($pinned_receipt)"
-else
-  failure "Bar3 pinned receipt fixture missing ($pinned_receipt)"
-fi
+# Pinned canary fixture set under the v0.1.0-bounded-chiodome package id.
+pinned_fixture_dir="$bar3_demo_dir/fixtures/v0.1.0-bounded-chiodome"
+for pinned_name in receipt.json envelope.json checkpoint.json; do
+  pinned_path="$pinned_fixture_dir/$pinned_name"
+  if [ -f "$pinned_path" ]; then
+    ok "Claim C pinned fixture present ($pinned_path)"
+  else
+    failure "Claim C pinned fixture missing ($pinned_path)"
+  fi
+done
 
-# releases.toml carries the recorded release tag (or the explicit
-# `pending` placeholder during baseline baseline). PARTIAL until tagged.
+# releases.toml carries the bounded package status under its own table.
+# A tag alone is insufficient; the canary metadata must be tied to an
+# integrated merge SHA before this row can pass.
 if [ -f releases.toml ]; then
-  tag_line=$(grep -E '^release_tag[[:space:]]*=' releases.toml | head -1 || true)
-  if [ -n "$tag_line" ]; then
-    if echo "$tag_line" | grep -q 'v0.1.0-bounded-chiodome' \
-       && ! echo "$tag_line" | grep -q '"pending"'; then
-      ok "Bar3 releases.toml carries release_tag"
-    else
-      partial "Bar3 releases.toml release_tag is placeholder ($tag_line)"
-    fi
+  release_status=$(toml_value "v0_1_0_bounded_chiodome" "release_status")
+  integrated_merge_sha=$(toml_value "v0_1_0_bounded_chiodome" "integrated_merge_sha")
+  if [ -z "$release_status" ]; then
+    failure "Claim C releases.toml missing [v0_1_0_bounded_chiodome].release_status"
+  elif printf '%s' "$release_status" | grep -q -E 'blocked|pending|partial|not_ready'; then
+    partial "Claim C bounded package release_status is not assurance-complete ($release_status)"
   else
-    failure "Bar3 releases.toml missing release_tag entry"
+    ok "Claim C bounded package release_status is $release_status"
+  fi
+  if [ -n "$integrated_merge_sha" ] \
+     && ! printf '%s' "$integrated_merge_sha" | grep -q -E 'pending|blocked' \
+     && printf '%s' "$integrated_merge_sha" | grep -q -E '^[0-9a-f]{40}$'; then
+    ok "Claim C releases.toml records integrated merge SHA"
+  else
+    partial "Claim C releases.toml integrated_merge_sha is not recorded (${integrated_merge_sha:-missing})"
   fi
 else
-  failure "Bar3 releases.toml missing"
+  failure "Claim C releases.toml missing"
 fi
 
-printf '\n----- check-bounded-ship-bar summary -----\n'
+printf '\n----- check-bounded assurance summary -----\n'
 printf 'checks run: %d\n' "$checks"
 printf 'failures:   %d\n' "$fail"
 printf 'partials:   %d\n' "$partials"
 if [ "$diagnostic_mode" -eq 1 ]; then
   printf 'mode:       DIAGNOSTIC (partials count as warnings, not failures)\n'
 else
-  printf 'mode:       RELEASE-GATE (partials count as failures; --diagnostic to relax)\n'
+  printf 'mode:       ASSURANCE-GATE (partials count as failures; --diagnostic to relax)\n'
 fi
 
 # Strict default: PARTIAL rows are treated as failures so the close gate
-# cannot pass while any bar is still in baseline / in-progress state.
+# cannot pass while any claim is still in baseline / in-progress state.
 # `--diagnostic` mode is opt-in and only allows real FAIL rows to flip
 # the gate red.
 if [ "$fail" -ne 0 ]; then
-  printf '\nbounded ship-bar: FAIL (%d fail row(s), %d partial row(s))\n' "$fail" "$partials"
+  printf '\nbounded assurance gate: FAIL (%d fail row(s), %d partial row(s))\n' "$fail" "$partials"
   exit 1
 fi
 
 if [ "$diagnostic_mode" -eq 1 ]; then
   if [ "$partials" -gt 0 ]; then
-    printf '\nbounded ship-bar: PASS (diagnostic mode; %d partial row(s) reported as warnings)\n' "$partials"
+    printf '\nbounded assurance gate: PASS (diagnostic mode; %d partial row(s) reported as warnings)\n' "$partials"
   else
-    printf '\nbounded ship-bar: PASS (diagnostic mode; no partial rows)\n'
+    printf '\nbounded assurance gate: PASS (diagnostic mode; no partial rows)\n'
   fi
   exit 0
 fi
 
 if [ "$partials" -ne 0 ]; then
-  printf '\nbounded ship-bar: FAIL (release-gate mode; %d partial row(s) block close)\n' "$partials"
+  printf '\nbounded assurance gate: FAIL (assurance-gate mode; %d partial row(s) block close)\n' "$partials"
   printf '  re-run with --diagnostic for an advisory snapshot during baseline measurement\n'
   exit 1
 fi
 
-printf '\nbounded ship-bar: PASS (release-gate mode; all bars MET)\n'
+printf '\nbounded assurance gate: PASS (assurance-gate mode; all claims MET)\n'
 exit 0

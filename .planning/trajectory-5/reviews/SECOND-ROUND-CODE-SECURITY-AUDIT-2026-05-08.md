@@ -130,7 +130,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 ### review item - #620 ship-bar gate passes with PARTIAL evidence
 
 - PR: #620
-- File: `scripts/check-release work-ship-bar.sh`
+- File: `scripts/check-bounded-ship-bar.sh`
 - Evidence: `partial()` prints `OK`, increments checks, and does not increment failures. Final exit is 0 when only partial rows exist. The tracker says Trajectory 5 closes only when all bars are DONE.
 - Impact: the close gate can report PASS with incomplete mutation, demo, or release-tag evidence.
 - Required fix: make PARTIAL nonzero by default. If diagnostic behavior is needed, require an explicit non-release flag.
@@ -289,7 +289,7 @@ The immediate release posture should be: do not merge #618, do not tag, and do n
 
 - PR: #618
 - File: `releases.toml`
-- Evidence: `trj5_release_sha` records an older branch head than current #618.
+- Evidence: [v0_1_0_bounded_chiodome].integrated_merge_sha records an older branch head than current #618.
 - Impact: provenance is not mechanically current.
 - Required fix: update at final release packaging time only, after upstream merges.
 

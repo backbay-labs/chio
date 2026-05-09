@@ -146,79 +146,82 @@ trj4_slsa_trigger = "workflow_run after Release Binaries succeeds"
 # superseded; read trj4_erratum_path first for the retraction.
 trj4_final_summary_path = ".planning/trajectory-4/TRAJECTORY-4-FINAL.md"
 
-[v0_1_0_bounded_chiodome]
-# Bounded-chiodome release readiness opens 2026-05-08 with three coupled
-# lanes, autonomous-execution mode, and three externally-verifiable ship bars.
-# R4+ release truth: the worker branches are still open. Keep the release in
-# pending_upstream_merges until all upstream PRs merge, release packaging is
-# regenerated from merged main, checks are green on the integrated merge SHA,
-# and a human pushes the tag.
-# See .planning/trajectory-5/READINESS.md and KICKOFF-CHECKLIST.md.
-release_status = "pending_upstream_merges"
-started_at = "2026-05-08T00:00:00Z"
-kickoff_date = "2026-05-08"
-baseline_sha = "708c7bb33df43594f5e76542b05fca7a56d9689e"
-baseline_branch = "planning branch"
-planning_artifacts = ".planning/trajectory-5/"
-synthesis_path = ".planning/trajectory-5/debate/00-SYNTHESIS.md"
-ship_bar_tracker_path = ".planning/trajectory-5/SHIP-BAR-TRACKER.md"
-readiness_path = ".planning/trajectory-5/READINESS.md"
-kickoff_checklist_path = ".planning/trajectory-5/KICKOFF-CHECKLIST.md"
-closeout_matrix_path = ".planning/trajectory-5/reviews/W4-closeout-matrix.md"
-owners_path = ".planning/trajectory-5/OWNERS.toml"
-execution_board_path = ".planning/trajectory-5/EXECUTION-BOARD.md"
-scope_lock_path = ".planning/trajectory-5/SCOPE-LOCK.md"
-timeline_path = ".planning/trajectory-5/TIMELINE.md"
-baselines_dir = ".planning/trajectory-5/baselines/"
-preflight_script = "scripts/bounded-release-preflight.sh"
-ship_bar_script = "scripts/check-bounded-ship-bar.sh"
-execution_mode = "autonomous"
-human_escalation = "release owner"
-automation_coordinator = "release automation coordinator"
-lanes = ["A-floor", "B-wiring", "C-demo"]
-ship_bars = ["bar-1-mutation", "bar-2-conformance-fixtures", "bar-3-bilateral-demo"]
-lane_b_primitives = ["B0-async-trait", "B1-single-entry-verifier", "B2-receipt-v2-failclosed", "B3-anchor-batch-async", "B4-dsse-bilateral-signing"]
-wave_2_reviews = [
+[trajectory_5]
+# Trajectory 5 is planning and assurance control data, not a product
+# release vehicle. The releasable/canary status for the bounded
+# chiodome package lives in [v0_1_0_bounded_chiodome].release_status.
+planning_status = "lane_b_integration_first"
+trj5_started_at = "2026-05-08T00:00:00Z"
+trj5_kickoff_date = "2026-05-08"
+trj5_baseline_sha = "708c7bb33df43594f5e76542b05fca7a56d9689e"
+trj5_baseline_branch = "planning branch"
+trj5_planning_artifacts = ".planning/trajectory-5/"
+trj5_synthesis_path = ".planning/trajectory-5/debate/00-SYNTHESIS.md"
+trj5_assurance_matrix_path = ".planning/trajectory-5/SHIP-BAR-TRACKER.md"
+trj5_readiness_path = ".planning/trajectory-5/READINESS.md"
+trj5_kickoff_checklist_path = ".planning/trajectory-5/KICKOFF-CHECKLIST.md"
+trj5_closeout_matrix_path = ".planning/trajectory-5/reviews/W4-closeout-matrix.md"
+trj5_owners_path = ".planning/trajectory-5/OWNERS.toml"
+trj5_execution_board_path = ".planning/trajectory-5/EXECUTION-BOARD.md"
+trj5_scope_lock_path = ".planning/trajectory-5/SCOPE-LOCK.md"
+trj5_timeline_path = ".planning/trajectory-5/TIMELINE.md"
+trj5_baselines_dir = ".planning/trajectory-5/baselines/"
+trj5_preflight_script = "scripts/bounded-release-preflight.sh"
+trj5_assurance_gate_script = "scripts/check-bounded-ship-bar.sh"
+trj5_execution_mode = "autonomous"
+trj5_human_escalation = "release owner"
+trj5_automation_coordinator = "release automation coordinator"
+trj5_integration_order = ["lane-b-integration", "lane-a-assurance-addendum", "lane-c-canary-demo", "release-packaging-after-merged-main"]
+trj5_lanes = ["B-wiring", "A-floor", "C-demo"]
+trj5_assurance_claims = ["claim-b-lane-b-hot-path", "claim-a-assurance-addendum", "claim-c-canary-demo"]
+trj5_lane_b_primitives = ["B0-async-trait", "B1-single-entry-verifier", "B2-receipt-v2-failclosed", "B3-anchor-batch-async", "B4-dsse-bilateral-signing"]
+trj5_wave_2_reviews = [
   ".planning/trajectory-5/reviews/R1-cross-lane.md",
   ".planning/trajectory-5/reviews/R2-lane-a-depth.md",
   ".planning/trajectory-5/reviews/R3-lane-b-compliance.md",
   ".planning/trajectory-5/reviews/R4-lane-c-feasibility.md",
 ]
-wave_3_fix_logs = [
+trj5_wave_3_fix_logs = [
   ".planning/trajectory-5/reviews/W3-lane-a-fixes.md",
   ".planning/trajectory-5/reviews/W3-lane-b-fixes.md",
   ".planning/trajectory-5/reviews/W3-lane-c-fixes.md",
 ]
-wave_2_signoffs = [
+trj5_wave_2_signoffs = [
   ".planning/trajectory-5/reviews/lane-a-wave2.md",
   ".planning/trajectory-5/reviews/lane-b-wave2.md",
   ".planning/trajectory-5/reviews/lane-c-wave2.md",
 ]
-blocker_count_closed = 13
-major_count_closed = 29
-major_count_deferred = 1
-minor_observation_count_addressed = "informational; see W4-closeout-matrix.md sample MINOR coverage"
-# Bar 1 -- mutation banner. Baseline: 31% (pre-release measurement, measured 2026-04-29).
-bar1_mutation_baseline_pct = 31
-bar1_mutation_baseline_date = "2026-04-29"
-bar1_mutation_target_pct_workspace = 65
-bar1_mutation_target_pct_chio_attest_verify = 80
-bar1_threats_baseline = "20 of 20 placeholder, all caught:0, ran_at:1970-01-01"
-bar1_threats_target = "20 of 20 with caught >= 1 and non-1970 ran_at, or n of 20 with explicit follow-up deferrals"
+trj5_blocker_count_closed = 13
+trj5_major_count_closed = 29
+trj5_major_count_deferred_to_trj6 = 1
+trj5_minor_observation_count_addressed = "informational; see W4-closeout-matrix.md sample MINOR coverage"
+# Bar 1 -- mutation banner. Baseline: 31% (pre-release work, measured 2026-04-29).
+trj5_bar1_mutation_baseline_pct = 31
+trj5_bar1_mutation_baseline_date = "2026-04-29"
+trj5_bar1_mutation_target_pct_workspace = 65
+trj5_bar1_mutation_target_pct_chio_attest_verify = 80
+trj5_bar1_threats_baseline = "20 of 20 placeholder, all caught:0, ran_at:1970-01-01"
+trj5_bar1_threats_target = "20 of 20 with caught >= 1 and non-1970 ran_at, or n of 20 with m deferred to trj6"
 # Bar 2 -- four primitives protected by signed negative conformance.
-bar2_baseline = "0 of 4 primitives protected"
-bar2_target = "4 of 4 primitives protected by signed negative conformance fixture"
+trj5_bar2_baseline = "0 of 4 primitives protected"
+trj5_bar2_target = "4 of 4 primitives protected by signed negative conformance fixture"
 # Bar 3 -- bilateral demo end-to-end.
-bar3_baseline = "examples/chiodome-bilateral/ does not exist; demo runs zero times"
-bar3_target = "demo fixtures regenerated from merged main; receipt explain works on pinned receipt; KB MCP default transcripts are not kernel-signed receipts; human tag only after green integrated checks"
-release_tag = "pending"
-release_sha = "pending"
+trj5_bar3_baseline = "examples/chiodome-bilateral/ does not exist; demo runs zero times"
+trj5_bar3_target = "canary demo fixtures regenerated from merged main after Lane B integration; receipt explain works on pinned receipt; KB MCP default transcripts are not kernel-signed receipts"
+trj5_final_summary_path = "pending; will be .planning/trajectory-5/TRAJECTORY-5-FINAL.md after closeout"
+
+[v0_1_0_bounded_chiodome]
+# This block is the only release-status namespace for the bounded
+# chiodome package. Do not infer a product release from [trajectory_5].
+release_status = "blocked_pending_lane_b_integration"
+status_reason = "Trajectory 5 is not a tag vehicle; Lane B enforcement must integrate first, Lane A assurance is an addendum, and Lane C is a canary after Lane B."
+planned_tag = "v0.1.0-bounded-chiodome"
+tag = "pending"
+integrated_merge_sha = "pending"
+release_package_source = "pending_merged_main_regeneration"
 release_binaries_run_url = "pending"
 reproducible_build_run_url = "pending"
 sbom_run_url = "pending"
 slsa_trigger = "pending"
-final_summary_path = "pending; will be .planning/trajectory-5/TRAJECTORY-5-FINAL.md after closeout"
-# Note: pending fields are filled only after upstream merges, release-package
-# regeneration from merged main, each ship bar reading DONE in
-# `.planning/trajectory-5/SHIP-BAR-TRACKER.md`, and
-# `scripts/check-bounded-ship-bar.sh` exiting 0 against committed evidence.
+assurance_matrix_path = ".planning/trajectory-5/SHIP-BAR-TRACKER.md"
+release_notes_path = "pending; owned by PR #618 only after merged-main regeneration"

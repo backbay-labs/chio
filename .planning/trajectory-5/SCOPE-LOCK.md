@@ -1,5 +1,9 @@
 # Trj5 Scope Lock
 
+R6 correction: scope is ordered Lane B integration first, Lane A assurance
+addendum second, Lane C canary after Lane B, and #618 packaging last. This file
+does not define a product release or authorize a tag.
+
 This file is the IN-SCOPE / OUT-OF-SCOPE catalog for release work. The OUT-OF-SCOPE list is lifted verbatim from `debate/00-SYNTHESIS.md` and elaborated with target trajectory and WHY each item is deferred. The IN-SCOPE catalog maps to per-lane tickets.
 
 **Tagline**: release work is the **honesty trajectory**. It absorbs trj4 wave plan items and adds Lane C. It does not widen scope.
@@ -39,7 +43,7 @@ Each primitive closes with: enforced call site + spec MUST citation + signed neg
 | Anchored through `crates/chio-anchor::Web3CheckpointStatement` (no new live deployment required). | federation | release work-C3 |
 | Selective-disclosure auditor view behind `bbs-stub` Cargo feature flag. No new spec ratification. | federation | release work-C4 |
 | Wrapped at the user surface by `chio mcp serve --policy` against the local KB MCP stack at `ops/knowledge-base/`. Receipts dogfooded through `chio receipt explain`. | cli | release work-C5 |
-| `examples/chiodome-bilateral/` end-to-end fixture; honest release tag `v0.1.0-bounded-chiodome` under v3.18 bounded-claim discipline. | examples | release work-C6 |
+| `examples/chiodome-bilateral/` end-to-end canary fixture after Lane B integration; bounded package metadata under `[v0_1_0_bounded_chiodome]`. | examples | release work-C6 |
 
 ## Out of scope (verbatim from synthesis, with elaboration)
 
@@ -159,4 +163,7 @@ The trj6 lane plan picks up TRJ4-019 as a first-week ticket.
 
 Per the synthesis closing line: "Chio's differentiator is the proof artifact. Until the proof artifact is real, every trajectory after trj4 is the same trajectory wearing a different name."
 
-Trj5's scope is locked to the three observable bars (Bar 1 / Bar 2 / Bar 3 in `SHIP-BAR-TRACKER.md`) plus the architectural prerequisite needed to wire them. Anything that does not directly serve one of those bars is deferred. That is the discipline that makes release work different from trj4.
+Trj5's scope is locked to the claim-by-claim assurance matrix in
+`SHIP-BAR-TRACKER.md` plus the architectural prerequisite needed to wire Lane B.
+Anything that does not directly serve those claims is deferred. That is the
+discipline that makes this work different from trj4.

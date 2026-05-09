@@ -153,10 +153,10 @@ Wave 3 (when Lane C scaffolding starts) with eyes open:
    `tools/diff-stable.py` (or Rust binary); the rule is "diff-stable
    across runs", not "byte-identical".
 
-10. **Honest release tag**. `releases.toml` `[trajectory_5]`
-    `v0_1_0_bounded_chiodome_release_tag = "v0.1.0-bounded-chiodome"`
-    is cut only after the demo runs end-to-end on a fresh checkout
-    AND `chio receipt explain` golden output matches.
+10. **Bounded canary package status**. `releases.toml`
+    `[v0_1_0_bounded_chiodome].release_status` moves only after Lane B
+    integration, regenerated canary fixtures from merged `main`, and matching
+    `chio receipt explain` golden output.
 
 ---
 

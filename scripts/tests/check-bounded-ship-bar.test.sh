@@ -3,7 +3,7 @@
 # default mode and `--diagnostic` opt-in.
 #
 # The audit's required behaviour:
-#   * Default (release-gate): a single PARTIAL row exits 1.
+#   * Default (assurance-gate): a single PARTIAL row exits 1.
 #   * `--diagnostic`: PARTIAL rows are downgraded to warnings; exit 0.
 #   * Real FAIL rows still exit 1 in either mode (sanity).
 #
@@ -34,7 +34,7 @@ OUT="$WORK/out"
 ERR="$WORK/err"
 
 # ---------------------------------------------------------------------
-# Stage 1: build a synthetic repo layout with one PARTIAL bar 1 row,
+# Stage 1: build a synthetic repo layout with one PARTIAL Claim A row,
 # everything else passing. The partial row has a high kill rate, but
 # explicit metadata says it is not release-complete.
 # ---------------------------------------------------------------------
@@ -53,6 +53,9 @@ GATE="$WORK/scripts/check-bounded-ship-bar.sh"
 #     result_label=PARTIAL, incomplete evaluated counts, interrupted
 #     run status, and hand-picked subset scope -> PARTIAL row.
 mkdir -p "$WORK/audits/evidence/mutants"
+cat > "$WORK/audits/evidence/mutants/banner.json" <<'EOF'
+{"kill_rate_percent":75.0,"observed":true,"ran_at":"2026-05-08T00:00:00Z","per_crate":["chio-policy","chio-credentials","chio-attest-verify","chio-kernel-core","chio-guards","chio-anchor"]}
+EOF
 for crate in chio-credentials chio-attest-verify chio-kernel-core chio-guards chio-anchor; do
     mkdir -p "$WORK/audits/evidence/mutants/$crate"
     if [ "$crate" = "chio-attest-verify" ]; then
@@ -80,7 +83,7 @@ EOF
 mkdir -p "$WORK/audits/evidence/threats"
 for i in $(seq 1 20); do
     cat > "$WORK/audits/evidence/threats/t-${i}.json" <<EOF
-{"id":"t-${i}","caught":1,"ran_at":"2026-05-08T00:00:00Z"}
+{"id":"t-${i}","caught":1,"ran_at":"2026-05-08T00:00:00Z","needs_real_run":false,"triage_status":"covered"}
 EOF
 done
 
@@ -105,42 +108,50 @@ mkdir -p "$WORK/examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome"
 printf 'all:\n\t@echo demo\n' > "$WORK/examples/chiodome-bilateral/Makefile"
 printf '{"transcript":"a"}\n' \
     > "$WORK/examples/chiodome-bilateral/transcripts/a.json"
+printf '{"transcript":"b"}\n' \
+    > "$WORK/examples/chiodome-bilateral/transcripts/b.json"
 printf 'golden line\n' \
     > "$WORK/examples/chiodome-bilateral/golden/a.txt"
 printf '{"receipt":"v0.1.0"}\n' \
     > "$WORK/examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/receipt.json"
+printf '{"envelope":"v0.1.0"}\n' \
+    > "$WORK/examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/envelope.json"
+printf '{"checkpoint":"v0.1.0"}\n' \
+    > "$WORK/examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/checkpoint.json"
 
-# releases.toml carries the release_tag entry.
-# Use the placeholder so Bar 3's tag check fires PARTIAL too -- this
+# releases.toml carries the bounded package release_status entry.
+# Use the blocked status so Claim C fires PARTIAL too -- this
 # strengthens the test by ensuring at least two PARTIAL rows are
-# reported (chio-policy + tag placeholder), so the diagnostic-vs-strict
+# reported (chio-policy + package status), so the diagnostic-vs-strict
 # gate flip is unambiguous.
 cat > "$WORK/releases.toml" <<'EOF'
-release_tag = "pending"
+[v0_1_0_bounded_chiodome]
+release_status = "blocked_pending_lane_b_integration"
+integrated_merge_sha = "pending"
 EOF
 
 # ---------------------------------------------------------------------
-# Stage 2: default (release-gate) mode -> exit 1.
+# Stage 2: default (assurance-gate) mode -> exit 1.
 # ---------------------------------------------------------------------
 rc=0
 bash "$GATE" >"$OUT" 2>"$ERR" || rc=$?
 if [ "$rc" -ne 1 ]; then
-    echo "FAIL: stage 2 release-gate mode: expected rc=1 with PARTIAL fixture, got rc=$rc" >&2
+    echo "FAIL: stage 2 assurance-gate mode: expected rc=1 with PARTIAL fixture, got rc=$rc" >&2
     echo "--- stdout ---" >&2; cat "$OUT" >&2
     echo "--- stderr ---" >&2; cat "$ERR" >&2
     exit 1
 fi
-if ! grep -q -E '^PARTIAL Bar1 chio-policy' "$OUT"; then
-    echo "FAIL: stage 2 missing PARTIAL Bar1 chio-policy line" >&2
+if ! grep -q -E '^PARTIAL Claim A chio-policy' "$OUT"; then
+    echo "FAIL: stage 2 missing PARTIAL Claim A chio-policy line" >&2
     cat "$OUT" >&2
     exit 1
 fi
-if ! grep -q 'release-gate mode' "$OUT"; then
-    echo "FAIL: stage 2 missing 'release-gate mode' summary line" >&2
+if ! grep -q 'assurance-gate mode' "$OUT"; then
+    echo "FAIL: stage 2 missing 'assurance-gate mode' summary line" >&2
     cat "$OUT" >&2
     exit 1
 fi
-echo "ok: stage 2 release-gate mode exits 1 with PARTIAL fixture (rc=1)"
+echo "ok: stage 2 assurance-gate mode exits 1 with PARTIAL fixture (rc=1)"
 
 # ---------------------------------------------------------------------
 # Stage 3: --diagnostic mode -> exit 0 (PARTIAL rows are warnings).
@@ -153,8 +164,8 @@ if [ "$rc" -ne 0 ]; then
     echo "--- stderr ---" >&2; cat "$ERR" >&2
     exit 1
 fi
-if ! grep -q -E '^WARN Bar1 chio-policy' "$OUT"; then
-    echo "FAIL: stage 3 missing 'WARN Bar1 chio-policy' line (diagnostic-mode marker)" >&2
+if ! grep -q -E '^WARN Claim A chio-policy' "$OUT"; then
+    echo "FAIL: stage 3 missing 'WARN Claim A chio-policy' line (diagnostic-mode marker)" >&2
     cat "$OUT" >&2
     exit 1
 fi
@@ -167,7 +178,7 @@ echo "ok: stage 3 --diagnostic mode exits 0 with PARTIAL fixture (rc=0)"
 
 # ---------------------------------------------------------------------
 # Stage 4: a high-kill JSON that omits the explicit full-scope marker
-# fails release-gate mode.
+# fails assurance-gate mode.
 # ---------------------------------------------------------------------
 cat > "$WORK/audits/evidence/mutants/chio-policy/2026-05-08-per-crate-baseline.json" <<'EOF'
 {"crate":"chio-policy","kill_rate_percent":99.9,"caught":999,"viable":1000,"target_met":true,"run_status":"COMPLETE","evaluated":999,"total_discovered":999,"examine_scope":"full-crate"}
@@ -175,7 +186,7 @@ EOF
 rc=0
 bash "$GATE" >"$OUT" 2>"$ERR" || rc=$?
 if [ "$rc" -ne 1 ]; then
-    echo "FAIL: stage 4 release-gate mode: expected rc=1 with missing full-scope marker, got rc=$rc" >&2
+    echo "FAIL: stage 4 assurance-gate mode: expected rc=1 with missing full-scope marker, got rc=$rc" >&2
     echo "--- stdout ---" >&2; cat "$OUT" >&2
     echo "--- stderr ---" >&2; cat "$ERR" >&2
     exit 1
@@ -185,7 +196,7 @@ if ! grep -q 'result_label missing full-scope marker' "$OUT"; then
     cat "$OUT" >&2
     exit 1
 fi
-echo "ok: stage 4 release-gate mode exits 1 when result_label full-scope marker is missing (rc=1)"
+echo "ok: stage 4 assurance-gate mode exits 1 when result_label full-scope marker is missing (rc=1)"
 
 # Restore the original PARTIAL fixture for the final diagnostic-mode sanity
 # check so the test keeps covering target_met=false plus result_label=PARTIAL.

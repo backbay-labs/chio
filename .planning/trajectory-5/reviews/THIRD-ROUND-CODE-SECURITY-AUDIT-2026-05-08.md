@@ -48,10 +48,10 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 
 ### Lane C Main Release Surface
 
-- #618 `releases.toml` now sets `trj5_release_status = "pending_upstream_merges"` and `trj5_release_sha = "pending_upstream_merges"`.
+- #618 `releases.toml` must use `[v0_1_0_bounded_chiodome].release_status`, not trajectory-scoped release status keys.
 - #618 release notes now include a stale-packaging prerequisite block and list open PRs #601 through #626.
 - #614 full-mode KB MCP assertion now queries the SQLite receipt DB with `chio --receipt-db ... receipt list`, not `${CHIO_RECEIPT_DIR}` globs.
-- #620 `check-release work-ship-bar.sh` is strict by default: PARTIAL rows count as release-gate failures unless `--diagnostic` is passed.
+- #620 `scripts/check-bounded-ship-bar.sh` is strict by default: PARTIAL rows count as release-gate failures unless `--diagnostic` is passed.
 
 ### Lane A Evidence
 
@@ -173,7 +173,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 ### review item - #620 strict ship-bar mode lacks a dedicated behavioral regression test
 
 - PR: #620
-- File: `scripts/check-release work-ship-bar.sh`
+- File: `scripts/check-bounded-ship-bar.sh`
 - Evidence: source inspection shows strict default behavior, and `bash -n` passes, but no dedicated `scripts/tests/*release work*` test exists for release mode versus `--diagnostic`.
 - Impact: the exact paper-gate bug can regress without a focused shell test.
 - Required fix: add a synthetic test that creates partial evidence, asserts default exit 1, then asserts `--diagnostic` exit 0.
@@ -243,7 +243,7 @@ The PR set is still not release-clean. The remaining blockers are mostly graph/e
 - #615 no longer has the old public example/package "Section 7 17-step verifier" overclaim in the refreshed ref. The remaining 17-step hits are historical/self-critical notes or research/spec wording, plus stale #618 planning docs.
 - #618 `releases.toml` and release notes are materially improved. The remaining #618 issue is stale adjacent planning docs, not the main release notes block.
 - #620 source implements strict default behavior. The remaining issue is missing behavioral test coverage.
-- Base-checkout targeted tests that reported `bilateral-invocation` and `check-release work-ship-bar.sh` absent were run against `main`, not the PR refs. They are not evidence that #615 or #620 lack those files.
+- Base-checkout targeted tests that reported `bilateral-invocation` and `scripts/check-bounded-ship-bar.sh` absent were run against `main`, not the PR refs. They are not evidence that #615 or #620 lack those files.
 
 ## Required Next Actions
 

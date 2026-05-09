@@ -15,6 +15,11 @@ Do not tag `v0.1.0-bounded-chiodome` from the current PR set. Release packaging
 #618 remains last and must be regenerated from merged `main` after upstream
 source and evidence branches land.
 
+R6 correction: Trajectory 5 is not a product release or tag vehicle. It is a
+source-integration and assurance program with this order: Lane B integration
+first, Lane A assurance addendum second, Lane C canary after Lane B, then #618
+packaging only after merged-main regeneration.
+
 ## Planning Ownership
 
 PR #620 owns all trajectory-5 planning truth:
@@ -56,7 +61,7 @@ the root README mutation banner, and Lane A triage scripts belong to #603.
    - #611 receipt v2 fail-closed
    - #609 anchor batch async-only
    - #610 DSSE signing foundation
-3. Merge evidence after Lane B enforcement is real:
+3. Merge Lane A assurance evidence after Lane B enforcement is real:
    - #601 and #602 formal evidence
    - #603 mutation aggregate owner
    - #619, #621, #622, #623, #626 per-crate mutation evidence
@@ -68,8 +73,9 @@ the root README mutation banner, and Lane A triage scripts belong to #603.
 5. Lane C is a canary only until Lane B is merged and evidence is rerun.
    Rebase #614, #615, and #617 after #610 and #612 land.
 6. #618 release packaging is last. Regenerate release notes, fixtures,
-   ship-bar status, and `releases.toml` from merged `main`; only then evaluate
-   whether a tag is allowed.
+   the assurance matrix, and `releases.toml` from merged `main`; only then
+   evaluate whether the bounded package can move out of
+   `[v0_1_0_bounded_chiodome].release_status = "blocked_pending_lane_b_integration"`.
 
 ## Fix Wave 2 Lane B Sequencing
 
@@ -158,3 +164,17 @@ the current branch-tip SHAs.
 | P1-011 | Closed for owned branches. `.planning/trajectory-5/**` is centralized in #620 for the target PR set. |
 | P1-013 | Partial. Titles can be cleaned, but AI/trajectory branch names still require PR recreation or branch rename outside this planning-file cleanup. |
 | P2-003 | Partial. Per-crate mutation branches no longer carry aggregate README or shared triage files. Known source duplicate cleanup outside the owned set remains with source/evidence owners. |
+
+## R6 Release-Architecture Closure
+
+| Issue | Status |
+|---|---|
+| R6-P0-001 | Closed. Trajectory 5 is planning and assurance control data, not a product release or tag vehicle. |
+| R6-P0-003 | Closed. The integration order is Lane B, then Lane A assurance, then Lane C canary. |
+| R6-P0-004 | Closed. Executable gates do not use lane ticket inventories as release evidence. |
+| R6-P1-005 | Closed. The old aggregate bar is replaced by `SHIP-BAR-TRACKER.md` claim-by-claim assurance matrix. |
+| R6-P2-001 | Closed. Bounded package status is normalized to `[v0_1_0_bounded_chiodome].release_status`. |
+| R6-P2-002 | Closed. The load-bearing mutation evidence path is `audits/evidence/mutants/**`. |
+| R6-P2-003 | Closed. The current checker is `scripts/check-bounded-ship-bar.sh`; stale script names are not part of the load-bearing contract. |
+| R6-P2-007 | Closed. Lane C is a post-Lane-B canary. |
+| R6-P2-009 | Closed. #618 packaging is last and regenerated from merged `main`. |

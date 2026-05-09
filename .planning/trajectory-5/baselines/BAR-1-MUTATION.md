@@ -36,14 +36,14 @@ numbers in Wave 1 of Lane A.
 
 ## Mutation evidence directory (current, pre-release work)
 
-`ls audits/evidence/mutation/ -- not present`. The directory does NOT
+`ls audits/evidence/mutants/ -- not present`. The directory does NOT
 exist at baseline. mutation evidence item creates it and writes
-`audits/evidence/mutation/<crate>/<run-id>.json` per trust-boundary
-crate. The summary file `audits/evidence/mutation/banner.json` is the
+`audits/evidence/mutants/<crate>/<run-id>.json` per trust-boundary
+crate. The summary file `audits/evidence/mutants/banner.json` is the
 machine-readable signal for Bar 1 (per `SHIP-BAR-TRACKER.md`
 "Machine-readable signal" row).
 
-BASELINE-GAP: pre-release work, no `audits/evidence/mutation/banner.json` exists.
+BASELINE-GAP: pre-release work, no `audits/evidence/mutants/banner.json` exists.
 
 ## Threat-evidence directory (current, pre-release work)
 
@@ -98,7 +98,7 @@ today only because of the placeholder bootstrap.
 |---|---|
 | Workspace mutation kill | >= 65% (observed, not target) |
 | `chio-attest-verify` mutation kill | >= 80% |
-| Per-crate breakdown | Published as `audits/evidence/mutation/<crate>/<run-id>.json` per trust-boundary crate, plus aggregate `audits/evidence/mutation/banner.json` |
+| Per-crate breakdown | Published as `audits/evidence/mutants/<crate>/<run-id>.json` per trust-boundary crate, plus aggregate `audits/evidence/mutants/banner.json` |
 | Threat-evidence: real `caught >= 1` | 19 of 20 (1 deferred to trj6 per Risk Register R3: `wasm_guard_resource_exhaustion`); Wave 1 triage may grow the deferral count if `IMPL-PARTIAL`/`BLOCKED-BY-ARCHITECTURE` rows surface |
 | `ran_at` non-1970 | All non-deferred files |
 | `needs_real_run` | `false` for all non-deferred files |
@@ -111,7 +111,7 @@ The canonical `cargo mutants` invocation Lane A uses (from
 
 ```
 cargo mutants -p <crate> --no-shuffle --jobs <N> \
-  --output audits/evidence/mutation/<crate>/<run-id>.json
+  --output audits/evidence/mutants/<crate>/<run-id>.json
 ```
 
 Per-crate runs aggregate into the workspace banner. The
@@ -131,16 +131,16 @@ Trust-boundary crates (per `OWNERS.toml` `lanes.A.owner_globs`):
 The release work closeout wave runs:
 
 1. Run `cargo mutants` per trust-boundary crate; emit JSON evidence
-   under `audits/evidence/mutation/<crate>/<run-id>.json`.
-2. Aggregate to `audits/evidence/mutation/banner.json`:
+   under `audits/evidence/mutants/<crate>/<run-id>.json`.
+2. Aggregate to `audits/evidence/mutants/banner.json`:
    `{ "kill_rate": "<observed>", "per_crate": [...], "observed":
    true, "ran_at": "<RFC3339>" }`.
 3. `scripts/banner.sh` rewrites `README.md` line 17 from
-   `audits/evidence/mutation/banner.json`.
+   `audits/evidence/mutants/banner.json`.
 4. `scripts/check-threat-coverage.sh` PASSes at 19/0/1 (or whatever the
    final triage tally is) with non-meta evidence; `ran_at` is non-1970
    for all non-deferred files.
-5. Banner updates committed; PR cites `audits/evidence/mutation/banner.json`
+5. Banner updates committed; PR cites `audits/evidence/mutants/banner.json`
    and per-crate JSON in the close ticket Acceptance.
 
 The workflow that updates the banner is named in

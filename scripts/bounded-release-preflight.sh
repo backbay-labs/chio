@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# Bounded release kickoff preflight gate.
+# Trajectory 5 planning preflight.
 #
-# Returns exit 0 only if every kickoff prerequisite enumerated in
-# `.planning/trajectory-5/KICKOFF-CHECKLIST.md` is satisfied:
+# This script checks the planning control plane and the release-status
+# namespace contract. It is not the release close gate and deliberately
+# does not depend on lane ticket inventories. Ticket files can track
+# work, but executable gates must not pass or fail because tickets.md
+# exists.
 #
 #   Gate 1: planning artifacts present (master docs)
-#   Gate 2: per-lane PLAN.md / planning docs / README.md present
+#   Gate 2: per-lane PLAN.md / README.md present
 #   Gate 3: templates and architecture docs present
 #   Gate 4: Wave-2 reviews + Wave-3 fix logs + Wave-4 closeout + Wave-2 sign-off ledgers
 #   Gate 5: OWNERS.toml human_assignment populated for all three lanes
-#   Gate 6: releases.toml [v0_1_0_bounded_chiodome] block exists with status set
-#   Gate 7: ship-bar baseline measurements present
+#   Gate 6: releases.toml [trajectory_5] planning block and
+#           [v0_1_0_bounded_chiodome].release_status exist
+#   Gate 7: assurance baseline measurements present
 #   Gate 8: drift-cleanup checks (no LB-* aliases in Depends-on rows;
 #           no live Option A design references; ToolServer mentions
 #           confined to retraction notes)
@@ -116,12 +120,11 @@ check_file ".planning/trajectory-5/OWNERS.toml"
 check_file ".planning/trajectory-5/READINESS.md"
 
 # ---------------------------------------------------------------------------
-# Gate 2: per-lane PLAN.md / tickets.md / README.md
+# Gate 2: per-lane PLAN.md / README.md
 # ---------------------------------------------------------------------------
 printf '\n[Gate 2] per-lane planning files\n'
 for lane in lane-a-floor lane-b-wiring lane-c-demo; do
   check_file ".planning/trajectory-5/$lane/PLAN.md"
-  check_file ".planning/trajectory-5/$lane/tickets.md"
   check_file ".planning/trajectory-5/$lane/README.md"
 done
 
@@ -194,33 +197,48 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Gate 6: releases.toml has [v0_1_0_bounded_chiodome] block with status set
+# Gate 6: releases.toml has planning block and bounded package status
 # ---------------------------------------------------------------------------
-printf '\n[Gate 6] releases.toml [v0_1_0_bounded_chiodome] block\n'
+printf '\n[Gate 6] releases.toml status blocks\n'
 if [ ! -f releases.toml ]; then
   failure "releases.toml is missing"
 else
+  if grep -q -E '^\[trajectory_5\]' releases.toml; then
+    ok "releases.toml has [trajectory_5] section"
+  else
+    failure "releases.toml is missing [trajectory_5] section"
+  fi
+  if grep -q -E '^planning_status[[:space:]]*=' releases.toml; then
+    ok "releases.toml has trajectory_5 planning_status set"
+  else
+    failure "releases.toml is missing trajectory_5 planning_status"
+  fi
+  if grep -q -E '^trj5_baseline_sha[[:space:]]*=' releases.toml; then
+    ok "releases.toml has trj5_baseline_sha set"
+  else
+    failure "releases.toml is missing trj5_baseline_sha"
+  fi
   if grep -q -E '^\[v0_1_0_bounded_chiodome\]' releases.toml; then
     ok "releases.toml has [v0_1_0_bounded_chiodome] section"
   else
     failure "releases.toml is missing [v0_1_0_bounded_chiodome] section"
   fi
-  if grep -q -E '^release_status[[:space:]]*=' releases.toml; then
-    ok "releases.toml has release_status set"
+  if awk '
+    /^\[v0_1_0_bounded_chiodome\]/ { in_section = 1; next }
+    /^\[/ { in_section = 0 }
+    in_section && /^release_status[[:space:]]*=/ { found = 1 }
+    END { exit(found ? 0 : 1) }
+  ' releases.toml; then
+    ok "releases.toml has [v0_1_0_bounded_chiodome].release_status set"
   else
-    failure "releases.toml is missing release_status"
-  fi
-  if grep -q -E '^baseline_sha[[:space:]]*=' releases.toml; then
-    ok "releases.toml has baseline_sha set"
-  else
-    failure "releases.toml is missing baseline_sha"
+    failure "releases.toml is missing [v0_1_0_bounded_chiodome].release_status"
   fi
 fi
 
 # ---------------------------------------------------------------------------
-# Gate 7: ship-bar baseline measurements
+# Gate 7: assurance baseline measurements
 # ---------------------------------------------------------------------------
-printf '\n[Gate 7] ship-bar baselines\n'
+printf '\n[Gate 7] assurance baselines\n'
 check_file ".planning/trajectory-5/baselines/BAR-1-MUTATION.md"
 check_file ".planning/trajectory-5/baselines/BAR-2-CONFORMANCE-FIXTURES.md"
 check_file ".planning/trajectory-5/baselines/BAR-3-DEMO.md"

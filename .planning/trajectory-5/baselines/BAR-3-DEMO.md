@@ -24,7 +24,7 @@ $ ls examples/ | grep -i 'chiodome\|bounded'
 (The synthesis text and earlier per-lane docs sometimes referred to
 `examples/bounded-chiodome/`; that name is a drift artifact corrected
 across the planning set. The canonical demo path is
-`examples/chiodome-bilateral/`; the release tag retains the
+`examples/chiodome-bilateral/`; the bounded canary package retains the
 `v0.1.0-bounded-chiodome` identifier.) Verified by:
 
 ```
@@ -153,7 +153,7 @@ crates/chio-cli/src/cli/trust_commands.rs:2432:    let report = explain_receipt_
 | Anchored through `crates/chio-anchor::Web3CheckpointStatement` | not exercised | anchored (no live deployment) |
 | Selective-disclosure auditor view (behind `zk` Cargo feature flag) | none | runs (or deferred to v0.2 per R6) |
 | Wrapped at `chio mcp serve --policy` against `ops/knowledge-base/` via `mcp-remote` | none | wrapped |
-| Honest release tag `v0.1.0-bounded-chiodome` recorded in `releases.toml` `[trajectory_5]` | `pending` (placeholder set by baseline kickoff per `releases.toml` `v0_1_0_bounded_chiodome_release_tag = "pending"`) | recorded as `v0.1.0-bounded-chiodome` |
+| Bounded package status recorded in `releases.toml` `[v0_1_0_bounded_chiodome]` | `release_status = "blocked_pending_lane_b_integration"` | `release_status = "canary_assurance_complete"` only after Lane B integration, canary regeneration from merged `main`, and integrated merge SHA recording |
 
 ## Re-measurement protocol (release close)
 
@@ -169,12 +169,12 @@ The release work closeout wave runs:
    `examples/chiodome-bilateral/golden/<receipt-body-hash>.txt`;
    matches the explain output for the captured receipt.
 4. `releases.toml` `[trajectory_5]` carries
-   `v0_1_0_bounded_chiodome_release_tag = "v0.1.0-bounded-chiodome"`.
+   `[v0_1_0_bounded_chiodome].release_status` is moved only by the release owner.
 5. `.github/workflows/chiodome-demo-continuous.yml` (release work-C6.3) is
    green for 7 consecutive nights pre-tag.
 6. `tools/diff-stable.py` (or Rust binary) (release work-C6.4) verifies the
    fixture tarball is diff-stable across runs.
-7. `scripts/check-trj5-ship-bar.sh` Bar-3 block PASSes against
+7. `scripts/check-bounded-ship-bar.sh` Bar-3 block PASSes against
    committed evidence.
 
 When all of the above are green, the Bar 3 row in `SHIP-BAR-TRACKER.md`

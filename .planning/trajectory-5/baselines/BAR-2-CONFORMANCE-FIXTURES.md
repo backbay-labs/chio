@@ -124,7 +124,7 @@ For each of B1.E, B2.E, B3.E, B4.E the close-ticket Acceptance:
 4. CI runs the conformance fixture and it PASSes.
 5. Reverse-test PR (or local mutation) inverts the production
    enforcement; the fixture FAILs.
-6. `scripts/check-trj5-ship-bar.sh` Bar-2 block PASSes:
+6. `scripts/check-bounded-ship-bar.sh` Bar-2 block PASSes:
    - 4 of 4 expected files exist;
    - each contains `// negative-conformance:` annotation;
    - the production call sites match the cited line ranges.
