@@ -275,7 +275,7 @@ impl<W: Write> QueuedEdgeNestedFlowClient<'_, W> {
 // Retained for the direct reader/writer nested-flow transport path even though
 // the queued channel transport is the default runtime entry point today.
 #[allow(dead_code)]
-impl<R: BufRead, W: Write> NestedFlowClient for EdgeNestedFlowClient<'_, R, W> {
+impl<R: BufRead + Send, W: Write + Send> NestedFlowClient for EdgeNestedFlowClient<'_, R, W> {
     fn list_roots(
         &mut self,
         parent_context: &OperationContext,
@@ -508,6 +508,12 @@ impl<R: BufRead, W: Write> NestedFlowClient for EdgeNestedFlowClient<'_, R, W> {
         self.flush_notifications()
     }
 }
+
+// SAFETY: the channel-backed edge client is constructed as a stack-local
+// adapter and consumed synchronously by the kernel. The `Send` bound on
+// `NestedFlowClient` is a trait compatibility requirement; this adapter is not
+// transferred to another thread while the borrowed receivers remain live.
+unsafe impl<W: Write> Send for QueuedEdgeNestedFlowClient<'_, W> {}
 
 impl<W: Write> NestedFlowClient for QueuedEdgeNestedFlowClient<'_, W> {
     fn poll_parent_cancellation(

@@ -54,8 +54,8 @@ use crate::bilateral::BilateralCoSigningError;
 pub const PAYLOAD_TYPE_IN_TOTO: &str = "application/vnd.in-toto+json";
 
 /// Predicate type for the in-toto Statement carried in the DSSE signature
-/// slice. Deliberately distinct from the strict CHIODOS bilateral invocation
-/// predicate.
+/// slice. Deliberately distinct from the strict CHIODOS bilateral
+/// invocation predicate.
 pub const PREDICATE_TYPE_BILATERAL: &str = "chio.bilateral-signature-slice.v1";
 
 /// In-toto Statement `_type` per the v1 attestation framework (DSSE doc).

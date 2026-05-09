@@ -9,9 +9,9 @@
 //! [`BilateralCoSigningProtocol`] trait that the kernel calls after it
 //! signs a receipt locally.
 //!
-//! The canonical verification artifact for new bilateral DSSE work is
-//! [`crate::bilateral_dsse::DsseEnvelope`] verified by
-//! [`crate::bilateral_dsse::verify_dsse_envelope`]. `DualSignedReceipt::verify*`
+//! The canonical verification API for new bilateral artifacts is
+//! [`crate::bilateral_verifier::verify_bilateral_cosign_invocation`] over a
+//! [`crate::bilateral_dsse::DsseEnvelope`]. `DualSignedReceipt::verify*`
 //! remains a compatibility adapter for the older detached-signature
 //! envelope only; it is not a DSSE verifier and must not be used as the
 //! authorization or audit verifier for the signature-slice profile.
@@ -466,6 +466,15 @@ pub struct BilateralCoSignArtifacts {
 /// takes the origin kernel private key to produce the DSSE Org A signature.
 /// Production tool-host paths must route that DSSE signature through an
 /// origin-kernel cosigner before making this the default hot path.
+///
+/// Verifier boundary: this helper emits the extensionless
+/// `sign_dsse_envelope` profile. That artifact verifies at the low-level
+/// DSSE signature-slice layer, but it is not accepted by
+/// `verify_bilateral_cosign_invocation` because the canonical verifier
+/// requires `policy_evaluation_summary` and `capability_lease_ref`. Use
+/// [`execute_local_bilateral_invocation_fixture`] or
+/// [`crate::bilateral_dsse::sign_dsse_envelope_full`] when the artifact
+/// must be accepted by the canonical verifier.
 #[allow(clippy::too_many_arguments)]
 pub fn co_sign_with_origin_full(
     origin_kernel_id: &str,
