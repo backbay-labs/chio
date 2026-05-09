@@ -195,10 +195,8 @@ impl LocalReceiptArtifact {
 ///      production-supported path.
 ///   2. Current-thread runtime active: refuse fail-closed with
 ///      [`KernelError::SyncBridgeIncompatibleWithCurrentThreadRuntime`].
-///      Callers are expected to move the host to a multi-thread runtime.
-///      The public async `evaluate_tool_call` entrypoint is still backed by
-///      the blocking evaluator on this branch, so it is not advertised as a
-///      current-thread escape hatch.
+///      Sync callers are expected to move the host to a multi-thread runtime
+///      or call an async-native kernel entrypoint instead of this bridge.
 ///   3. No runtime active: drive the future with a non-tokio executor.
 ///      No surrounding runtime exists to deadlock; tool-server impls
 ///      that need Tokio I/O will simply fail when they try to spawn
@@ -2493,12 +2491,8 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
     ) -> Result<ToolCallResponse, KernelError> {
-        // Route through the ToolEvaluator trait so async-native step bodies
-        // can be swapped in without touching this call site. The default
-        // BlockingToolEvaluator delegates to the existing sync pipeline; semantics
-        // are byte-identical.
-        use crate::kernel::evaluator::{BlockingToolEvaluator, ToolEvaluator};
-        BlockingToolEvaluator.evaluate(self, request).await
+        self.evaluate_tool_call_async_with_session_context(request, None, None, None)
+            .await
     }
 
     pub async fn evaluate_tool_call_with_metadata(
@@ -2506,9 +2500,7 @@ impl ChioKernel {
         request: &ToolCallRequest,
         extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
-        use crate::kernel::evaluator::{BlockingToolEvaluator, ToolEvaluator};
-        BlockingToolEvaluator
-            .evaluate_with_metadata(self, request, extra_metadata)
+        self.evaluate_tool_call_async_with_session_context(request, None, extra_metadata, None)
             .await
     }
 
@@ -2545,6 +2537,7 @@ impl ChioKernel {
     /// `evaluate_tool_call_sync_with_session_roots` to
     /// `evaluate_tool_call_sync_inner` and marked it `#[doc(hidden)]`; this
     /// shim continues to expose the crate-internal sync surface.
+    #[allow(dead_code)]
     pub(crate) fn evaluate_tool_call_sync(
         &self,
         request: &ToolCallRequest,
@@ -2868,6 +2861,21 @@ impl ChioKernel {
     /// tenant_id is NEVER read from `request` itself -- accepting a caller-
     /// provided tenant would defeat the isolation guarantee.
     fn evaluate_tool_call_sync_with_session_context(
+        &self,
+        request: &ToolCallRequest,
+        session_filesystem_roots: Option<&[String]>,
+        extra_metadata: Option<serde_json::Value>,
+        session_id: Option<&SessionId>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        block_on_async_tool_dispatch(self.evaluate_tool_call_async_with_session_context(
+            request,
+            session_filesystem_roots,
+            extra_metadata,
+            session_id,
+        ))
+    }
+
+    async fn evaluate_tool_call_async_with_session_context(
         &self,
         request: &ToolCallRequest,
         session_filesystem_roots: Option<&[String]>,
@@ -3254,7 +3262,8 @@ impl ChioKernel {
         let tool_started_at = Instant::now();
         let has_monetary = charge_result.is_some();
         let (tool_output, reported_cost) = match self
-            .dispatch_tool_call_with_cost_blocking(request, has_monetary)
+            .dispatch_tool_call_with_cost(request, has_monetary)
+            .await
         {
             Ok(result) => result,
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
@@ -3374,6 +3383,19 @@ impl ChioKernel {
     }
 
     fn evaluate_tool_call_with_nested_flow_client<C: NestedFlowClient>(
+        &self,
+        parent_context: &OperationContext,
+        request: &ToolCallRequest,
+        client: &mut C,
+    ) -> Result<ToolCallResponse, KernelError> {
+        block_on_async_tool_dispatch(self.evaluate_tool_call_with_nested_flow_client_async(
+            parent_context,
+            request,
+            client,
+        ))
+    }
+
+    async fn evaluate_tool_call_with_nested_flow_client_async<C: NestedFlowClient>(
         &self,
         parent_context: &OperationContext,
         request: &ToolCallRequest,
@@ -3675,32 +3697,25 @@ impl ChioKernel {
                 client,
             };
 
-            // The helper signature is `Result<T, KernelError>`. We flatten
-            // every arm here directly into that one Result instead of the
-            // earlier `Result<Result<_, _>, _>` shape - the outer Ok was
-            // always `Ok(...)` so the trailing `?` was a no-op. The flat
-            // form is equivalent but clearer.
-            block_on_async_tool_dispatch(async {
-                match server
-                    .invoke_stream(
+            match server
+                .invoke_stream(
+                    &request.tool_name,
+                    request.arguments.clone(),
+                    Some(&mut bridge),
+                )
+                .await
+            {
+                Ok(Some(stream)) => Ok(ToolServerOutput::Stream(stream)),
+                Ok(None) => server
+                    .invoke(
                         &request.tool_name,
                         request.arguments.clone(),
                         Some(&mut bridge),
                     )
                     .await
-                {
-                    Ok(Some(stream)) => Ok(ToolServerOutput::Stream(stream)),
-                    Ok(None) => server
-                        .invoke(
-                            &request.tool_name,
-                            request.arguments.clone(),
-                            Some(&mut bridge),
-                        )
-                        .await
-                        .map(ToolServerOutput::Value),
-                    Err(error) => Err(error),
-                }
-            })
+                    .map(ToolServerOutput::Value),
+                Err(error) => Err(error),
+            }
         };
         self.record_child_receipts(child_receipts)?;
         let tool_output = match tool_output_result {
@@ -3886,21 +3901,41 @@ impl ChioKernel {
         self.post_invocation_pipeline.len()
     }
 
-    pub fn drain_tool_server_events(&self) -> Vec<ToolServerEvent> {
+    pub async fn drain_tool_server_events_async(
+        &self,
+    ) -> Result<Vec<ToolServerEvent>, KernelError> {
         let mut events = Vec::new();
         for (server_id, server) in &self.tool_servers {
-            let outcome: Result<Vec<ToolServerEvent>, KernelError> =
-                block_on_async_tool_dispatch(server.drain_events());
-            match outcome {
+            match server.drain_events().await {
                 Ok(mut server_events) => events.append(&mut server_events),
-                Err(error) => warn!(
-                    server_id = %server_id,
-                    reason = %redacted!(&error),
-                    "failed to drain tool server events"
-                ),
+                Err(error) => {
+                    warn!(
+                        server_id = %server_id,
+                        reason = %redacted!(&error),
+                        "failed to drain tool server events"
+                    );
+                    return Err(error);
+                }
             }
         }
-        events
+        Ok(events)
+    }
+
+    pub fn try_drain_tool_server_events(&self) -> Result<Vec<ToolServerEvent>, KernelError> {
+        block_on_async_tool_dispatch(self.drain_tool_server_events_async())
+    }
+
+    pub fn drain_tool_server_events(&self) -> Vec<ToolServerEvent> {
+        match self.try_drain_tool_server_events() {
+            Ok(events) => events,
+            Err(error) => {
+                warn!(
+                    reason = %redacted!(&error),
+                    "failed to drain tool server events"
+                );
+                Vec::new()
+            }
+        }
     }
 
     pub fn register_session_pending_url_elicitation(
@@ -3964,7 +3999,20 @@ impl ChioKernel {
         &self,
         session_id: &SessionId,
     ) -> Result<(), KernelError> {
-        let events = self.drain_tool_server_events();
+        let events = self.try_drain_tool_server_events()?;
+        self.with_session_mut(session_id, |session| {
+            for event in events {
+                session.queue_tool_server_event(event);
+            }
+            Ok(())
+        })
+    }
+
+    pub async fn queue_session_tool_server_events_async(
+        &self,
+        session_id: &SessionId,
+    ) -> Result<(), KernelError> {
+        let events = self.drain_tool_server_events_async().await?;
         self.with_session_mut(session_id, |session| {
             for event in events {
                 session.queue_tool_server_event(event);
@@ -6391,6 +6439,7 @@ impl ChioKernel {
 
     /// Synchronous dispatch shim used by the legacy
     /// `evaluate_tool_call_blocking` path while it still exists.
+    #[allow(dead_code)]
     pub(crate) fn dispatch_tool_call_with_cost_blocking(
         &self,
         request: &ToolCallRequest,
