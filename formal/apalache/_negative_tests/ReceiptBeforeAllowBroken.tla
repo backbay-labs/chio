@@ -1,27 +1,12 @@
------------------------- MODULE ReceiptBeforeAllow ------------------------
+--------------------- MODULE ReceiptBeforeAllowBroken ---------------------
 (***************************************************************************)
-(* Apalache invariant for the RETIRED-SQLITE-CROSS-ROW handoff.            *)
-(* A capability may appear in an authority's allowed set only after an      *)
-(* allow receipt for that authority and capability exists in the log.       *)
-(* Receipt persistence and allow publication are modeled as separate        *)
-(* actions so the invariant is not satisfied by a fixture-only atomic       *)
-(* update that records both facts in one transition.                        *)
+(* DELIBERATELY BROKEN variant of ReceiptBeforeAllow used to demonstrate    *)
+(* that the ReceiptBeforeAllow invariant is NOT tautologically satisfied.   *)
+(* PublishAllow here omits the HasAllowReceipt(a, c) precondition, so an    *)
+(* allow can be published without an allow receipt persisting first.        *)
 (*                                                                          *)
-(* Proof obligation (release work-A4.1):                                            *)
-(*  - Spec Init implies SafetyInv.                                          *)
-(*  - Every disjunct of Next preserves SafetyInv. The cross-action          *)
-(*    obligation is on PublishAllow: the HasAllowReceipt(a, c) guard must   *)
-(*    appear in the action body, otherwise an Allow may be published       *)
-(*    without a prior allow receipt and the invariant is unsound.           *)
-(*  - The Allow-step has been split into PersistAllowReceipt followed by    *)
-(*    PublishAllow, removing the prior trj4 erratum where a single atomic   *)
-(*    Allow action made ReceiptBeforeAllow tautologically true.             *)
-(*                                                                          *)
-(* Non-tautology evidence:                                                 *)
-(*  - formal/apalache/_negative_tests/ReceiptBeforeAllowBroken.tla mutates *)
-(*    PublishAllow to drop the HasAllowReceipt guard. Apalache must report *)
-(*    SafetyInv violated within 2 steps; if it reports NoError, this        *)
-(*    property is unsound.                                                  *)
+(* Apalache MUST find a counterexample to SafetyInv on this spec. If it     *)
+(* reports NoError, the property is unsound.                                *)
 (***************************************************************************)
 
 EXTENDS Naturals, Sequences, FiniteSets, Common
@@ -77,10 +62,10 @@ PersistAllowReceipt(a, c) ==
     /\ clock' = clock + 1
     /\ UNCHANGED << allowed, budget_checked >>
 
-PublishAllow(a, c) ==
+\* BROKEN: HasAllowReceipt precondition removed.
+PublishAllowBroken(a, c) ==
     /\ a \in Authorities
     /\ c \in budget_checked[a]
-    /\ HasAllowReceipt(a, c)
     /\ allowed' = [allowed EXCEPT ![a] = @ \cup {c}]
     /\ UNCHANGED << receipt_log, budget_checked, clock >>
 
@@ -102,7 +87,7 @@ Stutter ==
 Next ==
     \/ \E a \in Authorities, c \in CapSet : CheckBudget(a, c)
     \/ \E a \in Authorities, c \in CapSet : PersistAllowReceipt(a, c)
-    \/ \E a \in Authorities, c \in CapSet : PublishAllow(a, c)
+    \/ \E a \in Authorities, c \in CapSet : PublishAllowBroken(a, c)
     \/ \E a \in Authorities, c \in CapSet : Deny(a, c)
     \/ Stutter
 
