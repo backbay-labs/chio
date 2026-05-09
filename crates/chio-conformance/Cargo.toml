@@ -107,6 +107,7 @@ base64ct = { workspace = true, features = ["alloc"] }
 base64 = { workspace = true }
 coset = { workspace = true }
 jsonwebtoken = { workspace = true }
+jsonschema = { workspace = true }
 sha2 = { workspace = true }
 # The partial bilateral-invocation verifier fixture hex-encodes a
 # canonical-JSON SHA-256 to populate the predicate's

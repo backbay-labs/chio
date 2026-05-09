@@ -93,7 +93,8 @@
           "minimum": 0
         },
         "receipt_canonical_json": {
-          "type": "object"
+          "type": "string",
+          "minLength": 2
         }
       }
     }
