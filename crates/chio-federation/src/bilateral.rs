@@ -99,9 +99,40 @@ pub struct DualSignedReceipt {
     pub org_b_signature: Signature,
 }
 
+/// Pinned peer identities expected by a verifier before it accepts a
+/// [`DualSignedReceipt`].
+#[derive(Debug, Clone, Copy)]
+pub struct ExpectedBilateralPeers<'a> {
+    pub org_a_kernel_id: &'a str,
+    pub org_a_public_key: &'a PublicKey,
+    pub org_b_kernel_id: &'a str,
+    pub org_b_public_key: &'a PublicKey,
+}
+
 impl DualSignedReceipt {
-    /// Verify both detached signatures against the provided pinned peer
-    /// public keys. Returns `Ok(())` only when BOTH signatures validate.
+    /// Verify both detached signatures against the provided public keys,
+    /// using the kernel IDs carried in this receipt as the expected IDs.
+    ///
+    /// Prefer [`DualSignedReceipt::verify_pinned`] at trust boundaries so
+    /// the verifier supplies the expected peer IDs independently of the
+    /// artifact being checked.
+    pub fn verify(
+        &self,
+        org_a_public_key: &PublicKey,
+        org_b_public_key: &PublicKey,
+    ) -> Result<(), BilateralCoSigningError> {
+        self.verify_pinned(ExpectedBilateralPeers {
+            org_a_kernel_id: &self.org_a_kernel_id,
+            org_a_public_key,
+            org_b_kernel_id: &self.org_b_kernel_id,
+            org_b_public_key,
+        })
+    }
+
+    /// Verify both detached signatures against independently supplied
+    /// pinned peer IDs and keys. Returns `Ok(())` only when BOTH signatures
+    /// validate and the receipt's declared peer IDs match the expected
+    /// peers.
     ///
     /// Neither half of the dual signature is sufficient on its own; a
     /// caller that can only check one side must still refuse the receipt.
@@ -110,22 +141,41 @@ impl DualSignedReceipt {
     /// signatures it checks are computed over the canonical-JSON encoding
     /// of [`CoSigningBody`]; the DSSE signature-slice signatures are
     /// computed over DSSE PAE bytes wrapping an in-toto
-    /// Statement. On this branch that DSSE artifact is a signature-slice
-    /// profile, not the strict CHIODOS invocation predicate. The two
-    /// preimages share zero bytes (R4 finding 1).
-    pub fn verify(
+    /// Statement. The DSSE artifact is a signature-slice profile, not the
+    /// strict CHIODOS invocation predicate.
+    pub fn verify_pinned(
         &self,
-        org_a_public_key: &PublicKey,
-        org_b_public_key: &PublicKey,
+        expected: ExpectedBilateralPeers<'_>,
     ) -> Result<(), BilateralCoSigningError> {
+        if self.schema != BILATERAL_DUAL_RECEIPT_SCHEMA {
+            return Err(BilateralCoSigningError::UnsupportedSchema(
+                self.schema.clone(),
+            ));
+        }
+        if expected.org_a_kernel_id.is_empty()
+            || expected.org_b_kernel_id.is_empty()
+            || expected.org_a_kernel_id == expected.org_b_kernel_id
+            || self.org_a_kernel_id != expected.org_a_kernel_id
+            || self.org_b_kernel_id != expected.org_b_kernel_id
+            || expected.org_a_public_key == expected.org_b_public_key
+        {
+            return Err(BilateralCoSigningError::PeerIdentityMismatch);
+        }
+
         let body =
             CoSigningBody::from_receipt(&self.body, &self.org_a_kernel_id, &self.org_b_kernel_id)?;
         let bytes = body.canonical_bytes()?;
 
-        if !org_a_public_key.verify(&bytes, &self.org_a_signature) {
+        if !expected
+            .org_a_public_key
+            .verify(&bytes, &self.org_a_signature)
+        {
             return Err(BilateralCoSigningError::OrgASignatureInvalid);
         }
-        if !org_b_public_key.verify(&bytes, &self.org_b_signature) {
+        if !expected
+            .org_b_public_key
+            .verify(&bytes, &self.org_b_signature)
+        {
             return Err(BilateralCoSigningError::OrgBSignatureInvalid);
         }
         let receipt_signature_valid = self
@@ -135,7 +185,7 @@ impl DualSignedReceipt {
         if !receipt_signature_valid {
             return Err(BilateralCoSigningError::ReceiptMismatch);
         }
-        if self.body.kernel_key != *org_b_public_key {
+        if self.body.kernel_key != *expected.org_b_public_key {
             return Err(BilateralCoSigningError::OrgBSignatureInvalid);
         }
         Ok(())
@@ -207,6 +257,12 @@ pub enum BilateralCoSigningError {
 
     #[error("co-signing request rejected by peer: {0}")]
     PeerRejected(String),
+
+    #[error("unsupported bilateral co-signing schema: {0}")]
+    UnsupportedSchema(String),
+
+    #[error("bilateral receipt peer identity does not match pinned peers")]
+    PeerIdentityMismatch,
 
     #[error("receipt body mismatch between request and signed body")]
     ReceiptMismatch,
@@ -434,13 +490,11 @@ pub fn co_sign_with_origin_full(
     })
 }
 
-pub struct BilateralInvocationRequest<'a> {
+pub struct LocalBilateralInvocationFixtureRequest<'a> {
     /// `did:chio` identifier of the origin kernel (Org A).
     pub origin_kernel_id: &'a str,
-    /// Origin kernel's signing keypair. This keeps the current
-    /// signature-slice implementation scoped to in-process API/demo use.
-    /// A production default hot path must replace this with a DSSE-capable
-    /// origin cosigner so Org B never needs Org A private key material.
+    /// Origin kernel's signing keypair. This makes the helper suitable only
+    /// for local fixtures and deterministic demos.
     pub origin_keypair: &'a Keypair,
     /// `did:chio` identifier of the tool-host kernel (Org B).
     pub tool_host_kernel_id: &'a str,
@@ -473,10 +527,10 @@ pub struct BilateralInvocationOutcome {
     pub verified: crate::bilateral_verifier::VerifiedBilateralCoSignInvocation,
 }
 
-/// Errors surfaced by [`execute_bilateral_invocation`]. Distinct from
+/// Errors surfaced by [`execute_local_bilateral_invocation_fixture`]. Distinct from
 /// [`BilateralCoSigningError`] because the verifier's spec §7.1 codes
 /// have their own taxonomy; the helper folds both surfaces into one
-/// kernel-boundary result.
+/// local fixture result.
 #[derive(Debug, thiserror::Error)]
 pub enum BilateralInvocationError {
     /// The signing path failed before the verifier ran.
@@ -488,7 +542,7 @@ pub enum BilateralInvocationError {
     Verifier(#[from] crate::bilateral_verifier::VerifierError),
 }
 
-/// 1. Drives [`co_sign_with_origin_full`] to produce the
+/// 1. Drives the local fixture signing path to produce the
 ///    [`BilateralCoSignArtifacts`] (legacy [`DualSignedReceipt`] +
 ///    DSSE signature-slice envelope) but layered with the
 ///    [`crate::bilateral_dsse::BilateralPredicateExtensions`] (lease ref,
@@ -502,10 +556,11 @@ pub enum BilateralInvocationError {
 ///    closed with a `BilateralInvocationError` carrying either the
 ///    co-signing error or the verifier's spec §7.1 code.
 ///
-/// This is the kernel-boundary surface the chiodome demo executes; the
-/// bilateral_invocation example wires it end-to-end.
-pub fn execute_bilateral_invocation(
-    request: BilateralInvocationRequest<'_>,
+/// This is intentionally a local fixture helper: it takes both private
+/// keypairs in one process. Production callers must use a transport-backed
+/// origin cosigner and must not hand Org A key material to Org B.
+pub fn execute_local_bilateral_invocation_fixture(
+    request: LocalBilateralInvocationFixtureRequest<'_>,
     verifier_config: &crate::bilateral_verifier::VerifierConfig<'_>,
 ) -> Result<BilateralInvocationOutcome, BilateralInvocationError> {
     // Step 1: legacy DualSignedReceipt hop (drives the cosigner) +

@@ -13,7 +13,7 @@ use chio_core_types::receipt::{
 };
 use chio_federation::{
     co_sign_with_origin, BilateralCoSigningError, CoSigningBody, DualSignedReceipt,
-    InProcessCoSigner, BILATERAL_DUAL_RECEIPT_SCHEMA,
+    ExpectedBilateralPeers, InProcessCoSigner, BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
 
 fn sample_action() -> ToolCallAction {
@@ -74,6 +74,84 @@ fn happy_path_dual_signs_and_verifies_on_both_sides() {
     // Both sides can verify with the same pinned peer keys.
     dual.verify(&origin_kp.public_key(), &tool_host_kp.public_key())
         .expect("dual-signed receipt verifies with both pinned peer keys");
+    dual.verify_pinned(ExpectedBilateralPeers {
+        org_a_kernel_id: origin_kernel_id,
+        org_a_public_key: &origin_kp.public_key(),
+        org_b_kernel_id: tool_host_kernel_id,
+        org_b_public_key: &tool_host_kp.public_key(),
+    })
+    .expect("dual-signed receipt verifies with independently pinned identities");
+}
+
+#[test]
+fn verify_pinned_rejects_self_declared_identity_substitution() {
+    let origin_kp = Keypair::generate();
+    let tool_host_kp = Keypair::generate();
+    let origin_kernel_id = "kernel.org-a";
+    let tool_host_kernel_id = "kernel.org-b";
+
+    let cosigner = InProcessCoSigner::new(
+        origin_kernel_id,
+        origin_kp.clone(),
+        tool_host_kp.public_key(),
+    );
+    let receipt = sample_receipt(&tool_host_kp);
+    let mut dual = co_sign_with_origin(
+        origin_kernel_id,
+        &origin_kp.public_key(),
+        tool_host_kernel_id,
+        &tool_host_kp,
+        receipt,
+        &cosigner,
+    )
+    .unwrap();
+
+    dual.org_a_kernel_id = "kernel.attacker-a".to_string();
+    dual.org_b_kernel_id = "kernel.attacker-b".to_string();
+
+    let err = dual
+        .verify_pinned(ExpectedBilateralPeers {
+            org_a_kernel_id: origin_kernel_id,
+            org_a_public_key: &origin_kp.public_key(),
+            org_b_kernel_id: tool_host_kernel_id,
+            org_b_public_key: &tool_host_kp.public_key(),
+        })
+        .expect_err("self-declared kernel IDs must not override pinned peer IDs");
+    assert_eq!(err, BilateralCoSigningError::PeerIdentityMismatch);
+}
+
+#[test]
+fn verify_pinned_rejects_duplicate_peer_keys() {
+    let origin_kp = Keypair::generate();
+    let tool_host_kp = Keypair::generate();
+    let origin_kernel_id = "kernel.org-a";
+    let tool_host_kernel_id = "kernel.org-b";
+
+    let cosigner = InProcessCoSigner::new(
+        origin_kernel_id,
+        origin_kp.clone(),
+        tool_host_kp.public_key(),
+    );
+    let receipt = sample_receipt(&tool_host_kp);
+    let dual = co_sign_with_origin(
+        origin_kernel_id,
+        &origin_kp.public_key(),
+        tool_host_kernel_id,
+        &tool_host_kp,
+        receipt,
+        &cosigner,
+    )
+    .unwrap();
+
+    let err = dual
+        .verify_pinned(ExpectedBilateralPeers {
+            org_a_kernel_id: origin_kernel_id,
+            org_a_public_key: &origin_kp.public_key(),
+            org_b_kernel_id: tool_host_kernel_id,
+            org_b_public_key: &origin_kp.public_key(),
+        })
+        .expect_err("distinct peers must not share the same verification key");
+    assert_eq!(err, BilateralCoSigningError::PeerIdentityMismatch);
 }
 
 #[test]

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/federation/bilateral-signature-slice",
+  "title": "Chio bilateral DSSE signature-slice statement",
+  "description": "Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict CHIODOS bilateral cosign invocation predicate.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["_type", "subject", "predicateType", "predicate"],
+  "properties": {
+    "_type": {
+      "type": "string",
+      "const": "https://in-toto.io/Statement/v1"
+    },
+    "subject": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "digest"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^chio-receipt:.+"
+          },
+          "digest": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sha256"],
+            "properties": {
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "predicateType": {
+      "type": "string",
+      "const": "chio.bilateral-cosign-signature-slice.v1"
+    },
+    "predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "invocation_id",
+        "tool_server_a",
+        "tool_server_b",
+        "tool_name",
+        "co_sign",
+        "consistency_model",
+        "cross_org_visibility",
+        "timestamp_unix_ms",
+        "receipt_canonical_json"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "chio.bilateral-cosign-signature-slice.v1"
+        },
+        "invocation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool_server_a": {
+          "$ref": "#/$defs/kernelIdentity"
+        },
+        "tool_server_b": {
+          "$ref": "#/$defs/kernelIdentity"
+        },
+        "tool_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "co_sign": {
+          "type": "string",
+          "enum": ["bilateral_required", "bilateral_if_cross_org"]
+        },
+        "consistency_model": {
+          "type": "string",
+          "const": "crdt-commutative"
+        },
+        "cross_org_visibility": {
+          "type": "string",
+          "enum": ["private", "treaty_only", "federated", "public"]
+        },
+        "timestamp_unix_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "receipt_canonical_json": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "kernelIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kernel_id", "passport_key_fingerprint", "alg"],
+      "properties": {
+        "kernel_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passport_key_fingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "alg": {
+          "type": "string",
+          "const": "ed25519"
+        }
+      }
+    }
+  }
+}

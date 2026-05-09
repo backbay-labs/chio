@@ -9,8 +9,8 @@
 //! ## What this fixture checks
 //!
 //! 1. **Byte-level non-overlap**: the legacy `CoSigningBody` canonical bytes
-//!    and the DSSE PAE preimage bytes share zero positions (the byte-stream
-//!    inequivalence the R4 review surfaced).
+//!    and the DSSE PAE preimage bytes share zero positions (byte-stream
+//!    inequivalence).
 //! 2. **Signature-slice verifier accepts the envelope** under matching public keys.
 //! 3. **Tampered payload bytes are rejected** (changes LEN(payload) and the
 //!    payload bytes; PAE preimage diverges).
@@ -37,6 +37,7 @@ use chio_federation::bilateral_dsse::{
     pae, receipt_subject_name, sign_dsse_envelope, verify_dsse_envelope, DsseEnvelope, Keyid,
     PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL,
 };
+use std::path::Path;
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -73,7 +74,7 @@ const ORG_B_KERNEL_ID: &str = "kernel.org-b";
 // Tests
 // ---------------------------------------------------------------------------
 
-/// Concrete byte-level proof for R4 finding 1: the legacy `CoSigningBody`
+/// Concrete byte-level proof: the legacy `CoSigningBody`
 /// canonical bytes and the DSSE PAE preimage share zero header bytes; their
 /// shapes are entirely incompatible. A single signature cannot authenticate
 /// both, which is precisely why this path must be separate from the legacy
@@ -102,7 +103,7 @@ fn legacy_preimage_and_dsse_pae_preimage_share_zero_bytes() {
     .unwrap();
     let dsse_preimage = envelope.pae_bytes().unwrap();
 
-    // R4 finding: the two preimages are NOT the same bytes.
+    // The two preimages are not the same bytes.
     assert_ne!(
         legacy_preimage, dsse_preimage,
         "legacy CoSigningBody bytes and DSSE PAE bytes MUST differ; \
@@ -218,6 +219,56 @@ fn emitted_predicate_is_explicit_signature_slice_not_chiodos_invocation_schema()
     );
 }
 
+#[test]
+fn signature_slice_profile_is_registered_as_signed_artifact_schema() {
+    assert_eq!(
+        PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL,
+        "the signed artifact must have one verifier-facing profile identifier"
+    );
+
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("crate lives under <repo>/crates/chio-conformance");
+    let registry_path = repo_root.join("spec/schemas/registry.json");
+    let registry_text = std::fs::read_to_string(&registry_path).expect("read schema registry");
+    let registry: serde_json::Value =
+        serde_json::from_str(&registry_text).expect("parse schema registry");
+    let artifacts = registry["artifacts"]
+        .as_array()
+        .expect("registry.artifacts is an array");
+
+    let entry = artifacts
+        .iter()
+        .find(|artifact| artifact["schema"] == PREDICATE_TYPE_BILATERAL)
+        .expect("signature-slice profile is registered");
+    assert_eq!(
+        entry["artifactKind"], "bilateral_dsse_signature_slice",
+        "registry entry must be verifier-facing, not a generic receipt artifact"
+    );
+    let schema_file = entry["schemaFile"]
+        .as_str()
+        .expect("schemaFile is a string");
+    let schema_path = repo_root.join(schema_file);
+    assert!(
+        schema_path.is_file(),
+        "registered schema file must exist: {}",
+        schema_file
+    );
+
+    let schema_text = std::fs::read_to_string(&schema_path).expect("read profile schema");
+    let schema: serde_json::Value =
+        serde_json::from_str(&schema_text).expect("parse profile schema");
+    assert_eq!(
+        schema["properties"]["predicateType"]["const"],
+        PREDICATE_TYPE_BILATERAL
+    );
+    assert_eq!(
+        schema["properties"]["predicate"]["properties"]["schema"]["const"],
+        PREDICATE_BODY_SCHEMA
+    );
+}
+
 /// Tampering with the payload changes the DSSE PAE preimage that the
 /// signatures cover; the verifier MUST reject.
 #[test]
@@ -327,8 +378,8 @@ fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
     assert!(
         result.is_err(),
         "DSSE envelope forged from legacy DualSignedReceipt signatures MUST \
-         fail signature-slice verification (the two preimages share zero bytes, \
-         so a legacy signature cannot authenticate the DSSE preimage)"
+         fail signature-slice verification because a legacy signature cannot \
+         authenticate the DSSE preimage"
     );
 }
 
@@ -411,16 +462,13 @@ fn pae_helper_matches_spec_format() {
     );
 }
 
-/// Spec §7 step 7 substrate: the `subject[0].digest.sha256` field equals
-/// the SHA-256 of the canonical-JSON of the underlying receipt body. A
-/// verifier resolving the receipt via the predicate's
-/// Subject-digest invariant: the subject digest binds the
-/// receipt BODY (canonical JSON of `ChioReceiptBody`), not the full
-/// signed `ChioReceipt` wrapper. Resolving the receipt from a store
-/// (which exposes the body for re-verification) and re-hashing the
-/// body must reproduce this digest. Hashing the full wrapper would
-/// fold in the signature bytes, which the verifier cannot reproduce
-/// from a body-only re-emission.
+/// Spec step substrate: the subject digest binds the receipt body
+/// (canonical JSON of `ChioReceiptBody`), not the full signed
+/// `ChioReceipt` wrapper. Resolving the receipt from a store (which
+/// exposes the body for re-verification) and re-hashing the body must
+/// reproduce this digest. Hashing the full wrapper would fold in the
+/// signature bytes, which the verifier cannot reproduce from a
+/// body-only re-emission.
 #[test]
 fn statement_subject_digest_matches_canonical_receipt_body_hash() {
     let kp_a = Keypair::generate();
@@ -445,12 +493,12 @@ fn statement_subject_digest_matches_canonical_receipt_body_hash() {
     assert_eq!(
         statement.subject[0].digest.sha256, want,
         "subject[0].digest.sha256 MUST equal sha256(canonical_json(receipt.body())) \
-         per the body-digest invariant; cross-impl resolution from a body-only receipt store relies \
-         on this binding."
+         cross-impl resolution from a body-only receipt store relies on this binding."
     );
 
     // Belt-and-suspenders: hashing the full signed wrapper must NOT
-    // match. If it did, the body-digest invariant would have regressed silently.
+    // match. A wrapper-hash match would mean the body/wrapper binding
+    // had regressed silently.
     let canonical_full = canonical_json_bytes(&receipt).unwrap();
     let full_digest = chio_core::crypto::sha256_hex(&canonical_full);
     assert_ne!(
@@ -491,13 +539,12 @@ fn statement_subject_name_is_canonical_receipt_name_and_raw_id_is_rejected() {
     );
 }
 
-/// Single-subject invariant: the bilateral envelope profile
-/// pins exactly ONE subject. The pre-fix verifier rejected the
-/// empty-list case but accepted multi-subject envelopes and bound
-/// only `subject[0]`. A signer could insert a second arbitrary
-/// subject and any verifier walking the full subject list (the
-/// in-toto convention for membership) would resolve a different
-/// receipt than the producer signed.
+/// The bilateral envelope profile pins exactly one subject. Accepting a
+/// multi-subject envelope would let a signer insert a second arbitrary
+/// subject; any verifier walking the full subject list (the in-toto
+/// convention for membership) would then resolve a different receipt
+/// than the producer signed. The empty-list case is rejected for the
+/// same reason: there must be exactly one subject.
 #[test]
 fn dsse_envelope_with_two_subjects_is_rejected() {
     use chio_federation::bilateral_dsse::{DsseStatement, StatementSubject, SubjectDigest};

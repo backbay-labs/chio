@@ -1,4 +1,4 @@
-//! Drives [`chio_federation::bilateral::execute_bilateral_invocation`]
+//! Drives [`chio_federation::bilateral::execute_local_bilateral_invocation_fixture`]
 //! end-to-end (NOT a mock - exercises the production
 //! `sign_dsse_envelope_full` signature-slice producer and the production partial local verifier
 //! `verify_bilateral_cosign_invocation`, which covers a subset of the
@@ -31,13 +31,14 @@ use base64::Engine;
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use chio_federation::{
-    execute_bilateral_invocation, receipt_subject_name, ActionClassKind, AllowAllRevocationOracle,
-    BilateralCoSigningProtocol, BilateralInvocationError, BilateralInvocationRequest,
+    execute_local_bilateral_invocation_fixture, receipt_subject_name, ActionClassKind,
+    AllowAllRevocationOracle, BilateralCoSigningProtocol, BilateralInvocationError,
     BilateralPredicateExtensions, CapabilityLeaseRef, DenyListRevocationOracle, DsseEnvelope,
     GovernanceReceiptRef, GovernanceReceiptStore, HashRecord, InMemoryGovernanceReceiptStore,
-    InMemoryLeaseRegistry, InMemoryReceiptStore, InProcessCoSigner, Keyid, PeerPinSet, PinnedEpoch,
-    PinnedPeer, PolicyEvaluationSummary, PolicyVerdict, ReceiptStore, ResolvedGovernanceReceipt,
-    ResolvedLease, RevocationOracle, VerifierConfig,
+    InMemoryLeaseRegistry, InMemoryReceiptStore, InProcessCoSigner, Keyid,
+    LocalBilateralInvocationFixtureRequest, PeerPinSet, PinnedEpoch, PinnedPeer,
+    PolicyEvaluationSummary, PolicyVerdict, ReceiptStore, ResolvedGovernanceReceipt, ResolvedLease,
+    RevocationOracle, VerifierConfig,
 };
 use sha2::Digest;
 
@@ -169,7 +170,7 @@ fn run_invocation_with(
     pinned_now_ms: u64,
     mut action_classes: BTreeMap<String, ActionClassKind>,
 ) -> Result<chio_federation::BilateralInvocationOutcome, BilateralInvocationError> {
-    let request = BilateralInvocationRequest {
+    let request = LocalBilateralInvocationFixtureRequest {
         origin_kernel_id: ORG_A,
         origin_keypair: &setup.kp_a,
         tool_host_kernel_id: ORG_B,
@@ -203,7 +204,7 @@ fn run_invocation_with(
         action_classes,
         unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::Reject,
     };
-    execute_bilateral_invocation(request, &config)
+    execute_local_bilateral_invocation_fixture(request, &config)
 }
 
 fn run_default(
@@ -865,7 +866,7 @@ fn bilateral_verifier_legacy_default_routine_fallback() {
     // No `action_classes` registration for `TOOL`; the request must
     // still pass because legacy `DefaultRoutine` silently treats the
     // unknown tool as `Routine` (no governance receipt required).
-    let request = BilateralInvocationRequest {
+    let request = LocalBilateralInvocationFixtureRequest {
         origin_kernel_id: ORG_A,
         origin_keypair: &setup.kp_a,
         tool_host_kernel_id: ORG_B,
@@ -889,7 +890,7 @@ fn bilateral_verifier_legacy_default_routine_fallback() {
         action_classes: BTreeMap::new(),
         unknown_action_class_policy: chio_federation::UnknownActionClassPolicy::DefaultRoutine,
     };
-    let outcome = execute_bilateral_invocation(request, &config)
+    let outcome = execute_local_bilateral_invocation_fixture(request, &config)
         .unwrap_or_else(|e| panic!("legacy DefaultRoutine fallback path failed: {e:?}"));
     assert_eq!(outcome.verified.joint_verdict, "allow");
 }
