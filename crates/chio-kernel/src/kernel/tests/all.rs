@@ -700,7 +700,7 @@ fn kernel_rejects_classical_capability_under_pq_required_floor() {
     kernel.set_capability_crypto_floor(KernelCryptoFloor::PqRequired);
 
     let error = kernel
-        .verify_capability_signature(&token)
+        .verify_capability_full_pre_admit(&token, None, 150)
         .expect_err("classical capability must fail under pq_required");
 
     assert!(

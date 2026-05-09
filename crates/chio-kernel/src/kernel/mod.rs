@@ -2436,6 +2436,21 @@ impl ChioKernel {
 
     /// Open a new logical session for an agent and bind any capabilities that
     /// were issued during setup to that session.
+    ///
+    /// Design note: unlike the hosted-tool and nested-flow dispatch
+    /// paths, this surface deliberately does NOT call
+    /// [`Self::admit_capability_budget`] after the pre-admit verifier
+    /// pass. Read-only resource/prompt operations
+    /// (`subscribe_resource`, `read_resource`, `get_prompt`,
+    /// `complete`) are not economic actions: they neither consume the
+    /// caller's per-tool invocation budget nor reserve the caller's
+    /// share against its parent in the sibling-sum registry.
+    /// PROTOCOL.md section "Single-entry capability verifier" already
+    /// authorises this split as MAY: the MUST is that every surface
+    /// traverses `verify_capability_full` exactly once (which this
+    /// helper does); the authoritative admit phase is reserved for
+    /// surfaces that actually execute a side-effecting action against
+    /// the budget.
     fn validate_non_tool_capability(
         &self,
         capability: &CapabilityToken,
@@ -2449,9 +2464,9 @@ impl ChioKernel {
                 EMERGENCY_STOP_DENY_REASON.to_string(),
             ));
         }
-        self.verify_capability_signature(capability)
-            .map_err(|_| KernelError::InvalidSignature)?;
-        check_time_bounds(capability, current_unix_timestamp())?;
+        let now = current_unix_timestamp();
+        self.verify_capability_full_pre_admit(capability, None, now)
+            .map_err(KernelError::GuardDenied)?;
         self.check_revocation(capability)?;
         self.validate_delegation_admission(capability)?;
         check_subject_binding(capability, agent_id)?;
@@ -2700,14 +2715,26 @@ impl ChioKernel {
         let now = current_unix_timestamp();
         let cap = &req.planner_capability;
 
+        // Design note: plan-evaluation is a PREVIEW path -- it answers
+        // "if this plan ran, would each step be allowed?" without
+        // dispatching the underlying tool calls. Calling
+        // [`Self::admit_capability_budget`] here would consume
+        // sibling-sum budget for plans that may never execute, which
+        // is the opposite of preview semantics. The pre-admit verifier
+        // pass below covers the spec MUST (every surface traverses
+        // `verify_capability_full` exactly once); the authoritative
+        // admit phase is reserved for the actual hosted-tool /
+        // nested-flow dispatch paths in
+        // `evaluate_tool_call_*_with_session_context`.
+        //
         // Capability-wide checks repeat per-step so a failure here is
         // still reflected in every step's verdict, keeping the per-step
         // output self-contained.
-        if let Err(reason) = self.verify_capability_signature(cap) {
+        if let Err(reason) = self.verify_capability_full_pre_admit(cap, None, now) {
             return StepVerdict {
                 step_index: index,
                 verdict: StepVerdictKind::Denied,
-                reason: Some(format!("signature verification failed: {reason}")),
+                reason: Some(format!("capability verification failed: {reason}")),
                 guard: None,
             };
         }
@@ -2889,7 +2916,7 @@ impl ChioKernel {
         // subject, scope, guards) have passed. Otherwise a denied call
         // would still consume the parent's share, starving later valid
         // siblings.
-        if let Err(reason) = self.verify_capability_full_without_budget_admit(
+        if let Err(reason) = self.verify_capability_full_pre_admit(
             cap,
             request.federated_origin_kernel_id.as_deref(),
             now,
@@ -3385,7 +3412,7 @@ impl ChioKernel {
         // Signature first; the budget admission is deferred until
         // after all subsequent checks pass, so a denied call no longer
         // consumes the parent's share.
-        if let Err(reason) = self.verify_capability_full_without_budget_admit(
+        if let Err(reason) = self.verify_capability_full_pre_admit(
             cap,
             request.federated_origin_kernel_id.as_deref(),
             now,
@@ -3648,6 +3675,11 @@ impl ChioKernel {
                 client,
             };
 
+            // The helper signature is `Result<T, KernelError>`. We flatten
+            // every arm here directly into that one Result instead of the
+            // earlier `Result<Result<_, _>, _>` shape - the outer Ok was
+            // always `Ok(...)` so the trailing `?` was a no-op. The flat
+            // form is equivalent but clearer.
             block_on_async_tool_dispatch(async {
                 match server
                     .invoke_stream(
@@ -3991,33 +4023,10 @@ impl ChioKernel {
         trusted
     }
 
-    fn verify_capability_signature(&self, cap: &CapabilityToken) -> Result<(), String> {
-        let trusted = self.trusted_issuer_keys();
-
-        if !trusted.contains(&cap.issuer) {
-            return Err("signer public key not found among trusted CAs".to_string());
-        }
-
-        match cap.verify_signature_with_floor(capability_crypto_floor(self.capability_crypto_floor))
-        {
-            Ok(true) => {}
-            Ok(false) => return Err("signature did not verify".to_string()),
-            Err(e) => return Err(e.to_string()),
-        }
-
-        if cap.schema == chio_core::capability::CHIO_CAPABILITY_V2_SCHEMA {
-            let snapshot = self.capability_trust_roots.load_full();
-            let issuer_root = snapshot.get(&cap.issuer.to_hex()).cloned().ok_or_else(|| {
-                "v2 chain-binding: no trust-root scope hash registered for issuer".to_string()
-            })?;
-            cap.validate_chain_binding(&issuer_root)
-                .map_err(|err| err.to_string())?;
-        }
-
-        Ok(())
-    }
-
-    fn verify_capability_full_without_budget_admit(
+    /// Spec: PROTOCOL.md introduces a MUST that production kernels
+    /// route every capability admission through `verify_capability_full`;
+    /// this wrapper is the kernel-side enforcement of that MUST.
+    fn verify_capability_full_pre_admit(
         &self,
         cap: &CapabilityToken,
         remote_kernel_id: Option<&str>,
@@ -4042,30 +4051,22 @@ impl ChioKernel {
         .map_err(|error| chio_kernel_core::KernelCoreError::InvalidCapability(error).deny_reason())
     }
 
-    /// The hosted `evaluate_tool_call_*` paths historically called
-    /// [`Self::verify_capability_signature`], which only enforced the
-    /// signature, crypto-floor, and v2 chain-binding rule. The
-    /// portable verdict path
-    /// ([`chio_kernel_core::evaluate_with_full_floor`]) additionally
-    /// runs the sibling-sum admit step, so production hosted tool
-    /// calls bypassed budget enforcement. This wrapper closes that
-    /// gap by invoking the same admit step that
-    /// [`Self::evaluate_portable_verdict`] uses, threading the
-    /// kernel's long-lived `budget_registry` through. The lock is
+    /// The hosted `evaluate_tool_call_*` paths route the full chain
+    /// through [`Self::verify_capability_full_pre_admit`], which runs
+    /// the production verifier with `NoopBudgetRegistry` so a token
+    /// that subsequently fails any other check does not consume the
+    /// parent's share. This method then performs the deferred admit
+    /// against the kernel's long-lived `budget_registry`. The lock is
     /// held only for the duration of the admit call, matching the
     /// portable hot path.
     ///
     /// Errors are returned as plain strings so the caller can route
     /// them through the existing deny-response paths without taking
     /// a `KernelError` dependency on the verifier shape.
-    /// Idempotently admit `cap`'s budget share against its parent in the
-    /// kernel's persistent registry. Split from
-    /// [`Self::verify_capability_with_budget_admit`] so hosted call sites
-    /// can defer admission until after time-bound, revocation, subject,
-    /// scope, and guard checks have all passed. Otherwise a token that
-    /// is signed but expired/revoked/scope-mismatched still consumed the
-    /// parent's share when the request was about to be denied, starving
-    /// later valid siblings.
+    ///
+    /// The split between pre-admit verification and budget admission
+    /// enforces the ordering rule "signature first, admit last", so a
+    /// denied request never starves later valid siblings.
     fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<(), String> {
         if let Some(parent_link) = cap.delegation_chain.last() {
             use chio_kernel_core::BudgetRegistry;
