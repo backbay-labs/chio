@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/pipeline.rs
++++ replace GuardPipeline::add with ()
+@@ -17,17 +17,17 @@
+ }
+ 
+ impl GuardPipeline {
+     pub fn new() -> Self {
+         Self { guards: Vec::new() }
+     }
+ 
+     pub fn add(&mut self, guard: Box<dyn Guard>) {
+-        self.guards.push(guard);
++        () /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     pub fn len(&self) -> usize {
+         self.guards.len()
+     }
+ 
+     pub fn is_empty(&self) -> bool {
+         self.guards.is_empty()

@@ -1,0 +1,70 @@
+--- crates/chio-guards/src/forbidden_path.rs
++++ replace default_forbidden_patterns -> Vec<String> with vec![String::new()]
+@@ -8,66 +8,17 @@
+ 
+ use crate::action::{extract_action, ToolAction};
+ use crate::path_normalization::{
+     normalize_path_for_policy, normalize_path_for_policy_lexical_absolute,
+     normalize_path_for_policy_with_fs,
+ };
+ 
+ fn default_forbidden_patterns() -> Vec<String> {
+-    let mut patterns = vec![
+-        // SSH keys
+-        "**/.ssh/**".to_string(),
+-        "**/id_rsa*".to_string(),
+-        "**/id_ed25519*".to_string(),
+-        "**/id_ecdsa*".to_string(),
+-        // AWS credentials
+-        "**/.aws/**".to_string(),
+-        // Environment files
+-        "**/.env".to_string(),
+-        "**/.env.*".to_string(),
+-        // Git credentials
+-        "**/.git-credentials".to_string(),
+-        "**/.gitconfig".to_string(),
+-        // GPG keys
+-        "**/.gnupg/**".to_string(),
+-        // Kubernetes
+-        "**/.kube/**".to_string(),
+-        // Docker
+-        "**/.docker/**".to_string(),
+-        // NPM tokens
+-        "**/.npmrc".to_string(),
+-        // Password stores
+-        "**/.password-store/**".to_string(),
+-        "**/pass/**".to_string(),
+-        // 1Password
+-        "**/.1password/**".to_string(),
+-        // System paths (Unix)
+-        "/etc/shadow".to_string(),
+-        "/etc/passwd".to_string(),
+-        "/etc/sudoers".to_string(),
+-    ];
+-
+-    // Windows paths -- on non-Windows these globs simply never match.
+-    patterns.extend([
+-        "**/AppData/Roaming/Microsoft/Credentials/**".to_string(),
+-        "**/AppData/Local/Microsoft/Credentials/**".to_string(),
+-        "**/AppData/Roaming/Microsoft/Vault/**".to_string(),
+-        "**/NTUSER.DAT".to_string(),
+-        "**/NTUSER.DAT.*".to_string(),
+-        "**/Windows/System32/config/SAM".to_string(),
+-        "**/Windows/System32/config/SECURITY".to_string(),
+-        "**/Windows/System32/config/SYSTEM".to_string(),
+-        "**/*.reg".to_string(),
+-        "**/AppData/Roaming/Microsoft/SystemCertificates/**".to_string(),
+-        "**/WindowsPowerShell/profile.ps1".to_string(),
+-        "**/PowerShell/profile.ps1".to_string(),
+-    ]);
+-
+-    patterns
++    vec![String::new()] /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Guard that blocks access to sensitive filesystem paths.
+ pub struct ForbiddenPathGuard {
+     patterns: Vec<Pattern>,
+     exceptions: Vec<Pattern>,
+ }
+ 

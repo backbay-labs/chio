@@ -1,0 +1,23 @@
+--- crates/chio-policy/src/resolve.rs
++++ replace resolve_from_path -> Result<HushSpec, ResolveError> with Ok(Default::default())
+@@ -57,19 +57,17 @@
+     if let Some(source) = source {
+         stack.push(source.to_string());
+     }
+     resolve_inner(spec, source, loader, &mut stack)
+ }
+ 
+ /// Resolve a HushSpec from a filesystem path, following `extends` chains.
+ pub fn resolve_from_path(path: impl AsRef<Path>) -> Result<HushSpec, ResolveError> {
+-    let path = canonical_path(path.as_ref())?;
+-    let spec = load_spec_from_file(&path)?;
+-    resolve_with_loader(&spec, Some(&path.to_string_lossy()), &load_from_filesystem)
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn resolve_inner<F>(
+     spec: &HushSpec,
+     source: Option<&str>,
+     loader: &F,
+     stack: &mut Vec<String>,
+ ) -> Result<HushSpec, ResolveError>

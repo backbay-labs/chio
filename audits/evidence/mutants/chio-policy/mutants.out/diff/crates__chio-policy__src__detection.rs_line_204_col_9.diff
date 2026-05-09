@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/detection.rs
++++ replace <impl Detector for RegexJailbreakDetector>::name -> &str with ""
+@@ -196,17 +196,17 @@
+ impl Default for RegexJailbreakDetector {
+     fn default() -> Self {
+         Self::new()
+     }
+ }
+ 
+ impl Detector for RegexJailbreakDetector {
+     fn name(&self) -> &str {
+-        "regex_jailbreak"
++        "" /* ~ changed by cargo-mutants ~ */
+     }
+     fn category(&self) -> DetectionCategory {
+         DetectionCategory::Jailbreak
+     }
+     fn detect(&self, input: &str) -> DetectionResult {
+         run_patterns(
+             &self.patterns,
+             self.name(),

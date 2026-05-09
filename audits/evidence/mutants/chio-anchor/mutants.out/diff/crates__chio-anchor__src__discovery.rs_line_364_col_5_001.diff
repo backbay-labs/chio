@@ -1,0 +1,36 @@
+--- crates/chio-anchor/src/discovery.rs
++++ replace select_primary_lane_for_chain -> Option<&'a crate::AnchorLaneRuntimeStatus> with None
+@@ -356,32 +356,17 @@
+         .collect()
+ }
+ 
+ fn select_primary_lane_for_chain<'a>(
+     config: &AnchorServiceConfig,
+     runtime_report: &'a AnchorRuntimeReport,
+     chain_id: &str,
+ ) -> Option<&'a crate::AnchorLaneRuntimeStatus> {
+-    runtime_report
+-        .lanes
+-        .iter()
+-        .find(|lane| {
+-            lane.lane == AnchorLaneKind::EvmPrimary && lane.chain_id.as_deref() == Some(chain_id)
+-        })
+-        .or_else(|| {
+-            (config.evm_targets.len() == 1)
+-                .then(|| {
+-                    runtime_report
+-                        .lanes
+-                        .iter()
+-                        .find(|lane| lane.lane == AnchorLaneKind::EvmPrimary)
+-                })
+-                .flatten()
+-        })
++    None /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn build_chain_runtime_state(
+     runtime_report: &AnchorRuntimeReport,
+     freshness_window_secs: u64,
+     chain_id: &str,
+     lane_kind: AnchorLaneKind,
+     lane: Option<&crate::AnchorLaneRuntimeStatus>,

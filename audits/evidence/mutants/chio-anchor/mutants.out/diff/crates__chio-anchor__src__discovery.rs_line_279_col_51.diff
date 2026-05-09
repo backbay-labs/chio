@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/discovery.rs
++++ replace != with == in validate_binding_covers_targets
+@@ -271,17 +271,17 @@
+             .iter()
+             .any(|chain| chain == &target.chain_id)
+         {
+             return Err(AnchorError::InvalidBinding(format!(
+                 "binding certificate does not cover {}",
+                 target.chain_id
+             )));
+         }
+-        if binding.certificate.settlement_address != target.operator_address {
++        if binding.certificate.settlement_address == /* ~ changed by cargo-mutants ~ */ target.operator_address {
+             return Err(AnchorError::InvalidBinding(format!(
+                 "binding settlement address {} does not match operator address {} for {}",
+                 binding.certificate.settlement_address, target.operator_address, target.chain_id
+             )));
+         }
+     }
+     Ok(())
+ }

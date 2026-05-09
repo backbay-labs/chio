@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace || with && in compile_velocity_rule
+@@ -787,17 +787,17 @@
+                 window_secs,
+                 burst_factor,
+             })
+         } else {
+             None
+         };
+ 
+     let agent_cfg =
+-        if rule.max_requests_per_agent.is_some() || rule.max_requests_per_session.is_some() {
++        if rule.max_requests_per_agent.is_some() && /* ~ changed by cargo-mutants ~ */ rule.max_requests_per_session.is_some() {
+             Some(AgentVelocityConfig {
+                 max_requests_per_agent: rule.max_requests_per_agent,
+                 max_requests_per_session: rule.max_requests_per_session,
+                 window_secs,
+                 burst_factor,
+             })
+         } else {
+             None

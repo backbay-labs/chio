@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace && with || in tool_access_can_safely_widen_to_wildcard
+@@ -706,17 +706,17 @@
+         .map(|pattern| pattern.pattern.clone())
+         .collect();
+     config
+ }
+ 
+ fn tool_access_can_safely_widen_to_wildcard(rule: &ToolAccessRule) -> bool {
+     rule.allow.is_empty()
+         && rule.block.is_empty()
+-        && rule.require_confirmation.is_empty()
++        || /* ~ changed by cargo-mutants ~ */ rule.require_confirmation.is_empty()
+         && rule.max_args_size.is_none()
+         && rule.require_runtime_assurance_tier.is_none()
+         && rule.prefer_runtime_assurance_tier.is_none()
+         && rule.require_workload_identity.is_none()
+         && rule.prefer_workload_identity.is_none()
+ }
+ 
+ fn compile_tool_constraints(

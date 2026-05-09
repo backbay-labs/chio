@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/discovery.rs
++++ replace > with < in classify_discovery_status
+@@ -481,17 +481,17 @@
+     lane_kind: AnchorLaneKind,
+     chain_id: Option<&str>,
+     lane: Option<&crate::AnchorLaneRuntimeStatus>,
+ ) -> AnchorDiscoveryFreshnessStatus {
+     let last_published_at = lane.and_then(|lane| lane.last_published_at);
+     let publication_age_secs = last_published_at
+         .and_then(|published_at| runtime_report.generated_at.checked_sub(published_at));
+     let publication_timestamp_in_future = last_published_at
+-        .map(|published_at| published_at > runtime_report.generated_at)
++        .map(|published_at| published_at < /* ~ changed by cargo-mutants ~ */ runtime_report.generated_at)
+         .unwrap_or(false);
+     let latest_checkpoint_seq = lane.map(|lane| lane.latest_checkpoint_seq).unwrap_or(0);
+     let indexed_checkpoint_seq = lane.map(|lane| lane.indexed_checkpoint_seq).unwrap_or(0);
+     let lane_status = lane.map(|lane| lane.status);
+     let has_active_conflict = runtime_report.lane_has_active_conflict(lane_kind, chain_id);
+     let lane_is_stale = has_active_conflict
+         || matches!(
+             lane_status,

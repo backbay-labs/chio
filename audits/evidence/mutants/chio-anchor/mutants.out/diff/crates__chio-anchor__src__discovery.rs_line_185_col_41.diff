@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/discovery.rs
++++ delete ! in build_anchor_discovery_artifact
+@@ -177,17 +177,17 @@
+         schema: CHIO_ANCHOR_DISCOVERY_SCHEMA.to_string(),
+         chio_identity: binding.certificate.chio_identity.clone(),
+         operator_binding: binding.clone(),
+         service: AnchorDiscoveryService {
+             id: format!("{}#anchor", binding.certificate.chio_identity),
+             service_type: CHIO_ANCHOR_SERVICE_TYPE.to_string(),
+             service_endpoint: AnchorDiscoveryServiceEndpoint {
+                 chains,
+-                bitcoin_anchor_method: (!config.ots_calendars.is_empty())
++                bitcoin_anchor_method: ( /* ~ changed by cargo-mutants ~ */config.ots_calendars.is_empty())
+                     .then(|| "opentimestamps".to_string()),
+                 ots_calendars: config.ots_calendars.clone(),
+                 solana_cluster: config.solana_cluster.clone(),
+                 publication_policy: None,
+                 chain_runtime: Vec::new(),
+                 current_freshness: None,
+             },
+         },

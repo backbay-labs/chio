@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace compile_policy -> Result<CompiledPolicy, CompileError> with Ok(Default::default())
+@@ -84,17 +84,17 @@
+ 
+ /// Compile a HushSpec policy into a Chio guard pipeline and default scope.
+ ///
+ /// This maps HushSpec rule blocks and detection-extension blocks to Chio
+ /// guard configurations. See the module-level documentation for the full
+ /// mapping table. Missing sections compile to an empty pipeline; no error
+ /// is raised for policies that simply do not exercise every guard type.
+ pub fn compile_policy(policy: &HushSpec) -> Result<CompiledPolicy, CompileError> {
+-    compile_policy_with_source(policy, None)
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Compile a HushSpec policy with an optional source path used to resolve
+ /// relative auxiliary assets referenced by the policy.
+ pub fn compile_policy_with_source(
+     policy: &HushSpec,
+     source_path: Option<&Path>,
+ ) -> Result<CompiledPolicy, CompileError> {

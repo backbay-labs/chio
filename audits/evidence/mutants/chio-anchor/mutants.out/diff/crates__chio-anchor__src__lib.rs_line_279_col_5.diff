@@ -1,0 +1,35 @@
+--- crates/chio-anchor/src/lib.rs
++++ replace exactly_one_checkpoint -> Result<&'a KernelCheckpoint, AnchorError> with Ok(Box::leak(Box::new(Default::default())))
+@@ -271,31 +271,17 @@
+     Ok(inclusion)
+ }
+ 
+ fn exactly_one_checkpoint<'a>(
+     bundle: &'a EvidenceExportBundle,
+     checkpoint_seq: u64,
+     receipt_id: &str,
+ ) -> Result<&'a KernelCheckpoint, AnchorError> {
+-    let mut matches = bundle
+-        .checkpoints
+-        .iter()
+-        .filter(|checkpoint| checkpoint.body.checkpoint_seq == checkpoint_seq);
+-    let Some(checkpoint) = matches.next() else {
+-        return Err(AnchorError::Verification(format!(
+-            "receipt `{receipt_id}` is missing checkpoint `{checkpoint_seq}` in the canonical evidence bundle"
+-        )));
+-    };
+-    if matches.next().is_some() {
+-        return Err(AnchorError::Verification(format!(
+-            "receipt `{receipt_id}` has multiple checkpoint records for `{checkpoint_seq}` in the canonical evidence bundle"
+-        )));
+-    }
+-    Ok(checkpoint)
++    Ok(Box::leak(Box::new(Default::default()))) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+     use base64::Engine;
+     use chio_core::crypto::Keypair;
+     use chio_core::receipt::{

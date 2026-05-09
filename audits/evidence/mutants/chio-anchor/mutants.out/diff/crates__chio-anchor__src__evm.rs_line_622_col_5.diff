@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/evm.rs
++++ replace hash_to_b256 -> B256 with Default::default()
+@@ -614,17 +614,17 @@
+         host.trim_end_matches('.').to_ascii_lowercase().as_str(),
+         "localhost" | "localhost.localdomain"
+     ) || host
+         .parse::<IpAddr>()
+         .is_ok_and(|address| address.is_loopback())
+ }
+ 
+ fn hash_to_b256(hash: &chio_core::hashing::Hash) -> B256 {
+-    FixedBytes::from(*hash.as_bytes())
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn parse_hex_u64(value: &str) -> Result<u64, AnchorError> {
+     u64::from_str_radix(value.trim_start_matches("0x"), 16)
+         .map_err(|error| AnchorError::Rpc(error.to_string()))
+ }
+ 
+ #[cfg(test)]

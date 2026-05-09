@@ -1,0 +1,21 @@
+--- crates/chio-guards/src/data_flow.rs
++++ replace <impl Guard for DataFlowGuard>::name -> &str with "xyzzy"
+@@ -44,17 +44,17 @@
+     /// Create a new guard with the given journal and configuration.
+     pub fn new(journal: Arc<SessionJournal>, config: DataFlowConfig) -> Self {
+         Self { journal, config }
+     }
+ }
+ 
+ impl Guard for DataFlowGuard {
+     fn name(&self) -> &str {
+-        "data-flow"
++        "xyzzy" /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     fn evaluate(&self, _ctx: &GuardContext) -> Result<Verdict, KernelError> {
+         let flow = self.journal.data_flow().map_err(|e| {
+             KernelError::Internal(format!("data-flow guard journal error (fail-closed): {e}"))
+         })?;
+ 
+         // Check bytes read limit.

@@ -1,0 +1,28 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace compile_browser_automation_rule -> chio_guards::BrowserAutomationConfig with Default::default()
+@@ -381,24 +381,17 @@
+         require_postcondition_probe: rule.require_postcondition_probe,
+         ..InputInjectionCapabilityConfig::default()
+     }
+ }
+ 
+ fn compile_browser_automation_rule(
+     rule: &crate::models::BrowserAutomationRule,
+ ) -> chio_guards::BrowserAutomationConfig {
+-    chio_guards::BrowserAutomationConfig {
+-        enabled: true,
+-        allowed_domains: rule.allowed_domains.clone(),
+-        blocked_domains: rule.blocked_domains.clone(),
+-        allowed_verbs: rule.allowed_verbs.clone(),
+-        credential_detection: rule.credential_detection,
+-        extra_credential_patterns: rule.extra_credential_patterns.clone(),
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn compile_code_execution_rule(
+     rule: &crate::models::CodeExecutionRule,
+ ) -> chio_guards::CodeExecutionConfig {
+     let mut config = chio_guards::CodeExecutionConfig {
+         enabled: true,
+         language_allowlist: rule.language_allowlist.clone(),

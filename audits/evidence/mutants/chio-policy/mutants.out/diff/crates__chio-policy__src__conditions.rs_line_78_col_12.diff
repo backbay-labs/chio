@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/conditions.rs
++++ delete ! in evaluate_condition_depth
+@@ -70,17 +70,17 @@
+ }
+ 
+ fn evaluate_condition_depth(condition: &Condition, context: &RuntimeContext, depth: usize) -> bool {
+     if depth > MAX_NESTING_DEPTH {
+         return false;
+     }
+ 
+     if let Some(tw) = &condition.time_window {
+-        if !check_time_window(tw, context) {
++        if  /* ~ changed by cargo-mutants ~ */check_time_window(tw, context) {
+             return false;
+         }
+     }
+ 
+     if let Some(ctx) = &condition.context {
+         if !check_context_match(ctx, context) {
+             return false;
+         }

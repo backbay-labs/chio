@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/functions.rs
++++ replace && with || in assess_functions_verification
+@@ -271,17 +271,17 @@
+         )));
+     }
+     if response.receipt_batch_root != request.receipt_batch_root {
+         return Err(AnchorError::Verification(
+             "Functions response batch root does not match prepared request".to_string(),
+         ));
+     }
+     if response.status == FunctionsFallbackStatus::Verified
+-        && response.verified_receipt_count != request.receipt_count
++        || /* ~ changed by cargo-mutants ~ */ response.verified_receipt_count != request.receipt_count
+     {
+         return Err(AnchorError::Verification(format!(
+             "Functions response verified {} receipts but request expected {}",
+             response.verified_receipt_count, request.receipt_count
+         )));
+     }
+ 
+     let accepted = matches!(response.status, FunctionsFallbackStatus::Verified);

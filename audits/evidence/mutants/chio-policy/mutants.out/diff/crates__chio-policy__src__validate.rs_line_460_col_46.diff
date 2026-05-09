@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/validate.rs
++++ replace || with && in validate_reputation
+@@ -452,17 +452,17 @@
+                 "extensions.reputation.scoring.weights.incident_correlation",
+                 errors,
+             );
+         }
+     }
+ 
+     for (tier_name, tier) in &reputation.tiers {
+         let [min_score, max_score] = tier.score_range;
+-        if !(0.0..=1.0).contains(&min_score) || !(0.0..=1.0).contains(&max_score) {
++        if !(0.0..=1.0).contains(&min_score) && /* ~ changed by cargo-mutants ~ */ !(0.0..=1.0).contains(&max_score) {
+             errors.push(ValidationError::Custom(format!(
+                 "extensions.reputation.tiers.{tier_name}.score_range values must be in [0.0, 1.0]"
+             )));
+         }
+         if min_score > max_score {
+             errors.push(ValidationError::Custom(format!(
+                 "extensions.reputation.tiers.{tier_name}.score_range lower bound exceeds upper bound"
+             )));

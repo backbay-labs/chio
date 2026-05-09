@@ -1,0 +1,70 @@
+--- crates/chio-anchor/src/automation.rs
++++ replace build_anchor_publication_job -> Result<AnchorAutomationJob, AnchorError> with Ok(Default::default())
+@@ -65,66 +65,17 @@
+ 
+ pub fn build_anchor_publication_job(
+     target: &EvmAnchorTarget,
+     cron_expression: &str,
+     replay_window_secs: u64,
+     publication: PreparedEvmRootPublication,
+     delegate_registration: Option<PreparedDelegateRegistration>,
+ ) -> Result<AnchorAutomationJob, AnchorError> {
+-    if cron_expression.trim().is_empty() {
+-        return Err(AnchorError::InvalidInput(
+-            "anchor automation cron expression is required".to_string(),
+-        ));
+-    }
+-    if replay_window_secs == 0 {
+-        return Err(AnchorError::InvalidInput(
+-            "anchor automation replay window must be non-zero".to_string(),
+-        ));
+-    }
+-
+-    let state_fingerprint = sha256(
+-        format!(
+-            "{}:{}:{}:{}",
+-            publication.chain_id,
+-            publication.checkpoint_seq,
+-            publication.merkle_root,
+-            publication.publisher_address
+-        )
+-        .as_bytes(),
+-    )
+-    .to_hex_prefixed();
+-
+-    let delegate_forwarder = match delegate_registration {
+-        Some(registration) => Some(AnchorAutomationForwarder {
+-            delegate_address: registration.delegate_address.clone(),
+-            delegate_expires_at: registration.expires_at,
+-            registration,
+-        }),
+-        None => None,
+-    };
+-
+-    Ok(AnchorAutomationJob {
+-        schema: CHIO_ANCHOR_AUTOMATION_JOB_SCHEMA.to_string(),
+-        job_id: format!(
+-            "chio-anchor-{}-{}",
+-            target.chain_id.replace(':', "-"),
+-            publication.checkpoint_seq
+-        ),
+-        trigger_kind: AnchorAutomationTriggerKind::Cron,
+-        chain_id: target.chain_id.clone(),
+-        cron_expression: cron_expression.to_string(),
+-        checkpoint_seq: publication.checkpoint_seq,
+-        contract_address: publication.contract_address.clone(),
+-        state_fingerprint,
+-        replay_window_secs,
+-        operator_override_required: publication.requires_delegate_authorization,
+-        delegate_forwarder,
+-        publication,
+-    })
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub fn assess_anchor_automation_execution(
+     job: &AnchorAutomationJob,
+     execution: &AnchorAutomationExecution,
+ ) -> Result<(), AnchorError> {
+     if job.job_id != execution.job_id {
+         return Err(AnchorError::Verification(format!(

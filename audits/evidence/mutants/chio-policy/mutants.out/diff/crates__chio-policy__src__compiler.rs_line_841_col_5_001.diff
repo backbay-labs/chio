@@ -1,0 +1,24 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace literal_prefix -> String with String::new()
+@@ -833,20 +833,17 @@
+     Ok(left_prefix.starts_with(&right_prefix) || right_prefix.starts_with(&left_prefix))
+ }
+ 
+ fn contains_wildcards(pattern: &str) -> bool {
+     pattern.contains('*') || pattern.contains('?')
+ }
+ 
+ fn literal_prefix(pattern: &str) -> String {
+-    pattern
+-        .chars()
+-        .take_while(|ch| *ch != '*' && *ch != '?')
+-        .collect()
++    String::new() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn glob_matches(pattern: &str, target: &str) -> Result<bool, CompileError> {
+     let mut regex = String::from("^");
+     let mut chars = pattern.chars().peekable();
+     while let Some(ch) = chars.next() {
+         match ch {
+             '*' => {

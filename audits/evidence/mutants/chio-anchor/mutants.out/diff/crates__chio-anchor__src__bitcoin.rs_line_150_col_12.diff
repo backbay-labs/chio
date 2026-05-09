@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/bitcoin.rs
++++ delete ! in verify_ots_proof_for_submission
+@@ -142,17 +142,17 @@
+         ));
+     }
+     if inspection.bitcoin_attestation_heights.is_empty() {
+         return Err(AnchorError::Verification(
+             "OTS proof is still pending and does not yet contain a Bitcoin attestation".to_string(),
+         ));
+     }
+     if let Some(height) = expected_bitcoin_height {
+-        if !inspection.bitcoin_attestation_heights.contains(&height) {
++        if  /* ~ changed by cargo-mutants ~ */inspection.bitcoin_attestation_heights.contains(&height) {
+             return Err(AnchorError::Verification(format!(
+                 "OTS proof does not attest to Bitcoin block height {}",
+                 height
+             )));
+         }
+     }
+     Ok(inspection)
+ }

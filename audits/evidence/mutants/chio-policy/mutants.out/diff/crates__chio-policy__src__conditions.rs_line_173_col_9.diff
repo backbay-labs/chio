@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/conditions.rs
++++ delete match arm 0 in day_abbreviation
+@@ -165,17 +165,17 @@
+     if hour > 23 || minute > 59 {
+         return None;
+     }
+     Some((hour, minute))
+ }
+ 
+ fn day_abbreviation(day: u32) -> &'static str {
+     match day {
+-        0 => "mon",
++         /* ~ changed by cargo-mutants ~ */
+         1 => "tue",
+         2 => "wed",
+         3 => "thu",
+         4 => "fri",
+         5 => "sat",
+         6 => "sun",
+         _ => "mon",
+     }

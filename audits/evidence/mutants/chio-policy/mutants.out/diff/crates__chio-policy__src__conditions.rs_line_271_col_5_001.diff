@@ -1,0 +1,38 @@
+--- crates/chio-policy/src/conditions.rs
++++ replace resolve_context_value -> Option<serde_json::Value> with Some(Default::default())
+@@ -263,34 +263,17 @@
+         if !match_value(&actual, expected_value) {
+             return false;
+         }
+     }
+     true
+ }
+ 
+ fn resolve_context_value(path: &str, context: &RuntimeContext) -> Option<serde_json::Value> {
+-    let (namespace, subkey) = match path.split_once('.') {
+-        Some((ns, key)) => (ns, Some(key)),
+-        None => (path, None),
+-    };
+-
+-    match namespace {
+-        "environment" => context
+-            .environment
+-            .as_ref()
+-            .map(|s| serde_json::Value::String(s.clone())),
+-        "user" => resolve_map_field(&context.user, subkey),
+-        "deployment" => resolve_map_field(&context.deployment, subkey),
+-        "agent" => resolve_map_field(&context.agent, subkey),
+-        "session" => resolve_map_field(&context.session, subkey),
+-        "request" => resolve_map_field(&context.request, subkey),
+-        "custom" => resolve_map_field(&context.custom, subkey),
+-        _ => None,
+-    }
++    Some(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn resolve_map_field(
+     map: &HashMap<String, serde_json::Value>,
+     subkey: Option<&str>,
+ ) -> Option<serde_json::Value> {
+     match subkey {
+         Some(key) => map.get(key).cloned(),
