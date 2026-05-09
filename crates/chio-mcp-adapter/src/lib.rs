@@ -406,7 +406,7 @@ impl AdaptedMcpServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for AdaptedMcpServer {
     fn server_id(&self) -> &str {
         &self.manifest.server_id

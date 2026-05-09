@@ -326,7 +326,7 @@ pub struct BridgeToolServer<'a> {
     bridge: &'a OpenApiMcpBridge,
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for BridgeToolServer<'_> {
     fn server_id(&self) -> &str {
         &self.bridge.manifest.server_id
@@ -421,7 +421,7 @@ impl OwnedBridgeToolServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for OwnedBridgeToolServer {
     fn server_id(&self) -> &str {
         &self.manifest.server_id

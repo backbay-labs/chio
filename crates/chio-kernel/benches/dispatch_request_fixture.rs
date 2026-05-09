@@ -115,7 +115,7 @@ fn make_request(capability: &CapabilityToken) -> ToolCallRequest {
 
 struct BenchToolServer;
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for BenchToolServer {
     fn server_id(&self) -> &str {
         SERVER_ID

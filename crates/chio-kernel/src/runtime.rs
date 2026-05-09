@@ -65,9 +65,9 @@ pub struct ToolCallRequest {
     pub model_metadata: Option<ModelMetadata>,
     /// Phase 20.3: identifier of the origin kernel when this request
     /// crosses a federation boundary (agent in Org A invoking a tool in
-    /// Org B). When set, the local (tool-host) kernel dispatches the
-    /// signed receipt to the origin kernel for bilateral co-signing
-    /// before the receipt is persisted. Absent for intra-org calls.
+    /// Org B). When set, the local (tool-host) kernel persists the
+    /// signed receipt locally before requesting bilateral co-signing from
+    /// the origin kernel. Absent for intra-org calls.
     ///
     /// The field is skipped from wire serialization when `None` so the
     /// legacy wire format stays byte-identical.
@@ -153,7 +153,7 @@ pub enum ToolServerOutput {
 /// Wrapped servers can use this to trigger negotiated server-to-client requests such as
 /// `roots/list` and `sampling/createMessage`, or to surface wrapped MCP notifications,
 /// without escaping kernel mediation.
-pub trait NestedFlowBridge {
+pub trait NestedFlowBridge: Send {
     fn parent_request_id(&self) -> &RequestId;
 
     fn poll_parent_cancellation(&mut self) -> Result<(), KernelError> {
@@ -183,7 +183,7 @@ pub trait NestedFlowBridge {
 ///
 /// The kernel owns lineage, policy, and in-flight bookkeeping. Implementors only move the nested
 /// request or notification across the client transport and return the decoded response.
-pub trait NestedFlowClient {
+pub trait NestedFlowClient: Send {
     fn poll_parent_cancellation(
         &mut self,
         _parent_context: &OperationContext,
@@ -251,7 +251,7 @@ pub struct ToolInvocationCost {
 /// The kernel holds one `ToolServerConnection` per registered server. In
 /// production this is an mTLS connection over UDS or TCP. For testing,
 /// an in-process implementation can be used.
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 pub trait ToolServerConnection: Send + Sync {
     /// The server's unique identifier.
     fn server_id(&self) -> &str;

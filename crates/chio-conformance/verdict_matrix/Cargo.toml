@@ -15,7 +15,6 @@ path = "src/lib.rs"
 [workspace]
 
 [dependencies]
-async-trait = "0.1"
 chio-core = { package = "chio-core-types", path = "../../chio-core-types" }
 chio-kernel = { path = "../../chio-kernel" }
 chio-kernel-browser = { path = "../../chio-kernel-browser" }
@@ -24,7 +23,7 @@ serde_json = "1"
 serde_yaml = "0.9"
 thiserror = "1"
 toml = "0.8"
-# The driver in src/driver.rs uses `#[async_trait::async_trait(?Send)]`
+# The driver in src/driver.rs uses `#[async_trait::async_trait]`
 # on its `ToolServerConnection` impl, so the standalone crate must
 # declare the macro in its own dependencies (the parent workspace's
 # transitive copy is not visible to a standalone `cargo check

@@ -441,10 +441,12 @@ fn co_sign_with_origin_inner(
     Ok(dual)
 }
 
-/// Contains the legacy `DualSignedReceipt` compatibility adapter plus the
-/// canonical DSSE signature-slice artifact. Neither artifact is a strict
-/// CHIODOS bilateral invocation predicate; see `crate::bilateral_dsse`
-/// module docs.
+/// **Verifiers seeking DSSE signature-slice coverage MUST verify
+/// [`Self::dsse_envelope`].** The legacy `DualSignedReceipt` is a
+/// compatibility-only adapter that shares zero signed bytes with the DSSE
+/// PAE preimage and is therefore not a DSSE artifact; see
+/// `crate::bilateral_dsse` module docs. Neither artifact is a strict
+/// CHIODOS bilateral invocation predicate.
 #[derive(Debug, Clone)]
 pub struct BilateralCoSignArtifacts {
     /// Compatibility-only legacy artifact for callers that still consume

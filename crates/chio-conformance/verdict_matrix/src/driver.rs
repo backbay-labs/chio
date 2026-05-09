@@ -727,7 +727,7 @@ impl MatrixToolServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for MatrixToolServer {
     fn server_id(&self) -> &str {
         &self.id

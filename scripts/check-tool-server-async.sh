@@ -54,7 +54,7 @@ if violations:
         "ToolServerConnection async-trait sync-fn detected: sync `fn invoke*` found inside `impl ToolServerConnection` blocks"
     )
     print(
-        "Each `impl ToolServerConnection` must use `#[async_trait::async_trait(?Send)]` and `async fn` bodies."
+        "Each `impl ToolServerConnection` must use `#[async_trait::async_trait]` and `async fn` bodies."
     )
     print()
     for v in violations:

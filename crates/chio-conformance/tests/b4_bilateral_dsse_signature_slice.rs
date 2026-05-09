@@ -256,15 +256,35 @@ fn signature_slice_profile_is_registered_as_signed_artifact_schema() {
         schema_file
     );
 
-    let schema_text = std::fs::read_to_string(&schema_path).expect("read profile schema");
-    let schema: serde_json::Value =
-        serde_json::from_str(&schema_text).expect("parse profile schema");
+    let envelope_schema_text = std::fs::read_to_string(&schema_path).expect("read envelope schema");
+    let envelope_schema: serde_json::Value =
+        serde_json::from_str(&envelope_schema_text).expect("parse envelope schema");
     assert_eq!(
-        schema["properties"]["predicateType"]["const"],
+        envelope_schema["properties"]["payloadType"]["const"],
+        PAYLOAD_TYPE_IN_TOTO
+    );
+    assert_eq!(envelope_schema["properties"]["signatures"]["minItems"], 2);
+
+    let payload_schema_file = entry["payloadSchemaFile"]
+        .as_str()
+        .expect("payloadSchemaFile is a string");
+    let payload_schema_path = repo_root.join(payload_schema_file);
+    assert!(
+        payload_schema_path.is_file(),
+        "registered payload schema file must exist: {}",
+        payload_schema_file
+    );
+
+    let payload_schema_text =
+        std::fs::read_to_string(&payload_schema_path).expect("read payload schema");
+    let payload_schema: serde_json::Value =
+        serde_json::from_str(&payload_schema_text).expect("parse payload schema");
+    assert_eq!(
+        payload_schema["properties"]["predicateType"]["const"],
         PREDICATE_TYPE_BILATERAL
     );
     assert_eq!(
-        schema["properties"]["predicate"]["properties"]["schema"]["const"],
+        payload_schema["properties"]["predicate"]["properties"]["schema"]["const"],
         PREDICATE_BODY_SCHEMA
     );
 }
