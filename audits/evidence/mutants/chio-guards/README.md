@@ -4,11 +4,12 @@ Status: **PARTIAL-SUBSET (9.2% surface)**.
 
 This directory holds the per-mutant cargo-mutants output for the
 `chio-guards` crate. **The 78.2% kill rate measured here is on a
-hand-picked subset of 119 of 1291 total mutants (8 of 27 files, 9.2%
-crate surface). It is NOT a crate-level kill rate and does NOT retire
-the >=65% target.** Target satisfaction at the crate level requires
-EITHER a full run OR a pre-registered statistically defensible
-sampling scheme. See the "Config correction note" section below.
+hand-picked subset of 119 of 1291 historical-config mutants (8 of 27
+files, 9.2% historical surface). It is NOT a crate-level kill rate and
+does NOT retire the configured target or the activation floor.** Target
+satisfaction at the crate level requires EITHER a full run OR a
+pre-registered statistically defensible sampling scheme. See the
+"Config correction note" section below.
 
 The prior config excluded `text_utils.rs` and `spider_sense.rs` as
 "advisory/helper". Both files are decision-capable and have been
@@ -36,14 +37,22 @@ the 10-file corrected surface.
 
 ```sh
 cargo mutants \
-  --config audits/mutation/per-crate-configs/chio-guards.toml \
+  --config audits/mutation/per-crate-configs/chio-guards-2026-05-08-subset.toml \
   -p chio-guards \
   --in-place \
   --output audits/evidence/mutants/chio-guards
 ```
 
-The `--config audits/mutation/per-crate-configs/chio-guards.toml`
-override is necessary for two reasons:
+The historical replay command intentionally uses
+`audits/mutation/per-crate-configs/chio-guards-2026-05-08-subset.toml`.
+That file preserves the exact 8-file surface measured in this evidence
+directory. The corrected local rerun config is
+`audits/mutation/per-crate-configs/chio-guards.toml`; it adds
+`text_utils.rs` and `spider_sense.rs` and therefore does not reproduce
+the 2026-05-08 subset. The hosted nightly uses the workspace
+`.cargo/mutants.toml` surface, not the per-crate replay file.
+
+The override is necessary for two reasons:
 
 1. **Test-scope override** (same as chio-attest-verify rationale):
    scopes the per-mutant test invocation to `--package chio-guards`
@@ -56,8 +65,9 @@ override is necessary for two reasons:
    the workspace `.cargo/mutants.toml` lists 27 chio-guards files
    (1291 mutants per `cargo mutants --list`). That set is too large
    for a single local session (~25 hours wall-clock at ~70s per
-   mutant) and is owned by the CI hosted-nightly mutants.yml lane
-   (4-hour-per-crate budget; runs sharded). The run captured here
+   mutant). The hosted nightly has a 4-hour-per-crate budget but is
+   not sharded within `chio-guards`; budget exhaustion or timeout
+   remains PARTIAL until a full completed sweep is recorded. The run captured here
    used a hand-picked subset of 8 files (119 mutants); this is
    **PARTIAL-SUBSET** (9.2% surface) and does NOT retire the crate
    target. The post-cleanup config now includes `text_utils.rs` and
@@ -89,9 +99,9 @@ override is necessary for two reasons:
    `post_invocation` (16), `agent_velocity` (16).
 
    These are excluded for SESSION-SCOPE reasons (mutant volume),
-   not scope-of-concern reasons. The CI hosted-nightly mutants.yml
-   lane remains the authoritative measurement for the full
-   chio-guards trust-boundary set.
+   not scope-of-concern reasons. The workspace `.cargo/mutants.toml`
+   surface is the hosted-nightly input for the full chio-guards
+   trust-boundary set.
 
 The `test_scope` field in `2026-05-08.json` is `"package-only
 (--package chio-guards)"`, distinguishing this from the workspace-scope
@@ -151,12 +161,13 @@ denominator): **86 / (86 + 24 + 0) = 86/110 = 78.18%**.
 
 ## Target satisfaction
 
-Per `audits/T0.B-substrate-hardening.md` line 16: chio-guards target
-is `>= 65%`.
+Per `releases.toml [mutants]`, the configured catch-ratio target is
+80% and the activation floor is 65%. The 65% value is a floor for
+early activation posture, not the per-crate target.
 
-**Measured 78.18% on 119 of 1291 mutants (9.2% crate surface; 8 of
-27 files). PARTIAL-SUBSET. Crate-level target NOT satisfied by this
-run.**
+**Measured 78.18% on 119 of 1291 historical-config mutants (9.2%
+historical surface; 8 of 27 files). PARTIAL-SUBSET. Crate-level
+target NOT satisfied by this run.**
 
 ### Cleanup-wave note
 
@@ -170,10 +181,12 @@ target as `UNRESOLVED` (not `PASS`).
 
 Target satisfaction at the crate level requires either:
 
-- a full mutation run of all 1291 discovered mutants on the 27-file
-  surface (CI hosted-nightly mutants.yml lane is the canonical
-  longer-running measurement; 4-hour-per-crate budget; runs
-  sharded), OR
+- a full mutation run of the corrected workspace surface
+  (`.cargo/mutants.toml`, including `text_utils.rs` and
+  `spider_sense.rs`). The hosted-nightly lane can produce this
+  measurement only if it completes; it is a per-crate matrix without
+  intra-crate sharding, so timeout or budget exhaustion is still
+  PARTIAL, OR
 - a pre-registered statistically defensible sampling scheme
   (e.g. mutant categories sampled with documented stratification,
   power analysis, and confidence interval). The current subset is
@@ -200,20 +213,23 @@ The prior config excluded `text_utils.rs` and `spider_sense.rs` as
   The file's module-level doc-comment lists three explicit
   `Verdict::Deny` paths (lines 10-28). It is NOT advisory.
 
-The config correction re-included both files in
-`audits/mutation/per-crate-configs/chio-guards.toml`
-`examine_globs`. The 119-mutant subset committed here did NOT
-mutate either file; the next mutation run is required to re-measure
-the corrected surface. The JSON evidence at
+The config correction re-included both files in the corrected local
+rerun config, `audits/mutation/per-crate-configs/chio-guards.toml`,
+and in the workspace `.cargo/mutants.toml` surface used by the
+hosted-nightly lane. The historical replay config for this evidence
+row does not include them. The 119-mutant subset committed here did
+NOT mutate either file; the next corrected mutation run is required
+to re-measure the corrected surface. The JSON evidence at
 `audits/evidence/mutants/chio-guards/2026-05-08.json` carries
 `"subset_invalidated_for_files": [...]` flagging this re-measure
 requirement.
 
-The kill rate **is** observed (not extrapolated) on the 8-file
-subset, but it is NOT the crate-level kill rate. The CI
-hosted-nightly is responsible for the workspace-scope full-sweep
-number; this baseline measures the prior 8-file subset and reports
-that subset's kill rate honestly with the PARTIAL-SUBSET label.
+The kill rate **is** observed (not extrapolated) on the 8-file subset,
+but it is NOT the crate-level kill rate. A future completed
+hosted-nightly or manual full sweep is responsible for the
+workspace-scope number; this baseline measures the prior 8-file subset
+and reports that subset's kill rate honestly with the PARTIAL-SUBSET
+label.
 
 ## Surviving-mutant categorization
 
@@ -321,10 +337,10 @@ mutants would be closed by basic boundary tests; the accessor and
 arm-deletion mutants would be closed by explicit assertions on the
 affected accessors/arms).
 
-This work is **deferred to a follow-up**. The 78.2% baseline is
-comfortably above the >=65% floor; the test additions push toward
-the >=80% chio-attest-verify-equivalent target without being
-load-bearing for close.
+This work is **deferred to a follow-up**. The 78.2% baseline is only
+an observed subset score. It does not satisfy the crate-level target or
+the activation floor because the run is PARTIAL-SUBSET and the
+corrected surface has not been measured.
 
 ## What's NOT in this PR
 
@@ -332,11 +348,11 @@ load-bearing for close.
 - The chio-acp-proxy unrelated test fix; that is its own concern
   and is filed as a follow-up.
 - A workspace-scope re-run; once chio-acp-proxy is fixed, the
-  CI hosted-nightly mutants lane (`mutants.yml`, 4-hour-per-crate
-  budget) will produce the authoritative workspace-scope number.
-- The 19 chio-guards files NOT in the boundary-enforcing core
-  subset (1172 deferred mutants); these are owned by the CI
-  hosted-nightly run.
+  hosted-nightly mutants lane (`mutants.yml`, 4-hour-per-crate
+  budget, per-crate matrix without intra-crate sharding) can produce
+  the authoritative workspace-scope number only if it completes.
+- The remaining chio-guards files NOT in the historical 8-file
+  subset; these require a completed corrected-surface rerun.
 - `releases.toml [per_crate_kill_rate_percent]` update; a partial
   3-of-6 update would weaken release signal; will land once all six
   trust-boundary crates have measured baselines.
@@ -375,7 +391,7 @@ To regenerate the omitted files locally, rerun:
 
 ```sh
 cargo mutants \
-  --config audits/mutation/per-crate-configs/chio-guards.toml \
+  --config audits/mutation/per-crate-configs/chio-guards-2026-05-08-subset.toml \
   -p chio-guards \
   --in-place \
   --output audits/evidence/mutants/chio-guards

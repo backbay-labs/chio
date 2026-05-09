@@ -1,0 +1,35 @@
+# Historical replay config for the 2026-05-08 chio-guards subset run.
+#
+# This file preserves the exact 8-file surface measured by
+# audits/evidence/mutants/chio-guards/2026-05-08.json. Do not use it for
+# the next corrected baseline. The corrected local rerun config is
+# audits/mutation/per-crate-configs/chio-guards.toml, and the hosted
+# nightly uses the workspace .cargo/mutants.toml surface.
+
+additional_cargo_test_args = ["--package", "chio-guards"]
+timeout_multiplier = 3.0
+minimum_test_timeout = 60
+
+examine_globs = [
+    "crates/chio-guards/src/pipeline.rs",
+    "crates/chio-guards/src/forbidden_path.rs",
+    "crates/chio-guards/src/path_allowlist.rs",
+    "crates/chio-guards/src/path_normalization.rs",
+    "crates/chio-guards/src/egress_allowlist.rs",
+    "crates/chio-guards/src/secret_leak.rs",
+    "crates/chio-guards/src/data_flow.rs",
+    "crates/chio-guards/src/behavioral_sequence.rs",
+]
+
+exclude_globs = [
+    "**/tests.rs",
+    "**/test_*.rs",
+    "**/*_test.rs",
+    "**/tests/**",
+    "**/benches/**",
+    "**/build.rs",
+    "**/fuzz.rs",
+    "crates/chio-guards/src/action.rs",
+    "crates/chio-guards/src/advisory.rs",
+    "crates/chio-guards/src/external/**",
+]

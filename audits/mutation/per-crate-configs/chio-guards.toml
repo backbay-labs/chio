@@ -58,11 +58,13 @@
 # trust-boundary crate (27 files, 1291 total mutants per
 # `cargo mutants --list`). The full sweep is estimated at ~25 hours
 # wall-clock on the local workstation (per-mutant rebuild + test
-# averages 60-90s) and is owned by the CI hosted-nightly mutants.yml
-# lane (4-hour-per-crate budget; runs sharded). This local config
-# defines the *trust-boundary core surface* including text_utils
-# and spider_sense; the full set including all 27 files is the CI
-# nightly's responsibility.
+# averages 60-90s). This corrected local config defines the
+# trust-boundary core surface including text_utils and spider_sense.
+# The hosted nightly uses .cargo/mutants.toml, not this per-crate file;
+# that workspace config now also includes text_utils and spider_sense.
+# The nightly matrix is per crate, not sharded within chio-guards, so a
+# timeout or budget exhaustion remains a partial result until a full
+# completed sweep is recorded.
 #
 # Trust-boundary core surface (rationale per file):
 #   - pipeline.rs           : guard pipeline orchestration
@@ -84,10 +86,9 @@
 #   computer_use, memory_governance, code_execution, prompt_injection,
 #   input_injection, remote_desktop, mcp_tool, jailbreak, velocity,
 #   post_invocation, agent_velocity, internal_network, patch_integrity.
-# These are excluded for SESSION-SCOPE reasons (mutant volume), not
-# scope-of-concern reasons. The CI hosted-nightly mutants.yml lane
-# remains the authoritative measurement for the full chio-guards
-# trust-boundary set.
+# These are excluded from this local rerun config for session-scope
+# reasons (mutant volume), not scope-of-concern reasons. The full
+# workspace .cargo/mutants.toml surface is the hosted-nightly input.
 #
 # ITEMIZED EXCLUSION RATIONALE (per file):
 #
