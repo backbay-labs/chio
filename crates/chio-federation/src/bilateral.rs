@@ -105,6 +105,12 @@ impl DualSignedReceipt {
     ///
     /// Neither half of the dual signature is sufficient on its own; a
     /// caller that can only check one side must still refuse the receipt.
+    ///
+    /// **This method is NOT a DSSE signature-slice verifier.** The
+    /// signatures it checks are computed over the canonical-JSON encoding of
+    /// [`CoSigningBody`]; the DSSE signature-slice signatures are computed
+    /// over PAE bytes wrapping an in-toto Statement. The two preimages share
+    /// zero bytes.
     pub fn verify(
         &self,
         org_a_public_key: &PublicKey,
@@ -118,6 +124,16 @@ impl DualSignedReceipt {
             return Err(BilateralCoSigningError::OrgASignatureInvalid);
         }
         if !org_b_public_key.verify(&bytes, &self.org_b_signature) {
+            return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+        }
+        let receipt_signature_valid = self
+            .body
+            .verify_signature()
+            .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?;
+        if !receipt_signature_valid {
+            return Err(BilateralCoSigningError::ReceiptMismatch);
+        }
+        if self.body.kernel_key != *org_b_public_key {
             return Err(BilateralCoSigningError::OrgBSignatureInvalid);
         }
         Ok(())
@@ -298,11 +314,6 @@ pub fn co_sign_with_origin(
     receipt: ChioReceipt,
     cosigner: &dyn BilateralCoSigningProtocol,
 ) -> Result<DualSignedReceipt, BilateralCoSigningError> {
-    // W2.4: emit `chio_federation_hop_total` and observe
-    // `chio_federation_hop_latency_seconds` at the federation-hop boundary.
-    // The recorder fires before returning so even signature-failure paths
-    // surface in the registry, matching the counter/histogram pair the
-    // chio-recording-rules.yml alert pack expects.
     let started = std::time::Instant::now();
     let outcome = co_sign_with_origin_inner(
         origin_kernel_id,
@@ -363,4 +374,61 @@ fn co_sign_with_origin_inner(
     // would themselves pass third-party verification.
     dual.verify(origin_public_key, &tool_host_keypair.public_key())?;
     Ok(dual)
+}
+
+/// **Verifiers seeking DSSE signature-slice coverage MUST verify
+/// [`Self::dsse_envelope`].** The legacy `DualSignedReceipt` shares zero
+/// signed bytes with the DSSE PAE preimage and is therefore not a DSSE
+/// artifact; see `crate::bilateral_dsse` module docs.
+#[derive(Debug, Clone)]
+pub struct BilateralCoSignArtifacts {
+    pub dual_signed_receipt: DualSignedReceipt,
+    pub dsse_envelope: crate::bilateral_dsse::DsseEnvelope,
+}
+
+/// `tool_name` and `timestamp_unix_ms` are surfaced to callers because
+/// they are predicate fields the DSSE signature-slice envelope binds.
+/// `tool_name` is typically `receipt.tool_name`; `timestamp_unix_ms` is the
+/// wall-clock at canonicalisation (Org B-side).
+///
+/// Scope boundary: this helper is an in-process API/demo slice because it
+/// takes the origin kernel private key to produce the DSSE Org A signature.
+/// Production tool-host paths must route that DSSE signature through an
+/// origin-kernel cosigner before making this the default hot path.
+#[allow(clippy::too_many_arguments)]
+pub fn co_sign_with_origin_full(
+    origin_kernel_id: &str,
+    origin_keypair: &Keypair,
+    tool_host_kernel_id: &str,
+    tool_host_keypair: &Keypair,
+    receipt: ChioReceipt,
+    cosigner: &dyn BilateralCoSigningProtocol,
+    tool_name: &str,
+    timestamp_unix_ms: u64,
+) -> Result<BilateralCoSignArtifacts, BilateralCoSigningError> {
+    // Legacy hop: produces the existing DualSignedReceipt (and emits the
+    // hop counter / histogram via co_sign_with_origin's wrapper).
+    let dual = co_sign_with_origin(
+        origin_kernel_id,
+        &origin_keypair.public_key(),
+        tool_host_kernel_id,
+        tool_host_keypair,
+        receipt.clone(),
+        cosigner,
+    )?;
+
+    let dsse_envelope = crate::bilateral_dsse::sign_dsse_envelope(
+        &receipt,
+        origin_keypair,
+        tool_host_keypair,
+        origin_kernel_id,
+        tool_host_kernel_id,
+        tool_name,
+        timestamp_unix_ms,
+    )?;
+
+    Ok(BilateralCoSignArtifacts {
+        dual_signed_receipt: dual,
+        dsse_envelope,
+    })
 }
