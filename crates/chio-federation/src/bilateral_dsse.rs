@@ -69,7 +69,12 @@ pub const PREDICATE_BODY_SCHEMA: &str = "chio.bilateral-cosign.signature-slice.v
 /// Fixed prefix tag of the DSSE Pre-Authentication Encoding (DSSE v1).
 const PAE_PREFIX: &str = "DSSEv1";
 
-/// Wire schema for [`DsseEnvelope`] when carried over chiodos federation.
+/// Historical profile identifier for the Chio bilateral DSSE signature-slice.
+///
+/// Standard DSSE envelopes do not carry a top-level `schema` member. This
+/// value is retained only for callers that need an out-of-band profile label;
+/// emitters and verifiers must rely on `payloadType`, the in-toto Statement
+/// `_type`, and `predicateType` on the signed payload.
 pub const BILATERAL_DSSE_ENVELOPE_SCHEMA: &str =
     "chio.federation-bilateral-dsse-signature-slice-envelope.v1";
 
@@ -316,8 +321,6 @@ pub struct DsseSignature {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DsseEnvelope {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub schema: Option<String>,
     pub payload_type: String,
     /// Base64 (standard alphabet) of canonical-JSON of [`DsseStatement`].
     pub payload: String,
@@ -584,7 +587,6 @@ pub fn sign_dsse_envelope_full(
         .map_err(|e| BilateralCoSigningError::TransportFailure(e.to_string()))?;
 
     let envelope = DsseEnvelope {
-        schema: Some(BILATERAL_DSSE_ENVELOPE_SCHEMA.to_string()),
         payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
         payload: BASE64_STANDARD.encode(&statement_bytes),
         signatures: vec![
