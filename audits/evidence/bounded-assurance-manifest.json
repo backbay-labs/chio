@@ -1,6 +1,6 @@
 {
   "schema": "chio.bounded-assurance-manifest.v1",
-  "integrated_merge_sha": "2afeb07a1febacd1323f6903fc96d7f764254420",
+  "integrated_merge_sha": "db94ab9107e08aba90193b88aac20017b459f810",
   "commands": [
     {
       "command": "bash scripts/check-threat-coverage.sh",
@@ -31,22 +31,22 @@
       ]
     },
     {
-      "command": "python3 scripts/check-apalache-formal-slice.py && apalache-mc check --length=6 over the four formal/apalache safety configs",
+      "command": "python3 scripts/check-apalache-formal-slice.py && apalache-mc check --length=6 over the four formal/apalache safety configs && (cd formal/lean4/Chio && lake build)",
       "exit_code": 0,
       "artifacts": [
         {
           "path": "audits/evidence/formal/2026-05-09-trajectory-5-1-apalache-lean.md",
-          "sha256": "beb57c33df5522591dc852ea752a4415e2cde0df939766d4086048ba7621f707"
+          "sha256": "6e108ffd3c22bb6772949d2564cd49dac5af1f2932b54d388a51fad2fba5a3b1"
         }
       ]
     },
     {
-      "command": "bash scripts/run-kani-manifest.sh --list && bash scripts/run-kani-manifest.sh --dry-run",
+      "command": "bash scripts/run-kani-manifest.sh --list && bash scripts/run-kani-manifest.sh --dry-run && bash scripts/run-kani-manifest.sh --lane pr",
       "exit_code": 0,
       "artifacts": [
         {
           "path": "audits/evidence/kani/2026-05-09-trajectory-5-1-manifest.md",
-          "sha256": "92a855919dccd1397d5aa9d6e9e2ffaf004f4b7b3e323a293ad23f9b6c9dba18"
+          "sha256": "4a77e8bc4497b60049daee5ccaa796b4e11e81425d4586f7e15514e03aeaf96c"
         },
         {
           "path": ".kani/harnesses.toml",
@@ -112,11 +112,11 @@
     },
     {
       "path": "audits/evidence/kani/2026-05-09-trajectory-5-1-manifest.md",
-      "sha256": "92a855919dccd1397d5aa9d6e9e2ffaf004f4b7b3e323a293ad23f9b6c9dba18"
+      "sha256": "4a77e8bc4497b60049daee5ccaa796b4e11e81425d4586f7e15514e03aeaf96c"
     },
     {
       "path": "audits/evidence/formal/2026-05-09-trajectory-5-1-apalache-lean.md",
-      "sha256": "beb57c33df5522591dc852ea752a4415e2cde0df939766d4086048ba7621f707"
+      "sha256": "6e108ffd3c22bb6772949d2564cd49dac5af1f2932b54d388a51fad2fba5a3b1"
     },
     {
       "path": "crates/chio-kernel/src/kernel/mod.rs",
@@ -184,11 +184,11 @@
     },
     {
       "path": ".planning/trajectory-5.1/README.md",
-      "sha256": "97fca0ed2a81e84120d5be32670195c31feec8beaa6af009796662d37cd8de14"
+      "sha256": "2af82be0190c10c4685af34374004b5c102db6d04a7e4ad5b6bd4ee15f8dcbd6"
     },
     {
       "path": ".planning/trajectory-5.1/TICKETS.md",
-      "sha256": "bcb87cd8cc3fc976e704483170d37466802338fd2ff3e65f97a71b9570c95f9a"
+      "sha256": "2a097c4612843a516a23ad80ab3958887955bbf37c4c36dab547e11eea94ecd1"
     },
     {
       "path": ".planning/trajectory-5.1/OWNERS.toml",
@@ -200,7 +200,7 @@
     },
     {
       "path": "docs/superpowers/plans/2026-05-09-trajectory-5-1.md",
-      "sha256": "a9756e4c3ad7eb511c60c8af4c0800d9ccf0b623090842e90b24d0fb383e944a"
+      "sha256": "8109463700ff4f550d1d72479008c092ab488ec0ebb64a1ecd9e8c7a303425b1"
     }
   ]
 }

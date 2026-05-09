@@ -68,7 +68,8 @@ Status: implemented baseline stabilization with honest release blockers.
   signing, and strict B4 conformance fixtures are implemented.
 - Lane A: threat coverage is demoted to 20 pending rows with `deferred_to`
   owners. The strict threat-mutants gate passes with zero false covered
-  rows. Mutation baselines remain honest partials.
+  rows. Local Kani and Lean proof gates pass. Mutation baselines remain
+  honest partials.
 - Lane C: deterministic canary fixtures, replay transcripts, golden receipt
   explain output, and release metadata were regenerated from merged `main`.
 - Package status: `[v0_1_0_bounded_chiodome].release_status` is

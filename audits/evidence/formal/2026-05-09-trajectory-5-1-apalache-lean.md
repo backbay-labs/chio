@@ -2,7 +2,7 @@
 
 Date: 2026-05-09
 
-Integrated main: `2afeb07a1febacd1323f6903fc96d7f764254420`
+Trajectory 5.1 baseline: `db94ab9107e08aba90193b88aac20017b459f810`
 
 ## Apalache
 
@@ -28,12 +28,20 @@ computation length 6.
 
 ## Lean
 
-`lake` was not available on this local `PATH`, so Trajectory 5.1 does
-not claim a local Lean `lake build` proof run. The proof inventory and
-planning files remain mapped, but release-facing proof closure still
-requires a prepared Lean toolchain or hosted workflow evidence.
+The local Lean toolchain is installed through `elan`:
+
+```text
+elan 4.2.1 (3d5138e15 2026-03-18)
+Lake version 5.0.0-src+3b0f286 (Lean version 4.28.0-rc1)
+```
+
+`lake build` was run from `formal/lean4/Chio` and exited 0:
+
+```text
+Build completed successfully (20 jobs).
+```
 
 ## 5.1 Disposition
 
-Apalache bounded safety is locally green. Lean proof execution is
-explicitly not claimed by this evidence file.
+Apalache bounded safety and the Lean proof build are locally green for this
+Trajectory 5.1 baseline.
