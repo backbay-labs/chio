@@ -10,9 +10,9 @@
 # checker stays artifact-only: evidence presence and shape for Lane B
 # integration, Lane A assurance, and Lane C canary.
 #
-# The script is deliberately presence-and-shape oriented. It is NOT a
-# replacement for cargo test / cargo mutants / the demo runner; those
-# produce the artifacts this script then verifies are committed.
+# The script verifies committed evidence artifacts, hashes, and the stricter
+# companion gates. It is NOT a replacement for cargo test / cargo mutants / the
+# demo runner; those produce the artifacts this script then verifies.
 #
 # Claim A (Lane A): per-crate mutation kill-rate JSONs for each
 # trust-boundary crate listed in `releases.toml [mutants]`. Crates
@@ -50,6 +50,13 @@
 #
 # The strict default is the audit's required behaviour. The diagnostic
 # flag is opt-in and clearly labelled in the summary footer.
+
+# Required hashed evidence manifest:
+#   audits/evidence/bounded-assurance-manifest.json
+#
+# The manifest records commands, exit codes, artifact hashes, fixture hashes,
+# and the integrated merge SHA that the evidence is tied to. Missing or stale
+# manifests are real failures, including in --diagnostic mode.
 
 set -uo pipefail
 
@@ -218,6 +225,104 @@ is_uint() {
   [[ "$1" =~ ^[0-9]+$ ]]
 }
 
+check_bounded_assurance_manifest() {
+  local manifest_path="${CHIO_BOUNDED_ASSURANCE_MANIFEST:-audits/evidence/bounded-assurance-manifest.json}"
+  python3 - "$repo_root" "$manifest_path" <<'PY'
+import hashlib
+import json
+import re
+import sys
+from pathlib import Path
+
+repo = Path(sys.argv[1])
+manifest_rel = sys.argv[2]
+manifest = repo / manifest_rel
+errors = []
+
+def require_rel_path(value, context):
+    if not isinstance(value, str) or not value:
+        errors.append(f"{context}: path missing")
+        return None
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts:
+        errors.append(f"{context}: path must be repo-relative and stay inside repo: {value}")
+        return None
+    return path
+
+def verify_hash_entry(entry, context):
+    if not isinstance(entry, dict):
+        errors.append(f"{context}: entry must be an object")
+        return
+    rel = require_rel_path(entry.get("path"), context)
+    expected = entry.get("sha256")
+    if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
+        errors.append(f"{context}: sha256 must be a 64-character lowercase hex digest")
+    if rel is None:
+        return
+    target = repo / rel
+    if not target.is_file():
+        errors.append(f"{context}: file missing: {rel}")
+        return
+    actual = hashlib.sha256(target.read_bytes()).hexdigest()
+    if isinstance(expected, str) and re.fullmatch(r"[0-9a-f]{64}", expected) and actual != expected:
+        errors.append(f"{context}: sha256 mismatch for {rel}: expected {expected}, got {actual}")
+
+if not manifest.is_file():
+    print(f"manifest missing: {manifest_rel}")
+    sys.exit(1)
+
+try:
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+except Exception as exc:
+    print(f"manifest is not valid JSON: {exc}")
+    sys.exit(1)
+
+if data.get("schema") != "chio.bounded-assurance-manifest.v1":
+    errors.append("schema must be chio.bounded-assurance-manifest.v1")
+
+integrated_sha = data.get("integrated_merge_sha")
+if not isinstance(integrated_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", integrated_sha):
+    errors.append("integrated_merge_sha must be a concrete 40-character lowercase git SHA")
+elif integrated_sha in {"0" * 40, "f" * 40}:
+    errors.append("integrated_merge_sha must not be a sentinel SHA")
+
+commands = data.get("commands")
+if not isinstance(commands, list) or not commands:
+    errors.append("commands must be a non-empty list")
+else:
+    for idx, command in enumerate(commands):
+        context = f"commands[{idx}]"
+        if not isinstance(command, dict):
+            errors.append(f"{context}: command entry must be an object")
+            continue
+        cmd = command.get("command")
+        if not isinstance(cmd, str) or not cmd.strip():
+            errors.append(f"{context}: command must be a non-empty string")
+        if command.get("exit_code") != 0:
+            errors.append(f"{context}: exit_code must be 0")
+        artifacts = command.get("artifacts")
+        if not isinstance(artifacts, list) or not artifacts:
+            errors.append(f"{context}: artifacts must be a non-empty list")
+        else:
+            for art_idx, artifact in enumerate(artifacts):
+                verify_hash_entry(artifact, f"{context}.artifacts[{art_idx}]")
+
+fixture_hashes = data.get("fixture_hashes")
+if not isinstance(fixture_hashes, list) or not fixture_hashes:
+    errors.append("fixture_hashes must be a non-empty list")
+else:
+    for idx, fixture in enumerate(fixture_hashes):
+        verify_hash_entry(fixture, f"fixture_hashes[{idx}]")
+
+if errors:
+    for error in errors:
+        print(error)
+    sys.exit(1)
+
+print(f"manifest verified: {manifest_rel}")
+PY
+}
+
 bar1_metadata_reasons_for_json() {
   local json_path="$1"
   local metadata_line
@@ -287,6 +392,18 @@ EOF
   done
   printf '%s' "$joined"
 }
+
+printf '\n[Manifest] Hashed assurance evidence manifest\n'
+
+manifest_output=""
+if manifest_output="$(check_bounded_assurance_manifest 2>&1)"; then
+  ok "Bounded assurance evidence manifest hashes verified"
+else
+  failure "Bounded assurance evidence manifest missing or invalid"
+fi
+if [ -n "$manifest_output" ]; then
+  printf '%s\n' "$manifest_output" | sed 's/^/  /'
+fi
 
 printf '\n[Claim A] Lane A -- mutation and threat-evidence assurance\n'
 
@@ -382,39 +499,24 @@ for crate in "${bar1_crates[@]}"; do
   fi
 done
 
-# Claim A also requires threat evidence. Each file must carry real
-# caught evidence, a non-1970 run timestamp, needs_real_run:false, and
-# a triage_status value.
-threats_dir="audits/evidence/threats"
-if [ ! -d "$threats_dir" ]; then
-  partial "Claim A threats directory pending ($threats_dir)"
+# Claim A also requires the strict per-row threat mutation gate. Do not
+# duplicate a weaker summary check here: this delegates to the same gate that
+# rejects bootstrap placeholders, generated metadata, conformance-only rows,
+# not-run mutation status, and not-promoted evidence.
+threat_mutants_gate="scripts/check-threat-coverage-mutants.sh"
+if [ ! -f "$threat_mutants_gate" ]; then
+  failure "Claim A strict threat mutants gate missing ($threat_mutants_gate)"
 else
-  threat_count=0
-  threat_real=0
-  for tjson in "$threats_dir"/*.json; do
-    [ -f "$tjson" ] || continue
-    threat_count=$((threat_count + 1))
-    if command -v jq >/dev/null 2>&1; then
-      caught=$(jq -r '.caught // 0' "$tjson" 2>/dev/null || echo 0)
-      ran_at=$(jq -r '.ran_at // ""' "$tjson" 2>/dev/null || echo "")
-      needs_real_run=$(jq -r '.needs_real_run // true' "$tjson" 2>/dev/null || echo true)
-      triage_status=$(jq -r '.triage_status // ""' "$tjson" 2>/dev/null || echo "")
-      if [ "$(awk -v c="$caught" 'BEGIN { print (c + 0 >= 1) ? "yes" : "no" }')" = "yes" ] \
-         && [ -n "$ran_at" ] \
-         && [ "$ran_at" != "1970-01-01T00:00:00Z" ] \
-         && [ "$needs_real_run" = "false" ] \
-         && [ -n "$triage_status" ]; then
-        threat_real=$((threat_real + 1))
-      fi
-    fi
-  done
-  if [ "$threat_count" -eq 0 ]; then
-    partial "Claim A threats directory has zero JSON files"
-  elif [ "$threat_real" -eq "$threat_count" ]; then
-    ok "Claim A threats $threat_real of $threat_count with caught>=1, non-1970 ran_at, needs_real_run=false, and triage_status"
+  threat_gate_out="$(mktemp)"
+  threat_gate_err="$(mktemp)"
+  if bash "$threat_mutants_gate" >"$threat_gate_out" 2>"$threat_gate_err"; then
+    ok "Claim A strict threat mutants gate passed ($threat_mutants_gate)"
   else
-    partial "Claim A threats $threat_real of $threat_count with complete triaged evidence (rest still placeholders)"
+    failure "Claim A strict threat mutants gate failed ($threat_mutants_gate)"
   fi
+  sed 's/^/  /' "$threat_gate_out"
+  sed 's/^/  /' "$threat_gate_err"
+  rm -f "$threat_gate_out" "$threat_gate_err"
 fi
 
 printf '\n[Claim B] Lane B -- production-call-path conformance fixtures\n'

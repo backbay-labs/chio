@@ -43,7 +43,10 @@ ERR="$WORK/err"
 # to $WORK.
 mkdir -p "$WORK/scripts"
 cp "$REAL_GATE" "$WORK/scripts/check-bounded-ship-bar.sh"
+cp "$REAL_REPO_ROOT/scripts/check-threat-coverage-mutants.sh" \
+    "$WORK/scripts/check-threat-coverage-mutants.sh"
 chmod +x "$WORK/scripts/check-bounded-ship-bar.sh"
+chmod +x "$WORK/scripts/check-threat-coverage-mutants.sh"
 
 GATE="$WORK/scripts/check-bounded-ship-bar.sh"
 
@@ -76,14 +79,32 @@ cat > "$WORK/audits/evidence/mutants/chio-policy/2026-05-08-per-crate-baseline.j
 {"crate":"chio-policy","kill_rate_percent":99.9,"caught":999,"viable":1000,"target_met":false,"result_label":"PARTIAL","run_status":"PARTIAL: interrupted at 1/999 by session budget","evaluated":1,"total_discovered":999,"examine_scope":"hand-picked subset"}
 EOF
 
-# Bar 1 threats: 20 placeholder JSONs all with caught>=1 and a non-1970
-# `ran_at`. (The script reports PARTIAL when count<20 OR any are still
-# placeholders; we want all real so we are not double-counting partials
-# from this row when validating Bar 1 chio-policy alone.)
+# Bar 1 threats: 20 strict evidence JSONs with caught>=1 and metadata that the
+# threat mutants gate accepts. We want all real so we are not double-counting
+# partials from this row when validating Bar 1 chio-policy alone.
 mkdir -p "$WORK/audits/evidence/threats"
+mkdir -p "$WORK/spec/security"
+python3 - "$WORK/spec/security/chio-threat-model.v1.json" <<'PY'
+import json
+import sys
+
+threats = []
+for i in range(1, 21):
+    tid = f"t-{i}"
+    threats.append({
+        "id": tid,
+        "name": tid,
+        "coverage_state": "covered",
+        "coveredBy": [f"crates/chio-conformance/tests/threats/{tid}.rs"],
+    })
+
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump({"threats": threats}, handle)
+    handle.write("\n")
+PY
 for i in $(seq 1 20); do
     cat > "$WORK/audits/evidence/threats/t-${i}.json" <<EOF
-{"id":"t-${i}","caught":1,"ran_at":"2026-05-08T00:00:00Z","needs_real_run":false,"triage_status":"covered"}
+{"id":"t-${i}","caught":1,"survivors":[],"ran_at":"2026-05-08T00:00:00Z","timestamp_kind":"cargo-mutants-run","evidence_status":"cargo-mutants-run","mutation_evidence_status":"complete","promotion_status":"promoted","needs_real_run":false,"triage_status":"covered"}
 EOF
 done
 
@@ -144,6 +165,58 @@ cat > "$WORK/releases.toml" <<'EOF'
 release_status = "blocked_pending_lane_b_integration"
 integrated_merge_sha = "pending"
 EOF
+
+write_assurance_manifest() {
+    python3 - "$WORK" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+
+def digest(rel):
+    path = root / rel
+    return {"path": rel, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+manifest = {
+    "schema": "chio.bounded-assurance-manifest.v1",
+    "integrated_merge_sha": "0123456789abcdef0123456789abcdef01234567",
+    "commands": [
+        {
+            "command": "bash scripts/check-threat-coverage-mutants.sh",
+            "exit_code": 0,
+            "artifacts": [
+                digest("spec/security/chio-threat-model.v1.json"),
+                digest("audits/evidence/threats/t-1.json"),
+                digest("audits/evidence/mutants/banner.json"),
+            ],
+        },
+        {
+            "command": "bash scripts/check-anchor-batch-async-witness.sh",
+            "exit_code": 0,
+            "artifacts": [
+                digest("scripts/check-anchor-batch-async-witness.sh"),
+            ],
+        },
+    ],
+    "fixture_hashes": [
+        digest("crates/chio-conformance/tests/b1_capability_v2_single_entry_no_bypass.rs"),
+        digest("crates/chio-conformance/tests/b2_receipt_v2_failclosed_pre_dispatch.rs"),
+        digest("crates/chio-conformance/tests/b3_anchor_batch_sync_path_rejected_under_public_witness.rs"),
+        digest("crates/chio-conformance/tests/b4_bilateral_dsse_signature_slice.rs"),
+        digest("examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/receipt.json"),
+        digest("examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/envelope.json"),
+        digest("examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/checkpoint.json"),
+    ],
+}
+
+out = root / "audits/evidence/bounded-assurance-manifest.json"
+out.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+PY
+}
+
+write_assurance_manifest
 
 # ---------------------------------------------------------------------
 # Stage 2: default (assurance-gate) mode -> exit 1.
@@ -228,30 +301,61 @@ echo "ok: stage 4 assurance-gate mode exits 1 when result_label full-scope marke
 cat > "$WORK/audits/evidence/mutants/chio-policy/2026-05-08-per-crate-baseline.json" <<'EOF'
 {"crate":"chio-policy","kill_rate_percent":99.9,"caught":999,"viable":1000,"target_met":false,"result_label":"PARTIAL","run_status":"PARTIAL: interrupted at 1/999 by session budget","evaluated":1,"total_discovered":999,"examine_scope":"hand-picked subset"}
 EOF
+write_assurance_manifest
 
 # ---------------------------------------------------------------------
-# Stage 5: sanity -- a real FAIL row exits 1 in either mode.
+# Stage 5: a stale evidence manifest exits 1 even in diagnostic mode.
+# ---------------------------------------------------------------------
+python3 - "$WORK/audits/evidence/bounded-assurance-manifest.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+doc = json.loads(path.read_text(encoding="utf-8"))
+doc["commands"][0]["artifacts"][0]["sha256"] = "0" * 64
+path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+PY
+rc=0
+bash "$GATE" --diagnostic >"$OUT" 2>"$ERR" || rc=$?
+if [ "$rc" -ne 1 ]; then
+    echo "FAIL: stage 5 --diagnostic with stale evidence manifest: expected rc=1, got rc=$rc" >&2
+    echo "--- stdout ---" >&2; cat "$OUT" >&2
+    exit 1
+fi
+if ! grep -q 'Bounded assurance evidence manifest missing or invalid' "$OUT"; then
+    echo "FAIL: stage 5 missing stale manifest diagnostic" >&2
+    cat "$OUT" >&2
+    exit 1
+fi
+echo "ok: stage 5 stale evidence manifest exits 1 even under --diagnostic (rc=1)"
+write_assurance_manifest
+
+# ---------------------------------------------------------------------
+# Stage 6: sanity -- a real FAIL row exits 1 in either mode.
 # Trigger by making the async-witness companion exit nonzero.
 # ---------------------------------------------------------------------
 printf '#!/usr/bin/env bash\nexit 7\n' \
     > "$WORK/scripts/check-anchor-batch-async-witness.sh"
 chmod +x "$WORK/scripts/check-anchor-batch-async-witness.sh"
+write_assurance_manifest
 rc=0
 bash "$GATE" --diagnostic >"$OUT" 2>"$ERR" || rc=$?
 if [ "$rc" -ne 1 ]; then
-    echo "FAIL: stage 5 --diagnostic with real FAIL: expected rc=1, got rc=$rc" >&2
+    echo "FAIL: stage 6 --diagnostic with real FAIL: expected rc=1, got rc=$rc" >&2
     echo "--- stdout ---" >&2; cat "$OUT" >&2
     exit 1
 fi
-echo "ok: stage 5 real FAIL row exits 1 even under --diagnostic (rc=1)"
+echo "ok: stage 6 real FAIL row exits 1 even under --diagnostic (rc=1)"
 
 # ---------------------------------------------------------------------
-# Stage 6: a marker that claims C5 evidence_complete without real evidence
+# Stage 7: a marker that claims C5 evidence_complete without real evidence
 # is a release-truth failure, even in diagnostic mode.
 # ---------------------------------------------------------------------
 printf '#!/usr/bin/env bash\nexit 0\n' \
     > "$WORK/scripts/check-anchor-batch-async-witness.sh"
 chmod +x "$WORK/scripts/check-anchor-batch-async-witness.sh"
+write_assurance_manifest
 cat > "$WORK/.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml" <<'EOF'
 [c5_selective_disclosure]
 status = "evidence_complete"
@@ -264,16 +368,16 @@ EOF
 rc=0
 bash "$GATE" --diagnostic >"$OUT" 2>"$ERR" || rc=$?
 if [ "$rc" -ne 1 ]; then
-    echo "FAIL: stage 6 --diagnostic with false C5 evidence_complete: expected rc=1, got rc=$rc" >&2
+    echo "FAIL: stage 7 --diagnostic with false C5 evidence_complete: expected rc=1, got rc=$rc" >&2
     echo "--- stdout ---" >&2; cat "$OUT" >&2
     exit 1
 fi
 if ! grep -q 'Claim C5 marker claims evidence_complete but evidence is missing' "$OUT"; then
-    echo "FAIL: stage 6 missing false C5 evidence_complete diagnostic" >&2
+    echo "FAIL: stage 7 missing false C5 evidence_complete diagnostic" >&2
     cat "$OUT" >&2
     exit 1
 fi
-echo "ok: stage 6 false C5 evidence_complete marker exits 1 even under --diagnostic (rc=1)"
+echo "ok: stage 7 false C5 evidence_complete marker exits 1 even under --diagnostic (rc=1)"
 
-# Stage 7 (cleanup) is implicit via `trap rm -rf $WORK`.
+# Cleanup is implicit via `trap rm -rf $WORK`.
 echo "PASS: check-bounded-ship-bar behavioral regression test"
