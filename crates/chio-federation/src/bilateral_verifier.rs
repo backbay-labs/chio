@@ -45,10 +45,10 @@
 //! * [`VerifierError`] - fail-closed error codes mapping 1:1 to spec
 //!   §7.1 (e.g. `subject.digest_mismatch`, `peer.unpinned_or_keyid_mismatch`).
 //!
-//! ## Usage from the bilateral hot-path
+//! ## Usage from the local fixture helper
 //!
-//! [`crate::bilateral::execute_bilateral_invocation`] is the high-level
-//! kernel-boundary helper that drives [`sign_dsse_envelope_full`] and
+//! [`crate::bilateral::execute_local_bilateral_invocation_fixture`] is the
+//! local fixture helper that drives [`sign_dsse_envelope_full`] and
 //! immediately runs this partial local verifier before returning the
 //! [`crate::bilateral::BilateralCoSignArtifacts`]. Callers that want to
 //! verify externally produced envelopes call
@@ -1503,9 +1503,9 @@ mod tests {
 
         let mut ext = happy_path_extensions(now_ms);
         if let Some(summary) = ext.policy_evaluation_summary.as_mut() {
-            summary.server_a_verdict.verdict = "audit".to_string();
-            summary.server_b_verdict.verdict = "audit".to_string();
-            summary.joint_disposition = Some("audit".to_string());
+            summary.server_a_verdict.verdict = "observe".to_string();
+            summary.server_b_verdict.verdict = "observe".to_string();
+            summary.joint_disposition = Some("observe".to_string());
         }
         let envelope = sign_dsse_envelope_full(
             &receipt,

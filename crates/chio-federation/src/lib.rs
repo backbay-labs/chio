@@ -24,11 +24,12 @@ pub use metrics::{
 };
 
 pub use bilateral::{
-    co_sign_with_origin, co_sign_with_origin_full, execute_bilateral_invocation,
+    co_sign_with_origin, co_sign_with_origin_full, execute_local_bilateral_invocation_fixture,
     BilateralCoSignArtifacts, BilateralCoSigningError, BilateralCoSigningProtocol,
-    BilateralInvocationError, BilateralInvocationOutcome, BilateralInvocationRequest,
-    CoSigningBody, CoSigningRequest, CoSigningResponse, DualSignedReceipt, InProcessCoSigner,
-    BILATERAL_COSIGNING_SCHEMA, BILATERAL_DUAL_RECEIPT_SCHEMA,
+    BilateralInvocationError, BilateralInvocationOutcome, CoSigningBody, CoSigningRequest,
+    CoSigningResponse, DualSignedReceipt, ExpectedBilateralPeers, InProcessCoSigner,
+    LocalBilateralInvocationFixtureRequest, BILATERAL_COSIGNING_SCHEMA,
+    BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
 pub use bilateral_dsse::{
     build_predicate, build_predicate_full, build_statement, pae, receipt_subject_name,
