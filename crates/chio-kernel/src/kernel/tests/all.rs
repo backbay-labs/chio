@@ -797,7 +797,7 @@ fn production_evaluate_rejects_direct_v2_without_trust_root_resolver() {
 }
 
 #[test]
-fn negotiated_receipt_v2_without_store_denies_before_tool_invocation() {
+fn local_default_receipt_v2_without_store_uses_v1_and_invokes_tool() {
     let mut kernel = make_kernel(make_config());
     kernel.set_receipt_v2_default(true);
     let invocations = std::sync::Arc::new(AtomicU64::new(0));
@@ -816,24 +816,20 @@ fn negotiated_receipt_v2_without_store_denies_before_tool_invocation() {
     );
     let response = kernel
         .evaluate_tool_call_blocking(&make_request(
-            "req-v2-no-store",
+            "req-local-no-store",
             &capability,
             "read_file",
             "srv-a",
         ))
-        .expect("missing v2 receipt store should produce a fail-closed deny");
+        .expect("local default without a v2 store should fall back to v1");
 
-    assert_eq!(response.verdict, Verdict::Deny);
-    let reason = response.reason.unwrap_or_default();
-    assert!(
-        reason.contains("no durable v2-capable receipt store configured"),
-        "expected durable v2 store denial, got: {reason}"
-    );
+    assert_eq!(response.verdict, Verdict::Allow);
     assert_eq!(
         invocations.load(Ordering::SeqCst),
-        0,
-        "v2 receipt-store admission must fail before tool side effects"
+        1,
+        "ordinary local dispatch must not require a v2 receipt store"
     );
+    assert_eq!(kernel.receipt_log().len(), 1);
 }
 
 #[test]
@@ -1470,6 +1466,30 @@ impl ToolServerConnection for EchoServer {
         arguments: serde_json::Value,
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<serde_json::Value, KernelError> {
+        Ok(serde_json::json!({
+            "tool": tool_name,
+            "echo": arguments,
+        }))
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for SideEffectServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        self.tools.clone()
+    }
+
+    async fn invoke(
+        &self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        self.invocations.fetch_add(1, Ordering::SeqCst);
         Ok(serde_json::json!({
             "tool": tool_name,
             "echo": arguments,

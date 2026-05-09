@@ -44,6 +44,21 @@ fn emergency_stop_forces_deny_on_next_evaluate() {
 }
 
 #[test]
+fn emergency_stop_reason_wins_before_federation_negotiation() {
+    let (kernel, agent_kp, scope) = kernel_with_echo();
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+
+    kernel.emergency_stop("operator halted").unwrap();
+
+    let mut denied = make_request("req-stopped-fed", &cap, "read_file", "srv-a");
+    denied.federated_origin_kernel_id = Some("kernel.unpinned".to_string());
+    let response = kernel.evaluate_tool_call_blocking(&denied).unwrap();
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(response.reason.as_deref(), Some(EMERGENCY_STOP_DENY_REASON));
+}
+
+#[test]
 fn emergency_status_exposes_since_and_reason() {
     let (kernel, _, _) = kernel_with_echo();
     assert!(!kernel.is_emergency_stopped());
