@@ -497,7 +497,7 @@ pub fn verify_bilateral_cosign_invocation(
         ));
     }
 
-    let (statement, statement_bytes) = envelope.decode_statement().map_err(map_bilateral_error)?;
+    let (statement, _) = envelope.decode_statement().map_err(map_bilateral_error)?;
 
     // ---- Step 3: in-toto v1 schema -------------------------------------
     if statement.statement_type != STATEMENT_TYPE_V1 {
@@ -536,67 +536,11 @@ pub fn verify_bilateral_cosign_invocation(
     // ---- Step 6: bind pred ---------------------------------------------
     let pred = &statement.predicate;
 
-    // ---- Step 7: subject digest = sha256(canonical_json(resolve_receipt.body()))
-    // Subject-digest invariant: the subject digest binds the
-    // receipt BODY (`ChioReceiptBody`), not the full signed wrapper.
-    // The producer-side `bilateral_dsse::build_statement` was fixed
-    // to hash the body; this verifier path must hash the
-    // same input, otherwise the §7 step-7 check rejects every
-    // freshly-signed envelope.
-    let resolved_receipt = config
-        .receipt_store
-        .resolve(&pred.invocation_id)
-        .ok_or_else(|| {
-            VerifierError::SubjectDigestMismatch(format!(
-                "invocation_id {:?} not resolvable in ReceiptStore (fail-closed per §7 step 7)",
-                pred.invocation_id
-            ))
-        })?;
-    let resolved_receipt_signature_valid = resolved_receipt
-        .verify_signature()
-        .map_err(|e| VerifierError::SubjectDigestMismatch(format!("receipt signature: {e}")))?;
-    if !resolved_receipt_signature_valid {
-        return Err(VerifierError::SubjectDigestMismatch(
-            "resolved receipt signature is invalid".to_string(),
-        ));
-    }
-    if pred.tool_name != resolved_receipt.tool_name {
-        return Err(VerifierError::SubjectDigestMismatch(format!(
-            "predicate tool_name {:?} != resolved receipt tool_name {:?}",
-            pred.tool_name, resolved_receipt.tool_name
-        )));
-    }
-    let resolved_receipt_canonical = canonical_json_string(&resolved_receipt)
-        .map_err(|e| VerifierError::SubjectDigestMismatch(format!("canonical-json: {e}")))?;
-    if pred.receipt_canonical_json != resolved_receipt_canonical {
-        return Err(VerifierError::SubjectDigestMismatch(
-            "predicate embedded receipt JSON does not match resolved signed receipt".to_string(),
-        ));
-    }
-
-    let resolved_body = resolved_receipt.body();
-    let canonical = canonical_json_bytes(&resolved_body)
-        .map_err(|e| VerifierError::SubjectDigestMismatch(format!("canonical-json: {e}")))?;
-    let mut hasher = Sha256::new();
-    hasher.update(&canonical);
-    let want_hex = hex::encode(hasher.finalize());
-
-    let subject = &statement.subject[0];
-    let expected_subject_name = receipt_subject_name(&resolved_receipt.id);
-    if subject.name != expected_subject_name {
-        return Err(VerifierError::SubjectDigestMismatch(format!(
-            "subject name {} != canonical receipt subject {}",
-            subject.name, expected_subject_name
-        )));
-    }
-    if subject.digest.sha256 != want_hex {
-        return Err(VerifierError::SubjectDigestMismatch(format!(
-            "subject digest {} != sha256(canonical_json(resolved_receipt.body())) {}",
-            subject.digest.sha256, want_hex
-        )));
-    }
-
     // ---- Step 8: peer pinning ------------------------------------------
+    // Peer-pin lookup is the minimum local lookup needed before signature
+    // authentication: it provides the trusted public keys for DSSE
+    // verification. Receipt, revocation, lease, and governance stores are
+    // intentionally queried only after the signatures authenticate.
     let pinned_a = config
         .peer_pin_set
         .lookup(&pred.tool_server_a.kernel_id)
@@ -629,11 +573,10 @@ pub fn verify_bilateral_cosign_invocation(
             pred.tool_server_b.passport_key_fingerprint.0
         )));
     }
-    if resolved_receipt.kernel_key != pinned_b.public_key {
-        return Err(VerifierError::PeerUnpinnedOrKeyidMismatch(
-            "resolved receipt kernel_key does not match pinned tool_server_b key".to_string(),
-        ));
-    }
+
+    // ---- Steps 10-12: DSSE signature authentication -------------------
+    verify_dsse_envelope(envelope, &pinned_a.public_key, &pinned_b.public_key)
+        .map_err(map_bilateral_error)?;
 
     // ---- Step 9: revocation at pinned epoch ----------------------------
     if !config
@@ -655,13 +598,66 @@ pub fn verify_bilateral_cosign_invocation(
         )));
     }
 
-    verify_dsse_envelope(envelope, &pinned_a.public_key, &pinned_b.public_key)
-        .map_err(map_bilateral_error)?;
+    // ---- Step 7: subject digest = sha256(canonical_json(resolve_receipt.body()))
+    // Subject-digest store work is deferred until after DSSE authentication
+    // so invalid signatures cannot force receipt-store reads.
+    let resolved_receipt = config
+        .receipt_store
+        .resolve(&pred.invocation_id)
+        .ok_or_else(|| {
+            VerifierError::SubjectDigestMismatch(format!(
+                "invocation_id {:?} not resolvable in ReceiptStore (fail-closed per §7 step 7)",
+                pred.invocation_id
+            ))
+        })?;
+    let resolved_receipt_signature_valid = resolved_receipt
+        .verify_signature()
+        .map_err(|e| VerifierError::SubjectDigestMismatch(format!("receipt signature: {e}")))?;
+    if !resolved_receipt_signature_valid {
+        return Err(VerifierError::SubjectDigestMismatch(
+            "resolved receipt signature is invalid".to_string(),
+        ));
+    }
+    if pred.tool_name != resolved_receipt.tool_name {
+        return Err(VerifierError::SubjectDigestMismatch(format!(
+            "predicate tool_name {:?} != resolved receipt tool_name {:?}",
+            pred.tool_name, resolved_receipt.tool_name
+        )));
+    }
+    if resolved_receipt.kernel_key != pinned_b.public_key {
+        return Err(VerifierError::PeerUnpinnedOrKeyidMismatch(
+            "resolved receipt kernel_key does not match pinned tool_server_b key".to_string(),
+        ));
+    }
+    let resolved_receipt_canonical = canonical_json_string(&resolved_receipt)
+        .map_err(|e| VerifierError::SubjectDigestMismatch(format!("canonical-json: {e}")))?;
+    if pred.receipt_canonical_json != resolved_receipt_canonical {
+        return Err(VerifierError::SubjectDigestMismatch(
+            "predicate embedded receipt JSON does not match resolved signed receipt".to_string(),
+        ));
+    }
 
-    // Sanity: the statement_bytes the producer signed equal what we just
-    // decoded. (Detects a verifier-side encoding drift; the upstream
-    // verifier already covered this, but we keep the check explicit.)
-    let _ = statement_bytes;
+    let resolved_body = resolved_receipt.body();
+    let canonical = canonical_json_bytes(&resolved_body)
+        .map_err(|e| VerifierError::SubjectDigestMismatch(format!("canonical-json: {e}")))?;
+    let mut hasher = Sha256::new();
+    hasher.update(&canonical);
+    let want_hex = hex::encode(hasher.finalize());
+
+    let subject = &statement.subject[0];
+    let expected_subject_name = receipt_subject_name(&resolved_receipt.id);
+    if subject.name != expected_subject_name {
+        return Err(VerifierError::SubjectDigestMismatch(format!(
+            "subject name {} != canonical receipt subject {}",
+            subject.name, expected_subject_name
+        )));
+    }
+    if subject.digest.sha256 != want_hex {
+        return Err(VerifierError::SubjectDigestMismatch(format!(
+            "subject digest {} != sha256(canonical_json(resolved_receipt.body())) {}",
+            subject.digest.sha256, want_hex
+        )));
+    }
 
     // ---- Step 13: verdict agreement ------------------------------------
     let summary = pred.policy_evaluation_summary.as_ref().ok_or_else(|| {
@@ -916,8 +912,13 @@ fn map_bilateral_error(error: BilateralCoSigningError) -> VerifierError {
         BilateralCoSigningError::OrgBSignatureInvalid => VerifierError::SignatureServerBInvalid(
             "PAE re-derivation under tool_server_b passport key failed".to_string(),
         ),
+        BilateralCoSigningError::ReceiptMismatch => VerifierError::SubjectDigestMismatch(
+            "embedded receipt does not match the signed subject or resolved receipt".to_string(),
+        ),
         BilateralCoSigningError::CanonicalJson(message) => {
-            if message.starts_with("payload json:")
+            if message.starts_with("statement.malformed: subject name") {
+                VerifierError::SubjectDigestMismatch(message)
+            } else if message.starts_with("payload json:")
                 || message.starts_with("statement.malformed")
                 || message.contains("not canonical JSON")
             {
@@ -982,10 +983,13 @@ fn is_sha256_hex(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::bilateral_dsse::{
-        sign_dsse_envelope_full, BilateralPredicateExtensions, CapabilityLeaseRef,
+        pae, sign_dsse_envelope_full, BilateralPredicateExtensions, CapabilityLeaseRef,
         GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary, PolicyVerdict,
+        PAYLOAD_TYPE_IN_TOTO,
     };
-    use chio_core_types::crypto::{sha256_hex, Keypair};
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+    use base64::Engine as _;
+    use chio_core_types::crypto::{sha256_hex, Ed25519Backend, Keypair, SigningBackend};
     use chio_core_types::receipt::{
         ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
     };
@@ -1130,6 +1134,24 @@ mod tests {
             action_classes,
             unknown_action_class_policy: UnknownActionClassPolicy::Reject,
         }
+    }
+
+    fn resign_envelope(
+        envelope: &mut DsseEnvelope,
+        kp_a: &Keypair,
+        kp_b: &Keypair,
+        statement_bytes: &[u8],
+    ) {
+        envelope.payload = BASE64_STANDARD.encode(statement_bytes);
+        let pae_bytes = pae(PAYLOAD_TYPE_IN_TOTO, statement_bytes);
+        let sig_a = Ed25519Backend::new(kp_a.clone())
+            .sign_bytes(&pae_bytes)
+            .unwrap();
+        let sig_b = Ed25519Backend::new(kp_b.clone())
+            .sign_bytes(&pae_bytes)
+            .unwrap();
+        envelope.signatures[0].sig = BASE64_STANDARD.encode(sig_a.to_bytes());
+        envelope.signatures[1].sig = BASE64_STANDARD.encode(sig_b.to_bytes());
     }
 
     #[test]
@@ -1458,9 +1480,6 @@ mod tests {
 
     #[test]
     fn predicate_tool_name_must_match_resolved_receipt() {
-        use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-        use base64::Engine as _;
-
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -1470,7 +1489,12 @@ mod tests {
             fixture(&kp_a, &kp_b, &receipt, now_ms);
         let (mut statement, _) = envelope.decode_statement().unwrap();
         statement.predicate.tool_name = "file_write".to_string();
-        envelope.payload = BASE64_STANDARD.encode(statement.canonical_bytes().unwrap());
+        resign_envelope(
+            &mut envelope,
+            &kp_a,
+            &kp_b,
+            &statement.canonical_bytes().unwrap(),
+        );
         let cfg = config(
             &peers,
             &store,
@@ -1481,15 +1505,12 @@ mod tests {
         );
 
         let err = verify_bilateral_cosign_invocation(&envelope, &cfg).unwrap_err();
-        assert_eq!(err.code(), "subject.digest_mismatch");
+        assert_eq!(err.code(), "predicate.schema_invalid");
         assert!(err.to_string().contains("tool_name"));
     }
 
     #[test]
     fn predicate_embedded_receipt_json_must_match_resolved_receipt() {
-        use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-        use base64::Engine as _;
-
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -1502,7 +1523,12 @@ mod tests {
             serde_json::from_str(&statement.predicate.receipt_canonical_json).unwrap();
         embedded.capability_id = "different-capability".to_string();
         statement.predicate.receipt_canonical_json = canonical_json_string(&embedded).unwrap();
-        envelope.payload = BASE64_STANDARD.encode(statement.canonical_bytes().unwrap());
+        resign_envelope(
+            &mut envelope,
+            &kp_a,
+            &kp_b,
+            &statement.canonical_bytes().unwrap(),
+        );
         let cfg = config(
             &peers,
             &store,
@@ -1514,7 +1540,7 @@ mod tests {
 
         let err = verify_bilateral_cosign_invocation(&envelope, &cfg).unwrap_err();
         assert_eq!(err.code(), "subject.digest_mismatch");
-        assert!(err.to_string().contains("embedded receipt JSON"));
+        assert!(err.to_string().contains("embedded receipt"));
     }
 
     #[test]
