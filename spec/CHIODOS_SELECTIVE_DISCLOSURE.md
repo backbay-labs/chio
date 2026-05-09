@@ -510,6 +510,8 @@ No workspace member implements this full target contract in the current
 branch. The only shipped code is the `chio-federation` `bbs-stub`
 feature, which is a SHA-256 commitment placeholder for projection and
 audit-view workflow tests.
+The stub verifier rejects duplicate or out-of-range disclosed indices before
+recomputing the placeholder commitment.
 
 A future complete implementation should live in a dedicated workspace
 member beside [chio-attest-verify](../crates/chio-attest-verify/src/lib.rs)
