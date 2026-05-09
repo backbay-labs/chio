@@ -1,0 +1,18 @@
+# Machine-readable non-claim boundary for Lane C C5.
+#
+# C5 selective disclosure is future work outside current Trajectory 5 closure.
+# This file remains for legacy checker and review-link compatibility only.
+# If a future branch changes status to evidence_complete, the checker must
+# require real implementation and fixture evidence before any proof claim can
+# pass.
+
+[c5_selective_disclosure]
+status = "deferred_to_v0_2"
+deferral_target = "v0.2.0-bounded-chiodome"
+reason = "No chio-zk-receipts crate, no zk or bbs-stub selective-disclosure feature, no BBS+/AnonCreds dependency evidence, and no auditor-view proof fixtures exist in this branch."
+spec_authority = "spec/CHIODOS_SELECTIVE_DISCLOSURE.md"
+implementation_crate = "deferred"
+feature = "deferred"
+proof_path = "deferred"
+predicate_failed_path = "deferred"
+release_claim_allowed = "no"
