@@ -160,11 +160,10 @@ fn decode_hx_field(field: &str, raw: &str) -> Result<Vec<u8>, SelectiveDisclosur
             reason: "empty string is not a valid 32-byte SHA-256 hex digest".to_string(),
         });
     }
-    let bytes =
-        hex::decode(raw).map_err(|e| SelectiveDisclosureError::MalformedHexField {
-            field: field.to_string(),
-            reason: format!("not valid hex: {e}"),
-        })?;
+    let bytes = hex::decode(raw).map_err(|e| SelectiveDisclosureError::MalformedHexField {
+        field: field.to_string(),
+        reason: format!("not valid hex: {e}"),
+    })?;
     if bytes.len() != 32 {
         return Err(SelectiveDisclosureError::MalformedHexField {
             field: field.to_string(),
@@ -795,9 +794,9 @@ mod tests {
         match result {
             Err(SelectiveDisclosureError::DisclosedEncodingMismatch(_)) => {}
             Err(SelectiveDisclosureError::ProofBindingFailed) => {}
-            other => panic!(
-                "expected DisclosedEncodingMismatch or ProofBindingFailed, got {other:?}"
-            ),
+            other => {
+                panic!("expected DisclosedEncodingMismatch or ProofBindingFailed, got {other:?}")
+            }
         }
     }
 }

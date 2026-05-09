@@ -208,10 +208,7 @@ fn receipt_explain_bilateral_renders_dual_dsse_and_inspection_trace() {
     // Cryptographic verification steps are `not-verified` (honest about
     // the absence of signature verification in the CLI). Other deferred
     // steps remain `bounded` (out-of-scope, not just unverified).
-    let must_be_not_verified = [
-        "ed25519_verify_org_a_pae",
-        "ed25519_verify_org_b_pae",
-    ];
+    let must_be_not_verified = ["ed25519_verify_org_a_pae", "ed25519_verify_org_b_pae"];
     for name in must_be_not_verified {
         let entry = steps
             .iter()

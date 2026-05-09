@@ -237,8 +237,8 @@ fn audit_view_rejects_disclosed_encoding_substitution() {
     // into parsing UTF-8 bytes as a hex digest.
     let kp = Keypair::generate();
     let body = fixture_body(&kp);
-    let mut view = project_audit_view(&body, &DisclosureSet(vec![1, 11]))
-        .expect("projection must succeed");
+    let mut view =
+        project_audit_view(&body, &DisclosureSet(vec![1, 11])).expect("projection must succeed");
     // capability_id is encoded as S (utf-8 bytes). Forge it to claim
     // hex encoding instead.
     let target = view
@@ -256,9 +256,7 @@ fn audit_view_rejects_disclosed_encoding_substitution() {
     match result {
         Err(SelectiveDisclosureError::DisclosedEncodingMismatch(_)) => {}
         Err(SelectiveDisclosureError::ProofBindingFailed) => {}
-        other => panic!(
-            "expected DisclosedEncodingMismatch or ProofBindingFailed, got {other:?}"
-        ),
+        other => panic!("expected DisclosedEncodingMismatch or ProofBindingFailed, got {other:?}"),
     }
 }
 
