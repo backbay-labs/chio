@@ -49,6 +49,9 @@ pub const EMERGENCY_STOP_DENY_REASON: &str = "kernel emergency stop active";
 thread_local! {
     static RECEIPT_TENANT_ID_SCOPE: std::cell::RefCell<Option<String>> =
         const { std::cell::RefCell::new(None) };
+    static RECEIPT_FEDERATION_ADMISSION_SCOPE:
+        std::cell::RefCell<Option<ReceiptFederationAdmission>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// Guard returned by [`scope_receipt_tenant_id`]. Restores the previously
@@ -81,6 +84,42 @@ pub(crate) fn scope_receipt_tenant_id(tenant_id: Option<String>) -> ScopedReceip
 /// body picks up the tag without rewiring every builder signature.
 pub(crate) fn current_scoped_receipt_tenant_id() -> Option<String> {
     RECEIPT_TENANT_ID_SCOPE.with(|slot| slot.borrow().clone())
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ReceiptFederationAdmission {
+    pub remote_kernel_id: Option<String>,
+    pub receipt_version: KernelReceiptVersion,
+    pub peer: Option<chio_federation::FederationPeer>,
+}
+
+/// Guard returned by [`scope_receipt_federation_admission`]. Restores the
+/// previously active admission snapshot when dropped.
+pub(crate) struct ScopedReceiptFederationAdmission {
+    previous: Option<ReceiptFederationAdmission>,
+}
+
+impl Drop for ScopedReceiptFederationAdmission {
+    fn drop(&mut self) {
+        let previous = self.previous.take();
+        RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| {
+            *slot.borrow_mut() = previous;
+        });
+    }
+}
+
+/// Install the receipt-version and peer-key decision made at admission time.
+/// Persistence and federation cosigning must use this snapshot rather than
+/// re-resolving freshness after the tool has already produced side effects.
+pub(crate) fn scope_receipt_federation_admission(
+    admission: Option<ReceiptFederationAdmission>,
+) -> ScopedReceiptFederationAdmission {
+    let previous = RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| slot.replace(admission));
+    ScopedReceiptFederationAdmission { previous }
+}
+
+pub(crate) fn current_scoped_receipt_federation_admission() -> Option<ReceiptFederationAdmission> {
+    RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| slot.borrow().clone())
 }
 
 /// Extract tenant_id from a session's authenticated auth context.
@@ -288,6 +327,29 @@ impl StructuredErrorReport {
     }
 }
 
+/// The current variants enumerate the spec-MUST cases that the kernel
+/// fails closed on. Additional variants may be added as further
+/// downgrade modes are wired into the spec; the enum is non-exhaustive
+/// from the public API perspective so a future variant does not break
+/// downstream `match` arms compiled against an older version.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum NegotiationDowngradeReason {
+    /// The dispatch named a federation peer, but no matching peer is
+    /// pinned fresh (the peer is either stale or has never been pinned).
+    /// Spec PROTOCOL.md section 6 lines 737-741 (post-B2 normative MUST)
+    /// requires the kernel to fail closed instead of silently downgrading
+    /// to a v1 receipt.
+    #[error(
+        "named federation peer {remote_kernel_id} is not pinned fresh \
+         (stale or never-pinned)"
+    )]
+    PeerNotPinnedFresh {
+        /// The `remote_kernel_id` carried on the request.
+        remote_kernel_id: String,
+    },
+}
+
 /// Errors that can occur during kernel operations.
 #[derive(Debug, thiserror::Error)]
 pub enum KernelError {
@@ -448,6 +510,29 @@ pub enum KernelError {
     /// expired, or replayed).
     #[error("approval rejected: {0}")]
     ApprovalRejected(String),
+
+    /// receipt for a request that named a federation peer expected to
+    /// be v2-capable, but the peer-pin freshness check ruled the
+    /// negotiated v2 receipt unattainable. Per PROTOCOL.md section 6
+    /// rather than silently downgrade to a v1 receipt.
+    ///
+    /// Enforcement site:
+    /// `crates/chio-kernel/src/kernel/mod.rs:kernel_receipt_version_for_remote`.
+    #[error(
+        "receipt negotiation downgrade rejected: expected {expected:?}, \
+         actual {actual:?}, reason: {reason}"
+    )]
+    ReceiptNegotiationDowngrade {
+        /// The receipt version the kernel would prefer for this dispatch
+        /// (typically `V2BodyHash`).
+        expected: KernelReceiptVersion,
+        /// The receipt version the legacy warn-and-downgrade path would
+        /// have selected (typically `V1Legacy`).
+        actual: KernelReceiptVersion,
+        /// Structured reason describing why the v2 negotiation cannot be
+        /// honored.
+        reason: NegotiationDowngradeReason,
+    },
 
     /// The sync `evaluate_tool_call` path was invoked from a context
     /// where the only available Tokio runtime is a current-thread
@@ -729,6 +814,20 @@ impl KernelError {
                 "CHIO-KERNEL-APPROVAL-REJECTED",
                 serde_json::json!({ "reason": reason }),
                 "Obtain a fresh approval token bound to this exact request and retry once a human approver has signed it.",
+            ),
+            Self::ReceiptNegotiationDowngrade {
+                expected,
+                actual,
+                reason,
+            } => self.report_with_context(
+                "CHIO-KERNEL-RECEIPT-NEGOTIATION-DOWNGRADE",
+                serde_json::json!({
+                    "expected": format!("{expected:?}"),
+                    "actual": format!("{actual:?}"),
+                    "reason": reason.to_string(),
+                }),
+                "Re-pin the named federation peer with a fresh handshake before retrying, \
+                 or route the request without naming a remote so the kernel-level default applies.",
             ),
             Self::SyncBridgeIncompatibleWithCurrentThreadRuntime => self.report_with_context(
                 "CHIO-KERNEL-SYNC-BRIDGE-INCOMPATIBLE",
@@ -1156,8 +1255,11 @@ pub struct ChioKernel {
     budget_registry: Mutex<chio_kernel_core::InMemoryBudgetRegistry>,
     /// Defaults to `true` so a freshly-constructed kernel that has not
     /// yet observed peer feature bitsets still mints v2 receipts.
-    /// Operators that need the previous v1-only behavior call
-    /// [`ChioKernel::set_receipt_v2_default`] with `false`.
+    /// Release load-bearing paths must leave this enabled. Operators
+    /// that need the previous v1-only behavior may call
+    /// [`ChioKernel::set_receipt_v2_default`] with `false`, but that is
+    /// a compatibility downgrade only and named v2 peers still fail
+    /// closed through negotiation.
     kernel_receipt_v2_default: AtomicBool,
     receipt_v2_replay: Mutex<chio_core::receipt::ReceiptV2ReplaySet>,
     receipt_v2_dag_ordinal: AtomicU64,
@@ -1581,6 +1683,11 @@ impl ChioKernel {
         }
     }
 
+    /// Set the local no-profile receipt default.
+    ///
+    /// This is not a release safety valve for v2 persistence. Negotiated
+    /// v2 peers still require v2 receipts, and persistence failure on a
+    /// v2-minting path aborts before the legacy fallback is appended.
     pub fn set_receipt_v2_default(&self, accepts_v2: bool) {
         self.kernel_receipt_v2_default
             .store(accepts_v2, Ordering::SeqCst);
@@ -1591,34 +1698,79 @@ impl ChioKernel {
         self.kernel_receipt_v2_default.load(Ordering::SeqCst)
     }
 
+    /// Resolve and snapshot the receipt-version decision at the admission
+    /// boundary. The returned snapshot must be carried through receipt
+    /// persistence and federation cosigning; persistence must not re-resolve
+    /// peer freshness after the tool has already executed.
+    pub(crate) fn kernel_receipt_admission_for_remote(
+        &self,
+        remote_kernel_id: Option<&str>,
+        now: u64,
+    ) -> Result<ReceiptFederationAdmission, KernelError> {
+        if let Some(remote) = remote_kernel_id {
+            if let Some(peer) = self.federation_peer(remote, now) {
+                let receipt_version = KernelReceiptVersion::from_capabilities(&peer.capabilities);
+                return Ok(ReceiptFederationAdmission {
+                    remote_kernel_id: Some(remote.to_string()),
+                    receipt_version,
+                    peer: Some(peer),
+                });
+            }
+            // PROTOCOL.md section 6 (normative MUST): when a federation
+            // peer is named but is not pinned fresh, the kernel MUST
+            // reject the dispatch rather than warn-and-downgrade to v1.
+            //
+            // `expected` reports the kernel's CONFIGURED default, not a
+            // hardcoded `V2BodyHash`. On a v1-default kernel both
+            // `expected` and `actual` are `V1Legacy`, which is the
+            // accurate diagnostic - the kernel still rejects the
+            // dispatch because the peer was never pinned fresh, and
+            // operator observability sees the truthful version pair
+            // instead of a fictitious V2 expectation.
+            let expected = if self.receipt_v2_default() {
+                KernelReceiptVersion::V2BodyHash
+            } else {
+                KernelReceiptVersion::V1Legacy
+            };
+            return Err(KernelError::ReceiptNegotiationDowngrade {
+                expected,
+                actual: KernelReceiptVersion::V1Legacy,
+                reason: NegotiationDowngradeReason::PeerNotPinnedFresh {
+                    remote_kernel_id: remote.to_string(),
+                },
+            });
+        }
+        let receipt_version = if self.receipt_v2_default() {
+            KernelReceiptVersion::V2BodyHash
+        } else {
+            KernelReceiptVersion::V1Legacy
+        };
+        Ok(ReceiptFederationAdmission {
+            remote_kernel_id: None,
+            receipt_version,
+            peer: None,
+        })
+    }
+
     /// The resolution order is:
-    /// 1. If a federated peer is named on the request, the peer's
-    ///    negotiated `accepts_receipt_v2` feature flag wins.
-    /// 2. Otherwise, the kernel-level default
-    ///    (`kernel_receipt_v2_default`) supplies the answer.
+    /// 1. If a federated peer is named on the request and a matching
+    ///    peer is pinned fresh, the peer's negotiated
+    ///    `accepts_receipt_v2` feature flag wins.
+    /// 2. If a federated peer is named but no matching peer is pinned
+    ///    fresh (stale or never-pinned), the kernel **fails closed**
+    ///    with [`KernelError::ReceiptNegotiationDowngrade`]. PROTOCOL.md
+    ///    section 6 (normative MUST) requires the kernel to reject the
+    ///    dispatch rather than silently downgrade a v2-expected request
+    ///    to v1.
+    /// 3. Otherwise (no remote named), the kernel-level default
+    ///    ([`Self::receipt_v2_default`]) supplies the answer.
     pub fn kernel_receipt_version_for_remote(
         &self,
         remote_kernel_id: Option<&str>,
         now: u64,
-    ) -> KernelReceiptVersion {
-        if let Some(remote) = remote_kernel_id {
-            if let Some(peer) = self.federation_peer(remote, now) {
-                return KernelReceiptVersion::from_capabilities(&peer.capabilities);
-            }
-            // Named peer that isn't pinned fresh: fall back to v1 with
-            // a warning log so operators see the negotiation downgrade.
-            tracing::warn!(
-                target: "chio_kernel.receipt_v2",
-                remote_kernel_id = remote,
-                "v2 receipt minting falling back to v1 because federation peer is not pinned fresh"
-            );
-            return KernelReceiptVersion::V1Legacy;
-        }
-        if self.receipt_v2_default() {
-            KernelReceiptVersion::V2BodyHash
-        } else {
-            KernelReceiptVersion::V1Legacy
-        }
+    ) -> Result<KernelReceiptVersion, KernelError> {
+        self.kernel_receipt_admission_for_remote(remote_kernel_id, now)
+            .map(|admission| admission.receipt_version)
     }
 
     pub fn contains_chio_receipt_v2_body_hash(&self, body_hash: &str) -> bool {
@@ -2095,20 +2247,23 @@ impl ChioKernel {
     /// Phase 20.3 post-sign hook. Invoked immediately after
     /// [`Self::build_and_sign_receipt`] so the local (tool-host)
     /// signature has already landed in the `ChioReceipt`. When
-    /// `federated_origin_kernel_id` is set and the peer is pinned fresh,
-    /// this dispatches the receipt to the cosigner, assembles a
-    /// [`chio_federation::DualSignedReceipt`], and stashes it for
-    /// retrieval via [`Self::dual_signed_receipt`].
+    /// `federated_origin_kernel_id` is set and the admission-time peer
+    /// snapshot is available, this dispatches the receipt to the
+    /// cosigner, assembles a [`chio_federation::DualSignedReceipt`],
+    /// and stashes it for retrieval via [`Self::dual_signed_receipt`].
     ///
-    /// Fail-closed: any error from the peer lookup or the cosigner is
+    /// Fail-closed: any error from peer resolution or the cosigner is
     /// surfaced as a [`KernelError::Internal`] so operators see the
     /// federation drift rather than silently shipping a receipt without
-    /// the remote signature. Non-federated requests (`None` origin) are
-    /// a no-op.
+    /// the remote signature. Production evaluate paths pass the
+    /// admission-time snapshot; legacy direct record callers still get a
+    /// fresh-peer fallback. Non-federated requests (`None` origin) are a
+    /// no-op.
     pub(crate) fn apply_federation_cosign(
         &self,
         request: &crate::runtime::ToolCallRequest,
         receipt: &chio_core::receipt::ChioReceipt,
+        admitted_peer: Option<&chio_federation::FederationPeer>,
     ) -> Result<(), KernelError> {
         let Some(origin_kernel_id) = request.federated_origin_kernel_id.as_ref() else {
             return Ok(());
@@ -2119,11 +2274,16 @@ impl ChioKernel {
                 request_id = request.request_id,
             )));
         };
-        let now = current_unix_timestamp();
-        let Some(peer) = self.federation_peer(origin_kernel_id, now) else {
-            return Err(KernelError::Internal(format!(
-                "federation peer {origin_kernel_id} is not pinned or has gone stale"
-            )));
+        let peer = match admitted_peer {
+            Some(peer) if peer.kernel_id == *origin_kernel_id => peer.clone(),
+            _ => {
+                let now = current_unix_timestamp();
+                self.federation_peer(origin_kernel_id, now).ok_or_else(|| {
+                    KernelError::Internal(format!(
+                        "federation peer {origin_kernel_id} is not pinned fresh and no admission-time peer snapshot is in scope"
+                    ))
+                })?
+            }
         };
 
         let local_kernel_id = self.federation_local_kernel_id();
@@ -2882,9 +3042,40 @@ impl ChioKernel {
 
         let now = current_unix_timestamp();
 
+        // Receipt-version negotiation is a TRUST-BOUNDARY admission check
+        // that must run BEFORE any dispatch path AND before the
+        // emergency-stop deny helper. The admission snapshot is scoped for
+        // every receipt builder below so persistence and federation cosign
+        // use the peer/version/key material admitted before side effects.
+        // PROTOCOL.md section 6 normative MUST.
+        let receipt_admission = match self
+            .kernel_receipt_admission_for_remote(request.federated_origin_kernel_id.as_deref(), now)
+        {
+            Ok(admission) => admission,
+            Err(error) => {
+                let msg = error.to_string();
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&msg),
+                    "receipt-version negotiation failed pre-dispatch"
+                );
+                return self.build_negotiation_failclosed_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
+                );
+            }
+        };
+        let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
+
         // Phase 1.4 emergency kill switch: every evaluate path checks the flag
         // BEFORE capability validation, guard evaluation, or budget mutation so
-        // a stopped kernel cannot be coerced into doing any work.
+        // a stopped kernel cannot be coerced into doing any work. The
+        // negotiation gate above means the federation lookup inside
+        // `build_deny_response_with_metadata` is now safe to run for
+        // emergency-stopped requests.
         if self.is_emergency_stopped() {
             warn!(
                 request_id = %request.request_id,
@@ -3386,6 +3577,28 @@ impl ChioKernel {
         let _tenant_scope = scope_receipt_tenant_id(tenant_id);
 
         let now = current_unix_timestamp();
+
+        // The pre-dispatch receipt-version admission gate must run on the
+        // nested-flow path too. The admission snapshot is scoped for the
+        // receipt builders below so a peer that expires during nested tool
+        // execution does not change the already-admitted version or key.
+        let receipt_admission = match self
+            .kernel_receipt_admission_for_remote(request.federated_origin_kernel_id.as_deref(), now)
+        {
+            Ok(admission) => admission,
+            Err(error) => {
+                let msg = error.to_string();
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&msg),
+                    "receipt-version negotiation failed pre-dispatch (nested flow)"
+                );
+                return self.build_negotiation_failclosed_deny_response_with_metadata(
+                    request, &msg, now, None, None,
+                );
+            }
+        };
+        let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
 
         // Phase 1.4 emergency kill switch: the nested-flow path also deny-fast
         // so sampling/elicitation-bearing tool calls cannot slip past while

@@ -8758,7 +8758,8 @@ fn hosted_named_remote_without_fresh_peer_fails_before_dispatch() {
     let fixture = make_sibling_sum_monetary_fixture("missing-remote-peer");
     let kernel = fixture.kernel;
 
-    let result = kernel.evaluate_tool_call_blocking(&ToolCallRequest {
+    let response = kernel
+        .evaluate_tool_call_blocking(&ToolCallRequest {
             request_id: "req-missing-remote-peer".to_string(),
             capability: fixture.child_a.clone(),
             tool_name: "compute".to_string(),
@@ -8770,15 +8771,20 @@ fn hosted_named_remote_without_fresh_peer_fails_before_dispatch() {
             approval_token: None,
             model_metadata: None,
             federated_origin_kernel_id: Some("stale-or-missing-peer".to_string()),
-        });
+        })
+        .expect("missing peer must produce a structured Deny response");
 
-    let err = result.expect_err("missing peer should fail closed before dispatch can allow");
+    // The kernel returns a signed Deny ToolCallResponse for the
+    // named-peer-not-pinned-fresh case BEFORE dispatch, instead of
+    // propagating an Err out of `evaluate_tool_call_blocking`. The Err
+    // propagation form was unsafe: callers could miss it and the
+    // receipt-store invariant would not be satisfied.
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.unwrap_or_default();
     assert!(
-        err.to_string().contains("federation cosigner missing")
-            || err
-                .to_string()
-                .contains("no fresh federation peer negotiation profile"),
-        "unexpected error: {err}"
+        reason.contains("receipt negotiation downgrade")
+            || reason.contains("not pinned fresh"),
+        "unexpected deny reason: {reason}"
     );
 
     let _ = std::fs::remove_file(fixture.path);

@@ -773,10 +773,29 @@ now mints v2 receipts at production mint time when peer negotiation selects v2.
   computed over the typed `ReceiptV2SigningBody { bodyHash, body }` wrapper.
   Either form of mismatch (wrong `bodyHash` field, signature over the wrong
   body) fails closed. This matches the T1.2 audit closure.
-- **Negotiation downgrade.** When the peer profile is v1-only or when no
-  federation peer is pinned fresh for the request, the kernel falls back to
-  minting only the v1 UUIDv7 receipt. The downgrade emits a structured
-  warning so operators can see receipt-version regressions in observability.
+- **Negotiation downgrade (post-release work-B2 hardening).**
+  - When the peer profile advertises only v1 (no `ACCEPTS_RECEIPT_V2`) and
+    is pinned fresh, the kernel mints only the v1 UUIDv7 receipt. This is
+    the spec-conformant v1-only profile; advisory dispatches that name no
+    federation peer remain governed by the kernel-level
+    `kernel_receipt_v2_default` setting.
+  - When the request names a federation peer but no matching peer is pinned
+    fresh for that `remote_kernel_id` (whether stale or never-pinned), the
+    kernel MUST reject the dispatch with a typed
+    `KernelError::ReceiptNegotiationDowngrade` whose
+    `NegotiationDowngradeReason` enumerates the failure mode (currently
+    `PeerNotPinnedFresh`). The kernel MUST NOT mint a v1 receipt as a
+    silent fallback. This is a tightening introduced by release work-B2: it adds a
+    new normative MUST to a section that previously contained only
+    descriptive prose ("the kernel falls back"). The "stale or
+    never-pinned" enumeration is part of the MUST so a future
+    implementation cannot read "not pinned fresh" as "stale only" and
+    re-introduce a bypass for the never-pinned path.
+  - The pre-B2 warn-and-continue behaviour (a `tracing::warn!` event
+    followed by a v1 fallback) is removed. Operators retain the
+    structured `KernelError::ReceiptNegotiationDowngrade` as the
+    observability signal; the dispatch fails closed instead of silently
+    minting a downgraded receipt.
 
 ### 6.1 Decisions
 
@@ -1147,11 +1166,14 @@ The repository ships these primary runtime entrypoints:
 These surfaces intentionally share the same core receipt, capability,
 revocation, and policy primitives rather than defining separate trust models.
 
-`chio receipt explain <receipt-id>` accepts legacy receipt aliases and v2
-`bodyHash` values. It renders the signed decision, policy hash, guard evidence,
-parent receipt set, batch witness reference when present, and a repair hint for
-denials or incomplete receipts. It is a local CLI narrator, not a replacement
-for signature verification.
+`chio receipt explain <receipt-id>` accepts legacy receipt aliases from the
+local receipt DB or control plane. v2 `bodyHash` explanation is supported only
+when the full v2 receipt JSON is supplied with `--input-file`; this CLI path
+does not yet implement persisted v2 DB or control-plane lookup by `bodyHash`.
+It renders the signed decision, policy hash, guard evidence, parent receipt
+set, batch witness reference when present, and a repair hint for denials or
+incomplete receipts. It is a local CLI narrator, not a replacement for
+signature verification.
 
 ### 8.2 MCP Compatibility
 
