@@ -6,8 +6,8 @@
 //! 1. The kernel comes up with its classical Ed25519 keypair already
 //!    materialized. No PQ key has been touched.
 //! 2. The kernel requests its own TEE quote from the surrounding
-//!    [`chio-tee`](../../../chio-tee) container (trajectory-1 M10) and feeds
-//!    the bytes into a verifier-side [`KernelSelfQuoteVerifier`]. The quote
+//!    [`chio-tee`](../../../chio-tee) container and feeds the bytes into a
+//!    verifier-side [`KernelSelfQuoteVerifier`]. The quote
 //!    MUST commit to `expect_report_data(kernel_classical_pk,
 //!    receipt_root_genesis)` where `receipt_root_genesis` is the all-zero
 //!    32-byte sentinel `[0u8; 32]` representing the empty receipt-tree root
@@ -169,9 +169,8 @@ pub enum KernelBootError {
 ///   the [`MlDsa65Backend`](chio_core_types::pq::MlDsa65Backend).
 ///
 /// `quote_bytes` is the on-the-wire self-quote produced by the TEE
-/// container (trajectory-1 M10). For tests, an empty slice combined
-/// with a mock verifier is fine; for production the bytes come from
-/// `chio-tee`.
+/// container. For tests, an empty slice combined with a mock verifier
+/// is fine; for production the bytes come from `chio-tee`.
 ///
 /// # Errors
 ///
@@ -191,7 +190,7 @@ pub fn load_kernel_signing_backend_after_self_quote(
     if !crypto_floor.allows_hybrid() {
         // Classical-only deployment: no PQ key to gate. Defer to the
         // existing helper so the classical path stays byte-identical to
-        // the trajectory-1 deployments that have not opted in.
+        // deployments that have not opted in.
         return Ok(kernel_signing_backend(
             crypto_floor,
             classical_keypair,

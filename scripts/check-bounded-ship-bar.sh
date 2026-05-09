@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Trajectory 5 assurance checker.
+# Bounded assurance checker.
 #
 # Verifies the claim-by-claim machine-readable signals enumerated in
-# `.planning/trajectory-5/SHIP-BAR-TRACKER.md`. This script is the
+# the planning-owned ship-bar tracker. This script is the
 # evidence close gate for the assurance matrix. It is not a product
 # release or tag gate.
 #
-# Planning consistency lives under `.planning/trajectory-5/`. This root
+# Planning consistency lives under the planning-owned tracker. This root
 # checker stays artifact-only: evidence presence and shape for Lane B
 # integration, Lane A assurance, and Lane C canary.
 #

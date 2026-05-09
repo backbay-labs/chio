@@ -15,7 +15,7 @@ Each checksum index is ASCII text:
 # slsa_provenance chio-<source_sha>.intoto.jsonl
 # rekor_witness search https://search.sigstore.dev for the SLSA intoto payload after slsa.yml publishes provenance
 # rekor_tlog_scope SLSA provenance plus checksum-index cosign signature
-# reproducible_scope linux x86_64 only for trajectory-3 M03
+# reproducible_scope linux x86_64 release target only
 # format: sha256 two-space filename
 <sha256>  <filename>
 ```

@@ -3,8 +3,9 @@
 Evidence cross-reference: Kani enrolled-harness coverage for
 `chio-anchor` and `chio-weights`.
 
-This file records the live `cargo kani` outputs for every enrolled harness in `.kani/harnesses.toml` (PR #607). Without
-this evidence the harnesses would be enrolled-but-never-run.
+This file records the live `cargo kani` outputs for every enrolled harness in
+`.kani/harnesses.toml`. Without this evidence the harnesses would be
+enrolled-but-never-run.
 
 ## Scope boundary
 
@@ -12,8 +13,8 @@ These are bounded harness results, not an implementation-complete proof
 of `chio-anchor` or `chio-weights`. Each successful row proves only the
 named harness under the listed Kani unwind and lane constraints.
 MODEL-ONLY harnesses prove their local surrogate algebra, not the full
-production implementation. The nightly-lane row remains unproven at
-PR-tier until its dedicated lane completes.
+production implementation. The nightly-lane row remains unproven at the
+short-run tier until its dedicated lane completes.
 
 **Environment**
 
@@ -23,7 +24,7 @@ PR-tier until its dedicated lane completes.
 | Host           | macOS aarch64 (Apple silicon)        |
 | cargo-kani     | 0.67.0                               |
 | Rust toolchain | nightly-2025-11-21 (kani-pinned)     |
-| Branch         | PR branch   |
+| Branch         | evidence branch |
 | HEAD at run    | (filled in below per-harness)        |
 
 Each block records the command, `VERIFICATION:` line, total checks,
@@ -45,16 +46,16 @@ Manual Harness Summary:
 Complete - 1 successfully verified harnesses, 0 failures, 1 total.
 
 === chio-anchor :: public_ensure_anchor_operation_allowed_fail_closed ===
-Unwinding loop _RNvNtNtCs2fBbJ0VEDWe_4core3str5count14do_count_chars.0 iteration 6 file /Users/runner/.rustup/toolchains/nightly-2025-11-21-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/str/count.rs line 82 column 13 function core::str::count::do_count_chars thread 0
-aborting path on assume(false) at file /Users/runner/work/kani/kani/library/kani/src/lib.rs line 57 column 1 function kani::mem::cbmc::same_allocation thread 0
-Unwinding loop _RNvNtNtCs2fBbJ0VEDWe_4core3str5count14do_count_chars.0 iteration 7 file /Users/runner/.rustup/toolchains/nightly-2025-11-21-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/str/count.rs line 82 column 13 function core::str::count::do_count_chars thread 0
-aborting path on assume(false) at file /Users/runner/work/kani/kani/library/kani/src/lib.rs line 57 column 1 function kani::mem::cbmc::same_allocation thread 0
-Not unwinding loop _RNvNtNtCs2fBbJ0VEDWe_4core3str5count14do_count_chars.0 iteration 8 file /Users/runner/.rustup/toolchains/nightly-2025-11-21-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/str/count.rs line 82 column 13 function core::str::count::do_count_chars thread 0
-Not unwinding loop _RNvNtNtCs2fBbJ0VEDWe_4core3str5count14do_count_chars.1 iteration 8 file /Users/runner/.rustup/toolchains/nightly-2025-11-21-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/str/count.rs line 81 column 9 function core::str::count::do_count_chars thread 0
-Not unwinding loop _RNvNtNtCs2fBbJ0VEDWe_4core3str5count14do_count_chars.2 iteration 8 file /Users/runner/.rustup/toolchains/nightly-2025-11-21-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/str/count.rs line 75 column 5 function core::str::count::do_count_chars thread 0
-aborting path on assume(false) at file /Users/runner/work/kani/kani/library/kani_core/src/models.rs line 176 column 17 function <usize as kani::rustc_intrinsics::ToISize>::to_isize thread 0
-aborting path on assume(false) at file /Users/runner/work/kani/kani/library/kani/src/lib.rs line 57 column 1 function <usize as kani::rustc_intrinsics::ToISize>::to_isize thread 0
-aborting path on assume(false) at file /Users/runner/work/kani/kani/library/kani/src/lib.rs line 57 column 1 function <usize as kani::rustc_intrinsics::ToISize>::to_isize thread 0
+Unwinding loop _RNvNtNtCs2fBbJ0VEDWe_4core3str5count14do_count_chars.0 iteration 6 file <rust-src>/core/src/str/count.rs line 82 column 13 function core::str::count::do_count_chars thread 0
+aborting path on assume(false) at file <kani>src/lib.rs line 57 column 1 function kani::mem::cbmc::same_allocation thread 0
+Unwinding loop _RNvNtNtCs2fBbJ0VEDWe_4core3str5count14do_count_chars.0 iteration 7 file <rust-src>/core/src/str/count.rs line 82 column 13 function core::str::count::do_count_chars thread 0
+aborting path on assume(false) at file <kani>src/lib.rs line 57 column 1 function kani::mem::cbmc::same_allocation thread 0
+Not unwinding loop _RNvNtNtCs2fBbJ0VEDWe_4core3str5count14do_count_chars.0 iteration 8 file <rust-src>/core/src/str/count.rs line 82 column 13 function core::str::count::do_count_chars thread 0
+Not unwinding loop _RNvNtNtCs2fBbJ0VEDWe_4core3str5count14do_count_chars.1 iteration 8 file <rust-src>/core/src/str/count.rs line 81 column 9 function core::str::count::do_count_chars thread 0
+Not unwinding loop _RNvNtNtCs2fBbJ0VEDWe_4core3str5count14do_count_chars.2 iteration 8 file <rust-src>/core/src/str/count.rs line 75 column 5 function core::str::count::do_count_chars thread 0
+aborting path on assume(false) at file <kani-core>src/models.rs line 176 column 17 function <usize as kani::rustc_intrinsics::ToISize>::to_isize thread 0
+aborting path on assume(false) at file <kani>src/lib.rs line 57 column 1 function <usize as kani::rustc_intrinsics::ToISize>::to_isize thread 0
+aborting path on assume(false) at file <kani>src/lib.rs line 57 column 1 function <usize as kani::rustc_intrinsics::ToISize>::to_isize thread 0
 
 === chio-anchor :: public_classify_anchor_lane_invariants ===
 

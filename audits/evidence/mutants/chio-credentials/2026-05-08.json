@@ -5,7 +5,7 @@
   "tool_version": "25.3.1",
   "test_scope": "workspace (additional_cargo_test_args from .cargo/mutants.toml: --workspace --exclude chio-cpp-kernel-ffi)",
   "examine_scope": "exclude-13-included-files",
-  "examine_scope_note": "PARTIAL -- crate uses include!() to fold 13 production files into lib.rs. cargo-mutants discovers source files via mod declarations only and does not see include!()d files as separate units. The 28 mutants here cover lib.rs (umbrella ~4 lines of top-level fns) and trust_tier.rs only. Decision-capable credential verification logic in the 13 uncovered files is OUTSIDE the mutation surface for this run. Restructuring include!() into mod declarations is trj6 follow-up; until then this baseline is PARTIAL and target satisfaction is NOT established at the crate level. See audits/evidence/mutation exclusion audit/exclude-audit.md Findings summary structural notes.",
+  "examine_scope_note": "PARTIAL -- crate uses include!() to fold 13 production files into lib.rs. cargo-mutants discovers source files via mod declarations only and does not see include!()d files as separate units. The 28 mutants here cover lib.rs (umbrella ~4 lines of top-level fns) and trust_tier.rs only. Decision-capable credential verification logic in the 13 uncovered files is OUTSIDE the mutation surface for this run. Restructuring include!() into mod declarations is future follow-up; until then this baseline is PARTIAL and target satisfaction is NOT established at the crate level. See audits/evidence/mutation exclusion audit/exclude-audit.md Findings summary structural notes.",
   "uncovered_files": [
     "crates/chio-credentials/src/artifact.rs",
     "crates/chio-credentials/src/passport.rs",

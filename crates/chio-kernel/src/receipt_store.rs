@@ -98,7 +98,7 @@ pub trait ReceiptStore: Send + Sync {
         false
     }
 
-    /// W2.1 Step 2: persist a v2 receipt keyed on `body_hash`.
+    /// Persist a v2 receipt keyed on `body_hash`.
     ///
     /// The replay store keys on `receipt.body_hash`. The optional
     /// `legacy_receipt_id_alias` is the kernel's UUIDv7 tooling alias

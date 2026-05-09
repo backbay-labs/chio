@@ -10,8 +10,8 @@ This directory holds the per-mutant cargo-mutants output for the
 |---|---|
 | Crate | `chio-policy` |
 | Date | 2026-05-08 |
-| Branch | `PR branch` (PR continuation of `PR branch`, PR #619) |
-| Base SHA | `7bc9fd0764f374ae252bf09bd873bbdf3192eb46` (PR #619 tip) |
+| Branch | evidence branch |
+| Base SHA | `7bc9fd0764f374ae252bf09bd873bbdf3192eb46` |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | ~3h 12m wall (interrupted by session budget) |
 | Run started | 2026-05-08T11:43:40Z |
@@ -33,9 +33,9 @@ The `--config audits/mutation/per-crate-configs/chio-policy.toml`
 override is necessary to scope the per-mutant test invocation to
 `--package chio-policy` rather than the full workspace. Rationale below.
 
-## Test-scope deviation from the chio-credentials run (PR #603)
+## Test-scope deviation from the chio-credentials run
 
-Same rationale as PR #619 (chio-attest-verify): the workspace test
+Same rationale as the chio-attest-verify package run: the workspace test
 harness contains a pre-existing failing test in `chio-acp-proxy`
 unrelated to chio-policy:
 
@@ -49,7 +49,7 @@ chio-acp-proxy::attestation_and_telemetry_tests::
 ```
 
 This failure exists on `main` at SHA `708c7bb33` and persists on the
-PR #619 base. If the chio-policy mutation run used the workspace test
+evidence base. If the chio-policy mutation run used the workspace test
 scope, every chio-policy mutant would be marked CAUGHT because the
 chio-acp-proxy assertion would always fail before the chio-policy
 mutation could be exercised. The kill rate would be ~100% but the

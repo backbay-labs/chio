@@ -23,7 +23,7 @@ rerun-after-merge follow-up (see "Open follow-ups" below).
 |---|---|
 | Crate | `chio-anchor` |
 | Date | 2026-05-08 |
-| Branch | `PR branch` |
+| Branch | evidence branch |
 | Base SHA | `708c7bb33df43594f5e76542b05fca7a56d9689e` (main baseline used for this run) |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | 60m 31s (capped; partial) |
@@ -56,11 +56,11 @@ filtering on the failing test.
 ## Test-scope deviation
 
 This run deviates from the workspace-scope chio-credentials baseline
-(PR #603) for two reasons:
+for two reasons:
 
 ### 1. Pre-existing chio-acp-proxy test failure
 
-Same root cause as the chio-attest-verify run (PR #619). The workspace
+Same root cause as the chio-attest-verify package run. The workspace
 test harness contains a pre-existing failing test
 `chio-acp-proxy::attestation_and_telemetry_tests::
 kernel_capability_checker_rejects_untrusted_and_tampered_tokens`
@@ -245,13 +245,13 @@ timeouts do NOT count as caught.
   3-of-6 update would weaken audit signal; will land once all six
   trust-boundary crates have measured baselines).
 
-## B3 (anchor-batch async-only) and A3 (Kani anchor harnesses) note
+## Anchor-batch and Kani anchor harness note
 
-PR #609 (B3 anchor-batch async-only) and PR #613 (Kani anchor
-harnesses) both touch chio-anchor and are not yet merged at the time
-of this run. This baseline measurement is against current main
-(commit `708c7bb33`), pre-B3 and pre-A3. Once B3 and A3 merge, the
-chio-anchor surface and test density change non-trivially. The kill
+The anchor-batch async-only branch and Kani anchor harness branch both
+touch chio-anchor and are not yet merged at the time of this run. This
+baseline measurement is against current main (commit `708c7bb33`),
+before those changes. Once they merge, the chio-anchor surface and test
+density change non-trivially. The kill
 rate in this baseline is therefore expected to *increase* on the
 post-merge rerun (more deterministic async-only paths, more Kani-
 constrained surfaces). The CI hosted-nightly will provide the

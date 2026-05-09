@@ -10,8 +10,8 @@ This directory holds the per-mutant cargo-mutants output for the
 |---|---|
 | Crate | `chio-attest-verify` |
 | Date | 2026-05-08 |
-| Branch | `PR branch` (PR continuation of `PR branch`, PR #603) |
-| Base SHA | `c7590b2603164a94c85d9fd3108909c8a290f289` (PR #603 tip) |
+| Branch | evidence branch |
+| Base SHA | `c7590b2603164a94c85d9fd3108909c8a290f289` |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | 41m 4s |
 | Run started | 2026-05-08T10:40:26Z |
@@ -31,9 +31,9 @@ The `--config audits/mutation/per-crate-configs/chio-attest-verify.toml` overrid
 to scope the per-mutant test invocation to `--package chio-attest-verify`
 rather than the full workspace. Rationale below.
 
-## Test-scope deviation from the chio-credentials run (PR #603)
+## Test-scope deviation from the chio-credentials run
 
-PR #603's `chio-credentials` baseline ran with the workspace
+The `chio-credentials` baseline ran with the workspace
 `.cargo/mutants.toml` (which sets
 `additional_cargo_test_args = ["--workspace", "--exclude", "chio-cpp-kernel-ffi"]`).
 That works for `chio-credentials` because its lib.rs mutations affect
@@ -135,7 +135,7 @@ and the run produced 0 timeouts.
 
 The pattern is: **`crates/chio-attest-verify/tests/sigstore_negative.rs`
 exists but is short (103 lines, see `tests/sigstore_negative.rs` line
-count in PR #603 evidence) and exercises only a small subset of the
+count in the chio-credentials evidence) and exercises only a small subset of the
 sigstore verification surface**. The surface that is genuinely
 exercised by the existing test:
 - `lib.rs::StaticTenantPolicyMap::from_verified` constructor

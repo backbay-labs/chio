@@ -19,7 +19,7 @@
 # The CI hosted-nightly remains the authoritative workspace-scope
 # measurement once those failures are resolved.
 #
-# This config mirrors the chio-attest-verify.toml pattern; see PR #619
+# This config mirrors the chio-attest-verify.toml pattern; see its
 # evidence README for the longer rationale.
 
 additional_cargo_test_args = [

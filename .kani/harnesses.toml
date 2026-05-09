@@ -37,7 +37,7 @@ schema = "chio.kani.multi-crate.v1"
 #   notes           string  Free-form comment for future maintainers.
 
 # ---------------------------------------------------------------------
-# chio-kernel-core (TRJ4 floor, originally landed)
+# chio-kernel-core baseline floor
 # ---------------------------------------------------------------------
 # Mirrors `[lanes.pr]` of formal/rust-verification/kani-public-harnesses.toml.
 # Per-harness wall-clock figures (Apple M-series, hot cargo cache,
@@ -234,7 +234,7 @@ lane = "pr"
 notes = "MODEL-ONLY: proves model_verify_quote algebra, NOT the production <TdxDcapVerifier as QuoteVerifier>::verify_quote impl. Live runtime regression: crates/chio-attest-verify/tests/tdx_integration.rs (ReportDataMismatch on intel-tdx-report-data-mismatch and intel-tdx-upper-half-tamper fixtures). See the model-only scope notes."
 
 # ---------------------------------------------------------------------
-# chio-anchor (Kani harness evidence, PR #613)
+# chio-anchor Kani harness evidence
 # ---------------------------------------------------------------------
 # Source: crates/chio-anchor/src/kani_public_harnesses.rs.
 # The four `public_*_emergency_controls_*`,
@@ -242,8 +242,8 @@ notes = "MODEL-ONLY: proves model_verify_quote algebra, NOT the production <TdxD
 # and `public_anchor_indexer_cursor_lag_*` harnesses prove invariants
 # of real `pub fn`s in `crates/chio-anchor/src/lib.rs`. The
 # `public_evaluate_witness_policy_advisory_fail_closed_model` harness
-# is a model harness over the witness-policy decision algebra (audit
-# P0-018); the docstring in the harness file is the source of truth on
+# is a model harness over the witness-policy decision algebra; the
+# docstring in the harness file is the source of truth on
 # what it covers and what Future hardening follow-up is required to extract the
 # decision logic into a production helper called by both runtime and
 # Kani.
@@ -294,7 +294,7 @@ features = ["kani"]
 notes = "MODEL-ONLY: proves the local model_evaluate_witness_policy decision algebra, not the production chio_anchor::witness::evaluate_witness_policy. Live runtime regression is checked separately by crates/chio-anchor/tests/witness_policy.rs and the chio-conformance negative tests. See the model-scope notes and harness module docstring for the future hardening follow-up."
 
 # ---------------------------------------------------------------------
-# chio-weights (Kani harness evidence, PR #613)
+# chio-weights Kani harness evidence
 # ---------------------------------------------------------------------
 # Source: crates/chio-weights/src/kani_public_harnesses.rs.
 # A `public_string_set_predicate_algebra` stanza was sketched in the

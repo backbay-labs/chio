@@ -13,7 +13,7 @@ local rerun (mutants on lines the PR touched only); it is NOT a
 crate-level baseline. The integrator MUST commit a fresh full-crate
 `cargo mutants -p chio-attest-verify` run on this branch before
 `audits/mutation/2026-05-08-per-crate-baseline.md` and
-`.planning/trajectory-5/baselines/BAR-1-MUTATION.md` may record an
+the planning-owned mutation baseline may record an
 updated kill-rate row.
 
 Until that rerun lands, the aggregate continues to use the prior baseline

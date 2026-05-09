@@ -12,8 +12,8 @@ the full sweep lands.
 |---|---|
 | Crate | `chio-kernel-core` |
 | Date | 2026-05-08 |
-| Branch | `PR branch` (PR continuation of `PR branch`, PR #623) |
-| Base SHA | `e1662e5d0` (PR #623 tip) |
+| Branch | evidence branch |
+| Base SHA | `e1662e5d0` |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | ~40 min on local workstation before manual kill |
 | Run started | 2026-05-08T16:39:57Z |
@@ -36,9 +36,9 @@ The `--config audits/mutation/per-crate-configs/chio-kernel-core.toml`
 override is necessary to scope the per-mutant test invocation to
 `--package chio-kernel-core` rather than the full workspace. Rationale below.
 
-## Test-scope deviation from the chio-credentials run (PR #603)
+## Test-scope deviation from the chio-credentials run
 
-Same rationale as PR #619 (chio-attest-verify) and PR #623 (chio-policy):
+Same rationale as the chio-attest-verify and chio-policy package runs:
 the workspace test harness contains a pre-existing failing test in
 `chio-acp-proxy` unrelated to chio-kernel-core:
 
@@ -51,8 +51,8 @@ chio-acp-proxy::attestation_and_telemetry_tests::
                      capability issuer is not a trusted CA"
 ```
 
-This failure exists on `main` at SHA `708c7bb33` and persists on PR
-#623's tip. If the chio-kernel-core mutation run used the workspace
+This failure exists on `main` at SHA `708c7bb33` and persists on the
+evidence base. If the chio-kernel-core mutation run used the workspace
 test scope, every chio-kernel-core mutant would be marked CAUGHT
 because the chio-acp-proxy assertion would always fail before the
 chio-kernel-core mutation could be exercised. The kill rate would be
@@ -228,7 +228,7 @@ commit the regenerated `lock.json`, `outcomes.json`, `log/`, or
 
 ## Post-merge re-run note
 
-release work has multiple PRs that touch chio-kernel-core (#606, #611, #612).
+Release work has multiple branches that touch chio-kernel-core.
 Once those land on main, this baseline will need to be re-measured.
-The current run is against PR #623 tip (e1662e5d0), which is itself
-not yet merged.
+The current run is against evidence base `e1662e5d0`, which is not
+yet merged.

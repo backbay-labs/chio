@@ -22,7 +22,7 @@
   "kill_rate_formula": "caught / (caught + missed + timeout) = 125 / 180 = 69.44% (excluding 34 unviable)",
   "target_percent": 65.0,
   "target_met": false,
-  "target_met_note": "Per P0-021 cleanup-wave audit, target satisfaction at the crate level requires full evaluation of all 262 discovered mutants. The next CI hosted-nightly run completes the remaining 48 mutants without budget cap; until then the row reads PARTIAL across all aggregate docs.",
+  "target_met_note": "Target satisfaction at the crate level requires full evaluation of all 262 discovered mutants. The next CI hosted-nightly run completes the remaining 48 mutants without budget cap; until then the row reads PARTIAL across all aggregate docs.",
   "missed_mutants": [
     "crates/chio-anchor/src/discovery.rs:207:9: replace || with && in verify_proof_bundle_with_discovery",
     "crates/chio-anchor/src/discovery.rs:368:23: replace == with != in select_primary_lane_for_chain",
