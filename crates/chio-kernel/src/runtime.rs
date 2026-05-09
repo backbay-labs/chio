@@ -65,9 +65,9 @@ pub struct ToolCallRequest {
     pub model_metadata: Option<ModelMetadata>,
     /// Phase 20.3: identifier of the origin kernel when this request
     /// crosses a federation boundary (agent in Org A invoking a tool in
-    /// Org B). When set, the local (tool-host) kernel dispatches the
-    /// signed receipt to the origin kernel for bilateral co-signing
-    /// before the receipt is persisted. Absent for intra-org calls.
+    /// Org B). When set, the local (tool-host) kernel persists the
+    /// signed receipt locally before requesting bilateral co-signing from
+    /// the origin kernel. Absent for intra-org calls.
     ///
     /// The field is skipped from wire serialization when `None` so the
     /// legacy wire format stays byte-identical.

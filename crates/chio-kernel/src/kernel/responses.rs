@@ -1467,10 +1467,10 @@ impl ChioKernel {
     /// Phase 20.3: record the receipt AND drive the bilateral co-signing
     /// hook when the request crosses a federation boundary.
     ///
-    /// Fail-closed: a co-sign failure aborts the record path so the
-    /// receipt is never persisted without its paired remote signature.
-    /// Non-federated requests (request.federated_origin_kernel_id is
-    /// `None`) behave identically to [`Self::record_chio_receipt`].
+    /// Local durability happens before remote co-signing. A co-sign
+    /// failure can abort the caller's response path, but it must never
+    /// create an externally visible remote side effect before the local
+    /// v2/v1 receipt state is durable.
     pub(crate) fn record_chio_receipt_with_federation(
         &self,
         request: &crate::runtime::ToolCallRequest,
@@ -1482,10 +1482,15 @@ impl ChioKernel {
         // expires mid-dispatch must not downgrade v2 persistence or skip
         // dual-sign evidence for the side effect admitted under the fresh
         // snapshot.
-        let scoped_admission = current_scoped_receipt_federation_admission();
-        let scoped_admission = scoped_admission.as_ref().filter(|admission| {
+        let request_admission = self.receipt_federation_admission_for_request(
+            &request.request_id,
+            request.federated_origin_kernel_id.as_deref(),
+        );
+        let thread_admission = current_scoped_receipt_federation_admission();
+        let thread_admission = thread_admission.as_ref().filter(|admission| {
             admission.remote_kernel_id.as_deref() == request.federated_origin_kernel_id.as_deref()
         });
+        let scoped_admission = request_admission.as_ref().or(thread_admission);
         let version = if let Some(admission) = scoped_admission {
             admission.receipt_version
         } else {
@@ -1495,11 +1500,6 @@ impl ChioKernel {
                 now,
             )?
         };
-        self.apply_federation_cosign(
-            request,
-            receipt,
-            scoped_admission.and_then(|admission| admission.peer.as_ref()),
-        )?;
         if version.mints_v2() {
             let v2 = self
                 .mint_chio_receipt_v2_from_v1(receipt)
@@ -1512,6 +1512,11 @@ impl ChioKernel {
             self.record_chio_receipt_v2(&v2, Some(receipt.id.as_str()))?;
         }
         self.record_chio_receipt(receipt)?;
+        self.apply_federation_cosign(
+            request,
+            receipt,
+            scoped_admission.and_then(|admission| admission.peer.as_ref()),
+        )?;
         Ok(())
     }
 
