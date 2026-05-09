@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Self-test for scripts/check-threat-coverage-mutants.sh.
 #
-# Owner: trajectory-4 wave-0 / E0.4.
+# Owner: threat-coverage evidence gate.
 #
-# Exercises the four scenarios spelled out in the E0.4 plan:
+# Exercises the core threat-coverage evidence scenarios:
 #
 #   1. A row with valid evidence (caught >= 1) PASSES.
 #   2. A row with `needs_real_run: true` produces a downgrade hint
-#      (`bootstrap_placeholder`) but does NOT fail the gate.
+#      (`bootstrap_placeholder`) and fails by default.
 #   3. A row with `coverage_state: weak_coverage` in the JSON
 #      causes `check-threat-coverage.sh` (the file-existence gate
 #      that owns enum policy) to FAIL with a clear message naming
@@ -122,11 +122,11 @@ write_evidence() {
   "caught": $caught,
   "survivors": [],
   "ran_at": "$ran_at",
-  "needs_real_run": $needs_real_run,
   "timestamp_kind": "$timestamp_kind",
   "evidence_status": "$evidence_status",
   "mutation_evidence_status": "$mutation_evidence_status",
-  "promotion_status": "$promotion_status"
+  "promotion_status": "$promotion_status",
+  "needs_real_run": $needs_real_run
 }
 JSON
 }
@@ -138,9 +138,10 @@ write_stub() {
 }
 
 run_mutants_gate() {
+    local extra_args=("$@")
     CHIO_THREAT_MODEL_PATH="$MODEL" \
     CHIO_THREAT_EVIDENCE_DIR="$EVIDENCE_DIR" \
-        bash "$REPO_ROOT/scripts/check-threat-coverage-mutants.sh" "$@" \
+        bash "$REPO_ROOT/scripts/check-threat-coverage-mutants.sh" ${extra_args[@]+"${extra_args[@]}"} \
         >"$OUT" 2>"$ERR"
 }
 
@@ -181,15 +182,22 @@ write_evidence "valid_threat" 7 false
 assert_passes "valid evidence passes" run_mutants_gate
 grep -q "passed: 1" "$OUT"
 
-# Case 2: bootstrap placeholder produces hint but does NOT fail.
+# Case 2: bootstrap placeholder produces hint and fails by default because
+# placeholders are not release-covered evidence.
 reset_fixture
 write_model_single "bootstrap_threat" "covered"
 write_evidence "bootstrap_threat" 0 true
-assert_passes "bootstrap placeholder does not fail" run_mutants_gate
+assert_fails "bootstrap placeholder fails by default" run_mutants_gate
 grep -q "bootstrap placeholders: 1" "$OUT"
 grep -q "WEAK: bootstrap_threat should be marked weak_coverage; reason=bootstrap_placeholder" "$OUT"
 
-# Case 2b: same input, dry-run, also passes.
+# Case 2b: same input passes only under the explicit placeholder fixture mode
+# or dry-run. Release/preflight callers do not use this flag.
+assert_passes "bootstrap placeholder passes under explicit fixture mode" \
+    run_mutants_gate --allow-bootstrap-placeholders
+grep -q "bootstrap placeholders: 1" "$OUT"
+
+# Case 2c: same input, dry-run, also passes.
 assert_passes "bootstrap placeholder passes under --dry-run" run_mutants_gate --dry-run
 grep -q "bootstrap placeholders: 1" "$OUT"
 
@@ -227,7 +235,7 @@ write_evidence "no_coveredby_threat" 5 false
 assert_fails "no coveredBy fails the gate" run_mutants_gate
 grep -q "WEAK: no_coveredby_threat should be marked weak_coverage; reason=no_coveredby" "$ERR"
 
-# Case 7 (wave-0.5 hardening): bootstrap placeholder AFTER expiry FAILS with
+# Case 7: bootstrap placeholder AFTER expiry FAILS with
 # reason=bootstrap_expired. CHIO_BOOTSTRAP_EXPIRY=1970-01-01 forces the
 # accommodation to be expired regardless of today's date.
 reset_fixture
@@ -238,12 +246,16 @@ CHIO_BOOTSTRAP_EXPIRY="1970-01-01" \
 grep -q "WEAK: expired_bootstrap_threat should be marked weak_coverage; reason=bootstrap_expired" "$ERR" \
     || { echo "FAIL: missing bootstrap_expired diagnostic"; cat "$ERR"; exit 1; }
 
-# Case 7b: same input WITHOUT the expiry override still passes (the default
-# expiry is well in the future at the time this test was written).
+# Case 7b: same input WITHOUT the expiry override still fails by default.
 CHIO_BOOTSTRAP_EXPIRY="2099-01-01" \
-    assert_passes "bootstrap placeholder still valid before expiry" run_mutants_gate
+    assert_fails "bootstrap placeholder fails before expiry by default" run_mutants_gate
 
-# Case 8 (wave-0.5 hardening): needs_real_run=true with non-1970 ran_at is
+# Case 7c: explicit fixture mode can still admit the pre-expiry placeholder.
+CHIO_BOOTSTRAP_EXPIRY="2099-01-01" \
+    assert_passes "bootstrap placeholder fixture mode before expiry" \
+    run_mutants_gate --allow-bootstrap-placeholders
+
+# Case 8: needs_real_run=true with non-1970 ran_at is
 # rejected as inconsistent_bootstrap.
 reset_fixture
 write_model_single "inconsistent_bootstrap_threat" "covered"
@@ -252,8 +264,44 @@ assert_fails "inconsistent bootstrap (real ran_at + needs_real_run) fails" run_m
 grep -q "WEAK: inconsistent_bootstrap_threat should be marked weak_coverage; reason=inconsistent_bootstrap" "$ERR" \
     || { echo "FAIL: missing inconsistent_bootstrap diagnostic"; cat "$ERR"; exit 1; }
 
-# Case 9: generated conformance metadata cannot be promoted as cargo-mutants
-# evidence just by flipping needs_real_run=false and caught>=1.
+# Case 9: CI=true + --dry-run is rejected (exit 2).
+reset_fixture
+write_model_single "ci_dryrun_threat" "covered"
+write_evidence "ci_dryrun_threat" 1 false
+CI=true assert_fails "CI=true forbids --dry-run" run_mutants_gate --dry-run
+grep -q "dry-run is not allowed in CI" "$ERR" \
+    || { echo "FAIL: missing CI dry-run diagnostic"; cat "$ERR"; exit 1; }
+
+# Case 10: partial rows are still gated by per-row mutants
+# evidence. The row can remain partial, but the defended sub-vector must
+# have present, non-placeholder evidence with caught >= 1.
+reset_fixture
+python3 - "$MODEL" <<'PY'
+import json, sys
+with open(sys.argv[1], "w") as fh:
+    json.dump({"threats": [{
+        "id": "partial_with_deferred",
+        "name": "Partial With Deferred",
+        "surfaces": ["native_chio"],
+        "coverage_state": "partial",
+        "deferred_to": "future-threat-coverage-closure",
+        "coveredBy": ["crates/chio-conformance/tests/threats/partial_with_deferred.rs"],
+    }]}, fh)
+    fh.write("\n")
+PY
+# Intentionally no evidence file: partial rows now fail the mutants gate.
+assert_fails "partial-with-deferred row without evidence fails" run_mutants_gate
+grep -q "WEAK: partial_with_deferred should be marked weak_coverage; reason=missing_evidence" "$ERR"
+
+write_evidence "partial_with_deferred" 2 false "2026-05-05T12:34:56Z"
+assert_passes "partial-with-deferred row with evidence passes" run_mutants_gate
+grep -q "passed: 1" "$OUT" \
+    || { echo "FAIL: partial row with evidence should be counted as passed"; cat "$OUT"; exit 1; }
+
+# Case 11: generated conformance metadata cannot be promoted as cargo-mutants
+# evidence just by flipping needs_real_run=false and caught>=1. Exact-midnight
+# timestamps are valid only when they are honestly labeled as generated
+# metadata, not command wall-clock evidence.
 reset_fixture
 write_model_single "generated_metadata_threat" "covered"
 write_evidence \
@@ -268,13 +316,5 @@ write_evidence \
 assert_fails "generated metadata cannot pass as mutants evidence" run_mutants_gate
 grep -q "WEAK: generated_metadata_threat should be marked weak_coverage; reason=non_mutants_metadata" "$ERR" \
     || { echo "FAIL: missing non_mutants_metadata diagnostic"; cat "$ERR"; exit 1; }
-
-# Case 10 (wave-0.5 hardening): CI=true + --dry-run is rejected (exit 2).
-reset_fixture
-write_model_single "ci_dryrun_threat" "covered"
-write_evidence "ci_dryrun_threat" 1 false
-CI=true assert_fails "CI=true forbids --dry-run" run_mutants_gate --dry-run
-grep -q "dry-run is not allowed in CI" "$ERR" \
-    || { echo "FAIL: missing CI dry-run diagnostic"; cat "$ERR"; exit 1; }
 
 echo "PASS: check-threat-coverage-mutants evidence matrix"
