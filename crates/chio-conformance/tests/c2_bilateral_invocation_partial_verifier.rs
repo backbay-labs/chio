@@ -804,12 +804,12 @@ fn co_sign_n_of_m_is_rejected_until_quorum_verification_exists() {
 }
 
 #[test]
-fn step_16_totally_ordered_with_chio_anchor_passes() {
+fn step_16_totally_ordered_with_bare_anchor_still_fails_without_reconciliation() {
     let setup = setup();
     let mut ext = happy_extensions();
     ext.consistency_model = Some("totally-ordered".to_string());
     ext.consistency_anchor = Some("chio-anchor".to_string());
-    let outcome = run_invocation_with(
+    let err = run_invocation_with(
         &setup,
         ext,
         &setup.receipt_store,
@@ -820,8 +820,8 @@ fn step_16_totally_ordered_with_chio_anchor_passes() {
         now_ms(),
         BTreeMap::new(),
     )
-    .unwrap_or_else(|e| panic!("totally-ordered+chio-anchor happy path failed: {e:?}"));
-    assert_eq!(outcome.verified.joint_verdict, "allow");
+    .unwrap_err();
+    assert_verifier_code(err, "consistency.anchor_unverified");
 }
 
 // ---------------------------------------------------------------------------
