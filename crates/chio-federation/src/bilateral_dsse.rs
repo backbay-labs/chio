@@ -476,16 +476,14 @@ pub fn build_predicate_full(
 
 /// Build the in-toto Statement carrying the bilateral predicate.
 ///
-/// Subject-digest invariant: the subject digest binds the
-/// receipt BODY (`ChioReceiptBody`), not the full signed wrapper.
-/// An earlier revision hashed the full `ChioReceipt` (including the
-/// envelope's `signature` field), which made the verifier's "resolve
-/// the receipt from a store and re-derive the subject" path produce a
-/// different digest than the producer signed -- cross-impl resolution
-/// silently broke. Hashing the body fixes the binding so verifiers
-/// can re-derive the subject from any source that exposes the body
-/// (the receipt store's signed wrapper, a receipt log, or a peer's
-/// re-emission).
+/// The subject digest binds the receipt BODY (`ChioReceiptBody`), not
+/// the full signed wrapper. Hashing the full `ChioReceipt` (including
+/// the envelope's `signature` field) would make the verifier's
+/// "resolve the receipt from a store and re-derive the subject" path
+/// produce a different digest than the producer signed, breaking
+/// cross-impl resolution. Hashing the body lets verifiers re-derive
+/// the subject from any source that exposes the body (the receipt
+/// store's signed wrapper, a receipt log, or a peer's re-emission).
 pub fn build_statement(
     receipt: &ChioReceipt,
     predicate: BilateralPredicate,
