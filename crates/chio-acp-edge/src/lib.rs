@@ -1606,7 +1606,7 @@ mod tests {
         response: Value,
     }
 
-    #[async_trait::async_trait(?Send)]
+    #[async_trait::async_trait]
     impl ToolServerConnection for MockToolServer {
         fn server_id(&self) -> &str {
             &self.server_id
@@ -1628,7 +1628,7 @@ mod tests {
 
     struct FailingToolServer;
 
-    #[async_trait::async_trait(?Send)]
+    #[async_trait::async_trait]
     impl ToolServerConnection for FailingToolServer {
         fn server_id(&self) -> &str {
             "fail-srv"

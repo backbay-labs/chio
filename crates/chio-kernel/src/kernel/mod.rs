@@ -3878,6 +3878,7 @@ impl ChioKernel {
         &self,
     ) -> Result<Vec<ToolServerEvent>, KernelError> {
         let mut events = Vec::new();
+        let mut first_error = None;
         for (server_id, server) in &self.tool_servers {
             match server.drain_events().await {
                 Ok(mut server_events) => events.append(&mut server_events),
@@ -3887,8 +3888,15 @@ impl ChioKernel {
                         reason = %redacted!(&error),
                         "failed to drain tool server events"
                     );
-                    return Err(error);
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
                 }
+            }
+        }
+        if events.is_empty() {
+            if let Some(error) = first_error {
+                return Err(error);
             }
         }
         Ok(events)

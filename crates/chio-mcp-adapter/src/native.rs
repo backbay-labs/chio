@@ -380,7 +380,7 @@ impl NativeChioService {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for NativeChioService {
     fn server_id(&self) -> &str {
         &self.manifest.server_id
