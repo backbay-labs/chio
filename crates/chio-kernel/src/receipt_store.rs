@@ -91,6 +91,13 @@ pub trait ReceiptStore: Send + Sync {
         Ok(None)
     }
 
+    /// Returns true when this store durably persists v2 receipts keyed
+    /// on `body_hash` and can replay-check them through
+    /// [`ReceiptStore::contains_chio_receipt_v2_body_hash`].
+    fn supports_chio_receipt_v2(&self) -> bool {
+        false
+    }
+
     /// W2.1 Step 2: persist a v2 receipt keyed on `body_hash`.
     ///
     /// The replay store keys on `receipt.body_hash`. The optional
@@ -98,8 +105,8 @@ pub trait ReceiptStore: Send + Sync {
     /// (when one is co-minted alongside a v1 fallback receipt) and is
     /// non-authoritative: tampering with the alias must NOT change the
     /// replay decision. Implementations that do not support v2 storage
-    /// return `Ok(0)` so kernels remain backward-compatible during
-    /// rollout.
+    /// return `Ok(0)`. Kernels must reject v2-required dispatches unless
+    /// [`ReceiptStore::supports_chio_receipt_v2`] is true.
     fn append_chio_receipt_v2(
         &self,
         _receipt: &ChioReceiptV2,
@@ -111,8 +118,8 @@ pub trait ReceiptStore: Send + Sync {
     /// Replay-detection probe for a v2 receipt body_hash. Returns `true`
     /// when the body_hash has already been admitted to the store.
     /// Default implementation returns `false` so non-v2 stores never
-    /// flag a replay; the in-memory `ReceiptV2ReplaySet` on the kernel
-    /// remains the authoritative gate during the rollout.
+    /// flag a replay. V2-required dispatches must not rely on this
+    /// default; they require a v2-capable store before side effects.
     fn contains_chio_receipt_v2_body_hash(
         &self,
         _body_hash: &str,

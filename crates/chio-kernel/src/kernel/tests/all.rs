@@ -82,6 +82,13 @@ impl SqliteReceiptStore {
                     raw_json TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS chio_receipts_v2 (
+                    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                    body_hash TEXT NOT NULL UNIQUE,
+                    legacy_receipt_id_alias TEXT,
+                    raw_json TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS kernel_checkpoints (
                     checkpoint_seq INTEGER PRIMARY KEY,
                     raw_json TEXT NOT NULL
@@ -261,6 +268,49 @@ impl ReceiptStore for SqliteReceiptStore {
     fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
         self.append_chio_receipt_returning_seq(receipt)?;
         Ok(())
+    }
+
+    fn supports_chio_receipt_v2(&self) -> bool {
+        true
+    }
+
+    fn append_chio_receipt_v2(
+        &self,
+        receipt: &ChioReceiptV2,
+        legacy_receipt_id_alias: Option<&str>,
+    ) -> Result<u64, ReceiptStoreError> {
+        let raw_json = serde_json::to_string(receipt)?;
+        let connection = self.connection()?;
+        let rows = connection.execute(
+            r#"
+                INSERT INTO chio_receipts_v2 (
+                    body_hash,
+                    legacy_receipt_id_alias,
+                    raw_json
+                ) VALUES (?1, ?2, ?3)
+                ON CONFLICT(body_hash) DO NOTHING
+                "#,
+            params![receipt.body_hash.as_str(), legacy_receipt_id_alias, raw_json],
+        )?;
+        Ok((rows > 0)
+            .then(|| connection.last_insert_rowid().max(0) as u64)
+            .unwrap_or(0))
+    }
+
+    fn contains_chio_receipt_v2_body_hash(
+        &self,
+        body_hash: &str,
+    ) -> Result<bool, ReceiptStoreError> {
+        let found = self
+            .connection()?
+            .query_row(
+                "SELECT 1 FROM chio_receipts_v2 WHERE body_hash = ?1",
+                params![body_hash],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some();
+        Ok(found)
     }
 
     fn supports_kernel_signed_checkpoints(&self) -> bool {
@@ -654,6 +704,12 @@ fn make_config() -> KernelConfig {
     }
 }
 
+fn make_kernel(config: KernelConfig) -> ChioKernel {
+    let kernel = ChioKernel::new(config);
+    kernel.set_receipt_v2_default(false);
+    kernel
+}
+
 fn make_signed_receipt(kp: &Keypair, id: &str) -> ChioReceipt {
     ChioReceipt::sign(
         ChioReceiptBody {
@@ -696,7 +752,7 @@ fn kernel_rejects_classical_capability_under_pq_required_floor() {
     .expect("sign classical capability");
     let mut config = make_config();
     config.keypair = keypair;
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     kernel.set_capability_crypto_floor(KernelCryptoFloor::PqRequired);
 
     let error = kernel
@@ -715,7 +771,7 @@ fn production_evaluate_rejects_direct_v2_without_trust_root_resolver() {
     let subject = make_keypair();
     let mut config = make_config();
     config.ca_public_keys = vec![issuer.public_key()];
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let capability = make_direct_v2_capability(
@@ -735,8 +791,48 @@ fn production_evaluate_rejects_direct_v2_without_trust_root_resolver() {
     assert_eq!(response.verdict, Verdict::Deny);
     let reason = response.reason.unwrap_or_default();
     assert!(
-        reason.contains("v2 chain-binding requires a trust-root resolver"),
+        reason.contains("v2 chain-binding") && reason.contains("trust-root"),
         "expected v2 chain-binding deny, got: {reason}"
+    );
+}
+
+#[test]
+fn negotiated_receipt_v2_without_store_denies_before_tool_invocation() {
+    let mut kernel = make_kernel(make_config());
+    kernel.set_receipt_v2_default(true);
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-a",
+        vec!["read_file"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let subject = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &subject,
+        make_scope(vec![make_grant("srv-a", "read_file")]),
+        60,
+    );
+    let response = kernel
+        .evaluate_tool_call_blocking(&make_request(
+            "req-v2-no-store",
+            &capability,
+            "read_file",
+            "srv-a",
+        ))
+        .expect("missing v2 receipt store should produce a fail-closed deny");
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.unwrap_or_default();
+    assert!(
+        reason.contains("no durable v2-capable receipt store configured"),
+        "expected durable v2 store denial, got: {reason}"
+    );
+    assert_eq!(
+        invocations.load(Ordering::SeqCst),
+        0,
+        "v2 receipt-store admission must fail before tool side effects"
     );
 }
 
@@ -745,7 +841,7 @@ fn receipt_v2_replay_set_rolls_back_when_persistence_fails() {
     let keypair = make_keypair();
     let mut config = make_config();
     config.keypair = keypair.clone();
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     kernel.set_receipt_store(Box::new(FailingV2ReceiptStore));
     let receipt = make_signed_receipt(&keypair, "rcpt-v2-rollback");
     let v2 = kernel
@@ -766,11 +862,35 @@ fn receipt_v2_replay_set_rolls_back_when_persistence_fails() {
 }
 
 #[test]
+fn record_receipt_v2_without_store_fails_before_replay_insert() {
+    let keypair = make_keypair();
+    let mut config = make_config();
+    config.keypair = keypair.clone();
+    let kernel = make_kernel(config);
+    let receipt = make_signed_receipt(&keypair, "rcpt-v2-no-store");
+    let v2 = kernel
+        .mint_chio_receipt_v2_from_v1_for_test(&receipt)
+        .expect("mint v2 receipt");
+
+    let err = kernel
+        .record_chio_receipt_v2(&v2, Some(receipt.id.as_str()))
+        .expect_err("v2 record without durable store must fail");
+    assert!(
+        format!("{err}").contains("no durable v2-capable receipt store configured"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        !kernel.contains_chio_receipt_v2_body_hash(&v2.body_hash),
+        "missing persistence must not insert into the in-memory replay set"
+    );
+}
+
+#[test]
 fn receipt_v2_zero_seq_replay_conflict_rolls_back() {
     let keypair = make_keypair();
     let mut config = make_config();
     config.keypair = keypair.clone();
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     kernel.set_receipt_store(Box::new(ZeroSeqV2ReceiptStore));
     let receipt = make_signed_receipt(&keypair, "rcpt-v2-zero-seq");
     let v2 = kernel
@@ -795,7 +915,8 @@ fn receipt_v2_failure_prevents_v1_persistence() {
     let keypair = make_keypair();
     let mut config = make_config();
     config.keypair = keypair.clone();
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
+    kernel.set_receipt_v2_default(true);
     let v1_called = std::sync::Arc::new(AtomicBool::new(false));
     kernel.set_receipt_store(Box::new(V2FailsBeforeV1Store {
         v1_called: std::sync::Arc::clone(&v1_called),
@@ -1108,6 +1229,12 @@ struct EchoServer {
     tools: Vec<String>,
 }
 
+struct SideEffectServer {
+    id: String,
+    tools: Vec<String>,
+    invocations: std::sync::Arc<AtomicU64>,
+}
+
 struct IncompleteServer {
     id: String,
 }
@@ -1144,6 +1271,16 @@ impl EchoServer {
         Self {
             id: id.to_string(),
             tools: tools.into_iter().map(String::from).collect(),
+        }
+    }
+}
+
+impl SideEffectServer {
+    fn new(id: &str, tools: Vec<&str>, invocations: std::sync::Arc<AtomicU64>) -> Self {
+        Self {
+            id: id.to_string(),
+            tools: tools.into_iter().map(String::from).collect(),
+            invocations,
         }
     }
 }
@@ -1309,6 +1446,30 @@ impl ToolServerConnection for EchoServer {
         arguments: serde_json::Value,
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<serde_json::Value, KernelError> {
+        Ok(serde_json::json!({
+            "tool": tool_name,
+            "echo": arguments,
+        }))
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+impl ToolServerConnection for SideEffectServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        self.tools.clone()
+    }
+
+    async fn invoke(
+        &self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        self.invocations.fetch_add(1, Ordering::SeqCst);
         Ok(serde_json::json!({
             "tool": tool_name,
             "echo": arguments,
@@ -1761,6 +1922,10 @@ impl ReceiptStore for FailingV2ReceiptStore {
         Ok(())
     }
 
+    fn supports_chio_receipt_v2(&self) -> bool {
+        true
+    }
+
     fn append_child_receipt(
         &self,
         _receipt: &ChildRequestReceipt,
@@ -1787,6 +1952,10 @@ impl ReceiptStore for ZeroSeqV2ReceiptStore {
         Ok(())
     }
 
+    fn supports_chio_receipt_v2(&self) -> bool {
+        true
+    }
+
     fn append_child_receipt(
         &self,
         _receipt: &ChildRequestReceipt,
@@ -1811,6 +1980,10 @@ impl ReceiptStore for V2FailsBeforeV1Store {
     fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
         self.v1_called.store(true, Ordering::SeqCst);
         Ok(())
+    }
+
+    fn supports_chio_receipt_v2(&self) -> bool {
+        true
     }
 
     fn append_child_receipt(
@@ -1952,7 +2125,7 @@ impl PromptProvider for ExamplePromptProvider {
 
 #[test]
 fn issue_and_use_capability() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -1961,7 +2134,11 @@ fn issue_and_use_capability() {
     let request = make_request("req-1", &cap, "read_file", "srv-a");
 
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
-    assert_eq!(response.verdict, Verdict::Allow);
+    assert_eq!(
+        response.verdict, Verdict::Allow,
+        "unexpected deny reason: {:?}",
+        response.reason
+    );
     assert!(matches!(response.output, Some(ToolCallOutput::Value(_))));
     assert!(response.reason.is_none());
 
@@ -1977,7 +2154,7 @@ fn issue_and_use_capability() {
 #[test]
 fn kernel_persists_tool_receipts_to_sqlite_store() {
     let path = unique_receipt_db_path("chio-kernel-tool-receipts");
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
@@ -1987,7 +2164,11 @@ fn kernel_persists_tool_receipts_to_sqlite_store() {
     let request = make_request("req-sqlite-1", &cap, "read_file", "srv-a");
 
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
-    assert_eq!(response.verdict, Verdict::Allow);
+    assert_eq!(
+        response.verdict, Verdict::Allow,
+        "unexpected deny reason: {:?}",
+        response.reason
+    );
     drop(kernel);
 
     let connection = rusqlite::Connection::open(&path).unwrap();
@@ -2016,7 +2197,7 @@ fn kernel_persists_tool_receipts_to_sqlite_store() {
 #[test]
 fn kernel_accepts_capabilities_from_configured_authority() {
     let authority_keypair = make_keypair();
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.set_capability_authority(Box::new(LocalCapabilityAuthority::new(
         authority_keypair.clone(),
     )));
@@ -2029,14 +2210,18 @@ fn kernel_accepts_capabilities_from_configured_authority() {
 
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
     assert_eq!(cap.issuer, authority_keypair.public_key());
-    assert_eq!(response.verdict, Verdict::Allow);
+    assert_eq!(
+        response.verdict, Verdict::Allow,
+        "unexpected deny reason: {:?}",
+        response.reason
+    );
 }
 
 #[test]
 fn kernel_reports_capability_issuer_trust() {
     let authority_keypair = make_keypair();
     let untrusted_keypair = make_keypair();
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.set_capability_authority(Box::new(LocalCapabilityAuthority::new(
         authority_keypair.clone(),
     )));
@@ -2048,7 +2233,7 @@ fn kernel_reports_capability_issuer_trust() {
 
 #[test]
 fn expired_capability_denied() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -2069,7 +2254,7 @@ fn expired_capability_denied() {
 
 #[test]
 fn revoked_capability_denied() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -2093,7 +2278,7 @@ fn sqlite_revocation_store_survives_kernel_restart() {
     let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
 
     let cap = {
-        let mut kernel = ChioKernel::new(make_config());
+        let mut kernel = make_kernel(make_config());
         kernel.set_capability_authority(Box::new(LocalCapabilityAuthority::new(
             authority_keypair.clone(),
         )));
@@ -2105,7 +2290,7 @@ fn sqlite_revocation_store_survives_kernel_restart() {
         cap
     };
 
-    let mut restarted = ChioKernel::new(make_config());
+    let mut restarted = make_kernel(make_config());
     restarted.set_capability_authority(Box::new(LocalCapabilityAuthority::new(authority_keypair)));
     restarted.set_revocation_store(Box::new(SqliteRevocationStore::open(&path).unwrap()));
     restarted.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
@@ -2125,7 +2310,7 @@ fn sqlite_revocation_store_survives_kernel_restart() {
 
 #[test]
 fn out_of_scope_tool_denied() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-a",
         vec!["read_file", "write_file"],
@@ -2148,7 +2333,7 @@ fn out_of_scope_tool_denied() {
 
 #[test]
 fn subject_mismatch_denied() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -2165,7 +2350,7 @@ fn subject_mismatch_denied() {
 
 #[test]
 fn path_prefix_constraint_is_enforced() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -2217,7 +2402,7 @@ fn path_prefix_constraint_is_enforced() {
 
 #[test]
 fn domain_exact_constraint_is_enforced() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["fetch"])));
 
     let agent_kp = make_keypair();
@@ -2266,7 +2451,7 @@ fn domain_exact_constraint_is_enforced() {
 
 #[test]
 fn budget_exhaustion() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -2302,7 +2487,7 @@ fn budget_exhaustion() {
 
 #[test]
 fn budgets_are_tracked_per_matching_grant() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new(
         "srv-a",
         vec!["read_file", "write_file"],
@@ -2367,7 +2552,7 @@ fn budgets_are_tracked_per_matching_grant() {
 
 #[test]
 fn guard_denies_request() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["dangerous"])));
 
     struct DenyAll;
@@ -2394,7 +2579,7 @@ fn guard_denies_request() {
 
 #[test]
 fn guard_error_treated_as_deny() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["tool"])));
 
     struct BrokenGuard;
@@ -2421,7 +2606,7 @@ fn guard_error_treated_as_deny() {
 
 #[test]
 fn unregistered_server_denied() {
-    let kernel = ChioKernel::new(make_config());
+    let kernel = make_kernel(make_config());
     // No tool servers registered.
 
     let agent_kp = make_keypair();
@@ -2437,7 +2622,7 @@ fn unregistered_server_denied() {
 
 #[test]
 fn untrusted_issuer_denied() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let rogue_kp = make_keypair();
@@ -2473,14 +2658,14 @@ fn untrusted_issuer_denied() {
     assert_eq!(response.verdict, Verdict::Deny);
     let reason = response.reason.as_deref().unwrap_or("");
     assert!(
-        reason.contains("not found among trusted"),
+        reason.contains("not found among trusted") || reason.contains("not a trusted CA"),
         "reason was: {reason}"
     );
 }
 
 #[test]
 fn all_calls_produce_verified_receipts() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -2504,7 +2689,7 @@ fn all_calls_produce_verified_receipts() {
 
 #[test]
 fn wildcard_server_grant_allows_real_server() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("filesystem", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -2521,7 +2706,7 @@ fn revoked_ancestor_capability_denies_descendant() {
     let path = unique_receipt_db_path("chio-kernel-revoked-ancestor-lineage");
     let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let parent_kp = make_keypair();
@@ -2570,7 +2755,7 @@ fn delegated_tool_call_records_observed_capability_lineage() {
     let path = unique_receipt_db_path("chio-kernel-observed-lineage");
     let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let parent_kp = make_keypair();
@@ -2586,16 +2771,18 @@ fn delegated_tool_call_records_observed_capability_lineage() {
     drop(seed_store);
 
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
-    let link = make_delegation_link(&parent.id, &parent_kp, &child_kp, current_unix_timestamp());
+    let link_timestamp = current_unix_timestamp();
+    let link = make_delegation_link(&parent.id, &parent_kp, &child_kp, link_timestamp);
     let child = CapabilityToken::sign(
         CapabilityTokenBody {
             id: "cap-observed-child".to_string(),
             issuer: kernel.config.keypair.public_key(),
             subject: child_kp.public_key(),
             scope: child_scope,
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
+            issued_at: link_timestamp,
+            expires_at: parent.expires_at,
             delegation_chain: vec![link],
         },
         &kernel.config.keypair,
@@ -2605,7 +2792,11 @@ fn delegated_tool_call_records_observed_capability_lineage() {
     let response = kernel
         .evaluate_tool_call_blocking(&make_request("req-observed", &child, "read_file", "srv-a"))
         .unwrap();
-    assert_eq!(response.verdict, Verdict::Allow);
+    assert_eq!(
+        response.verdict, Verdict::Allow,
+        "unexpected deny reason: {:?}",
+        response.reason
+    );
 
     let reopened = SqliteReceiptStore::open(&path).unwrap();
     let chain = reopened.get_delegation_chain(&child.id).unwrap();
@@ -2625,7 +2816,7 @@ fn delegated_tool_call_records_observed_capability_lineage() {
 #[test]
 fn delegated_tool_call_without_parent_snapshot_denies() {
     let path = unique_receipt_db_path("chio-kernel-missing-parent-lineage");
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let parent_kp = make_keypair();
@@ -2676,7 +2867,7 @@ fn delegated_tool_call_without_delegate_operation_denies() {
     let path = unique_receipt_db_path("chio-kernel-missing-delegate-op");
     let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let parent_kp = make_keypair();
@@ -2729,7 +2920,7 @@ fn delegated_tool_call_with_scope_escalation_denies() {
     let path = unique_receipt_db_path("chio-kernel-scope-escalation");
     let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let parent_kp = make_keypair();
@@ -2755,15 +2946,16 @@ fn delegated_tool_call_with_scope_escalation_denies() {
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
 
     let child_scope = make_scope(vec![make_grant("srv-a", "read_file")]);
-    let link = make_delegation_link(&parent.id, &parent_kp, &child_kp, current_unix_timestamp());
+    let link_timestamp = current_unix_timestamp();
+    let link = make_delegation_link(&parent.id, &parent_kp, &child_kp, link_timestamp);
     let child = CapabilityToken::sign(
         CapabilityTokenBody {
             id: "cap-escalated-child".to_string(),
             issuer: kernel.config.keypair.public_key(),
             subject: child_kp.public_key(),
             scope: child_scope,
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
+            issued_at: link_timestamp,
+            expires_at: parent.expires_at,
             delegation_chain: vec![link],
         },
         &kernel.config.keypair,
@@ -2793,7 +2985,7 @@ fn delegated_tool_call_with_delegatee_subject_mismatch_denies() {
     let path = unique_receipt_db_path("chio-kernel-delegatee-mismatch");
     let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let parent_kp = make_keypair();
@@ -2855,7 +3047,7 @@ fn delegated_tool_call_exceeding_configured_max_depth_denies() {
 
     let mut config = make_config();
     config.max_delegation_depth = 1;
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let root_kp = make_keypair();
@@ -2925,7 +3117,7 @@ fn delegated_tool_call_with_truncated_ancestor_chain_denies() {
     let path = unique_receipt_db_path("chio-kernel-truncated-lineage");
     let seed_store = SqliteReceiptStore::open(&path).unwrap();
 
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let root_kp = make_keypair();
@@ -2997,7 +3189,7 @@ fn delegated_tool_call_with_truncated_ancestor_chain_denies() {
 
 #[test]
 fn wildcard_tool_grant_allows_any_tool() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["anything"])));
 
     let agent_kp = make_keypair();
@@ -3006,7 +3198,11 @@ fn wildcard_tool_grant_allows_any_tool() {
 
     let request = make_request("req-1", &cap, "anything", "srv-a");
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
-    assert_eq!(response.verdict, Verdict::Allow);
+    assert_eq!(
+        response.verdict, Verdict::Allow,
+        "unexpected deny reason: {:?}",
+        response.reason
+    );
 }
 
 #[test]
@@ -3027,7 +3223,7 @@ fn receipt_log_basics() {
 
 #[test]
 fn kernel_guard_registration() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     assert_eq!(kernel.guard_count(), 0);
     assert_eq!(kernel.ca_count(), 0);
 
@@ -3047,7 +3243,7 @@ fn kernel_guard_registration() {
 
 #[test]
 fn session_lifecycle_is_hosted_by_kernel() {
-    let kernel = ChioKernel::new(make_config());
+    let kernel = make_kernel(make_config());
     let session_id = kernel.open_session("agent-1".to_string(), Vec::new());
 
     assert_eq!(kernel.session_count(), 1);
@@ -3077,8 +3273,8 @@ fn session_lifecycle_is_hosted_by_kernel() {
 
 #[test]
 fn open_session_assigns_unique_ids_across_kernel_instances() {
-    let kernel_a = ChioKernel::new(make_config());
-    let kernel_b = ChioKernel::new(make_config());
+    let kernel_a = make_kernel(make_config());
+    let kernel_b = make_kernel(make_config());
 
     let session_a = kernel_a.open_session("agent-a".to_string(), Vec::new());
     let session_b = kernel_b.open_session("agent-b".to_string(), Vec::new());
@@ -3090,7 +3286,7 @@ fn open_session_assigns_unique_ids_across_kernel_instances() {
 /// 22 base64url chars, charset) rather than pinning to a literal value.
 #[test]
 fn open_session_id_has_csprng_structure() {
-    let kernel = ChioKernel::new(make_config());
+    let kernel = make_kernel(make_config());
     let session_id = kernel.open_session("agent-a".to_string(), Vec::new());
     let raw = session_id.as_str();
 
@@ -3112,7 +3308,7 @@ fn open_session_id_has_csprng_structure() {
 /// honest in the face of a regression to a low-entropy generator.
 #[test]
 fn open_session_ids_do_not_collide_across_many_calls() {
-    let kernel = ChioKernel::new(make_config());
+    let kernel = make_kernel(make_config());
     let mut seen = std::collections::HashSet::with_capacity(1024);
     let mut last: Option<SessionId> = None;
     for _ in 0..1024 {
@@ -3130,7 +3326,7 @@ fn open_session_ids_do_not_collide_across_many_calls() {
 
 #[test]
 fn open_session_with_id_rejects_duplicate_ids() {
-    let kernel = ChioKernel::new(make_config());
+    let kernel = make_kernel(make_config());
     let session_id = SessionId::new("sess-restored");
 
     let opened = kernel
@@ -3156,7 +3352,7 @@ fn open_session_with_id_rejects_duplicate_ids() {
 
 #[test]
 fn open_session_with_id_rolls_back_insert_when_anchor_persistence_fails() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.set_receipt_store(Box::new(FailingSessionAnchorReceiptStore));
     let session_id = SessionId::new("sess-anchor-fail");
 
@@ -3182,7 +3378,7 @@ fn open_session_with_id_rolls_back_insert_when_anchor_persistence_fails() {
 
 #[test]
 fn set_session_auth_context_rolls_back_when_anchor_persistence_fails() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let session_id =
         kernel.open_session_with_id(SessionId::new("sess-auth-rollback"), "agent-a".to_string(), Vec::new())
             .unwrap();
@@ -3221,7 +3417,7 @@ fn set_session_auth_context_rolls_back_when_anchor_persistence_fails() {
 fn close_session_persists_anonymous_anchor_and_rejects_late_auth_rotation() {
     let store = RecordingSessionAnchorReceiptStore::default();
     let anchors = std::sync::Arc::clone(&store.anchors);
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.set_receipt_store(Box::new(store));
     let session_id = kernel
         .open_session_with_id(
@@ -3296,7 +3492,7 @@ fn close_session_persists_anonymous_anchor_and_rejects_late_auth_rotation() {
 #[test]
 fn close_session_with_sqlite_store_reuses_initial_anonymous_anchor() {
     let path = unique_receipt_db_path("session-close-anonymous-anchor");
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
     let session_id = kernel
         .open_session_with_id(
@@ -3328,7 +3524,7 @@ fn close_session_with_sqlite_store_reuses_initial_anonymous_anchor() {
 fn web3_evidence_required_activation_rejects_missing_receipt_store() {
     let mut config = make_config();
     config.require_web3_evidence = true;
-    let kernel = ChioKernel::new(config);
+    let kernel = make_kernel(config);
     let session_id = kernel.open_session("agent-1".to_string(), Vec::new());
 
     let error = kernel.activate_session(&session_id).unwrap_err();
@@ -3342,7 +3538,7 @@ fn web3_evidence_required_activation_rejects_checkpoint_disabled() {
     let mut config = make_config();
     config.require_web3_evidence = true;
     config.checkpoint_batch_size = 0;
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
     let session_id = kernel.open_session("agent-1".to_string(), Vec::new());
 
@@ -3357,7 +3553,7 @@ fn web3_evidence_required_activation_rejects_checkpoint_disabled() {
 fn web3_evidence_required_activation_rejects_append_only_receipt_store() {
     let mut config = make_config();
     config.require_web3_evidence = true;
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore));
     let session_id = kernel.open_session("agent-1".to_string(), Vec::new());
 
@@ -3373,7 +3569,7 @@ fn web3_evidence_required_activation_allows_checkpoint_capable_store() {
     let path = unique_receipt_db_path("web3-evidence-capable");
     let mut config = make_config();
     config.require_web3_evidence = true;
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
     let session_id = kernel.open_session("agent-1".to_string(), Vec::new());
 
@@ -3388,7 +3584,7 @@ fn web3_evidence_required_activation_allows_checkpoint_capable_store() {
 
 #[test]
 fn session_operation_tool_call_tracks_and_clears_inflight() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -3420,7 +3616,7 @@ fn session_operation_tool_call_tracks_and_clears_inflight() {
 
 #[test]
 fn session_operation_capability_list_uses_session_snapshot() {
-    let kernel = ChioKernel::new(make_config());
+    let kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
     let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
@@ -3439,7 +3635,7 @@ fn session_operation_capability_list_uses_session_snapshot() {
 
 #[test]
 fn session_operation_list_roots_uses_session_snapshot() {
-    let kernel = ChioKernel::new(make_config());
+    let kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
     let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
     kernel.activate_session(&session_id).unwrap();
@@ -3484,7 +3680,7 @@ fn session_operation_list_roots_uses_session_snapshot() {
 
 #[test]
 fn kernel_exposes_normalized_session_roots_for_later_enforcement() {
-    let kernel = ChioKernel::new(make_config());
+    let kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
     let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
     kernel.activate_session(&session_id).unwrap();
@@ -3536,7 +3732,7 @@ fn kernel_exposes_normalized_session_roots_for_later_enforcement() {
 
 #[test]
 fn begin_child_request_requires_parent_lineage() {
-    let kernel = ChioKernel::new(make_config());
+    let kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
     let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
     kernel.activate_session(&session_id).unwrap();
@@ -3564,7 +3760,7 @@ fn begin_child_request_requires_parent_lineage() {
 
 #[test]
 fn begin_session_request_clears_inflight_when_lineage_persistence_fails() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.set_receipt_store(Box::new(FailingRequestLineageReceiptStore));
     let agent_kp = make_keypair();
     let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
@@ -3605,7 +3801,7 @@ fn begin_session_request_clears_inflight_when_lineage_persistence_fails() {
 
 #[test]
 fn begin_child_request_clears_child_inflight_when_lineage_persistence_fails() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore));
     let agent_kp = make_keypair();
     let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
@@ -3668,7 +3864,7 @@ fn begin_child_request_clears_child_inflight_when_lineage_persistence_fails() {
 
 #[test]
 fn sampling_validation_requires_policy_and_negotiation() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
     let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
     kernel.activate_session(&session_id).unwrap();
@@ -3773,7 +3969,7 @@ fn sampling_validation_requires_policy_and_negotiation() {
 
 #[test]
 fn elicitation_validation_requires_policy_and_form_negotiation() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
     let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![]);
     kernel.activate_session(&session_id).unwrap();
@@ -3909,7 +4105,7 @@ fn elicitation_validation_requires_policy_and_form_negotiation() {
 fn tool_call_nested_flow_bridge_roundtrips_sampling() {
     let mut config = make_config();
     config.allow_sampling = true;
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     kernel.register_tool_server(Box::new(NestedFlowServer {
         id: "nested".to_string(),
     }));
@@ -4006,7 +4202,7 @@ fn kernel_persists_child_receipts_to_sqlite_store() {
     let path = unique_receipt_db_path("chio-kernel-child-receipts");
     let mut config = make_config();
     config.allow_sampling = true;
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
     kernel.register_tool_server(Box::new(NestedFlowServer {
         id: "nested".to_string(),
@@ -4105,7 +4301,7 @@ fn kernel_persists_child_receipts_to_sqlite_store() {
 fn tool_call_nested_flow_bridge_roundtrips_elicitation() {
     let mut config = make_config();
     config.allow_elicitation = true;
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     kernel.register_tool_server(Box::new(NestedFlowServer {
         id: "nested".to_string(),
     }));
@@ -4183,7 +4379,7 @@ fn tool_call_nested_flow_bridge_roundtrips_elicitation() {
 
 #[test]
 fn tool_call_nested_flow_bridge_updates_session_roots() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(NestedFlowServer {
         id: "nested".to_string(),
     }));
@@ -4262,7 +4458,7 @@ fn tool_call_nested_flow_bridge_updates_session_roots() {
 
 #[test]
 fn tool_call_nested_flow_bridge_propagates_parent_cancellation() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.config.allow_sampling = true;
     kernel.register_tool_server(Box::new(NestedFlowServer {
         id: "nested".to_string(),
@@ -4357,7 +4553,7 @@ fn tool_call_nested_flow_bridge_propagates_parent_cancellation() {
 
 #[test]
 fn tool_call_nested_flow_bridge_propagates_child_cancellation() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.config.allow_sampling = true;
     kernel.register_tool_server(Box::new(NestedFlowServer {
         id: "nested".to_string(),
@@ -4474,7 +4670,7 @@ fn tool_call_nested_flow_bridge_propagates_child_cancellation() {
 
 #[test]
 fn session_tool_call_records_incomplete_terminal_state() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(IncompleteServer {
         id: "broken".to_string(),
     }));
@@ -4534,7 +4730,7 @@ fn session_tool_call_records_incomplete_terminal_state() {
 
 #[test]
 fn streamed_tool_receipt_records_chunk_hash_metadata() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let chunk_a = serde_json::json!({"delta": "hello"});
     let chunk_b = serde_json::json!({"delta": {"path": "/workspace/README.md"}});
     kernel.register_tool_server(Box::new(StreamingServer {
@@ -4593,7 +4789,7 @@ fn streamed_tool_receipt_records_chunk_hash_metadata() {
 fn streamed_tool_byte_limit_truncates_output_and_marks_receipt_incomplete() {
     let mut config = make_config();
     config.max_stream_total_bytes = 20;
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     let first_chunk = serde_json::json!({"delta": "ok"});
     let second_chunk = serde_json::json!({"delta": "this chunk exceeds the configured byte limit"});
     kernel.register_tool_server(Box::new(StreamingServer {
@@ -4648,7 +4844,7 @@ fn streamed_tool_byte_limit_truncates_output_and_marks_receipt_incomplete() {
 fn apply_stream_limits_marks_duration_exceeded_stream_incomplete() {
     let mut config = make_config();
     config.max_stream_duration_secs = 1;
-    let kernel = ChioKernel::new(config);
+    let kernel = make_kernel(config);
     let output = ToolServerOutput::Stream(ToolServerStreamResult::Complete(ToolCallStream {
         chunks: vec![ToolCallChunk {
             data: serde_json::json!({"delta": "slow"}),
@@ -4672,7 +4868,7 @@ fn apply_stream_limits_marks_duration_exceeded_stream_incomplete() {
 
 #[test]
 fn tool_call_nested_flow_bridge_filters_resource_notifications_to_session_subscriptions() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(NestedFlowServer {
         id: "nested".to_string(),
     }));
@@ -4756,7 +4952,7 @@ fn tool_call_nested_flow_bridge_filters_resource_notifications_to_session_subscr
 
 #[test]
 fn session_operation_list_resources_filters_to_session_scope() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_resource_provider(Box::new(DocsResourceProvider));
 
     let agent_kp = make_keypair();
@@ -4785,7 +4981,7 @@ fn session_operation_list_resources_filters_to_session_scope() {
 
 #[test]
 fn session_operation_read_resource_enforces_scope() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_resource_provider(Box::new(DocsResourceProvider));
 
     let agent_kp = make_keypair();
@@ -4838,7 +5034,7 @@ fn session_operation_read_resource_enforces_scope() {
 
 #[test]
 fn session_operation_read_resource_enforces_session_roots_for_filesystem_resources() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_resource_provider(Box::new(FilesystemResourceProvider));
 
     let agent_kp = make_keypair();
@@ -4914,7 +5110,7 @@ fn session_operation_read_resource_enforces_session_roots_for_filesystem_resourc
 
 #[test]
 fn session_operation_read_resource_fails_closed_when_filesystem_roots_are_missing() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_resource_provider(Box::new(FilesystemResourceProvider));
 
     let agent_kp = make_keypair();
@@ -4960,7 +5156,7 @@ fn session_operation_read_resource_fails_closed_when_filesystem_roots_are_missin
 
 #[test]
 fn subscribe_session_resource_requires_subscribe_operation() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_resource_provider(Box::new(DocsResourceProvider));
 
     let agent_kp = make_keypair();
@@ -5012,7 +5208,7 @@ fn subscribe_session_resource_requires_subscribe_operation() {
 
 #[test]
 fn unsubscribe_session_resource_is_idempotent() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_resource_provider(Box::new(DocsResourceProvider));
 
     let agent_kp = make_keypair();
@@ -5050,7 +5246,7 @@ fn unsubscribe_session_resource_is_idempotent() {
 
 #[test]
 fn session_operation_get_prompt_enforces_scope() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_prompt_provider(Box::new(ExamplePromptProvider));
 
     let agent_kp = make_keypair();
@@ -5105,7 +5301,7 @@ fn session_operation_get_prompt_enforces_scope() {
 
 #[test]
 fn session_operation_completion_returns_candidates_and_enforces_scope() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_resource_provider(Box::new(DocsResourceProvider));
     kernel.register_prompt_provider(Box::new(ExamplePromptProvider));
 
@@ -5418,7 +5614,7 @@ struct SiblingSumMonetaryFixture {
 fn make_sibling_sum_monetary_fixture(prefix: &str) -> SiblingSumMonetaryFixture {
     let path = unique_receipt_db_path(prefix);
     let seed_store = SqliteReceiptStore::open(&path).unwrap();
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.register_tool_server(Box::new(MonetaryCostServer::no_cost("cost-srv")));
 
     let parent_kp = make_keypair();
@@ -6112,7 +6308,7 @@ fn monetary_denial_exceeds_per_invocation_cap() {
     // is already exhausted.
     //
     // Test: accumulated 500 + max_cost_per_invocation=100 exceeds max_total_cost=500 -> deny.
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     let server = MonetaryCostServer::no_cost("cost-srv");
     kernel.register_tool_server(Box::new(server));
@@ -6161,7 +6357,7 @@ fn monetary_denial_exceeds_per_invocation_cap() {
 
 #[test]
 fn monetary_denial_receipt_contains_financial_metadata() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::no_cost("cost-srv")));
 
@@ -6238,7 +6434,7 @@ fn monetary_guard_denial_releases_budget_and_records_attempted_cost() {
         }
     }
 
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.add_guard(Box::new(DenyOnceGuard {
         denied: Arc::new(Mutex::new(false)),
     }));
@@ -6299,7 +6495,7 @@ fn monetary_guard_denial_releases_budget_and_records_attempted_cost() {
 
 #[test]
 fn kernel_accepts_optional_payment_adapter_installation() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     assert!(kernel.payment_adapter.is_none());
 
     kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
@@ -6310,7 +6506,7 @@ fn kernel_accepts_optional_payment_adapter_installation() {
 #[test]
 fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocation() {
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "cost-srv".to_string(),
@@ -6365,7 +6561,7 @@ fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocati
 
 #[test]
 fn monetary_prepaid_adapter_sets_payment_reference_on_allow_receipt() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_payment_adapter(Box::new(PrepaidSettledPaymentAdapter));
     kernel.register_tool_server(Box::new(MonetaryCostServer::no_cost("cost-srv")));
 
@@ -6413,7 +6609,7 @@ fn monetary_prepaid_adapter_sets_payment_reference_on_allow_receipt() {
 
 #[test]
 fn monetary_allow_receipt_contains_financial_metadata() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     // Server reports actual cost of 75 cents (< max 100).
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
@@ -6471,7 +6667,7 @@ fn monetary_allow_receipt_contains_financial_metadata() {
 
 #[test]
 fn monetary_allow_records_budget_hold_and_append_only_events() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
@@ -6522,7 +6718,7 @@ fn monetary_allow_records_budget_hold_and_append_only_events() {
 
 #[test]
 fn governed_monetary_allow_receipt_contains_approval_metadata() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
@@ -6590,7 +6786,7 @@ fn governed_monetary_allow_receipt_contains_approval_metadata() {
 
 #[test]
 fn governed_monetary_allow_receipt_preserves_metered_billing_quote_context() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
@@ -6664,7 +6860,7 @@ fn governed_monetary_allow_receipt_preserves_metered_billing_quote_context() {
 
 #[test]
 fn governed_request_rejects_empty_metered_billing_provider() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
@@ -6729,7 +6925,7 @@ fn governed_request_rejects_empty_metered_billing_provider() {
 
 #[test]
 fn governed_monetary_allow_receipt_preserves_call_chain_context() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
@@ -6796,7 +6992,7 @@ fn governed_monetary_allow_receipt_preserves_call_chain_context() {
 
 #[test]
 fn governed_call_chain_receipt_observes_local_parent_receipt_linkage() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
     kernel.register_tool_server(Box::new(EchoServer::new("srv-echo", vec!["delegate"])));
 
@@ -6870,7 +7066,7 @@ fn governed_call_chain_receipt_observes_local_parent_receipt_linkage() {
 fn governed_call_chain_receipt_observes_capability_lineage_subjects() {
     let path = unique_receipt_db_path("chio-kernel-call-chain-capability-lineage");
     let seed_store = SqliteReceiptStore::open(&path).unwrap();
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let root_kp = make_keypair();
     let child_kp = make_keypair();
     kernel.register_tool_server(Box::new(EchoServer::new("srv-echo", vec!["delegate"])));
@@ -6884,6 +7080,9 @@ fn governed_call_chain_receipt_observes_capability_lineage_subjects() {
         .unwrap();
     drop(seed_store);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel
+        .register_budget_parent(root_capability.id.clone(), 10_000)
+        .unwrap();
 
     let delegated_capability = CapabilityToken::sign(
         CapabilityTokenBody {
@@ -6959,7 +7158,7 @@ fn governed_call_chain_receipt_observes_capability_lineage_subjects() {
 fn governed_call_chain_receipt_verifies_signed_upstream_delegator_proof() {
     let path = unique_receipt_db_path("chio-kernel-call-chain-upstream-proof");
     let seed_store = SqliteReceiptStore::open(&path).unwrap();
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let root_kp = make_keypair();
     let child_kp = make_keypair();
     kernel.register_tool_server(Box::new(EchoServer::new("srv-echo", vec!["delegate"])));
@@ -6972,6 +7171,9 @@ fn governed_call_chain_receipt_verifies_signed_upstream_delegator_proof() {
         .unwrap();
     drop(seed_store);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    kernel
+        .register_budget_parent(root_capability.id.clone(), 10_000)
+        .unwrap();
 
     let delegated_capability = CapabilityToken::sign(
         CapabilityTokenBody {
@@ -7029,11 +7231,15 @@ fn governed_call_chain_receipt_verifies_signed_upstream_delegator_proof() {
             governed_intent: Some(intent),
             approval_token: None,
             model_metadata: None,
-        federated_origin_kernel_id: None,
+            federated_origin_kernel_id: None,
         })
         .unwrap();
 
-    assert_eq!(response.verdict, Verdict::Allow);
+    assert_eq!(
+        response.verdict, Verdict::Allow,
+        "unexpected deny reason: {:?}",
+        response.reason
+    );
     let governed = response
         .receipt
         .metadata
@@ -7063,7 +7269,7 @@ fn governed_call_chain_receipt_verifies_signed_upstream_delegator_proof() {
 
 #[test]
 fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_order() {
-    let mut asserted_kernel = ChioKernel::new(make_config());
+    let mut asserted_kernel = make_kernel(make_config());
     let asserted_agent_kp = make_keypair();
     asserted_kernel.register_tool_server(Box::new(EchoServer::new("srv-echo", vec!["delegate"])));
     let asserted_capability = make_capability(
@@ -7112,7 +7318,7 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
     assert!(asserted_governed["call_chain"]["evidenceSources"].is_null());
     assert!(asserted_governed["call_chain"]["upstreamProof"].is_null());
 
-    let mut observed_kernel = ChioKernel::new(make_config());
+    let mut observed_kernel = make_kernel(make_config());
     let observed_agent_kp = make_keypair();
     observed_kernel.register_tool_server(Box::new(EchoServer::new("srv-echo", vec!["delegate"])));
     let observed_capability = make_capability(
@@ -7178,7 +7384,7 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
 
     let path = unique_receipt_db_path("chio-kernel-call-chain-execution-order");
     let seed_store = SqliteReceiptStore::open(&path).unwrap();
-    let mut verified_kernel = ChioKernel::new(make_config());
+    let mut verified_kernel = make_kernel(make_config());
     let root_kp = make_keypair();
     let child_kp = make_keypair();
     verified_kernel.register_tool_server(Box::new(EchoServer::new("srv-echo", vec!["delegate"])));
@@ -7283,7 +7489,7 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
 fn governed_request_rejects_upstream_call_chain_proof_subject_mismatch() {
     let path = unique_receipt_db_path("chio-kernel-call-chain-upstream-proof-subject-mismatch");
     let seed_store = SqliteReceiptStore::open(&path).unwrap();
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let root_kp = make_keypair();
     let child_kp = make_keypair();
     kernel.register_tool_server(Box::new(EchoServer::new("srv-echo", vec!["delegate"])));
@@ -7371,7 +7577,7 @@ fn governed_request_rejects_upstream_call_chain_proof_subject_mismatch() {
 fn governed_request_rejects_call_chain_delegator_subject_that_conflicts_with_capability_lineage() {
     let path = unique_receipt_db_path("chio-kernel-call-chain-delegator-mismatch");
     let seed_store = SqliteReceiptStore::open(&path).unwrap();
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let root_kp = make_keypair();
     let child_kp = make_keypair();
     kernel.register_tool_server(Box::new(EchoServer::new("srv-echo", vec!["delegate"])));
@@ -7449,7 +7655,7 @@ fn governed_request_rejects_call_chain_delegator_subject_that_conflicts_with_cap
 
 #[test]
 fn governed_call_chain_receipt_observes_session_parent_request_lineage() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
     kernel.register_tool_server(Box::new(EchoServer::new("srv-echo", vec!["delegate"])));
 
@@ -7539,10 +7745,10 @@ fn governed_call_chain_receipt_observes_session_parent_request_lineage() {
 
 #[test]
 fn cross_kernel_continuation_token_verifies_parent_receipt_hash_and_session_anchor() {
-    let parent_kernel = ChioKernel::new(make_config());
+    let parent_kernel = make_kernel(make_config());
     let mut child_config = make_config();
     child_config.ca_public_keys.push(parent_kernel.public_key());
-    let mut child_kernel = ChioKernel::new(child_config);
+    let mut child_kernel = make_kernel(child_config);
     let child_kp = make_keypair();
     child_kernel.register_tool_server(Box::new(EchoServer::new("srv-echo", vec!["delegate"])));
 
@@ -7683,7 +7889,7 @@ fn cross_kernel_continuation_token_verifies_parent_receipt_hash_and_session_anch
 
 #[test]
 fn governed_request_rejects_self_referential_call_chain_parent_request() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
@@ -7733,7 +7939,7 @@ fn governed_request_rejects_self_referential_call_chain_parent_request() {
 
 #[test]
 fn governed_request_rejects_empty_call_chain_chain_id() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
@@ -7786,7 +7992,7 @@ fn governed_request_rejects_empty_call_chain_chain_id() {
 
 #[test]
 fn governed_monetary_denial_without_required_runtime_assurance_releases_budget() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
@@ -7856,7 +8062,7 @@ fn governed_monetary_denial_without_required_runtime_assurance_releases_budget()
 
 #[test]
 fn governed_request_denies_unverified_attestation_when_runtime_assurance_is_required() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
@@ -7913,7 +8119,7 @@ fn governed_request_denies_unverified_attestation_when_runtime_assurance_is_requ
 
 #[test]
 fn governed_monetary_allow_omits_unverified_runtime_assurance_metadata_when_optional() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
@@ -7971,7 +8177,7 @@ fn governed_monetary_allow_omits_unverified_runtime_assurance_metadata_when_opti
 
 #[test]
 fn governed_request_denies_conflicting_workload_identity_binding() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
@@ -8048,7 +8254,7 @@ fn governed_request_denies_conflicting_workload_identity_binding() {
 
 #[test]
 fn governed_monetary_allow_rebinds_trusted_attestation_to_verified() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_attestation_trust_policy(make_attestation_trust_policy());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
@@ -8115,7 +8321,7 @@ fn governed_monetary_allow_rebinds_trusted_attestation_to_verified() {
 
 #[test]
 fn governed_request_denies_untrusted_attestation_when_trust_policy_is_configured() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_attestation_trust_policy(make_attestation_trust_policy());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
@@ -8172,7 +8378,7 @@ fn governed_request_denies_untrusted_attestation_when_trust_policy_is_configured
 
 #[test]
 fn governed_monetary_allow_rebinds_google_attestation_to_verified() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_attestation_trust_policy(make_attestation_trust_policy());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
@@ -8234,7 +8440,7 @@ fn governed_monetary_allow_rebinds_google_attestation_to_verified() {
 
 #[test]
 fn governed_monetary_allow_rebinds_nitro_attestation_to_verified() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_attestation_trust_policy(make_attestation_trust_policy());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
@@ -8301,7 +8507,7 @@ fn governed_monetary_allow_rebinds_nitro_attestation_to_verified() {
 
 #[test]
 fn governed_request_denies_delegated_autonomy_without_bond_attachment() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_attestation_trust_policy(make_attestation_trust_policy());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
@@ -8364,7 +8570,7 @@ fn governed_request_denies_delegated_autonomy_without_bond_attachment() {
 
 #[test]
 fn governed_request_denies_autonomous_tier_with_weak_runtime_assurance() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_attestation_trust_policy(make_attested_attestation_trust_policy());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
@@ -8427,7 +8633,7 @@ fn governed_request_denies_autonomous_tier_with_weak_runtime_assurance() {
 
 #[test]
 fn governed_request_denies_delegated_autonomy_with_expired_bond() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_attestation_trust_policy(make_attestation_trust_policy());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
@@ -8507,7 +8713,7 @@ fn governed_request_denies_delegated_autonomy_with_expired_bond() {
 
 #[test]
 fn governed_request_allows_delegated_autonomy_with_active_bond_and_receipt_metadata() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_attestation_trust_policy(make_attestation_trust_policy());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
@@ -8610,7 +8816,11 @@ fn sibling_sum_denial_reverses_pre_execution_monetary_charge() {
             federated_origin_kernel_id: None,
         })
         .unwrap();
-    assert_eq!(allow_response.verdict, Verdict::Allow);
+    assert_eq!(
+        allow_response.verdict, Verdict::Allow,
+        "unexpected deny reason: {:?}",
+        allow_response.reason
+    );
 
     let deny_response = kernel
         .evaluate_tool_call_blocking(&ToolCallRequest {
@@ -8704,7 +8914,11 @@ fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
             &mut client,
         )
         .unwrap();
-    assert_eq!(allow_response.verdict, Verdict::Allow);
+    assert_eq!(
+        allow_response.verdict, Verdict::Allow,
+        "unexpected deny reason: {:?}",
+        allow_response.reason
+    );
 
     let deny_response = kernel
         .evaluate_tool_call_with_nested_flow_client(
@@ -8834,7 +9048,7 @@ fn portable_subject_denial_does_not_consume_sibling_budget() {
 
 #[test]
 fn governed_monetary_denial_without_approval_releases_budget_and_records_intent() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::no_cost("cost-srv")));
 
@@ -8911,7 +9125,7 @@ fn governed_monetary_incomplete_receipt_keeps_financial_and_governed_metadata() 
     let mut config = make_monetary_config();
     config.max_stream_total_bytes = 1;
 
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(StreamingServer {
         id: "stream".to_string(),
@@ -9007,7 +9221,7 @@ fn governed_x402_prepaid_flow_records_governed_authorization_and_receipt_metadat
     );
 
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_payment_adapter(Box::new(
         X402PaymentAdapter::new(url)
             .with_bearer_token("bridge-token")
@@ -9115,7 +9329,7 @@ fn governed_x402_authorization_failure_denies_before_tool_execution() {
     );
 
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_payment_adapter(Box::new(
         X402PaymentAdapter::new(url).with_timeout(Duration::from_secs(2)),
     ));
@@ -9224,7 +9438,7 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
     );
 
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_payment_adapter(Box::new(
         AcpPaymentAdapter::new(url)
             .with_authorize_path("/commerce/authorize")
@@ -9338,7 +9552,7 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
 #[test]
 fn governed_acp_seller_mismatch_denies_before_payment_or_tool_execution() {
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_payment_adapter(Box::new(
         AcpPaymentAdapter::new("http://127.0.0.1:1").with_timeout(Duration::from_millis(50)),
     ));
@@ -9439,7 +9653,7 @@ fn governed_acp_seller_mismatch_denies_before_payment_or_tool_execution() {
 
 #[test]
 fn monetary_allow_receipt_marks_failed_settlement_when_reported_cost_exceeds_charge() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 150, "USD")));
 
@@ -9480,7 +9694,7 @@ fn monetary_allow_receipt_marks_failed_settlement_when_reported_cost_exceeds_cha
 
 #[test]
 fn monetary_server_not_reporting_cost_charges_max_cost_per_invocation() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     // Server does NOT report cost (returns None).
     kernel.register_tool_server(Box::new(MonetaryCostServer::no_cost("cost-srv")));
@@ -9521,7 +9735,7 @@ fn monetary_server_not_reporting_cost_charges_max_cost_per_invocation() {
 
 #[test]
 fn monetary_tool_server_error_releases_precharged_budget() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(FailingMonetaryServer {
         id: "cost-srv".to_string(),
@@ -9565,7 +9779,7 @@ fn monetary_full_pipeline_three_invocations_third_denied() {
     // Invocation 1: charges 100, total = 100. Allowed.
     // Invocation 2: charges 100, total = 200. Allowed.
     // Invocation 3: would charge 100, total would be 300 > 250. Denied.
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::no_cost("cost-srv")));
 
@@ -9614,7 +9828,7 @@ fn monetary_full_pipeline_three_invocations_third_denied() {
 
 #[test]
 fn multi_grant_budget_remaining_uses_matched_grant_total() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::no_cost("cost-srv")));
 
@@ -9710,7 +9924,7 @@ async fn async_evaluate_tool_call_supports_shared_kernel_concurrency() {
     let barrier = Arc::new(Barrier::new(2));
     let max_concurrent = Arc::new(AtomicUsize::new(0));
 
-    let mut configured_kernel = ChioKernel::new(make_config());
+    let mut configured_kernel = make_kernel(make_config());
     configured_kernel.register_tool_server(Box::new(ConcurrentServer {
         barrier: barrier.clone(),
         current: Arc::new(AtomicUsize::new(0)),
@@ -9805,7 +10019,7 @@ fn matched_grant_index_populated_in_guard_context() {
         captured: captured.clone(),
     };
 
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["tool1", "tool2"])));
     kernel.add_guard(Box::new(guard));
@@ -9899,7 +10113,7 @@ fn velocity_guard_denial_produces_signed_deny_receipt_no_panic() {
         max: 2,
     };
 
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
     kernel.add_guard(Box::new(guard));
@@ -9956,7 +10170,7 @@ fn checkpoint_triggers_at_100_receipts() {
     let mut config = make_monetary_config();
     config.checkpoint_batch_size = 10; // Use 10 for speed.
 
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
 
@@ -10007,7 +10221,7 @@ fn concurrent_receipt_checkpointing_keeps_contiguous_batches() {
     let mut config = make_monetary_config();
     config.checkpoint_batch_size = 2;
 
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
 
@@ -10078,7 +10292,7 @@ fn checkpoint_counters_restore_when_store_is_reattached() {
 
     let agent_kp = Keypair::generate();
     let grant = make_grant("srv", "echo");
-    let mut first_kernel = ChioKernel::new(first_config);
+    let mut first_kernel = make_kernel(first_config);
     first_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
     first_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
     let cap = first_kernel
@@ -10104,7 +10318,7 @@ fn checkpoint_counters_restore_when_store_is_reattached() {
             .unwrap();
     }
 
-    let mut restarted_kernel = ChioKernel::new(second_config);
+    let mut restarted_kernel = make_kernel(second_config);
     restarted_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
     restarted_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
     assert_eq!(
@@ -10168,8 +10382,8 @@ fn checkpoint_counters_refresh_across_kernels_sharing_store() {
 
     let agent_kp = Keypair::generate();
     let grant = make_grant("srv", "echo");
-    let mut first_kernel = ChioKernel::new(first_config);
-    let mut second_kernel = ChioKernel::new(second_config);
+    let mut first_kernel = make_kernel(first_config);
+    let mut second_kernel = make_kernel(second_config);
     first_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
     second_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
     first_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
@@ -10230,7 +10444,7 @@ fn checkpoint_counters_refresh_across_kernels_sharing_store() {
 
 #[test]
 fn receipt_store_install_fails_closed_on_checkpoint_hydration_error() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     let result =
         kernel.try_set_receipt_store_handle(std::sync::Arc::new(
             FailingCheckpointHydrationReceiptStore,
@@ -10258,7 +10472,7 @@ fn inclusion_proof_verifies_against_stored_checkpoint() {
     let mut config = make_monetary_config();
     config.checkpoint_batch_size = 5;
 
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
 
@@ -10342,7 +10556,7 @@ fn cross_currency_reported_cost_attaches_oracle_evidence_and_converted_units() {
         .duration_since(UNIX_EPOCH)
         .expect("time")
         .as_secs();
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.set_price_oracle(Box::new(StaticPriceOracle::new([(
         ("ETH".to_string(), "USD".to_string()),
         Ok(ExchangeRate {
@@ -10408,7 +10622,7 @@ fn cross_currency_reported_cost_attaches_oracle_evidence_and_converted_units() {
 
 #[test]
 fn cross_currency_without_oracle_keeps_provisional_charge_and_marks_failed_settlement() {
-    let mut kernel = ChioKernel::new(make_monetary_config());
+    let mut kernel = make_kernel(make_monetary_config());
     kernel.register_tool_server(Box::new(MonetaryCostServer::new(
         "cost-srv",
         1_000_000_000_000_000,
@@ -10499,7 +10713,7 @@ fn make_dpop_kernel_and_cap(
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     };
-    let mut kernel = ChioKernel::new(config);
+    let mut kernel = make_kernel(config);
     kernel.register_tool_server(Box::new(EchoServer::new(server, vec![tool])));
 
     let nonce_store = dpop::DpopNonceStore::new(1024, std::time::Duration::from_secs(300));
@@ -10652,7 +10866,7 @@ fn dpop_required_grant_denies_when_proof_has_wrong_tool_name() {
 #[test]
 fn dpop_not_required_grant_allows_without_proof() {
     // Verify non-DPoP grants are unaffected.
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
 

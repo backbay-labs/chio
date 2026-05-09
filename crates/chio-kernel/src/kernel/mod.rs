@@ -1698,6 +1698,22 @@ impl ChioKernel {
         self.kernel_receipt_v2_default.load(Ordering::SeqCst)
     }
 
+    pub(crate) fn ensure_chio_receipt_v2_persistence_ready(&self) -> Result<(), KernelError> {
+        let Some(store) = self.receipt_store.as_ref() else {
+            return Err(KernelError::Internal(
+                "v2 receipt persistence unavailable: no durable v2-capable receipt store configured"
+                    .to_string(),
+            ));
+        };
+        if !store.supports_chio_receipt_v2() {
+            return Err(KernelError::Internal(
+                "v2 receipt persistence unavailable: configured receipt store is not v2-capable"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Resolve and snapshot the receipt-version decision at the admission
     /// boundary. The returned snapshot must be carried through receipt
     /// persistence and federation cosigning; persistence must not re-resolve
@@ -1806,6 +1822,7 @@ impl ChioKernel {
         receipt: &chio_core::receipt::ChioReceiptV2,
         legacy_receipt_id_alias: Option<&str>,
     ) -> Result<(), KernelError> {
+        self.ensure_chio_receipt_v2_persistence_ready()?;
         let inserted = {
             let mut replay = match self.receipt_v2_replay.lock() {
                 Ok(guard) => guard,
@@ -3068,7 +3085,26 @@ impl ChioKernel {
                 );
             }
         };
+        let receipt_mints_v2 = receipt_admission.receipt_version.mints_v2();
         let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
+
+        if receipt_mints_v2 {
+            if let Err(error) = self.ensure_chio_receipt_v2_persistence_ready() {
+                let msg = error.to_string();
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&msg),
+                    "receipt v2 persistence unavailable pre-dispatch"
+                );
+                return self.build_receipt_v2_persistence_failclosed_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
+                );
+            }
+        }
 
         // Phase 1.4 emergency kill switch: every evaluate path checks the flag
         // BEFORE capability validation, guard evaluation, or budget mutation so
@@ -3598,7 +3634,22 @@ impl ChioKernel {
                 );
             }
         };
+        let receipt_mints_v2 = receipt_admission.receipt_version.mints_v2();
         let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
+
+        if receipt_mints_v2 {
+            if let Err(error) = self.ensure_chio_receipt_v2_persistence_ready() {
+                let msg = error.to_string();
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&msg),
+                    "receipt v2 persistence unavailable pre-dispatch (nested flow)"
+                );
+                return self.build_receipt_v2_persistence_failclosed_deny_response_with_metadata(
+                    request, &msg, now, None, None,
+                );
+            }
+        }
 
         // Phase 1.4 emergency kill switch: the nested-flow path also deny-fast
         // so sampling/elicitation-bearing tool calls cannot slip past while
@@ -4403,13 +4454,6 @@ impl ChioKernel {
         // no-op (`Ok(())`) when no view is installed.
         #[cfg(feature = "delegation_v2")]
         delegation::consult_revocation_view(cap, self.revocation_view.as_ref())?;
-
-        if cap.schema == chio_core::capability::CHIO_CAPABILITY_V2_SCHEMA {
-            return Err(KernelError::DelegationInvalid(
-                "v2 chain-binding requires a trust-root resolver on the production kernel path"
-                    .to_string(),
-            ));
-        }
 
         if cap.delegation_chain.is_empty() {
             return Ok(());

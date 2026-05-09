@@ -49,7 +49,7 @@ fn oauth_auth_with_enterprise_tenant(tenant: &str) -> SessionAuthContext {
 
 #[test]
 fn session_tenant_id_is_stamped_on_tool_call_receipt() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -90,7 +90,7 @@ fn session_tenant_id_is_stamped_on_tool_call_receipt() {
 
 #[test]
 fn session_without_tenant_id_produces_untagged_receipt() {
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -128,7 +128,7 @@ fn session_without_tenant_id_produces_untagged_receipt() {
 fn blocking_evaluate_without_session_leaves_tenant_id_none() {
     // `evaluate_tool_call_blocking` has no session handle; it MUST leave
     // tenant_id unset regardless of any thread-local residue.
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();
@@ -150,7 +150,7 @@ fn tenant_id_falls_back_to_oauth_federated_claims() {
     // A minimal OAuth token without full EnterpriseIdentityContext but with
     // `federated_claims.tenant_id` should still tag receipts with the
     // tenant -- the resolver's second fallback path.
-    let mut kernel = ChioKernel::new(make_config());
+    let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
     let agent_kp = make_keypair();

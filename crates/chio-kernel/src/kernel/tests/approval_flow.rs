@@ -30,7 +30,7 @@ type CoreKeypair = Keypair;
 
 fn hitl_make_request() -> ToolCallRequest {
     let subject_kp = CoreKeypair::generate();
-    let cap_builder_kernel = ChioKernel::new(make_config());
+    let cap_builder_kernel = make_kernel(make_config());
     let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
     let cap = make_capability(&cap_builder_kernel, &subject_kp, scope, 300);
     make_request("hitl-req-1", &cap, "read_file", "srv-a")

@@ -800,6 +800,63 @@ impl ChioKernel {
         )
     }
 
+    fn build_local_v1_failclosed_deny_response_with_metadata(
+        &self,
+        request: &ToolCallRequest,
+        reason: &str,
+        timestamp: u64,
+        matched_grant_index: Option<usize>,
+        extra_metadata: Option<serde_json::Value>,
+        guard: &str,
+    ) -> Result<ToolCallResponse, KernelError> {
+        let cap = &request.capability;
+        let receipt_content = receipt_content_for_output(None, None)?;
+
+        let action = ToolCallAction::from_parameters(request.arguments.clone()).map_err(|e| {
+            KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}"))
+        })?;
+        let request_metadata = request_receipt_metadata(
+            request,
+            self.attestation_trust_policy.as_ref(),
+            timestamp,
+            extra_metadata.as_ref(),
+        )?;
+
+        let receipt = self.build_and_sign_receipt(ReceiptParams {
+            capability_id: &cap.id,
+            tool_name: &request.tool_name,
+            server_id: &request.server_id,
+            decision: Decision::Deny {
+                reason: reason.to_string(),
+                guard: guard.to_string(),
+            },
+            action,
+            content_hash: receipt_content.content_hash,
+            metadata: merge_metadata_objects(
+                merge_metadata_objects(
+                    merge_metadata_objects(receipt_content.metadata, request_metadata),
+                    extra_metadata,
+                ),
+                receipt_attribution_metadata(cap, matched_grant_index),
+            ),
+            timestamp,
+            trust_level: chio_core::TrustLevel::default(),
+            tenant_id: None,
+        })?;
+
+        self.record_chio_receipt(&receipt)?;
+
+        Ok(ToolCallResponse {
+            request_id: request.request_id.clone(),
+            verdict: Verdict::Deny,
+            output: None,
+            reason: Some(reason.to_string()),
+            terminal_state: OperationTerminalState::Completed,
+            receipt,
+            execution_nonce: None,
+        })
+    }
+
     /// Build a Deny response for the pre-dispatch receipt-version
     /// negotiation gate. By definition the named federation peer is
     /// NOT pinned fresh on this path, so we cannot run the federation
@@ -821,56 +878,40 @@ impl ChioKernel {
         matched_grant_index: Option<usize>,
         extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
-        let cap = &request.capability;
-        let receipt_content = receipt_content_for_output(None, None)?;
-
-        let action = ToolCallAction::from_parameters(request.arguments.clone()).map_err(|e| {
-            KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}"))
-        })?;
-        let request_metadata = request_receipt_metadata(
-            request,
-            self.attestation_trust_policy.as_ref(),
-            timestamp,
-            extra_metadata.as_ref(),
-        )?;
-
-        let receipt = self.build_and_sign_receipt(ReceiptParams {
-            capability_id: &cap.id,
-            tool_name: &request.tool_name,
-            server_id: &request.server_id,
-            decision: Decision::Deny {
-                reason: reason.to_string(),
-                guard: "kernel.negotiation".to_string(),
-            },
-            action,
-            content_hash: receipt_content.content_hash,
-            metadata: merge_metadata_objects(
-                merge_metadata_objects(
-                    merge_metadata_objects(receipt_content.metadata, request_metadata),
-                    extra_metadata,
-                ),
-                receipt_attribution_metadata(cap, matched_grant_index),
-            ),
-            timestamp,
-            trust_level: chio_core::TrustLevel::default(),
-            tenant_id: None,
-        })?;
-
         // Local v1 record only: skip
         // `record_chio_receipt_with_federation` because that helper
         // would re-run the freshness check we just lost. The fail-
         // closed deny is intentionally non-federated.
-        self.record_chio_receipt(&receipt)?;
+        self.build_local_v1_failclosed_deny_response_with_metadata(
+            request,
+            reason,
+            timestamp,
+            matched_grant_index,
+            extra_metadata,
+            "kernel.negotiation",
+        )
+    }
 
-        Ok(ToolCallResponse {
-            request_id: request.request_id.clone(),
-            verdict: Verdict::Deny,
-            output: None,
-            reason: Some(reason.to_string()),
-            terminal_state: OperationTerminalState::Completed,
-            receipt,
-            execution_nonce: None,
-        })
+    /// Build a Deny response for pre-dispatch v2 persistence admission.
+    /// The request negotiated v2, but the kernel cannot durably persist
+    /// v2 receipts, so dispatch must not run. The denial is local v1
+    /// evidence because minting v2 would re-enter the unavailable path.
+    pub(crate) fn build_receipt_v2_persistence_failclosed_deny_response_with_metadata(
+        &self,
+        request: &ToolCallRequest,
+        reason: &str,
+        timestamp: u64,
+        matched_grant_index: Option<usize>,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        self.build_local_v1_failclosed_deny_response_with_metadata(
+            request,
+            reason,
+            timestamp,
+            matched_grant_index,
+            extra_metadata,
+            "kernel.receipt_v2_persistence",
+        )
     }
 
     pub(crate) fn build_deny_response_with_metadata(
