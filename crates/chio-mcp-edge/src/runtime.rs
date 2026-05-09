@@ -852,7 +852,7 @@ impl ChioMcpEdge {
     // Retained for embedders that drive the edge through a custom transport
     // loop instead of the default session-owned path.
     #[allow(dead_code)]
-    fn handle_jsonrpc_with_transport<R: BufRead, W: Write>(
+    fn handle_jsonrpc_with_transport<R: BufRead + Send, W: Write + Send>(
         &mut self,
         message: Value,
         reader: &mut R,
@@ -1033,7 +1033,7 @@ impl ChioMcpEdge {
     // Retained for embedders that drive the edge through a custom transport
     // loop instead of the default session-owned path.
     #[allow(dead_code)]
-    fn handle_request_with_transport<R: BufRead, W: Write>(
+    fn handle_request_with_transport<R: BufRead + Send, W: Write + Send>(
         &mut self,
         id: Value,
         method: &str,
@@ -1407,7 +1407,7 @@ impl ChioMcpEdge {
         }
     }
 
-    fn evaluate_tool_call_operation_with_transport<R: BufRead, W: Write>(
+    fn evaluate_tool_call_operation_with_transport<R: BufRead + Send, W: Write + Send>(
         &mut self,
         request: ToolCallRequestContext<'_>,
         reader: &mut R,
@@ -1637,7 +1637,7 @@ impl ChioMcpEdge {
     // Retained for embedders that drive the edge through a custom transport
     // loop instead of the default session-owned path.
     #[allow(dead_code)]
-    fn handle_tools_call_with_transport<R: BufRead, W: Write>(
+    fn handle_tools_call_with_transport<R: BufRead + Send, W: Write + Send>(
         &mut self,
         id: Value,
         params: Value,
@@ -1902,7 +1902,7 @@ impl ChioMcpEdge {
         task_outcome_to_jsonrpc(task, &id, &task_id)
     }
 
-    fn handle_tasks_result_with_transport<R: BufRead, W: Write>(
+    fn handle_tasks_result_with_transport<R: BufRead + Send, W: Write + Send>(
         &mut self,
         id: Value,
         params: Value,
@@ -2546,7 +2546,7 @@ impl ChioMcpEdge {
         jsonrpc_result(id, json!({}))
     }
 
-    pub fn create_message<R: BufRead, W: Write>(
+    pub fn create_message<R: BufRead + Send, W: Write + Send>(
         &mut self,
         parent_context: &OperationContext,
         operation: CreateMessageOperation,
@@ -2633,7 +2633,7 @@ impl ChioMcpEdge {
     // Retained for embedders that drive the edge through a custom transport
     // loop instead of the default session-owned path.
     #[allow(dead_code)]
-    fn process_pending_actions<R: BufRead, W: Write>(
+    fn process_pending_actions<R: BufRead + Send, W: Write + Send>(
         &mut self,
         reader: &mut R,
         writer: &mut W,
@@ -2708,7 +2708,7 @@ impl ChioMcpEdge {
     // Retained for embedders that drive the edge through a custom transport
     // loop instead of the default session-owned path.
     #[allow(dead_code)]
-    fn refresh_roots_from_client<R: BufRead, W: Write>(
+    fn refresh_roots_from_client<R: BufRead + Send, W: Write + Send>(
         &mut self,
         session_id: &SessionId,
         reader: &mut R,
@@ -2769,7 +2769,7 @@ impl ChioMcpEdge {
         Ok(())
     }
 
-    fn send_client_request<R: BufRead, W: Write>(
+    fn send_client_request<R: BufRead + Send, W: Write + Send>(
         &mut self,
         reader: &mut R,
         writer: &mut W,
