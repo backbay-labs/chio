@@ -40,7 +40,7 @@
     },
     "predicateType": {
       "type": "string",
-      "const": "chio.bilateral-cosign-signature-slice.v1"
+      "const": "chio.bilateral-signature-slice.v1"
     },
     "predicate": {
       "type": "object",
@@ -60,7 +60,7 @@
       "properties": {
         "schema": {
           "type": "string",
-          "const": "chio.bilateral-cosign-signature-slice.v1"
+          "const": "chio.bilateral-signature-slice.v1"
         },
         "invocation_id": {
           "type": "string",

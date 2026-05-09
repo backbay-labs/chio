@@ -22,6 +22,7 @@ use crate::session::{CHIO_REQUEST_LINEAGE_RECORD_SCHEMA, CHIO_SESSION_ANCHOR_SCH
 /// Anchor-batch signed artifact schema. Defined here so non-anchor verifiers
 /// can reject unknown signed artifacts before loading the `chio-anchor` crate.
 pub const CHIO_ANCHOR_BATCH_V1_SCHEMA: &str = "chio.anchor_batch.v1";
+pub const CHIO_BILATERAL_SIGNATURE_SLICE_V1_SCHEMA: &str = "chio.bilateral-signature-slice.v1";
 
 /// Known signed artifacts accepted by the core compatibility gate.
 pub const KNOWN_SIGNED_ARTIFACT_SCHEMAS: &[&str] = &[
@@ -33,6 +34,7 @@ pub const KNOWN_SIGNED_ARTIFACT_SCHEMAS: &[&str] = &[
     CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA,
     CHIO_RECEIPT_LINEAGE_STATEMENT_V2_SCHEMA,
     CHIO_ANCHOR_BATCH_V1_SCHEMA,
+    CHIO_BILATERAL_SIGNATURE_SLICE_V1_SCHEMA,
     CHIO_SESSION_ANCHOR_SCHEMA,
     CHIO_REQUEST_LINEAGE_RECORD_SCHEMA,
     CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA,
@@ -111,6 +113,11 @@ pub fn built_in_signed_artifact_registry() -> Vec<SignedArtifactSchemaEntry> {
             CHIO_ANCHOR_BATCH_V1_SCHEMA,
             "anchor_batch",
             "schema-registry/v1/anchor-batch-v1",
+        ),
+        (
+            CHIO_BILATERAL_SIGNATURE_SLICE_V1_SCHEMA,
+            "bilateral_dsse_signature_slice",
+            "federation-dsse-slice",
         ),
     ]
     .into_iter()
