@@ -24,7 +24,7 @@ rerun-after-merge follow-up (see "Open follow-ups" below).
 | Crate | `chio-anchor` |
 | Date | 2026-05-08 |
 | Branch | `PR branch` |
-| Base SHA | `7bc9fd076` |
+| Base SHA | `708c7bb33df43594f5e76542b05fca7a56d9689e` (main baseline used for this run) |
 | Tool | cargo-mutants 25.3.1 (matches the workspace pin in `.cargo/mutants.toml`) |
 | Wall clock | 60m 31s (capped; partial) |
 | Run started | 2026-05-08T12:07:59Z |
@@ -236,7 +236,7 @@ timeouts do NOT count as caught.
   contract, but the runtime now rejects hostname URLs (resolver-
   enforced dispatch). This is a pre-existing test/runtime drift
   similar to the chio-acp-proxy case.
-- The remaining 51-of-262 mutants. The rerun-after-merge will pick
+- The remaining 48-of-262 mutants. The rerun-after-merge will pick
   these up; partial-state caveat is documented above.
 - A workspace-scope re-run; once both pre-existing failures are
   fixed, the CI hosted-nightly mutants lane (mutants.yml, 4-hour-per-
