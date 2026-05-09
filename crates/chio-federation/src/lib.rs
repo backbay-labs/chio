@@ -14,6 +14,13 @@ pub mod bilateral_dsse;
 pub mod bilateral_verifier;
 pub mod metrics;
 pub mod revocation_gossip;
+// spec/CHIODOS_SELECTIVE_DISCLOSURE.md §6 BBS+ projection. Default-off
+// behind the honestly-named `bbs-stub` feature: the implementation is a
+// STUB BBS+ that captures the deterministic projection and
+// disclose/withhold semantics but offers no privacy-preserving cryptographic property.
+// Real BLS12-381 BBS+ signing is deferred.
+#[cfg(feature = "bbs-stub")]
+pub mod selective_disclosure;
 pub mod trust_establishment;
 
 pub use metrics::{
@@ -53,6 +60,12 @@ pub use revocation_gossip::{
     RevocationGossipPushQueue, RevocationRootGossip, REVOCATION_CATCHUP_MAX_EPOCHS,
     REVOCATION_CATCHUP_REQUEST_SCHEMA, REVOCATION_CATCHUP_RESPONSE_SCHEMA,
     REVOCATION_ROOT_GOSSIP_BATCH_SCHEMA, REVOCATION_ROOT_GOSSIP_SCHEMA,
+};
+#[cfg(feature = "bbs-stub")]
+pub use selective_disclosure::{
+    project_audit_view, verify_audit_view, BbsAuditView, BbsMessage, DisclosedFields,
+    DisclosedMessage, DisclosureSet, SelectiveDisclosureError, AUDIT_VIEW_SCHEMA_STUB,
+    PROJECTION_VERSION_RECEIPT_V1,
 };
 pub use trust_establishment::{
     ConformanceEvidence, ConformanceTier, FederationPeer, FederationPeerStore, HandshakeChallenge,

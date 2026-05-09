@@ -1533,12 +1533,14 @@ fn main() {
                 input_file,
                 depth,
                 fanout_limit,
+                inspect_bilateral,
             } => cmd_receipt_explain(
                 ReceiptExplainArgs {
                     receipt_id: &receipt_id,
                     input_file: input_file.as_deref(),
                     depth,
                     fanout_limit,
+                    inspect_bilateral,
                 },
                 QueryBackend {
                     json_output,
