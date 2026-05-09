@@ -181,10 +181,9 @@ fn main() -> Result<(), Box<dyn StdError>> {
         paths.checkpoint_json.display()
     );
 
-    // 7. Final assertion: at least one receipt was emitted (KB MCP demo
-    //    contract from `kb-mcp-integration.md`). For the cross-org refund
-    //    branch this is the receipt we just signed; for the KB MCP branch
-    //    each tool call appends one more.
+    // 7. Final assertion: at least one receipt was emitted. The
+    //    cross-org refund path emits the signed receipt below; the KB
+    //    MCP path appends one receipt for each tool call.
     if !matches!(receipt.decision, Decision::Allow) {
         return Err("scenario expects an Allow receipt for the refund".into());
     }
