@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/conditions.rs
++++ replace < with > in check_time_window
+@@ -143,17 +143,17 @@
+             return false;
+         }
+     }
+ 
+     if start_minutes == end_minutes {
+         return true;
+     }
+ 
+-    if start_minutes < end_minutes {
++    if start_minutes > /* ~ changed by cargo-mutants ~ */ end_minutes {
+         current_minutes >= start_minutes && current_minutes < end_minutes
+     } else {
+         current_minutes >= start_minutes || current_minutes < end_minutes
+     }
+ }
+ 
+ fn parse_hhmm(s: &str) -> Option<(u8, u8)> {
+     let parts: Vec<&str> = s.split(':').collect();

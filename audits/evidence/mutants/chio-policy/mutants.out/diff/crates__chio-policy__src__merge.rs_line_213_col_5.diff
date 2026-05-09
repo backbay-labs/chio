@@ -1,0 +1,44 @@
+--- crates/chio-policy/src/merge.rs
++++ replace merge_detection -> Option<DetectionExtension> with Some(Default::default())
+@@ -205,40 +205,17 @@
+         (None, None) => None,
+     }
+ }
+ 
+ fn merge_detection(
+     base: &Option<DetectionExtension>,
+     child: &Option<DetectionExtension>,
+ ) -> Option<DetectionExtension> {
+-    match (base, child) {
+-        (_, Some(child_detection)) => {
+-            if let Some(base_detection) = base {
+-                Some(DetectionExtension {
+-                    prompt_injection: merge_prompt_injection(
+-                        &base_detection.prompt_injection,
+-                        &child_detection.prompt_injection,
+-                    ),
+-                    jailbreak: merge_jailbreak(
+-                        &base_detection.jailbreak,
+-                        &child_detection.jailbreak,
+-                    ),
+-                    threat_intel: merge_threat_intel(
+-                        &base_detection.threat_intel,
+-                        &child_detection.threat_intel,
+-                    ),
+-                })
+-            } else {
+-                Some(child_detection.clone())
+-            }
+-        }
+-        (Some(base_detection), None) => Some(base_detection.clone()),
+-        (None, None) => None,
+-    }
++    Some(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn merge_reputation(
+     base: &Option<ReputationExtension>,
+     child: &Option<ReputationExtension>,
+ ) -> Option<ReputationExtension> {
+     match (base, child) {
+         (_, Some(child_reputation)) => {

@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/validate.rs
++++ replace != with == in validate_posture
+@@ -265,17 +265,17 @@
+                 )));
+             } else if !posture.states.contains_key(&transition.to) {
+                 errors.push(ValidationError::Custom(format!(
+                     "posture.transitions[{index}].to '{}' does not reference a defined state",
+                     transition.to
+                 )));
+             }
+ 
+-            if transition.on != TransitionTrigger::Timeout {
++            if transition.on == /* ~ changed by cargo-mutants ~ */ TransitionTrigger::Timeout {
+                 if let Some(after) = &transition.after {
+                     if !is_valid_duration(after) {
+                         errors.push(ValidationError::Custom(format!(
+                             "posture.transitions[{index}].after must match ^\\d+[smhd]$"
+                         )));
+                     }
+                 }
+             }

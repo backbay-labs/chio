@@ -1,0 +1,28 @@
+--- crates/chio-policy/src/regex_safety.rs
++++ replace compile_generated_policy_regex -> Result<Regex, String> with Ok(Default::default())
+@@ -31,24 +31,17 @@
+     RegexBuilder::new(trimmed)
+         .size_limit(POLICY_REGEX_SIZE_LIMIT)
+         .dfa_size_limit(POLICY_REGEX_DFA_SIZE_LIMIT)
+         .build()
+         .map_err(|error| format!("{field} invalid regex pattern {trimmed:?}: {error}"))
+ }
+ 
+ pub(crate) fn compile_generated_policy_regex(pattern: &str, field: &str) -> Result<Regex, String> {
+-    if pattern.is_empty() {
+-        return Err(format!("{field} cannot be empty"));
+-    }
+-    RegexBuilder::new(pattern)
+-        .size_limit(POLICY_REGEX_SIZE_LIMIT)
+-        .dfa_size_limit(POLICY_REGEX_DFA_SIZE_LIMIT)
+-        .build()
+-        .map_err(|error| format!("{field} invalid generated regex: {error}"))
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub(crate) fn policy_regex_is_match(
+     pattern: &str,
+     field: &str,
+     haystack: &str,
+ ) -> Result<bool, String> {
+     let cache = POLICY_REGEX_CACHE.get_or_init(|| StdMutex::new(HashMap::new()));

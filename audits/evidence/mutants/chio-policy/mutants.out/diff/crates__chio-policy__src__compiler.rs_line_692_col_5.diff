@@ -1,0 +1,27 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace compile_custom_secret_patterns -> Vec<CustomSecretPattern> with vec![]
+@@ -684,23 +684,17 @@
+             max_total_cost: None,
+             dpop_required: None,
+         }],
+         ..ChioScope::default()
+     }
+ }
+ 
+ fn compile_custom_secret_patterns(rule: &SecretPatternsRule) -> Vec<CustomSecretPattern> {
+-    rule.patterns
+-        .iter()
+-        .map(|pattern| CustomSecretPattern {
+-            name: pattern.name.clone(),
+-            pattern: pattern.pattern.clone(),
+-        })
+-        .collect()
++    vec![] /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ fn compile_output_sanitizer_config(rule: &SecretPatternsRule) -> OutputSanitizerConfig {
+     let mut config = OutputSanitizerConfig::default();
+     config.denylist.patterns = rule
+         .patterns
+         .iter()
+         .map(|pattern| pattern.pattern.clone())

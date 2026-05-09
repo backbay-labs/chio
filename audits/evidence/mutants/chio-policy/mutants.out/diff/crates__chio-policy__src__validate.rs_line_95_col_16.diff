@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/validate.rs
++++ delete ! in validate_rules
+@@ -87,17 +87,17 @@
+     if let Some(secret_patterns) = &rules.secret_patterns {
+         validate_regex_count(
+             secret_patterns.patterns.len(),
+             "rules.secret_patterns.patterns",
+             errors,
+         );
+         let mut seen = HashSet::new();
+         for pattern in &secret_patterns.patterns {
+-            if !seen.insert(&pattern.name) {
++            if  /* ~ changed by cargo-mutants ~ */seen.insert(&pattern.name) {
+                 errors.push(ValidationError::DuplicatePatternName(pattern.name.clone()));
+             }
+             validate_regex(
+                 &pattern.pattern,
+                 &format!("rules.secret_patterns.patterns.{}", pattern.name),
+                 errors,
+             );
+         }

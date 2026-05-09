@@ -1,0 +1,21 @@
+--- crates/chio-policy/src/compiler.rs
++++ delete ! in compile_scope
+@@ -625,17 +625,17 @@
+     let Some(rules) = &policy.rules else {
+         return Ok(permissive_scope());
+     };
+ 
+     let Some(ta) = &rules.tool_access else {
+         return Ok(permissive_scope());
+     };
+ 
+-    if !ta.enabled {
++    if  /* ~ changed by cargo-mutants ~ */ta.enabled {
+         return Ok(permissive_scope());
+     }
+ 
+     if ta.default == DefaultAction::Allow {
+         if tool_access_can_safely_widen_to_wildcard(ta) {
+             return Ok(permissive_scope());
+         }
+         return Ok(ChioScope::default());

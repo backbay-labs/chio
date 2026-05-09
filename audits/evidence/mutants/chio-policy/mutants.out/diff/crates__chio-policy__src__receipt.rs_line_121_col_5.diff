@@ -1,0 +1,26 @@
+--- crates/chio-policy/src/receipt.rs
++++ replace build_policy_summary -> PolicySummary with Default::default()
+@@ -113,22 +113,17 @@
+         policy,
+         origin_profile: result.origin_profile,
+         posture: result.posture,
+         evaluation_duration_us: duration_us,
+     }
+ }
+ 
+ fn build_policy_summary(spec: &HushSpec) -> PolicySummary {
+-    let content_hash = compute_policy_hash(spec);
+-    PolicySummary {
+-        name: spec.name.clone(),
+-        version: spec.hushspec.clone(),
+-        content_hash,
+-    }
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// SHA-256 hex digest of the canonical JSON serialization.
+ pub fn compute_policy_hash(spec: &HushSpec) -> String {
+     let json = serde_json::to_string(spec).unwrap_or_default();
+     let mut hasher = Sha256::new();
+     hasher.update(json.as_bytes());
+     format!("{:x}", hasher.finalize())

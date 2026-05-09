@@ -1,0 +1,32 @@
+--- crates/chio-policy/src/compiler.rs
++++ replace compile_code_execution_rule -> chio_guards::CodeExecutionConfig with Default::default()
+@@ -394,28 +394,17 @@
+         credential_detection: rule.credential_detection,
+         extra_credential_patterns: rule.extra_credential_patterns.clone(),
+     }
+ }
+ 
+ fn compile_code_execution_rule(
+     rule: &crate::models::CodeExecutionRule,
+ ) -> chio_guards::CodeExecutionConfig {
+-    let mut config = chio_guards::CodeExecutionConfig {
+-        enabled: true,
+-        language_allowlist: rule.language_allowlist.clone(),
+-        module_denylist: rule.module_denylist.clone(),
+-        network_access: rule.network_access,
+-        max_execution_time_ms: rule.max_execution_time_ms,
+-        ..chio_guards::CodeExecutionConfig::default()
+-    };
+-    if let Some(bytes) = rule.max_scan_bytes {
+-        config.max_scan_bytes = bytes;
+-    }
+-    config
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ // ---------------------------------------------------------------------------
+ // Detection-extension guards (8, 9, 10)
+ // ---------------------------------------------------------------------------
+ 
+ fn compile_detection_guards(
+     policy: &HushSpec,
