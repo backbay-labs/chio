@@ -797,6 +797,12 @@ fn validate_signature_slice_predicate(
             )))
         }
     }
+    if pred.consistency_model != DEFAULT_CONSISTENCY_MODEL {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "predicate.schema_invalid: consistency_model {:?} is not supported by the signature-slice profile",
+            pred.consistency_model
+        )));
+    }
     if !VALID_CROSS_ORG_VISIBILITY.contains(&pred.cross_org_visibility.as_str()) {
         return Err(BilateralCoSigningError::CanonicalJson(format!(
             "predicate.schema_invalid: cross_org_visibility {:?} is unsupported",
@@ -1104,6 +1110,35 @@ mod tests {
         let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
             .expect_err("embedded receipt kernel_key must equal Org B passport key");
         assert_eq!(err, BilateralCoSigningError::OrgBSignatureInvalid);
+    }
+
+    #[test]
+    fn verifier_rejects_ordered_or_quorum_consistency_claims_without_anchor_metadata() {
+        for unsupported in ["totally-ordered", "quorum-required"] {
+            let kp_a = Keypair::generate();
+            let kp_b = Keypair::generate();
+            let receipt = sample_receipt(&kp_b);
+            let mut envelope = sign_dsse_envelope(
+                &receipt,
+                &kp_a,
+                &kp_b,
+                "kernel.org-a",
+                "kernel.org-b",
+                "file_read",
+                1_734_000_000_000,
+            )
+            .unwrap();
+            let (mut statement, _) = envelope.decode_statement().unwrap();
+            statement.predicate.consistency_model = unsupported.to_string();
+            let bytes = statement.canonical_bytes().unwrap();
+            resign_payload(&mut envelope, &kp_a, &kp_b, &bytes);
+
+            let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+                .expect_err("signature-slice profile cannot verify ordered/quorum claims");
+            assert!(err.to_string().contains(&format!(
+                "consistency_model \"{unsupported}\" is not supported"
+            )));
+        }
     }
 
     #[test]

@@ -19,9 +19,8 @@
 //! | 14   | drop lease from registry | capability.lease_expired_or_unknown  |
 //! | 14   | omit lease ref         | capability.lease_expired_or_unknown    |
 //! | 15   | mark class receipt-backed; omit gov ref | governance.receipt_required_missing |
-//! | 16   | totally-ordered with no anchor | consistency.anchor_unverified  |
-//! | 16   | quorum-required with no anchor | consistency.quorum_underpopulated |
-//! | 16   | quorum-required with bare anchor | consistency.quorum_underpopulated |
+//! | profile | totally-ordered signature-slice claim | predicate.schema_invalid |
+//! | profile | quorum-required signature-slice claim | predicate.schema_invalid |
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -230,6 +229,21 @@ fn assert_verifier_code(err: BilateralInvocationError, want: &str) {
         }
         BilateralInvocationError::CoSigning(e) => {
             panic!("expected verifier error {want}, got cosigning error {e:?}");
+        }
+    }
+}
+
+fn assert_cosigning_error_contains(err: BilateralInvocationError, want: &str) {
+    match err {
+        BilateralInvocationError::CoSigning(e) => {
+            let got = e.to_string();
+            assert!(
+                got.contains(want),
+                "cosigning error mismatch: expected {want:?}, got {got:?}"
+            );
+        }
+        BilateralInvocationError::Verifier(e) => {
+            panic!("expected cosigning error {want}, got verifier error {e:?}");
         }
     }
 }
@@ -728,7 +742,10 @@ fn step_16_totally_ordered_without_anchor_fails() {
         BTreeMap::new(),
     )
     .unwrap_err();
-    assert_verifier_code(err, "consistency.anchor_unverified");
+    assert_cosigning_error_contains(
+        err,
+        "consistency_model \"totally-ordered\" is not supported",
+    );
 }
 
 #[test]
@@ -749,7 +766,10 @@ fn step_16_quorum_required_without_anchor_fails() {
         BTreeMap::new(),
     )
     .unwrap_err();
-    assert_verifier_code(err, "consistency.quorum_underpopulated");
+    assert_cosigning_error_contains(
+        err,
+        "consistency_model \"quorum-required\" is not supported",
+    );
 }
 
 #[test]
@@ -770,7 +790,10 @@ fn step_16_quorum_required_with_bare_anchor_still_fails_without_quorum_proof() {
         BTreeMap::new(),
     )
     .unwrap_err();
-    assert_verifier_code(err, "consistency.quorum_underpopulated");
+    assert_cosigning_error_contains(
+        err,
+        "consistency_model \"quorum-required\" is not supported",
+    );
 }
 
 #[test]
@@ -821,7 +844,10 @@ fn step_16_totally_ordered_with_bare_anchor_still_fails_without_reconciliation()
         BTreeMap::new(),
     )
     .unwrap_err();
-    assert_verifier_code(err, "consistency.anchor_unverified");
+    assert_cosigning_error_contains(
+        err,
+        "consistency_model \"totally-ordered\" is not supported",
+    );
 }
 
 // ---------------------------------------------------------------------------
