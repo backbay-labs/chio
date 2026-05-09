@@ -1,0 +1,46 @@
+--- crates/chio-anchor/src/evm.rs
++++ replace prepare_delegate_registration -> Result<PreparedDelegateRegistration, AnchorError> with Ok(Default::default())
+@@ -164,42 +164,17 @@
+     })
+ }
+ 
+ pub fn prepare_delegate_registration(
+     target: &EvmAnchorTarget,
+     delegate_address: &str,
+     expires_at: u64,
+ ) -> Result<PreparedDelegateRegistration, AnchorError> {
+-    if delegate_address.trim().is_empty() {
+-        return Err(AnchorError::InvalidInput(
+-            "delegate address is required".to_string(),
+-        ));
+-    }
+-    if expires_at == 0 {
+-        return Err(AnchorError::InvalidInput(
+-            "delegate expiry must be non-zero".to_string(),
+-        ));
+-    }
+-
+-    let delegate = Address::from_str(delegate_address)
+-        .map_err(|error| AnchorError::InvalidInput(error.to_string()))?;
+-    let call = IChioRootRegistry::registerDelegateCall {
+-        delegate,
+-        expiresAt: expires_at,
+-    };
+-    Ok(PreparedDelegateRegistration {
+-        chain_id: target.chain_id.clone(),
+-        rpc_url: target.rpc_url.clone(),
+-        contract_address: target.contract_address.clone(),
+-        operator_address: target.operator_address.clone(),
+-        delegate_address: delegate_address.to_string(),
+-        expires_at,
+-        call_data: format!("0x{}", hex::encode(call.abi_encode())),
+-    })
++    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub async fn publish_root(
+     publication: &PreparedEvmRootPublication,
+     egress_contract: &HttpEgressContract,
+ ) -> Result<String, AnchorError> {
+     let gas_limit = estimate_publication_gas(publication, egress_contract)
+         .await?

@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/solana.rs
++++ replace != with == in verify_solana_anchor
+@@ -79,17 +79,17 @@
+         anchored_checkpoint_seq: checkpoint.body.checkpoint_seq,
+     })
+ }
+ 
+ pub fn verify_solana_anchor(
+     proof: &AnchorInclusionProof,
+     solana: &SolanaMemoAnchorRecord,
+ ) -> Result<(), AnchorError> {
+-    if solana.memo_program_id != SOLANA_MEMO_PROGRAM_ID {
++    if solana.memo_program_id == /* ~ changed by cargo-mutants ~ */ SOLANA_MEMO_PROGRAM_ID {
+         return Err(AnchorError::Verification(format!(
+             "Solana anchor must use the memo program {}; got {}",
+             SOLANA_MEMO_PROGRAM_ID, solana.memo_program_id
+         )));
+     }
+     if solana.tx_signature.trim().is_empty() {
+         return Err(AnchorError::Verification(
+             "Solana anchor transaction signature must be non-empty".to_string(),

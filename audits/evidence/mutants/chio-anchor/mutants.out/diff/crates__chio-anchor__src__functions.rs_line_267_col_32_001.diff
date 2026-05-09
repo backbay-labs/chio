@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/functions.rs
++++ replace > with == in assess_functions_verification
+@@ -259,17 +259,17 @@
+         )));
+     }
+     if request.target.chain_id != response.target_chain_id {
+         return Err(AnchorError::Verification(format!(
+             "Functions response chain {} does not match request chain {}",
+             response.target_chain_id, request.target.chain_id
+         )));
+     }
+-    if response.returned_bytes > request.policy.max_return_bytes {
++    if response.returned_bytes == /* ~ changed by cargo-mutants ~ */ request.policy.max_return_bytes {
+         return Err(AnchorError::Verification(format!(
+             "Functions response size {} exceeds maximum {}",
+             response.returned_bytes, request.policy.max_return_bytes
+         )));
+     }
+     if response.receipt_batch_root != request.receipt_batch_root {
+         return Err(AnchorError::Verification(
+             "Functions response batch root does not match prepared request".to_string(),

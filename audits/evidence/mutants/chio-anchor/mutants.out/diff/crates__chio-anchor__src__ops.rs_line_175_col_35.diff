@@ -1,0 +1,21 @@
+--- crates/chio-anchor/src/ops.rs
++++ replace == with != in AnchorIndexerCursor::from_sequences
+@@ -167,17 +167,17 @@
+     pub fn from_sequences(input: AnchorIndexerCursorInput) -> Self {
+         let lag_checkpoints = input
+             .canonical_checkpoint_seq
+             .saturating_sub(input.indexed_checkpoint_seq);
+         let status = if input.failed {
+             AnchorIndexerStatus::Failed
+         } else if input.replaying {
+             AnchorIndexerStatus::Replaying
+-        } else if lag_checkpoints == 0 {
++        } else if lag_checkpoints != /* ~ changed by cargo-mutants ~ */ 0 {
+             AnchorIndexerStatus::Healthy
+         } else if lag_checkpoints <= 3 {
+             AnchorIndexerStatus::Lagging
+         } else {
+             AnchorIndexerStatus::Drifted
+         };
+         Self {
+             service_id: input.service_id,

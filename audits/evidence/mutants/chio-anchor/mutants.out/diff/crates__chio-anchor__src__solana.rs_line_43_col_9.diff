@@ -1,0 +1,31 @@
+--- crates/chio-anchor/src/solana.rs
++++ replace SolanaMemoAnchorRecord::from_prepared -> Self with Default::default()
+@@ -35,27 +35,17 @@
+ impl SolanaMemoAnchorRecord {
+     #[must_use]
+     pub fn from_prepared(
+         prepared: &PreparedSolanaMemoPublication,
+         tx_signature: String,
+         slot: u64,
+         block_time: u64,
+     ) -> Self {
+-        Self {
+-            chain_id: prepared.chain_id.clone(),
+-            operator_pubkey: prepared.operator_pubkey.clone(),
+-            memo_program_id: prepared.memo_program_id.clone(),
+-            tx_signature,
+-            slot,
+-            block_time,
+-            memo_data: prepared.memo_data.clone(),
+-            anchored_merkle_root: prepared.anchored_merkle_root,
+-            anchored_checkpoint_seq: prepared.anchored_checkpoint_seq,
+-        }
++        Default::default() /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ pub fn prepare_solana_memo_publication(
+     checkpoint: &KernelCheckpoint,
+     chain_id: &str,
+     operator_pubkey: &str,
+ ) -> Result<PreparedSolanaMemoPublication, AnchorError> {

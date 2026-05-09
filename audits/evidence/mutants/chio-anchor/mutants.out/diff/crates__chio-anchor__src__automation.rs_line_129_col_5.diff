@@ -1,0 +1,66 @@
+--- crates/chio-anchor/src/automation.rs
++++ replace assess_anchor_automation_execution -> Result<(), AnchorError> with Ok(())
+@@ -121,62 +121,17 @@
+         publication,
+     })
+ }
+ 
+ pub fn assess_anchor_automation_execution(
+     job: &AnchorAutomationJob,
+     execution: &AnchorAutomationExecution,
+ ) -> Result<(), AnchorError> {
+-    if job.job_id != execution.job_id {
+-        return Err(AnchorError::Verification(format!(
+-            "anchor automation execution {} does not match job {}",
+-            execution.job_id, job.job_id
+-        )));
+-    }
+-    if execution.executed_at < execution.fired_at {
+-        return Err(AnchorError::Verification(
+-            "anchor automation execution cannot complete before it fired".to_string(),
+-        ));
+-    }
+-    if execution.observed_checkpoint_seq != job.checkpoint_seq {
+-        return Err(AnchorError::Verification(format!(
+-            "anchor automation observed checkpoint {} does not match expected {}",
+-            execution.observed_checkpoint_seq, job.checkpoint_seq
+-        )));
+-    }
+-    if execution.observed_state_fingerprint != job.state_fingerprint {
+-        return Err(AnchorError::Verification(
+-            "anchor automation state fingerprint drifted from the scheduled publication"
+-                .to_string(),
+-        ));
+-    }
+-    let delay = execution.executed_at.saturating_sub(execution.fired_at);
+-    if delay > job.replay_window_secs
+-        && execution.outcome != AnchorAutomationExecutionOutcome::DelayedButSafe
+-    {
+-        return Err(AnchorError::Verification(format!(
+-            "anchor automation delay {} exceeds replay window {} without explicit delayed-safe outcome",
+-            delay, job.replay_window_secs
+-        )));
+-    }
+-    if execution.duplicate_suppressed
+-        && execution.outcome != AnchorAutomationExecutionOutcome::DuplicateSuppressed
+-    {
+-        return Err(AnchorError::Verification(
+-            "duplicate suppression must be reported explicitly".to_string(),
+-        ));
+-    }
+-    if job.operator_override_required && !execution.operator_override_used {
+-        return Err(AnchorError::Verification(
+-            "delegate-driven anchor automation must record operator override availability"
+-                .to_string(),
+-        ));
+-    }
+-    Ok(())
++    Ok(()) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use chio_core::crypto::Keypair;
+     use chio_core::web3::{
+         SignedWeb3IdentityBinding, Web3IdentityBindingCertificate, Web3KeyBindingPurpose,
+         CHIO_KEY_BINDING_CERTIFICATE_SCHEMA,
