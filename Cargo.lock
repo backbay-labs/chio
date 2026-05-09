@@ -2833,6 +2833,7 @@ dependencies = [
  "chrono",
  "coset",
  "hex",
+ "jsonschema",
  "jsonwebtoken",
  "p256 0.13.2",
  "rand 0.8.5",
