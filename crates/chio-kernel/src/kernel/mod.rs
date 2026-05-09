@@ -122,6 +122,22 @@ pub(crate) fn current_scoped_receipt_federation_admission() -> Option<ReceiptFed
     RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| slot.borrow().clone())
 }
 
+pub(crate) struct ScopedKernelReceiptFederationAdmission {
+    request_id: String,
+    admissions: Arc<DashMap<String, ReceiptFederationAdmission>>,
+    previous: Option<ReceiptFederationAdmission>,
+}
+
+impl Drop for ScopedKernelReceiptFederationAdmission {
+    fn drop(&mut self) {
+        if let Some(previous) = self.previous.take() {
+            self.admissions.insert(self.request_id.clone(), previous);
+        } else {
+            self.admissions.remove(&self.request_id);
+        }
+    }
+}
+
 /// Extract tenant_id from a session's authenticated auth context.
 ///
 /// Preference order:
@@ -1223,6 +1239,12 @@ pub struct ChioKernel {
     /// in-memory; persistent storage plugs in via the federation-state
     /// APIs already in chio-federation.
     federation_dual_receipts: DashMap<String, chio_federation::DualSignedReceipt>,
+    /// Request-keyed copy of the receipt-version admission snapshot.
+    /// Thread-local admission state is still kept for legacy sync builders,
+    /// but async evaluate futures may resume on a different Tokio worker
+    /// after dispatch. This map keeps the admitted version and peer state
+    /// available until the evaluation future finishes.
+    receipt_federation_admissions: Arc<DashMap<String, ReceiptFederationAdmission>>,
     /// Phase 20.3 operator-declared kernel identifier used as the
     /// `org_b_kernel_id` in bilateral co-signing. Defaults to the hex
     /// encoding of the kernel's signing public key, but operators can
@@ -1670,6 +1692,7 @@ impl ChioKernel {
             capability_trust_roots_write_lock: Mutex::new(()),
             federation_cosigner: None,
             federation_dual_receipts: DashMap::new(),
+            receipt_federation_admissions: Arc::new(DashMap::new()),
             federation_local_kernel_id: ArcSwap::from_pointee(Option::<String>::None),
             signing_task,
             settlement_observer: None,
@@ -1696,6 +1719,12 @@ impl ChioKernel {
         self.kernel_receipt_v2_default.load(Ordering::SeqCst)
     }
 
+    fn can_persist_chio_receipt_v2(&self) -> bool {
+        self.receipt_store
+            .as_ref()
+            .is_some_and(|store| store.supports_chio_receipt_v2())
+    }
+
     pub(crate) fn ensure_chio_receipt_v2_persistence_ready(&self) -> Result<(), KernelError> {
         let Some(store) = self.receipt_store.as_ref() else {
             return Err(KernelError::Internal(
@@ -1710,6 +1739,37 @@ impl ChioKernel {
             ));
         }
         Ok(())
+    }
+
+    pub(crate) fn scope_receipt_federation_admission_for_request(
+        &self,
+        request_id: &str,
+        admission: ReceiptFederationAdmission,
+    ) -> ScopedKernelReceiptFederationAdmission {
+        let previous = self
+            .receipt_federation_admissions
+            .insert(request_id.to_string(), admission);
+        ScopedKernelReceiptFederationAdmission {
+            request_id: request_id.to_string(),
+            admissions: Arc::clone(&self.receipt_federation_admissions),
+            previous,
+        }
+    }
+
+    pub(crate) fn receipt_federation_admission_for_request(
+        &self,
+        request_id: &str,
+        remote_kernel_id: Option<&str>,
+    ) -> Option<ReceiptFederationAdmission> {
+        let admission = self
+            .receipt_federation_admissions
+            .get(request_id)
+            .map(|entry| entry.value().clone())?;
+        if admission.remote_kernel_id.as_deref() == remote_kernel_id {
+            Some(admission)
+        } else {
+            None
+        }
     }
 
     /// Resolve and snapshot the receipt-version decision at the admission
@@ -1754,7 +1814,7 @@ impl ChioKernel {
                 },
             });
         }
-        let receipt_version = if self.receipt_v2_default() {
+        let receipt_version = if self.receipt_v2_default() && self.can_persist_chio_receipt_v2() {
             KernelReceiptVersion::V2BodyHash
         } else {
             KernelReceiptVersion::V1Legacy
@@ -1777,7 +1837,9 @@ impl ChioKernel {
     ///    dispatch rather than silently downgrade a v2-expected request
     ///    to v1.
     /// 3. Otherwise (no remote named), the kernel-level default
-    ///    ([`Self::receipt_v2_default`]) supplies the answer.
+    ///    ([`Self::receipt_v2_default`]) mints v2 only when a durable
+    ///    v2-capable receipt store is configured; local no-store kernels
+    ///    remain legacy-v1 rather than failing ordinary dispatch.
     pub fn kernel_receipt_version_for_remote(
         &self,
         remote_kernel_id: Option<&str>,
@@ -3067,10 +3129,27 @@ impl ChioKernel {
 
         let now = current_unix_timestamp();
 
+        // Phase 1.4 emergency kill switch: every evaluate path checks the flag
+        // before receipt negotiation, capability validation, guard evaluation,
+        // or budget mutation so a stopped kernel cannot be coerced into doing
+        // any work or peer lookup.
+        if self.is_emergency_stopped() {
+            warn!(
+                request_id = %request.request_id,
+                "emergency stop active -- denying evaluate_tool_call"
+            );
+            return self.build_emergency_stop_deny_response_with_metadata(
+                request,
+                EMERGENCY_STOP_DENY_REASON,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
+        }
+
         // Receipt-version negotiation is a TRUST-BOUNDARY admission check
-        // that must run BEFORE any dispatch path AND before the
-        // emergency-stop deny helper. The admission snapshot is scoped for
-        // every receipt builder below so persistence and federation cosign
+        // that must run BEFORE any dispatch path. The admission snapshot is
+        // scoped for every receipt builder below so persistence and federation cosign
         // use the peer/version/key material admitted before side effects.
         // PROTOCOL.md section 6 normative MUST.
         let receipt_admission = match self
@@ -3094,6 +3173,11 @@ impl ChioKernel {
             }
         };
         let receipt_mints_v2 = receipt_admission.receipt_version.mints_v2();
+        let _receipt_federation_request_scope = self
+            .scope_receipt_federation_admission_for_request(
+                &request.request_id,
+                receipt_admission.clone(),
+            );
         let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
 
         if receipt_mints_v2 {
@@ -3112,26 +3196,6 @@ impl ChioKernel {
                     extra_metadata.clone(),
                 );
             }
-        }
-
-        // Phase 1.4 emergency kill switch: every evaluate path checks the flag
-        // BEFORE capability validation, guard evaluation, or budget mutation so
-        // a stopped kernel cannot be coerced into doing any work. The
-        // negotiation gate above means the federation lookup inside
-        // `build_deny_response_with_metadata` is now safe to run for
-        // emergency-stopped requests.
-        if self.is_emergency_stopped() {
-            warn!(
-                request_id = %request.request_id,
-                "emergency stop active -- denying evaluate_tool_call"
-            );
-            return self.build_deny_response_with_metadata(
-                request,
-                EMERGENCY_STOP_DENY_REASON,
-                now,
-                None,
-                extra_metadata.clone(),
-            );
         }
 
         self.validate_web3_evidence_prerequisites()?;
@@ -3636,6 +3700,23 @@ impl ChioKernel {
 
         let now = current_unix_timestamp();
 
+        // Phase 1.4 emergency kill switch: the nested-flow path also
+        // deny-fast before receipt negotiation so sampling/elicitation-bearing
+        // tool calls cannot slip past while the kernel is stopped.
+        if self.is_emergency_stopped() {
+            warn!(
+                request_id = %request.request_id,
+                "emergency stop active -- denying evaluate_tool_call (nested flow)"
+            );
+            return self.build_emergency_stop_deny_response_with_metadata(
+                request,
+                EMERGENCY_STOP_DENY_REASON,
+                now,
+                None,
+                None,
+            );
+        }
+
         // The pre-dispatch receipt-version admission gate must run on the
         // nested-flow path too. The admission snapshot is scoped for the
         // receipt builders below so a peer that expires during nested tool
@@ -3657,6 +3738,11 @@ impl ChioKernel {
             }
         };
         let receipt_mints_v2 = receipt_admission.receipt_version.mints_v2();
+        let _receipt_federation_request_scope = self
+            .scope_receipt_federation_admission_for_request(
+                &request.request_id,
+                receipt_admission.clone(),
+            );
         let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
 
         if receipt_mints_v2 {
@@ -3671,17 +3757,6 @@ impl ChioKernel {
                     request, &msg, now, None, None,
                 );
             }
-        }
-
-        // Phase 1.4 emergency kill switch: the nested-flow path also deny-fast
-        // so sampling/elicitation-bearing tool calls cannot slip past while
-        // the kernel is stopped.
-        if self.is_emergency_stopped() {
-            warn!(
-                request_id = %request.request_id,
-                "emergency stop active -- denying evaluate_tool_call (nested flow)"
-            );
-            return self.build_deny_response(request, EMERGENCY_STOP_DENY_REASON, now, None);
         }
 
         self.validate_web3_evidence_prerequisites()?;
@@ -4169,6 +4244,7 @@ impl ChioKernel {
         &self,
     ) -> Result<Vec<ToolServerEvent>, KernelError> {
         let mut events = Vec::new();
+        let mut first_error = None;
         for (server_id, server) in &self.tool_servers {
             match server.drain_events().await {
                 Ok(mut server_events) => events.append(&mut server_events),
@@ -4178,8 +4254,15 @@ impl ChioKernel {
                         reason = %redacted!(&error),
                         "failed to drain tool server events"
                     );
-                    return Err(error);
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
                 }
+            }
+        }
+        if events.is_empty() {
+            if let Some(error) = first_error {
+                return Err(error);
             }
         }
         Ok(events)

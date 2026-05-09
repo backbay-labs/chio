@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 struct HelloServer;
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for HelloServer {
     fn server_id(&self) -> &str {
         "hello-mcp-srv"

@@ -797,7 +797,7 @@ fn production_evaluate_rejects_direct_v2_without_trust_root_resolver() {
 }
 
 #[test]
-fn negotiated_receipt_v2_without_store_denies_before_tool_invocation() {
+fn local_default_receipt_v2_without_store_uses_v1_and_invokes_tool() {
     let mut kernel = make_kernel(make_config());
     kernel.set_receipt_v2_default(true);
     let invocations = std::sync::Arc::new(AtomicU64::new(0));
@@ -816,24 +816,20 @@ fn negotiated_receipt_v2_without_store_denies_before_tool_invocation() {
     );
     let response = kernel
         .evaluate_tool_call_blocking(&make_request(
-            "req-v2-no-store",
+            "req-local-no-store",
             &capability,
             "read_file",
             "srv-a",
         ))
-        .expect("missing v2 receipt store should produce a fail-closed deny");
+        .expect("local default without a v2 store should fall back to v1");
 
-    assert_eq!(response.verdict, Verdict::Deny);
-    let reason = response.reason.unwrap_or_default();
-    assert!(
-        reason.contains("no durable v2-capable receipt store configured"),
-        "expected durable v2 store denial, got: {reason}"
-    );
+    assert_eq!(response.verdict, Verdict::Allow);
     assert_eq!(
         invocations.load(Ordering::SeqCst),
-        0,
-        "v2 receipt-store admission must fail before tool side effects"
+        1,
+        "ordinary local dispatch must not require a v2 receipt store"
     );
+    assert_eq!(kernel.receipt_log().len(), 1);
 }
 
 #[test]
@@ -1249,6 +1245,10 @@ struct EventDrainServer {
     events: Vec<ToolServerEvent>,
 }
 
+struct FailingEventDrainServer {
+    id: String,
+}
+
 struct NestedFlowServer {
     id: String,
 }
@@ -1296,6 +1296,12 @@ impl EventDrainServer {
             id: id.to_string(),
             events,
         }
+    }
+}
+
+impl FailingEventDrainServer {
+    fn new(id: &str) -> Self {
+        Self { id: id.to_string() }
     }
 }
 
@@ -1446,7 +1452,7 @@ impl PaymentAdapter for PrepaidSettledPaymentAdapter {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for EchoServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1467,7 +1473,7 @@ impl ToolServerConnection for EchoServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for SideEffectServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1491,7 +1497,7 @@ impl ToolServerConnection for SideEffectServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for EventDrainServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1515,7 +1521,31 @@ impl ToolServerConnection for EventDrainServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
+impl ToolServerConnection for FailingEventDrainServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    async fn invoke(
+        &self,
+        tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Err(KernelError::ToolNotRegistered(tool_name.to_string()))
+    }
+
+    async fn drain_events(&self) -> Result<Vec<ToolServerEvent>, KernelError> {
+        Err(KernelError::Internal("drain failed".to_string()))
+    }
+}
+
+#[async_trait::async_trait]
 impl ToolServerConnection for NestedFlowServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1607,7 +1637,7 @@ impl ToolServerConnection for NestedFlowServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for IncompleteServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -1629,7 +1659,7 @@ impl ToolServerConnection for IncompleteServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for StreamingServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -5501,7 +5531,7 @@ impl MonetaryCostServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for MonetaryCostServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -5535,7 +5565,7 @@ impl ToolServerConnection for MonetaryCostServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for FailingMonetaryServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -5565,7 +5595,7 @@ impl ToolServerConnection for FailingMonetaryServer {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ToolServerConnection for CountingMonetaryServer {
     fn server_id(&self) -> &str {
         &self.id
@@ -9926,7 +9956,7 @@ async fn async_evaluate_tool_call_supports_shared_kernel_concurrency() {
         max_concurrent: Arc<AtomicUsize>,
     }
 
-    #[async_trait::async_trait(?Send)]
+    #[async_trait::async_trait]
     impl ToolServerConnection for ConcurrentServer {
         fn server_id(&self) -> &str {
             "srv"
@@ -11040,6 +11070,27 @@ fn async_tool_server_event_drain_current_thread_preserves_events() {
             "events",
             vec![ToolServerEvent::ResourcesListChanged],
         )));
+
+        let events = kernel.drain_tool_server_events_async().await.unwrap();
+
+        assert_eq!(events, vec![ToolServerEvent::ResourcesListChanged]);
+    });
+}
+
+#[test]
+fn async_tool_server_event_drain_preserves_partial_events_after_error() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    rt.block_on(async {
+        let mut kernel = ChioKernel::new(make_config());
+        kernel.register_tool_server(Box::new(EventDrainServer::new(
+            "events",
+            vec![ToolServerEvent::ResourcesListChanged],
+        )));
+        kernel.register_tool_server(Box::new(FailingEventDrainServer::new("fails")));
 
         let events = kernel.drain_tool_server_events_async().await.unwrap();
 
