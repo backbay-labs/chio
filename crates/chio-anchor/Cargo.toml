@@ -38,6 +38,17 @@ web3 = [
 # `../../fuzz`. The `fuzz` feature implies `web3` because the verifier
 # surface lives behind that gate.
 fuzz = ["web3", "dep:arbitrary"]
+# `kani` is an opt-in feature toggle for the model-checked harness
+# module (`src/kani_public_harnesses.rs`). The module body itself is
+# gated by `#[cfg(kani)]` so production builds never compile it; this
+# feature is kept available for tooling that wants to opt in without
+# invoking the Kani toolchain. No production code path depends on it.
+#
+# `kani` implies `web3`: the entire crate body in `src/lib.rs` is gated
+# by `#![cfg(feature = "web3")]`. Without this implication
+# `cargo kani -p chio-anchor --features kani` would compile a crate
+# with zero items and find zero harnesses.
+kani = ["web3"]
 
 [dependencies]
 chio-core = { path = "../chio-core", optional = true }
@@ -70,3 +81,10 @@ rand = { workspace = true }
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+
+[lints.rust]
+# `cfg(kani)` is set automatically by the Kani toolchain (see
+# `crates/chio-anchor/src/kani_public_harnesses.rs`). Register the
+# cfg with check-cfg so default `cargo build` / `cargo clippy` passes
+# do not warn about an unknown cfg name.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

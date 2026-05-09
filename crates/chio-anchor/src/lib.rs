@@ -22,6 +22,9 @@ mod ops;
 mod solana;
 mod witness;
 
+#[cfg(kani)]
+mod kani_public_harnesses;
+
 pub use metrics::{
     anchor_round_count, observe_anchor_round_latency_nanos, render_anchor_metrics_prometheus,
     ANCHOR_OUTCOME_ERROR, ANCHOR_OUTCOME_SUCCESS, CHIO_ANCHOR_ROUND_LATENCY_SECONDS,
