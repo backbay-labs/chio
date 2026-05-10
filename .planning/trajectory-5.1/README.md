@@ -1,6 +1,10 @@
 # Trajectory 5.1 Stabilization Plan
 
-Status: active execution.
+Status: superseded by Trajectory 5.2.
+
+Trajectory 5.2 starts from post-#630 main
+`7f56cf5383fc1caa7a4f06b4cd59e45177f00496` and recasts the remaining strict
+bounded-gate partials outside the active release claim.
 
 Trajectory 5.1 is the stabilization and truth-reconciliation pass after the
 Trajectory 5 integration merge. It does not introduce a product release. It
@@ -9,9 +13,9 @@ then closes the assurance gaps that remain partial or false-positive today.
 
 ## Baseline
 
-- Integrated main: `2afeb07a1febacd1323f6903fc96d7f764254420`.
+- Integrated main: `7f56cf5383fc1caa7a4f06b4cd59e45177f00496`.
 - Planning preflight: passing.
-- Bounded assurance gate: failing.
+- Bounded assurance gate: superseded by Trajectory 5.2 recast.
 - Targeted Rust baseline: initially failing in `chio-conformance` because
   several test `ToolServerConnection` impls retained `?Send` after the trait
   landed with `Send` futures.
@@ -72,9 +76,9 @@ Status: implemented baseline stabilization with honest release blockers.
   honest partials.
 - Lane C: deterministic canary fixtures, replay transcripts, golden receipt
   explain output, and release metadata were regenerated from merged `main`.
-- Package status: `[v0_1_0_bounded_chiodome].release_status` is
-  `blocked_pending_full_assurance_gate`; no release is cut by this pass.
+- Package status: Trajectory 5.2 parks `v0_1_0_bounded_chiodome` outside
+  active release scope; no release is cut by this pass.
 
-The strict assurance gate intentionally remains red until the eight partial
-rows are closed. Diagnostic mode passes with zero hard failures and eight
-release-blocking partials.
+The original 5.1 strict assurance snapshot was red with eight partial rows.
+Trajectory 5.2 converts those release blockers into machine-readable
+non-release recasts and owns the strict gate result from this point forward.

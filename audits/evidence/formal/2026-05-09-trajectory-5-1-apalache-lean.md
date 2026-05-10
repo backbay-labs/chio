@@ -2,7 +2,7 @@
 
 Date: 2026-05-09
 
-Trajectory 5.1 baseline: `db94ab9107e08aba90193b88aac20017b459f810`
+Trajectory 5.2 baseline: `7f56cf5383fc1caa7a4f06b4cd59e45177f00496`
 
 ## Apalache
 
@@ -41,7 +41,7 @@ Lake version 5.0.0-src+3b0f286 (Lean version 4.28.0-rc1)
 Build completed successfully (20 jobs).
 ```
 
-## 5.1 Disposition
+## 5.2 Disposition
 
 Apalache bounded safety and the Lean proof build are locally green for this
-Trajectory 5.1 baseline.
+Trajectory 5.2 baseline.

@@ -6,6 +6,8 @@
 #   * Default (assurance-gate): a single PARTIAL row exits 1.
 #   * `--diagnostic`: PARTIAL rows are downgraded to warnings; exit 0.
 #   * Real FAIL rows still exit 1 in either mode (sanity).
+#   * Machine-readable non-release recasts can make strict mode pass
+#     without pretending partial evidence is complete.
 #
 # This test creates a synthesized repo layout under a tempdir and copies
 # the real `check-bounded-ship-bar.sh` into it, then exercises the strict
@@ -378,6 +380,77 @@ if ! grep -q 'Claim C5 marker claims evidence_complete but evidence is missing' 
     exit 1
 fi
 echo "ok: stage 7 false C5 evidence_complete marker exits 1 even under --diagnostic (rc=1)"
+
+# ---------------------------------------------------------------------
+# Stage 8: machine-readable non-release recasts make strict mode pass.
+# ---------------------------------------------------------------------
+cat > "$WORK/audits/evidence/mutants/chio-policy/2026-05-08-per-crate-baseline.json" <<'EOF'
+{
+  "crate": "chio-policy",
+  "kill_rate_percent": 99.9,
+  "caught": 999,
+  "viable": 1000,
+  "target_met": false,
+  "result_label": "PARTIAL",
+  "run_status": "PARTIAL: interrupted at 1/999 by session budget",
+  "evaluated": 1,
+  "total_discovered": 999,
+  "examine_scope": "hand-picked subset",
+  "assurance_recast": {
+    "schema": "chio.assurance-recast.v1",
+    "decision": "non_release_deferred",
+    "claim_scope": "not_release_blocking",
+    "strict_gate_effect": "accept_recast",
+    "approved_by": "trajectory-5.2-active-lane",
+    "recast_at": "2026-05-10",
+    "followup": "hosted-nightly-mutation-or-reviewed-sampling-contract",
+    "rationale": "Partial mutation evidence is retained as advisory evidence and excluded from the active bounded release claim."
+  }
+}
+EOF
+cat > "$WORK/.planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml" <<'EOF'
+[c5_selective_disclosure]
+status = "deferred_to_v0_2"
+deferral_target = "v0.2.0-bounded-chiodome"
+implementation_crate = "deferred"
+feature = "deferred"
+proof_path = "deferred"
+predicate_failed_path = "deferred"
+release_claim_allowed = "no"
+strict_gate_effect = "accept_recast"
+EOF
+cat > "$WORK/releases.toml" <<'EOF'
+[v0_1_0_bounded_chiodome]
+release_status = "parked_non_release"
+integrated_merge_sha = "0123456789abcdef0123456789abcdef01234567"
+EOF
+printf '// DSSE PAE conformance fixture with Reverts-to-fail proof\nfn main() {}\n' \
+    > "$WORK/crates/chio-conformance/tests/b4_bilateral_dsse_pae_conformance.rs"
+write_assurance_manifest
+rc=0
+bash "$GATE" >"$OUT" 2>"$ERR" || rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: stage 8 assurance-gate mode with machine-readable recasts: expected rc=0, got rc=$rc" >&2
+    echo "--- stdout ---" >&2; cat "$OUT" >&2
+    echo "--- stderr ---" >&2; cat "$ERR" >&2
+    exit 1
+fi
+if ! grep -q -E '^OK   Claim A chio-policy mutation evidence recast outside active release claim' "$OUT"; then
+    echo "FAIL: stage 8 missing Claim A recast OK line" >&2
+    cat "$OUT" >&2
+    exit 1
+fi
+if ! grep -q -E '^OK   Claim C5 selective-disclosure boundary deferred outside active release claim' "$OUT"; then
+    echo "FAIL: stage 8 missing C5 recast OK line" >&2
+    cat "$OUT" >&2
+    exit 1
+fi
+if ! grep -q -E '^OK   Claim C bounded package is formally parked outside active release scope' "$OUT"; then
+    echo "FAIL: stage 8 missing bounded package parked OK line" >&2
+    cat "$OUT" >&2
+    exit 1
+fi
+echo "ok: stage 8 machine-readable non-release recasts pass assurance-gate mode (rc=0)"
 
 # Cleanup is implicit via `trap rm -rf $WORK`.
 echo "PASS: check-bounded-ship-bar behavioral regression test"

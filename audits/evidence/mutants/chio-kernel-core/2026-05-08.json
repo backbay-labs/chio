@@ -39,6 +39,16 @@
   "target_catch_ratio_percent": 80,
   "activation_floor_percent": 65,
   "target_met": false,
+  "assurance_recast": {
+    "schema": "chio.assurance-recast.v1",
+    "decision": "non_release_deferred",
+    "claim_scope": "not_release_blocking",
+    "strict_gate_effect": "accept_recast",
+    "approved_by": "trajectory-5.2-active-lane",
+    "recast_at": "2026-05-10",
+    "followup": "hosted-nightly-mutation-or-reviewed-sampling-contract",
+    "rationale": "Partial mutation evidence is retained as advisory evidence and excluded from the active bounded release claim."
+  },
   "result_label": "PARTIAL",
   "target_explanation": "PARTIAL: 62/343 evaluated; cannot retire crate target on 18% surface. The observed subset clears the 65% activation floor but misses the configured 80% target. If all 281 remaining mutants are viable, the full-run 65% floor fails at 103 or more additional misses; the configured 80% target allows at most 52 additional misses."
 }

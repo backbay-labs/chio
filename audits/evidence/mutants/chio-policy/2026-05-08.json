@@ -17,6 +17,16 @@
   "activation_floor_percent": 65,
   "activation_floor_note": "65% is the activation floor from releases.toml, not the configured per-crate target. This partial run clears both numeric values on the evaluated subset but cannot satisfy the crate-level target until all 418 discovered mutants are evaluated.",
   "target_met": false,
+  "assurance_recast": {
+    "schema": "chio.assurance-recast.v1",
+    "decision": "non_release_deferred",
+    "claim_scope": "not_release_blocking",
+    "strict_gate_effect": "accept_recast",
+    "approved_by": "trajectory-5.2-active-lane",
+    "recast_at": "2026-05-10",
+    "followup": "hosted-nightly-mutation-or-reviewed-sampling-contract",
+    "rationale": "Partial mutation evidence is retained as advisory evidence and excluded from the active bounded release claim."
+  },
   "missed_mutants": [
     "crates/chio-policy/src/conditions.rs:221:9: delete match arm \"US/Pacific\" | \"PST\" in parse_timezone_offset",
     "crates/chio-policy/src/conditions.rs:173:9: delete match arm 0 in day_abbreviation",

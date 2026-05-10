@@ -2,7 +2,7 @@
 
 Date: 2026-05-09
 
-Integrated main: `2afeb07a1febacd1323f6903fc96d7f764254420`
+Integrated main: `7f56cf5383fc1caa7a4f06b4cd59e45177f00496`
 
 ## Deterministic Fixture Run
 
@@ -65,5 +65,6 @@ Result: exit 0, 4 tests passed.
 ## Bounded Claim
 
 This evidence proves deterministic canary generation, replay transcript
-generation, and local example tests. It does not claim full production KB
-MCP signed-receipt operation or selective-disclosure proof completion.
+generation, and local example tests. Trajectory 5.2 keeps this fixture set
+outside active package-release scope. It does not claim full production KB MCP
+signed-receipt operation or selective-disclosure proof completion.
