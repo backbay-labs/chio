@@ -69,6 +69,7 @@ use crate::bilateral_dsse::{
     Keyid, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
     VALID_CROSS_ORG_VISIBILITY,
 };
+use crate::trust_establishment::LadderManifestRef;
 
 // ---------------------------------------------------------------------------
 // Spec §7.1 error codes
@@ -132,6 +133,14 @@ pub enum VerifierError {
     /// lacks a `governance_receipt_ref`.
     #[error("governance.receipt_required_missing: {0}")]
     GovernanceReceiptRequiredMissing(String),
+    /// `ladder.manifest_missing` - strict Chiodos verification requires
+    /// a signed ladder manifest reference for every participating peer.
+    #[error("ladder.manifest_missing: {0}")]
+    LadderManifestMissing(String),
+    /// `ladder.manifest_stale` - the pinned ladder manifest reference
+    /// is not live at the verifier's pinned epoch.
+    #[error("ladder.manifest_stale: {0}")]
+    LadderManifestStale(String),
     /// Fail-closed action-class invariant: `governance.unknown_action_class`.
     /// The predicate's `tool_name` is not registered in the verifier's
     /// `action_classes` table. The pre-fix verifier silently fell back
@@ -162,6 +171,8 @@ impl VerifierError {
             Self::PolicyVerdictDisagreement(_) => "policy.verdict_disagreement",
             Self::CapabilityLeaseExpiredOrUnknown(_) => "capability.lease_expired_or_unknown",
             Self::GovernanceReceiptRequiredMissing(_) => "governance.receipt_required_missing",
+            Self::LadderManifestMissing(_) => "ladder.manifest_missing",
+            Self::LadderManifestStale(_) => "ladder.manifest_stale",
             Self::UnknownActionClass { .. } => "governance.unknown_action_class",
         }
     }
@@ -191,6 +202,8 @@ pub struct PinnedPeer {
     pub kernel_id: String,
     /// Pinned passport public key.
     pub public_key: PublicKey,
+    /// Signed ladder manifest reference accepted during trust establishment.
+    pub ladder_manifest_ref: Option<LadderManifestRef>,
 }
 
 impl PinnedPeer {
@@ -465,9 +478,61 @@ pub struct VerifiedBilateralCoSignInvocation {
     pub joint_verdict: String,
 }
 
+/// Strict Chiodos verifier wrapper over the local bilateral DSSE verifier.
+///
+/// The base verifier authenticates the DSSE envelope, receipt subject, lease,
+/// governance receipt, and policy agreement. Strict Chiodos mode adds the
+/// workflow-ladder requirement: both pinned peers must carry fresh signed
+/// ladder manifest references at the pinned epoch.
+pub struct StrictChiodosVerifierConfig<'a, 'b> {
+    pub base: &'a VerifierConfig<'b>,
+}
+
 // ---------------------------------------------------------------------------
 // Partial local verifier (subset of spec §7 step list)
 // ---------------------------------------------------------------------------
+
+pub fn verify_chiodos_bilateral_invocation(
+    envelope: &DsseEnvelope,
+    config: &StrictChiodosVerifierConfig<'_, '_>,
+) -> Result<VerifiedBilateralCoSignInvocation, VerifierError> {
+    let verified = verify_bilateral_cosign_invocation(envelope, config.base)?;
+    let predicate = &verified.statement.predicate;
+    require_fresh_ladder_manifest(
+        config.base,
+        &predicate.tool_server_a.kernel_id,
+        "tool_server_a",
+    )?;
+    require_fresh_ladder_manifest(
+        config.base,
+        &predicate.tool_server_b.kernel_id,
+        "tool_server_b",
+    )?;
+    Ok(verified)
+}
+
+fn require_fresh_ladder_manifest(
+    config: &VerifierConfig<'_>,
+    kernel_id: &str,
+    role: &str,
+) -> Result<(), VerifierError> {
+    let peer = config
+        .peer_pin_set
+        .lookup(kernel_id)
+        .ok_or_else(|| VerifierError::PeerUnpinnedOrKeyidMismatch(kernel_id.to_string()))?;
+    let ladder_manifest_ref = peer.ladder_manifest_ref.as_ref().ok_or_else(|| {
+        VerifierError::LadderManifestMissing(format!(
+            "{role} {kernel_id} has no pinned ladder manifest reference"
+        ))
+    })?;
+    if !ladder_manifest_ref.is_fresh(config.pinned_epoch.now_unix_ms) {
+        return Err(VerifierError::LadderManifestStale(format!(
+            "{role} {kernel_id} ladder manifest {:?} is stale at {}",
+            ladder_manifest_ref.manifest_id, config.pinned_epoch.now_unix_ms
+        )));
+    }
+    Ok(())
+}
 
 /// Fail-closed: any error short-circuits and returns the corresponding
 /// `VerifierError` variant whose `.code()` matches the spec §7.1
@@ -1110,10 +1175,12 @@ mod tests {
         peer_pin_set.insert(PinnedPeer {
             kernel_id: "did:chio:org-a".to_string(),
             public_key: kp_a.public_key(),
+            ladder_manifest_ref: None,
         });
         peer_pin_set.insert(PinnedPeer {
             kernel_id: "did:chio:org-b".to_string(),
             public_key: kp_b.public_key(),
+            ladder_manifest_ref: None,
         });
 
         (
@@ -1197,6 +1264,67 @@ mod tests {
 
         let verified = verify_bilateral_cosign_invocation(&envelope, &config).unwrap();
         assert_eq!(verified.joint_verdict, "allow");
+        assert_eq!(verified.resolved_receipt.id, receipt.id);
+    }
+
+    #[test]
+    fn strict_chiodos_verifier_requires_fresh_ladder_refs() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (envelope, receipt_store, lease_registry, governance_store, oracle, mut peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+        let base = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+        assert!(matches!(
+            verify_chiodos_bilateral_invocation(
+                &envelope,
+                &StrictChiodosVerifierConfig { base: &base }
+            ),
+            Err(VerifierError::LadderManifestMissing(_))
+        ));
+
+        peers.insert(PinnedPeer {
+            kernel_id: "did:chio:org-a".to_string(),
+            public_key: kp_a.public_key(),
+            ladder_manifest_ref: Some(crate::trust_establishment::LadderManifestRef {
+                manifest_id: "ladder:org-a:v1".to_string(),
+                sha256: "a".repeat(64),
+                issued_at_unix_ms: now_ms - 60_000,
+                expires_at_unix_ms: now_ms + 60_000,
+            }),
+        });
+        peers.insert(PinnedPeer {
+            kernel_id: "did:chio:org-b".to_string(),
+            public_key: kp_b.public_key(),
+            ladder_manifest_ref: Some(crate::trust_establishment::LadderManifestRef {
+                manifest_id: "ladder:org-b:v1".to_string(),
+                sha256: "b".repeat(64),
+                issued_at_unix_ms: now_ms - 60_000,
+                expires_at_unix_ms: now_ms + 60_000,
+            }),
+        });
+        let base = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+        let verified = verify_chiodos_bilateral_invocation(
+            &envelope,
+            &StrictChiodosVerifierConfig { base: &base },
+        )
+        .unwrap();
         assert_eq!(verified.resolved_receipt.id, receipt.id);
     }
 
@@ -1352,10 +1480,12 @@ mod tests {
         peer_pin_set.insert(PinnedPeer {
             kernel_id: "did:chio:org-a".to_string(),
             public_key: kp_a.public_key(),
+            ladder_manifest_ref: None,
         });
         peer_pin_set.insert(PinnedPeer {
             kernel_id: "did:chio:org-b".to_string(),
             public_key: kp_b.public_key(),
+            ladder_manifest_ref: None,
         });
         let mut receipt_store = InMemoryReceiptStore::new();
         receipt_store.insert(receipt.clone());
@@ -1605,10 +1735,12 @@ mod tests {
         peers.insert(PinnedPeer {
             kernel_id: "did:chio:org-a".to_string(),
             public_key: kp_a.public_key(),
+            ladder_manifest_ref: None,
         });
         peers.insert(PinnedPeer {
             kernel_id: "did:chio:org-b".to_string(),
             public_key: kp_b.public_key(),
+            ladder_manifest_ref: None,
         });
         let cfg = config(
             &peers,
@@ -1704,10 +1836,12 @@ mod tests {
         peers.insert(PinnedPeer {
             kernel_id: "did:chio:org-a".to_string(),
             public_key: kp_a.public_key(),
+            ladder_manifest_ref: None,
         });
         peers.insert(PinnedPeer {
             kernel_id: "did:chio:org-b".to_string(),
             public_key: kp_b.public_key(),
+            ladder_manifest_ref: None,
         });
         let cfg = config(
             &peers,
@@ -1772,10 +1906,12 @@ mod tests {
         peers.insert(PinnedPeer {
             kernel_id: "did:chio:org-a".to_string(),
             public_key: kp_a.public_key(),
+            ladder_manifest_ref: None,
         });
         peers.insert(PinnedPeer {
             kernel_id: "did:chio:org-b".to_string(),
             public_key: kp_b.public_key(),
+            ladder_manifest_ref: None,
         });
         let mut cfg = config(
             &peers,

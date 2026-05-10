@@ -12,6 +12,209 @@ use crate::receipt::SignedExportEnvelope;
 
 pub const GENERIC_GOVERNANCE_CHARTER_ARTIFACT_SCHEMA: &str = "chio.registry.governance-charter.v1";
 pub const GENERIC_GOVERNANCE_CASE_ARTIFACT_SCHEMA: &str = "chio.registry.governance-case.v1";
+pub const CAPABILITY_LEASE_SCHEMA_V1: &str = "chio.capability-lease.v1";
+pub const GOVERNANCE_RECEIPT_SCHEMA_V1: &str = "chio.governance-receipt.v1";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityLeaseActionClass {
+    ScopedObservation,
+    DelegatedAction,
+    NarrowDestructive,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CapabilityLeaseArtifact {
+    pub schema: String,
+    pub lease_id: String,
+    pub issuer: String,
+    pub subject: String,
+    pub scope_digest: String,
+    pub action_class: CapabilityLeaseActionClass,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+}
+
+impl CapabilityLeaseArtifact {
+    pub fn validate(&self) -> Result<(), GovernanceAuthorizationError> {
+        if self.schema != CAPABILITY_LEASE_SCHEMA_V1 {
+            return Err(GovernanceAuthorizationError::UnsupportedSchema(
+                self.schema.clone(),
+            ));
+        }
+        validate_non_empty(&self.lease_id, "lease_id")
+            .map_err(GovernanceAuthorizationError::InvalidArtifact)?;
+        validate_non_empty(&self.issuer, "issuer")
+            .map_err(GovernanceAuthorizationError::InvalidArtifact)?;
+        validate_non_empty(&self.subject, "subject")
+            .map_err(GovernanceAuthorizationError::InvalidArtifact)?;
+        validate_sha256_hex(&self.scope_digest, "scope_digest")?;
+        if self.expires_at_unix_ms <= self.issued_at_unix_ms {
+            return Err(GovernanceAuthorizationError::InvalidArtifact(
+                "expires_at_unix_ms must be greater than issued_at_unix_ms".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub type SignedCapabilityLease = SignedExportEnvelope<CapabilityLeaseArtifact>;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GovernanceReceiptCaseKind {
+    DestructiveAuthorization,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GovernanceReceiptArtifact {
+    pub schema: String,
+    pub receipt_id: String,
+    pub authorizing_kernel: String,
+    pub case_kind: GovernanceReceiptCaseKind,
+    pub authorized_lease_id: String,
+    pub workflow_id: String,
+    pub step_sha256: String,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+}
+
+impl GovernanceReceiptArtifact {
+    pub fn validate(&self) -> Result<(), GovernanceAuthorizationError> {
+        if self.schema != GOVERNANCE_RECEIPT_SCHEMA_V1 {
+            return Err(GovernanceAuthorizationError::UnsupportedSchema(
+                self.schema.clone(),
+            ));
+        }
+        validate_non_empty(&self.receipt_id, "receipt_id")
+            .map_err(GovernanceAuthorizationError::InvalidArtifact)?;
+        validate_non_empty(&self.authorizing_kernel, "authorizing_kernel")
+            .map_err(GovernanceAuthorizationError::InvalidArtifact)?;
+        validate_non_empty(&self.authorized_lease_id, "authorized_lease_id")
+            .map_err(GovernanceAuthorizationError::InvalidArtifact)?;
+        validate_non_empty(&self.workflow_id, "workflow_id")
+            .map_err(GovernanceAuthorizationError::InvalidArtifact)?;
+        validate_sha256_hex(&self.step_sha256, "step_sha256")?;
+        if self.expires_at_unix_ms <= self.issued_at_unix_ms {
+            return Err(GovernanceAuthorizationError::InvalidArtifact(
+                "expires_at_unix_ms must be greater than issued_at_unix_ms".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub type SignedGovernanceReceipt = SignedExportEnvelope<GovernanceReceiptArtifact>;
+
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+pub enum GovernanceAuthorizationError {
+    #[error("unsupported schema: {0}")]
+    UnsupportedSchema(String),
+    #[error("invalid authorization artifact: {0}")]
+    InvalidArtifact(String),
+    #[error("authorization signature is invalid")]
+    InvalidSignature,
+    #[error("capability lease is expired or unknown: {0}")]
+    LeaseExpiredOrUnknown(String),
+    #[error("capability lease scope digest mismatch")]
+    ScopeDigestMismatch,
+    #[error("governance receipt is required for destructive steps")]
+    GovernanceReceiptRequired,
+    #[error("governance receipt workflow mismatch")]
+    WorkflowMismatch,
+    #[error("governance receipt step hash mismatch")]
+    StepHashMismatch,
+    #[error("governance receipt lease mismatch")]
+    LeaseMismatch,
+    #[error("canonical signature operation failed: {0}")]
+    Crypto(String),
+}
+
+pub fn verify_capability_lease(
+    lease: &SignedCapabilityLease,
+    now_unix_ms: u64,
+    expected_scope_digest: Option<String>,
+) -> Result<(), GovernanceAuthorizationError> {
+    lease.body.validate()?;
+    if !lease
+        .verify_signature()
+        .map_err(|e| GovernanceAuthorizationError::Crypto(e.to_string()))?
+    {
+        return Err(GovernanceAuthorizationError::InvalidSignature);
+    }
+    if lease.body.expires_at_unix_ms <= now_unix_ms {
+        return Err(GovernanceAuthorizationError::LeaseExpiredOrUnknown(
+            lease.body.lease_id.clone(),
+        ));
+    }
+    if let Some(expected) = expected_scope_digest {
+        validate_sha256_hex(&expected, "expected_scope_digest")?;
+        if lease.body.scope_digest != expected {
+            return Err(GovernanceAuthorizationError::ScopeDigestMismatch);
+        }
+    }
+    Ok(())
+}
+
+pub fn verify_destructive_authorization(
+    receipt: &SignedGovernanceReceipt,
+    expected_lease_id: &str,
+    expected_workflow_id: &str,
+    expected_step_sha256: &str,
+    now_unix_ms: u64,
+) -> Result<(), GovernanceAuthorizationError> {
+    receipt.body.validate()?;
+    validate_sha256_hex(expected_step_sha256, "expected_step_sha256")?;
+    if !receipt
+        .verify_signature()
+        .map_err(|e| GovernanceAuthorizationError::Crypto(e.to_string()))?
+    {
+        return Err(GovernanceAuthorizationError::InvalidSignature);
+    }
+    if receipt.body.expires_at_unix_ms <= now_unix_ms {
+        return Err(GovernanceAuthorizationError::LeaseExpiredOrUnknown(
+            receipt.body.receipt_id.clone(),
+        ));
+    }
+    if receipt.body.authorized_lease_id != expected_lease_id {
+        return Err(GovernanceAuthorizationError::LeaseMismatch);
+    }
+    if receipt.body.workflow_id != expected_workflow_id {
+        return Err(GovernanceAuthorizationError::WorkflowMismatch);
+    }
+    if receipt.body.step_sha256 != expected_step_sha256 {
+        return Err(GovernanceAuthorizationError::StepHashMismatch);
+    }
+    Ok(())
+}
+
+pub fn verify_step_governance_boundary(
+    destructive: bool,
+    receipt: Option<&SignedGovernanceReceipt>,
+    now_unix_ms: u64,
+) -> Result<(), GovernanceAuthorizationError> {
+    if !destructive {
+        return Ok(());
+    }
+    let Some(receipt) = receipt else {
+        return Err(GovernanceAuthorizationError::GovernanceReceiptRequired);
+    };
+    receipt.body.validate()?;
+    if receipt.body.expires_at_unix_ms <= now_unix_ms {
+        return Err(GovernanceAuthorizationError::LeaseExpiredOrUnknown(
+            receipt.body.receipt_id.clone(),
+        ));
+    }
+    if !receipt
+        .verify_signature()
+        .map_err(|e| GovernanceAuthorizationError::Crypto(e.to_string()))?
+    {
+        return Err(GovernanceAuthorizationError::InvalidSignature);
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -844,6 +1047,15 @@ fn validate_non_empty(value: &str, field: &str) -> Result<(), String> {
     } else {
         Ok(())
     }
+}
+
+fn validate_sha256_hex(value: &str, field: &str) -> Result<(), GovernanceAuthorizationError> {
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(GovernanceAuthorizationError::InvalidArtifact(format!(
+            "{field} must be a 64-character SHA-256 hex digest"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1766,5 +1978,77 @@ mod tests {
             evaluation.findings[0].code,
             GenericGovernanceFindingCode::SupersessionTargetInvalid
         );
+    }
+
+    #[test]
+    fn capability_lease_validates_signature_lifetime_and_scope() {
+        let issuer = Keypair::from_seed(&[11u8; 32]);
+        let lease = CapabilityLeaseArtifact {
+            schema: CAPABILITY_LEASE_SCHEMA_V1.to_string(),
+            lease_id: "lease:buyer:refund:001".to_string(),
+            issuer: "did:chio:buyer".to_string(),
+            subject: "did:chio:vendor-payments".to_string(),
+            scope_digest: "a".repeat(64),
+            action_class: CapabilityLeaseActionClass::NarrowDestructive,
+            issued_at_unix_ms: 1_000,
+            expires_at_unix_ms: 2_000,
+        };
+        let signed = SignedCapabilityLease::sign(lease, &issuer).test_expect("sign lease");
+
+        assert!(verify_capability_lease(&signed, 1_500, Some("a".repeat(64))).is_ok());
+        assert!(matches!(
+            verify_capability_lease(&signed, 2_000, Some("a".repeat(64))),
+            Err(GovernanceAuthorizationError::LeaseExpiredOrUnknown(_))
+        ));
+        assert!(matches!(
+            verify_capability_lease(&signed, 1_500, Some("b".repeat(64))),
+            Err(GovernanceAuthorizationError::ScopeDigestMismatch)
+        ));
+    }
+
+    #[test]
+    fn destructive_governance_receipt_binds_lease_workflow_and_step_hash() {
+        let issuer = Keypair::from_seed(&[12u8; 32]);
+        let receipt = GovernanceReceiptArtifact {
+            schema: GOVERNANCE_RECEIPT_SCHEMA_V1.to_string(),
+            receipt_id: "gov:buyer:refund:001".to_string(),
+            authorizing_kernel: "did:chio:buyer".to_string(),
+            case_kind: GovernanceReceiptCaseKind::DestructiveAuthorization,
+            authorized_lease_id: "lease:buyer:refund:001".to_string(),
+            workflow_id: "wf-chiodos-refund-001".to_string(),
+            step_sha256: "c".repeat(64),
+            issued_at_unix_ms: 1_100,
+            expires_at_unix_ms: 1_900,
+        };
+        let signed =
+            SignedGovernanceReceipt::sign(receipt, &issuer).test_expect("sign governance receipt");
+
+        assert!(verify_destructive_authorization(
+            &signed,
+            "lease:buyer:refund:001",
+            "wf-chiodos-refund-001",
+            &"c".repeat(64),
+            1_500,
+        )
+        .is_ok());
+        assert!(matches!(
+            verify_destructive_authorization(
+                &signed,
+                "lease:buyer:refund:001",
+                "wf-other",
+                &"c".repeat(64),
+                1_500,
+            ),
+            Err(GovernanceAuthorizationError::WorkflowMismatch)
+        ));
+    }
+
+    #[test]
+    fn non_destructive_steps_do_not_require_governance_receipts() {
+        assert!(verify_step_governance_boundary(false, None, 1_500).is_ok());
+        assert!(matches!(
+            verify_step_governance_boundary(true, None, 1_500),
+            Err(GovernanceAuthorizationError::GovernanceReceiptRequired)
+        ));
     }
 }

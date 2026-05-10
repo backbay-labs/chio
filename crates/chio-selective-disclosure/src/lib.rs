@@ -224,7 +224,7 @@ fn push_message(
     });
 }
 
-/// Project a receipt body using the Trajectory 6 receipt v1 BBS table.
+/// Project a receipt body using the Chiodos receipt v1 BBS table.
 pub fn project_receipt_body(
     body: &ChioReceiptBody,
 ) -> Result<Projection, SelectiveDisclosureError> {
@@ -332,7 +332,7 @@ fn trust_level_bytes(trust_level: TrustLevel) -> Vec<u8> {
     trust_level.as_str().as_bytes().to_vec()
 }
 
-/// Project a workflow receipt body using the Trajectory 6 workflow v1 BBS table.
+/// Project a workflow receipt body using the Chiodos workflow v1 BBS table.
 pub fn project_workflow_receipt_body(
     body: &WorkflowReceiptBody,
 ) -> Result<Projection, SelectiveDisclosureError> {

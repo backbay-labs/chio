@@ -115,10 +115,12 @@ fn strict_fixture() -> StrictFixture {
     peer_pin_set.insert(PinnedPeer {
         kernel_id: ORG_A.to_string(),
         public_key: kp_a.public_key(),
+        ladder_manifest_ref: None,
     });
     peer_pin_set.insert(PinnedPeer {
         kernel_id: ORG_B.to_string(),
         public_key: kp_b.public_key(),
+        ladder_manifest_ref: None,
     });
 
     let cosigner = InProcessCoSigner::new(ORG_A, kp_a.clone(), kp_b.public_key());

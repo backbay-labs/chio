@@ -82,10 +82,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     peer_pin_set.insert(PinnedPeer {
         kernel_id: origin_kernel_id.to_string(),
         public_key: kp_origin.public_key(),
+        ladder_manifest_ref: None,
     });
     peer_pin_set.insert(PinnedPeer {
         kernel_id: tool_host_kernel_id.to_string(),
         public_key: kp_tool_host.public_key(),
+        ladder_manifest_ref: None,
     });
 
     // ---- 4. Bind predicate extensions ---------------------------------

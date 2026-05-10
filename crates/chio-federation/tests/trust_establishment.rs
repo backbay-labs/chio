@@ -6,7 +6,8 @@ use chio_core_types::capability::CapabilityNegotiation;
 use chio_core_types::crypto::Keypair;
 use chio_federation::{
     ConformanceEvidence, ConformanceTier, KernelTrustExchange, KernelTrustExchangeConfig,
-    PeerHandshakeEnvelope, PeerHandshakeError, QuorumPolicy, DEFAULT_HANDSHAKE_MAX_SKEW_SECS,
+    LadderManifestRef, PeerHandshakeEnvelope, PeerHandshakeError, QuorumPolicy,
+    DEFAULT_HANDSHAKE_MAX_SKEW_SECS,
 };
 
 #[test]
@@ -59,7 +60,40 @@ fn default_handshake_omits_v1_compatibility_fields() {
 
     assert!(challenge.get("capabilities").is_none());
     assert!(challenge.get("conformanceTier").is_none());
+    assert!(challenge.get("ladderManifestRef").is_none());
     envelope.verify_signature().unwrap();
+}
+
+#[test]
+fn ladder_manifest_ref_is_signed_and_pinned_when_requested() {
+    let kp_a = Keypair::generate();
+    let kp_b = Keypair::generate();
+    let now: u64 = 1_800_000_000;
+    let ladder_ref = LadderManifestRef {
+        manifest_id: "ladder:payments:v1".to_string(),
+        sha256: "a".repeat(64),
+        issued_at_unix_ms: now * 1000,
+        expires_at_unix_ms: (now + 3_600) * 1000,
+    };
+
+    let exchange_a = KernelTrustExchange::new("kernel.org-a", kp_a)
+        .with_trusted_peer("kernel.org-b", kp_b.public_key());
+    let exchange_b =
+        KernelTrustExchange::new("kernel.org-b", kp_b).with_ladder_manifest_ref(ladder_ref.clone());
+
+    let envelope_b = exchange_b
+        .local_envelope("kernel.org-a", "nonce-ladder", now)
+        .unwrap();
+    assert_eq!(
+        envelope_b.challenge.ladder_manifest_ref.as_ref(),
+        Some(&ladder_ref)
+    );
+    envelope_b.verify_signature().unwrap();
+
+    let peer_b = exchange_a
+        .accept_envelope(&envelope_b, "kernel.org-b", now)
+        .unwrap();
+    assert_eq!(peer_b.ladder_manifest_ref.as_ref(), Some(&ladder_ref));
 }
 
 #[test]

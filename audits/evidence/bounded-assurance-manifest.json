@@ -174,7 +174,7 @@
     },
     {
       "path": "crates/chio-conformance/tests/b4_bilateral_dsse_pae_conformance.rs",
-      "sha256": "a70712e04da6598a8cadc0c06d9b487df3afadbb92396bccbf1d10f665cf0421"
+      "sha256": "379b16a4537fa7000cdd1c7238266cbf6297f4c7785eed69c573e7746a6be3a4"
     },
     {
       "path": "audits/evidence/chiodome/2026-05-09-trajectory-5-1-canary.md",

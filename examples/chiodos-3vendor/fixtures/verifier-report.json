@@ -1,0 +1,35 @@
+{
+  "schema": "chio.chiodos.verifier-report.v1",
+  "packageSha256": "b860cc87c63d6810c6888cb15685c9ee75f813566c915a3677800e670bba0606",
+  "accepted": true,
+  "checks": [
+    {
+      "name": "workflow-kernel-signature",
+      "passed": true
+    },
+    {
+      "name": "workflow-vendor-cosignatures",
+      "passed": true
+    },
+    {
+      "name": "workflow-step-links",
+      "passed": true
+    },
+    {
+      "name": "capability-leases",
+      "passed": true
+    },
+    {
+      "name": "governance-receipts",
+      "passed": true
+    },
+    {
+      "name": "strict-bilateral-invocations",
+      "passed": true
+    },
+    {
+      "name": "bbs-selective-disclosure",
+      "passed": true
+    }
+  ]
+}

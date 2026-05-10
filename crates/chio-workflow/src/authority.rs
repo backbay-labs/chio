@@ -303,6 +303,11 @@ impl WorkflowAuthority {
             duration_ms: input.duration_ms,
             cost: input.cost,
             output_hash: input.output_hash,
+            bilateral_dsse_sha256: None,
+            governance_receipt_id: None,
+            parent_receipt_sha256: None,
+            consistency_anchor: None,
+            destructive: None,
         };
 
         execution.step_records.push(record);

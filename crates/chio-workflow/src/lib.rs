@@ -37,4 +37,7 @@ pub mod receipt;
 pub use authority::{WorkflowAuthority, WorkflowError, WorkflowExecution};
 pub use grant::SkillGrant;
 pub use manifest::{IoContract, SkillManifest, SkillStep};
-pub use receipt::{StepRecord, WorkflowReceipt, WorkflowReceiptBody};
+pub use receipt::{
+    StepRecord, VendorSignatureRequirement, WorkflowReceipt, WorkflowReceiptBody,
+    WorkflowReceiptError, WorkflowVendorSignature,
+};
