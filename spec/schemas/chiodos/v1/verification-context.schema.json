@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chiodos/v1/verification-context.schema.json",
+  "title": "Chiodos Verification Context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "audience",
+    "challenge",
+    "proofPurpose",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs"
+  ],
+  "properties": {
+    "schema": { "const": "chio.chiodos.verification-context.v1" },
+    "audience": { "type": "string", "minLength": 1 },
+    "challenge": { "type": "string", "minLength": 1 },
+    "proofPurpose": { "type": "string", "minLength": 1 },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+  }
+}

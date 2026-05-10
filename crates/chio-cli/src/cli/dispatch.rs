@@ -2369,8 +2369,9 @@ fn main() {
             ChiodosCommands::Verify {
                 package,
                 trust_bundle,
+                context,
                 report,
-            } => cmd_chiodos_verify(&package, &trust_bundle, &report),
+            } => cmd_chiodos_verify(&package, &trust_bundle, &context, &report),
         },
         Commands::Replay(args) => cmd_replay(&args),
         Commands::Lineage { command } => dispatch_lineage(command, json_output),
@@ -2668,7 +2669,12 @@ fn emit_lineage_report<T: serde::Serialize>(report: &T, json: bool) -> Result<()
     Ok(())
 }
 
-fn cmd_chiodos_verify(package: &Path, trust_bundle: &Path, report: &Path) -> Result<(), CliError> {
+fn cmd_chiodos_verify(
+    package: &Path,
+    trust_bundle: &Path,
+    context: &Path,
+    report: &Path,
+) -> Result<(), CliError> {
     let package_bytes = fs::read(package).map_err(|error| {
         CliError::cli_io_error(format!(
             "failed to read Chiodos proof package {}: {error}",
@@ -2699,7 +2705,22 @@ fn cmd_chiodos_verify(package: &Path, trust_bundle: &Path, report: &Path) -> Res
         })?,
     )
     .map_err(|error| CliError::cli_other_error(format!("Chiodos trust bundle parse: {error}")))?;
-    let verifier_report = chio_chiodos::verify_package_report(&package, &trust_bundle);
+    let context_bytes = fs::read(context).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to read Chiodos verification context {}: {error}",
+            context.display()
+        ))
+    })?;
+    let context = chio_chiodos::verification_context_from_json(
+        std::str::from_utf8(&context_bytes).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos verification context {} is not UTF-8 JSON: {error}",
+                context.display()
+            ))
+        })?,
+    )
+    .map_err(|error| CliError::cli_other_error(format!("Chiodos context parse: {error}")))?;
+    let verifier_report = chio_chiodos::verify_package_report(&package, &trust_bundle, &context);
     if let Some(parent) = report.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent).map_err(|error| {

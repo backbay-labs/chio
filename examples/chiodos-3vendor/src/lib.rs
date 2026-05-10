@@ -1,15 +1,21 @@
 //! Offline Chiodos buyer and auditor proof package fixture.
 
+use std::fs;
+use std::path::Path;
+
 pub use chio_chiodos::{
-    package_json, proof_package_from_json, report_json, verifier_report_from_json,
-    verifier_trust_bundle_from_json, verifier_trust_bundle_json, verify_package,
-    ChiodosActionClassKind, ChiodosPackageError, ChiodosPinnedRevocationEpoch, ChiodosProofClaims,
-    ChiodosProofPackage, ChiodosTrustedActionClass, ChiodosTrustedGovernanceAuthority,
-    ChiodosTrustedLeaseAuthority, ChiodosTrustedWorkflowIntersection, ChiodosVerifierTrustBundle,
+    package_json, proof_package_from_json, report_json, verification_context_from_json,
+    verification_context_json, verifier_report_from_json, verifier_trust_bundle_from_json,
+    verifier_trust_bundle_json, verify_package, ChiodosActionClassKind, ChiodosAuthorityStatus,
+    ChiodosDisclosurePolicy, ChiodosPackageError, ChiodosProofClaims, ChiodosProofPackage,
+    ChiodosRevocationCheckpoint, ChiodosRevocationMaterial, ChiodosTrustedActionClass,
+    ChiodosTrustedGovernanceAuthority, ChiodosTrustedLeaseAuthority,
+    ChiodosTrustedWorkflowIntersection, ChiodosVerificationContext, ChiodosVerifierTrustBundle,
     ChiodosVerifierTrustBundleDocument, LeaseScopeBindingArtifact, PeerLadderBinding,
-    TrustedBbsIssuer, VendorKeyBinding, VerifierReport, WorkflowIntersectionArtifact,
-    WorkflowPairwiseIntersectionRef, WorkflowRequiredVendorSigner, WorkflowStepClassBinding,
-    LEASE_SCOPE_BINDING_SCHEMA, PROOF_PACKAGE_SCHEMA, VERIFIER_REPORT_SCHEMA,
+    SignedChiodosRevocationCheckpoint, TrustedBbsIssuer, VendorKeyBinding, VerifierReport,
+    WorkflowIntersectionArtifact, WorkflowPairwiseIntersectionRef, WorkflowRequiredVendorSigner,
+    WorkflowStepClassBinding, LEASE_SCOPE_BINDING_SCHEMA, PROOF_PACKAGE_SCHEMA,
+    REVOCATION_CHECKPOINT_SCHEMA, VERIFICATION_CONTEXT_SCHEMA, VERIFIER_REPORT_SCHEMA,
     VERIFIER_TRUST_BUNDLE_SCHEMA, WORKFLOW_INTERSECTION_SCHEMA,
 };
 use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
@@ -20,7 +26,8 @@ use chio_core_types::receipt::{
 };
 use chio_federation::{
     sign_chiodos_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
-    GovernanceReceiptRef, HashRecord, LadderManifestRef, PolicyEvaluationSummary, PolicyVerdict,
+    GovernanceReceiptRef, HashRecord, Keyid, LadderManifestRef, PolicyEvaluationSummary,
+    PolicyVerdict,
 };
 use chio_governance::{
     CapabilityLeaseActionClass, CapabilityLeaseArtifact, GovernanceReceiptArtifact,
@@ -39,7 +46,6 @@ use serde::Serialize;
 
 pub const WORKFLOW_ID: &str = "wf-chiodos-refund-001";
 pub const GENERATED_AT_UNIX_MS: u64 = 1_766_000_000_000;
-pub const PROOF_NONCE: &[u8] = b"buyer-auditor-proof-package";
 
 const BUYER_KERNEL_ID: &str = "did:chio:buyer-kernel";
 const GOVERNANCE_KERNEL_ID: &str = "did:chio:buyer-governance";
@@ -49,6 +55,8 @@ const LEASE_ISSUED_AT_UNIX_MS: u64 = GENERATED_AT_UNIX_MS - 30_000;
 const LEASE_EXPIRES_AT_UNIX_MS: u64 = GENERATED_AT_UNIX_MS + 30_000;
 const GOVERNANCE_ISSUED_AT_UNIX_MS: u64 = GENERATED_AT_UNIX_MS - 20_000;
 const GOVERNANCE_EXPIRES_AT_UNIX_MS: u64 = GENERATED_AT_UNIX_MS + 20_000;
+const AUTHORITY_VALID_FROM_UNIX_MS: u64 = GENERATED_AT_UNIX_MS - 600_000;
+const AUTHORITY_VALID_UNTIL_UNIX_MS: u64 = GENERATED_AT_UNIX_MS + 600_000;
 const BBS_KEY_MATERIAL: &[u8] = b"chiodos-conformance-bbs-key-material-0001";
 const BBS_KEY_INFO: &[u8] = b"chiodos";
 
@@ -127,6 +135,10 @@ fn canonical_sha256<T: Serialize>(value: &T) -> Result<String, ChiodosPackageErr
 
 fn canonical_string<T: Serialize>(value: &T) -> Result<String, ChiodosPackageError> {
     canonical_json_string(value).map_err(|error| ChiodosPackageError::Canonical(error.to_string()))
+}
+
+fn key_id(public_key: &chio_core_types::crypto::PublicKey) -> String {
+    Keyid::from_public_key(public_key).0
 }
 
 fn signed_governance_digest(
@@ -284,6 +296,7 @@ fn step_record(
 
 fn disclosure_proof_for_workflow(
     workflow_body: &WorkflowReceiptBody,
+    context: &ChiodosVerificationContext,
 ) -> Result<SelectiveDisclosureProof, ChiodosPackageError> {
     let projection = project_workflow_receipt_body(workflow_body)
         .map_err(|error| ChiodosPackageError::SelectiveDisclosure(error.to_string()))?;
@@ -296,9 +309,35 @@ fn disclosure_proof_for_workflow(
         &projection,
         &bbs_keypair,
         &DisclosureSet(vec![4, 8, 9, 10]),
-        PROOF_NONCE,
+        &context.expected_bbs_proof_nonce()?,
     )
     .map_err(|error| ChiodosPackageError::SelectiveDisclosure(error.to_string()))
+}
+
+pub fn verification_context() -> ChiodosVerificationContext {
+    ChiodosVerificationContext {
+        schema: VERIFICATION_CONTEXT_SCHEMA.to_string(),
+        audience: "buyer-auditor-offline-verifier".to_string(),
+        challenge: "refund-workflow-001-audit".to_string(),
+        proof_purpose: "buyer-auditor-workflow-disclosure".to_string(),
+        issued_at_unix_ms: GENERATED_AT_UNIX_MS - 5_000,
+        expires_at_unix_ms: GENERATED_AT_UNIX_MS + 60_000,
+    }
+}
+
+fn signed_revocation_checkpoint(
+    revoked_key_fingerprints: Vec<String>,
+) -> Result<SignedChiodosRevocationCheckpoint, ChiodosPackageError> {
+    let body = ChiodosRevocationCheckpoint {
+        schema: REVOCATION_CHECKPOINT_SCHEMA.to_string(),
+        checkpoint_id: "revocation-checkpoint:chiodos-refund:001".to_string(),
+        issued_at_unix_ms: GENERATED_AT_UNIX_MS,
+        expires_at_unix_ms: GENERATED_AT_UNIX_MS + 120_000,
+        epoch_height: 64,
+        revoked_key_fingerprints,
+    };
+    SignedExportEnvelope::sign(body, &Keypair::from_seed(&BUYER_SEED))
+        .map_err(|error| ChiodosPackageError::Inconsistent(error.to_string()))
 }
 
 pub fn verifier_trust_bundle_document_for_package(
@@ -306,6 +345,8 @@ pub fn verifier_trust_bundle_document_for_package(
 ) -> Result<ChiodosVerifierTrustBundleDocument, ChiodosPackageError> {
     let bbs_keypair = generate_bbs_keypair(BBS_KEY_MATERIAL, BBS_KEY_INFO)
         .map_err(|error| ChiodosPackageError::SelectiveDisclosure(error.to_string()))?;
+    let buyer_key = Keypair::from_seed(&BUYER_SEED);
+    let governance_key = Keypair::from_seed(&GOVERNANCE_SEED);
     Ok(ChiodosVerifierTrustBundleDocument {
         schema: VERIFIER_TRUST_BUNDLE_SCHEMA.to_string(),
         trusted_bbs_issuers: vec![TrustedBbsIssuer {
@@ -332,7 +373,11 @@ pub fn verifier_trust_bundle_document_for_package(
         }],
         lease_authorities: vec![ChiodosTrustedLeaseAuthority {
             issuer: BUYER_KERNEL_ID.to_string(),
-            public_key: Keypair::from_seed(&BUYER_SEED).public_key(),
+            key_id: Some(key_id(&buyer_key.public_key())),
+            public_key: buyer_key.public_key(),
+            valid_from_unix_ms: Some(AUTHORITY_VALID_FROM_UNIX_MS),
+            valid_until_unix_ms: Some(AUTHORITY_VALID_UNTIL_UNIX_MS),
+            status: Some(ChiodosAuthorityStatus::Active),
             allowed_action_classes: vec![
                 CapabilityLeaseActionClass::DelegatedAction,
                 CapabilityLeaseActionClass::NarrowDestructive,
@@ -340,13 +385,28 @@ pub fn verifier_trust_bundle_document_for_package(
         }],
         governance_authorities: vec![ChiodosTrustedGovernanceAuthority {
             authorizing_kernel: GOVERNANCE_KERNEL_ID.to_string(),
-            public_key: Keypair::from_seed(&GOVERNANCE_SEED).public_key(),
+            key_id: Some(key_id(&governance_key.public_key())),
+            public_key: governance_key.public_key(),
+            valid_from_unix_ms: Some(AUTHORITY_VALID_FROM_UNIX_MS),
+            valid_until_unix_ms: Some(AUTHORITY_VALID_UNTIL_UNIX_MS),
+            status: Some(ChiodosAuthorityStatus::Active),
             allowed_case_kinds: vec![GovernanceReceiptCaseKind::DestructiveAuthorization],
         }],
-        revocation: ChiodosPinnedRevocationEpoch {
-            now_unix_ms: GENERATED_AT_UNIX_MS,
-            epoch_height: 0,
-        },
+        disclosure_policy: Some(ChiodosDisclosurePolicy {
+            projection_version: "chio.bbs-projection.workflow.v1".to_string(),
+            ciphersuite: "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_".to_string(),
+            message_count: 14,
+            required_disclosed_indices: vec![4, 8, 9, 10],
+            required_disclosed_fields: vec![
+                "id".to_string(),
+                "session_id".to_string(),
+                "skill_id".to_string(),
+                "skill_version".to_string(),
+            ],
+        }),
+        revocation: ChiodosRevocationMaterial::Checkpoint(Box::new(signed_revocation_checkpoint(
+            Vec::new(),
+        )?)),
     })
 }
 
@@ -369,10 +429,94 @@ pub fn build_proof_package(
 }
 
 pub fn fresh_proof_package() -> Result<ChiodosProofPackage, ChiodosPackageError> {
+    let context = verification_context();
     let mut package = build_proof_package_unchecked(empty_disclosure_proof())?;
     package.selective_disclosure_proof =
-        disclosure_proof_for_workflow(&package.workflow_receipt.body())?;
+        disclosure_proof_for_workflow(&package.workflow_receipt.body(), &context)?;
     Ok(package)
+}
+
+fn resign_workflow_receipt(package: &mut ChiodosProofPackage) -> Result<(), ChiodosPackageError> {
+    let buyer_key = Keypair::from_seed(&BUYER_SEED);
+    let mut workflow = WorkflowReceipt::sign(package.workflow_receipt.body(), &buyer_key)
+        .map_err(|error| ChiodosPackageError::Workflow(error.to_string()))?;
+    for vendor in &VENDORS {
+        let key = Keypair::from_seed(&vendor.seed);
+        workflow
+            .add_vendor_signature(vendor.vendor_id, &key)
+            .map_err(|error| ChiodosPackageError::Workflow(error.to_string()))?;
+    }
+    package.workflow_receipt = workflow;
+    Ok(())
+}
+
+fn refresh_verifier_material_for_package(
+    package: &mut ChiodosProofPackage,
+    context: &ChiodosVerificationContext,
+) -> Result<ChiodosVerifierTrustBundleDocument, ChiodosPackageError> {
+    package
+        .workflow_intersection
+        .aggregate_workflow_receipt_sha256 = canonical_sha256(&package.workflow_receipt.body())?;
+    package.selective_disclosure_proof =
+        disclosure_proof_for_workflow(&package.workflow_receipt.body(), context)?;
+    verifier_trust_bundle_document_for_package(package)
+}
+
+fn write_json_document(path: &Path, json: String) -> Result<(), ChiodosPackageError> {
+    fs::write(path, json).map_err(|error| ChiodosPackageError::Json(error.to_string()))
+}
+
+pub fn write_signed_negative_case_inputs(out_dir: &Path) -> Result<(), ChiodosPackageError> {
+    fs::create_dir_all(out_dir).map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    for case_id in [
+        "step-parent-hash-mismatch",
+        "step-tool-receipt-mismatch",
+        "step-output-hash-mismatch",
+        "step-dsse-hash-mismatch",
+        "step-consistency-anchor-mismatch",
+    ] {
+        let mut package = fresh_proof_package()?;
+        let context = verification_context();
+        match case_id {
+            "step-parent-hash-mismatch" => {
+                package.workflow_receipt.steps[1].parent_receipt_sha256 = Some("0".repeat(64));
+            }
+            "step-tool-receipt-mismatch" => {
+                package.workflow_receipt.steps[0].tool_receipt_id =
+                    package.workflow_receipt.steps[1].tool_receipt_id.clone();
+            }
+            "step-output-hash-mismatch" => {
+                package.workflow_receipt.steps[0].output_hash = Some("0".repeat(64));
+            }
+            "step-dsse-hash-mismatch" => {
+                package.workflow_receipt.steps[0].bilateral_dsse_sha256 = Some("0".repeat(64));
+            }
+            "step-consistency-anchor-mismatch" => {
+                package.workflow_receipt.steps[0].consistency_anchor =
+                    Some("chiodos:consistency:wf-chiodos-refund-001:wrong".to_string());
+            }
+            _ => {
+                return Err(ChiodosPackageError::Json(format!(
+                    "unsupported signed negative case {case_id}"
+                )));
+            }
+        }
+        resign_workflow_receipt(&mut package)?;
+        let trust_bundle_document = refresh_verifier_material_for_package(&mut package, &context)?;
+        write_json_document(
+            &out_dir.join(format!("{case_id}-package.json")),
+            package_json(&package)?,
+        )?;
+        write_json_document(
+            &out_dir.join(format!("{case_id}-trust-bundle.json")),
+            verifier_trust_bundle_json(&trust_bundle_document)?,
+        )?;
+        write_json_document(
+            &out_dir.join(format!("{case_id}-context.json")),
+            verification_context_json(&context)?,
+        )?;
+    }
+    Ok(())
 }
 
 fn empty_disclosure_proof() -> SelectiveDisclosureProof {
@@ -624,29 +768,12 @@ mod tests {
 
     use super::*;
 
-    fn resign_workflow(package: &mut ChiodosProofPackage) {
-        let buyer_key = Keypair::from_seed(&BUYER_SEED);
-        let mut workflow = WorkflowReceipt::sign(package.workflow_receipt.body(), &buyer_key)
-            .expect("workflow resigns");
-        for vendor in &VENDORS {
-            let key = Keypair::from_seed(&vendor.seed);
-            workflow
-                .add_vendor_signature(vendor.vendor_id, &key)
-                .expect("vendor cosigns");
-        }
-        package.workflow_receipt = workflow;
-    }
-
-    fn rebuild_verifier_material(package: &mut ChiodosProofPackage) -> ChiodosVerifierTrustBundle {
-        package
-            .workflow_intersection
-            .aggregate_workflow_receipt_sha256 =
-            canonical_sha256(&package.workflow_receipt.body()).expect("workflow body hashes");
-        package.selective_disclosure_proof =
-            disclosure_proof_for_workflow(&package.workflow_receipt.body())
-                .expect("workflow disclosure proof rebuilds");
+    fn rebuild_verifier_material(
+        package: &mut ChiodosProofPackage,
+        context: &ChiodosVerificationContext,
+    ) -> ChiodosVerifierTrustBundle {
         let document =
-            verifier_trust_bundle_document_for_package(package).expect("trust bundle rebuilds");
+            refresh_verifier_material_for_package(package, context).expect("trust bundle rebuilds");
         ChiodosVerifierTrustBundle::from_document(document).expect("trust bundle parses")
     }
 
@@ -654,7 +781,9 @@ mod tests {
     fn fresh_package_verifies() {
         let package = fresh_proof_package().expect("fresh package builds");
         let trust_bundle = verifier_trust_bundle().expect("verifier trust bundle builds");
-        let report = verify_package(&package, &trust_bundle).expect("fresh package verifies");
+        let context = verification_context();
+        let report =
+            verify_package(&package, &trust_bundle, &context).expect("fresh package verifies");
         assert!(report.accepted);
         assert!(report
             .checks
@@ -670,7 +799,8 @@ mod tests {
             .pairwise_intersection_refs
             .retain(|peer| peer.peer_kernel_id != "did:chio:vendor-a");
         let trust_bundle = verifier_trust_bundle().unwrap();
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let context = verification_context();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("pairwise ref") || error.to_string().contains("hash"));
     }
 
@@ -682,7 +812,8 @@ mod tests {
             .peers
             .retain(|binding| binding.kernel_id != "did:chio:vendor-a");
         let trust_bundle = ChiodosVerifierTrustBundle::from_document(document).unwrap();
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let context = verification_context();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("did:chio:vendor-a"));
         assert!(error.to_string().contains("trusted"));
     }
@@ -693,7 +824,8 @@ mod tests {
         let mut document = verifier_trust_bundle_document().unwrap();
         document.workflow_intersections[0].sha256 = "f".repeat(64);
         let trust_bundle = ChiodosVerifierTrustBundle::from_document(document).unwrap();
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let context = verification_context();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("workflow intersection"));
     }
 
@@ -711,7 +843,8 @@ mod tests {
         )
         .expect("lease re-signs");
         let trust_bundle = verifier_trust_bundle().unwrap();
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let context = verification_context();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("expired") || error.to_string().contains("signature"));
     }
 
@@ -720,7 +853,8 @@ mod tests {
         let mut package = fresh_proof_package().unwrap();
         package.governance_receipts[0].body.workflow_id = "wf-other".to_string();
         let trust_bundle = verifier_trust_bundle().unwrap();
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let context = verification_context();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("signature") || error.to_string().contains("workflow"));
     }
 
@@ -728,9 +862,10 @@ mod tests {
     fn tampered_step_parent_hash_fails_closed() {
         let mut package = fresh_proof_package().unwrap();
         package.workflow_receipt.steps[1].parent_receipt_sha256 = Some("0".repeat(64));
-        resign_workflow(&mut package);
+        resign_workflow_receipt(&mut package).expect("workflow resigns");
         let trust_bundle = verifier_trust_bundle().unwrap();
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let context = verification_context();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(
             error.to_string().contains("parent hash")
                 || error.to_string().contains("workflow intersection")
@@ -743,7 +878,8 @@ mod tests {
         package.workflow_receipt.vendor_signatures[0].signature =
             Keypair::from_seed(&[99; 32]).sign(b"not the workflow body");
         let trust_bundle = verifier_trust_bundle().unwrap();
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let context = verification_context();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("vendor signature"));
     }
 
@@ -752,7 +888,8 @@ mod tests {
         let mut package = fresh_proof_package().unwrap();
         package.claims.zkvm = true;
         let trust_bundle = verifier_trust_bundle().unwrap();
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let context = verification_context();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("zkVM"));
     }
 
@@ -764,7 +901,11 @@ mod tests {
         let trust_bundle =
             verifier_trust_bundle_from_json(include_str!("../fixtures/verifier-trust-bundle.json"))
                 .expect("verifier trust bundle fixture parses");
-        let report = verify_package(&package, &trust_bundle).expect("package fixture verifies");
+        let context =
+            verification_context_from_json(include_str!("../fixtures/verification-context.json"))
+                .expect("verification context fixture parses");
+        let report =
+            verify_package(&package, &trust_bundle, &context).expect("package fixture verifies");
         let committed_report =
             verifier_report_from_json(include_str!("../fixtures/verifier-report.json"))
                 .expect("report fixture parses");
@@ -776,10 +917,11 @@ mod tests {
         let mut package = fresh_proof_package().expect("fresh package builds");
         package.workflow_receipt.steps[0].tool_receipt_id =
             package.workflow_receipt.steps[1].tool_receipt_id.clone();
-        resign_workflow(&mut package);
-        let trust_bundle = rebuild_verifier_material(&mut package);
+        resign_workflow_receipt(&mut package).expect("workflow resigns");
+        let context = verification_context();
+        let trust_bundle = rebuild_verifier_material(&mut package, &context);
 
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("tool receipt"));
     }
 
@@ -787,10 +929,11 @@ mod tests {
     fn step_output_hash_mismatch_fails_closed() {
         let mut package = fresh_proof_package().expect("fresh package builds");
         package.workflow_receipt.steps[0].output_hash = Some("0".repeat(64));
-        resign_workflow(&mut package);
-        let trust_bundle = rebuild_verifier_material(&mut package);
+        resign_workflow_receipt(&mut package).expect("workflow resigns");
+        let context = verification_context();
+        let trust_bundle = rebuild_verifier_material(&mut package, &context);
 
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("output hash"));
     }
 
@@ -799,10 +942,11 @@ mod tests {
         let mut package = fresh_proof_package().expect("fresh package builds");
         package.workflow_receipt.steps[0].consistency_anchor =
             Some("chiodos:consistency:wf-chiodos-refund-001:wrong".to_string());
-        resign_workflow(&mut package);
-        let trust_bundle = rebuild_verifier_material(&mut package);
+        resign_workflow_receipt(&mut package).expect("workflow resigns");
+        let context = verification_context();
+        let trust_bundle = rebuild_verifier_material(&mut package, &context);
 
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("consistency anchor"));
     }
 }

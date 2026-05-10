@@ -177,6 +177,8 @@ mod cli_entrypoint_tests {
             "package.json",
             "--trust-bundle",
             "verifier-trust-bundle.json",
+            "--context",
+            "verification-context.json",
             "--report",
             "report.json",
         ])
@@ -187,6 +189,7 @@ mod cli_entrypoint_tests {
                     ChiodosCommands::Verify {
                         package,
                         trust_bundle,
+                        context,
                         report,
                     },
             } => {
@@ -194,6 +197,10 @@ mod cli_entrypoint_tests {
                 assert_eq!(
                     trust_bundle,
                     std::path::PathBuf::from("verifier-trust-bundle.json")
+                );
+                assert_eq!(
+                    context,
+                    std::path::PathBuf::from("verification-context.json")
                 );
                 assert_eq!(report, std::path::PathBuf::from("report.json"));
             }
@@ -214,6 +221,26 @@ mod cli_entrypoint_tests {
         ]);
         let error = match result {
             Ok(_) => panic!("chiodos verify must require --trust-bundle"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn chiodos_verify_requires_context() {
+        let result = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "verify",
+            "--package",
+            "package.json",
+            "--trust-bundle",
+            "verifier-trust-bundle.json",
+            "--report",
+            "report.json",
+        ]);
+        let error = match result {
+            Ok(_) => panic!("chiodos verify must require --context"),
             Err(error) => error,
         };
         assert_eq!(error.kind(), clap::error::ErrorKind::MissingRequiredArgument);

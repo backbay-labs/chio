@@ -4,12 +4,13 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
 use chio_core_types::crypto::{sha256_hex, PublicKey};
-use chio_core_types::receipt::ChioReceipt;
+use chio_core_types::receipt::{ChioReceipt, SignedExportEnvelope};
 use chio_federation::{
-    verify_chiodos_bilateral_invocation, ActionClassKind, DemoAllowAllRevocationOracle,
-    DsseEnvelope, InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore,
+    verify_chiodos_bilateral_invocation, ActionClassKind, DsseEnvelope,
+    InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, Keyid,
     LadderManifestRef, PeerPinSet, PinnedEpoch, PinnedPeer, ResolvedGovernanceReceipt,
-    ResolvedLease, StrictChiodosVerifierConfig, UnknownActionClassPolicy, VerifierConfig,
+    ResolvedLease, RevocationOracle, StrictChiodosVerifierConfig, UnknownActionClassPolicy,
+    VerifierConfig,
 };
 use chio_governance::{
     verify_capability_lease, verify_destructive_authorization, verify_step_governance_boundary,
@@ -18,17 +19,22 @@ use chio_governance::{
 };
 use chio_selective_disclosure::{
     project_workflow_receipt_body, verify_selective_disclosure_proof, InMemoryIssuerRegistry,
-    SelectiveDisclosureProof,
+    Projection, SelectiveDisclosureProof, BBS_CIPHERSUITE_SHA256, PROJECTION_VERSION_WORKFLOW_V1,
 };
 use chio_workflow::receipt::{VendorSignatureRequirement, WorkflowReceipt};
 use serde::{Deserialize, Serialize};
 
 pub const PROOF_PACKAGE_SCHEMA: &str = "chio.chiodos.proof-package.v1";
-pub const VERIFIER_REPORT_SCHEMA: &str = "chio.chiodos.verifier-report.v1";
+pub const VERIFIER_REPORT_SCHEMA_V1: &str = "chio.chiodos.verifier-report.v1";
+pub const VERIFIER_REPORT_SCHEMA_V2: &str = "chio.chiodos.verifier-report.v2";
+pub const VERIFIER_REPORT_SCHEMA: &str = VERIFIER_REPORT_SCHEMA_V2;
 pub const TRUSTED_ISSUER_REGISTRY_SCHEMA: &str = "chio.chiodos.trusted-issuer-registry.v1";
 pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V1: &str = "chio.chiodos.verifier-trust-bundle.v1";
 pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V2: &str = "chio.chiodos.verifier-trust-bundle.v2";
-pub const VERIFIER_TRUST_BUNDLE_SCHEMA: &str = VERIFIER_TRUST_BUNDLE_SCHEMA_V2;
+pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V3: &str = "chio.chiodos.verifier-trust-bundle.v3";
+pub const VERIFIER_TRUST_BUNDLE_SCHEMA: &str = VERIFIER_TRUST_BUNDLE_SCHEMA_V3;
+pub const REVOCATION_CHECKPOINT_SCHEMA: &str = "chio.chiodos.revocation-checkpoint.v1";
+pub const VERIFICATION_CONTEXT_SCHEMA: &str = "chio.chiodos.verification-context.v1";
 pub const WORKFLOW_INTERSECTION_SCHEMA: &str = "chio.chiodos-workflow-intersection.v1";
 pub const LEASE_SCOPE_BINDING_SCHEMA: &str = "chio.chiodos-lease-scope-binding.v1";
 
@@ -135,11 +141,27 @@ pub struct ChiodosTrustedWorkflowIntersection {
     pub sha256: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChiodosAuthorityStatus {
+    Active,
+    Inactive,
+    Revoked,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChiodosTrustedLeaseAuthority {
     pub issuer: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
     pub public_key: PublicKey,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_from_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_until_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<ChiodosAuthorityStatus>,
     pub allowed_action_classes: Vec<CapabilityLeaseActionClass>,
 }
 
@@ -147,7 +169,15 @@ pub struct ChiodosTrustedLeaseAuthority {
 #[serde(rename_all = "camelCase")]
 pub struct ChiodosTrustedGovernanceAuthority {
     pub authorizing_kernel: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
     pub public_key: PublicKey,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_from_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_until_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<ChiodosAuthorityStatus>,
     pub allowed_case_kinds: Vec<GovernanceReceiptCaseKind>,
 }
 
@@ -160,6 +190,100 @@ pub struct ChiodosPinnedRevocationEpoch {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ChiodosRevocationCheckpoint {
+    pub schema: String,
+    pub checkpoint_id: String,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+    pub epoch_height: u64,
+    pub revoked_key_fingerprints: Vec<String>,
+}
+
+pub type SignedChiodosRevocationCheckpoint = SignedExportEnvelope<ChiodosRevocationCheckpoint>;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ChiodosRevocationMaterial {
+    Historical(ChiodosPinnedRevocationEpoch),
+    Checkpoint(Box<SignedChiodosRevocationCheckpoint>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChiodosDisclosurePolicy {
+    pub projection_version: String,
+    pub ciphersuite: String,
+    pub message_count: usize,
+    pub required_disclosed_indices: Vec<u16>,
+    pub required_disclosed_fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChiodosVerificationContext {
+    pub schema: String,
+    pub audience: String,
+    pub challenge: String,
+    pub proof_purpose: String,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VerificationContextNoncePreimage<'a> {
+    schema: &'a str,
+    audience: &'a str,
+    challenge: &'a str,
+    proof_purpose: &'a str,
+    issued_at_unix_ms: u64,
+    expires_at_unix_ms: u64,
+}
+
+impl ChiodosVerificationContext {
+    pub fn validate(&self) -> Result<(), ChiodosPackageError> {
+        if self.schema != VERIFICATION_CONTEXT_SCHEMA {
+            return Err(ChiodosPackageError::VerificationContext(format!(
+                "verification context schema {} is unsupported",
+                self.schema
+            )));
+        }
+        validate_context_field(&self.audience, "verificationContext.audience")?;
+        validate_context_field(&self.challenge, "verificationContext.challenge")?;
+        validate_context_field(&self.proof_purpose, "verificationContext.proofPurpose")?;
+        if self.expires_at_unix_ms <= self.issued_at_unix_ms {
+            return Err(ChiodosPackageError::VerificationContext(
+                "verification context expiry must be greater than issue time".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn nonce_preimage(&self) -> VerificationContextNoncePreimage<'_> {
+        VerificationContextNoncePreimage {
+            schema: &self.schema,
+            audience: &self.audience,
+            challenge: &self.challenge,
+            proof_purpose: &self.proof_purpose,
+            issued_at_unix_ms: self.issued_at_unix_ms,
+            expires_at_unix_ms: self.expires_at_unix_ms,
+        }
+    }
+
+    pub fn expected_bbs_proof_nonce(&self) -> Result<Vec<u8>, ChiodosPackageError> {
+        self.validate()?;
+        let bytes = canonical_json_bytes(&self.nonce_preimage())
+            .map_err(|error| ChiodosPackageError::Canonical(error.to_string()))?;
+        Ok(sha256_hex(&bytes).into_bytes())
+    }
+
+    pub fn expected_bbs_proof_nonce_hex(&self) -> Result<String, ChiodosPackageError> {
+        Ok(lowercase_hex(&self.expected_bbs_proof_nonce()?))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChiodosVerifierTrustBundleDocument {
     pub schema: String,
     pub trusted_bbs_issuers: Vec<TrustedBbsIssuer>,
@@ -171,11 +295,14 @@ pub struct ChiodosVerifierTrustBundleDocument {
     pub lease_authorities: Vec<ChiodosTrustedLeaseAuthority>,
     #[serde(default)]
     pub governance_authorities: Vec<ChiodosTrustedGovernanceAuthority>,
-    pub revocation: ChiodosPinnedRevocationEpoch,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disclosure_policy: Option<ChiodosDisclosurePolicy>,
+    pub revocation: ChiodosRevocationMaterial,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChiodosVerifierTrustBundle {
+    document_sha256: String,
     issuer_registry: TrustedIssuerRegistry,
     peers: BTreeMap<String, PeerLadderBinding>,
     vendors: BTreeMap<String, VendorKeyBinding>,
@@ -183,20 +310,25 @@ pub struct ChiodosVerifierTrustBundle {
     workflow_intersections: BTreeMap<String, String>,
     lease_authorities: BTreeMap<String, ChiodosTrustedLeaseAuthority>,
     governance_authorities: BTreeMap<String, ChiodosTrustedGovernanceAuthority>,
-    revocation: ChiodosPinnedRevocationEpoch,
+    disclosure_policy: ChiodosDisclosurePolicy,
+    revocation: SignedChiodosRevocationCheckpoint,
+    revoked_key_fingerprints: BTreeSet<String>,
 }
 
 impl ChiodosVerifierTrustBundle {
     pub fn from_document(
         document: ChiodosVerifierTrustBundleDocument,
     ) -> Result<Self, ChiodosPackageError> {
-        if document.schema == VERIFIER_TRUST_BUNDLE_SCHEMA_V1 {
+        let document_sha256 = canonical_sha256(&document)?;
+        if document.schema == VERIFIER_TRUST_BUNDLE_SCHEMA_V1
+            || document.schema == VERIFIER_TRUST_BUNDLE_SCHEMA_V2
+        {
             return Err(ChiodosPackageError::TrustBundle(
-                "historical verifier trust bundle v1 is parse-only and cannot satisfy strict Chiodos verification"
+                "historical verifier trust bundle is parse-only and cannot satisfy strict Chiodos verification"
                     .to_string(),
             ));
         }
-        if document.schema != VERIFIER_TRUST_BUNDLE_SCHEMA {
+        if document.schema != VERIFIER_TRUST_BUNDLE_SCHEMA_V3 {
             return Err(ChiodosPackageError::TrustBundle(format!(
                 "verifier trust bundle schema {} is unsupported",
                 document.schema
@@ -215,6 +347,20 @@ impl ChiodosVerifierTrustBundle {
                     .to_string(),
             ));
         }
+        let Some(disclosure_policy) = document.disclosure_policy else {
+            return Err(ChiodosPackageError::TrustBundle(
+                "verifier trust bundle v3 requires a disclosure policy".to_string(),
+            ));
+        };
+        validate_disclosure_policy(&disclosure_policy)?;
+        let ChiodosRevocationMaterial::Checkpoint(revocation) = document.revocation else {
+            return Err(ChiodosPackageError::TrustBundle(
+                "verifier trust bundle v3 requires a signed revocation checkpoint".to_string(),
+            ));
+        };
+        validate_revocation_checkpoint(&revocation)?;
+        let revoked_key_fingerprints =
+            revoked_key_fingerprints(&revocation.body.revoked_key_fingerprints)?;
 
         let issuer_registry = TrustedIssuerRegistry::from_document(TrustedIssuerRegistryDocument {
             schema: TRUSTED_ISSUER_REGISTRY_SCHEMA.to_string(),
@@ -285,6 +431,14 @@ impl ChiodosVerifierTrustBundle {
         let mut lease_authorities = BTreeMap::new();
         for authority in document.lease_authorities {
             validate_trust_field(&authority.issuer, "leaseAuthority.issuer")?;
+            validate_authority_lifecycle(
+                authority.key_id.as_deref(),
+                &authority.public_key,
+                authority.valid_from_unix_ms,
+                authority.valid_until_unix_ms,
+                authority.status,
+                "leaseAuthority",
+            )?;
             validate_unique_action_classes(
                 &authority.allowed_action_classes,
                 "leaseAuthority.allowedActionClasses",
@@ -305,6 +459,14 @@ impl ChiodosVerifierTrustBundle {
                 &authority.authorizing_kernel,
                 "governanceAuthority.authorizingKernel",
             )?;
+            validate_authority_lifecycle(
+                authority.key_id.as_deref(),
+                &authority.public_key,
+                authority.valid_from_unix_ms,
+                authority.valid_until_unix_ms,
+                authority.status,
+                "governanceAuthority",
+            )?;
             validate_unique_case_kinds(
                 &authority.allowed_case_kinds,
                 "governanceAuthority.allowedCaseKinds",
@@ -320,6 +482,7 @@ impl ChiodosVerifierTrustBundle {
         }
 
         Ok(Self {
+            document_sha256,
             issuer_registry,
             peers,
             vendors,
@@ -327,7 +490,9 @@ impl ChiodosVerifierTrustBundle {
             workflow_intersections,
             lease_authorities,
             governance_authorities,
-            revocation: document.revocation,
+            disclosure_policy,
+            revocation: *revocation,
+            revoked_key_fingerprints,
         })
     }
 
@@ -365,9 +530,55 @@ impl ChiodosVerifierTrustBundle {
 
     fn pinned_epoch(&self) -> PinnedEpoch {
         PinnedEpoch {
-            now_unix_ms: self.revocation.now_unix_ms,
-            epoch_height: self.revocation.epoch_height,
+            now_unix_ms: self.revocation.body.issued_at_unix_ms,
+            epoch_height: self.revocation.body.epoch_height,
         }
+    }
+
+    fn revocation_epoch_height(&self) -> u64 {
+        self.revocation.body.epoch_height
+    }
+
+    fn verification_time_unix_ms(&self) -> u64 {
+        self.revocation.body.issued_at_unix_ms
+    }
+
+    fn ensure_not_revoked(
+        &self,
+        fingerprint: &str,
+        label: &str,
+    ) -> Result<(), ChiodosPackageError> {
+        if self.revoked_key_fingerprints.contains(fingerprint) {
+            return Err(ChiodosPackageError::TrustBundle(format!(
+                "{label} is revoked by checkpoint {}",
+                self.revocation.body.checkpoint_id
+            )));
+        }
+        Ok(())
+    }
+
+    fn ensure_public_key_not_revoked(
+        &self,
+        public_key: &PublicKey,
+        label: &str,
+    ) -> Result<(), ChiodosPackageError> {
+        self.ensure_not_revoked(&key_fingerprint(public_key), label)
+    }
+
+    fn ensure_checkpoint_active_at(&self, now_unix_ms: u64) -> Result<(), ChiodosPackageError> {
+        if now_unix_ms < self.revocation.body.issued_at_unix_ms {
+            return Err(ChiodosPackageError::TrustBundle(format!(
+                "revocation checkpoint {} is issued in the future",
+                self.revocation.body.checkpoint_id
+            )));
+        }
+        if now_unix_ms >= self.revocation.body.expires_at_unix_ms {
+            return Err(ChiodosPackageError::TrustBundle(format!(
+                "revocation checkpoint {} is stale",
+                self.revocation.body.checkpoint_id
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -562,6 +773,7 @@ pub struct VerifierCheck {
 #[serde(rename_all = "camelCase")]
 pub struct VerifierFailure {
     pub code: String,
+    pub phase: String,
     pub detail: String,
 }
 
@@ -570,6 +782,12 @@ pub struct VerifierFailure {
 pub struct VerifierReport {
     pub schema: String,
     pub package_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust_bundle_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revocation_epoch_height: Option<u64>,
     pub accepted: bool,
     pub checks: Vec<VerifierCheck>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -600,7 +818,9 @@ pub enum ChiodosPackageError {
     WorkflowIntersection(String),
     #[error("lease scope binding failed: {0}")]
     LeaseScopeBinding(String),
-    #[error("fixture data is inconsistent: {0}")]
+    #[error("verification context failed: {0}")]
+    VerificationContext(String),
+    #[error("package data is inconsistent: {0}")]
     Inconsistent(String),
     #[error("JSON operation failed: {0}")]
     Json(String),
@@ -636,6 +856,15 @@ fn validate_non_empty(value: &str, field: &str) -> Result<(), ChiodosPackageErro
 fn validate_scope_field(value: &str, field: &str) -> Result<(), ChiodosPackageError> {
     if value.is_empty() {
         return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+            "{field} must be non-empty"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_context_field(value: &str, field: &str) -> Result<(), ChiodosPackageError> {
+    if value.is_empty() {
+        return Err(ChiodosPackageError::VerificationContext(format!(
             "{field} must be non-empty"
         )));
     }
@@ -689,6 +918,176 @@ fn validate_unique_case_kinds(
     Ok(())
 }
 
+fn key_fingerprint(public_key: &PublicKey) -> String {
+    Keyid::from_public_key(public_key).0
+}
+
+fn lowercase_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn validate_disclosure_policy(policy: &ChiodosDisclosurePolicy) -> Result<(), ChiodosPackageError> {
+    if policy.projection_version != PROJECTION_VERSION_WORKFLOW_V1 {
+        return Err(ChiodosPackageError::TrustBundle(format!(
+            "disclosure policy projection version {} is unsupported",
+            policy.projection_version
+        )));
+    }
+    if policy.ciphersuite != BBS_CIPHERSUITE_SHA256 {
+        return Err(ChiodosPackageError::TrustBundle(
+            "disclosure policy ciphersuite is unsupported".to_string(),
+        ));
+    }
+    if policy.message_count == 0 {
+        return Err(ChiodosPackageError::TrustBundle(
+            "disclosure policy message count must be non-zero".to_string(),
+        ));
+    }
+    let mut seen_indices = BTreeSet::new();
+    for index in &policy.required_disclosed_indices {
+        if usize::from(*index) >= policy.message_count {
+            return Err(ChiodosPackageError::TrustBundle(format!(
+                "disclosure policy required index {index} is out of range"
+            )));
+        }
+        if !seen_indices.insert(*index) {
+            return Err(ChiodosPackageError::TrustBundle(format!(
+                "disclosure policy has duplicate required index {index}"
+            )));
+        }
+    }
+    let mut seen_fields = BTreeSet::new();
+    for field in &policy.required_disclosed_fields {
+        validate_trust_field(field, "disclosurePolicy.requiredDisclosedFields")?;
+        if !seen_fields.insert(field) {
+            return Err(ChiodosPackageError::TrustBundle(format!(
+                "disclosure policy has duplicate required field {field}"
+            )));
+        }
+    }
+    if seen_indices.is_empty() || seen_fields.is_empty() {
+        return Err(ChiodosPackageError::TrustBundle(
+            "disclosure policy must require at least one index and field".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_revocation_checkpoint(
+    checkpoint: &SignedChiodosRevocationCheckpoint,
+) -> Result<(), ChiodosPackageError> {
+    if checkpoint.body.schema != REVOCATION_CHECKPOINT_SCHEMA {
+        return Err(ChiodosPackageError::TrustBundle(format!(
+            "revocation checkpoint schema {} is unsupported",
+            checkpoint.body.schema
+        )));
+    }
+    validate_trust_field(
+        &checkpoint.body.checkpoint_id,
+        "revocationCheckpoint.checkpointId",
+    )?;
+    if checkpoint.body.expires_at_unix_ms <= checkpoint.body.issued_at_unix_ms {
+        return Err(ChiodosPackageError::TrustBundle(
+            "revocation checkpoint expiry must be greater than issue time".to_string(),
+        ));
+    }
+    revoked_key_fingerprints(&checkpoint.body.revoked_key_fingerprints)?;
+    if !checkpoint
+        .verify_signature()
+        .map_err(|error| ChiodosPackageError::TrustBundle(error.to_string()))?
+    {
+        return Err(ChiodosPackageError::TrustBundle(
+            "revocation checkpoint signature is invalid".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn revoked_key_fingerprints(values: &[String]) -> Result<BTreeSet<String>, ChiodosPackageError> {
+    let mut fingerprints = BTreeSet::new();
+    for fingerprint in values {
+        validate_sha256_hex(fingerprint, "revocationCheckpoint.revokedKeyFingerprints")?;
+        if !fingerprints.insert(fingerprint.clone()) {
+            return Err(ChiodosPackageError::TrustBundle(format!(
+                "duplicate revoked key fingerprint {fingerprint}"
+            )));
+        }
+    }
+    Ok(fingerprints)
+}
+
+fn validate_authority_lifecycle(
+    declared_key_id: Option<&str>,
+    public_key: &PublicKey,
+    valid_from_unix_ms: Option<u64>,
+    valid_until_unix_ms: Option<u64>,
+    status: Option<ChiodosAuthorityStatus>,
+    label: &str,
+) -> Result<(), ChiodosPackageError> {
+    let Some(key_id) = declared_key_id else {
+        return Err(ChiodosPackageError::TrustBundle(format!(
+            "{label}.keyId is required"
+        )));
+    };
+    let expected = key_fingerprint(public_key);
+    if key_id != expected {
+        return Err(ChiodosPackageError::TrustBundle(format!(
+            "{label}.keyId does not match public key fingerprint"
+        )));
+    }
+    let Some(valid_from) = valid_from_unix_ms else {
+        return Err(ChiodosPackageError::TrustBundle(format!(
+            "{label}.validFromUnixMs is required"
+        )));
+    };
+    let Some(valid_until) = valid_until_unix_ms else {
+        return Err(ChiodosPackageError::TrustBundle(format!(
+            "{label}.validUntilUnixMs is required"
+        )));
+    };
+    if valid_until <= valid_from {
+        return Err(ChiodosPackageError::TrustBundle(format!(
+            "{label} validity window is invalid"
+        )));
+    }
+    let Some(status) = status else {
+        return Err(ChiodosPackageError::TrustBundle(format!(
+            "{label}.status is required"
+        )));
+    };
+    if status != ChiodosAuthorityStatus::Active {
+        return Err(ChiodosPackageError::TrustBundle(format!(
+            "{label} status is not active"
+        )));
+    }
+    Ok(())
+}
+
+fn authority_window(
+    valid_from_unix_ms: Option<u64>,
+    valid_until_unix_ms: Option<u64>,
+    label: &str,
+) -> Result<(u64, u64), ChiodosPackageError> {
+    let valid_from = valid_from_unix_ms.ok_or_else(|| {
+        ChiodosPackageError::Governance(format!("{label} validFromUnixMs is missing"))
+    })?;
+    let valid_until = valid_until_unix_ms.ok_or_else(|| {
+        ChiodosPackageError::Governance(format!("{label} validUntilUnixMs is missing"))
+    })?;
+    if valid_until <= valid_from {
+        return Err(ChiodosPackageError::Governance(format!(
+            "{label} validity window is invalid"
+        )));
+    }
+    Ok((valid_from, valid_until))
+}
+
 fn is_lower_hex(value: &str) -> bool {
     value
         .bytes()
@@ -737,6 +1136,15 @@ pub fn verifier_report_from_json(json: &str) -> Result<VerifierReport, ChiodosPa
     serde_json::from_str(json).map_err(|error| ChiodosPackageError::Json(error.to_string()))
 }
 
+pub fn verification_context_from_json(
+    json: &str,
+) -> Result<ChiodosVerificationContext, ChiodosPackageError> {
+    let context: ChiodosVerificationContext =
+        serde_json::from_str(json).map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    context.validate()?;
+    Ok(context)
+}
+
 pub fn trusted_issuer_registry_from_json(
     json: &str,
 ) -> Result<TrustedIssuerRegistry, ChiodosPackageError> {
@@ -777,42 +1185,92 @@ pub fn verifier_trust_bundle_json(
         .map_err(|error| ChiodosPackageError::Json(error.to_string()))
 }
 
+pub fn verification_context_json(
+    context: &ChiodosVerificationContext,
+) -> Result<String, ChiodosPackageError> {
+    serde_json::to_string_pretty(context)
+        .map_err(|error| ChiodosPackageError::Json(error.to_string()))
+}
+
 pub fn package_sha256(package: &ChiodosProofPackage) -> Result<String, ChiodosPackageError> {
     let bytes = canonical_json_bytes(package)
         .map_err(|error| ChiodosPackageError::Canonical(error.to_string()))?;
     Ok(sha256_hex(&bytes))
 }
 
+pub fn verifier_trust_bundle_document_sha256(
+    document: &ChiodosVerifierTrustBundleDocument,
+) -> Result<String, ChiodosPackageError> {
+    canonical_sha256(document)
+}
+
+pub fn verification_context_sha256(
+    context: &ChiodosVerificationContext,
+) -> Result<String, ChiodosPackageError> {
+    canonical_sha256(context)
+}
+
 pub fn verify_package(
     package: &ChiodosProofPackage,
     trust_bundle: &ChiodosVerifierTrustBundle,
+    context: &ChiodosVerificationContext,
 ) -> Result<VerifierReport, ChiodosPackageError> {
-    verify_package_inner(package, trust_bundle)
+    let mut checks = Vec::new();
+    match verify_package_inner(package, trust_bundle, context, &mut checks) {
+        Ok(()) => accepted_report(package, trust_bundle, context, checks),
+        Err(error) => Err(error),
+    }
 }
 
 pub fn verify_package_report(
     package: &ChiodosProofPackage,
     trust_bundle: &ChiodosVerifierTrustBundle,
+    context: &ChiodosVerificationContext,
 ) -> VerifierReport {
-    match verify_package_inner(package, trust_bundle) {
-        Ok(report) => report,
-        Err(error) => rejected_report(package, &error),
+    let mut checks = Vec::new();
+    match verify_package_inner(package, trust_bundle, context, &mut checks) {
+        Ok(()) => {
+            let accepted_checks = checks.clone();
+            accepted_report(package, trust_bundle, context, checks).unwrap_or_else(|error| {
+                rejected_report(
+                    package,
+                    trust_bundle,
+                    Some(context),
+                    accepted_checks,
+                    &error,
+                )
+            })
+        }
+        Err(error) => rejected_report(package, trust_bundle, Some(context), checks, &error),
     }
 }
 
 fn verify_package_inner(
     package: &ChiodosProofPackage,
     trust_bundle: &ChiodosVerifierTrustBundle,
-) -> Result<VerifierReport, ChiodosPackageError> {
+    context: &ChiodosVerificationContext,
+    checks: &mut Vec<VerifierCheck>,
+) -> Result<(), ChiodosPackageError> {
     if package.schema != PROOF_PACKAGE_SCHEMA {
         return Err(ChiodosPackageError::UnsupportedSchema(
             package.schema.clone(),
         ));
     }
     verify_claims(&package.claims)?;
+    context.validate()?;
+    if context.issued_at_unix_ms > trust_bundle.verification_time_unix_ms() {
+        return Err(ChiodosPackageError::VerificationContext(
+            "verification context is issued after the pinned revocation epoch".to_string(),
+        ));
+    }
+    if context.expires_at_unix_ms <= trust_bundle.verification_time_unix_ms() {
+        return Err(ChiodosPackageError::VerificationContext(
+            "verification context is expired".to_string(),
+        ));
+    }
+    trust_bundle.ensure_checkpoint_active_at(trust_bundle.verification_time_unix_ms())?;
 
-    let mut checks = Vec::new();
-    let mut add_check = |code: &str, name: &str| {
+    let add_check = |checks: &mut Vec<VerifierCheck>, code: &str, name: &str| {
         checks.push(VerifierCheck {
             code: code.to_string(),
             name: name.to_string(),
@@ -830,13 +1288,17 @@ fn verify_package_inner(
             "workflow signature is invalid".to_string(),
         ));
     }
-    add_check("workflow.kernel_signature", "workflow-kernel-signature");
+    add_check(
+        checks,
+        "workflow.kernel_signature",
+        "workflow-kernel-signature",
+    );
 
     verify_package_hints_match_trust(package, trust_bundle)?;
-    add_check("trust.package_hints", "package-trust-hints");
+    add_check(checks, "trust.package_hints", "package-trust-hints");
 
     verify_workflow_intersection(package, trust_bundle)?;
-    add_check("workflow.intersection", "workflow-intersection");
+    add_check(checks, "workflow.intersection", "workflow-intersection");
 
     let vendor_requirements = package
         .workflow_intersection
@@ -852,19 +1314,24 @@ fn verify_package_inner(
         .verify_vendor_signatures(&vendor_requirements)
         .map_err(|error| ChiodosPackageError::Workflow(error.to_string()))?;
     add_check(
+        checks,
         "workflow.vendor_cosignatures",
         "workflow-vendor-cosignatures",
     );
 
     verify_step_links(package)?;
-    add_check("workflow.step_links", "workflow-step-links");
+    add_check(checks, "workflow.step_links", "workflow-step-links");
 
     let mut receipt_store = InMemoryReceiptStore::new();
     for receipt in &package.tool_receipts {
         receipt_store.insert(receipt.clone());
     }
     let lease_scope_digests = verify_lease_scope_bindings(package)?;
-    add_check("governance.lease_scope_bindings", "lease-scope-bindings");
+    add_check(
+        checks,
+        "governance.lease_scope_bindings",
+        "lease-scope-bindings",
+    );
 
     let mut lease_registry = InMemoryLeaseRegistry::new();
     let mut seen_lease_ids = BTreeSet::new();
@@ -892,7 +1359,7 @@ fn verify_package_inner(
             scope_digest_hex: Some(scope_digest),
         });
     }
-    add_check("governance.capability_leases", "capability-leases");
+    add_check(checks, "governance.capability_leases", "capability-leases");
 
     let mut governance_store = InMemoryGovernanceReceiptStore::new();
     let mut seen_governance_ids = BTreeSet::new();
@@ -911,7 +1378,7 @@ fn verify_package_inner(
         });
     }
     verify_destructive_steps(package, trust_bundle, &lease_scope_digests)?;
-    add_check("governance.receipts", "governance-receipts");
+    add_check(checks, "governance.receipts", "governance-receipts");
 
     let mut peer_pin_set = PeerPinSet::new();
     for peer in trust_bundle.peers.values() {
@@ -921,7 +1388,9 @@ fn verify_package_inner(
             ladder_manifest_ref: Some(peer.ladder_manifest_ref.clone()),
         });
     }
-    let revocation_oracle = DemoAllowAllRevocationOracle;
+    let revocation_oracle = OfflineRevocationOracle {
+        revoked_key_fingerprints: trust_bundle.revoked_key_fingerprints.clone(),
+    };
     let verifier_config = VerifierConfig {
         peer_pin_set: &peer_pin_set,
         receipt_store: &receipt_store,
@@ -942,6 +1411,7 @@ fn verify_package_inner(
         .map_err(|error| ChiodosPackageError::Federation(error.to_string()))?;
     }
     add_check(
+        checks,
         "federation.strict_bilateral_invocations",
         "strict-bilateral-invocations",
     );
@@ -963,13 +1433,24 @@ fn verify_package_inner(
                 package.selective_disclosure_proof.issuer_fingerprint
             ))
         })?;
+    trust_bundle.ensure_not_revoked(
+        &package.selective_disclosure_proof.issuer_fingerprint,
+        "BBS issuer",
+    )?;
     if trusted_issuer_key != package.selective_disclosure_proof.issuer_public_key_hex {
         return Err(ChiodosPackageError::TrustedIssuer(format!(
             "issuer public key for {} does not match trusted registry",
             package.selective_disclosure_proof.issuer_fingerprint
         )));
     }
-    add_check("trust.bbs_issuer", "trusted-bbs-issuer");
+    add_check(checks, "trust.bbs_issuer", "trusted-bbs-issuer");
+
+    verify_disclosure_contract(
+        &package.selective_disclosure_proof,
+        &workflow_projection,
+        trust_bundle,
+        context,
+    )?;
 
     let mut issuer_registry = InMemoryIssuerRegistry::default();
     issuer_registry.insert(
@@ -981,25 +1462,51 @@ fn verify_package_inner(
     );
     verify_selective_disclosure_proof(&package.selective_disclosure_proof, &issuer_registry)
         .map_err(|error| ChiodosPackageError::SelectiveDisclosure(error.to_string()))?;
-    add_check("bbs.selective_disclosure", "bbs-selective-disclosure");
+    add_check(
+        checks,
+        "bbs.selective_disclosure",
+        "bbs-selective-disclosure",
+    );
 
+    Ok(())
+}
+
+fn accepted_report(
+    package: &ChiodosProofPackage,
+    trust_bundle: &ChiodosVerifierTrustBundle,
+    context: &ChiodosVerificationContext,
+    checks: Vec<VerifierCheck>,
+) -> Result<VerifierReport, ChiodosPackageError> {
     Ok(VerifierReport {
         schema: VERIFIER_REPORT_SCHEMA.to_string(),
         package_sha256: package_sha256(package)?,
+        trust_bundle_sha256: Some(trust_bundle.document_sha256.clone()),
+        context_sha256: Some(verification_context_sha256(context)?),
+        revocation_epoch_height: Some(trust_bundle.revocation_epoch_height()),
         accepted: true,
         checks,
         failure: None,
     })
 }
 
-fn rejected_report(package: &ChiodosProofPackage, error: &ChiodosPackageError) -> VerifierReport {
+fn rejected_report(
+    package: &ChiodosProofPackage,
+    trust_bundle: &ChiodosVerifierTrustBundle,
+    context: Option<&ChiodosVerificationContext>,
+    checks: Vec<VerifierCheck>,
+    error: &ChiodosPackageError,
+) -> VerifierReport {
     VerifierReport {
         schema: VERIFIER_REPORT_SCHEMA.to_string(),
         package_sha256: package_sha256(package).unwrap_or_else(|_| "unavailable".to_string()),
+        trust_bundle_sha256: Some(trust_bundle.document_sha256.clone()),
+        context_sha256: context.and_then(|context| verification_context_sha256(context).ok()),
+        revocation_epoch_height: Some(trust_bundle.revocation_epoch_height()),
         accepted: false,
-        checks: Vec::new(),
+        checks,
         failure: Some(VerifierFailure {
             code: failure_code(error).to_string(),
+            phase: failure_phase(error).to_string(),
             detail: error.to_string(),
         }),
     }
@@ -1013,14 +1520,136 @@ fn failure_code(error: &ChiodosPackageError) -> &'static str {
         ChiodosPackageError::Workflow(_) => "workflow",
         ChiodosPackageError::Governance(_) => "governance",
         ChiodosPackageError::Federation(_) => "federation",
+        ChiodosPackageError::SelectiveDisclosure(message) if message.contains("proof nonce") => {
+            "bbs.context_nonce"
+        }
         ChiodosPackageError::SelectiveDisclosure(_) => "bbs",
         ChiodosPackageError::TrustedIssuer(_) => "trust.bbs_issuer",
         ChiodosPackageError::TrustBundle(_) => "trust.bundle",
         ChiodosPackageError::WorkflowIntersection(_) => "workflow.intersection",
         ChiodosPackageError::LeaseScopeBinding(_) => "lease.scope_binding",
+        ChiodosPackageError::VerificationContext(_) => "verification.context",
         ChiodosPackageError::Inconsistent(_) => "package.inconsistent",
         ChiodosPackageError::Json(_) => "json",
     }
+}
+
+fn failure_phase(error: &ChiodosPackageError) -> &'static str {
+    match error {
+        ChiodosPackageError::Canonical(_) | ChiodosPackageError::Json(_) => "parse",
+        ChiodosPackageError::UnsupportedSchema(_)
+        | ChiodosPackageError::UnsupportedClaim(_)
+        | ChiodosPackageError::Inconsistent(_) => "package",
+        ChiodosPackageError::TrustBundle(_)
+        | ChiodosPackageError::TrustedIssuer(_)
+        | ChiodosPackageError::VerificationContext(_) => "trust",
+        ChiodosPackageError::Workflow(_)
+        | ChiodosPackageError::WorkflowIntersection(_)
+        | ChiodosPackageError::LeaseScopeBinding(_) => "workflow",
+        ChiodosPackageError::Governance(_) => "governance",
+        ChiodosPackageError::Federation(_) => "federation",
+        ChiodosPackageError::SelectiveDisclosure(_) => "bbs",
+    }
+}
+
+#[derive(Debug, Clone)]
+struct OfflineRevocationOracle {
+    revoked_key_fingerprints: BTreeSet<String>,
+}
+
+impl RevocationOracle for OfflineRevocationOracle {
+    fn is_active_at_epoch(&self, fingerprint: &Keyid, _epoch_height: u64) -> bool {
+        !self.revoked_key_fingerprints.contains(&fingerprint.0)
+    }
+}
+
+fn verify_disclosure_contract(
+    proof: &SelectiveDisclosureProof,
+    projection: &Projection,
+    trust_bundle: &ChiodosVerifierTrustBundle,
+    context: &ChiodosVerificationContext,
+) -> Result<(), ChiodosPackageError> {
+    let policy = &trust_bundle.disclosure_policy;
+    if proof.projection_version != policy.projection_version {
+        return Err(ChiodosPackageError::SelectiveDisclosure(format!(
+            "projection version {} is not verifier-approved",
+            proof.projection_version
+        )));
+    }
+    if projection.version != policy.projection_version {
+        return Err(ChiodosPackageError::SelectiveDisclosure(
+            "workflow projection does not match disclosure policy".to_string(),
+        ));
+    }
+    if proof.ciphersuite != policy.ciphersuite {
+        return Err(ChiodosPackageError::SelectiveDisclosure(
+            "BBS proof ciphersuite does not match disclosure policy".to_string(),
+        ));
+    }
+    if proof.message_count != policy.message_count
+        || projection.messages.len() != policy.message_count
+    {
+        return Err(ChiodosPackageError::SelectiveDisclosure(
+            "BBS proof message count does not match disclosure policy".to_string(),
+        ));
+    }
+    let expected_nonce = context.expected_bbs_proof_nonce_hex()?;
+    if proof.proof_nonce_hex != expected_nonce {
+        return Err(ChiodosPackageError::SelectiveDisclosure(
+            "BBS proof nonce does not match verifier context".to_string(),
+        ));
+    }
+    let disclosed_indices = proof
+        .disclosed_indices
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    if disclosed_indices.len() != proof.disclosed_indices.len() {
+        return Err(ChiodosPackageError::SelectiveDisclosure(
+            "BBS proof carries duplicate disclosed index".to_string(),
+        ));
+    }
+    for index in &policy.required_disclosed_indices {
+        if !disclosed_indices.contains(index) {
+            return Err(ChiodosPackageError::SelectiveDisclosure(format!(
+                "BBS proof does not disclose required index {index}"
+            )));
+        }
+    }
+    let disclosed_fields = proof
+        .disclosed
+        .iter()
+        .map(|message| message.field.as_str())
+        .collect::<BTreeSet<_>>();
+    for field in &policy.required_disclosed_fields {
+        if !disclosed_fields.contains(field.as_str()) {
+            return Err(ChiodosPackageError::SelectiveDisclosure(format!(
+                "BBS proof does not disclose required field {field}"
+            )));
+        }
+    }
+    for disclosed in &proof.disclosed {
+        let Some(projected) = projection
+            .messages
+            .iter()
+            .find(|message| message.index == disclosed.index)
+        else {
+            return Err(ChiodosPackageError::SelectiveDisclosure(format!(
+                "BBS proof discloses out-of-range index {}",
+                disclosed.index
+            )));
+        };
+        if disclosed.field != projected.field
+            || disclosed.encoding != projected.encoding
+            || disclosed.bytes_hex != projected.bytes_hex
+        {
+            return Err(ChiodosPackageError::SelectiveDisclosure(format!(
+                "BBS proof disclosed message {} does not match projection",
+                disclosed.index
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn verify_package_hints_match_trust(
@@ -1046,6 +1675,7 @@ fn verify_package_hints_match_trust(
                 peer.kernel_id
             ))
         })?;
+        trust_bundle.ensure_public_key_not_revoked(&trusted.public_key, "peer key")?;
         if trusted.public_key != peer.public_key {
             return Err(ChiodosPackageError::TrustBundle(format!(
                 "package peer {} public key does not match verifier trust bundle",
@@ -1060,7 +1690,7 @@ fn verify_package_hints_match_trust(
         }
         if !trusted
             .ladder_manifest_ref
-            .is_fresh(trust_bundle.revocation.now_unix_ms)
+            .is_fresh(trust_bundle.verification_time_unix_ms())
         {
             return Err(ChiodosPackageError::TrustBundle(format!(
                 "trusted ladder ref for {} is stale",
@@ -1088,6 +1718,7 @@ fn verify_package_hints_match_trust(
                 vendor.vendor_id
             ))
         })?;
+        trust_bundle.ensure_public_key_not_revoked(&trusted.public_key, "vendor key")?;
         if trusted.public_key != vendor.public_key {
             return Err(ChiodosPackageError::TrustBundle(format!(
                 "package vendor {} public key does not match verifier trust bundle",
@@ -1613,6 +2244,31 @@ fn verify_trusted_capability_lease(
                 lease.body.issuer
             ))
         })?;
+    trust_bundle.ensure_public_key_not_revoked(&authority.public_key, "lease authority")?;
+    let (valid_from, valid_until) = authority_window(
+        authority.valid_from_unix_ms,
+        authority.valid_until_unix_ms,
+        "lease authority",
+    )?;
+    let now_unix_ms = trust_bundle.verification_time_unix_ms();
+    if now_unix_ms < valid_from || now_unix_ms >= valid_until {
+        return Err(ChiodosPackageError::Governance(format!(
+            "lease authority {} is not active at the verifier epoch",
+            lease.body.issuer
+        )));
+    }
+    if lease.body.issued_at_unix_ms > now_unix_ms {
+        return Err(ChiodosPackageError::Governance(format!(
+            "lease {} is issued in the future",
+            lease.body.lease_id
+        )));
+    }
+    if lease.body.issued_at_unix_ms < valid_from || lease.body.issued_at_unix_ms >= valid_until {
+        return Err(ChiodosPackageError::Governance(format!(
+            "lease {} is outside the lease authority validity window",
+            lease.body.lease_id
+        )));
+    }
     if lease.signer_key != authority.public_key {
         return Err(ChiodosPackageError::Governance(format!(
             "lease authority {} signer key mismatch",
@@ -1628,12 +2284,8 @@ fn verify_trusted_capability_lease(
             lease.body.issuer, lease.body.action_class
         )));
     }
-    verify_capability_lease(
-        lease,
-        trust_bundle.revocation.now_unix_ms,
-        Some(scope_digest.to_string()),
-    )
-    .map_err(|error| ChiodosPackageError::Governance(error.to_string()))
+    verify_capability_lease(lease, now_unix_ms, Some(scope_digest.to_string()))
+        .map_err(|error| ChiodosPackageError::Governance(error.to_string()))
 }
 
 fn verify_trusted_governance_receipt(
@@ -1648,6 +2300,32 @@ fn verify_trusted_governance_receipt(
                 receipt.body.authorizing_kernel
             ))
         })?;
+    trust_bundle.ensure_public_key_not_revoked(&authority.public_key, "governance authority")?;
+    let (valid_from, valid_until) = authority_window(
+        authority.valid_from_unix_ms,
+        authority.valid_until_unix_ms,
+        "governance authority",
+    )?;
+    let now_unix_ms = trust_bundle.verification_time_unix_ms();
+    if now_unix_ms < valid_from || now_unix_ms >= valid_until {
+        return Err(ChiodosPackageError::Governance(format!(
+            "governance authority {} is not active at the verifier epoch",
+            receipt.body.authorizing_kernel
+        )));
+    }
+    if receipt.body.issued_at_unix_ms > now_unix_ms {
+        return Err(ChiodosPackageError::Governance(format!(
+            "governance receipt {} is issued in the future",
+            receipt.body.receipt_id
+        )));
+    }
+    if receipt.body.issued_at_unix_ms < valid_from || receipt.body.issued_at_unix_ms >= valid_until
+    {
+        return Err(ChiodosPackageError::Governance(format!(
+            "governance receipt {} is outside the governance authority validity window",
+            receipt.body.receipt_id
+        )));
+    }
     if receipt.signer_key != authority.public_key {
         return Err(ChiodosPackageError::Governance(format!(
             "governance authority {} signer key mismatch",
@@ -1663,7 +2341,7 @@ fn verify_trusted_governance_receipt(
             receipt.body.authorizing_kernel, receipt.body.case_kind
         )));
     }
-    verify_step_governance_boundary(true, Some(receipt), trust_bundle.revocation.now_unix_ms)
+    verify_step_governance_boundary(true, Some(receipt), now_unix_ms)
         .map_err(|error| ChiodosPackageError::Governance(error.to_string()))
 }
 
@@ -1732,16 +2410,24 @@ fn verify_destructive_steps(
             })?;
         verify_capability_lease(
             lease,
-            trust_bundle.revocation.now_unix_ms,
+            trust_bundle.verification_time_unix_ms(),
             Some(scope_digest.clone()),
         )
         .map_err(|error| ChiodosPackageError::Governance(error.to_string()))?;
+        if governance_receipt.body.issued_at_unix_ms < lease.body.issued_at_unix_ms
+            || governance_receipt.body.expires_at_unix_ms > lease.body.expires_at_unix_ms
+        {
+            return Err(ChiodosPackageError::Governance(format!(
+                "governance receipt {} is outside lease {} validity window",
+                governance_receipt.body.receipt_id, lease.body.lease_id
+            )));
+        }
         verify_destructive_authorization(
             governance_receipt,
             &lease.body.lease_id,
             &package.workflow_id,
             &step_sha256,
-            trust_bundle.revocation.now_unix_ms,
+            trust_bundle.verification_time_unix_ms(),
         )
         .map_err(|error| ChiodosPackageError::Governance(error.to_string()))?;
     }
@@ -1767,6 +2453,40 @@ mod tests {
         ChiodosVerifierTrustBundle::from_document(trust_bundle_document_from_fixture())
     }
 
+    fn verification_context_from_fixture() -> ChiodosVerificationContext {
+        verification_context_from_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/verification-context.json"
+        ))
+        .expect("verification context fixture parses")
+    }
+
+    fn trust_bundle_with_revocations(
+        revoked_key_fingerprints: Vec<String>,
+    ) -> ChiodosVerifierTrustBundle {
+        let mut document = trust_bundle_document_from_fixture();
+        let ChiodosRevocationMaterial::Checkpoint(checkpoint) = document.revocation else {
+            panic!("fixture carries signed revocation checkpoint");
+        };
+        let checkpoint = *checkpoint;
+        let mut body = checkpoint.body;
+        body.revoked_key_fingerprints = revoked_key_fingerprints;
+        document.revocation = ChiodosRevocationMaterial::Checkpoint(Box::new(
+            SignedExportEnvelope::sign(body, &Keypair::from_seed(&[11; 32]))
+                .expect("revocation checkpoint re-signs"),
+        ));
+        ChiodosVerifierTrustBundle::from_document(document).expect("trust bundle parses")
+    }
+
+    fn resign_lease(lease: &mut SignedCapabilityLease) {
+        *lease = SignedExportEnvelope::sign(lease.body.clone(), &Keypair::from_seed(&[11; 32]))
+            .expect("lease re-signs");
+    }
+
+    fn resign_governance_receipt(receipt: &mut SignedGovernanceReceipt) {
+        *receipt = SignedExportEnvelope::sign(receipt.body.clone(), &Keypair::from_seed(&[12; 32]))
+            .expect("governance receipt re-signs");
+    }
+
     #[test]
     fn committed_fixture_verifies_through_production_crate() {
         let package = proof_package_from_json(include_str!(
@@ -1774,12 +2494,20 @@ mod tests {
         ))
         .expect("package fixture parses");
         let trust_bundle = trust_bundle_from_fixture().expect("trust bundle parses");
-        let report = verify_package(&package, &trust_bundle).expect("package fixture verifies");
+        let context = verification_context_from_fixture();
+        let report =
+            verify_package(&package, &trust_bundle, &context).expect("package fixture verifies");
         assert!(report.accepted);
+        assert_eq!(report.schema, VERIFIER_REPORT_SCHEMA_V2);
         assert!(report
             .checks
             .iter()
             .any(|check| check.code == "workflow.intersection"));
+        let context_sha256 = verification_context_sha256(&context).expect("context hash computes");
+        assert_eq!(
+            report.context_sha256.as_deref(),
+            Some(context_sha256.as_str())
+        );
     }
 
     #[test]
@@ -1789,6 +2517,9 @@ mod tests {
         ))
         .expect("report fixture parses");
         assert!(report.accepted);
+        assert_eq!(report.schema, VERIFIER_REPORT_SCHEMA_V2);
+        assert!(report.context_sha256.is_some());
+        assert!(report.revocation_epoch_height.is_some());
     }
 
     #[test]
@@ -1810,9 +2541,161 @@ mod tests {
 
         let trust_bundle =
             ChiodosVerifierTrustBundle::from_document(document).expect("trust bundle parses");
-        let report = verify_package(&package, &trust_bundle).expect("package fixture verifies");
+        let context = verification_context_from_fixture();
+        let report =
+            verify_package(&package, &trust_bundle, &context).expect("package fixture verifies");
 
         assert!(report.accepted);
+    }
+
+    #[test]
+    fn verifier_trust_bundle_v3_requires_signed_fresh_revocation_checkpoint() {
+        let mut document = serde_json::to_value(trust_bundle_document_from_fixture())
+            .expect("trust bundle serializes");
+        assert_eq!(
+            document["schema"],
+            serde_json::Value::String(VERIFIER_TRUST_BUNDLE_SCHEMA_V3.to_string())
+        );
+
+        document["revocation"]["body"]["expiresAtUnixMs"] =
+            serde_json::Value::Number(serde_json::Number::from(1_u64));
+        let error = verifier_trust_bundle_from_json(
+            &serde_json::to_string(&document).expect("trust bundle json serializes"),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("revocation"));
+
+        let mut unsigned = serde_json::to_value(trust_bundle_document_from_fixture())
+            .expect("trust bundle serializes");
+        unsigned["revocation"]["signature"] = serde_json::Value::String("00".to_string());
+        let error = verifier_trust_bundle_from_json(
+            &serde_json::to_string(&unsigned).expect("trust bundle json serializes"),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("revocation") || error.to_string().contains("JSON"));
+    }
+
+    #[test]
+    fn revoked_trust_roots_fail_closed() {
+        let package = proof_package_from_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        let context = verification_context_from_fixture();
+
+        let revoked_peer = key_fingerprint(&package.peer_ladder_bindings[1].public_key);
+        let trust_bundle = trust_bundle_with_revocations(vec![revoked_peer]);
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("revoked"));
+
+        let revoked_vendor = key_fingerprint(&package.vendor_keys[0].public_key);
+        let trust_bundle = trust_bundle_with_revocations(vec![revoked_vendor]);
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("revoked"));
+
+        let revoked_issuer = package
+            .selective_disclosure_proof
+            .issuer_fingerprint
+            .clone();
+        let trust_bundle = trust_bundle_with_revocations(vec![revoked_issuer]);
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("revoked"));
+    }
+
+    #[test]
+    fn revoked_authority_roots_fail_closed() {
+        let package = proof_package_from_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        let context = verification_context_from_fixture();
+        let document = trust_bundle_document_from_fixture();
+
+        let revoked_lease_authority = key_fingerprint(&document.lease_authorities[0].public_key);
+        let trust_bundle = trust_bundle_with_revocations(vec![revoked_lease_authority]);
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("revoked"));
+
+        let revoked_governance_authority =
+            key_fingerprint(&document.governance_authorities[0].public_key);
+        let trust_bundle = trust_bundle_with_revocations(vec![revoked_governance_authority]);
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("revoked"));
+    }
+
+    #[test]
+    fn authority_lifecycle_and_artifact_time_windows_fail_closed() {
+        let package = proof_package_from_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        let context = verification_context_from_fixture();
+        let mut document = trust_bundle_document_from_fixture();
+        document.lease_authorities[0].valid_from_unix_ms = Some(1);
+        document.lease_authorities[0].valid_until_unix_ms = Some(2);
+        let trust_bundle =
+            ChiodosVerifierTrustBundle::from_document(document).expect("trust bundle parses");
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("not active"));
+
+        let mut inactive = trust_bundle_document_from_fixture();
+        inactive.governance_authorities[0].status = Some(ChiodosAuthorityStatus::Inactive);
+        let error = ChiodosVerifierTrustBundle::from_document(inactive).unwrap_err();
+        assert!(error.to_string().contains("status"));
+
+        let mut future_package = package.clone();
+        future_package.lease_scope_bindings[0].issued_at_unix_ms = 1_766_000_010_000;
+        future_package.capability_leases[0].body.issued_at_unix_ms = 1_766_000_010_000;
+        future_package.capability_leases[0].body.scope_digest = future_package.lease_scope_bindings
+            [0]
+        .scope_digest()
+        .expect("scope digest rebuilds");
+        resign_lease(&mut future_package.capability_leases[0]);
+        let trust_bundle = trust_bundle_from_fixture().expect("trust bundle parses");
+        let error = verify_package(&future_package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("future"));
+
+        let mut outside_lease = package;
+        outside_lease.governance_receipts[0].body.expires_at_unix_ms =
+            outside_lease.capability_leases[2].body.expires_at_unix_ms + 1;
+        resign_governance_receipt(&mut outside_lease.governance_receipts[0]);
+        let error = verify_package(&outside_lease, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("outside lease"));
+    }
+
+    #[test]
+    fn context_and_disclosure_contract_fail_closed() {
+        let mut package = proof_package_from_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        let trust_bundle = trust_bundle_from_fixture().expect("trust bundle parses");
+        let mut context = verification_context_from_fixture();
+        context.expires_at_unix_ms = 1_766_000_000_000;
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("expired"));
+
+        let context = verification_context_from_fixture();
+        package.selective_disclosure_proof.projection_version =
+            "chio.bbs-projection.workflow.v0".to_string();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("projection version"));
+
+        let mut package = proof_package_from_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        package.selective_disclosure_proof.disclosed_indices.push(4);
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("duplicate disclosed index"));
+
+        let mut package = proof_package_from_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        package.selective_disclosure_proof.ciphersuite = "unsupported".to_string();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("ciphersuite"));
     }
 
     #[test]
@@ -1888,11 +2771,9 @@ mod tests {
     }
 
     #[test]
-    fn verifier_trust_bundle_v2_requires_authority_roots() {
+    fn verifier_trust_bundle_v3_requires_authority_roots() {
         let mut document = serde_json::to_value(trust_bundle_document_from_fixture())
             .expect("trust bundle serializes");
-        document["schema"] =
-            serde_json::Value::String("chio.chiodos.verifier-trust-bundle.v2".to_string());
         document["leaseAuthorities"] = serde_json::Value::Array(Vec::new());
         document["governanceAuthorities"] = serde_json::Value::Array(Vec::new());
 
@@ -1924,7 +2805,8 @@ mod tests {
             SignedExportEnvelope::sign(package.capability_leases[0].body.clone(), &forged_key)
                 .expect("lease re-signs");
 
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let context = verification_context_from_fixture();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("lease authority"));
     }
 
@@ -1940,7 +2822,8 @@ mod tests {
             SignedExportEnvelope::sign(package.governance_receipts[0].body.clone(), &forged_key)
                 .expect("governance receipt re-signs");
 
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let context = verification_context_from_fixture();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("governance authority"));
     }
 
@@ -1956,7 +2839,8 @@ mod tests {
         let trust_bundle =
             ChiodosVerifierTrustBundle::from_document(document).expect("trust bundle parses");
 
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let context = verification_context_from_fixture();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("issuer"));
         assert!(error.to_string().contains("trusted"));
     }
@@ -1976,7 +2860,33 @@ mod tests {
         let trust_bundle =
             ChiodosVerifierTrustBundle::from_document(document).expect("trust bundle parses");
 
-        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        let context = verification_context_from_fixture();
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
         assert!(error.to_string().contains("issuer public key"));
+    }
+
+    #[test]
+    fn wrong_verifier_context_nonce_fails_and_report_keeps_prior_checks() {
+        let package = proof_package_from_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        let trust_bundle = trust_bundle_from_fixture().expect("trust bundle parses");
+        let mut context = verification_context_from_fixture();
+        context.challenge = "challenge-mismatch".to_string();
+
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("proof nonce"));
+
+        let report = verify_package_report(&package, &trust_bundle, &context);
+        assert!(!report.accepted);
+        assert_eq!(
+            report.failure.as_ref().expect("failure").code,
+            "bbs.context_nonce"
+        );
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.code == "trust.bbs_issuer"));
     }
 }

@@ -72,6 +72,24 @@
       "schemaFile": "spec/schemas/chiodos/v1/verifier-trust-bundle.schema.json"
     },
     {
+      "schema": "chio.chiodos.verifier-trust-bundle.v3",
+      "artifactKind": "chiodos_verifier_trust_bundle",
+      "introducedBy": "chiodos-freshness-assurance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/verifier-trust-bundle.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.revocation-checkpoint.v1",
+      "artifactKind": "chiodos_revocation_checkpoint",
+      "introducedBy": "chiodos-freshness-assurance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/revocation-checkpoint.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.verification-context.v1",
+      "artifactKind": "chiodos_verification_context",
+      "introducedBy": "chiodos-freshness-assurance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/verification-context.schema.json"
+    },
+    {
       "schema": "chio.capability-lease.v1",
       "artifactKind": "chiodos_capability_lease",
       "introducedBy": "chiodos-authority-wire-contract/v1",
@@ -112,6 +130,18 @@
       "artifactKind": "chiodos_verifier_report",
       "introducedBy": "chiodos-authority-wire-contract/v1",
       "schemaFile": "spec/schemas/chiodos/v1/verifier-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.verifier-report.v2",
+      "artifactKind": "chiodos_verifier_report",
+      "introducedBy": "chiodos-freshness-assurance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/verifier-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_negative_fixture_corpus",
+      "introducedBy": "chiodos-freshness-assurance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/negative-fixture-corpus.schema.json"
     }
   ]
 }

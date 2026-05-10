@@ -53,6 +53,7 @@ pub struct DisclosureSet(pub Vec<u16>);
 
 /// Disclosed message in a proof package.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DisclosedMessage {
     pub index: u16,
     pub field: String,
@@ -83,6 +84,7 @@ pub struct SignedProjection {
 
 /// Buyer or auditor proof package carrying only disclosed fields.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SelectiveDisclosureProof {
     pub schema: String,
     pub projection_version: String,

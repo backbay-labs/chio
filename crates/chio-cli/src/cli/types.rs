@@ -758,6 +758,10 @@ enum ChiodosCommands {
         #[arg(long, value_name = "PATH")]
         trust_bundle: PathBuf,
 
+        /// Path to the verifier context JSON.
+        #[arg(long, value_name = "PATH")]
+        context: PathBuf,
+
         /// Path where verifier report JSON should be written.
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
