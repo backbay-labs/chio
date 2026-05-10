@@ -527,14 +527,14 @@ The buyer's auditor (Buyer Corp Compliance) requests proof of
 seeing the customer record or the draft response.
 
 [CHIODOS_CONCEPT.md](CHIODOS_CONCEPT.md) section 7 hard problem 4 leans
-BBS+ (`bbs-2023` + AnonCreds v2 `RangeStatement`). T6 now implements a
-first reveal-set BBS proof package over `WorkflowReceipt` in
+BBS+ (`bbs-2023` + AnonCreds v2 `RangeStatement`). Chiodos now implements
+a first reveal-set BBS proof package over `WorkflowReceipt` in
 `chio-selective-disclosure`; hidden range predicates such as
 `amount_minor <= 25000` remain deferred.
 
-The illustrative envelope below predates the T6 proof package. The
+The illustrative envelope below predates the implemented proof package. The
 committed runnable fixture is
-`examples/chiodos-3vendor/fixtures/t6-real-bbs-proof.json`.
+`examples/chiodos-3vendor/fixtures/selective-disclosure-proof.json`.
 
 ### 8.1 BBS+ disclosure envelope (illustrative)
 

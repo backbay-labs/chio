@@ -23,6 +23,10 @@ pub const BBS_CIPHERSUITE_SHA256: &str = "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_";
 const MESSAGE_DOMAIN_V1: &[u8] = b"chio.bbs.message.v1";
 const HEADER_DOMAIN_V1: &[u8] = b"chio.bbs.header.v1";
 const NONE_SENTINEL: &[u8] = b"\0";
+const BBS_SHA256_POINT_BYTES: usize = 48;
+const BBS_SHA256_SCALAR_BYTES: usize = 32;
+const BBS_SHA256_PROOF_FIXED_BYTES: usize =
+    (3 * BBS_SHA256_POINT_BYTES) + (4 * BBS_SHA256_SCALAR_BYTES);
 
 /// One projected message in a Chio BBS vector.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -542,6 +546,20 @@ fn validate_disclosure_set(
     Ok(seen)
 }
 
+fn message_count_from_bbs_sha256_proof(
+    proof_bytes: &[u8],
+    disclosed_count: usize,
+) -> Result<usize, SelectiveDisclosureError> {
+    if proof_bytes.len() < BBS_SHA256_PROOF_FIXED_BYTES {
+        return Err(SelectiveDisclosureError::ProofVerificationFailed);
+    }
+    let undisclosed_bytes = proof_bytes.len() - BBS_SHA256_PROOF_FIXED_BYTES;
+    if !undisclosed_bytes.is_multiple_of(BBS_SHA256_SCALAR_BYTES) {
+        return Err(SelectiveDisclosureError::ProofVerificationFailed);
+    }
+    Ok(disclosed_count + (undisclosed_bytes / BBS_SHA256_SCALAR_BYTES))
+}
+
 fn disclosed_messages(
     projection: &Projection,
     disclosure: &DisclosureSet,
@@ -803,8 +821,15 @@ pub fn verify_selective_disclosure_proof(
     if registered_key != proof.issuer_public_key_hex {
         return Err(SelectiveDisclosureError::IssuerKeyMismatch);
     }
+    let raw_proof = hex::decode(&proof.proof_bytes_hex)
+        .map_err(|e| SelectiveDisclosureError::Hex(e.to_string()))?;
+    let implied_message_count =
+        message_count_from_bbs_sha256_proof(&raw_proof, proof.disclosed_indices.len())?;
+    if proof.message_count != implied_message_count {
+        return Err(SelectiveDisclosureError::ProofVerificationFailed);
+    }
     let disclosure = DisclosureSet(proof.disclosed_indices.clone());
-    let disclosure_set = validate_disclosure_set(&disclosure, proof.message_count)?;
+    let disclosure_set = validate_disclosure_set(&disclosure, implied_message_count)?;
     if disclosure_set.len() != proof.disclosed.len() {
         return Err(SelectiveDisclosureError::ProofVerificationFailed);
     }
@@ -817,8 +842,6 @@ pub fn verify_selective_disclosure_proof(
         return Err(SelectiveDisclosureError::ProofVerificationFailed);
     }
     let public = public_key(&proof.issuer_public_key_hex)?;
-    let raw_proof = hex::decode(&proof.proof_bytes_hex)
-        .map_err(|e| SelectiveDisclosureError::Hex(e.to_string()))?;
     let bbs_proof = affinidi_bbs::Proof::from_bytes(&raw_proof);
     let nonce = hex::decode(&proof.proof_nonce_hex)
         .map_err(|e| SelectiveDisclosureError::Hex(e.to_string()))?;

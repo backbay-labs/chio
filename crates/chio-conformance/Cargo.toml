@@ -57,7 +57,7 @@ in-repo-fixtures = []
 # SHA-256-commitment stub without any privacy-preserving cryptographic property; this is a
 # separate CI matrix entry, not the default build path.
 bbs-stub = ["chio-federation/bbs-stub"]
-t6-bbs = [
+chiodos-bbs = [
     "dep:chio-selective-disclosure",
     "dep:chio-workflow",
     "chio-selective-disclosure/bbs",

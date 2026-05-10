@@ -1,6 +1,6 @@
 # Chiodos Selective Disclosure Over Chio Receipts
 
-**Status:** Draft v0.1 design target with a T6 real-BBS implementation slice.
+**Status:** Draft v0.1 design target with a real-BBS implementation slice.
 **Date:** 2026-05-04
 **Supersedes:** none
 
@@ -10,7 +10,7 @@ receipts and workflow receipts**. The repository now includes
 `chio-selective-disclosure` with an opt-in `bbs` feature that signs
 receipt, workflow, and step projections and verifies reveal-set BBS
 proof packages. The older `chio-federation` `bbs-stub` projection
-remains a legacy placeholder and cannot satisfy T6 conformance. Hidden
+remains a legacy placeholder and cannot satisfy Chiodos conformance. Hidden
 range predicates, VC Data Integrity interop, and zkVM proofs are still
 deferred.
 
@@ -54,7 +54,7 @@ workflow projection in section 6.
 
 ## 2. Scope
 
-### 2.1 Implemented T6 slice
+### 2.1 Implemented slice
 
 - BBS secondary commitments over a single
   [`ChioReceipt`](../crates/chio-core-types/src/receipt.rs) body.
@@ -507,7 +507,7 @@ v0.1 does not specify a proof-carrying-receipt mode.
 
 ## 10. Implementation Crate Placement
 
-The implemented T6 slice lives in
+The implemented slice lives in
 [`chio-selective-disclosure`](../crates/chio-selective-disclosure/src/lib.rs).
 It is outside the default build and enabled with the crate's `bbs`
 feature. The legacy `chio-federation` `bbs-stub` feature remains a

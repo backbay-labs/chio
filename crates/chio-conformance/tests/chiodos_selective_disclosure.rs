@@ -1,4 +1,4 @@
-#![cfg(feature = "t6-bbs")]
+#![cfg(feature = "chiodos-bbs")]
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_core::capability::MonetaryAmount;
@@ -14,15 +14,15 @@ use chio_workflow::receipt::{
 
 fn three_vendor_workflow(kp: &Keypair) -> WorkflowReceiptBody {
     WorkflowReceiptBody {
-        id: "wf-t6-3vendor".to_string(),
+        id: "wf-chiodos-refund-001".to_string(),
         schema: WORKFLOW_RECEIPT_SCHEMA.to_string(),
         started_at: 1_766_000_000,
         completed_at: 1_766_000_042,
         skill_id: "refund-underwriting".to_string(),
         skill_version: "0.1.0".to_string(),
         agent_id: "buyer-agent".to_string(),
-        session_id: Some("sess-t6".to_string()),
-        capability_id: "cap-t6-workflow".to_string(),
+        session_id: Some("sess-chiodos-refund".to_string()),
+        capability_id: "cap-chiodos-workflow".to_string(),
         outcome: WorkflowOutcome::Completed,
         steps: vec![
             StepRecord {
@@ -78,11 +78,12 @@ fn three_vendor_workflow(kp: &Keypair) -> WorkflowReceiptBody {
 }
 
 #[test]
-fn three_vendor_workflow_fixture_verifies_real_bbs_disclosure() {
+fn three_vendor_workflow_fixture_verifies_bbs_selective_disclosure() {
     let ed25519 = Keypair::generate();
     let workflow = three_vendor_workflow(&ed25519);
     let projection = project_workflow_receipt_body(&workflow).unwrap();
-    let keypair = generate_bbs_keypair(b"t6-conformance-bbs-key-material-0001", b"t6").unwrap();
+    let keypair =
+        generate_bbs_keypair(b"chiodos-conformance-bbs-key-material-0001", b"chiodos").unwrap();
     let signed = sign_projection(&projection, &keypair).unwrap();
     let proof = derive_selective_disclosure_proof(
         &signed,
@@ -96,7 +97,7 @@ fn three_vendor_workflow_fixture_verifies_real_bbs_disclosure() {
     assert_eq!(proof.schema, SELECTIVE_DISCLOSURE_PROOF_SCHEMA_V1);
     assert!(
         !proof.schema.ends_with(".stub"),
-        "T6 conformance must not accept the old stub schema"
+        "Chiodos conformance must not accept the old stub schema"
     );
 
     let mut registry = InMemoryIssuerRegistry::default();
@@ -117,7 +118,8 @@ fn three_vendor_workflow_fixture_rejects_negative_mutations() {
     let ed25519 = Keypair::generate();
     let workflow = three_vendor_workflow(&ed25519);
     let projection = project_workflow_receipt_body(&workflow).unwrap();
-    let keypair = generate_bbs_keypair(b"t6-conformance-bbs-key-material-0002", b"t6").unwrap();
+    let keypair =
+        generate_bbs_keypair(b"chiodos-conformance-bbs-key-material-0002", b"chiodos").unwrap();
     let signed = sign_projection(&projection, &keypair).unwrap();
     let mut proof = derive_selective_disclosure_proof(
         &signed,
@@ -134,7 +136,7 @@ fn three_vendor_workflow_fixture_rejects_negative_mutations() {
         keypair.public_key_hex.clone(),
     );
 
-    proof.disclosed[0].bytes_hex = hex::encode(b"wf-t6-forged");
+    proof.disclosed[0].bytes_hex = hex::encode(b"wf-chiodos-forged");
     assert!(matches!(
         verify_selective_disclosure_proof(&proof, &registry),
         Err(SelectiveDisclosureError::ProofVerificationFailed)
@@ -143,7 +145,8 @@ fn three_vendor_workflow_fixture_rejects_negative_mutations() {
 
 #[test]
 fn committed_three_vendor_proof_fixture_verifies() {
-    let fixture = include_str!("../../../examples/chiodos-3vendor/fixtures/t6-real-bbs-proof.json");
+    let fixture =
+        include_str!("../../../examples/chiodos-3vendor/fixtures/selective-disclosure-proof.json");
     let proof: SelectiveDisclosureProof = serde_json::from_str(fixture).unwrap();
     assert_eq!(proof.schema, SELECTIVE_DISCLOSURE_PROOF_SCHEMA_V1);
     assert!(!proof.schema.ends_with(".stub"));

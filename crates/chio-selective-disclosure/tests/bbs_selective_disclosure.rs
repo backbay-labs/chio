@@ -18,9 +18,9 @@ use chio_workflow::receipt::{
 
 fn receipt_fixture(kp: &Keypair) -> ChioReceiptBody {
     ChioReceiptBody {
-        id: "rcpt-t6-real-bbs".to_string(),
+        id: "rcpt-chiodos-bbs".to_string(),
         timestamp: 1_766_000_000,
-        capability_id: "cap-t6".to_string(),
+        capability_id: "cap-chiodos-receipt".to_string(),
         tool_server: "vendor-a.files".to_string(),
         tool_name: "read_refund_case".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({
@@ -29,9 +29,9 @@ fn receipt_fixture(kp: &Keypair) -> ChioReceiptBody {
         .expect("fixture action is valid"),
         decision: Decision::Allow,
         content_hash: sha256_hex(b"{\"refund_minor\":25000}"),
-        policy_hash: sha256_hex(b"t6-policy"),
+        policy_hash: sha256_hex(b"chiodos-policy"),
         evidence: Vec::new(),
-        metadata: Some(serde_json::json!({"workflow_id": "wf-t6-3vendor"})),
+        metadata: Some(serde_json::json!({"workflow_id": "wf-chiodos-refund-001"})),
         trust_level: TrustLevel::Mediated,
         tenant_id: Some("buyer-tenant".to_string()),
         kernel_key: kp.public_key(),
@@ -40,15 +40,15 @@ fn receipt_fixture(kp: &Keypair) -> ChioReceiptBody {
 
 fn workflow_fixture(kp: &Keypair) -> WorkflowReceiptBody {
     WorkflowReceiptBody {
-        id: "wf-t6-3vendor".to_string(),
+        id: "wf-chiodos-refund-001".to_string(),
         schema: WORKFLOW_RECEIPT_SCHEMA.to_string(),
         started_at: 1_766_000_000,
         completed_at: 1_766_000_042,
         skill_id: "refund-underwriting".to_string(),
         skill_version: "0.1.0".to_string(),
         agent_id: "buyer-agent".to_string(),
-        session_id: Some("sess-t6".to_string()),
-        capability_id: "cap-t6-workflow".to_string(),
+        session_id: Some("sess-chiodos-refund".to_string()),
+        capability_id: "cap-chiodos-workflow".to_string(),
         outcome: WorkflowOutcome::Completed,
         steps: vec![
             StepRecord {
@@ -113,13 +113,14 @@ fn registry_for_key(keypair: &chio_selective_disclosure::BbsKeyPair) -> InMemory
 }
 
 #[test]
-fn receipt_projection_signs_and_proves_disclosed_fields_with_real_bbs() {
+fn receipt_projection_signs_and_proves_disclosed_fields_with_bbs_selective_disclosure() {
     let ed25519 = Keypair::generate();
     let receipt = receipt_fixture(&ed25519);
     let projection = project_receipt_body(&receipt).expect("receipt projection succeeds");
     assert_eq!(projection.version, PROJECTION_VERSION_RECEIPT_V1);
 
-    let keypair = generate_bbs_keypair(b"t6-real-bbs-signing-key-material-0001", b"t6").unwrap();
+    let keypair =
+        generate_bbs_keypair(b"chiodos-bbs-signing-key-material-0001", b"chiodos").unwrap();
     let signed = sign_projection(&projection, &keypair).expect("signing succeeds");
     assert!(
         verify_signed_projection(&signed, &projection).expect("signature verification runs"),
@@ -151,7 +152,7 @@ fn receipt_projection_signs_and_proves_disclosed_fields_with_real_bbs() {
 }
 
 #[test]
-fn workflow_and_step_projections_have_stable_t6_versions() {
+fn workflow_and_step_projections_have_stable_versions() {
     let ed25519 = Keypair::generate();
     let workflow = workflow_fixture(&ed25519);
     let workflow_projection =
@@ -162,8 +163,8 @@ fn workflow_and_step_projections_have_stable_t6_versions() {
         .iter()
         .any(|message| message.field == "steps" && message.wholesale_only));
 
-    let step_projection =
-        project_step_record("wf-t6-3vendor", &workflow.steps[2]).expect("step projection succeeds");
+    let step_projection = project_step_record("wf-chiodos-refund-001", &workflow.steps[2])
+        .expect("step projection succeeds");
     assert_eq!(step_projection.version, PROJECTION_VERSION_STEP_V1);
     assert!(step_projection
         .messages
@@ -176,7 +177,8 @@ fn proof_rejects_stub_schema_and_tampering() {
     let ed25519 = Keypair::generate();
     let workflow = workflow_fixture(&ed25519);
     let projection = project_workflow_receipt_body(&workflow).unwrap();
-    let keypair = generate_bbs_keypair(b"t6-real-bbs-signing-key-material-0002", b"t6").unwrap();
+    let keypair =
+        generate_bbs_keypair(b"chiodos-bbs-signing-key-material-0002", b"chiodos").unwrap();
     let signed = sign_projection(&projection, &keypair).unwrap();
     let mut proof = derive_selective_disclosure_proof(
         &signed,
@@ -207,7 +209,8 @@ fn proof_rejects_wrong_issuer_key() {
     let ed25519 = Keypair::generate();
     let receipt = receipt_fixture(&ed25519);
     let projection = project_receipt_body(&receipt).unwrap();
-    let keypair = generate_bbs_keypair(b"t6-real-bbs-signing-key-material-0003", b"t6").unwrap();
+    let keypair =
+        generate_bbs_keypair(b"chiodos-bbs-signing-key-material-0003", b"chiodos").unwrap();
     let signed = sign_projection(&projection, &keypair).unwrap();
     let proof = derive_selective_disclosure_proof(
         &signed,
@@ -219,7 +222,7 @@ fn proof_rejects_wrong_issuer_key() {
     .unwrap();
 
     let wrong_keypair =
-        generate_bbs_keypair(b"t6-real-bbs-signing-key-material-0004", b"t6").unwrap();
+        generate_bbs_keypair(b"chiodos-bbs-signing-key-material-0004", b"chiodos").unwrap();
     let mut registry = InMemoryIssuerRegistry::default();
     registry.insert(
         proof.issuer_fingerprint.clone(),
@@ -228,5 +231,41 @@ fn proof_rejects_wrong_issuer_key() {
     assert!(matches!(
         verify_selective_disclosure_proof(&proof, &registry),
         Err(SelectiveDisclosureError::IssuerKeyMismatch)
+    ));
+}
+
+#[test]
+fn proof_rejects_message_count_inflation_before_bbs_verification() {
+    let ed25519 = Keypair::generate();
+    let workflow = workflow_fixture(&ed25519);
+    let projection = project_workflow_receipt_body(&workflow).unwrap();
+    let keypair =
+        generate_bbs_keypair(b"chiodos-bbs-signing-key-material-0005", b"chiodos").unwrap();
+    let signed = sign_projection(&projection, &keypair).unwrap();
+    let mut proof = derive_selective_disclosure_proof(
+        &signed,
+        &projection,
+        &keypair,
+        &DisclosureSet(vec![4, 9]),
+        b"auditor-session-nonce",
+    )
+    .unwrap();
+
+    let mut registry = InMemoryIssuerRegistry::default();
+    registry.insert(
+        keypair.issuer_fingerprint.clone(),
+        keypair.public_key_hex.clone(),
+    );
+
+    proof.message_count = proof.message_count.saturating_add(1_000);
+    proof.disclosed_indices.push(999);
+    let mut forged = proof.disclosed[0].clone();
+    forged.index = 999;
+    forged.field = "forged".to_string();
+    proof.disclosed.push(forged);
+
+    assert!(matches!(
+        verify_selective_disclosure_proof(&proof, &registry),
+        Err(SelectiveDisclosureError::ProofVerificationFailed)
     ));
 }

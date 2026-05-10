@@ -11,15 +11,15 @@ use chio_workflow::receipt::{
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ed25519 = Keypair::generate();
     let workflow = WorkflowReceiptBody {
-        id: "wf-t6-3vendor".to_string(),
+        id: "wf-chiodos-refund-001".to_string(),
         schema: WORKFLOW_RECEIPT_SCHEMA.to_string(),
         started_at: 1_766_000_000,
         completed_at: 1_766_000_042,
         skill_id: "refund-underwriting".to_string(),
         skill_version: "0.1.0".to_string(),
         agent_id: "buyer-agent".to_string(),
-        session_id: Some("sess-t6".to_string()),
-        capability_id: "cap-t6-workflow".to_string(),
+        session_id: Some("sess-chiodos-refund".to_string()),
+        capability_id: "cap-chiodos-workflow".to_string(),
         outcome: WorkflowOutcome::Completed,
         steps: vec![
             StepRecord {
@@ -73,7 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         kernel_key: ed25519.public_key(),
     };
     let projection = project_workflow_receipt_body(&workflow)?;
-    let keypair = generate_bbs_keypair(b"t6-committed-bbs-key-material-0001", b"t6")?;
+    let keypair = generate_bbs_keypair(b"chiodos-committed-bbs-key-material-0001", b"chiodos")?;
     let signed = sign_projection(&projection, &keypair)?;
     let proof = derive_selective_disclosure_proof(
         &signed,
