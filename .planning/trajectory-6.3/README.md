@@ -1,5 +1,7 @@
 # Chiodos 6.3 Authority Wire Contract
 
+Status: merged to `main` before Chiodos 6.4.
+
 Baseline SHA: `290246bfca03d58e140cf5e3d38b956c770342e6`
 
 Branch: `codex/chiodos-6-3-authority-wire-contract`

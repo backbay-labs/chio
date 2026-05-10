@@ -26,11 +26,13 @@ sketches are illustrative (not strict canonical JSON); fields annotated
 Runnable artifacts live under
 `examples/chiodos-3vendor/fixtures/`. The committed buyer/auditor proof
 package is verified by `chio-chiodos` and by
-`chio chiodos verify --package <path> --trust-bundle <path> --report <path>`.
+`chio chiodos verify --package <path> --trust-bundle <path> --context <path> --report <path>`.
 The BBS issuer key, peer pins, ladder refs, action-class policy,
 workflow-intersection hash, lease authorities, governance authorities,
-and pinned revocation epoch are supplied by the verifier's trust bundle,
-not by trusting key material or policy embedded inside the untrusted proof package. Its
+signed revocation checkpoint, and disclosure policy are supplied by the
+verifier's trust bundle, while the BBS proof nonce is bound to the
+verifier context. They are not trusted from key material or policy
+embedded inside the untrusted proof package. Its
 bilateral DSSE envelopes use `chio.bilateral-cosign-invocation.v1`; the older
 `chio.bilateral-signature-slice.v1` profile is compatibility-only and is
 rejected by strict Chiodos verification.
@@ -671,10 +673,11 @@ performs:
 2. For each step, recompute `parent_receipt_sha256`, the bilateral DSSE envelope hash, and the `chiodos:consistency:<workflow_id>:<step_index>` anchor.
 3. Verify the capability lease and governance receipt against verifier-owned authority roots and recompute the lease scope digest from `chio.chiodos-lease-scope-binding.v1`.
 4. Verify the `chio.workflow-receipt.v2` aggregate signature and detached vendor co-signatures.
-5. Verify the BBS+ reveal-set disclosure envelope against the trusted issuer key in the verifier trust bundle.
-6. Verify the package `chio.chiodos-workflow-intersection.v1` hash against the trust bundle and confirm every step's action class is verifier-owned.
+5. Verify the signed `chio.chiodos.revocation-checkpoint.v1` in the verifier trust bundle and reject revoked peers, vendors, BBS issuers, lease authorities, and governance authorities.
+6. Verify the BBS+ reveal-set disclosure envelope against the trusted issuer key, verifier-owned disclosure policy, and `chio.chiodos.verification-context.v1` nonce binding.
+7. Verify the package `chio.chiodos-workflow-intersection.v1` hash against the trust bundle and confirm every step's action class is verifier-owned.
 
-The committed fixture runs all six checks. Hidden range predicates are not
+The committed fixture runs all seven checks. Hidden range predicates are not
 part of this walk and remain outside the reveal-set BBS claim.
 
 ---
@@ -703,12 +706,12 @@ Resolved items are kept here for audit continuity.
   id, parent receipt hash, consistency anchor, and destructive-step flags.
   v1 receipt verification remains byte-compatible.
 
-- **G4. Capability lease and governance receipt schemas are partially closed.**
-  Chiodos 6.3 freezes `chio.capability-lease.v1`,
-  `chio.governance-receipt.v1`, and
-  `chio.chiodos-lease-scope-binding.v1` for the offline proof-package
-  verifier. Broader runtime grant issuance and partition-contingency
-  lease execution remain future product work.
+- **G4. Capability lease and governance receipt schemas are closed for the offline verifier.**
+  The offline verifier now checks `chio.capability-lease.v1`,
+  `chio.governance-receipt.v1`, `chio.chiodos-lease-scope-binding.v1`,
+  authority lifecycle windows, trusted authority key ids, and signed
+  revocation checkpoints. Broader runtime grant issuance and
+  partition-contingency lease execution remain future product work.
 
 - **G5. Aggregate WorkflowReceipt vendor co-signatures are implemented.**
   The verifier checks detached vendor co-signatures over the canonical
@@ -716,9 +719,10 @@ Resolved items are kept here for audit continuity.
 
 - **G6. BBS projection over WorkflowReceipt is reveal-set-only.**
   `chio-selective-disclosure` defines receipt, workflow, and step
-  projections and verifies reveal-set BBS proofs. Hidden predicates over
-  nested per-step fields, including `amount_minor <= 25000`, still need
-  a range-proof or zkVM lane.
+  projections and verifies reveal-set BBS proofs with verifier-owned
+  required disclosure indices and fields. Hidden predicates over nested
+  per-step fields, including `amount_minor <= 25000`, still need a
+  range-proof or zkVM lane.
 
 - **G7. Hub-relayed pheromone gossip is unspecified.** The fixture
   relays a LlamaWorks deposit through Buyer Corp to DataCo and
@@ -741,8 +745,9 @@ Resolved items are kept here for audit continuity.
 
 - **G10. Destructive governance receipt verification is implemented.**
   `chio.governance-receipt.v1` is checked with the capability lease,
-  workflow id, step hash, authorizing kernel, pinned verifier epoch, and
-  verifier-owned governance authority key.
+  workflow id, step hash, authorizing kernel, pinned verifier epoch,
+  verifier-owned governance authority key, authority lifecycle, and
+  signed revocation checkpoint.
 
 - **G11. Pheromone deposits lack a workflow back-reference.** The
   prompt-injection deposit is causally tied to `wf-001` but the
@@ -756,7 +761,7 @@ Resolved items are kept here for audit continuity.
 
 Items not yet owed in either spec's open-items list:
 
-1. **Disclosure envelope schema.** `chio.workflow-receipt-bbs-disclosure.v1` id, projection ordering, predicate-proof envelope, field-path syntax.
+1. **Hidden disclosure predicates.** Range proofs, VC Data Integrity BBS interop, and zkVM bindings remain deferred beyond reveal-set BBS.
 2. **BBS+ secondary signature placement on receipts.** Parallel field on the body, detached envelope (used in section 8), or sidecar artefact indexed by receipt id.
 3. **Workflow-grant class semantics.** Non-destructive grant emission and how `evidence_required: ["workflow_receipt"]` gates destructive children.
 4. **Transit-chain placement.** Inside the signed deposit body (breaks originator signature) or in the gossip envelope (preferred).
@@ -769,7 +774,7 @@ Items not yet owed in either spec's open-items list:
 In priority order:
 
 1. [CHIODOS_LADDER.md](../../spec/CHIODOS_LADDER.md): finish reference-profile naming for workflow grant and workflow aggregate publication classes (G2).
-2. Chiodos authority specs: promote the frozen offline schemas for `chio.capability-lease.v1`, `chio.governance-receipt.v1`, and `chio.chiodos-lease-scope-binding.v1` into any future runtime grant issuance spec (G4 follow-on).
+2. Chiodos authority specs: promote the frozen offline schemas for `chio.capability-lease.v1`, `chio.governance-receipt.v1`, `chio.chiodos-lease-scope-binding.v1`, `chio.chiodos.verifier-trust-bundle.v3`, `chio.chiodos.revocation-checkpoint.v1`, and `chio.chiodos.verification-context.v1` into any future runtime grant issuance spec (G4 follow-on).
 3. [CHIODOS_PHEROMONE.md](../../spec/CHIODOS_PHEROMONE.md): add transit-treaty rule, `transit_chain`, and optional `workflow_context` field (G7, G11).
 4. Future disclosure spec: define hidden range predicates, VC Data Integrity BBS interop, and zkVM proof binding only when those proofs are implemented (G6).
 
@@ -791,7 +796,7 @@ In priority order:
 
 Research note with runnable fixture companion. The committed fixture is
 verified by the production `chio-chiodos` crate and `chio chiodos verify`
-using a verifier-owned trust bundle. Remaining open work is G2 reference
-profile cleanup, G4 runtime grant issuance beyond the offline verifier
-schemas, G7/G11 pheromone transit, and G6 hidden predicate support beyond
-reveal-set BBS.
+using a verifier-owned trust bundle and verifier context. Remaining open
+work is G2 reference profile cleanup, G4 runtime grant issuance beyond the
+offline verifier schemas, G7/G11 pheromone transit, and G6 hidden predicate
+support beyond reveal-set BBS.

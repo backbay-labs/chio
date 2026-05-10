@@ -3,8 +3,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use chiodos_three_vendor_example::{
-    fresh_proof_package, package_json, report_json, verifier_trust_bundle_document_for_package,
-    verifier_trust_bundle_json, verify_package, ChiodosPackageError, ChiodosVerifierTrustBundle,
+    fresh_proof_package, package_json, report_json, verification_context,
+    verification_context_json, verifier_trust_bundle_document_for_package,
+    verifier_trust_bundle_json, verify_package, write_signed_negative_case_inputs,
+    ChiodosPackageError, ChiodosVerifierTrustBundle,
 };
 
 fn main() {
@@ -16,9 +18,10 @@ fn main() {
 
 fn run() -> Result<(), ChiodosPackageError> {
     let package = fresh_proof_package()?;
+    let context = verification_context();
     let trust_bundle_document = verifier_trust_bundle_document_for_package(&package)?;
     let trust_bundle = ChiodosVerifierTrustBundle::from_document(trust_bundle_document.clone())?;
-    let report = verify_package(&package, &trust_bundle)?;
+    let report = verify_package(&package, &trust_bundle, &context)?;
     let args = env::args().collect::<Vec<_>>();
     match args.as_slice() {
         [_] => {
@@ -47,12 +50,21 @@ fn run() -> Result<(), ChiodosPackageError> {
                 verifier_trust_bundle_json(&trust_bundle_document)?,
             )
             .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+            fs::write(
+                dir.join("verification-context.json"),
+                verification_context_json(&context)?,
+            )
+            .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
             fs::write(dir.join("verifier-report.json"), report_json(&report)?)
                 .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
         }
+        [_, flag, dir] if flag == "--signed-negative-dir" => {
+            write_signed_negative_case_inputs(&PathBuf::from(dir))?;
+        }
         _ => {
             return Err(ChiodosPackageError::Json(
-                "usage: generate-chiodos-proof-package [--report|--out-dir DIR]".to_string(),
+                "usage: generate-chiodos-proof-package [--report|--out-dir DIR|--signed-negative-dir DIR]"
+                    .to_string(),
             ));
         }
     }

@@ -22,6 +22,46 @@
       "expectedFailureCode": "bbs"
     },
     {
+      "id": "wrong-verifier-context-challenge",
+      "target": "context",
+      "mutation": {
+        "op": "set",
+        "path": ["challenge"],
+        "value": "wrong-challenge"
+      },
+      "expectedFailureCode": "bbs.context_nonce"
+    },
+    {
+      "id": "expired-verifier-context",
+      "target": "context",
+      "mutation": {
+        "op": "set",
+        "path": ["expiresAtUnixMs"],
+        "value": 1766000000000
+      },
+      "expectedFailureCode": "verification.context"
+    },
+    {
+      "id": "unsupported-bbs-ciphersuite",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["selectiveDisclosureProof", "ciphersuite"],
+        "value": "unsupported"
+      },
+      "expectedFailureCode": "bbs"
+    },
+    {
+      "id": "duplicate-disclosed-index",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["selectiveDisclosureProof", "disclosed_indices"],
+        "value": [4, 4, 8, 9, 10]
+      },
+      "expectedFailureCode": "bbs"
+    },
+    {
       "id": "missing-destructive-governance",
       "target": "package",
       "mutation": {
@@ -104,6 +144,17 @@
       "expectedFailureCode": "lease.scope_binding"
     },
     {
+      "id": "step-parent-hash-mismatch",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowReceipt", "steps", 1, "parent_receipt_sha256"],
+        "value": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expectedFailureCode": "workflow",
+      "requiresSignedMutation": true
+    },
+    {
       "id": "step-tool-receipt-mismatch",
       "target": "package",
       "mutation": {
@@ -111,17 +162,8 @@
         "path": ["workflowReceipt", "steps", 0, "tool_receipt_id"],
         "value": "rcpt-vendor-b"
       },
-      "expectedFailureCode": "workflow"
-    },
-    {
-      "id": "step-tool-name-mismatch",
-      "target": "package",
-      "mutation": {
-        "op": "set",
-        "path": ["workflowReceipt", "steps", 0, "tool_name"],
-        "value": "wrong_tool"
-      },
-      "expectedFailureCode": "workflow"
+      "expectedFailureCode": "workflow",
+      "requiresSignedMutation": true
     },
     {
       "id": "step-output-hash-mismatch",
@@ -131,7 +173,8 @@
         "path": ["workflowReceipt", "steps", 0, "output_hash"],
         "value": "0000000000000000000000000000000000000000000000000000000000000000"
       },
-      "expectedFailureCode": "workflow"
+      "expectedFailureCode": "workflow",
+      "requiresSignedMutation": true
     },
     {
       "id": "step-dsse-hash-mismatch",
@@ -141,7 +184,8 @@
         "path": ["workflowReceipt", "steps", 0, "bilateral_dsse_sha256"],
         "value": "0000000000000000000000000000000000000000000000000000000000000000"
       },
-      "expectedFailureCode": "workflow"
+      "expectedFailureCode": "workflow",
+      "requiresSignedMutation": true
     },
     {
       "id": "step-consistency-anchor-mismatch",
@@ -151,7 +195,8 @@
         "path": ["workflowReceipt", "steps", 0, "consistency_anchor"],
         "value": "chiodos:consistency:wf-chiodos-refund-001:wrong"
       },
-      "expectedFailureCode": "workflow"
+      "expectedFailureCode": "workflow",
+      "requiresSignedMutation": true
     }
   ]
 }
