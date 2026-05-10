@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chiodos/v1/proof-package.schema.json",
+  "title": "Chiodos Proof Package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUnixMs",
+    "workflowId",
+    "claims",
+    "peerLadderBindings",
+    "vendorKeys",
+    "toolReceipts",
+    "workflowReceipt",
+    "bilateralEnvelopes",
+    "capabilityLeases",
+    "governanceReceipts",
+    "workflowIntersection",
+    "selectiveDisclosureProof"
+  ],
+  "properties": {
+    "schema": { "const": "chio.chiodos.proof-package.v1" },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "workflowId": { "type": "string", "minLength": 1 },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bbsRevealSet", "hiddenRangePredicates", "vcDataIntegrityBbs", "zkvm"],
+      "properties": {
+        "bbsRevealSet": { "const": true },
+        "hiddenRangePredicates": { "const": false },
+        "vcDataIntegrityBbs": { "const": false },
+        "zkvm": { "const": false }
+      }
+    },
+    "peerLadderBindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/peerLadderBinding" }
+    },
+    "vendorKeys": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/vendorKeyBinding" }
+    },
+    "toolReceipts": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+    "workflowReceipt": { "type": "object" },
+    "bilateralEnvelopes": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+    "capabilityLeases": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+    "governanceReceipts": { "type": "array", "items": { "type": "object" } },
+    "workflowIntersection": { "$ref": "workflow-intersection.schema.json" },
+    "selectiveDisclosureProof": { "$ref": "selective-disclosure-proof.schema.json" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "publicKey": { "type": "string", "pattern": "^[0-9a-f]+$" },
+    "ladderManifestRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifestId", "sha256", "issuedAtUnixMs", "expiresAtUnixMs"],
+      "properties": {
+        "manifestId": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "peerLadderBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kernelId", "publicKey", "ladderManifestRef"],
+      "properties": {
+        "kernelId": { "type": "string", "minLength": 1 },
+        "publicKey": { "$ref": "#/$defs/publicKey" },
+        "ladderManifestRef": { "$ref": "#/$defs/ladderManifestRef" }
+      }
+    },
+    "vendorKeyBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vendorId", "publicKey"],
+      "properties": {
+        "vendorId": { "type": "string", "minLength": 1 },
+        "publicKey": { "$ref": "#/$defs/publicKey" }
+      }
+    }
+  }
+}

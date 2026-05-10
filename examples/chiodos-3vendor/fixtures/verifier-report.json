@@ -1,37 +1,55 @@
 {
   "schema": "chio.chiodos.verifier-report.v1",
-  "packageSha256": "981da8ecb350770c4b8ae2c8fa6dc8dd1286955053ad0e446736c75bf6d9f6fd",
+  "packageSha256": "2f9a57de8344ac27c20ff993c1b0f5420d3e06e32d5f6f116e0f833005c04c7f",
   "accepted": true,
   "checks": [
     {
+      "code": "workflow.kernel_signature",
       "name": "workflow-kernel-signature",
       "passed": true
     },
     {
+      "code": "trust.package_hints",
+      "name": "package-trust-hints",
+      "passed": true
+    },
+    {
+      "code": "workflow.intersection",
+      "name": "workflow-intersection",
+      "passed": true
+    },
+    {
+      "code": "workflow.vendor_cosignatures",
       "name": "workflow-vendor-cosignatures",
       "passed": true
     },
     {
+      "code": "workflow.step_links",
       "name": "workflow-step-links",
       "passed": true
     },
     {
+      "code": "governance.capability_leases",
       "name": "capability-leases",
       "passed": true
     },
     {
+      "code": "governance.receipts",
       "name": "governance-receipts",
       "passed": true
     },
     {
+      "code": "federation.strict_bilateral_invocations",
       "name": "strict-bilateral-invocations",
       "passed": true
     },
     {
+      "code": "trust.bbs_issuer",
       "name": "trusted-bbs-issuer",
       "passed": true
     },
     {
+      "code": "bbs.selective_disclosure",
       "name": "bbs-selective-disclosure",
       "passed": true
     }

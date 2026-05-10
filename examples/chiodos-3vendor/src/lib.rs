@@ -2,10 +2,14 @@
 
 pub use chio_chiodos::{
     package_from_fixture_json, package_json, report_from_fixture_json, report_json,
-    trusted_issuer_registry_from_json, trusted_issuer_registry_json, verify_package,
-    ChiodosPackageError, ChiodosProofClaims, ChiodosProofPackage, PeerLadderBinding,
-    TrustedBbsIssuer, TrustedIssuerRegistry, TrustedIssuerRegistryDocument, VendorKeyBinding,
-    VerifierReport, PROOF_PACKAGE_SCHEMA, TRUSTED_ISSUER_REGISTRY_SCHEMA, VERIFIER_REPORT_SCHEMA,
+    verifier_trust_bundle_from_json, verifier_trust_bundle_json, verify_package,
+    ChiodosActionClassKind, ChiodosPackageError, ChiodosPinnedRevocationEpoch, ChiodosProofClaims,
+    ChiodosProofPackage, ChiodosTrustedActionClass, ChiodosTrustedWorkflowIntersection,
+    ChiodosVerifierTrustBundle, ChiodosVerifierTrustBundleDocument, PeerLadderBinding,
+    TrustedBbsIssuer, VendorKeyBinding, VerifierReport, WorkflowIntersectionArtifact,
+    WorkflowPairwiseIntersectionRef, WorkflowRequiredVendorSigner, WorkflowStepClassBinding,
+    PROOF_PACKAGE_SCHEMA, VERIFIER_REPORT_SCHEMA, VERIFIER_TRUST_BUNDLE_SCHEMA,
+    WORKFLOW_INTERSECTION_SCHEMA,
 };
 use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
 use chio_core_types::capability::MonetaryAmount;
@@ -284,21 +288,50 @@ fn disclosure_proof_for_workflow(
     .map_err(|error| ChiodosPackageError::SelectiveDisclosure(error.to_string()))
 }
 
-pub fn trusted_issuer_registry_document(
-) -> Result<TrustedIssuerRegistryDocument, ChiodosPackageError> {
+pub fn verifier_trust_bundle_document_for_package(
+    package: &ChiodosProofPackage,
+) -> Result<ChiodosVerifierTrustBundleDocument, ChiodosPackageError> {
     let bbs_keypair = generate_bbs_keypair(BBS_KEY_MATERIAL, BBS_KEY_INFO)
         .map_err(|error| ChiodosPackageError::SelectiveDisclosure(error.to_string()))?;
-    Ok(TrustedIssuerRegistryDocument {
-        schema: TRUSTED_ISSUER_REGISTRY_SCHEMA.to_string(),
-        issuers: vec![TrustedBbsIssuer {
+    Ok(ChiodosVerifierTrustBundleDocument {
+        schema: VERIFIER_TRUST_BUNDLE_SCHEMA.to_string(),
+        trusted_bbs_issuers: vec![TrustedBbsIssuer {
             issuer_fingerprint: bbs_keypair.issuer_fingerprint,
             public_key_hex: bbs_keypair.public_key_hex,
         }],
+        peers: package.peer_ladder_bindings.clone(),
+        vendors: package.vendor_keys.clone(),
+        action_classes: VENDORS
+            .iter()
+            .map(|vendor| ChiodosTrustedActionClass {
+                action_class_id: vendor.tool_name.to_string(),
+                tool_name: vendor.tool_name.to_string(),
+                kind: if vendor.destructive {
+                    ChiodosActionClassKind::ReceiptBacked
+                } else {
+                    ChiodosActionClassKind::Routine
+                },
+            })
+            .collect(),
+        workflow_intersections: vec![ChiodosTrustedWorkflowIntersection {
+            intersection_id: package.workflow_intersection.intersection_id.clone(),
+            sha256: canonical_sha256(&package.workflow_intersection)?,
+        }],
+        revocation: ChiodosPinnedRevocationEpoch {
+            now_unix_ms: GENERATED_AT_UNIX_MS,
+            epoch_height: 0,
+        },
     })
 }
 
-pub fn trusted_issuer_registry() -> Result<TrustedIssuerRegistry, ChiodosPackageError> {
-    TrustedIssuerRegistry::from_document(trusted_issuer_registry_document()?)
+pub fn verifier_trust_bundle_document(
+) -> Result<ChiodosVerifierTrustBundleDocument, ChiodosPackageError> {
+    let package = fresh_proof_package()?;
+    verifier_trust_bundle_document_for_package(&package)
+}
+
+pub fn verifier_trust_bundle() -> Result<ChiodosVerifierTrustBundle, ChiodosPackageError> {
+    ChiodosVerifierTrustBundle::from_document(verifier_trust_bundle_document()?)
 }
 
 pub fn build_proof_package(
@@ -488,6 +521,41 @@ fn build_proof_package_unchecked(
             .add_vendor_signature(vendor.vendor_id, &key)
             .map_err(|error| ChiodosPackageError::Workflow(error.to_string()))?;
     }
+    let workflow_intersection = WorkflowIntersectionArtifact {
+        schema: WORKFLOW_INTERSECTION_SCHEMA.to_string(),
+        intersection_id: "workflow-intersection:buyer-refund:001".to_string(),
+        workflow_id: WORKFLOW_ID.to_string(),
+        workflow_grant_id: CAPABILITY_ID.to_string(),
+        pairwise_intersection_refs: VENDORS
+            .iter()
+            .map(|vendor| WorkflowPairwiseIntersectionRef {
+                peer_kernel_id: vendor.kernel_id.to_string(),
+                intersection_id: format!("intersection:buyer:{}", vendor.vendor_id),
+                ladder_manifest_ref: ladder_ref(vendor.ladder_manifest_id, vendor.kernel_id),
+            })
+            .collect(),
+        step_class_bindings: VENDORS
+            .iter()
+            .enumerate()
+            .map(|(index, vendor)| WorkflowStepClassBinding {
+                step_index: index,
+                tool_name: vendor.tool_name.to_string(),
+                action_class_id: vendor.tool_name.to_string(),
+                peer_kernel_id: vendor.kernel_id.to_string(),
+            })
+            .collect(),
+        required_vendor_signers: VENDORS
+            .iter()
+            .map(|vendor| {
+                let key = Keypair::from_seed(&vendor.seed);
+                WorkflowRequiredVendorSigner {
+                    vendor_id: vendor.vendor_id.to_string(),
+                    public_key: key.public_key(),
+                }
+            })
+            .collect(),
+        aggregate_workflow_receipt_sha256: canonical_sha256(&workflow_receipt)?,
+    };
 
     Ok(ChiodosProofPackage {
         schema: PROOF_PACKAGE_SCHEMA.to_string(),
@@ -501,6 +569,7 @@ fn build_proof_package_unchecked(
         bilateral_envelopes: envelopes,
         capability_leases: leases,
         governance_receipts,
+        workflow_intersection,
         selective_disclosure_proof,
     })
 }
@@ -527,29 +596,56 @@ mod tests {
     #[test]
     fn fresh_package_verifies() {
         let package = fresh_proof_package().expect("fresh package builds");
-        let registry = trusted_issuer_registry().expect("trusted issuer registry builds");
-        let report = verify_package(&package, &registry).expect("fresh package verifies");
+        let trust_bundle = verifier_trust_bundle().expect("verifier trust bundle builds");
+        let report = verify_package(&package, &trust_bundle).expect("fresh package verifies");
         assert!(report.accepted);
-        assert_eq!(report.checks.len(), 8);
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check.code == "workflow.intersection"));
     }
 
     #[test]
     fn missing_ladder_ref_fails_closed() {
         let mut package = fresh_proof_package().unwrap();
         package
-            .peer_ladder_bindings
-            .retain(|peer| peer.kernel_id != BUYER_KERNEL_ID);
-        let registry = trusted_issuer_registry().unwrap();
-        let error = verify_package(&package, &registry).unwrap_err();
-        assert!(error.to_string().contains("unpinned") || error.to_string().contains("ladder"));
+            .workflow_intersection
+            .pairwise_intersection_refs
+            .retain(|peer| peer.peer_kernel_id != "did:chio:vendor-a");
+        let trust_bundle = verifier_trust_bundle().unwrap();
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        assert!(error.to_string().contains("pairwise ref") || error.to_string().contains("hash"));
+    }
+
+    #[test]
+    fn package_peer_pin_not_present_in_trust_bundle_fails_closed() {
+        let package = fresh_proof_package().unwrap();
+        let mut document = verifier_trust_bundle_document().unwrap();
+        document
+            .peers
+            .retain(|binding| binding.kernel_id != "did:chio:vendor-a");
+        let trust_bundle = ChiodosVerifierTrustBundle::from_document(document).unwrap();
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        assert!(error.to_string().contains("did:chio:vendor-a"));
+        assert!(error.to_string().contains("trusted"));
+    }
+
+    #[test]
+    fn workflow_intersection_hash_mismatch_fails_closed() {
+        let package = fresh_proof_package().unwrap();
+        let mut document = verifier_trust_bundle_document().unwrap();
+        document.workflow_intersections[0].sha256 = "f".repeat(64);
+        let trust_bundle = ChiodosVerifierTrustBundle::from_document(document).unwrap();
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        assert!(error.to_string().contains("workflow intersection"));
     }
 
     #[test]
     fn stale_lease_fails_closed() {
         let mut package = fresh_proof_package().unwrap();
         package.capability_leases[0].body.expires_at_unix_ms = GENERATED_AT_UNIX_MS;
-        let registry = trusted_issuer_registry().unwrap();
-        let error = verify_package(&package, &registry).unwrap_err();
+        let trust_bundle = verifier_trust_bundle().unwrap();
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
         assert!(error.to_string().contains("expired") || error.to_string().contains("signature"));
     }
 
@@ -557,8 +653,8 @@ mod tests {
     fn mismatched_governance_receipt_fails_closed() {
         let mut package = fresh_proof_package().unwrap();
         package.governance_receipts[0].body.workflow_id = "wf-other".to_string();
-        let registry = trusted_issuer_registry().unwrap();
-        let error = verify_package(&package, &registry).unwrap_err();
+        let trust_bundle = verifier_trust_bundle().unwrap();
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
         assert!(error.to_string().contains("signature") || error.to_string().contains("workflow"));
     }
 
@@ -567,26 +663,33 @@ mod tests {
         let mut package = fresh_proof_package().unwrap();
         package.workflow_receipt.steps[1].parent_receipt_sha256 = Some("0".repeat(64));
         resign_workflow(&mut package);
-        let registry = trusted_issuer_registry().unwrap();
-        let error = verify_package(&package, &registry).unwrap_err();
-        assert!(error.to_string().contains("parent hash"));
+        let trust_bundle = verifier_trust_bundle().unwrap();
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        assert!(
+            error.to_string().contains("parent hash")
+                || error.to_string().contains("workflow intersection")
+        );
     }
 
     #[test]
     fn bad_vendor_signature_fails_closed() {
         let mut package = fresh_proof_package().unwrap();
-        package.vendor_keys[0].public_key = Keypair::from_seed(&[99; 32]).public_key();
-        let registry = trusted_issuer_registry().unwrap();
-        let error = verify_package(&package, &registry).unwrap_err();
-        assert!(error.to_string().contains("unexpected key"));
+        package.workflow_receipt.vendor_signatures[0].signature =
+            Keypair::from_seed(&[99; 32]).sign(b"not the workflow body");
+        let trust_bundle = verifier_trust_bundle().unwrap();
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        assert!(
+            error.to_string().contains("vendor signature")
+                || error.to_string().contains("workflow intersection")
+        );
     }
 
     #[test]
     fn unsupported_claims_fail_closed() {
         let mut package = fresh_proof_package().unwrap();
         package.claims.zkvm = true;
-        let registry = trusted_issuer_registry().unwrap();
-        let error = verify_package(&package, &registry).unwrap_err();
+        let trust_bundle = verifier_trust_bundle().unwrap();
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
         assert!(error.to_string().contains("zkVM"));
     }
 
@@ -595,10 +698,10 @@ mod tests {
         let package =
             package_from_fixture_json(include_str!("../fixtures/buyer-auditor-proof-package.json"))
                 .expect("package fixture parses");
-        let registry =
-            trusted_issuer_registry_from_json(include_str!("../fixtures/trusted-issuers.json"))
-                .expect("trusted issuer fixture parses");
-        let report = verify_package(&package, &registry).expect("package fixture verifies");
+        let trust_bundle =
+            verifier_trust_bundle_from_json(include_str!("../fixtures/verifier-trust-bundle.json"))
+                .expect("verifier trust bundle fixture parses");
+        let report = verify_package(&package, &trust_bundle).expect("package fixture verifies");
         let committed_report =
             report_from_fixture_json(include_str!("../fixtures/verifier-report.json"))
                 .expect("report fixture parses");

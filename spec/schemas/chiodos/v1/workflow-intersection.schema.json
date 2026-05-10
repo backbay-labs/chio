@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chiodos/v1/workflow-intersection.schema.json",
+  "title": "Chiodos Workflow Intersection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "intersectionId",
+    "workflowId",
+    "workflowGrantId",
+    "pairwiseIntersectionRefs",
+    "stepClassBindings",
+    "requiredVendorSigners",
+    "aggregateWorkflowReceiptSha256"
+  ],
+  "properties": {
+    "schema": { "const": "chio.chiodos-workflow-intersection.v1" },
+    "intersectionId": { "type": "string", "minLength": 1 },
+    "workflowId": { "type": "string", "minLength": 1 },
+    "workflowGrantId": { "type": "string", "minLength": 1 },
+    "pairwiseIntersectionRefs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/pairwiseIntersectionRef" }
+    },
+    "stepClassBindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/stepClassBinding" }
+    },
+    "requiredVendorSigners": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/vendorSigner" }
+    },
+    "aggregateWorkflowReceiptSha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "hex": { "type": "string", "pattern": "^[0-9a-f]+$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "ladderManifestRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifestId", "sha256", "issuedAtUnixMs", "expiresAtUnixMs"],
+      "properties": {
+        "manifestId": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "pairwiseIntersectionRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["peerKernelId", "intersectionId", "ladderManifestRef"],
+      "properties": {
+        "peerKernelId": { "type": "string", "minLength": 1 },
+        "intersectionId": { "type": "string", "minLength": 1 },
+        "ladderManifestRef": { "$ref": "#/$defs/ladderManifestRef" }
+      }
+    },
+    "stepClassBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stepIndex", "toolName", "actionClassId", "peerKernelId"],
+      "properties": {
+        "stepIndex": { "type": "integer", "minimum": 0 },
+        "toolName": { "type": "string", "minLength": 1 },
+        "actionClassId": { "type": "string", "minLength": 1 },
+        "peerKernelId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "vendorSigner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vendorId", "publicKey"],
+      "properties": {
+        "vendorId": { "type": "string", "minLength": 1 },
+        "publicKey": { "$ref": "#/$defs/hex" }
+      }
+    }
+  }
+}

@@ -752,6 +752,20 @@ and [../crates/chio-settle/src/lib.rs](../crates/chio-settle/src/lib.rs).
 }
 ```
 
+Workflow composition in the Chiodos verifier uses two verifier-owned
+classes layered over this profile:
+
+- `workflow.grant_issue`: guarded, non-destructive, and used when a
+  verifier accepts one workflow grant as the parent of several
+  pairwise vendor intersections.
+- `workflow.aggregate_publish`: guarded, non-destructive, and used when
+  a verifier accepts a vendor co-signed aggregate workflow receipt as
+  the workflow-level evidence object.
+
+Reference manifests MAY keep product-specific class names for these
+operations, but verifiers MUST bind the chosen names in their trust
+bundle action-class policy and workflow-intersection artifact.
+
 ### 5.3 Compliance Ladder
 
 Drawn from
@@ -983,7 +997,31 @@ The intersection schema identifier is
 }
 ```
 
-### 6.2 Reconciliation Rules
+### 6.2 Workflow Intersection Artifact
+
+The package-level workflow intersection schema identifier is
+`chio.chiodos-workflow-intersection.v1`. It is not a replacement for a
+pairwise ladder intersection. It binds several pairwise intersections
+under one workflow grant so an offline verifier can check the complete
+workflow composition without trusting package-owned policy.
+
+The artifact MUST include:
+
+- `workflow_id` and `workflow_grant_id`.
+- One `pairwise_intersection_refs` entry for each vendor peer used by
+  the workflow.
+- One `step_class_bindings` entry for each workflow step, binding step
+  index, tool name, verifier action-class id, and peer kernel id.
+- One `required_vendor_signers` entry for each detached aggregate
+  workflow co-signature the verifier requires.
+- `aggregate_workflow_receipt_sha256`, the SHA-256 of the canonical
+  workflow receipt body.
+
+Acceptance also requires a verifier-owned trust bundle entry with the
+artifact's canonical SHA-256. A package-carried workflow intersection is
+portable audit evidence, not a trust root.
+
+### 6.3 Reconciliation Rules
 
 Given left and right manifests for a requested treaty scope:
 

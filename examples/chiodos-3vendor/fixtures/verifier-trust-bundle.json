@@ -1,0 +1,92 @@
+{
+  "schema": "chio.chiodos.verifier-trust-bundle.v1",
+  "trustedBbsIssuers": [
+    {
+      "issuerFingerprint": "f9046ae7f4467cd4620ee70b500f488d9564c269cda25e47272eeec3d7d9f9ed",
+      "publicKeyHex": "8974cce2969aa7464add3710a14552ef067f6ef8b19bf7c156afe280bb5e2733f738f6f7b944c325bd7f2f378b62ebbf14be43b0e392b9fd61c0a66349943a99659f1ce30ceb21bd40c68bb7e80a35477f86b00c0222f52d9d7799ebfce875a6"
+    }
+  ],
+  "peers": [
+    {
+      "kernelId": "did:chio:buyer-kernel",
+      "publicKey": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+      "ladderManifestRef": {
+        "manifestId": "ladder:buyer:refund:v1",
+        "sha256": "8e445183ac1c5abc5f266fc4e7b7dc159aa64a48d1f47ec15158802c0b138ab5",
+        "issuedAtUnixMs": 1765999940000,
+        "expiresAtUnixMs": 1766000060000
+      }
+    },
+    {
+      "kernelId": "did:chio:vendor-a",
+      "publicKey": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+      "ladderManifestRef": {
+        "manifestId": "ladder:vendor-a:refund:v1",
+        "sha256": "a031be96a7633c7e1fbd80a533a133c66c108871fb7ecb7b600a3f92de75025c",
+        "issuedAtUnixMs": 1765999940000,
+        "expiresAtUnixMs": 1766000060000
+      }
+    },
+    {
+      "kernelId": "did:chio:vendor-b",
+      "publicKey": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a",
+      "ladderManifestRef": {
+        "manifestId": "ladder:vendor-b:refund:v1",
+        "sha256": "08d97e2130528341b1beb90296ecd5f95cda1052a3232945effa810006e29da4",
+        "issuedAtUnixMs": 1765999940000,
+        "expiresAtUnixMs": 1766000060000
+      }
+    },
+    {
+      "kernelId": "did:chio:vendor-c",
+      "publicKey": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc",
+      "ladderManifestRef": {
+        "manifestId": "ladder:vendor-c:refund:v1",
+        "sha256": "8ef4eaabdcbaeb55ab8b3c1cdfa52827e8c93d9870dc71dcabb09382dbaf9371",
+        "issuedAtUnixMs": 1765999940000,
+        "expiresAtUnixMs": 1766000060000
+      }
+    }
+  ],
+  "vendors": [
+    {
+      "vendorId": "vendor-a",
+      "publicKey": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+    },
+    {
+      "vendorId": "vendor-b",
+      "publicKey": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a"
+    },
+    {
+      "vendorId": "vendor-c",
+      "publicKey": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc"
+    }
+  ],
+  "actionClasses": [
+    {
+      "actionClassId": "read_refund_case",
+      "toolName": "read_refund_case",
+      "kind": "routine"
+    },
+    {
+      "actionClassId": "verify_customer",
+      "toolName": "verify_customer",
+      "kind": "routine"
+    },
+    {
+      "actionClassId": "stage_refund",
+      "toolName": "stage_refund",
+      "kind": "receipt_backed"
+    }
+  ],
+  "workflowIntersections": [
+    {
+      "intersectionId": "workflow-intersection:buyer-refund:001",
+      "sha256": "be62317cf059e622a1cf061213ae2f82d528cf0fa3ab25e0f9ddb73a872fde55"
+    }
+  ],
+  "revocation": {
+    "nowUnixMs": 1766000000000,
+    "epochHeight": 0
+  }
+}

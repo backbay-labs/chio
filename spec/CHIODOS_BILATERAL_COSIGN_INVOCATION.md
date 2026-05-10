@@ -91,6 +91,13 @@ older `chio.bilateral-signature-slice.v1` profile remains available as a
 compatibility artifact for local receipt binding, but strict Chiodos
 verification rejects it as conformance evidence.
 
+Chiodos offline package verification is verifier-owned. The proof package
+MUST NOT define its own peer pins, accepted ladder refs, action-class
+policy, workflow-intersection acceptance hash, revocation epoch, or BBS
+issuer trust. Those values are supplied by
+`chio.chiodos.verifier-trust-bundle.v1`. A verifier MUST reject packages
+whose embedded hints disagree with the trust bundle.
+
 ---
 
 ## 4. Subject Definition

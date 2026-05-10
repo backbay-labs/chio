@@ -45,10 +45,11 @@ The 3-vendor cross-vendor fixture (CHIODOS_CONCEPT v1.1 section 9)
 exercises the same primitive at the workflow layer: a buyer auditor
 verifies "the refund step transferred no more than $250 to a customer
 at KYC tier 2 or higher" without learning customer, exact amount, or
-upstream prompts. Gap G6 is the missing BBS+ disclosure step this
-spec fills. Gaps G3 and G9 (extra StepRecord fields for dual-signed
-receipt linkage, parent receipt hash, consistency anchor) shape the
-workflow projection in section 6.
+upstream prompts. The implemented v0.1 slice proves reveal-set BBS
+disclosure. Hidden comparisons such as "amount <= $250 while the amount
+is hidden" remain G6 follow-up work. Gaps G3 and G9 are now handled by
+the workflow verifier through optional `StepRecord` fields, while the
+BBS step projection remains limited to stable step summary fields.
 
 ---
 
@@ -270,13 +271,17 @@ padded to scalar):
 | 7 | `cost` | H |
 | 8 | `output_hash` | Opt<S> |
 
-CHIODOS_3VENDOR_FIXTURE gaps G3/G9 introduce additional `StepRecord`
-fields. The projection extends as follows, **gated on chio-workflow
-v0.2 landing** (bumps to `chio.bbs-projection.step.v1.1`):
+Chiodos workflow v2 adds optional `StepRecord` fields for bilateral
+DSSE linkage, governance receipt id, parent receipt hash, consistency
+anchor, and destructive-step status. Those fields are verified by the
+offline Chiodos package verifier. They are not part of
+`chio.bbs-projection.step.v1`; adding them to the BBS projection would
+require a future projection version such as
+`chio.bbs-projection.step.v2`:
 
 | Idx | Field (v0.2 gated) | Enc. |
 |---|---|---|
-| 9  | `dual_signed_receipt_sha256` | Hx |
+| 9  | `bilateral_dsse_sha256` | Hx |
 | 10 | `governance_receipt_id` | Opt<S> |
 | 11 | `parent_receipt_sha256` | Hx |
 | 12 | `consistency_anchor` | S (CHIODOS_LADDER 4.2 enum) |

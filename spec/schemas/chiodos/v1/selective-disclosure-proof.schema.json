@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chiodos/v1/selective-disclosure-proof.schema.json",
+  "title": "Chiodos Selective Disclosure Proof",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "pattern": "^chio\\.selective-disclosure-proof\\.v1$"
+    },
+    "issuer_fingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "proof_nonce_hex": { "type": "string", "pattern": "^[0-9a-f]+$" }
+  },
+  "not": {
+    "properties": {
+      "schema": { "pattern": "\\.stub$" }
+    },
+    "required": ["schema"]
+  }
+}

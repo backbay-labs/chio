@@ -58,6 +58,42 @@
       "introducedBy": "federation-dsse-slice",
       "schemaFile": "spec/schemas/chio-wire/v1/federation/bilateral-signature-slice-envelope.schema.json",
       "payloadSchemaFile": "spec/schemas/chio-wire/v1/federation/bilateral-signature-slice.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.proof-package.v1",
+      "artifactKind": "chiodos_proof_package",
+      "introducedBy": "chiodos-verifier-trust-bundle/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/proof-package.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.verifier-trust-bundle.v1",
+      "artifactKind": "chiodos_verifier_trust_bundle",
+      "introducedBy": "chiodos-verifier-trust-bundle/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/verifier-trust-bundle.schema.json"
+    },
+    {
+      "schema": "chio.chiodos-workflow-intersection.v1",
+      "artifactKind": "chiodos_workflow_intersection",
+      "introducedBy": "chiodos-verifier-trust-bundle/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/workflow-intersection.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.trusted-issuer-registry.v1",
+      "artifactKind": "chiodos_trusted_issuer_registry",
+      "introducedBy": "chiodos-bbs-issuer-trust/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/trusted-issuer-registry.schema.json"
+    },
+    {
+      "schema": "chio.selective-disclosure-proof.v1",
+      "artifactKind": "chiodos_selective_disclosure_proof",
+      "introducedBy": "chiodos-bbs-reveal-set/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/selective-disclosure-proof.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.verifier-report.v1",
+      "artifactKind": "chiodos_verifier_report",
+      "introducedBy": "chiodos-verifier-trust-bundle/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/verifier-report.schema.json"
     }
   ]
 }

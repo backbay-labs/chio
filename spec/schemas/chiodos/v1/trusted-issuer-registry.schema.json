@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chiodos/v1/trusted-issuer-registry.schema.json",
+  "title": "Chiodos Trusted Issuer Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "issuers"],
+  "properties": {
+    "schema": { "const": "chio.chiodos.trusted-issuer-registry.v1" },
+    "issuers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["issuerFingerprint", "publicKeyHex"],
+        "properties": {
+          "issuerFingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "publicKeyHex": { "type": "string", "pattern": "^[0-9a-f]+$" }
+        }
+      }
+    }
+  }
+}

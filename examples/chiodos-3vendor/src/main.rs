@@ -3,8 +3,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use chiodos_three_vendor_example::{
-    fresh_proof_package, package_json, report_json, trusted_issuer_registry_document,
-    trusted_issuer_registry_json, verify_package, ChiodosPackageError, TrustedIssuerRegistry,
+    fresh_proof_package, package_json, report_json, verifier_trust_bundle_document_for_package,
+    verifier_trust_bundle_json, verify_package, ChiodosPackageError, ChiodosVerifierTrustBundle,
 };
 
 fn main() {
@@ -16,9 +16,9 @@ fn main() {
 
 fn run() -> Result<(), ChiodosPackageError> {
     let package = fresh_proof_package()?;
-    let trusted_issuers = trusted_issuer_registry_document()?;
-    let registry = TrustedIssuerRegistry::from_document(trusted_issuers.clone())?;
-    let report = verify_package(&package, &registry)?;
+    let trust_bundle_document = verifier_trust_bundle_document_for_package(&package)?;
+    let trust_bundle = ChiodosVerifierTrustBundle::from_document(trust_bundle_document.clone())?;
+    let report = verify_package(&package, &trust_bundle)?;
     let args = env::args().collect::<Vec<_>>();
     match args.as_slice() {
         [_] => {
@@ -43,8 +43,8 @@ fn run() -> Result<(), ChiodosPackageError> {
             )
             .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
             fs::write(
-                dir.join("trusted-issuers.json"),
-                trusted_issuer_registry_json(&trusted_issuers)?,
+                dir.join("verifier-trust-bundle.json"),
+                verifier_trust_bundle_json(&trust_bundle_document)?,
             )
             .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
             fs::write(dir.join("verifier-report.json"), report_json(&report)?)

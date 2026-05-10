@@ -1,0 +1,67 @@
+{
+  "schema": "chio.chiodos.negative-fixture-corpus.v1",
+  "cases": [
+    {
+      "id": "unsupported-zkvm-claim",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["claims", "zkvm"],
+        "value": true
+      },
+      "expectedFailureCode": "package.claim"
+    },
+    {
+      "id": "legacy-stub-proof-schema",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["selectiveDisclosureProof", "schema"],
+        "value": "chio.selective-disclosure-proof.stub"
+      },
+      "expectedFailureCode": "bbs"
+    },
+    {
+      "id": "missing-destructive-governance",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["governanceReceipts"],
+        "value": []
+      },
+      "expectedFailureCode": "governance"
+    },
+    {
+      "id": "workflow-intersection-hash-mismatch",
+      "target": "trustBundle",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowIntersections", 0, "sha256"],
+        "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "expectedFailureCode": "workflow.intersection"
+    },
+    {
+      "id": "missing-trusted-peer",
+      "target": "trustBundle",
+      "mutation": {
+        "op": "removeWhere",
+        "path": ["peers"],
+        "field": "kernelId",
+        "value": "did:chio:vendor-a"
+      },
+      "expectedFailureCode": "trust.bundle"
+    },
+    {
+      "id": "missing-action-class",
+      "target": "trustBundle",
+      "mutation": {
+        "op": "removeWhere",
+        "path": ["actionClasses"],
+        "field": "toolName",
+        "value": "stage_refund"
+      },
+      "expectedFailureCode": "workflow.intersection"
+    }
+  ]
+}

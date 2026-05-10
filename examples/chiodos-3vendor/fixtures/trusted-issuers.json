@@ -1,9 +1,0 @@
-{
-  "schema": "chio.chiodos.trusted-issuer-registry.v1",
-  "issuers": [
-    {
-      "issuerFingerprint": "f9046ae7f4467cd4620ee70b500f488d9564c269cda25e47272eeec3d7d9f9ed",
-      "publicKeyHex": "8974cce2969aa7464add3710a14552ef067f6ef8b19bf7c156afe280bb5e2733f738f6f7b944c325bd7f2f378b62ebbf14be43b0e392b9fd61c0a66349943a99659f1ce30ceb21bd40c68bb7e80a35477f86b00c0222f52d9d7799ebfce875a6"
-    }
-  ]
-}

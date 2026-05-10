@@ -15,18 +15,22 @@ workflow that composes three vendors:
 - Vendor C (PaySwift): payments provider; tool `refund.execute`.
 
 A buyer auditor (Buyer Corp Compliance) must later verify every
-cross-vendor action under selective disclosure: customer PII is
-withheld; only "refund <= $250 was issued to a verified KYC-tier-2
-customer" is revealed. Gaps surfaced are tabulated in section 11. JSON
+cross-vendor action under selective disclosure. Customer PII is
+withheld, and the committed fixture now demonstrates BBS reveal-set
+disclosure over buyer and auditor fields. Hidden range predicates such
+as "refund <= $250 while hiding the amount" remain deferred to a range
+proof or zkVM lane. Gaps surfaced are tabulated in section 11. JSON
 sketches are illustrative (not strict canonical JSON); fields annotated
 `// illustrative, not normative` make a choice neither spec yet pins.
 
 Runnable artifacts live under
 `examples/chiodos-3vendor/fixtures/`. The committed buyer/auditor proof
 package is verified by `chio-chiodos` and by
-`chio chiodos verify --package <path> --trusted-issuers <path> --report <path>`.
-The BBS issuer key is supplied by the verifier's trusted issuer registry,
-not by trusting key material embedded inside the untrusted proof package. Its
+`chio chiodos verify --package <path> --trust-bundle <path> --report <path>`.
+The BBS issuer key, peer pins, ladder refs, action-class policy,
+workflow-intersection hash, and pinned revocation epoch are supplied by
+the verifier's trust bundle, not by trusting key material or policy
+embedded inside the untrusted proof package. Its
 bilateral DSSE envelopes use `chio.bilateral-cosign-invocation.v1`; the older
 `chio.bilateral-signature-slice.v1` profile is compatibility-only and is
 rejected by strict Chiodos verification.
@@ -662,21 +666,23 @@ transit-treaty rule is unspecified.) Receivers MUST still run
 A third-party auditor reconstructs Buyer Corp's evidence corpus and
 performs:
 
-1. Verify each `chio.federation-dual-signed-receipt.v1` against the two pinned `FederationPeer` records.
+1. Verify each strict `chio.bilateral-cosign-invocation.v1` DSSE envelope
+   against the pinned peers in the verifier-owned trust bundle.
 2. For each step, recompute `parent_receipt_sha256` and assert it matches `consistency_anchor.value` (hash-chain or chio-anchor epoch root).
 3. Verify the governance receipt bundles all four required evidence kinds named by the intersected class.
-4. Verify the `chio.workflow-receipt.v1` aggregate signature against the buyer kernel pubkey.
-5. Verify the BBS+ disclosure envelope against the buyer's secondary BBS+ pubkey, the named anchor epoch, and the disclosed projection.
-6. Verify each ladder intersection co-signature and confirm every step's action-class id is in the intersection's `intersected_classes`.
+4. Verify the `chio.workflow-receipt.v2` aggregate signature and detached vendor co-signatures.
+5. Verify the BBS+ reveal-set disclosure envelope against the trusted issuer key in the verifier trust bundle.
+6. Verify the package `chio.chiodos-workflow-intersection.v1` hash against the trust bundle and confirm every step's action class is verifier-owned.
 
-Steps 2, 3, and 5 cannot run against today's schemas (Gaps G3, G6, G9, G10).
+The committed fixture runs all six checks. Hidden range predicates are not
+part of this walk and remain outside the reveal-set BBS claim.
 
 ---
 
 ## 11. Gaps Surfaced
 
-Each gap is a wire- or schema-level mesh failure exposed by the
-fixture. Recommended fixes are consolidated in section 13.
+Each gap is a wire- or schema-level mesh failure exposed by the fixture.
+Resolved items are kept here for audit continuity.
 
 - **G1. Handshake envelope omits ladder-manifest reference.**
   [trust_establishment.rs:108-114](../../crates/chio-federation/src/trust_establishment.rs)
@@ -685,19 +691,17 @@ fixture. Recommended fixes are consolidated in section 13.
   manifest body. The handshake completes and pins the peer before any
   governance contract is exchanged.
 
-- **G2. No ladder reference profile lists workflow grant classes.**
+- **G2. Workflow grant classes are still being normalized in the ladder
+  reference profile.**
   [CHIODOS_LADDER.md:462-897](../../spec/CHIODOS_LADDER.md) section 5
-  has no `workflow.grant_issue` (mints the workflow grant) or
-  `workflow.aggregate_publish` (publishes the aggregate WorkflowReceipt).
-  The buyer-side grant binds three vendor tokens; the aggregate is
-  load-bearing for joint-commit posture (see G5).
+  now documents verifier expectations for workflow grant composition, but
+  the reference financial profile still needs final product-owned class
+  naming beyond the fixture's local workflow grant id.
 
-- **G3. `StepRecord` cannot carry chiodos invocation context.**
-  [receipt.rs:95-118](../../crates/chio-workflow/src/receipt.rs) has
-  only `tool_receipt_id`. The fixture needs
-  `dual_signed_receipt_sha256`, `governance_receipt_id`,
-  `parent_receipt_sha256`, `consistency_anchor`, and `destructive` on
-  every step.
+- **G3. `StepRecord` Chiodos context is implemented for the fixture.**
+  `chio-workflow` carries optional bilateral DSSE hash, governance receipt
+  id, parent receipt hash, consistency anchor, and destructive-step flags.
+  v1 receipt verification remains byte-compatible.
 
 - **G4. No `chio.capability-lease.v1` schema exists.**
   [CHIODOS_LADDER.md:241-244](../../spec/CHIODOS_LADDER.md)'s
@@ -708,14 +712,11 @@ fixture. Recommended fixes are consolidated in section 13.
   demands a narrowing lease that pins amount and customer-id-hash to
   one minted token.
 
-- **G5. Aggregate WorkflowReceipt is single-kernel-signed.**
-  [receipt.rs:46-49](../../crates/chio-workflow/src/receipt.rs) signs
-  the aggregate with the buyer kernel only. Per-step bilateral
-  receipts are jointly committed, but the aggregate is not. A
-  third-party verifier cannot confirm the joint plan without trusting
-  the buyer's view.
+- **G5. Aggregate WorkflowReceipt vendor co-signatures are implemented.**
+  The verifier checks detached vendor co-signatures over the canonical
+  workflow body and rejects missing, unknown, or bad vendor signatures.
 
-- **G6. BBS projection over WorkflowReceipt is partially implemented.**
+- **G6. BBS projection over WorkflowReceipt is reveal-set-only.**
   `chio-selective-disclosure` defines receipt, workflow, and step
   projections and verifies reveal-set BBS proofs. Hidden predicates over
   nested per-step fields, including `amount_minor <= 25000`, still need
@@ -730,23 +731,19 @@ fixture. Recommended fixes are consolidated in section 13.
   downstream treaties transitively (impossible without discovery), or
   a transit-treaty rule must be added.
 
-- **G8. No artefact tying multiple pairwise intersections under one
-  workflow grant.** Three intersections (Buyer<->A, Buyer<->B,
-  Buyer<->C), one per class. Nothing asserts that they coherently
-  bound `wf-001`.
+- **G8. Workflow-intersection artifact is implemented and verifier-owned.**
+  `chio.chiodos-workflow-intersection.v1` binds the workflow id, workflow
+  grant id, pairwise intersection refs, step action classes, required
+  vendor signers, and aggregate workflow receipt hash. Acceptance also
+  requires the artifact hash to appear in the verifier trust bundle.
 
-- **G9. `consistency_anchor` is declared per-class but its value is
-  per-instance.** [CHIODOS_LADDER.md:265-269](../../spec/CHIODOS_LADDER.md)
-  pins the **kind** at manifest time; the per-step receipt MUST carry
-  the **value** (parent SHA-256, anchor-epoch id, or FROST-quorum
-  scope id). No per-instance carrier is required today.
+- **G9. Per-instance consistency anchor is implemented for workflow steps.**
+  The verifier checks the step-level consistency anchor and parent receipt
+  hash instead of relying only on class-level manifest text.
 
-- **G10. Governance receipt schema is referenced but unnormalised.**
-  [chio-governance](../../crates/chio-governance/src/lib.rs) has
-  `GenericGovernanceCaseKind::{Dispute, Freeze, Sanction, Appeal}`.
-  Step 3 needs a `DestructiveAuthorization` kind plus a
-  `chio.governance-receipt.v1` schema enumerating the
-  ladder-named evidence kinds.
+- **G10. Destructive governance receipt verification is implemented.**
+  `chio.governance-receipt.v1` is checked with the capability lease,
+  workflow id, step hash, authorizing kernel, and pinned verifier epoch.
 
 - **G11. Pheromone deposits lack a workflow back-reference.** The
   prompt-injection deposit is causally tied to `wf-001` but the
@@ -768,21 +765,14 @@ Items not yet owed in either spec's open-items list:
 
 ---
 
-## 13. Recommended Next Spec Edits (consolidated)
+## 13. Remaining Spec Edits
 
-In priority order, with file:line pointers:
+In priority order:
 
-1. [CHIODOS_LADDER.md:265-269](../../spec/CHIODOS_LADDER.md): add per-instance `consistency_anchor_value` requirement (G9).
-2. [CHIODOS_LADDER.md:462-606](../../spec/CHIODOS_LADDER.md) financial profile: add `workflow.grant_issue` and `workflow.aggregate_publish` classes (G2, G5).
-3. [chio-workflow `StepRecord`](../../crates/chio-workflow/src/receipt.rs) lines 95-118: add `dual_signed_receipt_sha256`, `governance_receipt_id`, `parent_receipt_sha256`, `consistency_anchor`, `destructive` (G3).
-4. [chio-workflow `WorkflowReceipt`](../../crates/chio-workflow/src/receipt.rs) lines 16-49: add optional vendor co-signatures over the aggregate canonical body (G5).
-5. [trust_establishment.rs `PeerHandshakeEnvelope`](../../crates/chio-federation/src/trust_establishment.rs) lines 108-114: add `declared_ladder_manifest_sha256` and `declared_ladder_manifest_id` (G1).
-6. New spec `spec/CHIODOS_CAPABILITY_LEASE.md`: freeze `chio.capability-lease.v1` to back the `partition_fallback.lease_kind` enum (G4).
-7. [CHIODOS_PHEROMONE.md:114-141](../../spec/CHIODOS_PHEROMONE.md) section 3: add transit-treaty rule and `transit_chain` field (G7).
-8. [CHIODOS_PHEROMONE.md:55-81](../../spec/CHIODOS_PHEROMONE.md) section 2.1: add optional `workflow_context` field (G11).
-9. [CHIODOS_LADDER.md](../../spec/CHIODOS_LADDER.md) new section 6.x: `chio.chiodos-workflow-intersection.v1` tying multiple pairwise intersections under one workflow grant (G8).
-10. [chio-governance](../../crates/chio-governance/src/lib.rs): add `GenericGovernanceCaseKind::DestructiveAuthorization` and freeze `chio.governance-receipt.v1` (G10).
-11. New spec `spec/CHIODOS_DISCLOSURE.md`: freeze `chio.workflow-receipt-bbs-disclosure.v1`, the BBS+ projection over `WorkflowReceipt`, the field-path syntax (G6, item 12.1).
+1. [CHIODOS_LADDER.md](../../spec/CHIODOS_LADDER.md): finish reference-profile naming for workflow grant and workflow aggregate publication classes (G2).
+2. New spec `spec/CHIODOS_CAPABILITY_LEASE.md`: freeze `chio.capability-lease.v1` outside the fixture crate's current Rust type (G4).
+3. [CHIODOS_PHEROMONE.md](../../spec/CHIODOS_PHEROMONE.md): add transit-treaty rule, `transit_chain`, and optional `workflow_context` field (G7, G11).
+4. Future disclosure spec: define hidden range predicates, VC Data Integrity BBS interop, and zkVM proof binding only when those proofs are implemented (G6).
 
 ---
 
@@ -800,8 +790,8 @@ In priority order, with file:line pointers:
 
 ## 15. Status
 
-Research / illustrative. Every JSON sketch annotated `// illustrative,
-not normative` makes a choice the companion specs leave open. Adopting
-the section-13 edits should shrink the gap list to G6 and G8 (BBS+
-projection and workflow-intersection artefact) plus whatever surfaces
-from re-review.
+Research note with runnable fixture companion. The committed fixture is
+verified by the production `chio-chiodos` crate and `chio chiodos verify`
+using a verifier-owned trust bundle. Remaining open work is G2 reference
+profile cleanup, G4 lease schema freezing, G7/G11 pheromone transit, and
+G6 hidden predicate support beyond reveal-set BBS.
