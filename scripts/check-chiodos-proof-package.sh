@@ -142,8 +142,12 @@ if len(trust_bundle.get("peers", [])) != 4:
     raise SystemExit("Trust bundle must pin buyer and three vendor peers")
 if len(trust_bundle.get("vendors", [])) != 3:
     raise SystemExit("Trust bundle must pin three vendor signers")
-if len(trust_bundle.get("actionClasses", [])) != 3:
-    raise SystemExit("Trust bundle must own three action-class entries")
+action_class_ids = {entry.get("actionClassId") for entry in trust_bundle.get("actionClasses", [])}
+if len(trust_bundle.get("actionClasses", [])) < 5:
+    raise SystemExit("Trust bundle must own vendor and workflow action-class entries")
+for required_class in ("workflow.grant_issue", "workflow.aggregate_publish"):
+    if required_class not in action_class_ids:
+        raise SystemExit(f"Trust bundle must own {required_class}")
 if len(trust_bundle.get("workflowIntersections", [])) != 1:
     raise SystemExit("Trust bundle must trust one workflow intersection hash")
 if len(package.get("bilateralEnvelopes", [])) != 3:
@@ -214,6 +218,11 @@ expected_schemas = {
     "revocation-checkpoint.schema.json": "chio.chiodos.revocation-checkpoint.v1",
     "verification-context.schema.json": "chio.chiodos.verification-context.v1",
     "negative-fixture-corpus.schema.json": "chio.chiodos.negative-fixture-corpus.v1",
+    "authority-profile.schema.json": "chio.chiodos.authority-profile.v1",
+    "issuance-request.schema.json": "chio.chiodos.issuance-request.v1",
+    "issuance-bundle.schema.json": "chio.chiodos.issuance-bundle.v1",
+    "revocation-publication-request.schema.json": "chio.chiodos.revocation-publication-request.v1",
+    "peer-pins.schema.json": "chio.chiodos.peer-pins.v1",
 }
 registered = {entry.get("schema"): entry.get("schemaFile") for entry in registry.get("artifacts", [])}
 schema_root = pathlib.Path(schema_dir)
@@ -260,6 +269,7 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 if [[ "$MODE" == "all" ]]; then
+  bash "$ROOT/scripts/check-chiodos-authority-issuance.sh"
   cargo run -p chio-cli -- chiodos verify \
       --package "$PACKAGE_FIXTURE" \
       --trust-bundle "$TRUST_BUNDLE_FIXTURE" \

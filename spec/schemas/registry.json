@@ -69,7 +69,8 @@
       "schema": "chio.chiodos.verifier-trust-bundle.v2",
       "artifactKind": "chiodos_verifier_trust_bundle",
       "introducedBy": "chiodos-authority-wire-contract/v1",
-      "schemaFile": "spec/schemas/chiodos/v1/verifier-trust-bundle.schema.json"
+      "schemaFile": "spec/schemas/chiodos/v1/verifier-trust-bundle.schema.json",
+      "status": "deprecated-read-compatible"
     },
     {
       "schema": "chio.chiodos.verifier-trust-bundle.v3",
@@ -129,7 +130,8 @@
       "schema": "chio.chiodos.verifier-report.v1",
       "artifactKind": "chiodos_verifier_report",
       "introducedBy": "chiodos-authority-wire-contract/v1",
-      "schemaFile": "spec/schemas/chiodos/v1/verifier-report.schema.json"
+      "schemaFile": "spec/schemas/chiodos/v1/verifier-report.schema.json",
+      "status": "deprecated-read-compatible"
     },
     {
       "schema": "chio.chiodos.verifier-report.v2",
@@ -142,6 +144,36 @@
       "artifactKind": "chiodos_negative_fixture_corpus",
       "introducedBy": "chiodos-freshness-assurance/v1",
       "schemaFile": "spec/schemas/chiodos/v1/negative-fixture-corpus.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.authority-profile.v1",
+      "artifactKind": "chiodos_authority_profile",
+      "introducedBy": "chiodos-runtime-authority/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/authority-profile.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.issuance-request.v1",
+      "artifactKind": "chiodos_issuance_request",
+      "introducedBy": "chiodos-runtime-authority/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/issuance-request.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.issuance-bundle.v1",
+      "artifactKind": "chiodos_issuance_bundle",
+      "introducedBy": "chiodos-runtime-authority/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/issuance-bundle.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.revocation-publication-request.v1",
+      "artifactKind": "chiodos_revocation_publication_request",
+      "introducedBy": "chiodos-runtime-authority/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/revocation-publication-request.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.peer-pins.v1",
+      "artifactKind": "chiodos_peer_pins",
+      "introducedBy": "chiodos-runtime-authority/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/peer-pins.schema.json"
     }
   ]
 }

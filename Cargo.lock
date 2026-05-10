@@ -2749,6 +2749,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-chiodos-authority"
+version = "0.1.0"
+dependencies = [
+ "chio-chiodos",
+ "chio-core-types",
+ "chio-federation",
+ "chio-governance",
+ "hex",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-cli"
 version = "0.1.0"
 dependencies = [
@@ -2762,6 +2776,7 @@ dependencies = [
  "chio-arena",
  "chio-attest-verify",
  "chio-chiodos",
+ "chio-chiodos-authority",
  "chio-conformance",
  "chio-control-plane",
  "chio-core",
@@ -4252,6 +4267,7 @@ name = "chiodos-three-vendor-example"
 version = "0.1.0"
 dependencies = [
  "chio-chiodos",
+ "chio-chiodos-authority",
  "chio-core-types",
  "chio-federation",
  "chio-governance",

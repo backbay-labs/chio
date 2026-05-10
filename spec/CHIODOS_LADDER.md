@@ -762,9 +762,10 @@ classes layered over this profile:
   a verifier accepts a vendor co-signed aggregate workflow receipt as
   the workflow-level evidence object.
 
-Reference manifests MAY keep product-specific class names for these
-operations, but verifiers MUST bind the chosen names in their trust
-bundle action-class policy and workflow-intersection artifact.
+Strict Chiodos verifier trust bundles MUST include these product-owned
+class names. Non-strict manifests MAY carry deployment-specific aliases,
+but those aliases do not satisfy strict workflow-package verification
+unless mapped to the product-owned classes by verifier-owned policy.
 
 ### 5.3 Compliance Ladder
 

@@ -77,6 +77,16 @@
       "actionClassId": "stage_refund",
       "toolName": "stage_refund",
       "kind": "receipt_backed"
+    },
+    {
+      "actionClassId": "workflow.grant_issue",
+      "toolName": "workflow.grant_issue",
+      "kind": "routine"
+    },
+    {
+      "actionClassId": "workflow.aggregate_publish",
+      "toolName": "workflow.aggregate_publish",
+      "kind": "routine"
     }
   ],
   "workflowIntersections": [
@@ -138,7 +148,7 @@
       "epochHeight": 64,
       "revokedKeyFingerprints": []
     },
-    "signerKey": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
-    "signature": "09a034d062e40b312ecf9feae6113a4011ee53c3bff60c84b7907ce62e7ea6bf9ca81585aef8c433bb21f64c2f65e19b930ee63c244dfab6f5d96e2173491c0c"
+    "signerKey": "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a",
+    "signature": "81fe5514aea20128991868cd42bd1f4cd1e39ed4338cf70afeec7cbebe2d994a149c7b5ab8dfcb70967daabfd03064234d4dd9a4e35beec1d76f5a4123bdd406"
   }
 }
