@@ -1,6 +1,6 @@
 {
   "schema": "chio.bounded-assurance-manifest.v1",
-  "integrated_merge_sha": "db94ab9107e08aba90193b88aac20017b459f810",
+  "integrated_merge_sha": "7f56cf5383fc1caa7a4f06b4cd59e45177f00496",
   "commands": [
     {
       "command": "bash scripts/check-threat-coverage.sh",
@@ -26,7 +26,7 @@
         },
         {
           "path": "audits/evidence/mutants/banner.json",
-          "sha256": "7b5928e60b446dd1da4f60bf02465eeece1e35b465b500725048fc1fc7ed4d2a"
+          "sha256": "77db9f24ca3384d701d40d5539d77b615eefad492af68b2e6d02681d99f057ed"
         }
       ]
     },
@@ -36,7 +36,7 @@
       "artifacts": [
         {
           "path": "audits/evidence/formal/2026-05-09-trajectory-5-1-apalache-lean.md",
-          "sha256": "6e108ffd3c22bb6772949d2564cd49dac5af1f2932b54d388a51fad2fba5a3b1"
+          "sha256": "5db09eb0a0163c559c26caab385b0aee16f79ae452749fab89bf58f318d5b1bb"
         }
       ]
     },
@@ -46,7 +46,7 @@
       "artifacts": [
         {
           "path": "audits/evidence/kani/2026-05-09-trajectory-5-1-manifest.md",
-          "sha256": "4a77e8bc4497b60049daee5ccaa796b4e11e81425d4586f7e15514e03aeaf96c"
+          "sha256": "b2fe2c7542eccd3d2ba933a872731ac0ceea2a5a480f77af84ed6a895f5aa7a6"
         },
         {
           "path": ".kani/harnesses.toml",
@@ -60,7 +60,37 @@
       "artifacts": [
         {
           "path": "audits/evidence/chiodome/2026-05-09-trajectory-5-1-canary.md",
-          "sha256": "97751168ad0d9b08363182a4e17df921b4eaa653de9faad76e45e842b492a395"
+          "sha256": "44924f0f82d687ad0e17a39029a42d654a56a60bf6ccee19d2632cbdccfad34a"
+        }
+      ]
+    },
+    {
+      "command": "bash scripts/check-bounded-ship-bar.sh && bash scripts/check-bounded-ship-bar.sh --diagnostic && bash scripts/tests/check-bounded-ship-bar.test.sh",
+      "exit_code": 0,
+      "artifacts": [
+        {
+          "path": "scripts/check-bounded-ship-bar.sh",
+          "sha256": "c8e379f0a34a4afc9851fe2fb0ee75d85bbcb960e0ad6dbe2a9771525de793e5"
+        },
+        {
+          "path": "scripts/tests/check-bounded-ship-bar.test.sh",
+          "sha256": "3e7cb3bae99bfbde655de2d08677a7d219869d582746c534ebe005958036744a"
+        },
+        {
+          "path": "releases.toml",
+          "sha256": "48a670a7e7a5200f696224c5d5596d6534ee2b52a8754907abf54adf4ee0aaff"
+        },
+        {
+          "path": ".planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml",
+          "sha256": "be321e0c900bd0c0fa525487c3e4e11f3ee1ded052edd4272d3f10ada966dcae"
+        },
+        {
+          "path": ".planning/trajectory-5.2/README.md",
+          "sha256": "3b529d0f7c57b7e048edea9a903de407b94c4ff3a6ba5c1a29f00a4aa6fbbf1b"
+        },
+        {
+          "path": ".planning/trajectory-6/README.md",
+          "sha256": "2f99388d68fe7809c3de2bbed3badc2b0d47d8cf3a607018bb8ddc9650d137ad"
         }
       ]
     }
@@ -68,39 +98,39 @@
   "fixture_hashes": [
     {
       "path": "README.md",
-      "sha256": "da4374e7813c73a4b99861d5077719ec0360f0f4b928d95ca544d0b42993e2a6"
+      "sha256": "6ee597de20e3a1c4e2b35fbddd8e8e644cb64cd6cbe2e96157b974539c7b87ad"
     },
     {
       "path": "releases.toml",
-      "sha256": "a5df1f8269961ef4d527deaf945574ebdf02d0d3a0536b94fae5d09671998628"
+      "sha256": "48a670a7e7a5200f696224c5d5596d6534ee2b52a8754907abf54adf4ee0aaff"
     },
     {
       "path": "audits/evidence/mutants/banner.json",
-      "sha256": "7b5928e60b446dd1da4f60bf02465eeece1e35b465b500725048fc1fc7ed4d2a"
+      "sha256": "77db9f24ca3384d701d40d5539d77b615eefad492af68b2e6d02681d99f057ed"
     },
     {
       "path": "audits/evidence/mutants/chio-policy/2026-05-08.json",
-      "sha256": "91e4ef409d646dc3c480cbc2b1fb1de5f1e95ca6e9cd9b2f8723728d23ef49c9"
+      "sha256": "e659fe93104122cbe875d0628e95e42fbab3c18fc31e182d70ec0e607552918d"
     },
     {
       "path": "audits/evidence/mutants/chio-credentials/2026-05-08.json",
-      "sha256": "91a1b55cc9d8d6b3f046b0e60b78a6bf3b7c8111a70b468eae92d6563dbd1877"
+      "sha256": "8db799fbee3d5e26272476a98c6412989f8ba29a283f5fa56951b600fa1ca426"
     },
     {
       "path": "audits/evidence/mutants/chio-attest-verify/2026-05-08.json",
-      "sha256": "16fd9dcd53ba6e39cf8f3e95d712dcaf53d5631a1889fa5efc7deb11a311396c"
+      "sha256": "a7943fd9a3c597717756b4d40fa4a8889be99235382b11d5f2993dc67cb3a3fb"
     },
     {
       "path": "audits/evidence/mutants/chio-kernel-core/2026-05-08.json",
-      "sha256": "b172434f036d817a9335f848f3e37b8bceaed83033151e1907215412a245ad8a"
+      "sha256": "147b342c48ea86c4b4093326520a095b1ad1e1f8d887613fb54583a4037b999c"
     },
     {
       "path": "audits/evidence/mutants/chio-guards/2026-05-08.json",
-      "sha256": "c62648722d2b405fe70eafe19f1eb49f0fd1514a02ffd13a0272bdeaa8cba635"
+      "sha256": "c690e3e1bf8abb951bdf9a5c8f1d588a45cbfd8ec200f2e5754872018d5b21e9"
     },
     {
       "path": "audits/evidence/mutants/chio-anchor/2026-05-08.json",
-      "sha256": "51971fe8527212686c7af07b57ce73249eb82d256e3ef2ddd3a7acf20d49b726"
+      "sha256": "5e0cc0bb74c554ccf7e23a1a454edd7d4ddc1803d83177f4746e520a32ef3269"
     },
     {
       "path": "spec/security/chio-threat-model.v1.json",
@@ -112,11 +142,11 @@
     },
     {
       "path": "audits/evidence/kani/2026-05-09-trajectory-5-1-manifest.md",
-      "sha256": "4a77e8bc4497b60049daee5ccaa796b4e11e81425d4586f7e15514e03aeaf96c"
+      "sha256": "b2fe2c7542eccd3d2ba933a872731ac0ceea2a5a480f77af84ed6a895f5aa7a6"
     },
     {
       "path": "audits/evidence/formal/2026-05-09-trajectory-5-1-apalache-lean.md",
-      "sha256": "6e108ffd3c22bb6772949d2564cd49dac5af1f2932b54d388a51fad2fba5a3b1"
+      "sha256": "5db09eb0a0163c559c26caab385b0aee16f79ae452749fab89bf58f318d5b1bb"
     },
     {
       "path": "crates/chio-kernel/src/kernel/mod.rs",
@@ -148,7 +178,7 @@
     },
     {
       "path": "audits/evidence/chiodome/2026-05-09-trajectory-5-1-canary.md",
-      "sha256": "97751168ad0d9b08363182a4e17df921b4eaa653de9faad76e45e842b492a395"
+      "sha256": "44924f0f82d687ad0e17a39029a42d654a56a60bf6ccee19d2632cbdccfad34a"
     },
     {
       "path": "examples/chiodome-bilateral/README.md",
@@ -184,11 +214,11 @@
     },
     {
       "path": ".planning/trajectory-5.1/README.md",
-      "sha256": "2af82be0190c10c4685af34374004b5c102db6d04a7e4ad5b6bd4ee15f8dcbd6"
+      "sha256": "7f377f13b32ceca091437c758f361815793aad97ec3276d0858e00120147b163"
     },
     {
       "path": ".planning/trajectory-5.1/TICKETS.md",
-      "sha256": "2a097c4612843a516a23ad80ab3958887955bbf37c4c36dab547e11eea94ecd1"
+      "sha256": "0f41f3465be4a5c670d5d8ee0e2966176d77917431f156c0a255fbede792159a"
     },
     {
       "path": ".planning/trajectory-5.1/OWNERS.toml",
@@ -200,7 +230,47 @@
     },
     {
       "path": "docs/superpowers/plans/2026-05-09-trajectory-5-1.md",
-      "sha256": "8109463700ff4f550d1d72479008c092ab488ec0ebb64a1ecd9e8c7a303425b1"
+      "sha256": "b3ba7929e812e1a1bdd777691593541d0991d1b16a66907390715e4a658256d8"
+    },
+    {
+      "path": "scripts/check-bounded-ship-bar.sh",
+      "sha256": "c8e379f0a34a4afc9851fe2fb0ee75d85bbcb960e0ad6dbe2a9771525de793e5"
+    },
+    {
+      "path": "scripts/tests/check-bounded-ship-bar.test.sh",
+      "sha256": "3e7cb3bae99bfbde655de2d08677a7d219869d582746c534ebe005958036744a"
+    },
+    {
+      "path": ".planning/trajectory-5/lane-c-demo/c5-selective-disclosure-status.toml",
+      "sha256": "be321e0c900bd0c0fa525487c3e4e11f3ee1ded052edd4272d3f10ada966dcae"
+    },
+    {
+      "path": ".planning/trajectory-5.2/README.md",
+      "sha256": "3b529d0f7c57b7e048edea9a903de407b94c4ff3a6ba5c1a29f00a4aa6fbbf1b"
+    },
+    {
+      "path": ".planning/trajectory-5.2/TICKETS.md",
+      "sha256": "a3ec757f4857884839d8ccdd904801c20e9630a9a3083cf31d1b47d0dc48d245"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-05-10-trajectory-5-2-active-lane-design.md",
+      "sha256": "1d5b5ba49958152a1031a329b8e8debc4cbcd22d59904311a1d761ade379cd8a"
+    },
+    {
+      "path": ".planning/trajectory-6/README.md",
+      "sha256": "2f99388d68fe7809c3de2bbed3badc2b0d47d8cf3a607018bb8ddc9650d137ad"
+    },
+    {
+      "path": ".planning/trajectory-6/TICKETS.md",
+      "sha256": "3122ba6af2fcebbe9215895073f72e197a0a4fbc30e9ea0d779209263cb45036"
+    },
+    {
+      "path": ".planning/trajectory-6/DEPENDENCIES.md",
+      "sha256": "1c74f0f48dbee35019a07b868ce8e3984c42d8f05f179e1eef578356e5c497db"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-05-10-trajectory-6-shadow-design.md",
+      "sha256": "1c07e208dc329364f28df3825c77839ba0e5d10dcec3762c4dd058018c50b094"
     }
   ]
 }

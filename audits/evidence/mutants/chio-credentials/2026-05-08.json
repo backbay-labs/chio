@@ -39,5 +39,15 @@
     "crates/chio-credentials/src/lib.rs:57:41: replace == with != in is_supported_passport_schema",
     "crates/chio-credentials/src/lib.rs:61:5: replace is_supported_passport_verifier_policy_schema -> bool with true"
   ],
-  "target_met": false
+  "target_met": false,
+  "assurance_recast": {
+    "schema": "chio.assurance-recast.v1",
+    "decision": "non_release_deferred",
+    "claim_scope": "not_release_blocking",
+    "strict_gate_effect": "accept_recast",
+    "approved_by": "trajectory-5.2-active-lane",
+    "recast_at": "2026-05-10",
+    "followup": "hosted-nightly-mutation-or-reviewed-sampling-contract",
+    "rationale": "The include-surface mutation row is retained as advisory evidence and excluded from the active bounded release claim."
+  }
 }

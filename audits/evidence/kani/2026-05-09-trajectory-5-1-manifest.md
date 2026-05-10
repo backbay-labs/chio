@@ -2,7 +2,7 @@
 
 Date: 2026-05-09
 
-Trajectory 5.1 baseline: `db94ab9107e08aba90193b88aac20017b459f810`
+Trajectory 5.2 baseline: `7f56cf5383fc1caa7a4f06b4cd59e45177f00496`
 
 ## Local Toolchain
 
@@ -74,8 +74,8 @@ Representative verifier summaries reported `VERIFICATION:- SUCCESSFUL` and
 failures, 1 total.` for each invoked manifest entry. The full terminal trace is
 not committed because Kani emits large CBMC solver output for each harness.
 
-## 5.1 Disposition
+## 5.2 Disposition
 
-Trajectory 5.1 now claims local Kani proof completion for the PR-lane manifest
-at `cargo-kani 0.67.0`. Nightly-lane expansion and hosted retention of full
-Kani transcripts remain outside this evidence file.
+Trajectory 5.2 carries forward local Kani proof completion for the PR-lane
+manifest at `cargo-kani 0.67.0`. Nightly-lane expansion and hosted retention
+of full Kani transcripts remain outside this evidence file.

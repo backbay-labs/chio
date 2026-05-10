@@ -265,4 +265,4 @@ Acceptance:
 | T5.1-C-002 | Partial | Replay policy/tool naming is aligned for read-only fixture tools, but the default `mcp wrap --e2e-fixture` path is still manifest-scaffold based rather than full policy-backed `mcp serve`. |
 | T5.1-C-003 | Partial | CLI output honestly reports inspection-only behavior; pinned-key/store-backed verification remains a future release blocker. |
 | T5.1-C-004 | Done | C5 remains explicitly deferred with `release_claim_allowed = "no"` and ship-bar checks reject false completion. |
-| T5.1-P-001 | Blocked | `releases.toml` records `blocked_pending_full_assurance_gate` and the integrated merge SHA. Packaging restarts only after strict gate partials are zero. |
+| T5.1-P-001 | Superseded | Trajectory 5.2 parks `v0.1.0-bounded-chiodome` outside active release scope and owns any future package restart. |

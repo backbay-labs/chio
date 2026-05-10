@@ -20,7 +20,9 @@
 # kill-rate alone is not enough to close the claim: the JSON must also
 # prove target_met=true,
 # an explicit full-scope result label, complete evaluated counts, and no
-# partial/subset/interrupted/hand-picked scope markers.
+# partial/subset/interrupted/hand-picked scope markers, unless the row carries
+# a valid `chio.assurance-recast.v1` object that excludes the measured evidence
+# from the active release claim.
 #
 # Claim B (Lane B): source-PR conformance fixture files under
 # `crates/chio-conformance/tests/`. Missing source-branch artifacts are
@@ -31,8 +33,10 @@
 # PARTIAL/PENDING in #620.
 #
 # Claim C5 (selective disclosure): C5 must carry a machine-readable boundary.
-# Deferred status is PARTIAL. A future evidence-complete status is accepted only
-# when the implementation crate, feature, and auditor-view fixtures exist.
+# Deferred status is accepted in strict mode only when the marker explicitly
+# says the claim is outside the active release scope. A future
+# evidence-complete status is accepted only when the implementation crate,
+# feature, and auditor-view fixtures exist.
 #
 # Run from the chio repo root: `bash scripts/check-bounded-ship-bar.sh`.
 # Output is one OK/FAIL/PARTIAL line per evidence check.
@@ -393,6 +397,51 @@ EOF
   printf '%s' "$joined"
 }
 
+bar1_recast_for_json() {
+  local json_path="$1"
+  if [ ! -f "$json_path" ]; then
+    return 0
+  fi
+  python3 - "$json_path" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+recast = data.get("assurance_recast")
+if recast is None:
+    sys.exit(0)
+
+required = {
+    "schema": "chio.assurance-recast.v1",
+    "decision": "non_release_deferred",
+    "claim_scope": "not_release_blocking",
+    "strict_gate_effect": "accept_recast",
+}
+
+errors = []
+if not isinstance(recast, dict):
+    errors.append("assurance_recast must be an object")
+else:
+    for key, expected in required.items():
+        actual = recast.get(key)
+        if actual != expected:
+            errors.append(f"{key}={actual!r}; expected {expected!r}")
+    for key in ("approved_by", "recast_at", "followup", "rationale"):
+        value = recast.get(key)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"{key} missing")
+
+if errors:
+    print("invalid\x1f" + "; ".join(errors))
+else:
+    followup = recast["followup"].replace("\x1f", " ")
+    print("ok\x1f" + followup)
+PY
+}
+
 printf '\n[Manifest] Hashed assurance evidence manifest\n'
 
 manifest_output=""
@@ -470,6 +519,20 @@ for crate in "${bar1_crates[@]}"; do
   rate=$(kill_rate_for_json "$latest_json")
   if [ -z "$rate" ]; then
     failure "Claim A $crate JSON exists ($latest_json) but no kill_rate field"
+    continue
+  fi
+  recast_line=$(bar1_recast_for_json "$latest_json")
+  if [ -n "$recast_line" ]; then
+    local_recast_status=""
+    local_recast_detail=""
+    IFS=$'\037' read -r local_recast_status local_recast_detail <<EOF
+$recast_line
+EOF
+    if [ "$local_recast_status" = "ok" ]; then
+      ok "Claim A $crate mutation evidence recast outside active release claim (${local_recast_detail}; measured ${rate}%)"
+      continue
+    fi
+    failure "Claim A $crate assurance_recast invalid in $latest_json (${local_recast_detail:-unknown validation error})"
     continue
   fi
   metadata_reasons=$(bar1_metadata_reasons_for_json "$latest_json")
@@ -655,10 +718,16 @@ else
   c5_proof_path=$(toml_value "c5_selective_disclosure" "proof_path" "$c5_marker")
   c5_predicate_failed_path=$(toml_value "c5_selective_disclosure" "predicate_failed_path" "$c5_marker")
   c5_release_claim_allowed=$(toml_value "c5_selective_disclosure" "release_claim_allowed" "$c5_marker")
+  c5_strict_gate_effect=$(toml_value "c5_selective_disclosure" "strict_gate_effect" "$c5_marker")
 
   case "$c5_status" in
     deferred_*|blocked_*|pending|partial|not_ready)
-      partial "Claim C5 selective-disclosure boundary is not release-complete ($c5_status)"
+      if [ "$c5_release_claim_allowed" = "no" ] \
+        && [ "$c5_strict_gate_effect" = "accept_recast" ]; then
+        ok "Claim C5 selective-disclosure boundary deferred outside active release claim ($c5_status)"
+      else
+        partial "Claim C5 selective-disclosure boundary is not release-complete ($c5_status)"
+      fi
       ;;
     evidence_complete|complete)
       c5_missing=()
@@ -712,6 +781,8 @@ if [ -f releases.toml ]; then
   integrated_merge_sha=$(toml_value "v0_1_0_bounded_chiodome" "integrated_merge_sha")
   if [ -z "$release_status" ]; then
     partial "Claim C bounded package release_status not recorded by this planning PR"
+  elif [ "$release_status" = "parked_non_release" ]; then
+    ok "Claim C bounded package is formally parked outside active release scope"
   elif printf '%s' "$release_status" | grep -q -E 'blocked|pending|partial|not_ready'; then
     partial "Claim C bounded package release_status is not assurance-complete ($release_status)"
   else

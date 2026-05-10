@@ -14,7 +14,7 @@
   <em>Capability validation, fail-closed policy, budgets, and signed receipts</em>
   <!-- chio-mutants-banner:start -->
   <br/>
-  <strong>Mutation evidence: partial baselines recorded</strong> - six trust-boundary crates, observed 44.12%-80.21%, release closure pending full promoted sweeps - 2026-05-08
+  <strong>Mutation evidence: advisory baselines recast</strong> - six trust-boundary crates, observed 44.12%-80.21%, excluded from active bounded release claims at 7f56cf5383fc1caa7a4f06b4cd59e45177f00496 - 2026-05-10
   <!-- chio-mutants-banner:end -->
 </p>
 
