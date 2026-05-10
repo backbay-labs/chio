@@ -1,19 +1,18 @@
 # Chiodos Selective Disclosure Over Chio Receipts
 
-**Status:** Draft v0.1 design target. Current repository implementation is partial.
+**Status:** Draft v0.1 design target with a real-BBS implementation slice.
 **Date:** 2026-05-04
 **Supersedes:** none
 
 This specification describes the target v0.1 wire format and
 verification contract for **selective-disclosure proofs over chio
-receipts and workflow receipts**. The current branch does not implement
-that full contract: it ships only the `chio-federation` `bbs-stub`
-projection and audit-view placeholder. The stub has deterministic
-projection, disclose/withhold bookkeeping, and SHA-256 binding tests; it
-does not provide BBS+ signatures, BLS12-381 commitments, range proofs,
-zkVM proofs, or privacy-preserving zero-knowledge guarantees. Normative
-MUST/SHOULD language below applies to a future complete implementation,
-not to the current `bbs-stub` module.
+receipts and workflow receipts**. The repository now includes
+`chio-selective-disclosure` with an opt-in `bbs` feature that signs
+receipt, workflow, and step projections and verifies reveal-set BBS
+proof packages. The older `chio-federation` `bbs-stub` projection
+remains a legacy placeholder and cannot satisfy Chiodos conformance. Hidden
+range predicates, VC Data Integrity interop, and zkVM proofs are still
+deferred.
 
 The target contract closes Hard Problem #4 from
 [CHIODOS_CONCEPT.md](../docs/research/CHIODOS_CONCEPT.md) v1.1 section 7
@@ -55,23 +54,25 @@ workflow projection in section 6.
 
 ## 2. Scope
 
-### 2.1 Target scope (future complete v0.1)
+### 2.1 Implemented slice
 
-- BBS+ secondary commitments over a single
+- BBS secondary commitments over a single
   [`ChioReceipt`](../crates/chio-core-types/src/receipt.rs) body.
-- BBS+ secondary commitments over a
+- BBS secondary commitments over a
   [`WorkflowReceipt`](../crates/chio-workflow/src/receipt.rs) body and
   its inner `StepRecord` list.
+- A canonical envelope schema (`chio.selective-disclosure-proof.v1`)
+  for reveal-set proofs.
+- An opt-in implementation crate:
+  [`chio-selective-disclosure`](../crates/chio-selective-disclosure/src/lib.rs).
+
+### 2.2 Target scope still open
+
 - A frozen predicate language: three primitives (`eq`, `cmp`,
   `member`), `AND`-only composition, hard ceiling of eight clauses.
-- A canonical envelope schema (`chio.selective-disclosure-proof.v1`)
-  and verification algorithm.
-- A dedicated implementation crate may be added later beside
-  [chio-attest-verify](../crates/chio-attest-verify/src/lib.rs). This
-  branch does not add that crate and does not expose a `zk` Cargo
-  feature for selective disclosure.
+- Predicate verification for hidden comparisons or membership.
 
-### 2.2 Out of scope (deferred to v0.2)
+### 2.3 Out of scope (deferred to v0.2)
 
 - The zkVM lane (Risc0 / SP1 + Groth16 wrap) for chained-receipt
   proofs, predicates over the Ed25519 signature itself, predicates
@@ -504,28 +505,23 @@ v0.1 does not specify a proof-carrying-receipt mode.
 
 ---
 
-## 10. Target Crate Placement
+## 10. Implementation Crate Placement
 
-No workspace member implements this full target contract in the current
-branch. The only shipped code is the `chio-federation` `bbs-stub`
-feature, which is a SHA-256 commitment placeholder for projection and
-audit-view workflow tests.
-The stub verifier rejects duplicate or out-of-range disclosed indices before
-recomputing the placeholder commitment.
+The implemented slice lives in
+[`chio-selective-disclosure`](../crates/chio-selective-disclosure/src/lib.rs).
+It is outside the default build and enabled with the crate's `bbs`
+feature. The legacy `chio-federation` `bbs-stub` feature remains a
+SHA-256 commitment placeholder for older projection tests only.
 
-A future complete implementation should live in a dedicated workspace
-member beside [chio-attest-verify](../crates/chio-attest-verify/src/lib.rs)
-and should remain outside the default build so the baseline chio build
-stays BBS+/BLS12-381-free.
+The implementation uses `affinidi-bbs = 0.1.0`, pinned because
+`affinidi-bbs = 0.1.1` requires Rust 1.94 while this workspace is pinned
+to Rust 1.93. It keeps the baseline chio build BLS12-381-free unless
+the `bbs` feature is selected.
 
 Dependencies: `chio-core-types` (receipt body, canonical JSON,
 signature primitives); `chio-workflow` (workflow receipt body, step
-record); an external BBS+ implementation. Recommended:
-`mattrglobal/bbs-signatures` (Rust bindings) for v0.1 prototyping as
-the most mature `bbs-2023` stack; migrate to rust-native
-`hyperledger/anoncreds-v2-rs` once it stabilises and exposes AnonCreds
-v2 `RangeStatement` natively. Both expose BLS12-381 primitives
-compatible with the W3C cryptosuite.
+record); and the external BBS implementation. Range predicates still
+need a future range-proof dependency.
 
 Public surface:
 

@@ -48,6 +48,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "affinidi-bbs"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18dd1385d8e17c89ae28c813cefc49e3b1170ed7b86b9dce3840e4de63b4ad79"
+dependencies = [
+ "bls12_381_plus",
+ "elliptic-curve 0.13.8",
+ "ff 0.13.1",
+ "group 0.13.0",
+ "hex",
+ "rand 0.9.2",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "zeroize",
+]
+
+[[package]]
 name = "ahash"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1075,6 +1092,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrayref"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb"
+
+[[package]]
 name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1942,7 +1965,7 @@ dependencies = [
  "bitflags 2.11.0",
  "cexpr",
  "clang-sys",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2086,6 +2109,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdeb9d870516001442e364c5220d3574d2da8dc765554b4a617230d33fa58ef5"
 dependencies = [
  "objc2",
+]
+
+[[package]]
+name = "bls12_381_plus"
+version = "0.8.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7533858fe2da020c4fba936036e702de0f73144fe13f9c71113f6f804cde3466"
+dependencies = [
+ "arrayref",
+ "elliptic-curve 0.13.8",
+ "ff 0.13.1",
+ "group 0.13.0",
+ "hex",
+ "pairing",
+ "rand_core 0.6.4",
+ "serde",
+ "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -2826,11 +2867,13 @@ dependencies = [
  "chio-mcp-remote",
  "chio-metrics-spec",
  "chio-openapi-mcp-bridge",
+ "chio-selective-disclosure",
  "chio-siem",
  "chio-store-sqlite",
  "chio-tee-frame",
  "chio-wasm-guards",
  "chio-weights",
+ "chio-workflow",
  "chrono",
  "coset",
  "hex",
@@ -3865,6 +3908,20 @@ dependencies = [
  "criterion",
  "proptest",
  "rs_merkle",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-selective-disclosure"
+version = "0.1.0"
+dependencies = [
+ "affinidi-bbs",
+ "chio-core-types",
+ "chio-workflow",
+ "hex",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -5565,6 +5622,7 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
+ "bitvec",
  "rand_core 0.6.4",
  "subtle",
 ]
@@ -7946,6 +8004,15 @@ dependencies = [
  "elliptic-curve 0.13.8",
  "primeorder",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "pairing"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81fec4625e73cf41ef4bb6846cafa6d44736525f442ba45e407c4a000a13996f"
+dependencies = [
+ "group 0.13.0",
 ]
 
 [[package]]

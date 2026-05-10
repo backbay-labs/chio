@@ -90,7 +90,7 @@
         },
         {
           "path": ".planning/trajectory-6/README.md",
-          "sha256": "2f99388d68fe7809c3de2bbed3badc2b0d47d8cf3a607018bb8ddc9650d137ad"
+          "sha256": "a3cf9339f1675a0993f66eb875766565e26e5121e0dcc2ca20835be26f02808f"
         }
       ]
     }
@@ -258,19 +258,19 @@
     },
     {
       "path": ".planning/trajectory-6/README.md",
-      "sha256": "2f99388d68fe7809c3de2bbed3badc2b0d47d8cf3a607018bb8ddc9650d137ad"
+      "sha256": "a3cf9339f1675a0993f66eb875766565e26e5121e0dcc2ca20835be26f02808f"
     },
     {
       "path": ".planning/trajectory-6/TICKETS.md",
-      "sha256": "3122ba6af2fcebbe9215895073f72e197a0a4fbc30e9ea0d779209263cb45036"
+      "sha256": "032308bd44960389f50a708e073d934d0fe8a5496256b7d9fe39ad04c75d7edd"
     },
     {
       "path": ".planning/trajectory-6/DEPENDENCIES.md",
-      "sha256": "1c74f0f48dbee35019a07b868ce8e3984c42d8f05f179e1eef578356e5c497db"
+      "sha256": "6c3a8fa621781469968b77f16a2284d3af990620d421ed1c77a58457803bbfde"
     },
     {
       "path": "docs/superpowers/specs/2026-05-10-trajectory-6-shadow-design.md",
-      "sha256": "1c07e208dc329364f28df3825c77839ba0e5d10dcec3762c4dd058018c50b094"
+      "sha256": "e264b6ca5aba0ed29f114849a95fd7551dce3316364b128e56adbf9eaf1d8351"
     }
   ]
 }

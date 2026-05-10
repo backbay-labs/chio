@@ -57,6 +57,11 @@ in-repo-fixtures = []
 # SHA-256-commitment stub without any privacy-preserving cryptographic property; this is a
 # separate CI matrix entry, not the default build path.
 bbs-stub = ["chio-federation/bbs-stub"]
+chiodos-bbs = [
+    "dep:chio-selective-disclosure",
+    "dep:chio-workflow",
+    "chio-selective-disclosure/bbs",
+]
 
 [dependencies]
 chio-core = { package = "chio-core-types", version = "0.1.0", path = "../chio-core-types" }
@@ -68,6 +73,8 @@ thiserror = { workspace = true }
 toml = "0.8"
 reqwest = { workspace = true, features = ["blocking", "form", "query", "rustls"] }
 tiny_http = "0.12"
+chio-selective-disclosure = { version = "0.1.0", path = "../chio-selective-disclosure", default-features = false, optional = true }
+chio-workflow = { version = "0.1.0", path = "../chio-workflow", optional = true }
 
 [[test]]
 name = "verdict_matrix_rust_driver"

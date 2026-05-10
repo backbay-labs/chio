@@ -1,0 +1,30 @@
+[package]
+name = "chio-selective-disclosure"
+description = "Real BBS selective disclosure projections and proof packages for Chio receipts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_selective_disclosure"
+
+[features]
+default = []
+bbs = ["dep:affinidi-bbs"]
+
+[dependencies]
+chio-core-types = { path = "../chio-core-types" }
+chio-workflow = { path = "../chio-workflow" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+affinidi-bbs = { version = "=0.1.0", optional = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
