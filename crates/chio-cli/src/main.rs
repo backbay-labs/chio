@@ -168,6 +168,29 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn chiodos_verify_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "verify",
+            "--package",
+            "package.json",
+            "--report",
+            "report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command: ChiodosCommands::Verify { package, report },
+            } => {
+                assert_eq!(package, std::path::PathBuf::from("package.json"));
+                assert_eq!(report, std::path::PathBuf::from("report.json"));
+            }
+            _ => panic!("expected chiodos verify subcommand"),
+        }
+    }
+
+    #[test]
     fn mcp_wrap_emit_config_flag_parses() {
         let cli = Cli::try_parse_from([
             "chio",

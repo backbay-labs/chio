@@ -1,6 +1,6 @@
 # Chiodos Three-Vendor Worked Fixture
 
-**Status:** Research / illustrative
+**Status:** Research note with runnable fixture companion
 **Date:** 2026-05-04
 **Companion specs:**
 [CHIODOS_CONCEPT.md](CHIODOS_CONCEPT.md) v1.1,
@@ -20,6 +20,14 @@ withheld; only "refund <= $250 was issued to a verified KYC-tier-2
 customer" is revealed. Gaps surfaced are tabulated in section 11. JSON
 sketches are illustrative (not strict canonical JSON); fields annotated
 `// illustrative, not normative` make a choice neither spec yet pins.
+
+Runnable artifacts live under
+`examples/chiodos-3vendor/fixtures/`. The committed buyer/auditor proof
+package is verified by `chio-chiodos` and by
+`chio chiodos verify --package <path> --report <path>`. Its bilateral DSSE
+envelopes use `chio.bilateral-cosign-invocation.v1`; the older
+`chio.bilateral-signature-slice.v1` profile is compatibility-only and is
+rejected by strict Chiodos verification.
 
 ---
 

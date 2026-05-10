@@ -33,6 +33,12 @@ fn run() -> Result<(), ChiodosPackageError> {
                 package_json(&package)?,
             )
             .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+            fs::write(
+                dir.join("selective-disclosure-proof.json"),
+                serde_json::to_string_pretty(&package.selective_disclosure_proof)
+                    .map_err(|error| ChiodosPackageError::Json(error.to_string()))?,
+            )
+            .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
             fs::write(dir.join("verifier-report.json"), report_json(&report)?)
                 .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
         }

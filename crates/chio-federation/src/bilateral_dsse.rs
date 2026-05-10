@@ -26,12 +26,11 @@
 //!
 //! ## Scope boundary
 //!
-//! This module intentionally emits a DSSE signature-slice profile, not the
-//! strict `CHIODOS_BILATERAL_COSIGN_INVOCATION` predicate. The strict
-//! CHIODOS schema requires fields this API does not receive
-//! (`tool_args_hash`, non-optional lease and policy summaries) and forbids
-//! the local `receipt_canonical_json` helper field. Callers must not present
-//! this artifact as a CHIODOS bilateral invocation envelope.
+//! This module emits both the legacy DSSE signature-slice profile and the
+//! strict Chiodos bilateral invocation predicate. The signature-slice profile
+//! stays available for compatibility; strict Chiodos conformance uses
+//! `chio.bilateral-cosign-invocation.v1` and does not carry the local
+//! `receipt_canonical_json` helper field.
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
@@ -57,6 +56,9 @@ pub const PAYLOAD_TYPE_IN_TOTO: &str = "application/vnd.in-toto+json";
 /// slice. Deliberately distinct from the strict CHIODOS bilateral
 /// invocation predicate.
 pub const PREDICATE_TYPE_BILATERAL: &str = "chio.bilateral-signature-slice.v1";
+
+/// Predicate type for strict Chiodos bilateral invocation envelopes.
+pub const PREDICATE_TYPE_CHIODOS_BILATERAL: &str = "chio.bilateral-cosign-invocation.v1";
 
 /// In-toto Statement `_type` per the v1 attestation framework (DSSE doc).
 pub const STATEMENT_TYPE_V1: &str = "https://in-toto.io/Statement/v1";
@@ -161,9 +163,12 @@ pub struct KernelIdentity {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct BilateralPredicate {
-    /// Internal schema discriminator (`PREDICATE_BODY_SCHEMA`), matching
-    /// `predicateType` on the parent Statement.
-    pub schema: String,
+    /// Internal schema discriminator for the legacy signature-slice profile.
+    ///
+    /// Strict Chiodos predicates omit this field because the signed
+    /// `predicateType` is the verifier-facing schema discriminator.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
     pub invocation_id: String,
     /// Origin kernel (Org A) identity.
     pub tool_server_a: KernelIdentity,
@@ -177,12 +182,16 @@ pub struct BilateralPredicate {
     /// Tool-server B's wall-clock timestamp at the moment the joint body
     /// was canonicalised (Unix milliseconds).
     pub timestamp_unix_ms: u64,
-    /// Canonical-JSON of the underlying `ChioReceipt`. Carried in the
-    /// predicate so verifiers without an independent receipt-resolver can
-    /// re-hash and confirm subject membership without dereferencing an
-    /// external pointer (mirroring the existing `CoSigningBody`
-    /// `receipt_canonical_json` pattern).
-    pub receipt_canonical_json: String,
+    /// SHA-256 over canonical tool arguments. Required by the strict
+    /// Chiodos profile and intentionally omitted from the legacy
+    /// signature-slice profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_args_hash: Option<HashRecord>,
+    /// Canonical-JSON of the underlying `ChioReceipt`. This is a legacy
+    /// signature-slice helper field and must be absent from strict Chiodos
+    /// predicates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt_canonical_json: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capability_lease_ref: Option<CapabilityLeaseRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -414,7 +423,7 @@ pub fn build_predicate(
     let receipt_canonical_json = String::from_utf8(receipt_canonical)
         .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?;
     Ok(BilateralPredicate {
-        schema: PREDICATE_BODY_SCHEMA.to_string(),
+        schema: Some(PREDICATE_BODY_SCHEMA.to_string()),
         invocation_id: receipt.id.clone(),
         tool_server_a: org_a,
         tool_server_b: org_b,
@@ -423,7 +432,8 @@ pub fn build_predicate(
         consistency_model: DEFAULT_CONSISTENCY_MODEL.to_string(),
         cross_org_visibility: DEFAULT_CROSS_ORG_VISIBILITY.to_string(),
         timestamp_unix_ms,
-        receipt_canonical_json,
+        tool_args_hash: None,
+        receipt_canonical_json: Some(receipt_canonical_json),
         capability_lease_ref: None,
         policy_evaluation_summary: None,
         governance_receipt_ref: None,
@@ -473,6 +483,63 @@ pub fn build_predicate_full(
     Ok(predicate)
 }
 
+pub fn build_chiodos_predicate(
+    receipt: &ChioReceipt,
+    org_a: KernelIdentity,
+    org_b: KernelIdentity,
+    tool_name: &str,
+    timestamp_unix_ms: u64,
+    extensions: BilateralPredicateExtensions,
+) -> Result<BilateralPredicate, BilateralCoSigningError> {
+    if receipt.tool_name != tool_name {
+        return Err(BilateralCoSigningError::ReceiptMismatch);
+    }
+    if !receipt
+        .action
+        .verify_hash()
+        .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?
+    {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: receipt action parameter_hash does not match parameters"
+                .to_string(),
+        ));
+    }
+    let capability_lease_ref = extensions.capability_lease_ref.ok_or_else(|| {
+        BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: capability_lease_ref is required".to_string(),
+        )
+    })?;
+    let policy_evaluation_summary = extensions.policy_evaluation_summary.ok_or_else(|| {
+        BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: policy_evaluation_summary is required".to_string(),
+        )
+    })?;
+    Ok(BilateralPredicate {
+        schema: None,
+        invocation_id: receipt.id.clone(),
+        tool_server_a: org_a,
+        tool_server_b: org_b,
+        tool_name: tool_name.to_string(),
+        co_sign: DEFAULT_COSIGN_MODE.to_string(),
+        consistency_model: extensions
+            .consistency_model
+            .unwrap_or_else(|| DEFAULT_CONSISTENCY_MODEL.to_string()),
+        cross_org_visibility: extensions
+            .cross_org_visibility
+            .unwrap_or_else(|| DEFAULT_CROSS_ORG_VISIBILITY.to_string()),
+        timestamp_unix_ms,
+        tool_args_hash: Some(HashRecord {
+            alg: "sha256".to_string(),
+            value: receipt.action.parameter_hash.clone(),
+        }),
+        receipt_canonical_json: None,
+        capability_lease_ref: Some(capability_lease_ref),
+        policy_evaluation_summary: Some(policy_evaluation_summary),
+        governance_receipt_ref: extensions.governance_receipt_ref,
+        consistency_anchor: extensions.consistency_anchor,
+    })
+}
+
 /// Build the in-toto Statement carrying the bilateral predicate.
 ///
 /// The subject digest binds the receipt BODY (`ChioReceiptBody`), not
@@ -500,6 +567,27 @@ pub fn build_statement(
             digest: SubjectDigest { sha256: digest_hex },
         }],
         predicate_type: PREDICATE_TYPE_BILATERAL.to_string(),
+        predicate,
+    })
+}
+
+pub fn build_chiodos_statement(
+    receipt: &ChioReceipt,
+    predicate: BilateralPredicate,
+) -> Result<DsseStatement, BilateralCoSigningError> {
+    let body = receipt.body();
+    let body_canonical = canonical_json_bytes(&body)
+        .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?;
+    let mut hasher = Sha256::new();
+    hasher.update(&body_canonical);
+    let digest_hex = hex::encode(hasher.finalize());
+    Ok(DsseStatement {
+        statement_type: STATEMENT_TYPE_V1.to_string(),
+        subject: vec![StatementSubject {
+            name: receipt_subject_name(&receipt.id),
+            digest: SubjectDigest { sha256: digest_hex },
+        }],
+        predicate_type: PREDICATE_TYPE_CHIODOS_BILATERAL.to_string(),
         predicate,
     })
 }
@@ -603,6 +691,71 @@ pub fn sign_dsse_envelope_full(
     // legacy `DualSignedReceipt` so any subtle encoding drift is caught at
     // the producer.
     verify_dsse_envelope(&envelope, &org_a_pub, &org_b_pub)?;
+    Ok(envelope)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn sign_chiodos_dsse_envelope(
+    receipt: &ChioReceipt,
+    org_a_keypair: &Keypair,
+    org_b_keypair: &Keypair,
+    org_a_kernel_id: &str,
+    org_b_kernel_id: &str,
+    tool_name: &str,
+    timestamp_unix_ms: u64,
+    extensions: BilateralPredicateExtensions,
+) -> Result<DsseEnvelope, BilateralCoSigningError> {
+    let org_a_pub = org_a_keypair.public_key();
+    let org_b_pub = org_b_keypair.public_key();
+    let org_a_keyid = Keyid::from_public_key(&org_a_pub);
+    let org_b_keyid = Keyid::from_public_key(&org_b_pub);
+
+    let predicate = build_chiodos_predicate(
+        receipt,
+        KernelIdentity {
+            kernel_id: org_a_kernel_id.to_string(),
+            passport_key_fingerprint: org_a_keyid.clone(),
+            alg: "ed25519".to_string(),
+        },
+        KernelIdentity {
+            kernel_id: org_b_kernel_id.to_string(),
+            passport_key_fingerprint: org_b_keyid.clone(),
+            alg: "ed25519".to_string(),
+        },
+        tool_name,
+        timestamp_unix_ms,
+        extensions,
+    )?;
+
+    let statement = build_chiodos_statement(receipt, predicate)?;
+    let statement_bytes = statement.canonical_bytes()?;
+    let pae_bytes = pae(PAYLOAD_TYPE_IN_TOTO, &statement_bytes);
+
+    let backend_a = Ed25519Backend::new(org_a_keypair.clone());
+    let backend_b = Ed25519Backend::new(org_b_keypair.clone());
+    let sig_a = backend_a
+        .sign_bytes(&pae_bytes)
+        .map_err(|e| BilateralCoSigningError::TransportFailure(e.to_string()))?;
+    let sig_b = backend_b
+        .sign_bytes(&pae_bytes)
+        .map_err(|e| BilateralCoSigningError::TransportFailure(e.to_string()))?;
+
+    let envelope = DsseEnvelope {
+        payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
+        payload: BASE64_STANDARD.encode(&statement_bytes),
+        signatures: vec![
+            DsseSignature {
+                keyid: org_a_keyid.0.clone(),
+                sig: BASE64_STANDARD.encode(sig_a.to_bytes()),
+            },
+            DsseSignature {
+                keyid: org_b_keyid.0.clone(),
+                sig: BASE64_STANDARD.encode(sig_b.to_bytes()),
+            },
+        ],
+    };
+
+    verify_chiodos_dsse_envelope(&envelope, &org_a_pub, &org_b_pub)?;
     Ok(envelope)
 }
 
@@ -833,14 +986,110 @@ pub fn verify_dsse_envelope(
     Ok(statement)
 }
 
+/// Verify a strict Chiodos bilateral invocation DSSE envelope.
+pub fn verify_chiodos_dsse_envelope(
+    envelope: &DsseEnvelope,
+    org_a_public_key: &PublicKey,
+    org_b_public_key: &PublicKey,
+) -> Result<DsseStatement, BilateralCoSigningError> {
+    if envelope.payload_type != PAYLOAD_TYPE_IN_TOTO {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "dsse.malformed: payloadType '{}' is not '{}'",
+            envelope.payload_type, PAYLOAD_TYPE_IN_TOTO
+        )));
+    }
+    if envelope.signatures.len() != 2 {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "dsse.malformed: expected exactly 2 signatures, got {}",
+            envelope.signatures.len()
+        )));
+    }
+
+    let (statement, statement_bytes) = envelope.decode_statement()?;
+    let canonical_statement_bytes = statement.canonical_bytes()?;
+    if canonical_statement_bytes != statement_bytes {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "statement.malformed: payload is not canonical JSON".to_string(),
+        ));
+    }
+
+    if statement.statement_type != STATEMENT_TYPE_V1 {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "statement.schema_invalid: _type '{}' is not '{}'",
+            statement.statement_type, STATEMENT_TYPE_V1
+        )));
+    }
+    if statement.predicate_type != PREDICATE_TYPE_CHIODOS_BILATERAL {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "predicate.type_unrecognised: signature-slice profile '{}' is not strict Chiodos '{}'",
+            statement.predicate_type, PREDICATE_TYPE_CHIODOS_BILATERAL
+        )));
+    }
+    validate_chiodos_predicate(&statement.predicate)?;
+
+    if statement.subject.len() != 1 {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "statement.malformed: bilateral envelope must carry exactly 1 subject, got {}",
+            statement.subject.len()
+        )));
+    }
+    let expected_subject_name = receipt_subject_name(&statement.predicate.invocation_id);
+    if statement.subject[0].name != expected_subject_name {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "statement.malformed: subject name '{}' is not canonical receipt subject '{}'",
+            statement.subject[0].name, expected_subject_name
+        )));
+    }
+
+    let org_a_keyid = Keyid::from_public_key(org_a_public_key);
+    let org_b_keyid = Keyid::from_public_key(org_b_public_key);
+    if statement.predicate.tool_server_a.passport_key_fingerprint != org_a_keyid {
+        return Err(BilateralCoSigningError::OrgASignatureInvalid);
+    }
+    if statement.predicate.tool_server_b.passport_key_fingerprint != org_b_keyid {
+        return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+    }
+
+    let pae_bytes = pae(&envelope.payload_type, &statement_bytes);
+    let sig_a = signature_for_keyid(&envelope.signatures, org_a_keyid.as_str())
+        .ok_or(BilateralCoSigningError::OrgASignatureInvalid)?;
+    let sig_b = signature_for_keyid(&envelope.signatures, org_b_keyid.as_str())
+        .ok_or(BilateralCoSigningError::OrgBSignatureInvalid)?;
+    let sig_a_bytes = decode_ed25519_signature(&sig_a.sig)
+        .ok_or(BilateralCoSigningError::OrgASignatureInvalid)?;
+    let sig_b_bytes = decode_ed25519_signature(&sig_b.sig)
+        .ok_or(BilateralCoSigningError::OrgBSignatureInvalid)?;
+    let sig_a_struct = Signature::from_bytes(&sig_a_bytes);
+    let sig_b_struct = Signature::from_bytes(&sig_b_bytes);
+    if !org_a_public_key.verify(&pae_bytes, &sig_a_struct) {
+        return Err(BilateralCoSigningError::OrgASignatureInvalid);
+    }
+    if !org_b_public_key.verify(&pae_bytes, &sig_b_struct) {
+        return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+    }
+
+    Ok(statement)
+}
+
 fn validate_signature_slice_predicate(
     pred: &BilateralPredicate,
 ) -> Result<(), BilateralCoSigningError> {
-    if pred.schema != PREDICATE_BODY_SCHEMA {
+    if pred.schema.as_deref() != Some(PREDICATE_BODY_SCHEMA) {
         return Err(BilateralCoSigningError::CanonicalJson(format!(
             "predicate.schema_invalid: schema {:?} is not {:?}",
             pred.schema, PREDICATE_BODY_SCHEMA
         )));
+    }
+    if pred.tool_args_hash.is_some() {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: tool_args_hash is not part of the signature-slice profile"
+                .to_string(),
+        ));
+    }
+    if pred.receipt_canonical_json.is_none() {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: receipt_canonical_json is required".to_string(),
+        ));
     }
     require_non_empty_schema_string("invocation_id", &pred.invocation_id)?;
     require_non_empty_schema_string("tool_name", &pred.tool_name)?;
@@ -884,6 +1133,71 @@ fn validate_signature_slice_predicate(
     Ok(())
 }
 
+fn validate_chiodos_predicate(pred: &BilateralPredicate) -> Result<(), BilateralCoSigningError> {
+    if pred.schema.is_some() {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: schema must be absent from strict Chiodos predicates"
+                .to_string(),
+        ));
+    }
+    if pred.receipt_canonical_json.is_some() {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: receipt_canonical_json must be absent from strict Chiodos predicates"
+                .to_string(),
+        ));
+    }
+    require_non_empty_schema_string("invocation_id", &pred.invocation_id)?;
+    require_non_empty_schema_string("tool_name", &pred.tool_name)?;
+    require_non_empty_schema_string("tool_server_a.kernel_id", &pred.tool_server_a.kernel_id)?;
+    require_non_empty_schema_string("tool_server_b.kernel_id", &pred.tool_server_b.kernel_id)?;
+    if pred.tool_server_a.alg != "ed25519" {
+        return Err(BilateralCoSigningError::OrgASignatureInvalid);
+    }
+    if pred.tool_server_b.alg != "ed25519" {
+        return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+    }
+    if !is_sha256_hex(pred.tool_server_a.passport_key_fingerprint.as_str())
+        || !is_sha256_hex(pred.tool_server_b.passport_key_fingerprint.as_str())
+    {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: passport_key_fingerprint is not 64 lowercase hex"
+                .to_string(),
+        ));
+    }
+    let tool_args_hash = pred.tool_args_hash.as_ref().ok_or_else(|| {
+        BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: tool_args_hash is required".to_string(),
+        )
+    })?;
+    validate_hash_record(tool_args_hash, "tool_args_hash")?;
+    if pred.capability_lease_ref.is_none() {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: capability_lease_ref is required".to_string(),
+        ));
+    }
+    if pred.policy_evaluation_summary.is_none() {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: policy_evaluation_summary is required".to_string(),
+        ));
+    }
+    match pred.co_sign.as_str() {
+        "bilateral_required" | "bilateral_if_cross_org" => {}
+        _ => {
+            return Err(BilateralCoSigningError::CanonicalJson(format!(
+                "predicate.schema_invalid: co_sign {:?} is not supported",
+                pred.co_sign
+            )))
+        }
+    }
+    if !VALID_CROSS_ORG_VISIBILITY.contains(&pred.cross_org_visibility.as_str()) {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "predicate.schema_invalid: cross_org_visibility {:?} is unsupported",
+            pred.cross_org_visibility
+        )));
+    }
+    Ok(())
+}
+
 fn require_non_empty_schema_string(
     field: &str,
     value: &str,
@@ -899,18 +1213,37 @@ fn require_non_empty_schema_string(
 fn decode_embedded_receipt(
     pred: &BilateralPredicate,
 ) -> Result<ChioReceipt, BilateralCoSigningError> {
-    let receipt: ChioReceipt = serde_json::from_str(&pred.receipt_canonical_json)
+    let receipt_canonical_json = pred.receipt_canonical_json.as_ref().ok_or_else(|| {
+        BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: receipt_canonical_json is required".to_string(),
+        )
+    })?;
+    let receipt: ChioReceipt = serde_json::from_str(receipt_canonical_json)
         .map_err(|e| BilateralCoSigningError::CanonicalJson(format!("receipt json: {e}")))?;
     let canonical = canonical_json_bytes(&receipt)
         .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?;
     let canonical_json = String::from_utf8(canonical)
         .map_err(|e| BilateralCoSigningError::CanonicalJson(e.to_string()))?;
-    if canonical_json != pred.receipt_canonical_json {
+    if &canonical_json != receipt_canonical_json {
         return Err(BilateralCoSigningError::CanonicalJson(
             "predicate.schema_invalid: receipt_canonical_json is not canonical".to_string(),
         ));
     }
     Ok(receipt)
+}
+
+fn validate_hash_record(record: &HashRecord, field: &str) -> Result<(), BilateralCoSigningError> {
+    if record.alg != "sha256" {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "predicate.schema_invalid: {field}.alg must be sha256"
+        )));
+    }
+    if !is_sha256_hex(&record.value) {
+        return Err(BilateralCoSigningError::CanonicalJson(format!(
+            "predicate.schema_invalid: {field}.value must be 64 lowercase hex"
+        )));
+    }
+    Ok(())
 }
 
 fn receipt_body_digest_hex(receipt: &ChioReceipt) -> Result<String, BilateralCoSigningError> {
@@ -1224,10 +1557,11 @@ mod tests {
         .unwrap();
         let (mut statement, _) = envelope.decode_statement().unwrap();
         let mut embedded: ChioReceipt =
-            serde_json::from_str(&statement.predicate.receipt_canonical_json).unwrap();
+            serde_json::from_str(statement.predicate.receipt_canonical_json.as_ref().unwrap())
+                .unwrap();
         embedded.content_hash = sha256_hex(b"tampered-content");
         statement.predicate.receipt_canonical_json =
-            String::from_utf8(canonical_json_bytes(&embedded).unwrap()).unwrap();
+            Some(String::from_utf8(canonical_json_bytes(&embedded).unwrap()).unwrap());
         let bytes = statement.canonical_bytes().unwrap();
         resign_payload(&mut envelope, &kp_a, &kp_b, &bytes);
 
@@ -1255,7 +1589,7 @@ mod tests {
         .unwrap();
         let (mut statement, _) = envelope.decode_statement().unwrap();
         statement.predicate.receipt_canonical_json =
-            String::from_utf8(canonical_json_bytes(&rogue_receipt).unwrap()).unwrap();
+            Some(String::from_utf8(canonical_json_bytes(&rogue_receipt).unwrap()).unwrap());
         statement.subject[0].digest.sha256 = receipt_body_digest_hex(&rogue_receipt).unwrap();
         let bytes = statement.canonical_bytes().unwrap();
         resign_payload(&mut envelope, &kp_a, &kp_b, &bytes);

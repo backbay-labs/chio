@@ -1,4 +1,4 @@
-//! Integration coverage for `arc bind <provider> --card <path>` (P4.T6).
+//! Integration coverage for `arc bind <provider> --card <path>`.
 //!
 //! Builds the `chio` binary via env!("CARGO_BIN_EXE_chio"), writes a
 //! canonical-JSON model card to a temp file, runs the subcommand, and

@@ -44,6 +44,19 @@ if package.get("selectiveDisclosureProof") != proof:
     raise SystemExit("Standalone BBS proof fixture differs from package proof")
 if len(package.get("bilateralEnvelopes", [])) != 3:
     raise SystemExit("Chiodos package must contain three bilateral envelopes")
+for idx, envelope in enumerate(package.get("bilateralEnvelopes", [])):
+    payload = envelope.get("payload")
+    if not isinstance(payload, str):
+        raise SystemExit(f"Chiodos envelope {idx} has no payload")
+    import base64
+    statement = json.loads(base64.b64decode(payload).decode("utf-8"))
+    if statement.get("predicateType") != "chio.bilateral-cosign-invocation.v1":
+        raise SystemExit(f"Chiodos envelope {idx} is not strict Chiodos")
+    predicate = statement.get("predicate", {})
+    if "tool_args_hash" not in predicate:
+        raise SystemExit(f"Chiodos envelope {idx} is missing tool_args_hash")
+    if "receipt_canonical_json" in predicate:
+        raise SystemExit(f"Chiodos envelope {idx} carries signature-slice receipt helper")
 if len(package.get("capabilityLeases", [])) != 3:
     raise SystemExit("Chiodos package must contain three capability leases")
 if len(package.get("governanceReceipts", [])) != 1:
@@ -54,4 +67,13 @@ PY
 
 cargo test -p chio-selective-disclosure --features bbs --test bbs_selective_disclosure
 cargo test -p chio-conformance --features chiodos-bbs --test chiodos_selective_disclosure
+cargo test -p chio-chiodos
+cargo test -p chio-cli chiodos
 cargo test -p chiodos-three-vendor-example
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+cargo run -p chio-cli -- chiodos verify \
+    --package "$PACKAGE_FIXTURE" \
+    --report "$tmpdir/verifier-report.json"
+cmp "$REPORT_FIXTURE" "$tmpdir/verifier-report.json"

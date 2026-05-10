@@ -84,13 +84,12 @@ deployment but MUST NOT silently rewrite one into the other (the
 predicate type is part of the signed Statement and rewriting would
 break signature verification).
 
-Implementation status: the current `crates/chio-federation` DSSE helper
-does not emit either strict predicate type above. It emits the bounded
-`chio.bilateral-signature-slice.v1` profile, whose signed predicate is a
-local bilateral signature slice for receipt binding and peer signature
-checks. Strict CHIODOS bilateral predicate conformance remains future
-work until the producer emits every required section 5 field and removes
-signature-slice-only helper fields.
+Implementation status: `crates/chio-federation` emits and verifies the
+chio-namespaced fallback strict predicate type,
+`chio.bilateral-cosign-invocation.v1`, for Chiodos proof packages. The
+older `chio.bilateral-signature-slice.v1` profile remains available as a
+compatibility artifact for local receipt binding, but strict Chiodos
+verification rejects it as conformance evidence.
 
 ---
 
@@ -584,13 +583,11 @@ The chio maintainers intend the following next steps:
 4. **ITE drafting.** If the in-toto WG indicates appetite, draft an
    in-toto Enhancement (ITE) using this document as the seed text,
    carrying it through the standard ITE review process.
-5. **Reference implementation.** Replace the current
-   `chio.bilateral-signature-slice.v1` helper with a strict predicate
-   implementation that emits and verifies the section 5 body under the
-   chio-namespaced fallback URI, then switches to the canonical URI on
-   acceptance. The existing helper proves the DSSE PAE and dual-key
-   signature slice only; it is not a strict CHIODOS predicate
-   implementation.
+5. **Reference implementation.** Keep the chio-namespaced strict predicate
+   implementation covered by production tests, then switch emission to the
+   canonical URI if the in-toto WG accepts it. The existing
+   `chio.bilateral-signature-slice.v1` helper remains compatibility-only and
+   must not be treated as strict Chiodos predicate evidence.
 
 If the WG declines or the discussion stalls, this document remains the
 written record of the structural gap that motivates the
