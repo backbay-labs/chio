@@ -49,12 +49,12 @@ pub use bilateral_dsse::{
     PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
 };
 pub use bilateral_verifier::{
-    verify_bilateral_cosign_invocation, ActionClassKind, CapabilityLeaseRegistry,
-    DemoAllowAllRevocationOracle, DenyListRevocationOracle, GovernanceReceiptStore,
-    InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, PeerPinSet,
-    PinnedEpoch, PinnedPeer, ReceiptStore, ResolvedGovernanceReceipt, ResolvedLease,
-    RevocationOracle, UnknownActionClassPolicy, VerifiedBilateralCoSignInvocation, VerifierConfig,
-    VerifierError,
+    verify_bilateral_cosign_invocation, verify_chiodos_bilateral_invocation, ActionClassKind,
+    CapabilityLeaseRegistry, DemoAllowAllRevocationOracle, DenyListRevocationOracle,
+    GovernanceReceiptStore, InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry,
+    InMemoryReceiptStore, PeerPinSet, PinnedEpoch, PinnedPeer, ReceiptStore,
+    ResolvedGovernanceReceipt, ResolvedLease, RevocationOracle, StrictChiodosVerifierConfig,
+    UnknownActionClassPolicy, VerifiedBilateralCoSignInvocation, VerifierConfig, VerifierError,
 };
 pub use revocation_gossip::{
     respond_to_catchup, RevocationCatchupHistory, RevocationCatchupRequest,
@@ -71,10 +71,10 @@ pub use selective_disclosure::{
 };
 pub use trust_establishment::{
     ConformanceEvidence, ConformanceTier, FederationPeer, FederationPeerStore, HandshakeChallenge,
-    InMemoryPeerStore, KernelTrustExchange, KernelTrustExchangeConfig, PeerHandshakeEnvelope,
-    PeerHandshakeError, QuorumPolicy, CONFORMANCE_BPS_DENOMINATOR, DEFAULT_HANDSHAKE_MAX_SKEW_SECS,
-    DEFAULT_ROTATION_WINDOW_SECS, FEDERATION_HANDSHAKE_SCHEMA, GOLD_MIN_KANI_TRUST_BOUNDARY_CRATES,
-    GOLD_MIN_MUTATION_KILL_BPS, GOLD_MIN_THREAT_COVERAGE_BPS,
+    InMemoryPeerStore, KernelTrustExchange, KernelTrustExchangeConfig, LadderManifestRef,
+    PeerHandshakeEnvelope, PeerHandshakeError, QuorumPolicy, CONFORMANCE_BPS_DENOMINATOR,
+    DEFAULT_HANDSHAKE_MAX_SKEW_SECS, DEFAULT_ROTATION_WINDOW_SECS, FEDERATION_HANDSHAKE_SCHEMA,
+    GOLD_MIN_KANI_TRUST_BOUNDARY_CRATES, GOLD_MIN_MUTATION_KILL_BPS, GOLD_MIN_THREAT_COVERAGE_BPS,
     SILVER_MIN_KANI_TRUST_BOUNDARY_CRATES, SILVER_MIN_MUTATION_KILL_BPS,
     SILVER_MIN_THREAT_COVERAGE_BPS,
 };

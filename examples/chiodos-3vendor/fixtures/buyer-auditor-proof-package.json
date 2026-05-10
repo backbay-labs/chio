@@ -1,0 +1,390 @@
+{
+  "schema": "chio.chiodos.proof-package.v1",
+  "generatedAtUnixMs": 1766000000000,
+  "workflowId": "wf-chiodos-refund-001",
+  "claims": {
+    "bbsRevealSet": true,
+    "hiddenRangePredicates": false,
+    "vcDataIntegrityBbs": false,
+    "zkvm": false
+  },
+  "peerLadderBindings": [
+    {
+      "kernelId": "did:chio:buyer-kernel",
+      "publicKey": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+      "ladderManifestRef": {
+        "manifestId": "ladder:buyer:refund:v1",
+        "sha256": "8e445183ac1c5abc5f266fc4e7b7dc159aa64a48d1f47ec15158802c0b138ab5",
+        "issuedAtUnixMs": 1765999940000,
+        "expiresAtUnixMs": 1766000060000
+      }
+    },
+    {
+      "kernelId": "did:chio:vendor-a",
+      "publicKey": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+      "ladderManifestRef": {
+        "manifestId": "ladder:vendor-a:refund:v1",
+        "sha256": "a031be96a7633c7e1fbd80a533a133c66c108871fb7ecb7b600a3f92de75025c",
+        "issuedAtUnixMs": 1765999940000,
+        "expiresAtUnixMs": 1766000060000
+      }
+    },
+    {
+      "kernelId": "did:chio:vendor-b",
+      "publicKey": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a",
+      "ladderManifestRef": {
+        "manifestId": "ladder:vendor-b:refund:v1",
+        "sha256": "08d97e2130528341b1beb90296ecd5f95cda1052a3232945effa810006e29da4",
+        "issuedAtUnixMs": 1765999940000,
+        "expiresAtUnixMs": 1766000060000
+      }
+    },
+    {
+      "kernelId": "did:chio:vendor-c",
+      "publicKey": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc",
+      "ladderManifestRef": {
+        "manifestId": "ladder:vendor-c:refund:v1",
+        "sha256": "8ef4eaabdcbaeb55ab8b3c1cdfa52827e8c93d9870dc71dcabb09382dbaf9371",
+        "issuedAtUnixMs": 1765999940000,
+        "expiresAtUnixMs": 1766000060000
+      }
+    }
+  ],
+  "vendorKeys": [
+    {
+      "vendorId": "vendor-a",
+      "publicKey": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+    },
+    {
+      "vendorId": "vendor-b",
+      "publicKey": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a"
+    },
+    {
+      "vendorId": "vendor-c",
+      "publicKey": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc"
+    }
+  ],
+  "toolReceipts": [
+    {
+      "id": "rcpt-vendor-a",
+      "timestamp": 1766000000,
+      "capability_id": "lease-vendor-a-read",
+      "tool_server": "vendor-a.files",
+      "tool_name": "read_refund_case",
+      "action": {
+        "parameters": {
+          "caseRef": "refund-250",
+          "tool": "read_refund_case",
+          "workflowId": "wf-chiodos-refund-001"
+        },
+        "parameter_hash": "935b1378da1b3a29790a7176986bc1b9358b0a23e7ca8a94156bab0e0da64ed2"
+      },
+      "decision": {
+        "verdict": "allow"
+      },
+      "content_hash": "d4a0dc2e587e4acc3278024b42796fb9978466207933c82ceb0a626c3a1b314a",
+      "policy_hash": "e6a0766a54bd1dcd5dc624072cbd32195e5da0b5418589d66f731eb8b9688b09",
+      "metadata": {
+        "vendor_id": "vendor-a",
+        "workflow_id": "wf-chiodos-refund-001"
+      },
+      "tenant_id": "buyer-tenant",
+      "kernel_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+      "signature": "976586c29318ea62b5537eb20dee5f2840edb9cfb5fc36fa9cae3ee506c014b6e776b32a52f3fffaf4a7981b902f4d4996e3ca2552825a437dae651de6379b0f"
+    },
+    {
+      "id": "rcpt-vendor-b",
+      "timestamp": 1766000000,
+      "capability_id": "lease-vendor-b-kyc",
+      "tool_server": "vendor-b.kyc",
+      "tool_name": "verify_customer",
+      "action": {
+        "parameters": {
+          "caseRef": "refund-250",
+          "tool": "verify_customer",
+          "workflowId": "wf-chiodos-refund-001"
+        },
+        "parameter_hash": "86269a4364b65b0b29ab6559e8b1dc4fa4f2c6e93b1bc96abf6208a0afdf8b5b"
+      },
+      "decision": {
+        "verdict": "allow"
+      },
+      "content_hash": "9b72477f137629bca082c3482686272608acbb578eed09d2e178e4d7184ec2ef",
+      "policy_hash": "3132e1272daabd60cda9524159c096b71c2beda112e82f0b8a3df9c93ba361a4",
+      "metadata": {
+        "vendor_id": "vendor-b",
+        "workflow_id": "wf-chiodos-refund-001"
+      },
+      "tenant_id": "buyer-tenant",
+      "kernel_key": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a",
+      "signature": "d2ffae49351b3e63479240914338592f7d6b4ad0dea9badcbbc0f2b778310f3b12d79e68f7cd794dd6ee5cc8a05e1e49ff2dcce320980731909a2f93adfcb90f"
+    },
+    {
+      "id": "rcpt-vendor-c",
+      "timestamp": 1766000000,
+      "capability_id": "lease-vendor-c-refund",
+      "tool_server": "vendor-c.payments",
+      "tool_name": "stage_refund",
+      "action": {
+        "parameters": {
+          "caseRef": "refund-250",
+          "tool": "stage_refund",
+          "workflowId": "wf-chiodos-refund-001"
+        },
+        "parameter_hash": "b3381903fd6423aa4316775de66d10c173144264bacd0fd09f172e165841ebaf"
+      },
+      "decision": {
+        "verdict": "allow"
+      },
+      "content_hash": "3274eda6e928644236b9db29c1d207745880f5678845390f77644d9cf2e75978",
+      "policy_hash": "297d21efd700643e3059854a3921c759d967ade0d958507e5e053388939abe0b",
+      "metadata": {
+        "vendor_id": "vendor-c",
+        "workflow_id": "wf-chiodos-refund-001"
+      },
+      "tenant_id": "buyer-tenant",
+      "kernel_key": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc",
+      "signature": "7752444a93a8ce3e6ad079da43ba43d9ff77f6324debb93144c05d289f5662ea80bfd12d789b6186623a834552eb7dead37c2155ed17cfcde7d77942cbded104"
+    }
+  ],
+  "workflowReceipt": {
+    "id": "wf-chiodos-refund-001",
+    "schema": "chio.workflow-receipt.v2",
+    "started_at": 1766000000,
+    "completed_at": 1766000042,
+    "skill_id": "refund-underwriting",
+    "skill_version": "0.1.0",
+    "agent_id": "buyer-agent",
+    "session_id": "sess-chiodos-refund",
+    "capability_id": "cap-chiodos-workflow",
+    "outcome": {
+      "status": "completed"
+    },
+    "steps": [
+      {
+        "step_index": 0,
+        "server_id": "vendor-a.files",
+        "tool_name": "read_refund_case",
+        "allowed": true,
+        "tool_receipt_id": "rcpt-vendor-a",
+        "outcome": "success",
+        "duration_ms": 12,
+        "cost": {
+          "units": 100,
+          "currency": "USD"
+        },
+        "output_hash": "d4a0dc2e587e4acc3278024b42796fb9978466207933c82ceb0a626c3a1b314a",
+        "bilateral_dsse_sha256": "d9321bc7275cb79b2f4a8bce24cc2f5dcd48a45c04dceb80f8805feb8a8399ce",
+        "consistency_anchor": "chiodos:consistency:wf-chiodos-refund-001:0"
+      },
+      {
+        "step_index": 1,
+        "server_id": "vendor-b.kyc",
+        "tool_name": "verify_customer",
+        "allowed": true,
+        "tool_receipt_id": "rcpt-vendor-b",
+        "outcome": "success",
+        "duration_ms": 18,
+        "cost": {
+          "units": 200,
+          "currency": "USD"
+        },
+        "output_hash": "9b72477f137629bca082c3482686272608acbb578eed09d2e178e4d7184ec2ef",
+        "bilateral_dsse_sha256": "39404a7e5ca568fe9e4fe8e924dae7ca73d184c69312a807e47bfaf0db07e144",
+        "parent_receipt_sha256": "d3b6f96c04e26b7ca6e92f0fa2910e954125f038646fe3205c01f518d7a519c4",
+        "consistency_anchor": "chiodos:consistency:wf-chiodos-refund-001:1"
+      },
+      {
+        "step_index": 2,
+        "server_id": "vendor-c.payments",
+        "tool_name": "stage_refund",
+        "allowed": true,
+        "tool_receipt_id": "rcpt-vendor-c",
+        "outcome": "success",
+        "duration_ms": 12,
+        "cost": {
+          "units": 250,
+          "currency": "USD"
+        },
+        "output_hash": "3274eda6e928644236b9db29c1d207745880f5678845390f77644d9cf2e75978",
+        "bilateral_dsse_sha256": "458c811ab417d2b9f3333303e10642b3147c326fb78edc8957c9a8ea9d621049",
+        "governance_receipt_id": "gov-refund-stage-authorization",
+        "parent_receipt_sha256": "aef51a27ca05c7c24b396c69f2cccff55da20d2aebe5fd5df1eac38909346b09",
+        "consistency_anchor": "chiodos:consistency:wf-chiodos-refund-001:2",
+        "destructive": true
+      }
+    ],
+    "total_cost": {
+      "units": 550,
+      "currency": "USD"
+    },
+    "duration_ms": 42,
+    "kernel_key": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+    "signature": "2f81e2aaba3019575321d28eea1289421b015825114f125001e3176d99cb31a3e3bbd7a0bece831f1659ffb0d952b2d57b033ae07d7b8445e9ea769758eef20c",
+    "vendor_signatures": [
+      {
+        "vendorId": "vendor-a",
+        "publicKey": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+        "signature": "3a8c4198df341e02ef6fe9f2318c8fa3d9b9047854d0fb80e23fd97afcbcaa1983185d5e51d977d26bebe3979c9952c7b8c849697eede290c49e82f8046d0403"
+      },
+      {
+        "vendorId": "vendor-b",
+        "publicKey": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a",
+        "signature": "9da71bec3c1934d19b8f08ac3d18ca9872c449b961289eafb8585f4fa551b8a0865b498abb4435a5eec33086969e58cc09f468014aa96d4d88b002c933241b03"
+      },
+      {
+        "vendorId": "vendor-c",
+        "publicKey": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc",
+        "signature": "5cd29267332d7573bcbe23bd202fc020cbd77df16b48cd63518bd2802c6c99e170c2556b030c1e6dd804d1340709ba966e2511a625c2786389a449750ef0be03"
+      }
+    ]
+  },
+  "bilateralEnvelopes": [
+    {
+      "payloadType": "application/vnd.in-toto+json",
+      "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJwcmVkaWNhdGUiOnsiY2FwYWJpbGl0eV9sZWFzZV9yZWYiOnsiZXhwaXJlc19hdF91bml4X21zIjoxNzY2MDAwMDMwMDAwLCJpc3N1ZXIiOiJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJsZWFzZV9pZCI6ImxlYXNlLXZlbmRvci1hLXJlYWQiLCJzY29wZV9kaWdlc3QiOnsiYWxnIjoic2hhMjU2IiwidmFsdWUiOiI4ZDU1Yzc5OWI5YTJlMDJhN2I3ZjU2ZTNkMGU1NTgzZGZiYzkyNWJlNzdhOWI3OGE5OGYzYzBjNDlhZjYzNTZlIn19LCJjb19zaWduIjoiYmlsYXRlcmFsX3JlcXVpcmVkIiwiY29uc2lzdGVuY3lfYW5jaG9yIjoiY2hpb2RvczphbmNob3I6d2YtY2hpb2Rvcy1yZWZ1bmQtMDAxOjAiLCJjb25zaXN0ZW5jeV9tb2RlbCI6ImNyZHQtY29tbXV0YXRpdmUiLCJjcm9zc19vcmdfdmlzaWJpbGl0eSI6ImZlZGVyYXRlZCIsImludm9jYXRpb25faWQiOiJyY3B0LXZlbmRvci1hIiwicG9saWN5X2V2YWx1YXRpb25fc3VtbWFyeSI6eyJqb2ludF9kaXNwb3NpdGlvbiI6ImFsbG93Iiwic2VydmVyX2FfdmVyZGljdCI6eyJwb2xpY3lfaWQiOiJidXllci1wb2xpY3k6cmVhZF9yZWZ1bmRfY2FzZSIsInBvbGljeV92ZXJzaW9uIjoiY2hpb2Rvcy1sYWRkZXItdjEiLCJyYXRpb25hbGVfY29kZSI6ImxlYXNlLWJvdW5kIiwidmVyZGljdCI6ImFsbG93In0sInNlcnZlcl9iX3ZlcmRpY3QiOnsicG9saWN5X2lkIjoidmVuZG9yLWEtcG9saWN5OnJlYWRfcmVmdW5kX2Nhc2UiLCJwb2xpY3lfdmVyc2lvbiI6ImNoaW9kb3MtbGFkZGVyLXYxIiwicmF0aW9uYWxlX2NvZGUiOiJtYW5pZmVzdC1ib3VuZCIsInZlcmRpY3QiOiJhbGxvdyJ9fSwicmVjZWlwdF9jYW5vbmljYWxfanNvbiI6IntcImFjdGlvblwiOntcInBhcmFtZXRlcl9oYXNoXCI6XCI5MzViMTM3OGRhMWIzYTI5NzkwYTcxNzY5ODZiYzFiOTM1OGIwYTIzZTdjYThhOTQxNTZiYWIwZTBkYTY0ZWQyXCIsXCJwYXJhbWV0ZXJzXCI6e1wiY2FzZVJlZlwiOlwicmVmdW5kLTI1MFwiLFwidG9vbFwiOlwicmVhZF9yZWZ1bmRfY2FzZVwiLFwid29ya2Zsb3dJZFwiOlwid2YtY2hpb2Rvcy1yZWZ1bmQtMDAxXCJ9fSxcImNhcGFiaWxpdHlfaWRcIjpcImxlYXNlLXZlbmRvci1hLXJlYWRcIixcImNvbnRlbnRfaGFzaFwiOlwiZDRhMGRjMmU1ODdlNGFjYzMyNzgwMjRiNDI3OTZmYjk5Nzg0NjYyMDc5MzNjODJjZWIwYTYyNmMzYTFiMzE0YVwiLFwiZGVjaXNpb25cIjp7XCJ2ZXJkaWN0XCI6XCJhbGxvd1wifSxcImlkXCI6XCJyY3B0LXZlbmRvci1hXCIsXCJrZXJuZWxfa2V5XCI6XCJkNTQyMDdkYTE5NDk3N2RjZjQ2YWRiZmVjMmJjMmU3NWI1MmQ1YThhNDIxODRmZWRmZGMwMDAyNGYwZTNlOGRhXCIsXCJtZXRhZGF0YVwiOntcInZlbmRvcl9pZFwiOlwidmVuZG9yLWFcIixcIndvcmtmbG93X2lkXCI6XCJ3Zi1jaGlvZG9zLXJlZnVuZC0wMDFcIn0sXCJwb2xpY3lfaGFzaFwiOlwiZTZhMDc2NmE1NGJkMWRjZDVkYzYyNDA3MmNiZDMyMTk1ZTVkYTBiNTQxODU4OWQ2NmY3MzFlYjhiOTY4OGIwOVwiLFwic2lnbmF0dXJlXCI6XCI5NzY1ODZjMjkzMThlYTYyYjU1MzdlYjIwZGVlNWYyODQwZWRiOWNmYjVmYzM2ZmE5Y2FlM2VlNTA2YzAxNGI2ZTc3NmIzMmE1MmYzZmZmYWY0YTc5ODFiOTAyZjRkNDk5NmUzY2EyNTUyODI1YTQzN2RhZTY1MWRlNjM3OWIwZlwiLFwidGVuYW50X2lkXCI6XCJidXllci10ZW5hbnRcIixcInRpbWVzdGFtcFwiOjE3NjYwMDAwMDAsXCJ0b29sX25hbWVcIjpcInJlYWRfcmVmdW5kX2Nhc2VcIixcInRvb2xfc2VydmVyXCI6XCJ2ZW5kb3ItYS5maWxlc1wifSIsInNjaGVtYSI6ImNoaW8uYmlsYXRlcmFsLXNpZ25hdHVyZS1zbGljZS52MSIsInRpbWVzdGFtcF91bml4X21zIjoxNzY2MDAwMDAwMDAwLCJ0b29sX25hbWUiOiJyZWFkX3JlZnVuZF9jYXNlIiwidG9vbF9zZXJ2ZXJfYSI6eyJhbGciOiJlZDI1NTE5Iiwia2VybmVsX2lkIjoiZGlkOmNoaW86YnV5ZXIta2VybmVsIiwicGFzc3BvcnRfa2V5X2ZpbmdlcnByaW50IjoiZmRmNzJhMDg4ZjE4ZjczOTllOGM1MmJjZTQ0ODQ0MTUwMWY3NTlhNTk1YTg2OTgwZTVkOWE0MjJhMDFlNWQ1NSJ9LCJ0b29sX3NlcnZlcl9iIjp7ImFsZyI6ImVkMjU1MTkiLCJrZXJuZWxfaWQiOiJkaWQ6Y2hpbzp2ZW5kb3ItYSIsInBhc3Nwb3J0X2tleV9maW5nZXJwcmludCI6ImQ3ZTFlMDg0YmUyMTNiMDFlNTA2ODUyYWY4MTk4Yjk5ODBiNDNlMDM3NDljNjdkODJkY2QwOTAzZjQwMDFjNzcifX0sInByZWRpY2F0ZVR5cGUiOiJjaGlvLmJpbGF0ZXJhbC1zaWduYXR1cmUtc2xpY2UudjEiLCJzdWJqZWN0IjpbeyJkaWdlc3QiOnsic2hhMjU2IjoiMjQwYTQzOGFlNDViNTBhMmNjZjY0MzcyM2E1NDY3OGU3ZGNjNWYwNTQ4MTEwMzM0MmVjMDM3N2EzZGNiOGYxOCJ9LCJuYW1lIjoiY2hpby1yZWNlaXB0OnJjcHQtdmVuZG9yLWEifV19",
+      "signatures": [
+        {
+          "keyid": "fdf72a088f18f7399e8c52bce448441501f759a595a86980e5d9a422a01e5d55",
+          "sig": "tvrsZIwpZuSEUQ3ewLTvAYQo/SV0vG+7qjuV9HyhLC+XIVRik0ga9w5Xe2/XkN0e76Jd/8ep3u+lcsdmnthlBA=="
+        },
+        {
+          "keyid": "d7e1e084be213b01e506852af8198b9980b43e03749c67d82dcd0903f4001c77",
+          "sig": "PjqPk7tX6Lp1L4CRNPkdJUTE5mCOUW4yq35NQIklB/6OYGgx2xr1SR2W3tDSX2TGK7AYEx2bul67Xn6x9D2ZCw=="
+        }
+      ]
+    },
+    {
+      "payloadType": "application/vnd.in-toto+json",
+      "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJwcmVkaWNhdGUiOnsiY2FwYWJpbGl0eV9sZWFzZV9yZWYiOnsiZXhwaXJlc19hdF91bml4X21zIjoxNzY2MDAwMDMwMDAwLCJpc3N1ZXIiOiJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJsZWFzZV9pZCI6ImxlYXNlLXZlbmRvci1iLWt5YyIsInNjb3BlX2RpZ2VzdCI6eyJhbGciOiJzaGEyNTYiLCJ2YWx1ZSI6ImYyY2IwMDNiYzc5ODMxNzMxZWIwMWIzYWRhNGY0NDhkZmUxNzdkYzU4Y2JlMzNkNWQ4ZjExZmY5ZmFiMmJkZGMifX0sImNvX3NpZ24iOiJiaWxhdGVyYWxfcmVxdWlyZWQiLCJjb25zaXN0ZW5jeV9hbmNob3IiOiJjaGlvZG9zOmFuY2hvcjp3Zi1jaGlvZG9zLXJlZnVuZC0wMDE6MSIsImNvbnNpc3RlbmN5X21vZGVsIjoiY3JkdC1jb21tdXRhdGl2ZSIsImNyb3NzX29yZ192aXNpYmlsaXR5IjoiZmVkZXJhdGVkIiwiaW52b2NhdGlvbl9pZCI6InJjcHQtdmVuZG9yLWIiLCJwb2xpY3lfZXZhbHVhdGlvbl9zdW1tYXJ5Ijp7ImpvaW50X2Rpc3Bvc2l0aW9uIjoiYWxsb3ciLCJzZXJ2ZXJfYV92ZXJkaWN0Ijp7InBvbGljeV9pZCI6ImJ1eWVyLXBvbGljeTp2ZXJpZnlfY3VzdG9tZXIiLCJwb2xpY3lfdmVyc2lvbiI6ImNoaW9kb3MtbGFkZGVyLXYxIiwicmF0aW9uYWxlX2NvZGUiOiJsZWFzZS1ib3VuZCIsInZlcmRpY3QiOiJhbGxvdyJ9LCJzZXJ2ZXJfYl92ZXJkaWN0Ijp7InBvbGljeV9pZCI6InZlbmRvci1iLXBvbGljeTp2ZXJpZnlfY3VzdG9tZXIiLCJwb2xpY3lfdmVyc2lvbiI6ImNoaW9kb3MtbGFkZGVyLXYxIiwicmF0aW9uYWxlX2NvZGUiOiJtYW5pZmVzdC1ib3VuZCIsInZlcmRpY3QiOiJhbGxvdyJ9fSwicmVjZWlwdF9jYW5vbmljYWxfanNvbiI6IntcImFjdGlvblwiOntcInBhcmFtZXRlcl9oYXNoXCI6XCI4NjI2OWE0MzY0YjY1YjBiMjlhYjY1NTllOGIxZGM0ZmE0ZjJjNmU5M2IxYmM5NmFiZjYyMDhhMGFmZGY4YjViXCIsXCJwYXJhbWV0ZXJzXCI6e1wiY2FzZVJlZlwiOlwicmVmdW5kLTI1MFwiLFwidG9vbFwiOlwidmVyaWZ5X2N1c3RvbWVyXCIsXCJ3b3JrZmxvd0lkXCI6XCJ3Zi1jaGlvZG9zLXJlZnVuZC0wMDFcIn19LFwiY2FwYWJpbGl0eV9pZFwiOlwibGVhc2UtdmVuZG9yLWIta3ljXCIsXCJjb250ZW50X2hhc2hcIjpcIjliNzI0NzdmMTM3NjI5YmNhMDgyYzM0ODI2ODYyNzI2MDhhY2JiNTc4ZWVkMDlkMmUxNzhlNGQ3MTg0ZWMyZWZcIixcImRlY2lzaW9uXCI6e1widmVyZGljdFwiOlwiYWxsb3dcIn0sXCJpZFwiOlwicmNwdC12ZW5kb3ItYlwiLFwia2VybmVsX2tleVwiOlwiNTExYzM0YTFhMmNiNTIxZGYxNmJiMjQ2YjhkZThlNzk5N2NlMjM1YzdlNzZiMjJhM2Q3NTAzYTI0ODE5ZGQ4YVwiLFwibWV0YWRhdGFcIjp7XCJ2ZW5kb3JfaWRcIjpcInZlbmRvci1iXCIsXCJ3b3JrZmxvd19pZFwiOlwid2YtY2hpb2Rvcy1yZWZ1bmQtMDAxXCJ9LFwicG9saWN5X2hhc2hcIjpcIjMxMzJlMTI3MmRhYWJkNjBjZGE5NTI0MTU5YzA5NmI3MWMyYmVkYTExMmU4MmYwYjhhM2RmOWM5M2JhMzYxYTRcIixcInNpZ25hdHVyZVwiOlwiZDJmZmFlNDkzNTFiM2U2MzQ3OTI0MDkxNDMzODU5MmY3ZDZiNGFkMGRlYTliYWRjYmJjMGYyYjc3ODMxMGYzYjEyZDc5ZTY4ZjdjZDc5NGRkNmVlNWNjOGEwNWUxZTQ5ZmYyZGNjZTMyMDk4MDczMTkwOWEyZjkzYWRmY2I5MGZcIixcInRlbmFudF9pZFwiOlwiYnV5ZXItdGVuYW50XCIsXCJ0aW1lc3RhbXBcIjoxNzY2MDAwMDAwLFwidG9vbF9uYW1lXCI6XCJ2ZXJpZnlfY3VzdG9tZXJcIixcInRvb2xfc2VydmVyXCI6XCJ2ZW5kb3ItYi5reWNcIn0iLCJzY2hlbWEiOiJjaGlvLmJpbGF0ZXJhbC1zaWduYXR1cmUtc2xpY2UudjEiLCJ0aW1lc3RhbXBfdW5peF9tcyI6MTc2NjAwMDAwMDAwMCwidG9vbF9uYW1lIjoidmVyaWZ5X2N1c3RvbWVyIiwidG9vbF9zZXJ2ZXJfYSI6eyJhbGciOiJlZDI1NTE5Iiwia2VybmVsX2lkIjoiZGlkOmNoaW86YnV5ZXIta2VybmVsIiwicGFzc3BvcnRfa2V5X2ZpbmdlcnByaW50IjoiZmRmNzJhMDg4ZjE4ZjczOTllOGM1MmJjZTQ0ODQ0MTUwMWY3NTlhNTk1YTg2OTgwZTVkOWE0MjJhMDFlNWQ1NSJ9LCJ0b29sX3NlcnZlcl9iIjp7ImFsZyI6ImVkMjU1MTkiLCJrZXJuZWxfaWQiOiJkaWQ6Y2hpbzp2ZW5kb3ItYiIsInBhc3Nwb3J0X2tleV9maW5nZXJwcmludCI6IjE2OGM1OWE1NGEwZDViNmM2Mjg2NzU4ZjE1NzdkZjY3MDM3ZGM1NGJlZGZkNDAwOTZhOTEwMmNjM2QzZTNlYWEifX0sInByZWRpY2F0ZVR5cGUiOiJjaGlvLmJpbGF0ZXJhbC1zaWduYXR1cmUtc2xpY2UudjEiLCJzdWJqZWN0IjpbeyJkaWdlc3QiOnsic2hhMjU2IjoiNThmZWRiNWI3YTE0OTllYzI1YmI1OWM3MmMyMDhlZGYyYmI4ZWFmZjU2NTUxNjAzNWQyNDg0NGQwZmMzOTZjZSJ9LCJuYW1lIjoiY2hpby1yZWNlaXB0OnJjcHQtdmVuZG9yLWIifV19",
+      "signatures": [
+        {
+          "keyid": "fdf72a088f18f7399e8c52bce448441501f759a595a86980e5d9a422a01e5d55",
+          "sig": "jzWCnT1TbEdtTh+oRffib4O+3Nn0bvdcGDs31Wxzc/8m/tz0NvLyh0FK5dN7WAL6n5mCPgzHulR32GQ65/MxAw=="
+        },
+        {
+          "keyid": "168c59a54a0d5b6c6286758f1577df67037dc54bedfd40096a9102cc3d3e3eaa",
+          "sig": "0zF32V1/zJZFIR1aVRO1iSpvC+Nj+IcY399+72NbTTn1+xLqJwShrq12y5SVNd4/irEXDTIhNOMSsOH8zg/PBg=="
+        }
+      ]
+    },
+    {
+      "payloadType": "application/vnd.in-toto+json",
+      "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJwcmVkaWNhdGUiOnsiY2FwYWJpbGl0eV9sZWFzZV9yZWYiOnsiZXhwaXJlc19hdF91bml4X21zIjoxNzY2MDAwMDMwMDAwLCJpc3N1ZXIiOiJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJsZWFzZV9pZCI6ImxlYXNlLXZlbmRvci1jLXJlZnVuZCIsInNjb3BlX2RpZ2VzdCI6eyJhbGciOiJzaGEyNTYiLCJ2YWx1ZSI6Ijc0MmMxZTY3NWIwN2VmYTAzMDUxNTIxNmIwOTcwN2I1NWJlZGFlNDVlNDIwYzU5MTNlZmRlYzMxYWZkZWQzNTYifX0sImNvX3NpZ24iOiJiaWxhdGVyYWxfcmVxdWlyZWQiLCJjb25zaXN0ZW5jeV9hbmNob3IiOiJjaGlvZG9zOmFuY2hvcjp3Zi1jaGlvZG9zLXJlZnVuZC0wMDE6MiIsImNvbnNpc3RlbmN5X21vZGVsIjoiY3JkdC1jb21tdXRhdGl2ZSIsImNyb3NzX29yZ192aXNpYmlsaXR5IjoiZmVkZXJhdGVkIiwiZ292ZXJuYW5jZV9yZWNlaXB0X3JlZiI6eyJkaWdlc3QiOnsiYWxnIjoic2hhMjU2IiwidmFsdWUiOiIzZTU4NzM5ZGNhMDc4ZmViOGY5YzQ3Njk5N2Y3NDdmOTE3MmU2OTMzZDQ3NjFhYjc3ZDhiZDQ2NWE5MGUzNDM0In0sImtlcm5lbF9pZCI6ImRpZDpjaGlvOmJ1eWVyLWdvdmVybmFuY2UiLCJyZWNlaXB0X2lkIjoiZ292LXJlZnVuZC1zdGFnZS1hdXRob3JpemF0aW9uIn0sImludm9jYXRpb25faWQiOiJyY3B0LXZlbmRvci1jIiwicG9saWN5X2V2YWx1YXRpb25fc3VtbWFyeSI6eyJqb2ludF9kaXNwb3NpdGlvbiI6ImFsbG93Iiwic2VydmVyX2FfdmVyZGljdCI6eyJwb2xpY3lfaWQiOiJidXllci1wb2xpY3k6c3RhZ2VfcmVmdW5kIiwicG9saWN5X3ZlcnNpb24iOiJjaGlvZG9zLWxhZGRlci12MSIsInJhdGlvbmFsZV9jb2RlIjoibGVhc2UtYm91bmQiLCJ2ZXJkaWN0IjoiYWxsb3cifSwic2VydmVyX2JfdmVyZGljdCI6eyJwb2xpY3lfaWQiOiJ2ZW5kb3ItYy1wb2xpY3k6c3RhZ2VfcmVmdW5kIiwicG9saWN5X3ZlcnNpb24iOiJjaGlvZG9zLWxhZGRlci12MSIsInJhdGlvbmFsZV9jb2RlIjoibWFuaWZlc3QtYm91bmQiLCJ2ZXJkaWN0IjoiYWxsb3cifX0sInJlY2VpcHRfY2Fub25pY2FsX2pzb24iOiJ7XCJhY3Rpb25cIjp7XCJwYXJhbWV0ZXJfaGFzaFwiOlwiYjMzODE5MDNmZDY0MjNhYTQzMTY3NzVkZTY2ZDEwYzE3MzE0NDI2NGJhY2QwZmQwOWYxNzJlMTY1ODQxZWJhZlwiLFwicGFyYW1ldGVyc1wiOntcImNhc2VSZWZcIjpcInJlZnVuZC0yNTBcIixcInRvb2xcIjpcInN0YWdlX3JlZnVuZFwiLFwid29ya2Zsb3dJZFwiOlwid2YtY2hpb2Rvcy1yZWZ1bmQtMDAxXCJ9fSxcImNhcGFiaWxpdHlfaWRcIjpcImxlYXNlLXZlbmRvci1jLXJlZnVuZFwiLFwiY29udGVudF9oYXNoXCI6XCIzMjc0ZWRhNmU5Mjg2NDQyMzZiOWRiMjljMWQyMDc3NDU4ODBmNTY3ODg0NTM5MGY3NzY0NGQ5Y2YyZTc1OTc4XCIsXCJkZWNpc2lvblwiOntcInZlcmRpY3RcIjpcImFsbG93XCJ9LFwiaWRcIjpcInJjcHQtdmVuZG9yLWNcIixcImtlcm5lbF9rZXlcIjpcIjMxZGViZTU1ZDM3YzcyMjc2OGIxMzcxMzFjYWE2MDg3MDgwYjJlMGI2MGI5NGJkNzg1ZDE0NTc1Y2ZhNDk4YmNcIixcIm1ldGFkYXRhXCI6e1widmVuZG9yX2lkXCI6XCJ2ZW5kb3ItY1wiLFwid29ya2Zsb3dfaWRcIjpcIndmLWNoaW9kb3MtcmVmdW5kLTAwMVwifSxcInBvbGljeV9oYXNoXCI6XCIyOTdkMjFlZmQ3MDA2NDNlMzA1OTg1NGEzOTIxYzc1OWQ5NjdhZGUwZDk1ODUwN2U1ZTA1MzM4ODkzOWFiZTBiXCIsXCJzaWduYXR1cmVcIjpcIjc3NTI0NDRhOTNhOGNlM2U2YWQwNzlkYTQzYmE0M2Q5ZmY3N2Y2MzI0ZGViYjkzMTQ0YzA1ZDI4OWY1NjYyZWE4MGJmZDEyZDc4OWI2MTg2NjIzYTgzNDU1MmViN2RlYWQzN2MyMTU1ZWQxN2NmY2RlN2Q3Nzk0MmNiZGVkMTA0XCIsXCJ0ZW5hbnRfaWRcIjpcImJ1eWVyLXRlbmFudFwiLFwidGltZXN0YW1wXCI6MTc2NjAwMDAwMCxcInRvb2xfbmFtZVwiOlwic3RhZ2VfcmVmdW5kXCIsXCJ0b29sX3NlcnZlclwiOlwidmVuZG9yLWMucGF5bWVudHNcIn0iLCJzY2hlbWEiOiJjaGlvLmJpbGF0ZXJhbC1zaWduYXR1cmUtc2xpY2UudjEiLCJ0aW1lc3RhbXBfdW5peF9tcyI6MTc2NjAwMDAwMDAwMCwidG9vbF9uYW1lIjoic3RhZ2VfcmVmdW5kIiwidG9vbF9zZXJ2ZXJfYSI6eyJhbGciOiJlZDI1NTE5Iiwia2VybmVsX2lkIjoiZGlkOmNoaW86YnV5ZXIta2VybmVsIiwicGFzc3BvcnRfa2V5X2ZpbmdlcnByaW50IjoiZmRmNzJhMDg4ZjE4ZjczOTllOGM1MmJjZTQ0ODQ0MTUwMWY3NTlhNTk1YTg2OTgwZTVkOWE0MjJhMDFlNWQ1NSJ9LCJ0b29sX3NlcnZlcl9iIjp7ImFsZyI6ImVkMjU1MTkiLCJrZXJuZWxfaWQiOiJkaWQ6Y2hpbzp2ZW5kb3ItYyIsInBhc3Nwb3J0X2tleV9maW5nZXJwcmludCI6ImUzN2FiY2Q3OWVmZDA4ZGI5NDUxOGE5MDM5NTJmZmU5ZjhhZjdlOGI0Njg0YjYzNTkxNjMxY2VmOGU4ODcxYzgifX0sInByZWRpY2F0ZVR5cGUiOiJjaGlvLmJpbGF0ZXJhbC1zaWduYXR1cmUtc2xpY2UudjEiLCJzdWJqZWN0IjpbeyJkaWdlc3QiOnsic2hhMjU2IjoiMTdjODQyZWZiNTVhYzk3OGM0YjIzZTNhOWNhOWNlYTJkNWIwNDk2NmE3NjIyZDAwMmM3NzY0MTYyYzBkMjcxZiJ9LCJuYW1lIjoiY2hpby1yZWNlaXB0OnJjcHQtdmVuZG9yLWMifV19",
+      "signatures": [
+        {
+          "keyid": "fdf72a088f18f7399e8c52bce448441501f759a595a86980e5d9a422a01e5d55",
+          "sig": "CtKGjBCOkHu33XEUr1v537hxc0ljNBEQqOifrofd8C/aFf7qvaNsleHxlTEmrcPcPvYYmHdTfNAr3zIZ7DTRCQ=="
+        },
+        {
+          "keyid": "e37abcd79efd08db94518a903952ffe9f8af7e8b4684b63591631cef8e8871c8",
+          "sig": "+VySCa5Zcj2GNn6fU/SqvWwuit/ENEg/RSksohXF6Y7Rrt6knZ+plA7Zx6r3bSqw7ltXdw1jX9tmWwYCQkCWBw=="
+        }
+      ]
+    }
+  ],
+  "capabilityLeases": [
+    {
+      "body": {
+        "schema": "chio.capability-lease.v1",
+        "leaseId": "lease-vendor-a-read",
+        "issuer": "did:chio:buyer-kernel",
+        "subject": "did:chio:vendor-a",
+        "scopeDigest": "8d55c799b9a2e02a7b7f56e3d0e5583dfbc925be77a9b78a98f3c0c49af6356e",
+        "actionClass": "delegated_action",
+        "issuedAtUnixMs": 1765999970000,
+        "expiresAtUnixMs": 1766000030000
+      },
+      "signerKey": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+      "signature": "9b69c0145ff6b9587cebec4d0f82efb0f728bb8fc06d01332580fcd42930808b2c42bc9b057cb5ba9a98c5c9499b53358e2235cf5dc3f9f043bdf3f34d63b102"
+    },
+    {
+      "body": {
+        "schema": "chio.capability-lease.v1",
+        "leaseId": "lease-vendor-b-kyc",
+        "issuer": "did:chio:buyer-kernel",
+        "subject": "did:chio:vendor-b",
+        "scopeDigest": "f2cb003bc79831731eb01b3ada4f448dfe177dc58cbe33d5d8f11ff9fab2bddc",
+        "actionClass": "delegated_action",
+        "issuedAtUnixMs": 1765999970000,
+        "expiresAtUnixMs": 1766000030000
+      },
+      "signerKey": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+      "signature": "5899204612dcf02581d8c25159ac0026271aa6e952cedc21707a6a26a2341bd32bcf9fbad09620476ec1af3c8b78c2b0ce84954228e461fd1c9d4b86368b6d0e"
+    },
+    {
+      "body": {
+        "schema": "chio.capability-lease.v1",
+        "leaseId": "lease-vendor-c-refund",
+        "issuer": "did:chio:buyer-kernel",
+        "subject": "did:chio:vendor-c",
+        "scopeDigest": "742c1e675b07efa030515216b09707b55bedae45e420c5913efdec31afded356",
+        "actionClass": "narrow_destructive",
+        "issuedAtUnixMs": 1765999970000,
+        "expiresAtUnixMs": 1766000030000
+      },
+      "signerKey": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+      "signature": "80608a45a451de4a19cc02d1a24d96de39e04554d8460813bf257ca47866326d14046d0e143295ec709735c688a910da65b57942ae4e690df0c0373150167403"
+    }
+  ],
+  "governanceReceipts": [
+    {
+      "body": {
+        "schema": "chio.governance-receipt.v1",
+        "receiptId": "gov-refund-stage-authorization",
+        "authorizingKernel": "did:chio:buyer-governance",
+        "caseKind": "destructive_authorization",
+        "authorizedLeaseId": "lease-vendor-c-refund",
+        "workflowId": "wf-chiodos-refund-001",
+        "stepSha256": "17c842efb55ac978c4b23e3a9ca9cea2d5b04966a7622d002c7764162c0d271f",
+        "issuedAtUnixMs": 1765999980000,
+        "expiresAtUnixMs": 1766000020000
+      },
+      "signerKey": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d",
+      "signature": "7affbd38a9364022ddc90fb6069a16d5ce8b83ed6bb0a27f3b14963928353c1ae59e3d0b67fa7a3d6d849adaef14206e2335d724a899720a4748e56ba6f3c902"
+    }
+  ],
+  "selectiveDisclosureProof": {
+    "schema": "chio.selective-disclosure-proof.v1",
+    "projection_version": "chio.bbs-projection.workflow.v1",
+    "subject_sha256_hex": "8c2c6ca9cee99ee134d5e532d988a44c90d4d53224ac6b63dfe453a3fa87f24e",
+    "ciphersuite": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_",
+    "issuer_fingerprint": "f9046ae7f4467cd4620ee70b500f488d9564c269cda25e47272eeec3d7d9f9ed",
+    "issuer_public_key_hex": "8974cce2969aa7464add3710a14552ef067f6ef8b19bf7c156afe280bb5e2733f738f6f7b944c325bd7f2f378b62ebbf14be43b0e392b9fd61c0a66349943a99659f1ce30ceb21bd40c68bb7e80a35477f86b00c0222f52d9d7799ebfce875a6",
+    "message_count": 14,
+    "disclosed_indices": [
+      4,
+      8,
+      9,
+      10
+    ],
+    "disclosed": [
+      {
+        "index": 4,
+        "field": "id",
+        "encoding": "S",
+        "bytes_hex": "77662d6368696f646f732d726566756e642d303031"
+      },
+      {
+        "index": 8,
+        "field": "session_id",
+        "encoding": "Opt<S>",
+        "bytes_hex": "736573732d6368696f646f732d726566756e64"
+      },
+      {
+        "index": 9,
+        "field": "skill_id",
+        "encoding": "S",
+        "bytes_hex": "726566756e642d756e64657277726974696e67"
+      },
+      {
+        "index": 10,
+        "field": "skill_version",
+        "encoding": "S",
+        "bytes_hex": "302e312e30"
+      }
+    ],
+    "proof_nonce_hex": "62757965722d61756469746f722d70726f6f662d7061636b616765",
+    "proof_bytes_hex": "b302d98fb18d291c00661958ce56f8cfd880257251b272faac28410b8a2ae73126639ef9f2ab69a54ae1f37210ae6205b37c8e2d509957134733bda91351efd559d75542dae691fa5cea1ac0446d4071a094e857abf6e0d03f782e6b7d0f3655828804d9e540bd8d0ddb33b35a103d53aedb80613cf518c62b65f8535a4e34e3661b1c952c2098f5a6ed273f1c3a54ab10ce8e6e2a9b74734ae09d7726a028b965d4efe6794384dc7581d2963c6033656217268668315e4a2cdebe9ba6003c6c3101481b15835071266cf6adbf9f595232a4f6a49d2540ad58ec59e8e9a1dc933ce4c0e17766b1476b929a33f8b2d1ac28ea4263ab7702dff171a7f9cea404674296852effc9717b8987e10a2f3df6c960e9cf482f4dff4a0f3f88beffe951a9faacb49e537145803f76517c1802f9342c92a086d0846adca8b722c6ddd1c7e729242407e4b0d95e9f63aca258736bc234b6a16f534e11125b34264422fcd14091825d448ba473604344de041632a7bd2c9cbbdff4c076dd19beaf0cf34d9ed3681a1fa96758875d407a00e0728ef76b342169fdb8da69ac336bcec1f31867976010c9759f3d6d356815e8740ff09a2e3671c8be9bb067e3c3ef28632751c0e29627861555bdf0a9b62ca2b4d83c0c692a58fd643661aa2e7875b86d6f3eb1f3d2cb090d57ad47a478555a784e2f31d35d65a40c1e1ddcede35108f21952a5ae0a9d9f53306598a6d6bfb0faa4102fb06923d8573e80f574e12d59a66321cfe5e26c51b6191cfc665ebdb5c2f59993fa22cde22591ec9f5edd0733b1d81140d7a217aeaecc111f7a4141d0702f72a513"
+  }
+}

@@ -72,6 +72,41 @@ pub const GOLD_MIN_MUTATION_KILL_BPS: u32 = 8_000;
 /// Minimum Kani trust-boundary crate count for Gold.
 pub const GOLD_MIN_KANI_TRUST_BOUNDARY_CRATES: u32 = 8;
 
+/// Signed handshake reference to the ladder manifest a peer will enforce.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LadderManifestRef {
+    pub manifest_id: String,
+    pub sha256: String,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+}
+
+impl LadderManifestRef {
+    pub fn validate(&self) -> Result<(), PeerHandshakeError> {
+        if self.manifest_id.trim().is_empty() {
+            return Err(PeerHandshakeError::InvalidLadderManifestRef(
+                "manifest_id must not be empty".to_string(),
+            ));
+        }
+        if self.sha256.len() != 64 || !self.sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(PeerHandshakeError::InvalidLadderManifestRef(
+                "sha256 must be a 64-character SHA-256 hex digest".to_string(),
+            ));
+        }
+        if self.expires_at_unix_ms <= self.issued_at_unix_ms {
+            return Err(PeerHandshakeError::InvalidLadderManifestRef(
+                "expires_at_unix_ms must be greater than issued_at_unix_ms".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn is_fresh(&self, now_unix_ms: u64) -> bool {
+        self.issued_at_unix_ms <= now_unix_ms && now_unix_ms < self.expires_at_unix_ms
+    }
+}
+
 /// Cross-surface conformance tier advertised during federation handshakes.
 ///
 /// The order is intentional: `Gold > Silver > Bronze`, so policy checks can
@@ -176,6 +211,9 @@ pub struct FederationPeer {
     /// defaults to v1-only capability tokens.
     #[serde(default)]
     pub capabilities: CapabilityNegotiation,
+    /// Optional signed ladder manifest reference accepted during handshake.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ladder_manifest_ref: Option<LadderManifestRef>,
 }
 
 impl FederationPeer {
@@ -199,6 +237,8 @@ pub struct HandshakeChallenge {
     pub capabilities: CapabilityNegotiation,
     #[serde(default, skip_serializing_if = "is_default_conformance_tier")]
     pub conformance_tier: ConformanceTier,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ladder_manifest_ref: Option<LadderManifestRef>,
 }
 
 impl HandshakeChallenge {
@@ -232,6 +272,7 @@ impl HandshakeChallenge {
             timestamp,
             capabilities: CapabilityNegotiation::v1_default(),
             conformance_tier,
+            ladder_manifest_ref: None,
         }
     }
 
@@ -241,10 +282,19 @@ impl HandshakeChallenge {
         self
     }
 
+    #[must_use]
+    pub fn with_ladder_manifest_ref(mut self, ladder_manifest_ref: LadderManifestRef) -> Self {
+        self.ladder_manifest_ref = Some(ladder_manifest_ref);
+        self
+    }
+
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, PeerHandshakeError> {
         self.capabilities
             .validate()
             .map_err(|e| PeerHandshakeError::CapabilityNegotiation(e.to_string()))?;
+        if let Some(ladder_manifest_ref) = &self.ladder_manifest_ref {
+            ladder_manifest_ref.validate()?;
+        }
         canonical_json_bytes(self).map_err(|e| PeerHandshakeError::CanonicalJson(e.to_string()))
     }
 }
@@ -318,10 +368,33 @@ impl PeerHandshakeEnvelope {
         local_backend: &dyn SigningBackend,
         capabilities: CapabilityNegotiation,
     ) -> Result<Self, PeerHandshakeError> {
+        Self::sign_with_backend_capabilities_and_ladder_ref(
+            local_kernel_id,
+            remote_kernel_id,
+            nonce,
+            timestamp,
+            conformance_tier,
+            local_backend,
+            capabilities,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn sign_with_backend_capabilities_and_ladder_ref(
+        local_kernel_id: &str,
+        remote_kernel_id: &str,
+        nonce: &str,
+        timestamp: u64,
+        conformance_tier: ConformanceTier,
+        local_backend: &dyn SigningBackend,
+        capabilities: CapabilityNegotiation,
+        ladder_manifest_ref: Option<LadderManifestRef>,
+    ) -> Result<Self, PeerHandshakeError> {
         capabilities
             .validate()
             .map_err(|e| PeerHandshakeError::CapabilityNegotiation(e.to_string()))?;
-        let challenge = HandshakeChallenge::new_with_conformance_tier(
+        let mut challenge = HandshakeChallenge::new_with_conformance_tier(
             local_kernel_id,
             remote_kernel_id,
             nonce,
@@ -329,6 +402,9 @@ impl PeerHandshakeEnvelope {
             conformance_tier,
         )
         .with_capabilities(capabilities);
+        if let Some(ladder_manifest_ref) = ladder_manifest_ref {
+            challenge = challenge.with_ladder_manifest_ref(ladder_manifest_ref);
+        }
         let bytes = challenge.canonical_bytes()?;
         let signature = local_backend
             .sign_bytes(&bytes)
@@ -445,6 +521,9 @@ pub enum PeerHandshakeError {
     #[error("invalid conformance evidence: {0}")]
     InvalidConformanceEvidence(String),
 
+    #[error("invalid ladder manifest reference: {0}")]
+    InvalidLadderManifestRef(String),
+
     #[error("trust store is poisoned and cannot service requests")]
     StorePoisoned,
 }
@@ -534,6 +613,7 @@ pub struct KernelTrustExchange {
     store: Box<dyn FederationPeerStore>,
     trusted_peers: HashMap<String, PublicKey>,
     local_capabilities: CapabilityNegotiation,
+    local_ladder_manifest_ref: Option<LadderManifestRef>,
 }
 
 impl core::fmt::Debug for KernelTrustExchange {
@@ -565,6 +645,7 @@ impl KernelTrustExchange {
             store: Box::new(InMemoryPeerStore::new()),
             trusted_peers: HashMap::new(),
             local_capabilities: CapabilityNegotiation::v1_default(),
+            local_ladder_manifest_ref: None,
         }
     }
 
@@ -597,6 +678,11 @@ impl KernelTrustExchange {
         self
     }
 
+    pub fn with_ladder_manifest_ref(mut self, ladder_manifest_ref: LadderManifestRef) -> Self {
+        self.local_ladder_manifest_ref = Some(ladder_manifest_ref);
+        self
+    }
+
     pub fn local_kernel_id(&self) -> &str {
         &self.local_kernel_id
     }
@@ -624,7 +710,7 @@ impl KernelTrustExchange {
         nonce: &str,
         now: u64,
     ) -> Result<PeerHandshakeEnvelope, PeerHandshakeError> {
-        PeerHandshakeEnvelope::sign_with_backend_and_capabilities(
+        PeerHandshakeEnvelope::sign_with_backend_capabilities_and_ladder_ref(
             &self.local_kernel_id,
             remote_kernel_id,
             nonce,
@@ -632,6 +718,7 @@ impl KernelTrustExchange {
             self.local_conformance_tier,
             self.local_signing_backend.as_ref(),
             self.local_capabilities.clone(),
+            self.local_ladder_manifest_ref.clone(),
         )
     }
 
@@ -643,7 +730,7 @@ impl KernelTrustExchange {
         now: u64,
         capabilities: CapabilityNegotiation,
     ) -> Result<PeerHandshakeEnvelope, PeerHandshakeError> {
-        PeerHandshakeEnvelope::sign_with_backend_and_capabilities(
+        PeerHandshakeEnvelope::sign_with_backend_capabilities_and_ladder_ref(
             &self.local_kernel_id,
             remote_kernel_id,
             nonce,
@@ -651,6 +738,7 @@ impl KernelTrustExchange {
             self.local_conformance_tier,
             self.local_signing_backend.as_ref(),
             capabilities,
+            self.local_ladder_manifest_ref.clone(),
         )
     }
 
@@ -742,6 +830,7 @@ impl KernelTrustExchange {
                 .local_capabilities
                 .negotiated_with(&envelope.challenge.capabilities)
                 .map_err(|e| PeerHandshakeError::CapabilityNegotiation(e.to_string()))?,
+            ladder_manifest_ref: envelope.challenge.ladder_manifest_ref.clone(),
         };
         self.store.insert(peer.clone())?;
         Ok(peer)

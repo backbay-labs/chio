@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 
 /// Schema identifier for workflow receipts.
 pub const WORKFLOW_RECEIPT_SCHEMA: &str = "chio.workflow-receipt.v1";
+/// Schema identifier for workflow receipts with Chiodos cross-vendor linkage.
+pub const WORKFLOW_RECEIPT_SCHEMA_V2: &str = "chio.workflow-receipt.v2";
 
 /// A signed receipt for a complete skill/workflow execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +48,9 @@ pub struct WorkflowReceipt {
     pub kernel_key: PublicKey,
     /// Signature over the receipt body.
     pub signature: Signature,
+    /// Detached vendor co-signatures over the canonical workflow body.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vendor_signatures: Vec<WorkflowVendorSignature>,
 }
 
 /// The body of a workflow receipt (everything except the signature).
@@ -67,6 +72,35 @@ pub struct WorkflowReceiptBody {
     pub total_cost: Option<MonetaryAmount>,
     pub duration_ms: u64,
     pub kernel_key: PublicKey,
+}
+
+/// Detached vendor signature over a canonical workflow receipt body.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowVendorSignature {
+    pub vendor_id: String,
+    pub public_key: PublicKey,
+    pub signature: Signature,
+}
+
+/// Required vendor signer accepted by a workflow verifier.
+#[derive(Debug, Clone)]
+pub struct VendorSignatureRequirement {
+    pub vendor_id: String,
+    pub public_key: PublicKey,
+}
+
+/// Verification errors for workflow receipt extensions.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum WorkflowReceiptError {
+    #[error("vendor signature for {0} is missing")]
+    MissingVendorSignature(String),
+    #[error("vendor signature for {0} uses an unexpected key")]
+    VendorSignatureKeyMismatch(String),
+    #[error("vendor signature for {0} is invalid")]
+    InvalidVendorSignature(String),
+    #[error("canonical signature operation failed: {0}")]
+    Crypto(String),
 }
 
 /// Outcome of a workflow execution.
@@ -115,6 +149,21 @@ pub struct StepRecord {
     /// SHA-256 hash of the step's output.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_hash: Option<String>,
+    /// SHA-256 of the bilateral DSSE envelope for this step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bilateral_dsse_sha256: Option<String>,
+    /// Governance receipt that authorizes this step when destructive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub governance_receipt_id: Option<String>,
+    /// SHA-256 of the preceding workflow or tool receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_receipt_sha256: Option<String>,
+    /// Consistency anchor binding the step to a hash chain or external root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consistency_anchor: Option<String>,
+    /// Whether this step performs a destructive action.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destructive: Option<bool>,
 }
 
 /// Outcome of a single step.
@@ -151,12 +200,14 @@ impl WorkflowReceipt {
             duration_ms: body.duration_ms,
             kernel_key: body.kernel_key,
             signature,
+            vendor_signatures: Vec::new(),
         })
     }
 
-    /// Verify the receipt signature.
-    pub fn verify(&self) -> Result<bool, chio_core::Error> {
-        let body = WorkflowReceiptBody {
+    /// Reconstruct the canonical body signed by the kernel and vendors.
+    #[must_use]
+    pub fn body(&self) -> WorkflowReceiptBody {
+        WorkflowReceiptBody {
             id: self.id.clone(),
             schema: self.schema.clone(),
             started_at: self.started_at,
@@ -171,8 +222,62 @@ impl WorkflowReceipt {
             total_cost: self.total_cost.clone(),
             duration_ms: self.duration_ms,
             kernel_key: self.kernel_key.clone(),
-        };
-        self.kernel_key.verify_canonical(&body, &self.signature)
+        }
+    }
+
+    /// Verify the receipt signature.
+    pub fn verify(&self) -> Result<bool, chio_core::Error> {
+        self.kernel_key
+            .verify_canonical(&self.body(), &self.signature)
+    }
+
+    /// Add a detached vendor co-signature over the canonical workflow body.
+    pub fn add_vendor_signature(
+        &mut self,
+        vendor_id: impl Into<String>,
+        keypair: &Keypair,
+    ) -> Result<(), WorkflowReceiptError> {
+        let (signature, _) = keypair
+            .sign_canonical(&self.body())
+            .map_err(|e| WorkflowReceiptError::Crypto(e.to_string()))?;
+        self.vendor_signatures.push(WorkflowVendorSignature {
+            vendor_id: vendor_id.into(),
+            public_key: keypair.public_key(),
+            signature,
+        });
+        Ok(())
+    }
+
+    /// Verify that every required vendor co-signed this workflow body.
+    pub fn verify_vendor_signatures(
+        &self,
+        required: &[VendorSignatureRequirement],
+    ) -> Result<bool, WorkflowReceiptError> {
+        let body = self.body();
+        for requirement in required {
+            let signature = self
+                .vendor_signatures
+                .iter()
+                .find(|sig| sig.vendor_id == requirement.vendor_id)
+                .ok_or_else(|| {
+                    WorkflowReceiptError::MissingVendorSignature(requirement.vendor_id.clone())
+                })?;
+            if signature.public_key != requirement.public_key {
+                return Err(WorkflowReceiptError::VendorSignatureKeyMismatch(
+                    requirement.vendor_id.clone(),
+                ));
+            }
+            let verified = signature
+                .public_key
+                .verify_canonical(&body, &signature.signature)
+                .map_err(|e| WorkflowReceiptError::Crypto(e.to_string()))?;
+            if !verified {
+                return Err(WorkflowReceiptError::InvalidVendorSignature(
+                    requirement.vendor_id.clone(),
+                ));
+            }
+        }
+        Ok(true)
     }
 
     /// Count how many steps completed successfully.
@@ -206,6 +311,11 @@ mod tests {
             duration_ms: 100,
             cost: None,
             output_hash: None,
+            bilateral_dsse_sha256: None,
+            governance_receipt_id: None,
+            parent_receipt_sha256: None,
+            consistency_anchor: None,
+            destructive: None,
         }
     }
 
@@ -308,5 +418,95 @@ mod tests {
         let json = serde_json::to_string(&outcome).unwrap();
         let deserialized: WorkflowOutcome = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, outcome);
+    }
+
+    #[test]
+    fn v1_receipt_serialization_omits_v2_fields_when_absent() {
+        let step = make_step_record(0, StepOutcome::Success);
+        let value = serde_json::to_value(&step).unwrap();
+        assert!(value.get("bilateral_dsse_sha256").is_none());
+        assert!(value.get("governance_receipt_id").is_none());
+        assert!(value.get("parent_receipt_sha256").is_none());
+        assert!(value.get("consistency_anchor").is_none());
+        assert!(value.get("destructive").is_none());
+    }
+
+    #[test]
+    fn v2_step_linkage_fields_are_signed_by_kernel() {
+        let kp = Keypair::generate();
+        let mut step = make_step_record(1, StepOutcome::Success);
+        step.bilateral_dsse_sha256 = Some("b".repeat(64));
+        step.governance_receipt_id = Some("gov:buyer:refund:001".to_string());
+        step.parent_receipt_sha256 = Some("a".repeat(64));
+        step.consistency_anchor = Some("anchor:buyer:epoch:42".to_string());
+        step.destructive = Some(true);
+
+        let body = WorkflowReceiptBody {
+            id: "wf-v2".to_string(),
+            schema: WORKFLOW_RECEIPT_SCHEMA_V2.to_string(),
+            started_at: 1000,
+            completed_at: 1001,
+            skill_id: "refund-underwriting".to_string(),
+            skill_version: "0.1.0".to_string(),
+            agent_id: "buyer-agent".to_string(),
+            session_id: None,
+            capability_id: "cap-workflow".to_string(),
+            outcome: WorkflowOutcome::Completed,
+            steps: vec![step],
+            total_cost: None,
+            duration_ms: 1000,
+            kernel_key: kp.public_key(),
+        };
+
+        let mut receipt = WorkflowReceipt::sign(body, &kp).unwrap();
+        assert!(receipt.verify().unwrap());
+        receipt.steps[0].parent_receipt_sha256 = Some("c".repeat(64));
+        assert!(!receipt.verify().unwrap());
+    }
+
+    #[test]
+    fn vendor_cosignatures_verify_required_signers() {
+        let kernel = Keypair::generate();
+        let vendor_a = Keypair::generate();
+        let vendor_b = Keypair::generate();
+        let body = WorkflowReceiptBody {
+            id: "wf-cosigned".to_string(),
+            schema: WORKFLOW_RECEIPT_SCHEMA_V2.to_string(),
+            started_at: 1000,
+            completed_at: 1010,
+            skill_id: "refund-underwriting".to_string(),
+            skill_version: "0.1.0".to_string(),
+            agent_id: "buyer-agent".to_string(),
+            session_id: None,
+            capability_id: "cap-workflow".to_string(),
+            outcome: WorkflowOutcome::Completed,
+            steps: vec![make_step_record(0, StepOutcome::Success)],
+            total_cost: None,
+            duration_ms: 10_000,
+            kernel_key: kernel.public_key(),
+        };
+        let mut receipt = WorkflowReceipt::sign(body, &kernel).unwrap();
+        receipt.add_vendor_signature("vendor-a", &vendor_a).unwrap();
+
+        let required = vec![VendorSignatureRequirement {
+            vendor_id: "vendor-a".to_string(),
+            public_key: vendor_a.public_key(),
+        }];
+        assert!(receipt.verify_vendor_signatures(&required).unwrap());
+
+        let missing = vec![VendorSignatureRequirement {
+            vendor_id: "vendor-b".to_string(),
+            public_key: vendor_b.public_key(),
+        }];
+        assert!(matches!(
+            receipt.verify_vendor_signatures(&missing),
+            Err(WorkflowReceiptError::MissingVendorSignature(id)) if id == "vendor-b"
+        ));
+
+        receipt.vendor_signatures[0].signature = vendor_b.sign(b"not the workflow body");
+        assert!(matches!(
+            receipt.verify_vendor_signatures(&required),
+            Err(WorkflowReceiptError::InvalidVendorSignature(id)) if id == "vendor-a"
+        ));
     }
 }
