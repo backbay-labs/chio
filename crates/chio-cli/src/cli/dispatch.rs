@@ -2675,7 +2675,7 @@ fn cmd_chiodos_verify(package: &Path, trust_bundle: &Path, report: &Path) -> Res
             package.display()
         ))
     })?;
-    let package = chio_chiodos::package_from_fixture_json(
+    let package = chio_chiodos::proof_package_from_json(
         std::str::from_utf8(&package_bytes).map_err(|error| {
             CliError::cli_other_error(format!(
                 "Chiodos proof package {} is not UTF-8 JSON: {error}",

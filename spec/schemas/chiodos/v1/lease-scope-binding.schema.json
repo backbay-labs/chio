@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chiodos/v1/lease-scope-binding.schema.json",
+  "title": "Chiodos Lease Scope Binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "leaseId",
+    "workflowId",
+    "workflowGrantId",
+    "stepIndex",
+    "toolName",
+    "peerKernelId",
+    "actionClassId",
+    "subject",
+    "actionClass",
+    "toolArgsHash",
+    "destructive",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs"
+  ],
+  "properties": {
+    "schema": { "const": "chio.chiodos-lease-scope-binding.v1" },
+    "leaseId": { "type": "string", "minLength": 1 },
+    "workflowId": { "type": "string", "minLength": 1 },
+    "workflowGrantId": { "type": "string", "minLength": 1 },
+    "stepIndex": { "type": "integer", "minimum": 0 },
+    "toolName": { "type": "string", "minLength": 1 },
+    "peerKernelId": { "type": "string", "minLength": 1 },
+    "actionClassId": { "type": "string", "minLength": 1 },
+    "subject": { "type": "string", "minLength": 1 },
+    "actionClass": {
+      "enum": ["scoped_observation", "delegated_action", "narrow_destructive"]
+    },
+    "toolArgsHash": { "$ref": "#/$defs/sha256" },
+    "destructive": { "type": "boolean" },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

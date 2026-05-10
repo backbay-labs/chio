@@ -1,6 +1,8 @@
 # Chiodos 6.2: Verifier-Owned Workflow Trust Contract
 
-Status: implemented locally, pending PR review and merge.
+Status: merged to `main` before Chiodos 6.3. Chiodos 6.3 keeps the
+verifier-owned trust-bundle direction and adds lease authorities,
+governance authorities, and lease scope bindings.
 
 Chiodos 6.2 closes the verifier-owned trust boundary for offline buyer and
 auditor proof packages. The verifier, not the package, owns BBS issuer trust,
