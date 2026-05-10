@@ -168,6 +168,58 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn chiodos_verify_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "verify",
+            "--package",
+            "package.json",
+            "--trusted-issuers",
+            "trusted-issuers.json",
+            "--report",
+            "report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Verify {
+                        package,
+                        trusted_issuers,
+                        report,
+                    },
+            } => {
+                assert_eq!(package, std::path::PathBuf::from("package.json"));
+                assert_eq!(
+                    trusted_issuers,
+                    std::path::PathBuf::from("trusted-issuers.json")
+                );
+                assert_eq!(report, std::path::PathBuf::from("report.json"));
+            }
+            _ => panic!("expected chiodos verify subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_verify_requires_trusted_issuers() {
+        let result = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "verify",
+            "--package",
+            "package.json",
+            "--report",
+            "report.json",
+        ]);
+        let error = match result {
+            Ok(_) => panic!("chiodos verify must require --trusted-issuers"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
     fn mcp_wrap_emit_config_flag_parses() {
         let cli = Cli::try_parse_from([
             "chio",

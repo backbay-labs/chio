@@ -345,10 +345,10 @@ fn write_clean_fixture() {
 
 /// Verdict drift: a `Deny` receipt whose body is otherwise valid.
 /// The dispatcher's verdict re-derive (`cli/replay/verdict.rs`) is
-/// expected to flag this as drift once T6's downstream wiring
-/// reconstructs the kernel input from the receipt and observes the
-/// current build evaluates to `Allow`. Until then the fixture is a
-/// well-formed signed receipt the drift comparator can attribute.
+/// expected to flag this as drift once downstream replay wiring reconstructs
+/// the kernel input from the receipt and observes the current build evaluates
+/// to `Allow`. Until then the fixture is a well-formed signed receipt the
+/// drift comparator can attribute.
 fn write_verdict_drift_fixture() {
     let r0 = signed_receipt(
         "rcpt-drift-0001",

@@ -347,6 +347,12 @@ enum Commands {
         command: ConformanceCommands,
     },
 
+    /// Verify offline Chiodos buyer and auditor proof packages.
+    Chiodos {
+        #[command(subcommand)]
+        command: ChiodosCommands,
+    },
+
     /// Re-evaluate a captured receipt log against the current build.
     ///
     /// Reads a directory of signed receipts (or an NDJSON tee stream),
@@ -737,6 +743,24 @@ enum ConformanceCommands {
         /// in-repo path, and the cwd in that order.
         #[arg(long)]
         lockfile: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosCommands {
+    /// Verify a buyer and auditor proof package and write a verifier report.
+    Verify {
+        /// Path to the proof package JSON.
+        #[arg(long, value_name = "PATH")]
+        package: PathBuf,
+
+        /// Path to the trusted BBS issuer registry JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_issuers: PathBuf,
+
+        /// Path where verifier report JSON should be written.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
     },
 }
 

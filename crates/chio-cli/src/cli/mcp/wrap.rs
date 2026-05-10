@@ -397,9 +397,9 @@ fn read_bounded_line<R: std::io::BufRead>(
     })
 }
 
-/// In-memory MCP transport backed by a JSON fixture. Used by the M07
-/// P2.T6 e2e test to exercise the full stdio orchestration loop without
-/// spawning a real MCP child.
+/// In-memory MCP transport backed by a JSON fixture. Used by CLI e2e tests
+/// to exercise the full stdio orchestration loop without spawning a real MCP
+/// child.
 pub(crate) struct FixtureMcpTransport {
     tools: Vec<chio_mcp_adapter::McpToolInfo>,
     responses: std::collections::BTreeMap<String, chio_mcp_adapter::McpToolResult>,

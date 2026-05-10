@@ -65,9 +65,9 @@ use sha2::{Digest, Sha256};
 
 use crate::bilateral::BilateralCoSigningError;
 use crate::bilateral_dsse::{
-    receipt_subject_name, verify_dsse_envelope, BilateralPredicate, DsseEnvelope, DsseStatement,
-    Keyid, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL, STATEMENT_TYPE_V1,
-    VALID_CROSS_ORG_VISIBILITY,
+    receipt_subject_name, verify_chiodos_dsse_envelope, verify_dsse_envelope, BilateralPredicate,
+    DsseEnvelope, DsseStatement, Keyid, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL,
+    PREDICATE_TYPE_CHIODOS_BILATERAL, STATEMENT_TYPE_V1, VALID_CROSS_ORG_VISIBILITY,
 };
 use crate::trust_establishment::LadderManifestRef;
 
@@ -496,19 +496,328 @@ pub fn verify_chiodos_bilateral_invocation(
     envelope: &DsseEnvelope,
     config: &StrictChiodosVerifierConfig<'_, '_>,
 ) -> Result<VerifiedBilateralCoSignInvocation, VerifierError> {
-    let verified = verify_bilateral_cosign_invocation(envelope, config.base)?;
-    let predicate = &verified.statement.predicate;
-    require_fresh_ladder_manifest(
-        config.base,
-        &predicate.tool_server_a.kernel_id,
-        "tool_server_a",
-    )?;
-    require_fresh_ladder_manifest(
-        config.base,
-        &predicate.tool_server_b.kernel_id,
-        "tool_server_b",
-    )?;
-    Ok(verified)
+    if envelope.payload_type != crate::bilateral_dsse::PAYLOAD_TYPE_IN_TOTO {
+        return Err(VerifierError::DsseMalformed(format!(
+            "payloadType {:?} is not application/vnd.in-toto+json",
+            envelope.payload_type
+        )));
+    }
+    if envelope.signatures.is_empty() {
+        return Err(VerifierError::DsseMalformed(
+            "signatures array is empty".to_string(),
+        ));
+    }
+
+    let (statement, _) = envelope.decode_statement().map_err(map_bilateral_error)?;
+    if statement.predicate_type != PREDICATE_TYPE_CHIODOS_BILATERAL {
+        return Err(VerifierError::PredicateTypeUnrecognised(format!(
+            "signature-slice profile {:?} is not strict Chiodos {:?}",
+            statement.predicate_type, PREDICATE_TYPE_CHIODOS_BILATERAL
+        )));
+    }
+    if statement.statement_type != STATEMENT_TYPE_V1 {
+        return Err(VerifierError::StatementSchemaInvalid(format!(
+            "_type {:?} is not {:?}",
+            statement.statement_type, STATEMENT_TYPE_V1
+        )));
+    }
+    if statement.subject.len() != 1 {
+        return Err(VerifierError::StatementSchemaInvalid(format!(
+            "statement.malformed: bilateral envelope must carry exactly 1 subject, got {}",
+            statement.subject.len()
+        )));
+    }
+
+    let pred = &statement.predicate;
+    let pinned_a = config
+        .base
+        .peer_pin_set
+        .lookup(&pred.tool_server_a.kernel_id)
+        .ok_or_else(|| {
+            VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
+                "tool_server_a kernel_id {:?} not pinned",
+                pred.tool_server_a.kernel_id
+            ))
+        })?;
+    if pinned_a.fingerprint().0 != pred.tool_server_a.passport_key_fingerprint.0 {
+        return Err(VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
+            "tool_server_a fingerprint mismatch: pinned={} predicate={}",
+            pinned_a.fingerprint().0,
+            pred.tool_server_a.passport_key_fingerprint.0
+        )));
+    }
+    let pinned_b = config
+        .base
+        .peer_pin_set
+        .lookup(&pred.tool_server_b.kernel_id)
+        .ok_or_else(|| {
+            VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
+                "tool_server_b kernel_id {:?} not pinned",
+                pred.tool_server_b.kernel_id
+            ))
+        })?;
+    if pinned_b.fingerprint().0 != pred.tool_server_b.passport_key_fingerprint.0 {
+        return Err(VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
+            "tool_server_b fingerprint mismatch: pinned={} predicate={}",
+            pinned_b.fingerprint().0,
+            pred.tool_server_b.passport_key_fingerprint.0
+        )));
+    }
+
+    let statement =
+        verify_chiodos_dsse_envelope(envelope, &pinned_a.public_key, &pinned_b.public_key)
+            .map_err(map_bilateral_error)?;
+    let pred = &statement.predicate;
+
+    require_fresh_ladder_manifest(config.base, &pred.tool_server_a.kernel_id, "tool_server_a")?;
+    require_fresh_ladder_manifest(config.base, &pred.tool_server_b.kernel_id, "tool_server_b")?;
+
+    if !config.base.revocation_oracle.is_active_at_epoch(
+        &pinned_a.fingerprint(),
+        config.base.pinned_epoch.epoch_height,
+    ) {
+        return Err(VerifierError::PeerRevokedAtEpoch(format!(
+            "tool_server_a {} revoked at epoch {}",
+            pred.tool_server_a.kernel_id, config.base.pinned_epoch.epoch_height
+        )));
+    }
+    if !config.base.revocation_oracle.is_active_at_epoch(
+        &pinned_b.fingerprint(),
+        config.base.pinned_epoch.epoch_height,
+    ) {
+        return Err(VerifierError::PeerRevokedAtEpoch(format!(
+            "tool_server_b {} revoked at epoch {}",
+            pred.tool_server_b.kernel_id, config.base.pinned_epoch.epoch_height
+        )));
+    }
+
+    let resolved_receipt = config
+        .base
+        .receipt_store
+        .resolve(&pred.invocation_id)
+        .ok_or_else(|| {
+            VerifierError::SubjectDigestMismatch(format!(
+                "invocation_id {:?} not resolvable in ReceiptStore",
+                pred.invocation_id
+            ))
+        })?;
+    let resolved_receipt_signature_valid = resolved_receipt
+        .verify_signature()
+        .map_err(|e| VerifierError::SubjectDigestMismatch(format!("receipt signature: {e}")))?;
+    if !resolved_receipt_signature_valid {
+        return Err(VerifierError::SubjectDigestMismatch(
+            "resolved receipt signature is invalid".to_string(),
+        ));
+    }
+    if pred.tool_name != resolved_receipt.tool_name {
+        return Err(VerifierError::SubjectDigestMismatch(format!(
+            "predicate tool_name {:?} != resolved receipt tool_name {:?}",
+            pred.tool_name, resolved_receipt.tool_name
+        )));
+    }
+    if resolved_receipt.kernel_key != pinned_b.public_key {
+        return Err(VerifierError::PeerUnpinnedOrKeyidMismatch(
+            "resolved receipt kernel_key does not match pinned tool_server_b key".to_string(),
+        ));
+    }
+    if pred.receipt_canonical_json.is_some() {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "receipt_canonical_json must be absent from strict Chiodos predicates".to_string(),
+        ));
+    }
+    let tool_args_hash = pred.tool_args_hash.as_ref().ok_or_else(|| {
+        VerifierError::PredicateSchemaInvalid("tool_args_hash is required".to_string())
+    })?;
+    validate_hash_record(tool_args_hash, "tool_args_hash")
+        .map_err(VerifierError::PredicateSchemaInvalid)?;
+    if !resolved_receipt
+        .action
+        .verify_hash()
+        .map_err(|e| VerifierError::SubjectDigestMismatch(format!("tool args hash: {e}")))?
+    {
+        return Err(VerifierError::SubjectDigestMismatch(
+            "resolved receipt action parameter_hash does not match parameters".to_string(),
+        ));
+    }
+    if tool_args_hash.value != resolved_receipt.action.parameter_hash {
+        return Err(VerifierError::SubjectDigestMismatch(format!(
+            "predicate tool_args_hash {} != resolved receipt parameter_hash {}",
+            tool_args_hash.value, resolved_receipt.action.parameter_hash
+        )));
+    }
+
+    let resolved_body = resolved_receipt.body();
+    let canonical = canonical_json_bytes(&resolved_body)
+        .map_err(|e| VerifierError::SubjectDigestMismatch(format!("canonical-json: {e}")))?;
+    let mut hasher = Sha256::new();
+    hasher.update(&canonical);
+    let want_hex = hex::encode(hasher.finalize());
+
+    let subject = &statement.subject[0];
+    let expected_subject_name = receipt_subject_name(&resolved_receipt.id);
+    if subject.name != expected_subject_name {
+        return Err(VerifierError::SubjectDigestMismatch(format!(
+            "subject name {} != canonical receipt subject {}",
+            subject.name, expected_subject_name
+        )));
+    }
+    if subject.digest.sha256 != want_hex {
+        return Err(VerifierError::SubjectDigestMismatch(format!(
+            "subject digest {} != sha256(canonical_json(resolved_receipt.body())) {}",
+            subject.digest.sha256, want_hex
+        )));
+    }
+
+    let summary = pred.policy_evaluation_summary.as_ref().ok_or_else(|| {
+        VerifierError::PolicyVerdictDisagreement(
+            "predicate is missing policy_evaluation_summary".to_string(),
+        )
+    })?;
+    validate_policy_verdict(&summary.server_a_verdict, "server_a_verdict")?;
+    validate_policy_verdict(&summary.server_b_verdict, "server_b_verdict")?;
+    if summary.server_a_verdict.verdict != summary.server_b_verdict.verdict {
+        return Err(VerifierError::PolicyVerdictDisagreement(format!(
+            "server_a={} server_b={}",
+            summary.server_a_verdict.verdict, summary.server_b_verdict.verdict
+        )));
+    }
+    if let Some(joint) = &summary.joint_disposition {
+        validate_verdict_string(joint)?;
+        if joint != &summary.server_a_verdict.verdict {
+            return Err(VerifierError::PolicyVerdictDisagreement(format!(
+                "joint_disposition={} disagrees with server_a/b verdict={}",
+                joint, summary.server_a_verdict.verdict
+            )));
+        }
+    }
+    let joint_verdict = summary.server_a_verdict.verdict.clone();
+
+    let lease_ref = pred.capability_lease_ref.as_ref().ok_or_else(|| {
+        VerifierError::CapabilityLeaseExpiredOrUnknown(
+            "predicate is missing capability_lease_ref".to_string(),
+        )
+    })?;
+    let resolved_lease = config
+        .base
+        .lease_registry
+        .resolve(&lease_ref.lease_id)
+        .ok_or_else(|| {
+            VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+                "lease_id {:?} not resolvable in CapabilityLeaseRegistry",
+                lease_ref.lease_id
+            ))
+        })?;
+    if resolved_lease.issuer != lease_ref.issuer {
+        return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+            "lease issuer mismatch: registry={:?} predicate={:?}",
+            resolved_lease.issuer, lease_ref.issuer
+        )));
+    }
+    if resolved_lease.expires_at_unix_ms != lease_ref.expires_at_unix_ms {
+        return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+            "lease expiry mismatch: registry={} predicate={}",
+            resolved_lease.expires_at_unix_ms, lease_ref.expires_at_unix_ms
+        )));
+    }
+    if resolved_lease.expires_at_unix_ms <= config.base.pinned_epoch.now_unix_ms {
+        return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+            "lease expired: expires_at={} <= pinned_epoch.now={}",
+            resolved_lease.expires_at_unix_ms, config.base.pinned_epoch.now_unix_ms
+        )));
+    }
+    match (&lease_ref.scope_digest, &resolved_lease.scope_digest_hex) {
+        (Some(predicate_scope), Some(registry_scope)) => {
+            validate_hash_record(predicate_scope, "capability_lease_ref.scope_digest")
+                .map_err(VerifierError::CapabilityLeaseExpiredOrUnknown)?;
+            if &predicate_scope.value != registry_scope {
+                return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+                    "lease scope_digest mismatch: registry={:?} predicate={:?}",
+                    registry_scope, predicate_scope.value
+                )));
+            }
+        }
+        (Some(predicate_scope), None) => {
+            validate_hash_record(predicate_scope, "capability_lease_ref.scope_digest")
+                .map_err(VerifierError::CapabilityLeaseExpiredOrUnknown)?;
+            return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+                "predicate names scope_digest={:?} but registry record has no scope_digest_hex",
+                predicate_scope.value
+            )));
+        }
+        (None, Some(registry_scope)) => {
+            return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(format!(
+                "registry record carries scope_digest_hex={:?} but predicate omitted scope_digest",
+                registry_scope
+            )));
+        }
+        (None, None) => {}
+    }
+
+    let class = match config.base.action_classes.get(&pred.tool_name).copied() {
+        Some(known) => known,
+        None => match config.base.unknown_action_class_policy {
+            UnknownActionClassPolicy::Reject => {
+                return Err(VerifierError::UnknownActionClass {
+                    tool_name: pred.tool_name.clone(),
+                });
+            }
+            UnknownActionClassPolicy::DefaultRoutine => ActionClassKind::Routine,
+        },
+    };
+    let resolved_governance_receipt = match class {
+        ActionClassKind::Routine => None,
+        ActionClassKind::ReceiptBacked => {
+            let g = pred.governance_receipt_ref.as_ref().ok_or_else(|| {
+                VerifierError::GovernanceReceiptRequiredMissing(format!(
+                    "tool_name {:?} is receipt-backed but predicate omits governance_receipt_ref",
+                    pred.tool_name
+                ))
+            })?;
+            validate_hash_record(&g.digest, "governance_receipt_ref.digest")
+                .map_err(VerifierError::GovernanceReceiptRequiredMissing)?;
+            let resolved = config
+                .base
+                .governance_receipt_store
+                .resolve(&g.receipt_id)
+                .ok_or_else(|| {
+                    VerifierError::GovernanceReceiptRequiredMissing(format!(
+                        "receipt_id {:?} not resolvable in GovernanceReceiptStore",
+                        g.receipt_id
+                    ))
+                })?;
+            if resolved.kernel_id != g.kernel_id {
+                return Err(VerifierError::GovernanceReceiptRequiredMissing(format!(
+                    "governance receipt kernel_id mismatch: store={:?} predicate={:?}",
+                    resolved.kernel_id, g.kernel_id
+                )));
+            }
+            let mut hasher = Sha256::new();
+            hasher.update(resolved.canonical_json.as_bytes());
+            let want = hex::encode(hasher.finalize());
+            if want != g.digest.value {
+                return Err(VerifierError::GovernanceReceiptRequiredMissing(format!(
+                    "governance receipt digest mismatch: computed={} predicate={}",
+                    want, g.digest.value
+                )));
+            }
+            Some(resolved)
+        }
+    };
+
+    if pred.consistency_model != crate::bilateral_dsse::DEFAULT_CONSISTENCY_MODEL {
+        return Err(VerifierError::PredicateSchemaInvalid(format!(
+            "consistency_model {:?} is not supported",
+            pred.consistency_model
+        )));
+    }
+
+    Ok(VerifiedBilateralCoSignInvocation {
+        statement,
+        resolved_receipt,
+        resolved_lease,
+        resolved_governance_receipt,
+        joint_verdict,
+    })
 }
 
 fn require_fresh_ladder_manifest(
@@ -696,7 +1005,12 @@ pub fn verify_bilateral_cosign_invocation(
     }
     let resolved_receipt_canonical = canonical_json_string(&resolved_receipt)
         .map_err(|e| VerifierError::SubjectDigestMismatch(format!("canonical-json: {e}")))?;
-    if pred.receipt_canonical_json != resolved_receipt_canonical {
+    let receipt_canonical_json = pred.receipt_canonical_json.as_ref().ok_or_else(|| {
+        VerifierError::PredicateSchemaInvalid(
+            "receipt_canonical_json is required for the signature-slice profile".to_string(),
+        )
+    })?;
+    if receipt_canonical_json != &resolved_receipt_canonical {
         return Err(VerifierError::SubjectDigestMismatch(
             "predicate embedded receipt JSON does not match resolved signed receipt".to_string(),
         ));
@@ -913,11 +1227,21 @@ pub fn verify_bilateral_cosign_invocation(
 }
 
 fn validate_predicate_required_fields(pred: &BilateralPredicate) -> Result<(), VerifierError> {
-    if pred.schema != PREDICATE_BODY_SCHEMA {
+    if pred.schema.as_deref() != Some(PREDICATE_BODY_SCHEMA) {
         return Err(VerifierError::PredicateSchemaInvalid(format!(
             "schema {:?} is not {:?}",
             pred.schema, PREDICATE_BODY_SCHEMA
         )));
+    }
+    if pred.receipt_canonical_json.is_none() {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "receipt_canonical_json is required".to_string(),
+        ));
+    }
+    if pred.tool_args_hash.is_some() {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "tool_args_hash is not part of the signature-slice profile".to_string(),
+        ));
     }
     if pred.invocation_id.is_empty() {
         return Err(VerifierError::PredicateSchemaInvalid(
@@ -1071,9 +1395,9 @@ fn is_sha256_hex(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::bilateral_dsse::{
-        pae, sign_dsse_envelope_full, BilateralPredicateExtensions, CapabilityLeaseRef,
-        GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary, PolicyVerdict,
-        PAYLOAD_TYPE_IN_TOTO,
+        pae, sign_chiodos_dsse_envelope, sign_dsse_envelope_full, BilateralPredicateExtensions,
+        CapabilityLeaseRef, GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary,
+        PolicyVerdict, PAYLOAD_TYPE_IN_TOTO,
     };
     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
     use base64::Engine as _;
@@ -1274,8 +1598,19 @@ mod tests {
         let receipt = sample_receipt(&kp_b);
         let now_ms = 1_734_000_000_000;
 
-        let (envelope, receipt_store, lease_registry, governance_store, oracle, mut peers) =
+        let (_slice_envelope, receipt_store, lease_registry, governance_store, oracle, mut peers) =
             fixture(&kp_a, &kp_b, &receipt, now_ms);
+        let envelope = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            happy_path_extensions(now_ms),
+        )
+        .unwrap();
         let base = config(
             &peers,
             &receipt_store,
@@ -1326,6 +1661,198 @@ mod tests {
         )
         .unwrap();
         assert_eq!(verified.resolved_receipt.id, receipt.id);
+    }
+
+    #[test]
+    fn strict_chiodos_verifier_rejects_signature_slice_profile() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (envelope, receipt_store, lease_registry, governance_store, oracle, mut peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+        peers.insert(PinnedPeer {
+            kernel_id: "did:chio:org-a".to_string(),
+            public_key: kp_a.public_key(),
+            ladder_manifest_ref: Some(crate::trust_establishment::LadderManifestRef {
+                manifest_id: "ladder:org-a:v1".to_string(),
+                sha256: "a".repeat(64),
+                issued_at_unix_ms: now_ms - 60_000,
+                expires_at_unix_ms: now_ms + 60_000,
+            }),
+        });
+        peers.insert(PinnedPeer {
+            kernel_id: "did:chio:org-b".to_string(),
+            public_key: kp_b.public_key(),
+            ladder_manifest_ref: Some(crate::trust_establishment::LadderManifestRef {
+                manifest_id: "ladder:org-b:v1".to_string(),
+                sha256: "b".repeat(64),
+                issued_at_unix_ms: now_ms - 60_000,
+                expires_at_unix_ms: now_ms + 60_000,
+            }),
+        });
+        let base = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+
+        let err = verify_chiodos_bilateral_invocation(
+            &envelope,
+            &StrictChiodosVerifierConfig { base: &base },
+        )
+        .unwrap_err();
+        assert_eq!(err.code(), "predicate.type_unrecognised");
+        assert!(err.to_string().contains("signature-slice"));
+    }
+
+    #[test]
+    fn strict_chiodos_verifier_accepts_strict_predicate_profile() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let envelope = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            happy_path_extensions(now_ms),
+        )
+        .unwrap();
+        let mut receipt_store = InMemoryReceiptStore::new();
+        receipt_store.insert(receipt.clone());
+        let mut lease_registry = InMemoryLeaseRegistry::new();
+        lease_registry.insert(ResolvedLease {
+            lease_id: "lease-c2-happy".to_string(),
+            issuer: "did:chio:org-a".to_string(),
+            expires_at_unix_ms: now_ms + 60_000,
+            scope_digest_hex: None,
+        });
+        let governance_store = InMemoryGovernanceReceiptStore::new();
+        let oracle = DemoAllowAllRevocationOracle;
+        let mut peers = PeerPinSet::new();
+        peers.insert(PinnedPeer {
+            kernel_id: "did:chio:org-a".to_string(),
+            public_key: kp_a.public_key(),
+            ladder_manifest_ref: Some(crate::trust_establishment::LadderManifestRef {
+                manifest_id: "ladder:org-a:v1".to_string(),
+                sha256: "a".repeat(64),
+                issued_at_unix_ms: now_ms - 60_000,
+                expires_at_unix_ms: now_ms + 60_000,
+            }),
+        });
+        peers.insert(PinnedPeer {
+            kernel_id: "did:chio:org-b".to_string(),
+            public_key: kp_b.public_key(),
+            ladder_manifest_ref: Some(crate::trust_establishment::LadderManifestRef {
+                manifest_id: "ladder:org-b:v1".to_string(),
+                sha256: "b".repeat(64),
+                issued_at_unix_ms: now_ms - 60_000,
+                expires_at_unix_ms: now_ms + 60_000,
+            }),
+        });
+        let base = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+
+        let verified = verify_chiodos_bilateral_invocation(
+            &envelope,
+            &StrictChiodosVerifierConfig { base: &base },
+        )
+        .unwrap();
+        assert_eq!(verified.resolved_receipt.id, receipt.id);
+        assert_eq!(
+            verified
+                .statement
+                .predicate
+                .tool_args_hash
+                .as_ref()
+                .unwrap()
+                .value,
+            receipt.action.parameter_hash
+        );
+        assert!(verified
+            .statement
+            .predicate
+            .receipt_canonical_json
+            .is_none());
+    }
+
+    #[test]
+    fn strict_chiodos_verifier_requires_tool_args_hash() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+
+        let (_slice_envelope, receipt_store, lease_registry, governance_store, oracle, mut peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+        let mut envelope = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            happy_path_extensions(now_ms),
+        )
+        .unwrap();
+        let (mut statement, _) = envelope.decode_statement().unwrap();
+        statement.predicate.tool_args_hash = None;
+        let statement_bytes = statement.canonical_bytes().unwrap();
+        resign_envelope(&mut envelope, &kp_a, &kp_b, &statement_bytes);
+
+        peers.insert(PinnedPeer {
+            kernel_id: "did:chio:org-a".to_string(),
+            public_key: kp_a.public_key(),
+            ladder_manifest_ref: Some(crate::trust_establishment::LadderManifestRef {
+                manifest_id: "ladder:org-a:v1".to_string(),
+                sha256: "a".repeat(64),
+                issued_at_unix_ms: now_ms - 60_000,
+                expires_at_unix_ms: now_ms + 60_000,
+            }),
+        });
+        peers.insert(PinnedPeer {
+            kernel_id: "did:chio:org-b".to_string(),
+            public_key: kp_b.public_key(),
+            ladder_manifest_ref: Some(crate::trust_establishment::LadderManifestRef {
+                manifest_id: "ladder:org-b:v1".to_string(),
+                sha256: "b".repeat(64),
+                issued_at_unix_ms: now_ms - 60_000,
+                expires_at_unix_ms: now_ms + 60_000,
+            }),
+        });
+        let base = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+
+        let err = verify_chiodos_bilateral_invocation(
+            &envelope,
+            &StrictChiodosVerifierConfig { base: &base },
+        )
+        .unwrap_err();
+        assert_eq!(err.code(), "predicate.schema_invalid");
+        assert!(err.to_string().contains("tool_args_hash"));
     }
 
     #[test]
@@ -1673,9 +2200,11 @@ mod tests {
             fixture(&kp_a, &kp_b, &receipt, now_ms);
         let (mut statement, _) = envelope.decode_statement().unwrap();
         let mut embedded: ChioReceipt =
-            serde_json::from_str(&statement.predicate.receipt_canonical_json).unwrap();
+            serde_json::from_str(statement.predicate.receipt_canonical_json.as_ref().unwrap())
+                .unwrap();
         embedded.capability_id = "different-capability".to_string();
-        statement.predicate.receipt_canonical_json = canonical_json_string(&embedded).unwrap();
+        statement.predicate.receipt_canonical_json =
+            Some(canonical_json_string(&embedded).unwrap());
         resign_envelope(
             &mut envelope,
             &kp_a,

@@ -80,6 +80,7 @@ members = [
     "crates/chio-did",
     "crates/chio-federation",
     "crates/chio-governance",
+    "crates/chio-chiodos",
     "crates/chio-revocation-oracle",
     "crates/chio-reputation",
     "crates/chio-selective-disclosure",
