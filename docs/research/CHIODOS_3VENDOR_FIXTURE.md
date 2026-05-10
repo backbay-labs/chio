@@ -24,8 +24,10 @@ sketches are illustrative (not strict canonical JSON); fields annotated
 Runnable artifacts live under
 `examples/chiodos-3vendor/fixtures/`. The committed buyer/auditor proof
 package is verified by `chio-chiodos` and by
-`chio chiodos verify --package <path> --report <path>`. Its bilateral DSSE
-envelopes use `chio.bilateral-cosign-invocation.v1`; the older
+`chio chiodos verify --package <path> --trusted-issuers <path> --report <path>`.
+The BBS issuer key is supplied by the verifier's trusted issuer registry,
+not by trusting key material embedded inside the untrusted proof package. Its
+bilateral DSSE envelopes use `chio.bilateral-cosign-invocation.v1`; the older
 `chio.bilateral-signature-slice.v1` profile is compatibility-only and is
 rejected by strict Chiodos verification.
 

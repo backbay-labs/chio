@@ -39,6 +39,7 @@ use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey, Signature, Sig
 use chio_core_types::receipt::ChioReceipt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 
 use crate::bilateral::{BilateralCoSigningError, BilateralCoSigningProtocol, DsseCoSigningRequest};
 
@@ -640,6 +641,11 @@ pub fn sign_dsse_envelope_full(
     let org_b_pub = org_b_keypair.public_key();
     let org_a_keyid = Keyid::from_public_key(&org_a_pub);
     let org_b_keyid = Keyid::from_public_key(&org_b_pub);
+    if org_a_pub == org_b_pub || org_a_keyid == org_b_keyid {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "strict Chiodos requires independent Org A and Org B signer keys".to_string(),
+        ));
+    }
 
     let predicate = build_predicate_full(
         receipt,
@@ -1043,6 +1049,12 @@ pub fn verify_chiodos_dsse_envelope(
 
     let org_a_keyid = Keyid::from_public_key(org_a_public_key);
     let org_b_keyid = Keyid::from_public_key(org_b_public_key);
+    if org_a_public_key == org_b_public_key || org_a_keyid == org_b_keyid {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "strict Chiodos requires independent Org A and Org B signer keys".to_string(),
+        ));
+    }
+    require_unique_signature_keyids(&envelope.signatures)?;
     if statement.predicate.tool_server_a.passport_key_fingerprint != org_a_keyid {
         return Err(BilateralCoSigningError::OrgASignatureInvalid);
     }
@@ -1279,6 +1291,21 @@ fn signature_for_keyid<'a>(
     signatures.iter().find(|signature| signature.keyid == keyid)
 }
 
+fn require_unique_signature_keyids(
+    signatures: &[DsseSignature],
+) -> Result<(), BilateralCoSigningError> {
+    let mut seen = BTreeSet::new();
+    for signature in signatures {
+        if !seen.insert(signature.keyid.as_str()) {
+            return Err(BilateralCoSigningError::CanonicalJson(format!(
+                "dsse.malformed: duplicate signature keyid {}",
+                signature.keyid
+            )));
+        }
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Tests (encoding round-trip + happy path; negative paths live in
 // chio-conformance/tests/b4_bilateral_dsse_signature_slice.rs)
@@ -1349,6 +1376,99 @@ mod tests {
         );
         assert_eq!(statement.subject.len(), 1);
         assert_eq!(statement.subject[0].name, receipt_subject_name(&receipt.id));
+    }
+
+    #[test]
+    fn strict_chiodos_signer_rejects_identical_signer_keys() {
+        let kp = Keypair::generate();
+        let receipt = sample_receipt(&kp);
+        let err = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp,
+            &kp,
+            "kernel.org-a",
+            "kernel.org-b",
+            "file_read",
+            1_734_000_000_000,
+            BilateralPredicateExtensions {
+                capability_lease_ref: Some(CapabilityLeaseRef {
+                    lease_id: "lease-bilateral".to_string(),
+                    issuer: "kernel.org-a".to_string(),
+                    expires_at_unix_ms: 1_734_000_060_000,
+                    scope_digest: None,
+                }),
+                policy_evaluation_summary: Some(PolicyEvaluationSummary {
+                    server_a_verdict: PolicyVerdict {
+                        verdict: "allow".to_string(),
+                        policy_id: "policy-a".to_string(),
+                        policy_version: "v1".to_string(),
+                        rationale_code: None,
+                    },
+                    server_b_verdict: PolicyVerdict {
+                        verdict: "allow".to_string(),
+                        policy_id: "policy-b".to_string(),
+                        policy_version: "v1".to_string(),
+                        rationale_code: None,
+                    },
+                    joint_disposition: Some("allow".to_string()),
+                }),
+                governance_receipt_ref: None,
+                consistency_anchor: None,
+                consistency_model: None,
+                cross_org_visibility: None,
+            },
+        )
+        .expect_err("strict Chiodos DSSE needs two independent signer keys");
+        assert!(err.to_string().contains("independent"));
+    }
+
+    #[test]
+    fn strict_chiodos_verifier_rejects_duplicate_signature_keyids() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let mut envelope = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "kernel.org-a",
+            "kernel.org-b",
+            "file_read",
+            1_734_000_000_000,
+            BilateralPredicateExtensions {
+                capability_lease_ref: Some(CapabilityLeaseRef {
+                    lease_id: "lease-bilateral".to_string(),
+                    issuer: "kernel.org-a".to_string(),
+                    expires_at_unix_ms: 1_734_000_060_000,
+                    scope_digest: None,
+                }),
+                policy_evaluation_summary: Some(PolicyEvaluationSummary {
+                    server_a_verdict: PolicyVerdict {
+                        verdict: "allow".to_string(),
+                        policy_id: "policy-a".to_string(),
+                        policy_version: "v1".to_string(),
+                        rationale_code: None,
+                    },
+                    server_b_verdict: PolicyVerdict {
+                        verdict: "allow".to_string(),
+                        policy_id: "policy-b".to_string(),
+                        policy_version: "v1".to_string(),
+                        rationale_code: None,
+                    },
+                    joint_disposition: Some("allow".to_string()),
+                }),
+                governance_receipt_ref: None,
+                consistency_anchor: None,
+                consistency_model: None,
+                cross_org_visibility: None,
+            },
+        )
+        .unwrap();
+        envelope.signatures[1].keyid = envelope.signatures[0].keyid.clone();
+
+        let err = verify_chiodos_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+            .expect_err("strict Chiodos rejects duplicate signature key IDs");
+        assert!(err.to_string().contains("duplicate signature keyid"));
     }
 
     #[test]

@@ -24,6 +24,79 @@ use serde::{Deserialize, Serialize};
 
 pub const PROOF_PACKAGE_SCHEMA: &str = "chio.chiodos.proof-package.v1";
 pub const VERIFIER_REPORT_SCHEMA: &str = "chio.chiodos.verifier-report.v1";
+pub const TRUSTED_ISSUER_REGISTRY_SCHEMA: &str = "chio.chiodos.trusted-issuer-registry.v1";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustedBbsIssuer {
+    pub issuer_fingerprint: String,
+    pub public_key_hex: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustedIssuerRegistryDocument {
+    pub schema: String,
+    pub issuers: Vec<TrustedBbsIssuer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrustedIssuerRegistry {
+    public_keys: BTreeMap<String, String>,
+}
+
+impl TrustedIssuerRegistry {
+    pub fn from_document(
+        document: TrustedIssuerRegistryDocument,
+    ) -> Result<Self, ChiodosPackageError> {
+        if document.schema != TRUSTED_ISSUER_REGISTRY_SCHEMA {
+            return Err(ChiodosPackageError::TrustedIssuer(format!(
+                "trusted issuer registry schema {} is unsupported",
+                document.schema
+            )));
+        }
+        if document.issuers.is_empty() {
+            return Err(ChiodosPackageError::TrustedIssuer(
+                "trusted issuer registry is empty".to_string(),
+            ));
+        }
+
+        let mut public_keys = BTreeMap::new();
+        for issuer in document.issuers {
+            validate_non_empty(&issuer.issuer_fingerprint, "issuerFingerprint")?;
+            validate_non_empty(&issuer.public_key_hex, "publicKeyHex")?;
+            if !is_lower_hex(&issuer.issuer_fingerprint) {
+                return Err(ChiodosPackageError::TrustedIssuer(format!(
+                    "issuerFingerprint {} is not lowercase hex",
+                    issuer.issuer_fingerprint
+                )));
+            }
+            if !is_lower_hex(&issuer.public_key_hex) || issuer.public_key_hex.len() % 2 != 0 {
+                return Err(ChiodosPackageError::TrustedIssuer(format!(
+                    "publicKeyHex for issuer {} is not lowercase even-length hex",
+                    issuer.issuer_fingerprint
+                )));
+            }
+            if public_keys
+                .insert(issuer.issuer_fingerprint.clone(), issuer.public_key_hex)
+                .is_some()
+            {
+                return Err(ChiodosPackageError::TrustedIssuer(format!(
+                    "duplicate issuer fingerprint {}",
+                    issuer.issuer_fingerprint
+                )));
+            }
+        }
+
+        Ok(Self { public_keys })
+    }
+
+    fn public_key_hex(&self, issuer_fingerprint: &str) -> Option<&str> {
+        self.public_keys
+            .get(issuer_fingerprint)
+            .map(std::string::String::as_str)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,10 +185,27 @@ pub enum ChiodosPackageError {
     Federation(String),
     #[error("selective disclosure verification failed: {0}")]
     SelectiveDisclosure(String),
+    #[error("trusted issuer registry failed: {0}")]
+    TrustedIssuer(String),
     #[error("fixture data is inconsistent: {0}")]
     Inconsistent(String),
     #[error("JSON operation failed: {0}")]
     Json(String),
+}
+
+fn validate_non_empty(value: &str, field: &str) -> Result<(), ChiodosPackageError> {
+    if value.is_empty() {
+        return Err(ChiodosPackageError::TrustedIssuer(format!(
+            "{field} must be non-empty"
+        )));
+    }
+    Ok(())
+}
+
+fn is_lower_hex(value: &str) -> bool {
+    value
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn canonical_sha256<T: Serialize>(value: &T) -> Result<String, ChiodosPackageError> {
@@ -160,6 +250,14 @@ pub fn report_from_fixture_json(json: &str) -> Result<VerifierReport, ChiodosPac
     serde_json::from_str(json).map_err(|error| ChiodosPackageError::Json(error.to_string()))
 }
 
+pub fn trusted_issuer_registry_from_json(
+    json: &str,
+) -> Result<TrustedIssuerRegistry, ChiodosPackageError> {
+    let document: TrustedIssuerRegistryDocument =
+        serde_json::from_str(json).map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    TrustedIssuerRegistry::from_document(document)
+}
+
 pub fn package_json(package: &ChiodosProofPackage) -> Result<String, ChiodosPackageError> {
     serde_json::to_string_pretty(package)
         .map_err(|error| ChiodosPackageError::Json(error.to_string()))
@@ -167,6 +265,13 @@ pub fn package_json(package: &ChiodosProofPackage) -> Result<String, ChiodosPack
 
 pub fn report_json(report: &VerifierReport) -> Result<String, ChiodosPackageError> {
     serde_json::to_string_pretty(report)
+        .map_err(|error| ChiodosPackageError::Json(error.to_string()))
+}
+
+pub fn trusted_issuer_registry_json(
+    registry: &TrustedIssuerRegistryDocument,
+) -> Result<String, ChiodosPackageError> {
+    serde_json::to_string_pretty(registry)
         .map_err(|error| ChiodosPackageError::Json(error.to_string()))
 }
 
@@ -178,6 +283,7 @@ pub fn package_sha256(package: &ChiodosProofPackage) -> Result<String, ChiodosPa
 
 pub fn verify_package(
     package: &ChiodosProofPackage,
+    trusted_issuers: &TrustedIssuerRegistry,
 ) -> Result<VerifierReport, ChiodosPackageError> {
     if package.schema != PROOF_PACKAGE_SCHEMA {
         return Err(ChiodosPackageError::UnsupportedSchema(
@@ -308,16 +414,29 @@ pub fn verify_package(
             "BBS proof subject does not match workflow receipt body".to_string(),
         ));
     }
+    let trusted_issuer_key = trusted_issuers
+        .public_key_hex(&package.selective_disclosure_proof.issuer_fingerprint)
+        .ok_or_else(|| {
+            ChiodosPackageError::TrustedIssuer(format!(
+                "issuer {} is not trusted",
+                package.selective_disclosure_proof.issuer_fingerprint
+            ))
+        })?;
+    if trusted_issuer_key != package.selective_disclosure_proof.issuer_public_key_hex {
+        return Err(ChiodosPackageError::TrustedIssuer(format!(
+            "issuer public key for {} does not match trusted registry",
+            package.selective_disclosure_proof.issuer_fingerprint
+        )));
+    }
+    add_check("trusted-bbs-issuer");
+
     let mut issuer_registry = InMemoryIssuerRegistry::default();
     issuer_registry.insert(
         package
             .selective_disclosure_proof
             .issuer_fingerprint
             .clone(),
-        package
-            .selective_disclosure_proof
-            .issuer_public_key_hex
-            .clone(),
+        trusted_issuer_key.to_string(),
     );
     verify_selective_disclosure_proof(&package.selective_disclosure_proof, &issuer_registry)
         .map_err(|error| ChiodosPackageError::SelectiveDisclosure(error.to_string()))?;
@@ -437,14 +556,111 @@ mod tests {
 
     use super::*;
 
+    fn trusted_registry_for_package(
+        package: &ChiodosProofPackage,
+    ) -> Result<TrustedIssuerRegistry, ChiodosPackageError> {
+        TrustedIssuerRegistry::from_document(TrustedIssuerRegistryDocument {
+            schema: TRUSTED_ISSUER_REGISTRY_SCHEMA.to_string(),
+            issuers: vec![TrustedBbsIssuer {
+                issuer_fingerprint: package
+                    .selective_disclosure_proof
+                    .issuer_fingerprint
+                    .clone(),
+                public_key_hex: package
+                    .selective_disclosure_proof
+                    .issuer_public_key_hex
+                    .clone(),
+            }],
+        })
+    }
+
     #[test]
     fn committed_fixture_verifies_through_production_crate() {
         let package = package_from_fixture_json(include_str!(
             "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
-        let report = verify_package(&package).expect("package fixture verifies");
+        let registry = trusted_registry_for_package(&package).expect("trusted registry parses");
+        let report = verify_package(&package, &registry).expect("package fixture verifies");
         assert!(report.accepted);
-        assert_eq!(report.checks.len(), 7);
+        assert_eq!(report.checks.len(), 8);
+    }
+
+    #[test]
+    fn trusted_issuer_registry_rejects_invalid_empty_and_duplicate_documents() {
+        let wrong_schema = TrustedIssuerRegistryDocument {
+            schema: "chio.chiodos.trusted-issuer-registry.v0".to_string(),
+            issuers: vec![TrustedBbsIssuer {
+                issuer_fingerprint: "a".repeat(64),
+                public_key_hex: "aa".repeat(48),
+            }],
+        };
+        let error = TrustedIssuerRegistry::from_document(wrong_schema).unwrap_err();
+        assert!(error.to_string().contains("unsupported"));
+
+        let empty = TrustedIssuerRegistryDocument {
+            schema: TRUSTED_ISSUER_REGISTRY_SCHEMA.to_string(),
+            issuers: Vec::new(),
+        };
+        let error = TrustedIssuerRegistry::from_document(empty).unwrap_err();
+        assert!(error.to_string().contains("empty"));
+
+        let duplicate = TrustedIssuerRegistryDocument {
+            schema: TRUSTED_ISSUER_REGISTRY_SCHEMA.to_string(),
+            issuers: vec![
+                TrustedBbsIssuer {
+                    issuer_fingerprint: "a".repeat(64),
+                    public_key_hex: "aa".repeat(48),
+                },
+                TrustedBbsIssuer {
+                    issuer_fingerprint: "a".repeat(64),
+                    public_key_hex: "bb".repeat(48),
+                },
+            ],
+        };
+        let error = TrustedIssuerRegistry::from_document(duplicate).unwrap_err();
+        assert!(error.to_string().contains("duplicate"));
+    }
+
+    #[test]
+    fn package_bbs_issuer_must_be_externally_trusted() {
+        let package = package_from_fixture_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        let registry = TrustedIssuerRegistry::from_document(TrustedIssuerRegistryDocument {
+            schema: TRUSTED_ISSUER_REGISTRY_SCHEMA.to_string(),
+            issuers: vec![TrustedBbsIssuer {
+                issuer_fingerprint: "f".repeat(64),
+                public_key_hex: "aa".repeat(48),
+            }],
+        })
+        .expect("trusted registry parses");
+
+        let error = verify_package(&package, &registry).unwrap_err();
+        assert!(error.to_string().contains("issuer"));
+        assert!(error.to_string().contains("trusted"));
+    }
+
+    #[test]
+    fn package_bbs_issuer_key_must_match_trusted_registry() {
+        let package = package_from_fixture_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        let registry = TrustedIssuerRegistry::from_document(TrustedIssuerRegistryDocument {
+            schema: TRUSTED_ISSUER_REGISTRY_SCHEMA.to_string(),
+            issuers: vec![TrustedBbsIssuer {
+                issuer_fingerprint: package
+                    .selective_disclosure_proof
+                    .issuer_fingerprint
+                    .clone(),
+                public_key_hex: "aa".repeat(96),
+            }],
+        })
+        .expect("trusted registry parses");
+
+        let error = verify_package(&package, &registry).unwrap_err();
+        assert!(error.to_string().contains("issuer public key"));
     }
 }

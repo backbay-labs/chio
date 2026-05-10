@@ -1,9 +1,11 @@
 //! Offline Chiodos buyer and auditor proof package fixture.
 
 pub use chio_chiodos::{
-    package_from_fixture_json, package_json, report_from_fixture_json, report_json, verify_package,
+    package_from_fixture_json, package_json, report_from_fixture_json, report_json,
+    trusted_issuer_registry_from_json, trusted_issuer_registry_json, verify_package,
     ChiodosPackageError, ChiodosProofClaims, ChiodosProofPackage, PeerLadderBinding,
-    VendorKeyBinding, VerifierReport, PROOF_PACKAGE_SCHEMA, VERIFIER_REPORT_SCHEMA,
+    TrustedBbsIssuer, TrustedIssuerRegistry, TrustedIssuerRegistryDocument, VendorKeyBinding,
+    VerifierReport, PROOF_PACKAGE_SCHEMA, TRUSTED_ISSUER_REGISTRY_SCHEMA, VERIFIER_REPORT_SCHEMA,
 };
 use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
 use chio_core_types::capability::MonetaryAmount;
@@ -282,6 +284,23 @@ fn disclosure_proof_for_workflow(
     .map_err(|error| ChiodosPackageError::SelectiveDisclosure(error.to_string()))
 }
 
+pub fn trusted_issuer_registry_document(
+) -> Result<TrustedIssuerRegistryDocument, ChiodosPackageError> {
+    let bbs_keypair = generate_bbs_keypair(BBS_KEY_MATERIAL, BBS_KEY_INFO)
+        .map_err(|error| ChiodosPackageError::SelectiveDisclosure(error.to_string()))?;
+    Ok(TrustedIssuerRegistryDocument {
+        schema: TRUSTED_ISSUER_REGISTRY_SCHEMA.to_string(),
+        issuers: vec![TrustedBbsIssuer {
+            issuer_fingerprint: bbs_keypair.issuer_fingerprint,
+            public_key_hex: bbs_keypair.public_key_hex,
+        }],
+    })
+}
+
+pub fn trusted_issuer_registry() -> Result<TrustedIssuerRegistry, ChiodosPackageError> {
+    TrustedIssuerRegistry::from_document(trusted_issuer_registry_document()?)
+}
+
 pub fn build_proof_package(
     selective_disclosure_proof: SelectiveDisclosureProof,
 ) -> Result<ChiodosProofPackage, ChiodosPackageError> {
@@ -508,9 +527,10 @@ mod tests {
     #[test]
     fn fresh_package_verifies() {
         let package = fresh_proof_package().expect("fresh package builds");
-        let report = verify_package(&package).expect("fresh package verifies");
+        let registry = trusted_issuer_registry().expect("trusted issuer registry builds");
+        let report = verify_package(&package, &registry).expect("fresh package verifies");
         assert!(report.accepted);
-        assert_eq!(report.checks.len(), 7);
+        assert_eq!(report.checks.len(), 8);
     }
 
     #[test]
@@ -519,7 +539,8 @@ mod tests {
         package
             .peer_ladder_bindings
             .retain(|peer| peer.kernel_id != BUYER_KERNEL_ID);
-        let error = verify_package(&package).unwrap_err();
+        let registry = trusted_issuer_registry().unwrap();
+        let error = verify_package(&package, &registry).unwrap_err();
         assert!(error.to_string().contains("unpinned") || error.to_string().contains("ladder"));
     }
 
@@ -527,7 +548,8 @@ mod tests {
     fn stale_lease_fails_closed() {
         let mut package = fresh_proof_package().unwrap();
         package.capability_leases[0].body.expires_at_unix_ms = GENERATED_AT_UNIX_MS;
-        let error = verify_package(&package).unwrap_err();
+        let registry = trusted_issuer_registry().unwrap();
+        let error = verify_package(&package, &registry).unwrap_err();
         assert!(error.to_string().contains("expired") || error.to_string().contains("signature"));
     }
 
@@ -535,7 +557,8 @@ mod tests {
     fn mismatched_governance_receipt_fails_closed() {
         let mut package = fresh_proof_package().unwrap();
         package.governance_receipts[0].body.workflow_id = "wf-other".to_string();
-        let error = verify_package(&package).unwrap_err();
+        let registry = trusted_issuer_registry().unwrap();
+        let error = verify_package(&package, &registry).unwrap_err();
         assert!(error.to_string().contains("signature") || error.to_string().contains("workflow"));
     }
 
@@ -544,7 +567,8 @@ mod tests {
         let mut package = fresh_proof_package().unwrap();
         package.workflow_receipt.steps[1].parent_receipt_sha256 = Some("0".repeat(64));
         resign_workflow(&mut package);
-        let error = verify_package(&package).unwrap_err();
+        let registry = trusted_issuer_registry().unwrap();
+        let error = verify_package(&package, &registry).unwrap_err();
         assert!(error.to_string().contains("parent hash"));
     }
 
@@ -552,7 +576,8 @@ mod tests {
     fn bad_vendor_signature_fails_closed() {
         let mut package = fresh_proof_package().unwrap();
         package.vendor_keys[0].public_key = Keypair::from_seed(&[99; 32]).public_key();
-        let error = verify_package(&package).unwrap_err();
+        let registry = trusted_issuer_registry().unwrap();
+        let error = verify_package(&package, &registry).unwrap_err();
         assert!(error.to_string().contains("unexpected key"));
     }
 
@@ -560,7 +585,8 @@ mod tests {
     fn unsupported_claims_fail_closed() {
         let mut package = fresh_proof_package().unwrap();
         package.claims.zkvm = true;
-        let error = verify_package(&package).unwrap_err();
+        let registry = trusted_issuer_registry().unwrap();
+        let error = verify_package(&package, &registry).unwrap_err();
         assert!(error.to_string().contains("zkVM"));
     }
 
@@ -569,7 +595,10 @@ mod tests {
         let package =
             package_from_fixture_json(include_str!("../fixtures/buyer-auditor-proof-package.json"))
                 .expect("package fixture parses");
-        let report = verify_package(&package).expect("package fixture verifies");
+        let registry =
+            trusted_issuer_registry_from_json(include_str!("../fixtures/trusted-issuers.json"))
+                .expect("trusted issuer fixture parses");
+        let report = verify_package(&package, &registry).expect("package fixture verifies");
         let committed_report =
             report_from_fixture_json(include_str!("../fixtures/verifier-report.json"))
                 .expect("report fixture parses");

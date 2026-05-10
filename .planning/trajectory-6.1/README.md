@@ -7,6 +7,10 @@ verifier surface. The lane closes the strict bilateral predicate gap, moves
 proof-package verification out of the example crate, and adds a CLI verifier
 plus acceptance gates that fail closed.
 
+Review-fix closeout also requires BBS issuer trust to come from verifier-owned
+trusted issuer material, and strict bilateral DSSE verification to reject
+same-key or duplicate-keyid signer sets.
+
 ## Guardrails
 
 - Runtime changes must have runnable tests or a script gate.

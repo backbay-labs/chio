@@ -166,7 +166,7 @@
     },
     {
       "path": "crates/chio-federation/src/bilateral_dsse.rs",
-      "sha256": "3789b2a5e147eb38b85699dbc504349cf66486475d26e196692e2d1b074dec35"
+      "sha256": "9bb8e87d206b0ef14a1c441fb9b8b8811b924cd359ca0165f39b998879468ad2"
     },
     {
       "path": "crates/chio-conformance/tests/b2_receipt_v2_failclosed_pre_dispatch.rs",

@@ -29,7 +29,7 @@ Acceptance:
 
 Acceptance:
 
-- Add `chio chiodos verify --package <path> --report <path>`.
+- Add `chio chiodos verify --package <path> --trusted-issuers <path> --report <path>`.
 - Exit successfully only for accepted packages.
 - Write verifier report JSON.
 

@@ -2366,7 +2366,11 @@ fn main() {
             ),
         },
         Commands::Chiodos { command } => match command {
-            ChiodosCommands::Verify { package, report } => cmd_chiodos_verify(&package, &report),
+            ChiodosCommands::Verify {
+                package,
+                trusted_issuers,
+                report,
+            } => cmd_chiodos_verify(&package, &trusted_issuers, &report),
         },
         Commands::Replay(args) => cmd_replay(&args),
         Commands::Lineage { command } => dispatch_lineage(command, json_output),
@@ -2664,7 +2668,7 @@ fn emit_lineage_report<T: serde::Serialize>(report: &T, json: bool) -> Result<()
     Ok(())
 }
 
-fn cmd_chiodos_verify(package: &Path, report: &Path) -> Result<(), CliError> {
+fn cmd_chiodos_verify(package: &Path, trusted_issuers: &Path, report: &Path) -> Result<(), CliError> {
     let package_bytes = fs::read(package).map_err(|error| {
         CliError::cli_io_error(format!(
             "failed to read Chiodos proof package {}: {error}",
@@ -2680,7 +2684,22 @@ fn cmd_chiodos_verify(package: &Path, report: &Path) -> Result<(), CliError> {
         })?,
     )
     .map_err(|error| CliError::cli_other_error(format!("Chiodos package parse: {error}")))?;
-    let verifier_report = chio_chiodos::verify_package(&package)
+    let trusted_issuer_bytes = fs::read(trusted_issuers).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to read Chiodos trusted issuer registry {}: {error}",
+            trusted_issuers.display()
+        ))
+    })?;
+    let trusted_issuers = chio_chiodos::trusted_issuer_registry_from_json(
+        std::str::from_utf8(&trusted_issuer_bytes).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos trusted issuer registry {} is not UTF-8 JSON: {error}",
+                trusted_issuers.display()
+            ))
+        })?,
+    )
+    .map_err(|error| CliError::cli_other_error(format!("Chiodos trusted issuers parse: {error}")))?;
+    let verifier_report = chio_chiodos::verify_package(&package, &trusted_issuers)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos verify: {error}")))?;
     if let Some(parent) = report.parent() {
         if !parent.as_os_str().is_empty() {

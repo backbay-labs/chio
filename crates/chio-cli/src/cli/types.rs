@@ -754,6 +754,10 @@ enum ChiodosCommands {
         #[arg(long, value_name = "PATH")]
         package: PathBuf,
 
+        /// Path to the trusted BBS issuer registry JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_issuers: PathBuf,
+
         /// Path where verifier report JSON should be written.
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
