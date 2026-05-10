@@ -11,10 +11,12 @@
     "vendors",
     "actionClasses",
     "workflowIntersections",
+    "leaseAuthorities",
+    "governanceAuthorities",
     "revocation"
   ],
   "properties": {
-    "schema": { "const": "chio.chiodos.verifier-trust-bundle.v1" },
+    "schema": { "const": "chio.chiodos.verifier-trust-bundle.v2" },
     "trustedBbsIssuers": {
       "type": "array",
       "minItems": 1,
@@ -39,6 +41,16 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/workflowIntersectionTrust" }
+    },
+    "leaseAuthorities": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/leaseAuthority" }
+    },
+    "governanceAuthorities": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/governanceAuthority" }
     },
     "revocation": {
       "type": "object",
@@ -109,6 +121,36 @@
       "properties": {
         "intersectionId": { "type": "string", "minLength": 1 },
         "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "leaseAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issuer", "publicKey", "allowedActionClasses"],
+      "properties": {
+        "issuer": { "type": "string", "minLength": 1 },
+        "publicKey": { "$ref": "#/$defs/hex" },
+        "allowedActionClasses": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": ["scoped_observation", "delegated_action", "narrow_destructive"]
+          }
+        }
+      }
+    },
+    "governanceAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorizingKernel", "publicKey", "allowedCaseKinds"],
+      "properties": {
+        "authorizingKernel": { "type": "string", "minLength": 1 },
+        "publicKey": { "$ref": "#/$defs/hex" },
+        "allowedCaseKinds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "const": "destructive_authorization" }
+        }
       }
     }
   }

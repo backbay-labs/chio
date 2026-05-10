@@ -62,6 +62,96 @@
         "value": "stage_refund"
       },
       "expectedFailureCode": "workflow.intersection"
+    },
+    {
+      "id": "untrusted-lease-authority",
+      "target": "trustBundle",
+      "mutation": {
+        "op": "set",
+        "path": ["leaseAuthorities", 0, "issuer"],
+        "value": "did:chio:other-lease-authority"
+      },
+      "expectedFailureCode": "governance"
+    },
+    {
+      "id": "untrusted-governance-authority",
+      "target": "trustBundle",
+      "mutation": {
+        "op": "set",
+        "path": ["governanceAuthorities", 0, "authorizingKernel"],
+        "value": "did:chio:other-governance"
+      },
+      "expectedFailureCode": "governance"
+    },
+    {
+      "id": "wrong-scope-binding-tool-args",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["leaseScopeBindings", 0, "toolArgsHash"],
+        "value": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expectedFailureCode": "lease.scope_binding"
+    },
+    {
+      "id": "wrong-scope-binding-digest",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["capabilityLeases", 0, "body", "scopeDigest"],
+        "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "expectedFailureCode": "lease.scope_binding"
+    },
+    {
+      "id": "step-tool-receipt-mismatch",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowReceipt", "steps", 0, "tool_receipt_id"],
+        "value": "rcpt-vendor-b"
+      },
+      "expectedFailureCode": "workflow"
+    },
+    {
+      "id": "step-tool-name-mismatch",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowReceipt", "steps", 0, "tool_name"],
+        "value": "wrong_tool"
+      },
+      "expectedFailureCode": "workflow"
+    },
+    {
+      "id": "step-output-hash-mismatch",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowReceipt", "steps", 0, "output_hash"],
+        "value": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expectedFailureCode": "workflow"
+    },
+    {
+      "id": "step-dsse-hash-mismatch",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowReceipt", "steps", 0, "bilateral_dsse_sha256"],
+        "value": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expectedFailureCode": "workflow"
+    },
+    {
+      "id": "step-consistency-anchor-mismatch",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowReceipt", "steps", 0, "consistency_anchor"],
+        "value": "chiodos:consistency:wf-chiodos-refund-001:wrong"
+      },
+      "expectedFailureCode": "workflow"
     }
   ]
 }

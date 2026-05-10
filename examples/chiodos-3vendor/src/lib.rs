@@ -1,15 +1,16 @@
 //! Offline Chiodos buyer and auditor proof package fixture.
 
 pub use chio_chiodos::{
-    package_from_fixture_json, package_json, report_from_fixture_json, report_json,
+    package_json, proof_package_from_json, report_json, verifier_report_from_json,
     verifier_trust_bundle_from_json, verifier_trust_bundle_json, verify_package,
     ChiodosActionClassKind, ChiodosPackageError, ChiodosPinnedRevocationEpoch, ChiodosProofClaims,
-    ChiodosProofPackage, ChiodosTrustedActionClass, ChiodosTrustedWorkflowIntersection,
-    ChiodosVerifierTrustBundle, ChiodosVerifierTrustBundleDocument, PeerLadderBinding,
+    ChiodosProofPackage, ChiodosTrustedActionClass, ChiodosTrustedGovernanceAuthority,
+    ChiodosTrustedLeaseAuthority, ChiodosTrustedWorkflowIntersection, ChiodosVerifierTrustBundle,
+    ChiodosVerifierTrustBundleDocument, LeaseScopeBindingArtifact, PeerLadderBinding,
     TrustedBbsIssuer, VendorKeyBinding, VerifierReport, WorkflowIntersectionArtifact,
     WorkflowPairwiseIntersectionRef, WorkflowRequiredVendorSigner, WorkflowStepClassBinding,
-    PROOF_PACKAGE_SCHEMA, VERIFIER_REPORT_SCHEMA, VERIFIER_TRUST_BUNDLE_SCHEMA,
-    WORKFLOW_INTERSECTION_SCHEMA,
+    LEASE_SCOPE_BINDING_SCHEMA, PROOF_PACKAGE_SCHEMA, VERIFIER_REPORT_SCHEMA,
+    VERIFIER_TRUST_BUNDLE_SCHEMA, WORKFLOW_INTERSECTION_SCHEMA,
 };
 use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
 use chio_core_types::capability::MonetaryAmount;
@@ -44,6 +45,10 @@ const BUYER_KERNEL_ID: &str = "did:chio:buyer-kernel";
 const GOVERNANCE_KERNEL_ID: &str = "did:chio:buyer-governance";
 const SESSION_ID: &str = "sess-chiodos-refund";
 const CAPABILITY_ID: &str = "cap-chiodos-workflow";
+const LEASE_ISSUED_AT_UNIX_MS: u64 = GENERATED_AT_UNIX_MS - 30_000;
+const LEASE_EXPIRES_AT_UNIX_MS: u64 = GENERATED_AT_UNIX_MS + 30_000;
+const GOVERNANCE_ISSUED_AT_UNIX_MS: u64 = GENERATED_AT_UNIX_MS - 20_000;
+const GOVERNANCE_EXPIRES_AT_UNIX_MS: u64 = GENERATED_AT_UNIX_MS + 20_000;
 const BBS_KEY_MATERIAL: &[u8] = b"chiodos-conformance-bbs-key-material-0001";
 const BBS_KEY_INFO: &[u8] = b"chiodos";
 
@@ -130,19 +135,6 @@ fn signed_governance_digest(
     Ok(sha256_hex(canonical_string(receipt)?.as_bytes()))
 }
 
-fn workflow_scope_digest(
-    step_index: usize,
-    tool_name: &str,
-) -> Result<String, ChiodosPackageError> {
-    let scope = serde_json::json!({
-        "workflowId": WORKFLOW_ID,
-        "sessionId": SESSION_ID,
-        "stepIndex": step_index,
-        "toolName": tool_name,
-    });
-    canonical_sha256(&scope)
-}
-
 fn ladder_ref(manifest_id: &str, kernel_id: &str) -> LadderManifestRef {
     LadderManifestRef {
         manifest_id: manifest_id.to_string(),
@@ -208,22 +200,43 @@ fn policy_summary(vendor: &VendorFixture) -> PolicyEvaluationSummary {
 
 fn lease_artifact(
     vendor: &VendorFixture,
-    step_index: usize,
+    scope_digest: String,
+    action_class: CapabilityLeaseActionClass,
 ) -> Result<CapabilityLeaseArtifact, ChiodosPackageError> {
     Ok(CapabilityLeaseArtifact {
         schema: CAPABILITY_LEASE_SCHEMA_V1.to_string(),
         lease_id: vendor.lease_id.to_string(),
         issuer: BUYER_KERNEL_ID.to_string(),
         subject: vendor.kernel_id.to_string(),
-        scope_digest: workflow_scope_digest(step_index, vendor.tool_name)?,
-        action_class: if vendor.destructive {
-            CapabilityLeaseActionClass::NarrowDestructive
-        } else {
-            CapabilityLeaseActionClass::DelegatedAction
-        },
-        issued_at_unix_ms: GENERATED_AT_UNIX_MS - 30_000,
-        expires_at_unix_ms: GENERATED_AT_UNIX_MS + 30_000,
+        scope_digest,
+        action_class,
+        issued_at_unix_ms: LEASE_ISSUED_AT_UNIX_MS,
+        expires_at_unix_ms: LEASE_EXPIRES_AT_UNIX_MS,
     })
+}
+
+fn lease_scope_binding_artifact(
+    vendor: &VendorFixture,
+    step_index: usize,
+    action_class: CapabilityLeaseActionClass,
+    tool_args_hash: String,
+) -> LeaseScopeBindingArtifact {
+    LeaseScopeBindingArtifact {
+        schema: LEASE_SCOPE_BINDING_SCHEMA.to_string(),
+        lease_id: vendor.lease_id.to_string(),
+        workflow_id: WORKFLOW_ID.to_string(),
+        workflow_grant_id: CAPABILITY_ID.to_string(),
+        step_index,
+        tool_name: vendor.tool_name.to_string(),
+        peer_kernel_id: vendor.kernel_id.to_string(),
+        action_class_id: vendor.tool_name.to_string(),
+        subject: vendor.kernel_id.to_string(),
+        action_class,
+        tool_args_hash,
+        destructive: vendor.destructive,
+        issued_at_unix_ms: LEASE_ISSUED_AT_UNIX_MS,
+        expires_at_unix_ms: LEASE_EXPIRES_AT_UNIX_MS,
+    }
 }
 
 fn governance_receipt_artifact(lease_id: &str, step_sha256: &str) -> GovernanceReceiptArtifact {
@@ -235,8 +248,8 @@ fn governance_receipt_artifact(lease_id: &str, step_sha256: &str) -> GovernanceR
         authorized_lease_id: lease_id.to_string(),
         workflow_id: WORKFLOW_ID.to_string(),
         step_sha256: step_sha256.to_string(),
-        issued_at_unix_ms: GENERATED_AT_UNIX_MS - 20_000,
-        expires_at_unix_ms: GENERATED_AT_UNIX_MS + 20_000,
+        issued_at_unix_ms: GOVERNANCE_ISSUED_AT_UNIX_MS,
+        expires_at_unix_ms: GOVERNANCE_EXPIRES_AT_UNIX_MS,
     }
 }
 
@@ -317,6 +330,19 @@ pub fn verifier_trust_bundle_document_for_package(
             intersection_id: package.workflow_intersection.intersection_id.clone(),
             sha256: canonical_sha256(&package.workflow_intersection)?,
         }],
+        lease_authorities: vec![ChiodosTrustedLeaseAuthority {
+            issuer: BUYER_KERNEL_ID.to_string(),
+            public_key: Keypair::from_seed(&BUYER_SEED).public_key(),
+            allowed_action_classes: vec![
+                CapabilityLeaseActionClass::DelegatedAction,
+                CapabilityLeaseActionClass::NarrowDestructive,
+            ],
+        }],
+        governance_authorities: vec![ChiodosTrustedGovernanceAuthority {
+            authorizing_kernel: GOVERNANCE_KERNEL_ID.to_string(),
+            public_key: Keypair::from_seed(&GOVERNANCE_SEED).public_key(),
+            allowed_case_kinds: vec![GovernanceReceiptCaseKind::DestructiveAuthorization],
+        }],
         revocation: ChiodosPinnedRevocationEpoch {
             now_unix_ms: GENERATED_AT_UNIX_MS,
             epoch_height: 0,
@@ -387,6 +413,7 @@ fn build_proof_package_unchecked(
 
     let mut tool_receipts = Vec::new();
     let mut leases = Vec::new();
+    let mut lease_scope_bindings = Vec::new();
     let mut governance_receipts = Vec::new();
     let mut envelopes = Vec::new();
     let mut steps = Vec::new();
@@ -403,8 +430,23 @@ fn build_proof_package_unchecked(
         let receipt_body = receipt_body(vendor, &vendor_key)?;
         let receipt = ChioReceipt::sign(receipt_body, &vendor_key)
             .map_err(|error| ChiodosPackageError::Inconsistent(error.to_string()))?;
-        let lease = SignedExportEnvelope::sign(lease_artifact(vendor, index)?, &buyer_key)
-            .map_err(|error| ChiodosPackageError::Inconsistent(error.to_string()))?;
+        let action_class = if vendor.destructive {
+            CapabilityLeaseActionClass::NarrowDestructive
+        } else {
+            CapabilityLeaseActionClass::DelegatedAction
+        };
+        let lease_scope_binding = lease_scope_binding_artifact(
+            vendor,
+            index,
+            action_class,
+            receipt.action.parameter_hash.clone(),
+        );
+        let lease_scope_digest = lease_scope_binding.scope_digest()?;
+        let lease = SignedExportEnvelope::sign(
+            lease_artifact(vendor, lease_scope_digest, action_class)?,
+            &buyer_key,
+        )
+        .map_err(|error| ChiodosPackageError::Inconsistent(error.to_string()))?;
         lease
             .body
             .validate()
@@ -447,7 +489,7 @@ fn build_proof_package_unchecked(
             }),
             policy_evaluation_summary: Some(policy_summary(vendor)),
             governance_receipt_ref: governance_ref,
-            consistency_anchor: Some(format!("chiodos:anchor:{WORKFLOW_ID}:{index}")),
+            consistency_anchor: Some(format!("chiodos:consistency:{WORKFLOW_ID}:{index}")),
             consistency_model: None,
             cross_org_visibility: None,
         };
@@ -486,6 +528,7 @@ fn build_proof_package_unchecked(
         });
         tool_receipts.push(receipt);
         leases.push(lease);
+        lease_scope_bindings.push(lease_scope_binding);
         if let Some(governance_receipt) = governance_receipt {
             governance_receipts.push(governance_receipt);
         }
@@ -568,6 +611,7 @@ fn build_proof_package_unchecked(
         workflow_receipt,
         bilateral_envelopes: envelopes,
         capability_leases: leases,
+        lease_scope_bindings,
         governance_receipts,
         workflow_intersection,
         selective_disclosure_proof,
@@ -591,6 +635,19 @@ mod tests {
                 .expect("vendor cosigns");
         }
         package.workflow_receipt = workflow;
+    }
+
+    fn rebuild_verifier_material(package: &mut ChiodosProofPackage) -> ChiodosVerifierTrustBundle {
+        package
+            .workflow_intersection
+            .aggregate_workflow_receipt_sha256 =
+            canonical_sha256(&package.workflow_receipt.body()).expect("workflow body hashes");
+        package.selective_disclosure_proof =
+            disclosure_proof_for_workflow(&package.workflow_receipt.body())
+                .expect("workflow disclosure proof rebuilds");
+        let document =
+            verifier_trust_bundle_document_for_package(package).expect("trust bundle rebuilds");
+        ChiodosVerifierTrustBundle::from_document(document).expect("trust bundle parses")
     }
 
     #[test]
@@ -644,6 +701,15 @@ mod tests {
     fn stale_lease_fails_closed() {
         let mut package = fresh_proof_package().unwrap();
         package.capability_leases[0].body.expires_at_unix_ms = GENERATED_AT_UNIX_MS;
+        package.lease_scope_bindings[0].expires_at_unix_ms = GENERATED_AT_UNIX_MS;
+        package.capability_leases[0].body.scope_digest = package.lease_scope_bindings[0]
+            .scope_digest()
+            .expect("scope digest rebuilds");
+        package.capability_leases[0] = SignedExportEnvelope::sign(
+            package.capability_leases[0].body.clone(),
+            &Keypair::from_seed(&BUYER_SEED),
+        )
+        .expect("lease re-signs");
         let trust_bundle = verifier_trust_bundle().unwrap();
         let error = verify_package(&package, &trust_bundle).unwrap_err();
         assert!(error.to_string().contains("expired") || error.to_string().contains("signature"));
@@ -693,15 +759,50 @@ mod tests {
     #[test]
     fn committed_fixtures_verify() {
         let package =
-            package_from_fixture_json(include_str!("../fixtures/buyer-auditor-proof-package.json"))
+            proof_package_from_json(include_str!("../fixtures/buyer-auditor-proof-package.json"))
                 .expect("package fixture parses");
         let trust_bundle =
             verifier_trust_bundle_from_json(include_str!("../fixtures/verifier-trust-bundle.json"))
                 .expect("verifier trust bundle fixture parses");
         let report = verify_package(&package, &trust_bundle).expect("package fixture verifies");
         let committed_report =
-            report_from_fixture_json(include_str!("../fixtures/verifier-report.json"))
+            verifier_report_from_json(include_str!("../fixtures/verifier-report.json"))
                 .expect("report fixture parses");
         assert_eq!(report, committed_report);
+    }
+
+    #[test]
+    fn step_tool_receipt_mismatch_fails_closed() {
+        let mut package = fresh_proof_package().expect("fresh package builds");
+        package.workflow_receipt.steps[0].tool_receipt_id =
+            package.workflow_receipt.steps[1].tool_receipt_id.clone();
+        resign_workflow(&mut package);
+        let trust_bundle = rebuild_verifier_material(&mut package);
+
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        assert!(error.to_string().contains("tool receipt"));
+    }
+
+    #[test]
+    fn step_output_hash_mismatch_fails_closed() {
+        let mut package = fresh_proof_package().expect("fresh package builds");
+        package.workflow_receipt.steps[0].output_hash = Some("0".repeat(64));
+        resign_workflow(&mut package);
+        let trust_bundle = rebuild_verifier_material(&mut package);
+
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        assert!(error.to_string().contains("output hash"));
+    }
+
+    #[test]
+    fn step_consistency_anchor_mismatch_fails_closed() {
+        let mut package = fresh_proof_package().expect("fresh package builds");
+        package.workflow_receipt.steps[0].consistency_anchor =
+            Some("chiodos:consistency:wf-chiodos-refund-001:wrong".to_string());
+        resign_workflow(&mut package);
+        let trust_bundle = rebuild_verifier_material(&mut package);
+
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        assert!(error.to_string().contains("consistency anchor"));
     }
 }

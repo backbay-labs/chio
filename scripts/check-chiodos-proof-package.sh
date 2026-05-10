@@ -41,7 +41,7 @@ if len(proof.get("disclosed", [])) != len(proof.get("disclosed_indices", [])):
     raise SystemExit("Chiodos BBS fixture disclosed messages and indices disagree")
 if package.get("schema") != "chio.chiodos.proof-package.v1":
     raise SystemExit("Chiodos proof package uses the wrong schema")
-if trust_bundle.get("schema") != "chio.chiodos.verifier-trust-bundle.v1":
+if trust_bundle.get("schema") != "chio.chiodos.verifier-trust-bundle.v2":
     raise SystemExit("Chiodos verifier trust bundle uses the wrong schema")
 if report.get("schema") != "chio.chiodos.verifier-report.v1":
     raise SystemExit("Chiodos verifier report uses the wrong schema")
@@ -103,16 +103,42 @@ for idx, envelope in enumerate(package.get("bilateralEnvelopes", [])):
         raise SystemExit(f"Chiodos envelope {idx} carries signature-slice receipt helper")
 if len(package.get("capabilityLeases", [])) != 3:
     raise SystemExit("Chiodos package must contain three capability leases")
+if len(package.get("leaseScopeBindings", [])) != 3:
+    raise SystemExit("Chiodos package must contain three lease scope bindings")
+for binding in package.get("leaseScopeBindings", []):
+    if binding.get("schema") != "chio.chiodos-lease-scope-binding.v1":
+        raise SystemExit("Chiodos lease scope binding uses the wrong schema")
 if len(package.get("governanceReceipts", [])) != 1:
     raise SystemExit("Chiodos package must contain one destructive governance receipt")
+lease_authorities = trust_bundle.get("leaseAuthorities", [])
+if len(lease_authorities) != 1:
+    raise SystemExit("Trust bundle must pin one lease authority")
+lease_authority = lease_authorities[0]
+if lease_authority.get("issuer") != "did:chio:buyer-kernel":
+    raise SystemExit("Fixture lease authority issuer mismatch")
+if lease_authority.get("publicKey") != package["capabilityLeases"][0].get("signerKey"):
+    raise SystemExit("Fixture lease authority key does not match signed leases")
+if "narrow_destructive" not in lease_authority.get("allowedActionClasses", []):
+    raise SystemExit("Fixture lease authority must allow narrow destructive leases")
+governance_authorities = trust_bundle.get("governanceAuthorities", [])
+if len(governance_authorities) != 1:
+    raise SystemExit("Trust bundle must pin one governance authority")
+governance_authority = governance_authorities[0]
+if governance_authority.get("authorizingKernel") != "did:chio:buyer-governance":
+    raise SystemExit("Fixture governance authority kernel mismatch")
+if governance_authority.get("publicKey") != package["governanceReceipts"][0].get("signerKey"):
+    raise SystemExit("Fixture governance authority key does not match signed receipt")
 if negative_cases.get("schema") != "chio.chiodos.negative-fixture-corpus.v1":
     raise SystemExit("Chiodos negative corpus uses the wrong schema")
-if len(negative_cases.get("cases", [])) < 6:
+if len(negative_cases.get("cases", [])) < 12:
     raise SystemExit("Chiodos negative corpus must cover verifier trust and package mutations")
 
 expected_schemas = {
+    "capability-lease.schema.json": "chio.capability-lease.v1",
+    "governance-receipt.schema.json": "chio.governance-receipt.v1",
+    "lease-scope-binding.schema.json": "chio.chiodos-lease-scope-binding.v1",
     "proof-package.schema.json": "chio.chiodos.proof-package.v1",
-    "verifier-trust-bundle.schema.json": "chio.chiodos.verifier-trust-bundle.v1",
+    "verifier-trust-bundle.schema.json": "chio.chiodos.verifier-trust-bundle.v2",
     "workflow-intersection.schema.json": "chio.chiodos-workflow-intersection.v1",
     "trusted-issuer-registry.schema.json": "chio.chiodos.trusted-issuer-registry.v1",
     "selective-disclosure-proof.schema.json": "chio.selective-disclosure-proof.v1",

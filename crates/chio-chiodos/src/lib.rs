@@ -13,7 +13,8 @@ use chio_federation::{
 };
 use chio_governance::{
     verify_capability_lease, verify_destructive_authorization, verify_step_governance_boundary,
-    SignedCapabilityLease, SignedGovernanceReceipt,
+    CapabilityLeaseActionClass, GovernanceReceiptCaseKind, SignedCapabilityLease,
+    SignedGovernanceReceipt,
 };
 use chio_selective_disclosure::{
     project_workflow_receipt_body, verify_selective_disclosure_proof, InMemoryIssuerRegistry,
@@ -25,8 +26,11 @@ use serde::{Deserialize, Serialize};
 pub const PROOF_PACKAGE_SCHEMA: &str = "chio.chiodos.proof-package.v1";
 pub const VERIFIER_REPORT_SCHEMA: &str = "chio.chiodos.verifier-report.v1";
 pub const TRUSTED_ISSUER_REGISTRY_SCHEMA: &str = "chio.chiodos.trusted-issuer-registry.v1";
-pub const VERIFIER_TRUST_BUNDLE_SCHEMA: &str = "chio.chiodos.verifier-trust-bundle.v1";
+pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V1: &str = "chio.chiodos.verifier-trust-bundle.v1";
+pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V2: &str = "chio.chiodos.verifier-trust-bundle.v2";
+pub const VERIFIER_TRUST_BUNDLE_SCHEMA: &str = VERIFIER_TRUST_BUNDLE_SCHEMA_V2;
 pub const WORKFLOW_INTERSECTION_SCHEMA: &str = "chio.chiodos-workflow-intersection.v1";
+pub const LEASE_SCOPE_BINDING_SCHEMA: &str = "chio.chiodos-lease-scope-binding.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -131,6 +135,22 @@ pub struct ChiodosTrustedWorkflowIntersection {
     pub sha256: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChiodosTrustedLeaseAuthority {
+    pub issuer: String,
+    pub public_key: PublicKey,
+    pub allowed_action_classes: Vec<CapabilityLeaseActionClass>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChiodosTrustedGovernanceAuthority {
+    pub authorizing_kernel: String,
+    pub public_key: PublicKey,
+    pub allowed_case_kinds: Vec<GovernanceReceiptCaseKind>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChiodosPinnedRevocationEpoch {
@@ -147,6 +167,10 @@ pub struct ChiodosVerifierTrustBundleDocument {
     pub vendors: Vec<VendorKeyBinding>,
     pub action_classes: Vec<ChiodosTrustedActionClass>,
     pub workflow_intersections: Vec<ChiodosTrustedWorkflowIntersection>,
+    #[serde(default)]
+    pub lease_authorities: Vec<ChiodosTrustedLeaseAuthority>,
+    #[serde(default)]
+    pub governance_authorities: Vec<ChiodosTrustedGovernanceAuthority>,
     pub revocation: ChiodosPinnedRevocationEpoch,
 }
 
@@ -157,6 +181,8 @@ pub struct ChiodosVerifierTrustBundle {
     vendors: BTreeMap<String, VendorKeyBinding>,
     action_classes: BTreeMap<String, ChiodosTrustedActionClass>,
     workflow_intersections: BTreeMap<String, String>,
+    lease_authorities: BTreeMap<String, ChiodosTrustedLeaseAuthority>,
+    governance_authorities: BTreeMap<String, ChiodosTrustedGovernanceAuthority>,
     revocation: ChiodosPinnedRevocationEpoch,
 }
 
@@ -164,6 +190,12 @@ impl ChiodosVerifierTrustBundle {
     pub fn from_document(
         document: ChiodosVerifierTrustBundleDocument,
     ) -> Result<Self, ChiodosPackageError> {
+        if document.schema == VERIFIER_TRUST_BUNDLE_SCHEMA_V1 {
+            return Err(ChiodosPackageError::TrustBundle(
+                "historical verifier trust bundle v1 is parse-only and cannot satisfy strict Chiodos verification"
+                    .to_string(),
+            ));
+        }
         if document.schema != VERIFIER_TRUST_BUNDLE_SCHEMA {
             return Err(ChiodosPackageError::TrustBundle(format!(
                 "verifier trust bundle schema {} is unsupported",
@@ -175,9 +207,11 @@ impl ChiodosVerifierTrustBundle {
             || document.vendors.is_empty()
             || document.action_classes.is_empty()
             || document.workflow_intersections.is_empty()
+            || document.lease_authorities.is_empty()
+            || document.governance_authorities.is_empty()
         {
             return Err(ChiodosPackageError::TrustBundle(
-                "verifier trust bundle must contain issuers, peers, vendors, action classes, and workflow intersections"
+                "verifier trust bundle must contain issuers, peers, vendors, action classes, workflow intersections, lease authorities, and governance authorities"
                     .to_string(),
             ));
         }
@@ -248,12 +282,51 @@ impl ChiodosVerifierTrustBundle {
             }
         }
 
+        let mut lease_authorities = BTreeMap::new();
+        for authority in document.lease_authorities {
+            validate_trust_field(&authority.issuer, "leaseAuthority.issuer")?;
+            validate_unique_action_classes(
+                &authority.allowed_action_classes,
+                "leaseAuthority.allowedActionClasses",
+            )?;
+            if lease_authorities
+                .insert(authority.issuer.clone(), authority)
+                .is_some()
+            {
+                return Err(ChiodosPackageError::TrustBundle(
+                    "duplicate trusted lease authority issuer".to_string(),
+                ));
+            }
+        }
+
+        let mut governance_authorities = BTreeMap::new();
+        for authority in document.governance_authorities {
+            validate_trust_field(
+                &authority.authorizing_kernel,
+                "governanceAuthority.authorizingKernel",
+            )?;
+            validate_unique_case_kinds(
+                &authority.allowed_case_kinds,
+                "governanceAuthority.allowedCaseKinds",
+            )?;
+            if governance_authorities
+                .insert(authority.authorizing_kernel.clone(), authority)
+                .is_some()
+            {
+                return Err(ChiodosPackageError::TrustBundle(
+                    "duplicate trusted governance authority kernel".to_string(),
+                ));
+            }
+        }
+
         Ok(Self {
             issuer_registry,
             peers,
             vendors,
             action_classes,
             workflow_intersections,
+            lease_authorities,
+            governance_authorities,
             revocation: document.revocation,
         })
     }
@@ -277,6 +350,17 @@ impl ChiodosVerifierTrustBundle {
         self.workflow_intersections
             .get(intersection_id)
             .map(std::string::String::as_str)
+    }
+
+    fn lease_authority(&self, issuer: &str) -> Option<&ChiodosTrustedLeaseAuthority> {
+        self.lease_authorities.get(issuer)
+    }
+
+    fn governance_authority(
+        &self,
+        authorizing_kernel: &str,
+    ) -> Option<&ChiodosTrustedGovernanceAuthority> {
+        self.governance_authorities.get(authorizing_kernel)
     }
 
     fn pinned_epoch(&self) -> PinnedEpoch {
@@ -360,6 +444,91 @@ pub struct WorkflowIntersectionArtifact {
     pub aggregate_workflow_receipt_sha256: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaseScopeBindingArtifact {
+    pub schema: String,
+    pub lease_id: String,
+    pub workflow_id: String,
+    pub workflow_grant_id: String,
+    pub step_index: usize,
+    pub tool_name: String,
+    pub peer_kernel_id: String,
+    pub action_class_id: String,
+    pub subject: String,
+    pub action_class: CapabilityLeaseActionClass,
+    pub tool_args_hash: String,
+    pub destructive: bool,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LeaseScopeBindingPreimage<'a> {
+    lease_id: &'a str,
+    workflow_id: &'a str,
+    workflow_grant_id: &'a str,
+    step_index: usize,
+    tool_name: &'a str,
+    peer_kernel_id: &'a str,
+    action_class_id: &'a str,
+    subject: &'a str,
+    action_class: CapabilityLeaseActionClass,
+    tool_args_hash: &'a str,
+    destructive: bool,
+    issued_at_unix_ms: u64,
+    expires_at_unix_ms: u64,
+}
+
+impl LeaseScopeBindingArtifact {
+    fn validate(&self) -> Result<(), ChiodosPackageError> {
+        if self.schema != LEASE_SCOPE_BINDING_SCHEMA {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding schema {} is unsupported",
+                self.schema
+            )));
+        }
+        validate_scope_field(&self.lease_id, "leaseScopeBinding.leaseId")?;
+        validate_scope_field(&self.workflow_id, "leaseScopeBinding.workflowId")?;
+        validate_scope_field(&self.workflow_grant_id, "leaseScopeBinding.workflowGrantId")?;
+        validate_scope_field(&self.tool_name, "leaseScopeBinding.toolName")?;
+        validate_scope_field(&self.peer_kernel_id, "leaseScopeBinding.peerKernelId")?;
+        validate_scope_field(&self.action_class_id, "leaseScopeBinding.actionClassId")?;
+        validate_scope_field(&self.subject, "leaseScopeBinding.subject")?;
+        validate_sha256_hex_for_scope(&self.tool_args_hash, "leaseScopeBinding.toolArgsHash")?;
+        if self.expires_at_unix_ms <= self.issued_at_unix_ms {
+            return Err(ChiodosPackageError::LeaseScopeBinding(
+                "lease scope binding expiry must be greater than issue time".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn preimage(&self) -> LeaseScopeBindingPreimage<'_> {
+        LeaseScopeBindingPreimage {
+            lease_id: &self.lease_id,
+            workflow_id: &self.workflow_id,
+            workflow_grant_id: &self.workflow_grant_id,
+            step_index: self.step_index,
+            tool_name: &self.tool_name,
+            peer_kernel_id: &self.peer_kernel_id,
+            action_class_id: &self.action_class_id,
+            subject: &self.subject,
+            action_class: self.action_class,
+            tool_args_hash: &self.tool_args_hash,
+            destructive: self.destructive,
+            issued_at_unix_ms: self.issued_at_unix_ms,
+            expires_at_unix_ms: self.expires_at_unix_ms,
+        }
+    }
+
+    pub fn scope_digest(&self) -> Result<String, ChiodosPackageError> {
+        self.validate()?;
+        canonical_sha256(&self.preimage())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChiodosProofPackage {
@@ -373,6 +542,7 @@ pub struct ChiodosProofPackage {
     pub workflow_receipt: WorkflowReceipt,
     pub bilateral_envelopes: Vec<DsseEnvelope>,
     pub capability_leases: Vec<SignedCapabilityLease>,
+    pub lease_scope_bindings: Vec<LeaseScopeBindingArtifact>,
     pub governance_receipts: Vec<SignedGovernanceReceipt>,
     pub workflow_intersection: WorkflowIntersectionArtifact,
     pub selective_disclosure_proof: SelectiveDisclosureProof,
@@ -428,6 +598,8 @@ pub enum ChiodosPackageError {
     TrustBundle(String),
     #[error("workflow intersection failed: {0}")]
     WorkflowIntersection(String),
+    #[error("lease scope binding failed: {0}")]
+    LeaseScopeBinding(String),
     #[error("fixture data is inconsistent: {0}")]
     Inconsistent(String),
     #[error("JSON operation failed: {0}")]
@@ -457,6 +629,62 @@ fn validate_non_empty(value: &str, field: &str) -> Result<(), ChiodosPackageErro
         return Err(ChiodosPackageError::TrustedIssuer(format!(
             "{field} must be non-empty"
         )));
+    }
+    Ok(())
+}
+
+fn validate_scope_field(value: &str, field: &str) -> Result<(), ChiodosPackageError> {
+    if value.is_empty() {
+        return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+            "{field} must be non-empty"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_sha256_hex_for_scope(value: &str, field: &str) -> Result<(), ChiodosPackageError> {
+    if value.len() != 64 || !is_lower_hex(value) {
+        return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+            "{field} must be a lowercase 64-character SHA-256 hex digest"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_unique_action_classes(
+    values: &[CapabilityLeaseActionClass],
+    field: &str,
+) -> Result<(), ChiodosPackageError> {
+    if values.is_empty() {
+        return Err(ChiodosPackageError::TrustBundle(format!(
+            "{field} must be non-empty"
+        )));
+    }
+    for (index, value) in values.iter().enumerate() {
+        if values[..index].contains(value) {
+            return Err(ChiodosPackageError::TrustBundle(format!(
+                "{field} contains duplicate action class {value:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_unique_case_kinds(
+    values: &[GovernanceReceiptCaseKind],
+    field: &str,
+) -> Result<(), ChiodosPackageError> {
+    if values.is_empty() {
+        return Err(ChiodosPackageError::TrustBundle(format!(
+            "{field} must be non-empty"
+        )));
+    }
+    for (index, value) in values.iter().enumerate() {
+        if values[..index].contains(value) {
+            return Err(ChiodosPackageError::TrustBundle(format!(
+                "{field} contains duplicate case kind {value:?}"
+            )));
+        }
     }
     Ok(())
 }
@@ -501,11 +729,11 @@ fn verify_claims(claims: &ChiodosProofClaims) -> Result<(), ChiodosPackageError>
     Ok(())
 }
 
-pub fn package_from_fixture_json(json: &str) -> Result<ChiodosProofPackage, ChiodosPackageError> {
+pub fn proof_package_from_json(json: &str) -> Result<ChiodosProofPackage, ChiodosPackageError> {
     serde_json::from_str(json).map_err(|error| ChiodosPackageError::Json(error.to_string()))
 }
 
-pub fn report_from_fixture_json(json: &str) -> Result<VerifierReport, ChiodosPackageError> {
+pub fn verifier_report_from_json(json: &str) -> Result<VerifierReport, ChiodosPackageError> {
     serde_json::from_str(json).map_err(|error| ChiodosPackageError::Json(error.to_string()))
 }
 
@@ -635,34 +863,54 @@ fn verify_package_inner(
     for receipt in &package.tool_receipts {
         receipt_store.insert(receipt.clone());
     }
+    let lease_scope_digests = verify_lease_scope_bindings(package)?;
+    add_check("governance.lease_scope_bindings", "lease-scope-bindings");
+
     let mut lease_registry = InMemoryLeaseRegistry::new();
+    let mut seen_lease_ids = BTreeSet::new();
     for lease in &package.capability_leases {
-        verify_capability_lease(
-            lease,
-            trust_bundle.revocation.now_unix_ms,
-            Some(lease.body.scope_digest.clone()),
-        )
-        .map_err(|error| ChiodosPackageError::Governance(error.to_string()))?;
+        if !seen_lease_ids.insert(lease.body.lease_id.clone()) {
+            return Err(ChiodosPackageError::Governance(format!(
+                "duplicate capability lease {}",
+                lease.body.lease_id
+            )));
+        }
+        let scope_digest = lease_scope_digests
+            .get(&lease.body.lease_id)
+            .ok_or_else(|| {
+                ChiodosPackageError::LeaseScopeBinding(format!(
+                    "lease {} has no scope binding",
+                    lease.body.lease_id
+                ))
+            })?
+            .clone();
+        verify_trusted_capability_lease(lease, trust_bundle, &scope_digest)?;
         lease_registry.insert(ResolvedLease {
             lease_id: lease.body.lease_id.clone(),
             issuer: lease.body.issuer.clone(),
             expires_at_unix_ms: lease.body.expires_at_unix_ms,
-            scope_digest_hex: Some(lease.body.scope_digest.clone()),
+            scope_digest_hex: Some(scope_digest),
         });
     }
     add_check("governance.capability_leases", "capability-leases");
 
     let mut governance_store = InMemoryGovernanceReceiptStore::new();
+    let mut seen_governance_ids = BTreeSet::new();
     for receipt in &package.governance_receipts {
-        verify_step_governance_boundary(true, Some(receipt), trust_bundle.revocation.now_unix_ms)
-            .map_err(|error| ChiodosPackageError::Governance(error.to_string()))?;
+        if !seen_governance_ids.insert(receipt.body.receipt_id.clone()) {
+            return Err(ChiodosPackageError::Governance(format!(
+                "duplicate governance receipt {}",
+                receipt.body.receipt_id
+            )));
+        }
+        verify_trusted_governance_receipt(receipt, trust_bundle)?;
         governance_store.insert(ResolvedGovernanceReceipt {
             receipt_id: receipt.body.receipt_id.clone(),
             kernel_id: receipt.body.authorizing_kernel.clone(),
             canonical_json: canonical_string(receipt)?,
         });
     }
-    verify_destructive_steps(package, trust_bundle)?;
+    verify_destructive_steps(package, trust_bundle, &lease_scope_digests)?;
     add_check("governance.receipts", "governance-receipts");
 
     let mut peer_pin_set = PeerPinSet::new();
@@ -769,6 +1017,7 @@ fn failure_code(error: &ChiodosPackageError) -> &'static str {
         ChiodosPackageError::TrustedIssuer(_) => "trust.bbs_issuer",
         ChiodosPackageError::TrustBundle(_) => "trust.bundle",
         ChiodosPackageError::WorkflowIntersection(_) => "workflow.intersection",
+        ChiodosPackageError::LeaseScopeBinding(_) => "lease.scope_binding",
         ChiodosPackageError::Inconsistent(_) => "package.inconsistent",
         ChiodosPackageError::Json(_) => "json",
     }
@@ -1001,13 +1250,50 @@ fn verify_step_links(package: &ChiodosProofPackage) -> Result<(), ChiodosPackage
             "step count does not match bilateral envelope count".to_string(),
         ));
     }
+    let mut receipts_by_id = HashMap::new();
+    for receipt in &package.tool_receipts {
+        if receipts_by_id.insert(receipt.id.clone(), receipt).is_some() {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "duplicate tool receipt {}",
+                receipt.id
+            )));
+        }
+    }
+    let mut leases_by_id = HashMap::new();
+    for lease in &package.capability_leases {
+        if leases_by_id
+            .insert(lease.body.lease_id.clone(), lease)
+            .is_some()
+        {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "duplicate capability lease {}",
+                lease.body.lease_id
+            )));
+        }
+    }
+    let mut step_classes = HashMap::new();
+    for binding in &package.workflow_intersection.step_class_bindings {
+        if step_classes.insert(binding.step_index, binding).is_some() {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "duplicate workflow step class binding {}",
+                binding.step_index
+            )));
+        }
+    }
     let mut previous_step_sha256: Option<String> = None;
-    for (step, envelope) in package
+    for (expected_index, (step, envelope)) in package
         .workflow_receipt
         .steps
         .iter()
         .zip(package.bilateral_envelopes.iter())
+        .enumerate()
     {
+        if step.step_index != expected_index {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "step index {} does not match position {}",
+                step.step_index, expected_index
+            )));
+        }
         let envelope_sha256 = canonical_sha256(envelope)?;
         if step.bilateral_dsse_sha256.as_deref() != Some(envelope_sha256.as_str()) {
             return Err(ChiodosPackageError::Workflow(format!(
@@ -1021,14 +1307,370 @@ fn verify_step_links(package: &ChiodosProofPackage) -> Result<(), ChiodosPackage
                 step.step_index
             )));
         }
+        let tool_receipt_id = step.tool_receipt_id.as_ref().ok_or_else(|| {
+            ChiodosPackageError::Workflow(format!(
+                "step {} has no tool receipt id",
+                step.step_index
+            ))
+        })?;
+        let tool_receipt = receipts_by_id.get(tool_receipt_id).ok_or_else(|| {
+            ChiodosPackageError::Workflow(format!(
+                "step {} tool receipt {} is not present in package",
+                step.step_index, tool_receipt_id
+            ))
+        })?;
+        let (statement, _) = envelope.decode_statement().map_err(|error| {
+            ChiodosPackageError::Federation(format!(
+                "step {} DSSE payload: {error}",
+                step.step_index
+            ))
+        })?;
+        let predicate = &statement.predicate;
+        if predicate.invocation_id != *tool_receipt_id {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "step {} tool receipt id {} does not match DSSE invocation {}",
+                step.step_index, tool_receipt_id, predicate.invocation_id
+            )));
+        }
+        if step.tool_name != tool_receipt.tool_name {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "step {} tool name {} does not match tool receipt {}",
+                step.step_index, step.tool_name, tool_receipt.tool_name
+            )));
+        }
+        if step.tool_name != predicate.tool_name {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "step {} tool name {} does not match DSSE predicate {}",
+                step.step_index, step.tool_name, predicate.tool_name
+            )));
+        }
+        if step.server_id != tool_receipt.tool_server {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "step {} server id {} does not match tool receipt server {}",
+                step.step_index, step.server_id, tool_receipt.tool_server
+            )));
+        }
+        if step.output_hash.as_deref() != Some(tool_receipt.content_hash.as_str()) {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "step {} output hash does not match tool receipt content hash",
+                step.step_index
+            )));
+        }
+        let expected_anchor = format!(
+            "chiodos:consistency:{}:{}",
+            package.workflow_id, step.step_index
+        );
+        if step.consistency_anchor.as_deref() != Some(expected_anchor.as_str()) {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "step {} consistency anchor must be {}",
+                step.step_index, expected_anchor
+            )));
+        }
+        if predicate.consistency_anchor.as_deref() != step.consistency_anchor.as_deref() {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "step {} consistency anchor does not match DSSE predicate",
+                step.step_index
+            )));
+        }
+        let class_binding = step_classes.get(&step.step_index).ok_or_else(|| {
+            ChiodosPackageError::Workflow(format!(
+                "step {} has no workflow class binding",
+                step.step_index
+            ))
+        })?;
+        if class_binding.tool_name != step.tool_name {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "step {} class binding tool does not match step",
+                step.step_index
+            )));
+        }
+        if class_binding.peer_kernel_id != predicate.tool_server_b.kernel_id {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "step {} peer kernel does not match DSSE tool_server_b",
+                step.step_index
+            )));
+        }
+        let lease_ref = predicate.capability_lease_ref.as_ref().ok_or_else(|| {
+            ChiodosPackageError::Workflow(format!(
+                "step {} DSSE predicate has no capability lease ref",
+                step.step_index
+            ))
+        })?;
+        let lease = leases_by_id.get(&lease_ref.lease_id).ok_or_else(|| {
+            ChiodosPackageError::Workflow(format!(
+                "step {} lease {} is not present in package",
+                step.step_index, lease_ref.lease_id
+            ))
+        })?;
+        if lease.body.subject != class_binding.peer_kernel_id {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "step {} lease subject does not match workflow peer binding",
+                step.step_index
+            )));
+        }
+        let destructive = step.destructive.unwrap_or(false);
+        let lease_destructive =
+            lease.body.action_class == CapabilityLeaseActionClass::NarrowDestructive;
+        if destructive != lease_destructive {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "step {} destructive flag does not match lease action class",
+                step.step_index
+            )));
+        }
+        match (
+            destructive,
+            step.governance_receipt_id.as_ref(),
+            predicate.governance_receipt_ref.as_ref(),
+        ) {
+            (true, Some(step_receipt_id), Some(predicate_receipt)) => {
+                if step_receipt_id != &predicate_receipt.receipt_id {
+                    return Err(ChiodosPackageError::Workflow(format!(
+                        "step {} governance receipt id does not match DSSE predicate",
+                        step.step_index
+                    )));
+                }
+            }
+            (true, None, _) => {
+                return Err(ChiodosPackageError::Workflow(format!(
+                    "step {} destructive action has no governance receipt id",
+                    step.step_index
+                )));
+            }
+            (true, _, None) => {
+                return Err(ChiodosPackageError::Workflow(format!(
+                    "step {} destructive action has no DSSE governance receipt ref",
+                    step.step_index
+                )));
+            }
+            (false, Some(_), _) | (false, _, Some(_)) => {
+                return Err(ChiodosPackageError::Workflow(format!(
+                    "step {} non-destructive action carries governance receipt material",
+                    step.step_index
+                )));
+            }
+            (false, None, None) => {}
+        }
         previous_step_sha256 = Some(canonical_sha256(step)?);
     }
     Ok(())
 }
 
+fn verify_lease_scope_bindings(
+    package: &ChiodosProofPackage,
+) -> Result<BTreeMap<String, String>, ChiodosPackageError> {
+    if package.lease_scope_bindings.len() != package.capability_leases.len() {
+        return Err(ChiodosPackageError::LeaseScopeBinding(
+            "lease scope binding count does not match capability lease count".to_string(),
+        ));
+    }
+    let leases_by_id = package
+        .capability_leases
+        .iter()
+        .map(|lease| (lease.body.lease_id.clone(), lease))
+        .collect::<HashMap<_, _>>();
+    let step_classes = package
+        .workflow_intersection
+        .step_class_bindings
+        .iter()
+        .map(|binding| (binding.step_index, binding))
+        .collect::<HashMap<_, _>>();
+    let receipts_by_step = package
+        .workflow_receipt
+        .steps
+        .iter()
+        .map(|step| {
+            let receipt_id = step.tool_receipt_id.as_ref().ok_or_else(|| {
+                ChiodosPackageError::LeaseScopeBinding(format!(
+                    "step {} has no tool receipt id",
+                    step.step_index
+                ))
+            })?;
+            let receipt = package
+                .tool_receipts
+                .iter()
+                .find(|receipt| &receipt.id == receipt_id)
+                .ok_or_else(|| {
+                    ChiodosPackageError::LeaseScopeBinding(format!(
+                        "step {} tool receipt {} is not present",
+                        step.step_index, receipt_id
+                    ))
+                })?;
+            Ok((step.step_index, (step, receipt)))
+        })
+        .collect::<Result<HashMap<_, _>, ChiodosPackageError>>()?;
+
+    let mut scope_digests = BTreeMap::new();
+    for binding in &package.lease_scope_bindings {
+        binding.validate()?;
+        if scope_digests.contains_key(&binding.lease_id) {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "duplicate lease scope binding {}",
+                binding.lease_id
+            )));
+        }
+        let lease = leases_by_id.get(&binding.lease_id).ok_or_else(|| {
+            ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} has no matching lease",
+                binding.lease_id
+            ))
+        })?;
+        let (step, receipt) = receipts_by_step.get(&binding.step_index).ok_or_else(|| {
+            ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} references missing step {}",
+                binding.lease_id, binding.step_index
+            ))
+        })?;
+        let class_binding = step_classes.get(&binding.step_index).ok_or_else(|| {
+            ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} references step without class binding",
+                binding.lease_id
+            ))
+        })?;
+        if binding.workflow_id != package.workflow_id {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} workflow id mismatch",
+                binding.lease_id
+            )));
+        }
+        if binding.workflow_grant_id != package.workflow_receipt.capability_id {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} workflow grant mismatch",
+                binding.lease_id
+            )));
+        }
+        if binding.tool_name != step.tool_name || binding.tool_name != receipt.tool_name {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} tool mismatch",
+                binding.lease_id
+            )));
+        }
+        if binding.peer_kernel_id != class_binding.peer_kernel_id {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} peer mismatch",
+                binding.lease_id
+            )));
+        }
+        if binding.action_class_id != class_binding.action_class_id {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} action class id mismatch",
+                binding.lease_id
+            )));
+        }
+        if binding.subject != lease.body.subject {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} subject mismatch",
+                binding.lease_id
+            )));
+        }
+        if binding.action_class != lease.body.action_class {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} action class mismatch",
+                binding.lease_id
+            )));
+        }
+        if binding.tool_args_hash != receipt.action.parameter_hash {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} tool args hash mismatch",
+                binding.lease_id
+            )));
+        }
+        if binding.destructive != step.destructive.unwrap_or(false) {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} destructive flag mismatch",
+                binding.lease_id
+            )));
+        }
+        if binding.issued_at_unix_ms != lease.body.issued_at_unix_ms
+            || binding.expires_at_unix_ms != lease.body.expires_at_unix_ms
+        {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} time window mismatch",
+                binding.lease_id
+            )));
+        }
+        let scope_digest = binding.scope_digest()?;
+        if lease.body.scope_digest != scope_digest {
+            return Err(ChiodosPackageError::LeaseScopeBinding(format!(
+                "lease scope binding {} digest mismatch",
+                binding.lease_id
+            )));
+        }
+        scope_digests.insert(binding.lease_id.clone(), scope_digest);
+    }
+    Ok(scope_digests)
+}
+
+fn verify_trusted_capability_lease(
+    lease: &SignedCapabilityLease,
+    trust_bundle: &ChiodosVerifierTrustBundle,
+    scope_digest: &str,
+) -> Result<(), ChiodosPackageError> {
+    let authority = trust_bundle
+        .lease_authority(&lease.body.issuer)
+        .ok_or_else(|| {
+            ChiodosPackageError::Governance(format!(
+                "lease authority {} is not trusted",
+                lease.body.issuer
+            ))
+        })?;
+    if lease.signer_key != authority.public_key {
+        return Err(ChiodosPackageError::Governance(format!(
+            "lease authority {} signer key mismatch",
+            lease.body.issuer
+        )));
+    }
+    if !authority
+        .allowed_action_classes
+        .contains(&lease.body.action_class)
+    {
+        return Err(ChiodosPackageError::Governance(format!(
+            "lease authority {} is not trusted for action class {:?}",
+            lease.body.issuer, lease.body.action_class
+        )));
+    }
+    verify_capability_lease(
+        lease,
+        trust_bundle.revocation.now_unix_ms,
+        Some(scope_digest.to_string()),
+    )
+    .map_err(|error| ChiodosPackageError::Governance(error.to_string()))
+}
+
+fn verify_trusted_governance_receipt(
+    receipt: &SignedGovernanceReceipt,
+    trust_bundle: &ChiodosVerifierTrustBundle,
+) -> Result<(), ChiodosPackageError> {
+    let authority = trust_bundle
+        .governance_authority(&receipt.body.authorizing_kernel)
+        .ok_or_else(|| {
+            ChiodosPackageError::Governance(format!(
+                "governance authority {} is not trusted",
+                receipt.body.authorizing_kernel
+            ))
+        })?;
+    if receipt.signer_key != authority.public_key {
+        return Err(ChiodosPackageError::Governance(format!(
+            "governance authority {} signer key mismatch",
+            receipt.body.authorizing_kernel
+        )));
+    }
+    if !authority
+        .allowed_case_kinds
+        .contains(&receipt.body.case_kind)
+    {
+        return Err(ChiodosPackageError::Governance(format!(
+            "governance authority {} is not trusted for case kind {:?}",
+            receipt.body.authorizing_kernel, receipt.body.case_kind
+        )));
+    }
+    verify_step_governance_boundary(true, Some(receipt), trust_bundle.revocation.now_unix_ms)
+        .map_err(|error| ChiodosPackageError::Governance(error.to_string()))
+}
+
 fn verify_destructive_steps(
     package: &ChiodosProofPackage,
     trust_bundle: &ChiodosVerifierTrustBundle,
+    lease_scope_digests: &BTreeMap<String, String>,
 ) -> Result<(), ChiodosPackageError> {
     let leases_by_id = package
         .capability_leases
@@ -1080,10 +1722,18 @@ fn verify_destructive_steps(
                     governance_receipt.body.authorized_lease_id
                 ))
             })?;
+        let scope_digest = lease_scope_digests
+            .get(&lease.body.lease_id)
+            .ok_or_else(|| {
+                ChiodosPackageError::LeaseScopeBinding(format!(
+                    "lease {} has no scope binding",
+                    lease.body.lease_id
+                ))
+            })?;
         verify_capability_lease(
             lease,
             trust_bundle.revocation.now_unix_ms,
-            Some(lease.body.scope_digest.clone()),
+            Some(scope_digest.clone()),
         )
         .map_err(|error| ChiodosPackageError::Governance(error.to_string()))?;
         verify_destructive_authorization(
@@ -1103,6 +1753,8 @@ mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
     use super::*;
+    use chio_core_types::crypto::Keypair;
+    use chio_core_types::receipt::SignedExportEnvelope;
 
     fn trust_bundle_document_from_fixture() -> ChiodosVerifierTrustBundleDocument {
         serde_json::from_str(include_str!(
@@ -1117,7 +1769,7 @@ mod tests {
 
     #[test]
     fn committed_fixture_verifies_through_production_crate() {
-        let package = package_from_fixture_json(include_str!(
+        let package = proof_package_from_json(include_str!(
             "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
@@ -1131,8 +1783,17 @@ mod tests {
     }
 
     #[test]
+    fn verifier_report_parses_through_production_api() {
+        let report = verifier_report_from_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/verifier-report.json"
+        ))
+        .expect("report fixture parses");
+        assert!(report.accepted);
+    }
+
+    #[test]
     fn verifier_trust_bundle_may_contain_unrelated_trust_roots() {
-        let package = package_from_fixture_json(include_str!(
+        let package = proof_package_from_json(include_str!(
             "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
@@ -1227,8 +1888,65 @@ mod tests {
     }
 
     #[test]
+    fn verifier_trust_bundle_v2_requires_authority_roots() {
+        let mut document = serde_json::to_value(trust_bundle_document_from_fixture())
+            .expect("trust bundle serializes");
+        document["schema"] =
+            serde_json::Value::String("chio.chiodos.verifier-trust-bundle.v2".to_string());
+        document["leaseAuthorities"] = serde_json::Value::Array(Vec::new());
+        document["governanceAuthorities"] = serde_json::Value::Array(Vec::new());
+
+        let error = verifier_trust_bundle_from_json(
+            &serde_json::to_string(&document).expect("trust bundle json serializes"),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("authorit"));
+    }
+
+    #[test]
+    fn historical_v1_trust_bundle_is_not_strict_verifier_input() {
+        let mut document = trust_bundle_document_from_fixture();
+        document.schema = VERIFIER_TRUST_BUNDLE_SCHEMA_V1.to_string();
+
+        let error = ChiodosVerifierTrustBundle::from_document(document).unwrap_err();
+        assert!(error.to_string().contains("historical"));
+    }
+
+    #[test]
+    fn forged_lease_signer_fails_even_when_embedded_signature_is_valid() {
+        let mut package = proof_package_from_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        let trust_bundle = trust_bundle_from_fixture().expect("trust bundle parses");
+        let forged_key = Keypair::from_seed(&[88; 32]);
+        package.capability_leases[0] =
+            SignedExportEnvelope::sign(package.capability_leases[0].body.clone(), &forged_key)
+                .expect("lease re-signs");
+
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        assert!(error.to_string().contains("lease authority"));
+    }
+
+    #[test]
+    fn forged_governance_signer_fails_even_when_embedded_signature_is_valid() {
+        let mut package = proof_package_from_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        let trust_bundle = trust_bundle_from_fixture().expect("trust bundle parses");
+        let forged_key = Keypair::from_seed(&[89; 32]);
+        package.governance_receipts[0] =
+            SignedExportEnvelope::sign(package.governance_receipts[0].body.clone(), &forged_key)
+                .expect("governance receipt re-signs");
+
+        let error = verify_package(&package, &trust_bundle).unwrap_err();
+        assert!(error.to_string().contains("governance authority"));
+    }
+
+    #[test]
     fn package_bbs_issuer_must_be_externally_trusted() {
-        let package = package_from_fixture_json(include_str!(
+        let package = proof_package_from_json(include_str!(
             "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");
@@ -1245,7 +1963,7 @@ mod tests {
 
     #[test]
     fn package_bbs_issuer_key_must_match_trusted_registry() {
-        let package = package_from_fixture_json(include_str!(
+        let package = proof_package_from_json(include_str!(
             "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
         ))
         .expect("package fixture parses");

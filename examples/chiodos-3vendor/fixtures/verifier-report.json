@@ -1,6 +1,6 @@
 {
   "schema": "chio.chiodos.verifier-report.v1",
-  "packageSha256": "2c17b66018f22ab97b392d8f499f33384a423cb42eb7fec409ca0fd408b6c7e6",
+  "packageSha256": "ba8b121a25eb0e98bdac81f1d5c14e714570a395b049be03c2670583421c8262",
   "accepted": true,
   "checks": [
     {
@@ -26,6 +26,11 @@
     {
       "code": "workflow.step_links",
       "name": "workflow-step-links",
+      "passed": true
+    },
+    {
+      "code": "governance.lease_scope_bindings",
+      "name": "lease-scope-bindings",
       "passed": true
     },
     {
