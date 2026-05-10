@@ -16,13 +16,23 @@ pub use chio_chiodos::{
     WorkflowIntersectionArtifact, WorkflowPairwiseIntersectionRef, WorkflowRequiredVendorSigner,
     WorkflowStepClassBinding, LEASE_SCOPE_BINDING_SCHEMA, PROOF_PACKAGE_SCHEMA,
     REVOCATION_CHECKPOINT_SCHEMA, VERIFICATION_CONTEXT_SCHEMA, VERIFIER_REPORT_SCHEMA,
-    VERIFIER_TRUST_BUNDLE_SCHEMA, WORKFLOW_INTERSECTION_SCHEMA,
+    VERIFIER_TRUST_BUNDLE_SCHEMA, WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID,
+    WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID, WORKFLOW_INTERSECTION_SCHEMA,
+};
+pub use chio_chiodos_authority::{
+    assemble_verifier_trust_bundle, authority_profile_json, issuance_request_json,
+    issue_authority_bundle, peer_pins_json, publish_revocation_checkpoint,
+    revocation_publication_request_json, signing_keys_json, AuthorityProfileDocument,
+    ChiodosIssuanceRequest, ChiodosIssuanceStepRequest, ChiodosRevocationAuthority,
+    LocalAuthoritySigningKeysDocument, NamedSeedHex, PeerPinsDocument,
+    RevocationPublicationRequest, AUTHORITY_PROFILE_SCHEMA, ISSUANCE_REQUEST_SCHEMA,
+    LOCAL_SIGNING_KEYS_SCHEMA, PEER_PINS_SCHEMA, REVOCATION_PUBLICATION_REQUEST_SCHEMA,
 };
 use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
 use chio_core_types::capability::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, SignedExportEnvelope, ToolCallAction, TrustLevel,
+    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
 };
 use chio_federation::{
     sign_chiodos_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
@@ -30,9 +40,7 @@ use chio_federation::{
     PolicyVerdict,
 };
 use chio_governance::{
-    CapabilityLeaseActionClass, CapabilityLeaseArtifact, GovernanceReceiptArtifact,
-    GovernanceReceiptCaseKind, SignedGovernanceReceipt, CAPABILITY_LEASE_SCHEMA_V1,
-    GOVERNANCE_RECEIPT_SCHEMA_V1,
+    CapabilityLeaseActionClass, GovernanceReceiptCaseKind, SignedGovernanceReceipt,
 };
 use chio_selective_disclosure::{
     derive_selective_disclosure_proof, generate_bbs_keypair, project_workflow_receipt_body,
@@ -62,6 +70,7 @@ const BBS_KEY_INFO: &[u8] = b"chiodos";
 
 const BUYER_SEED: [u8; 32] = [11; 32];
 const GOVERNANCE_SEED: [u8; 32] = [12; 32];
+const REVOCATION_SEED: [u8; 32] = [13; 32];
 const VENDOR_A_SEED: [u8; 32] = [21; 32];
 const VENDOR_B_SEED: [u8; 32] = [22; 32];
 const VENDOR_C_SEED: [u8; 32] = [23; 32];
@@ -191,6 +200,11 @@ fn receipt_body(
     })
 }
 
+fn tool_receipt_step_hash(vendor: &VendorFixture) -> Result<String, ChiodosPackageError> {
+    let vendor_key = Keypair::from_seed(&vendor.seed);
+    canonical_sha256(&receipt_body(vendor, &vendor_key)?)
+}
+
 fn policy_summary(vendor: &VendorFixture) -> PolicyEvaluationSummary {
     let policy_version = "chiodos-ladder-v1".to_string();
     PolicyEvaluationSummary {
@@ -210,34 +224,19 @@ fn policy_summary(vendor: &VendorFixture) -> PolicyEvaluationSummary {
     }
 }
 
-fn lease_artifact(
-    vendor: &VendorFixture,
-    scope_digest: String,
-    action_class: CapabilityLeaseActionClass,
-) -> Result<CapabilityLeaseArtifact, ChiodosPackageError> {
-    Ok(CapabilityLeaseArtifact {
-        schema: CAPABILITY_LEASE_SCHEMA_V1.to_string(),
-        lease_id: vendor.lease_id.to_string(),
-        issuer: BUYER_KERNEL_ID.to_string(),
-        subject: vendor.kernel_id.to_string(),
-        scope_digest,
-        action_class,
-        issued_at_unix_ms: LEASE_ISSUED_AT_UNIX_MS,
-        expires_at_unix_ms: LEASE_EXPIRES_AT_UNIX_MS,
-    })
-}
-
-fn lease_scope_binding_artifact(
+fn issuance_step_request(
     vendor: &VendorFixture,
     step_index: usize,
     action_class: CapabilityLeaseActionClass,
     tool_args_hash: String,
-) -> LeaseScopeBindingArtifact {
-    LeaseScopeBindingArtifact {
-        schema: LEASE_SCOPE_BINDING_SCHEMA.to_string(),
+) -> Result<ChiodosIssuanceStepRequest, ChiodosPackageError> {
+    let step_sha256 = if vendor.destructive {
+        Some(tool_receipt_step_hash(vendor)?)
+    } else {
+        None
+    };
+    Ok(ChiodosIssuanceStepRequest {
         lease_id: vendor.lease_id.to_string(),
-        workflow_id: WORKFLOW_ID.to_string(),
-        workflow_grant_id: CAPABILITY_ID.to_string(),
         step_index,
         tool_name: vendor.tool_name.to_string(),
         peer_kernel_id: vendor.kernel_id.to_string(),
@@ -246,23 +245,15 @@ fn lease_scope_binding_artifact(
         action_class,
         tool_args_hash,
         destructive: vendor.destructive,
-        issued_at_unix_ms: LEASE_ISSUED_AT_UNIX_MS,
-        expires_at_unix_ms: LEASE_EXPIRES_AT_UNIX_MS,
-    }
-}
-
-fn governance_receipt_artifact(lease_id: &str, step_sha256: &str) -> GovernanceReceiptArtifact {
-    GovernanceReceiptArtifact {
-        schema: GOVERNANCE_RECEIPT_SCHEMA_V1.to_string(),
-        receipt_id: "gov-refund-stage-authorization".to_string(),
-        authorizing_kernel: GOVERNANCE_KERNEL_ID.to_string(),
-        case_kind: GovernanceReceiptCaseKind::DestructiveAuthorization,
-        authorized_lease_id: lease_id.to_string(),
-        workflow_id: WORKFLOW_ID.to_string(),
-        step_sha256: step_sha256.to_string(),
-        issued_at_unix_ms: GOVERNANCE_ISSUED_AT_UNIX_MS,
-        expires_at_unix_ms: GOVERNANCE_EXPIRES_AT_UNIX_MS,
-    }
+        lease_issued_at_unix_ms: LEASE_ISSUED_AT_UNIX_MS,
+        lease_expires_at_unix_ms: LEASE_EXPIRES_AT_UNIX_MS,
+        governance_receipt_id: vendor
+            .destructive
+            .then_some("gov-refund-stage-authorization".to_string()),
+        governance_issued_at_unix_ms: vendor.destructive.then_some(GOVERNANCE_ISSUED_AT_UNIX_MS),
+        governance_expires_at_unix_ms: vendor.destructive.then_some(GOVERNANCE_EXPIRES_AT_UNIX_MS),
+        step_sha256,
+    })
 }
 
 fn step_record(
@@ -325,52 +316,22 @@ pub fn verification_context() -> ChiodosVerificationContext {
     }
 }
 
-fn signed_revocation_checkpoint(
-    revoked_key_fingerprints: Vec<String>,
-) -> Result<SignedChiodosRevocationCheckpoint, ChiodosPackageError> {
-    let body = ChiodosRevocationCheckpoint {
-        schema: REVOCATION_CHECKPOINT_SCHEMA.to_string(),
-        checkpoint_id: "revocation-checkpoint:chiodos-refund:001".to_string(),
-        issued_at_unix_ms: GENERATED_AT_UNIX_MS,
-        expires_at_unix_ms: GENERATED_AT_UNIX_MS + 120_000,
-        epoch_height: 64,
-        revoked_key_fingerprints,
-    };
-    SignedExportEnvelope::sign(body, &Keypair::from_seed(&BUYER_SEED))
-        .map_err(|error| ChiodosPackageError::Inconsistent(error.to_string()))
-}
-
-pub fn verifier_trust_bundle_document_for_package(
-    package: &ChiodosProofPackage,
-) -> Result<ChiodosVerifierTrustBundleDocument, ChiodosPackageError> {
+fn trusted_bbs_issuers() -> Result<Vec<TrustedBbsIssuer>, ChiodosPackageError> {
     let bbs_keypair = generate_bbs_keypair(BBS_KEY_MATERIAL, BBS_KEY_INFO)
         .map_err(|error| ChiodosPackageError::SelectiveDisclosure(error.to_string()))?;
+    Ok(vec![TrustedBbsIssuer {
+        issuer_fingerprint: bbs_keypair.issuer_fingerprint,
+        public_key_hex: bbs_keypair.public_key_hex,
+    }])
+}
+
+pub fn authority_profile_document() -> Result<AuthorityProfileDocument, ChiodosPackageError> {
     let buyer_key = Keypair::from_seed(&BUYER_SEED);
     let governance_key = Keypair::from_seed(&GOVERNANCE_SEED);
-    Ok(ChiodosVerifierTrustBundleDocument {
-        schema: VERIFIER_TRUST_BUNDLE_SCHEMA.to_string(),
-        trusted_bbs_issuers: vec![TrustedBbsIssuer {
-            issuer_fingerprint: bbs_keypair.issuer_fingerprint,
-            public_key_hex: bbs_keypair.public_key_hex,
-        }],
-        peers: package.peer_ladder_bindings.clone(),
-        vendors: package.vendor_keys.clone(),
-        action_classes: VENDORS
-            .iter()
-            .map(|vendor| ChiodosTrustedActionClass {
-                action_class_id: vendor.tool_name.to_string(),
-                tool_name: vendor.tool_name.to_string(),
-                kind: if vendor.destructive {
-                    ChiodosActionClassKind::ReceiptBacked
-                } else {
-                    ChiodosActionClassKind::Routine
-                },
-            })
-            .collect(),
-        workflow_intersections: vec![ChiodosTrustedWorkflowIntersection {
-            intersection_id: package.workflow_intersection.intersection_id.clone(),
-            sha256: canonical_sha256(&package.workflow_intersection)?,
-        }],
+    let revocation_key = Keypair::from_seed(&REVOCATION_SEED);
+    Ok(AuthorityProfileDocument {
+        schema: AUTHORITY_PROFILE_SCHEMA.to_string(),
+        trusted_bbs_issuers: trusted_bbs_issuers()?,
         lease_authorities: vec![ChiodosTrustedLeaseAuthority {
             issuer: BUYER_KERNEL_ID.to_string(),
             key_id: Some(key_id(&buyer_key.public_key())),
@@ -392,22 +353,154 @@ pub fn verifier_trust_bundle_document_for_package(
             status: Some(ChiodosAuthorityStatus::Active),
             allowed_case_kinds: vec![GovernanceReceiptCaseKind::DestructiveAuthorization],
         }],
-        disclosure_policy: Some(ChiodosDisclosurePolicy {
-            projection_version: "chio.bbs-projection.workflow.v1".to_string(),
-            ciphersuite: "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_".to_string(),
-            message_count: 14,
-            required_disclosed_indices: vec![4, 8, 9, 10],
-            required_disclosed_fields: vec![
-                "id".to_string(),
-                "session_id".to_string(),
-                "skill_id".to_string(),
-                "skill_version".to_string(),
-            ],
-        }),
-        revocation: ChiodosRevocationMaterial::Checkpoint(Box::new(signed_revocation_checkpoint(
-            Vec::new(),
-        )?)),
+        revocation_authority: ChiodosRevocationAuthority {
+            authority_id: BUYER_KERNEL_ID.to_string(),
+            key_id: key_id(&revocation_key.public_key()),
+            public_key: revocation_key.public_key(),
+            valid_from_unix_ms: AUTHORITY_VALID_FROM_UNIX_MS,
+            valid_until_unix_ms: AUTHORITY_VALID_UNTIL_UNIX_MS,
+            status: ChiodosAuthorityStatus::Active,
+        },
     })
+}
+
+pub fn authority_signing_keys_document() -> LocalAuthoritySigningKeysDocument {
+    LocalAuthoritySigningKeysDocument {
+        schema: LOCAL_SIGNING_KEYS_SCHEMA.to_string(),
+        lease_authority_seeds: vec![NamedSeedHex {
+            id: BUYER_KERNEL_ID.to_string(),
+            seed_hex: hex_encode_seed(BUYER_SEED),
+        }],
+        governance_authority_seeds: vec![NamedSeedHex {
+            id: GOVERNANCE_KERNEL_ID.to_string(),
+            seed_hex: hex_encode_seed(GOVERNANCE_SEED),
+        }],
+        revocation_authority_seed_hex: hex_encode_seed(REVOCATION_SEED),
+    }
+}
+
+fn hex_encode_seed(seed: [u8; 32]) -> String {
+    let mut hex = String::with_capacity(64);
+    for byte in seed {
+        hex.push_str(&format!("{byte:02x}"));
+    }
+    hex
+}
+
+fn issuance_request(steps: Vec<ChiodosIssuanceStepRequest>) -> ChiodosIssuanceRequest {
+    ChiodosIssuanceRequest {
+        schema: ISSUANCE_REQUEST_SCHEMA.to_string(),
+        workflow_id: WORKFLOW_ID.to_string(),
+        workflow_grant_id: CAPABILITY_ID.to_string(),
+        lease_authority_issuer: BUYER_KERNEL_ID.to_string(),
+        governance_authority_kernel: GOVERNANCE_KERNEL_ID.to_string(),
+        verification_context: verification_context(),
+        steps,
+    }
+}
+
+pub fn authority_issuance_request() -> Result<ChiodosIssuanceRequest, ChiodosPackageError> {
+    let mut steps = Vec::new();
+    for (index, vendor) in VENDORS.iter().enumerate() {
+        let vendor_key = Keypair::from_seed(&vendor.seed);
+        let body = receipt_body(vendor, &vendor_key)?;
+        let action_class = if vendor.destructive {
+            CapabilityLeaseActionClass::NarrowDestructive
+        } else {
+            CapabilityLeaseActionClass::DelegatedAction
+        };
+        steps.push(issuance_step_request(
+            vendor,
+            index,
+            action_class,
+            body.action.parameter_hash,
+        )?);
+    }
+    Ok(issuance_request(steps))
+}
+
+pub fn revocation_publication_request(
+    revoked_key_fingerprints: Vec<String>,
+) -> RevocationPublicationRequest {
+    RevocationPublicationRequest {
+        schema: REVOCATION_PUBLICATION_REQUEST_SCHEMA.to_string(),
+        checkpoint_id: "revocation-checkpoint:chiodos-refund:001".to_string(),
+        issued_at_unix_ms: GENERATED_AT_UNIX_MS,
+        expires_at_unix_ms: GENERATED_AT_UNIX_MS + 120_000,
+        epoch_height: 64,
+        previous_epoch_height: Some(63),
+        revoked_key_fingerprints,
+    }
+}
+
+pub fn disclosure_policy() -> ChiodosDisclosurePolicy {
+    ChiodosDisclosurePolicy {
+        projection_version: "chio.bbs-projection.workflow.v1".to_string(),
+        ciphersuite: "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_".to_string(),
+        message_count: 14,
+        required_disclosed_indices: vec![4, 8, 9, 10],
+        required_disclosed_fields: vec![
+            "id".to_string(),
+            "session_id".to_string(),
+            "skill_id".to_string(),
+            "skill_version".to_string(),
+        ],
+    }
+}
+
+fn signed_revocation_checkpoint(
+    revoked_key_fingerprints: Vec<String>,
+) -> Result<SignedChiodosRevocationCheckpoint, ChiodosPackageError> {
+    publish_revocation_checkpoint(
+        &authority_profile_document()?,
+        &revocation_publication_request(revoked_key_fingerprints),
+        &authority_signing_keys_document(),
+    )
+    .map_err(ChiodosPackageError::from)
+}
+
+pub fn peer_pins_document_for_package(package: &ChiodosProofPackage) -> PeerPinsDocument {
+    let mut action_classes: Vec<ChiodosTrustedActionClass> = VENDORS
+        .iter()
+        .map(|vendor| ChiodosTrustedActionClass {
+            action_class_id: vendor.tool_name.to_string(),
+            tool_name: vendor.tool_name.to_string(),
+            kind: if vendor.destructive {
+                ChiodosActionClassKind::ReceiptBacked
+            } else {
+                ChiodosActionClassKind::Routine
+            },
+        })
+        .collect();
+    action_classes.push(ChiodosTrustedActionClass {
+        action_class_id: WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID.to_string(),
+        tool_name: WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID.to_string(),
+        kind: ChiodosActionClassKind::Routine,
+    });
+    action_classes.push(ChiodosTrustedActionClass {
+        action_class_id: WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID.to_string(),
+        tool_name: WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID.to_string(),
+        kind: ChiodosActionClassKind::Routine,
+    });
+    PeerPinsDocument {
+        schema: PEER_PINS_SCHEMA.to_string(),
+        peers: package.peer_ladder_bindings.clone(),
+        vendors: package.vendor_keys.clone(),
+        action_classes,
+    }
+}
+
+pub fn verifier_trust_bundle_document_for_package(
+    package: &ChiodosProofPackage,
+) -> Result<ChiodosVerifierTrustBundleDocument, ChiodosPackageError> {
+    assemble_verifier_trust_bundle(
+        &authority_profile_document()?,
+        &peer_pins_document_for_package(package),
+        &package.workflow_intersection,
+        disclosure_policy(),
+        signed_revocation_checkpoint(Vec::new())?,
+    )
+    .map_err(ChiodosPackageError::from)
 }
 
 pub fn verifier_trust_bundle_document(
@@ -553,7 +646,6 @@ fn build_proof_package_unchecked(
     selective_disclosure_proof: SelectiveDisclosureProof,
 ) -> Result<ChiodosProofPackage, ChiodosPackageError> {
     let buyer_key = Keypair::from_seed(&BUYER_SEED);
-    let governance_key = Keypair::from_seed(&GOVERNANCE_SEED);
 
     let mut tool_receipts = Vec::new();
     let mut leases = Vec::new();
@@ -567,8 +659,9 @@ fn build_proof_package_unchecked(
         public_key: buyer_key.public_key(),
         ladder_manifest_ref: buyer_ladder_ref(),
     }];
+    let mut issuance_steps = Vec::new();
+    let mut prepared_receipts = Vec::new();
 
-    let mut previous_step_sha256: Option<String> = None;
     for (index, vendor) in VENDORS.iter().enumerate() {
         let vendor_key = Keypair::from_seed(&vendor.seed);
         let receipt_body = receipt_body(vendor, &vendor_key)?;
@@ -579,36 +672,72 @@ fn build_proof_package_unchecked(
         } else {
             CapabilityLeaseActionClass::DelegatedAction
         };
-        let lease_scope_binding = lease_scope_binding_artifact(
+        issuance_steps.push(issuance_step_request(
             vendor,
             index,
             action_class,
             receipt.action.parameter_hash.clone(),
-        );
-        let lease_scope_digest = lease_scope_binding.scope_digest()?;
-        let lease = SignedExportEnvelope::sign(
-            lease_artifact(vendor, lease_scope_digest, action_class)?,
-            &buyer_key,
-        )
-        .map_err(|error| ChiodosPackageError::Inconsistent(error.to_string()))?;
-        lease
-            .body
-            .validate()
-            .map_err(|error| ChiodosPackageError::Governance(error.to_string()))?;
+        )?);
+        prepared_receipts.push((vendor, receipt));
 
-        let destructive_step_sha256 = canonical_sha256(&receipt.body())?;
-        let governance_receipt = if vendor.destructive {
-            Some(
-                SignedExportEnvelope::sign(
-                    governance_receipt_artifact(vendor.lease_id, &destructive_step_sha256),
-                    &governance_key,
-                )
-                .map_err(|error| ChiodosPackageError::Inconsistent(error.to_string()))?,
-            )
-        } else {
-            None
-        };
+        peer_bindings.push(PeerLadderBinding {
+            kernel_id: vendor.kernel_id.to_string(),
+            public_key: vendor_key.public_key(),
+            ladder_manifest_ref: ladder_ref(vendor.ladder_manifest_id, vendor.kernel_id),
+        });
+        vendor_keys.push(VendorKeyBinding {
+            vendor_id: vendor.vendor_id.to_string(),
+            public_key: vendor_key.public_key(),
+        });
+    }
 
+    let issued = issue_authority_bundle(
+        &authority_profile_document()?,
+        &issuance_request(issuance_steps),
+        &authority_signing_keys_document(),
+    )
+    .map_err(ChiodosPackageError::from)?;
+    let mut leases_by_id = issued
+        .capability_leases
+        .into_iter()
+        .map(|lease| (lease.body.lease_id.clone(), lease))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut scope_bindings_by_lease = issued
+        .lease_scope_bindings
+        .into_iter()
+        .map(|binding| (binding.lease_id.clone(), binding))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut governance_by_lease = issued
+        .governance_receipts
+        .into_iter()
+        .map(|receipt| (receipt.body.authorized_lease_id.clone(), receipt))
+        .collect::<std::collections::BTreeMap<_, _>>();
+
+    let mut previous_step_sha256: Option<String> = None;
+    for (index, (vendor, receipt)) in prepared_receipts.into_iter().enumerate() {
+        let vendor_key = Keypair::from_seed(&vendor.seed);
+        let lease = leases_by_id.remove(vendor.lease_id).ok_or_else(|| {
+            ChiodosPackageError::Governance(format!(
+                "issued bundle is missing lease {}",
+                vendor.lease_id
+            ))
+        })?;
+        let lease_scope_binding =
+            scope_bindings_by_lease
+                .remove(vendor.lease_id)
+                .ok_or_else(|| {
+                    ChiodosPackageError::Governance(format!(
+                        "issued bundle is missing scope binding {}",
+                        vendor.lease_id
+                    ))
+                })?;
+        let governance_receipt = governance_by_lease.remove(vendor.lease_id);
+        if vendor.destructive && governance_receipt.is_none() {
+            return Err(ChiodosPackageError::Governance(format!(
+                "issued bundle is missing governance receipt for {}",
+                vendor.lease_id
+            )));
+        }
         let governance_ref = if let Some(governance_receipt) = governance_receipt.as_ref() {
             Some(GovernanceReceiptRef {
                 receipt_id: governance_receipt.body.receipt_id.clone(),
@@ -661,15 +790,6 @@ fn build_proof_package_unchecked(
         );
         previous_step_sha256 = Some(canonical_sha256(&step)?);
 
-        peer_bindings.push(PeerLadderBinding {
-            kernel_id: vendor.kernel_id.to_string(),
-            public_key: vendor_key.public_key(),
-            ladder_manifest_ref: ladder_ref(vendor.ladder_manifest_id, vendor.kernel_id),
-        });
-        vendor_keys.push(VendorKeyBinding {
-            vendor_id: vendor.vendor_id.to_string(),
-            public_key: vendor_key.public_key(),
-        });
         tool_receipts.push(receipt);
         leases.push(lease);
         lease_scope_bindings.push(lease_scope_binding);
@@ -767,6 +887,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
     use super::*;
+    use chio_core_types::receipt::SignedExportEnvelope;
 
     fn rebuild_verifier_material(
         package: &mut ChiodosProofPackage,

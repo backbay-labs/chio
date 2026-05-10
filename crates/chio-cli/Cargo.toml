@@ -21,6 +21,7 @@ chio-appraisal = { path = "../chio-appraisal" }
 chio-arena = { path = "../chio-arena" }
 chio-api-protect = { path = "../chio-api-protect" }
 chio-chiodos = { path = "../chio-chiodos" }
+chio-chiodos-authority = { path = "../chio-chiodos-authority" }
 chio-control-plane = { path = "../chio-control-plane" }
 chio-acp-proxy = { path = "../chio-acp-proxy" }
 chio-core = { path = "../chio-core" }

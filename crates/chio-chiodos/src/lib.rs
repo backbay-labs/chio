@@ -37,6 +37,8 @@ pub const REVOCATION_CHECKPOINT_SCHEMA: &str = "chio.chiodos.revocation-checkpoi
 pub const VERIFICATION_CONTEXT_SCHEMA: &str = "chio.chiodos.verification-context.v1";
 pub const WORKFLOW_INTERSECTION_SCHEMA: &str = "chio.chiodos-workflow-intersection.v1";
 pub const LEASE_SCOPE_BINDING_SCHEMA: &str = "chio.chiodos-lease-scope-binding.v1";
+pub const WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID: &str = "workflow.grant_issue";
+pub const WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID: &str = "workflow.aggregate_publish";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -408,6 +410,16 @@ impl ChiodosVerifierTrustBundle {
                 return Err(ChiodosPackageError::TrustBundle(
                     "duplicate trusted action class tool name".to_string(),
                 ));
+            }
+        }
+        for required in [
+            WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID,
+            WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID,
+        ] {
+            if !action_class_ids.contains(required) {
+                return Err(ChiodosPackageError::TrustBundle(format!(
+                    "verifier trust bundle action classes must include {required}"
+                )));
             }
         }
 
@@ -2801,6 +2813,27 @@ mod tests {
         assert!(error
             .to_string()
             .contains("duplicate trusted workflow intersection"));
+    }
+
+    #[test]
+    fn verifier_trust_bundle_requires_reference_workflow_classes() {
+        let mut missing_grant = trust_bundle_document_from_fixture();
+        missing_grant
+            .action_classes
+            .retain(|class| class.action_class_id != WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID);
+        let error = ChiodosVerifierTrustBundle::from_document(missing_grant).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains(WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID));
+
+        let mut missing_aggregate = trust_bundle_document_from_fixture();
+        missing_aggregate
+            .action_classes
+            .retain(|class| class.action_class_id != WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID);
+        let error = ChiodosVerifierTrustBundle::from_document(missing_aggregate).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains(WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID));
     }
 
     #[test]

@@ -247,6 +247,48 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn chiodos_authority_issue_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "authority",
+            "issue",
+            "--profile",
+            "authority-profile.json",
+            "--request",
+            "issuance-request.json",
+            "--signing-keys",
+            "local-signing-keys.json",
+            "--out-dir",
+            "issued",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Authority {
+                        command:
+                            ChiodosAuthorityCommands::Issue {
+                                profile,
+                                request,
+                                signing_keys,
+                                out_dir,
+                            },
+                    },
+            } => {
+                assert_eq!(profile, std::path::PathBuf::from("authority-profile.json"));
+                assert_eq!(request, std::path::PathBuf::from("issuance-request.json"));
+                assert_eq!(
+                    signing_keys,
+                    std::path::PathBuf::from("local-signing-keys.json")
+                );
+                assert_eq!(out_dir, std::path::PathBuf::from("issued"));
+            }
+            _ => panic!("expected chiodos authority issue subcommand"),
+        }
+    }
+
+    #[test]
     fn mcp_wrap_emit_config_flag_parses() {
         let cli = Cli::try_parse_from([
             "chio",
