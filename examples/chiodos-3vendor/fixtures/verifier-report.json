@@ -1,6 +1,6 @@
 {
   "schema": "chio.chiodos.verifier-report.v1",
-  "packageSha256": "2f9a57de8344ac27c20ff993c1b0f5420d3e06e32d5f6f116e0f833005c04c7f",
+  "packageSha256": "2c17b66018f22ab97b392d8f499f33384a423cb42eb7fec409ca0fd408b6c7e6",
   "accepted": true,
   "checks": [
     {

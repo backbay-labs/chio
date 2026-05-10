@@ -554,7 +554,7 @@ fn build_proof_package_unchecked(
                 }
             })
             .collect(),
-        aggregate_workflow_receipt_sha256: canonical_sha256(&workflow_receipt)?,
+        aggregate_workflow_receipt_sha256: canonical_sha256(&workflow_receipt.body())?,
     };
 
     Ok(ChiodosProofPackage {
@@ -678,10 +678,7 @@ mod tests {
             Keypair::from_seed(&[99; 32]).sign(b"not the workflow body");
         let trust_bundle = verifier_trust_bundle().unwrap();
         let error = verify_package(&package, &trust_bundle).unwrap_err();
-        assert!(
-            error.to_string().contains("vendor signature")
-                || error.to_string().contains("workflow intersection")
-        );
+        assert!(error.to_string().contains("vendor signature"));
     }
 
     #[test]

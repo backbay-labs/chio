@@ -871,7 +871,7 @@ fn verify_workflow_intersection(
         ));
     }
 
-    let aggregate_hash = canonical_sha256(&package.workflow_receipt)?;
+    let aggregate_hash = canonical_sha256(&package.workflow_receipt.body())?;
     if intersection.aggregate_workflow_receipt_sha256 != aggregate_hash {
         return Err(ChiodosPackageError::WorkflowIntersection(
             "workflow intersection aggregate workflow receipt hash mismatch".to_string(),
