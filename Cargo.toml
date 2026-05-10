@@ -82,6 +82,7 @@ members = [
     "crates/chio-governance",
     "crates/chio-revocation-oracle",
     "crates/chio-reputation",
+    "crates/chio-selective-disclosure",
     #
     # Observability & ops
     "crates/chio-lineage",

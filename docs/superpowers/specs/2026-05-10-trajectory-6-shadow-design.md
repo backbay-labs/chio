@@ -1,10 +1,9 @@
-# Trajectory 6 Shadow Design
+# Trajectory 6 Active Design
 
 ## Status
 
-Draft and non-normative. This document is planning only. It does not define
-shipped protocol behavior, production schema enforcement, verifier behavior, or
-release readiness.
+Active implementation slice. It promotes the real BBS selective-disclosure
+work from the shadow plan while keeping the rest of T6 draft until gates exist.
 
 ## Narrative
 
@@ -27,11 +26,11 @@ without trusting any vendor unilaterally.
   interfaces, without production enforcement.
 - Draft strict bilateral invocation verifier requirements and offline buyer
   proof bundle shape.
-- Keep selective disclosure non-release unless a real cryptographic proof path
-  replaces the `bbs-stub`.
+- Replace the selective-disclosure boundary with real reveal-set BBS proofs
+  over receipt, workflow, and step projections.
 
 ## Boundary
 
-No runtime code, enforced schema, verifier command, package release, BBS+/zk
-claim, or shipped protocol claim may land under this shadow lane. Those belong
-to a future active Trajectory 6 implementation lane after 5.2 exits.
+The active claim is narrow: real BBS proof generation and verification for
+disclosed fields. Hidden range predicates, VC Data Integrity interop, and zkVM
+proofs remain future work.

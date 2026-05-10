@@ -1,18 +1,19 @@
-# Trajectory 6 Shadow Planning
+# Trajectory 6 Active Planning
 
-Status: shadow planning only.
+Status: active implementation slice.
 
 Trajectory 6 is scoped as **Chiodos v0.1: cross-vendor attested workflows**.
-This directory is non-normative until Trajectory 6 becomes the active
-implementation lane.
+Trajectory 5.2 exited with the strict bounded assurance gate green, so T6 may
+now carry runtime work that is backed by runnable acceptance gates.
 
 ## Guardrails
 
-- Specs and ticket maps are allowed.
-- Runtime code, production schema enforcement, verifier behavior, and release
-  claims are not allowed in shadow planning.
-- Draft interfaces must stay labeled non-normative.
-- If 5.2 and T6 compete, 5.2 wins until the strict bounded gate is green.
+- Runtime work must be tied to a ticket and a runnable gate.
+- Selective disclosure may claim only reveal-set BBS proofs over signed
+  receipt, workflow, and step projections.
+- Hidden range predicates, VC Data Integrity interop, and zkVM support remain
+  out of scope for this slice.
+- Legacy `bbs-stub` artifacts cannot satisfy T6 conformance.
 
 ## Candidate Interfaces
 

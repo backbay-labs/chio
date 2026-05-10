@@ -1,7 +1,7 @@
-# Trajectory 6 Shadow Tickets
+# Trajectory 6 Tickets
 
-All tickets are draft and non-normative. They are not authorized for runtime
-implementation until Trajectory 6 becomes active.
+Tickets start from the former shadow map. Runtime work is allowed only when it
+has a concrete acceptance gate.
 
 ## T6-S-001: 3-vendor golden fixture scope
 
@@ -46,9 +46,16 @@ Acceptance:
 - Buyer proof package contents are listed.
 - The draft explicitly excludes shipped verifier behavior.
 
-## T6-S-006: Selective-disclosure boundary
+## T6-006: Real BBS selective disclosure
 
 Acceptance:
 
-- `bbs-stub` cannot satisfy any T6 release claim.
-- Real BBS+/zk proof work is a future active-lane dependency.
+- `chio-selective-disclosure` signs receipt, workflow, and step projections
+  under the `bbs` feature.
+- `chio.selective-disclosure-proof.v1` proof packages verify disclosed fields
+  against an issuer-key registry.
+- The committed 3-vendor fixture uses the real proof schema and rejects the
+  legacy `.stub` schema.
+- The gate `bash scripts/check-t6-bbs-acceptance.sh` passes.
+- No ticket claims hidden range predicates, VC Data Integrity interop, or zkVM
+  support.

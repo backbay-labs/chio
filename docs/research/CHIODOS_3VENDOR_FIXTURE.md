@@ -527,13 +527,14 @@ The buyer's auditor (Buyer Corp Compliance) requests proof of
 seeing the customer record or the draft response.
 
 [CHIODOS_CONCEPT.md](CHIODOS_CONCEPT.md) section 7 hard problem 4 leans
-BBS+ (`bbs-2023` + AnonCreds v2 `RangeStatement`). v0.1
-[CHIODOS_PHEROMONE.md](../../spec/CHIODOS_PHEROMONE.md) defers BBS+ to
-v0.2. There is no normative BBS+ projection of `WorkflowReceipt` in the
-specs (Gap G6).
+BBS+ (`bbs-2023` + AnonCreds v2 `RangeStatement`). T6 now implements a
+first reveal-set BBS proof package over `WorkflowReceipt` in
+`chio-selective-disclosure`; hidden range predicates such as
+`amount_minor <= 25000` remain deferred.
 
-The illustrative envelope below assumes that v0.2 will adopt the same
-BBS+ projection lane the pheromone spec sketches in section 11.
+The illustrative envelope below predates the T6 proof package. The
+committed runnable fixture is
+`examples/chiodos-3vendor/fixtures/t6-real-bbs-proof.json`.
 
 ### 8.1 BBS+ disclosure envelope (illustrative)
 
@@ -704,13 +705,11 @@ fixture. Recommended fixes are consolidated in section 13.
   third-party verifier cannot confirm the joint plan without trusting
   the buyer's view.
 
-- **G6. BBS+ projection over WorkflowReceipt is undefined.**
-  [CHIODOS_PHEROMONE.md:442-465](../../spec/CHIODOS_PHEROMONE.md)
-  section 11 sketches BBS+ for one deposit body. The auditor's
-  predicate ("amount_minor <= 25000") targets a **nested per-step
-  field** in `WorkflowReceipt`. There is no projection-ordering rule,
-  no field-path syntax, and no defined home for the BBS+ secondary
-  signature.
+- **G6. BBS projection over WorkflowReceipt is partially implemented.**
+  `chio-selective-disclosure` defines receipt, workflow, and step
+  projections and verifies reveal-set BBS proofs. Hidden predicates over
+  nested per-step fields, including `amount_minor <= 25000`, still need
+  a range-proof or zkVM lane.
 
 - **G7. Hub-relayed pheromone gossip is unspecified.** The fixture
   relays a LlamaWorks deposit through Buyer Corp to DataCo and
