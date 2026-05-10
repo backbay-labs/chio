@@ -580,6 +580,13 @@ impl ChiodosVerifierTrustBundle {
         }
         Ok(())
     }
+
+    fn ensure_checkpoint_covers_context(
+        &self,
+        context: &ChiodosVerificationContext,
+    ) -> Result<(), ChiodosPackageError> {
+        self.ensure_checkpoint_active_at(context.expires_at_unix_ms.saturating_sub(1))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1268,7 +1275,7 @@ fn verify_package_inner(
             "verification context is expired".to_string(),
         ));
     }
-    trust_bundle.ensure_checkpoint_active_at(trust_bundle.verification_time_unix_ms())?;
+    trust_bundle.ensure_checkpoint_covers_context(context)?;
 
     let add_check = |checks: &mut Vec<VerifierCheck>, code: &str, name: &str| {
         checks.push(VerifierCheck {
@@ -2573,6 +2580,32 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("revocation") || error.to_string().contains("JSON"));
+    }
+
+    #[test]
+    fn revocation_checkpoint_must_cover_verifier_context() {
+        let package = proof_package_from_json(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses");
+        let context = verification_context_from_fixture();
+        let mut document = trust_bundle_document_from_fixture();
+        let ChiodosRevocationMaterial::Checkpoint(checkpoint) = document.revocation else {
+            panic!("fixture carries signed revocation checkpoint");
+        };
+        let checkpoint = *checkpoint;
+        let mut body = checkpoint.body;
+        body.expires_at_unix_ms = context.expires_at_unix_ms - 1;
+        document.revocation = ChiodosRevocationMaterial::Checkpoint(Box::new(
+            SignedExportEnvelope::sign(body, &Keypair::from_seed(&[11; 32]))
+                .expect("revocation checkpoint re-signs"),
+        ));
+        let trust_bundle = ChiodosVerifierTrustBundle::from_document(document)
+            .expect("trust bundle remains structurally valid");
+
+        let error = verify_package(&package, &trust_bundle, &context).unwrap_err();
+        assert!(error.to_string().contains("revocation checkpoint"));
+        assert!(error.to_string().contains("stale"));
     }
 
     #[test]
