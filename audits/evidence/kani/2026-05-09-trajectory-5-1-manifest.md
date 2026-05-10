@@ -2,19 +2,18 @@
 
 Date: 2026-05-09
 
-Integrated main: `2afeb07a1febacd1323f6903fc96d7f764254420`
+Trajectory 5.1 baseline: `db94ab9107e08aba90193b88aac20017b459f810`
 
 ## Local Toolchain
 
-`cargo kani --version` failed locally:
+The local Kani toolchain is installed and initialized:
 
 ```text
-error: no such command: `kani`
+cargo-kani 0.67.0
 ```
 
-This means no local Kani proof result is claimed by Trajectory 5.1.
-The manifest enrollment and runner shape were checked, and the proof
-execution remains a hosted or toolchain-prepared follow-up.
+`cargo kani setup` completed successfully and installed the matching Kani
+release bundle plus Rust toolchain `nightly-2025-11-21-aarch64-apple-darwin`.
 
 ## Manifest List
 
@@ -62,8 +61,21 @@ entry. On macOS in this workspace, `timeout(1)` was not on `PATH`, so
 the dry-run lines annotated each command with the configured timeout
 rather than wrapping it.
 
+## Local PR-Lane Proof Run
+
+`bash scripts/run-kani-manifest.sh --lane pr` exited 0:
+
+```text
+run-kani-manifest.sh: 30 harnesses passed (lane=pr)
+```
+
+Representative verifier summaries reported `VERIFICATION:- SUCCESSFUL` and
+`Manual Harness Summary: Complete - 1 successfully verified harnesses, 0
+failures, 1 total.` for each invoked manifest entry. The full terminal trace is
+not committed because Kani emits large CBMC solver output for each harness.
+
 ## 5.1 Disposition
 
-The 5.1 Kani claim is limited to manifest integrity and command
-enumeration. It does not claim local proof completion until `cargo-kani`
-is installed and the manifest lane exits 0.
+Trajectory 5.1 now claims local Kani proof completion for the PR-lane manifest
+at `cargo-kani 0.67.0`. Nightly-lane expansion and hosted retention of full
+Kani transcripts remain outside this evidence file.

@@ -258,8 +258,8 @@ Acceptance:
 | T5.1-B-005 | Done | `cargo test -p chio-conformance --test b4_bilateral_dsse_pae_conformance` passed and the ship-bar no longer reports B4 interim-only. |
 | T5.1-A-001 | Honest partial | README, `releases.toml`, and `audits/evidence/mutants/banner.json` now record observed partial/below-target values instead of targets. |
 | T5.1-A-002 | Done | `bash scripts/check-threat-coverage.sh` and `bash scripts/check-threat-coverage-mutants.sh` passed with 20 pending rows and zero false-covered rows. |
-| T5.1-A-003 | Honest partial | `audits/evidence/kani/2026-05-09-trajectory-5-1-manifest.md` records manifest/list/dry-run success and local `cargo-kani` absence. |
-| T5.1-A-004 | Honest partial | `audits/evidence/formal/2026-05-09-trajectory-5-1-apalache-lean.md` records local Apalache success and local Lean toolchain absence. |
+| T5.1-A-003 | Done | `cargo-kani 0.67.0` is installed and `bash scripts/run-kani-manifest.sh --lane pr` passed all 30 manifest harnesses. |
+| T5.1-A-004 | Done | `python3 scripts/check-apalache-formal-slice.py`, all four bounded Apalache checks, and `lake build` under `formal/lean4/Chio` passed. |
 | T5.1-A-005 | Done | `audits/evidence/bounded-assurance-manifest.json` verifies under `bash scripts/check-bounded-ship-bar.sh --diagnostic`. |
 | T5.1-C-001 | Done | Versioned receipt, envelope, checkpoint, transcripts, and golden output are present under `examples/chiodome-bilateral/`. |
 | T5.1-C-002 | Partial | Replay policy/tool naming is aligned for read-only fixture tools, but the default `mcp wrap --e2e-fixture` path is still manifest-scaffold based rather than full policy-backed `mcp serve`. |
