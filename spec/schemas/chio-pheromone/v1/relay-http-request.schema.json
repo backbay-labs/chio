@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-http-request.schema.json",
+  "title": "Chiodos Pheromone Relay HTTP Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "senderKernelId",
+    "recipientKernelId",
+    "method",
+    "path",
+    "bodySha256",
+    "nonce",
+    "sentAtUnixMs",
+    "payload",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-http-request.v1" },
+    "senderKernelId": { "type": "string", "minLength": 1 },
+    "recipientKernelId": { "type": "string", "minLength": 1 },
+    "method": { "const": "POST" },
+    "path": {
+      "enum": ["/v1/chiodos/pheromone/batches", "/v1/chiodos/pheromone/catchup"]
+    },
+    "bodySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "nonce": { "type": "string", "minLength": 1 },
+    "sentAtUnixMs": { "type": "integer", "minimum": 0 },
+    "payload": {},
+    "signature": { "type": "string", "minLength": 128 }
+  }
+}

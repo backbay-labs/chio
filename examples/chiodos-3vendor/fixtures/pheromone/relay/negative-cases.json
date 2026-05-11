@@ -1,0 +1,25 @@
+{
+  "schema": "chio.pheromone.relay-negative-fixture-corpus.v1",
+  "cases": [
+    {
+      "id": "unknown-peer",
+      "target": "relay-http-request",
+      "expectedFailureCode": "unknown_peer"
+    },
+    {
+      "id": "body-hash-mismatch",
+      "target": "relay-http-request",
+      "expectedFailureCode": "body_hash_mismatch"
+    },
+    {
+      "id": "relay-nonce-replay",
+      "target": "relay-http-request",
+      "expectedFailureCode": "relay_nonce_replay"
+    },
+    {
+      "id": "endpoint-denied",
+      "target": "peer-directory",
+      "expectedFailureCode": "endpoint_denied"
+    }
+  ]
+}

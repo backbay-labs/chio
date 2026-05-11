@@ -83,6 +83,7 @@ members = [
     "crates/chio-chiodos",
     "crates/chio-chiodos-authority",
     "crates/chio-pheromone",
+    "crates/chio-pheromone-relay",
     "crates/chio-pheromone-runtime",
     "crates/chio-revocation-oracle",
     "crates/chio-reputation",

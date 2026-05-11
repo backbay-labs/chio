@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-config.schema.json",
+  "title": "Chiodos Pheromone Relay Config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "localKernelId", "freshnessWindowMs", "maxBodyBytes"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-config.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "freshnessWindowMs": { "type": "integer", "minimum": 1 },
+    "maxBodyBytes": { "type": "integer", "minimum": 1 }
+  }
+}

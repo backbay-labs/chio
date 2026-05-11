@@ -2799,6 +2799,7 @@ dependencies = [
  "chio-mcp-remote",
  "chio-open-market",
  "chio-pheromone",
+ "chio-pheromone-relay",
  "chio-pheromone-runtime",
  "chio-policy",
  "chio-replay-corpus",
@@ -3846,6 +3847,27 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-pheromone-relay"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum 0.8.8",
+ "chio-core-types",
+ "chio-federation",
+ "chio-pheromone",
+ "chio-pheromone-runtime",
+ "reqwest 0.13.2",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "url",
 ]
 
 [[package]]

@@ -240,6 +240,54 @@
       "artifactKind": "chiodos_pheromone_peer_weights",
       "introducedBy": "chiodos-pheromone-runtime/v1",
       "schemaFile": "spec/schemas/chio-pheromone/v1/peer-weights.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.peer-directory.v1",
+      "artifactKind": "chiodos_pheromone_peer_directory",
+      "introducedBy": "chiodos-live-pheromone-relay/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/peer-directory.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-config.v1",
+      "artifactKind": "chiodos_pheromone_relay_config",
+      "introducedBy": "chiodos-live-pheromone-relay/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-config.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-http-request.v1",
+      "artifactKind": "chiodos_pheromone_relay_http_request",
+      "introducedBy": "chiodos-live-pheromone-relay/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-http-request.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-tick-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_tick_report",
+      "introducedBy": "chiodos-live-pheromone-relay/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-tick-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-operator-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_operator_report",
+      "introducedBy": "chiodos-live-pheromone-relay/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-operator-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.catchup-request.v1",
+      "artifactKind": "chiodos_pheromone_catchup_request",
+      "introducedBy": "chiodos-live-pheromone-relay/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/catchup-request.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.catchup-response.v1",
+      "artifactKind": "chiodos_pheromone_catchup_response",
+      "introducedBy": "chiodos-live-pheromone-relay/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/catchup-response.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_pheromone_relay_negative_fixture_corpus",
+      "introducedBy": "chiodos-live-pheromone-relay/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-negative-fixture-corpus.schema.json"
     }
   ]
 }

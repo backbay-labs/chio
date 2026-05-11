@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-operator-report.schema.json",
+  "title": "Chiodos Pheromone Relay Operator Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "accepted", "code", "detail", "localKernelId", "generatedAtUnixMs"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-operator-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "minLength": 1 },
+    "detail": { "type": "string", "minLength": 1 },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 }
+  }
+}

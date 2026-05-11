@@ -808,6 +808,10 @@ enum ChiodosPheromoneCommands {
         #[arg(long, value_name = "PATH")]
         store: PathBuf,
 
+        /// Receiver evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: Option<u64>,
+
         /// Output path for receive report JSON.
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
@@ -835,7 +839,135 @@ enum ChiodosPheromoneCommands {
         #[arg(long, value_name = "PATH")]
         peer_weights: PathBuf,
 
+        /// Query evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: Option<u64>,
+
         /// Output path for query report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Run or inspect live pheromone relay state.
+    Relay {
+        #[command(subcommand)]
+        command: ChiodosPheromoneRelayCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosPheromoneRelayCommands {
+    /// Serve signed pheromone relay HTTP endpoints.
+    Serve {
+        /// Listen address for the relay HTTP service.
+        #[arg(long, value_name = "ADDR")]
+        listen: String,
+
+        /// SQLite store path for runtime and relay state.
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        /// Verifier-owned peer directory JSON.
+        #[arg(long, value_name = "PATH")]
+        peer_directory: PathBuf,
+
+        /// Local transit policy JSON with receiver admission material.
+        #[arg(long, value_name = "PATH")]
+        transit_policy: PathBuf,
+
+        /// Verified Chiodos proof package JSON.
+        #[arg(long, value_name = "PATH")]
+        proof_package: PathBuf,
+
+        /// Verifier-owned Chiodos trust bundle JSON.
+        #[arg(long, value_name = "PATH")]
+        trust_bundle: PathBuf,
+
+        /// Chiodos verification context JSON.
+        #[arg(long, value_name = "PATH")]
+        context: PathBuf,
+
+        /// Directory for per-request relay reports.
+        #[arg(long, value_name = "DIR")]
+        report_dir: PathBuf,
+    },
+
+    /// Queue accepted local relay work for subscribed peers.
+    Enqueue {
+        /// SQLite store path for relay state.
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        /// Verifier-owned peer directory JSON.
+        #[arg(long, value_name = "PATH")]
+        peer_directory: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for enqueue report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Run one deterministic relay scheduler tick.
+    Tick {
+        /// SQLite store path for relay state.
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        /// Verifier-owned peer directory JSON.
+        #[arg(long, value_name = "PATH")]
+        peer_directory: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Maximum batches to lease this tick.
+        #[arg(long)]
+        max_batches: usize,
+
+        /// Output path for tick report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Request bounded catch-up metadata from local relay state.
+    Catchup {
+        /// SQLite store path for relay state.
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        /// Peer kernel id requesting catch-up.
+        #[arg(long, value_name = "ID")]
+        peer: String,
+
+        /// Treaty id for the catch-up window.
+        #[arg(long, value_name = "ID")]
+        treaty: String,
+
+        /// Cursor after which frames are requested.
+        #[arg(long, value_name = "CURSOR")]
+        after_cursor: String,
+
+        /// Maximum frames to return.
+        #[arg(long)]
+        limit: usize,
+
+        /// Output path for catch-up report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Write local relay operator status.
+    Status {
+        /// SQLite store path for relay state.
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        /// Output path for status report JSON.
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },

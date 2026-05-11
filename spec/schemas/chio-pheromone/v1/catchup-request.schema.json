@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/catchup-request.schema.json",
+  "title": "Chiodos Pheromone Catch-up Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "requesterKernelId", "responderKernelId", "treatyId", "afterCursor", "limit"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.catchup-request.v1" },
+    "requesterKernelId": { "type": "string", "minLength": 1 },
+    "responderKernelId": { "type": "string", "minLength": 1 },
+    "treatyId": { "type": "string", "minLength": 1 },
+    "afterCursor": { "type": "string" },
+    "limit": { "type": "integer", "minimum": 1 }
+  }
+}

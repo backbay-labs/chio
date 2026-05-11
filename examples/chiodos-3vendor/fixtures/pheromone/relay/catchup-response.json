@@ -1,0 +1,10 @@
+{
+  "schema": "chio.pheromone.catchup-response.v1",
+  "accepted": true,
+  "responderKernelId": "did:chio:dataco",
+  "requesterKernelId": "did:chio:buyer-kernel",
+  "treatyId": "treaty:buyer-dataco:support-ops",
+  "frames": [],
+  "nextCursor": "cursor:initial",
+  "code": "accepted"
+}
