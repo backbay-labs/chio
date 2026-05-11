@@ -5,10 +5,12 @@ The canonical relay observability report is the first operator view for the pher
 ## Report Flow
 
 1. Run `chio chiodos pheromone relay observe`.
-2. Check `accepted`, `code`, and `recommendations`.
-3. Inspect bounded event reports from `--report-dir` only when a recommendation needs evidence.
-4. Export `chio chiodos pheromone relay metrics --format prometheus` for alerting.
-5. Use raw SQLite inspection only after the report and bounded event files have narrowed the incident.
+2. Run `chio chiodos pheromone relay alert evaluate` against the observability report, routing profile, suppression state, and bounded event directory.
+3. Run `chio chiodos pheromone relay trend` across committed observability and event report artifacts for the operator window.
+4. Check `relay-alert-report.v1` before opening raw store rows.
+5. Inspect bounded event reports from `--report-dir` only when an alert requires evidence.
+6. Export `chio chiodos pheromone relay metrics --format prometheus` for downstream alerting.
+7. Use raw SQLite inspection only after alert, trend, observability, and bounded event files have narrowed the incident.
 
 ## Bounded Metrics
 
@@ -16,8 +18,17 @@ Prometheus labels are limited to:
 
 - `status` for queue depth.
 - `reason` for bounded rejection and dead-letter classes.
+- `notification_route`, `opsgenie`, `service`, and `severity` for downstream alert routing.
 
 Do not use peer ids, treaty ids, hashes, nonces, cursors, or outbox ids as labels.
+
+## Alert Routing Artifacts
+
+The relay alert routing profile is verifier-owned operator input. It maps bounded alert codes to route aliases for PagerDuty, OpsGenie, Slack, email, or generic webhook handoff. The profile must not contain inline secrets or dynamic URLs. Secrets stay in downstream Alertmanager, PagerDuty, OpsGenie, Slack, or email systems.
+
+The alert report records firing, suppressed, and accepted states from the canonical observability report plus bounded event evidence. Critical classes such as dead letters, replay storms, stale directories, catch-up overload, and endpoint or auth denial remain visible even when suppression state exists.
+
+The trend report aggregates long-horizon observability and event artifacts using bounded alert and metric codes only. It does not inspect raw SQLite and does not reconstruct relay truth outside canonical reports.
 
 ## Alert Starting Points
 

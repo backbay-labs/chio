@@ -39,6 +39,14 @@ pub const PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA: &str =
 pub const PHEROMONE_RELAY_METRICS_SNAPSHOT_SCHEMA: &str =
     "chio.pheromone.relay-metrics-snapshot.v1";
 pub const PHEROMONE_RELAY_EVENT_REPORT_SCHEMA: &str = "chio.pheromone.relay-event-report.v1";
+pub const PHEROMONE_RELAY_ALERT_ROUTING_PROFILE_SCHEMA: &str =
+    "chio.pheromone.relay-alert-routing-profile.v1";
+pub const PHEROMONE_RELAY_ALERT_REPORT_SCHEMA: &str = "chio.pheromone.relay-alert-report.v1";
+pub const PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA: &str =
+    "chio.pheromone.relay-alert-suppression-state.v1";
+pub const PHEROMONE_RELAY_TREND_REPORT_SCHEMA: &str = "chio.pheromone.relay-trend-report.v1";
+pub const PHEROMONE_RELAY_ALERT_NEGATIVE_CORPUS_SCHEMA: &str =
+    "chio.pheromone.relay-alert-negative-fixture-corpus.v1";
 pub const PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA: &str =
     "chio.pheromone.relay-supervisor-profile.v1";
 pub const PHEROMONE_RELAY_DRILL_REPORT_SCHEMA: &str = "chio.pheromone.relay-drill-report.v1";
@@ -94,6 +102,10 @@ pub enum PheromoneRelayError {
     RelayRequestStale(String),
     #[error("operator_auth_required: {0}")]
     OperatorAuthRequired(String),
+    #[error("alert_routing_invalid: {0}")]
+    AlertRoutingInvalid(String),
+    #[error("alert_source_invalid: {0}")]
+    AlertSourceInvalid(String),
     #[error("sender_mismatch: {0}")]
     SenderMismatch(String),
     #[error("recipient_mismatch: {0}")]
@@ -139,6 +151,8 @@ impl PheromoneRelayError {
             Self::RelayNonceReplay(_) => "relay_nonce_replay",
             Self::RelayRequestStale(_) => "relay_request_stale",
             Self::OperatorAuthRequired(_) => "operator_auth_required",
+            Self::AlertRoutingInvalid(_) => "alert_routing_invalid",
+            Self::AlertSourceInvalid(_) => "alert_source_invalid",
             Self::SenderMismatch(_) => "sender_mismatch",
             Self::RecipientMismatch(_) => "recipient_mismatch",
             Self::MethodMismatch(_) => "method_mismatch",
@@ -1256,6 +1270,806 @@ pub struct RelayEventReport {
     pub generated_at_unix_ms: u64,
     pub event_kind: String,
     pub stable_failure_code: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RelayAlertRouteKind {
+    PagerDuty,
+    OpsGenie,
+    Slack,
+    Email,
+    Webhook,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RelayAlertSeverity {
+    Info,
+    Warning,
+    Critical,
+}
+
+impl RelayAlertSeverity {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Info => "info",
+            Self::Warning => "warning",
+            Self::Critical => "critical",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertRoute {
+    pub route_id: String,
+    pub kind: RelayAlertRouteKind,
+    pub notification_route: String,
+    pub opsgenie: String,
+    pub target_ref: String,
+    pub runbook: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertRule {
+    pub alert_code: String,
+    pub route_id: String,
+    pub severity: RelayAlertSeverity,
+    pub min_window_ms: u64,
+    pub unsuppressible: bool,
+    pub require_event_evidence: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertRoutingProfileDocument {
+    pub schema: String,
+    pub local_kernel_id: String,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+    pub max_source_age_ms: u64,
+    pub max_suppression_ms: u64,
+    pub allowed_label_names: Vec<String>,
+    pub routes: Vec<RelayAlertRoute>,
+    pub rules: Vec<RelayAlertRule>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertSuppressionEntry {
+    pub alert_code: String,
+    pub route_id: String,
+    pub reason: String,
+    pub starts_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertSuppressionStateDocument {
+    pub schema: String,
+    pub local_kernel_id: String,
+    pub entries: Vec<RelayAlertSuppressionEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertCheck {
+    pub code: String,
+    pub accepted: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlert {
+    pub code: String,
+    pub state: String,
+    pub severity: String,
+    pub notification_route: String,
+    pub opsgenie: String,
+    pub dedupe_key: String,
+    pub runbook: String,
+    pub first_seen_unix_ms: u64,
+    pub last_seen_unix_ms: u64,
+    pub window_ms: u64,
+    pub suppressed_until_unix_ms: Option<u64>,
+    pub source_report_sha256: String,
+    pub event_evidence_sha256: Vec<String>,
+    pub recommendation_codes: Vec<String>,
+    pub labels: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertReport {
+    pub schema: String,
+    pub accepted: bool,
+    pub code: String,
+    pub local_kernel_id: String,
+    pub generated_at_unix_ms: u64,
+    pub source_report_sha256: String,
+    pub alerts: Vec<RelayAlert>,
+    pub checks: Vec<RelayAlertCheck>,
+}
+
+pub struct RelayAlertEvaluationInput<'a> {
+    pub observability: &'a RelayObservabilityReport,
+    pub routing_profile: &'a RelayAlertRoutingProfileDocument,
+    pub suppression_state: Option<&'a RelayAlertSuppressionStateDocument>,
+    pub event_reports: &'a [RelayEventReport],
+    pub now_unix_ms: u64,
+    pub expected_source_report_sha256: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayTrendPoint {
+    pub code: String,
+    pub count: u64,
+    pub first_seen_unix_ms: u64,
+    pub last_seen_unix_ms: u64,
+    pub severity: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayTrendReport {
+    pub schema: String,
+    pub accepted: bool,
+    pub code: String,
+    pub local_kernel_id: String,
+    pub since_unix_ms: u64,
+    pub until_unix_ms: u64,
+    pub source_report_count: u64,
+    pub event_report_count: u64,
+    pub points: Vec<RelayTrendPoint>,
+}
+
+pub struct RelayTrendInput<'a> {
+    pub local_kernel_id: &'a str,
+    pub observability_reports: &'a [RelayObservabilityReport],
+    pub event_reports: &'a [RelayEventReport],
+    pub routing_profile: &'a RelayAlertRoutingProfileDocument,
+    pub since_unix_ms: u64,
+    pub until_unix_ms: u64,
+}
+
+pub fn relay_alert_routing_profile_from_json(
+    json: &str,
+    now_unix_ms: u64,
+) -> Result<RelayAlertRoutingProfileDocument, PheromoneRelayError> {
+    let profile: RelayAlertRoutingProfileDocument = serde_json::from_str(json)?;
+    validate_alert_profile(&profile, now_unix_ms)?;
+    Ok(profile)
+}
+
+pub fn relay_alert_suppression_state_from_json(
+    json: &str,
+    profile: &RelayAlertRoutingProfileDocument,
+) -> Result<RelayAlertSuppressionStateDocument, PheromoneRelayError> {
+    let state: RelayAlertSuppressionStateDocument = serde_json::from_str(json)?;
+    validate_suppression_state(&state, profile)?;
+    Ok(state)
+}
+
+pub fn evaluate_relay_alerts(
+    input: RelayAlertEvaluationInput<'_>,
+) -> Result<RelayAlertReport, PheromoneRelayError> {
+    validate_alert_profile(input.routing_profile, input.now_unix_ms)?;
+    if let Some(state) = input.suppression_state {
+        validate_suppression_state(state, input.routing_profile)?;
+    }
+    validate_observability_source(
+        input.observability,
+        input.routing_profile,
+        input.now_unix_ms,
+    )?;
+    let source_report_sha256 = canonical_sha256(input.observability)?;
+    if let Some(expected) = input.expected_source_report_sha256 {
+        if expected != source_report_sha256 {
+            return Err(PheromoneRelayError::AlertSourceInvalid(
+                "observability report hash does not match caller expectation".to_string(),
+            ));
+        }
+    }
+
+    let routes = alert_route_map(input.routing_profile)?;
+    let rules = alert_rule_map(input.routing_profile)?;
+    let mut checks = vec![RelayAlertCheck {
+        code: "source_report".to_string(),
+        accepted: true,
+        detail: "observability report is current and hash-bound".to_string(),
+    }];
+    let mut alerts = Vec::new();
+    let recommendation_codes = input
+        .observability
+        .recommendations
+        .iter()
+        .map(|recommendation| recommendation.code.clone())
+        .collect::<Vec<_>>();
+
+    for recommendation in &input.observability.recommendations {
+        let rule = rules.get(&recommendation.code).ok_or_else(|| {
+            PheromoneRelayError::AlertRoutingInvalid(format!(
+                "recommendation code {} has no alert rule",
+                recommendation.code
+            ))
+        })?;
+        let route = routes.get(&rule.route_id).ok_or_else(|| {
+            PheromoneRelayError::AlertRoutingInvalid(format!(
+                "alert route {} is not defined",
+                rule.route_id
+            ))
+        })?;
+        let event_evidence_sha256 = matching_event_evidence(&recommendation.code, &input)?;
+        if rule.require_event_evidence && event_evidence_sha256.is_empty() {
+            return Err(PheromoneRelayError::AlertSourceInvalid(format!(
+                "alert {} requires bounded event evidence",
+                recommendation.code
+            )));
+        }
+        let suppressed_until_unix_ms = if rule.unsuppressible {
+            None
+        } else {
+            active_suppression_until(
+                input.suppression_state,
+                &rule.alert_code,
+                &rule.route_id,
+                input.now_unix_ms,
+            )
+        };
+        let state = if suppressed_until_unix_ms.is_some() {
+            "suppressed"
+        } else {
+            "firing"
+        };
+        let labels = alert_labels(route, rule)?;
+        alerts.push(RelayAlert {
+            code: rule.alert_code.clone(),
+            state: state.to_string(),
+            severity: rule.severity.as_str().to_string(),
+            notification_route: route.notification_route.clone(),
+            opsgenie: route.opsgenie.clone(),
+            dedupe_key: format!(
+                "chiodos-relay:{}:{}:{}",
+                input.observability.local_kernel_id, rule.alert_code, route.route_id
+            ),
+            runbook: route.runbook.clone(),
+            first_seen_unix_ms: input.observability.generated_at_unix_ms,
+            last_seen_unix_ms: input.now_unix_ms,
+            window_ms: rule.min_window_ms,
+            suppressed_until_unix_ms,
+            source_report_sha256: source_report_sha256.clone(),
+            event_evidence_sha256,
+            recommendation_codes: recommendation_codes.clone(),
+            labels,
+        });
+    }
+    let accepted = alerts.iter().all(|alert| alert.state == "suppressed");
+    checks.push(RelayAlertCheck {
+        code: "routing_profile".to_string(),
+        accepted: true,
+        detail: "alert routing profile uses bounded routes and labels".to_string(),
+    });
+    Ok(RelayAlertReport {
+        schema: PHEROMONE_RELAY_ALERT_REPORT_SCHEMA.to_string(),
+        accepted,
+        code: if accepted {
+            "accepted"
+        } else {
+            "alerts_firing"
+        }
+        .to_string(),
+        local_kernel_id: input.observability.local_kernel_id.clone(),
+        generated_at_unix_ms: input.now_unix_ms,
+        source_report_sha256,
+        alerts,
+        checks,
+    })
+}
+
+pub fn generate_relay_trend_report(
+    input: RelayTrendInput<'_>,
+) -> Result<RelayTrendReport, PheromoneRelayError> {
+    if input.since_unix_ms > input.until_unix_ms {
+        return Err(PheromoneRelayError::AlertSourceInvalid(
+            "trend lower bound is after upper bound".to_string(),
+        ));
+    }
+    validate_alert_profile(input.routing_profile, input.until_unix_ms)?;
+    let rule_map = alert_rule_map(input.routing_profile)?;
+    let mut points: BTreeMap<String, RelayTrendPoint> = BTreeMap::new();
+    let mut source_report_count = 0u64;
+    for report in input.observability_reports {
+        if report.local_kernel_id != input.local_kernel_id {
+            return Err(PheromoneRelayError::AlertSourceInvalid(
+                "observability report local kernel id mismatch".to_string(),
+            ));
+        }
+        if report.generated_at_unix_ms < input.since_unix_ms
+            || report.generated_at_unix_ms > input.until_unix_ms
+        {
+            continue;
+        }
+        source_report_count = source_report_count.saturating_add(1);
+        for recommendation in &report.recommendations {
+            let rule = rule_map.get(&recommendation.code).ok_or_else(|| {
+                PheromoneRelayError::AlertRoutingInvalid(format!(
+                    "recommendation code {} has no trend rule",
+                    recommendation.code
+                ))
+            })?;
+            bump_trend_point(
+                &mut points,
+                &recommendation.code,
+                rule.severity.as_str(),
+                report.generated_at_unix_ms,
+            )?;
+        }
+    }
+    let mut event_report_count = 0u64;
+    for event in input.event_reports {
+        if event.local_kernel_id != input.local_kernel_id {
+            return Err(PheromoneRelayError::AlertSourceInvalid(
+                "event report local kernel id mismatch".to_string(),
+            ));
+        }
+        if event.generated_at_unix_ms < input.since_unix_ms
+            || event.generated_at_unix_ms > input.until_unix_ms
+        {
+            continue;
+        }
+        event_report_count = event_report_count.saturating_add(1);
+        let code = event
+            .stable_failure_code
+            .as_deref()
+            .unwrap_or(event.code.as_str());
+        if !is_bounded_code(code) {
+            return Err(PheromoneRelayError::AlertSourceInvalid(format!(
+                "event code {code} is not bounded"
+            )));
+        }
+        bump_trend_point(&mut points, code, "warning", event.generated_at_unix_ms)?;
+    }
+    Ok(RelayTrendReport {
+        schema: PHEROMONE_RELAY_TREND_REPORT_SCHEMA.to_string(),
+        accepted: true,
+        code: "accepted".to_string(),
+        local_kernel_id: input.local_kernel_id.to_string(),
+        since_unix_ms: input.since_unix_ms,
+        until_unix_ms: input.until_unix_ms,
+        source_report_count,
+        event_report_count,
+        points: points.into_values().collect(),
+    })
+}
+
+fn validate_alert_profile(
+    profile: &RelayAlertRoutingProfileDocument,
+    now_unix_ms: u64,
+) -> Result<(), PheromoneRelayError> {
+    if profile.schema != PHEROMONE_RELAY_ALERT_ROUTING_PROFILE_SCHEMA {
+        return Err(PheromoneRelayError::UnsupportedSchema(
+            profile.schema.clone(),
+        ));
+    }
+    if profile.local_kernel_id.trim().is_empty() {
+        return Err(PheromoneRelayError::AlertRoutingInvalid(
+            "local kernel id is empty".to_string(),
+        ));
+    }
+    if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
+        return Err(PheromoneRelayError::AlertRoutingInvalid(
+            "routing profile is outside its validity window".to_string(),
+        ));
+    }
+    if profile.max_source_age_ms == 0 || profile.max_suppression_ms == 0 {
+        return Err(PheromoneRelayError::AlertRoutingInvalid(
+            "routing profile time bounds must be positive".to_string(),
+        ));
+    }
+    let allowed_labels = profile
+        .allowed_label_names
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    for required in ["notification_route", "opsgenie", "service", "severity"] {
+        if !allowed_labels.contains(required) {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(format!(
+                "routing profile is missing bounded label {required}"
+            )));
+        }
+    }
+    let mut route_ids = BTreeSet::new();
+    for route in &profile.routes {
+        validate_alert_route(route)?;
+        if !route_ids.insert(route.route_id.as_str()) {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(format!(
+                "duplicate alert route {}",
+                route.route_id
+            )));
+        }
+    }
+    if route_ids.is_empty() {
+        return Err(PheromoneRelayError::AlertRoutingInvalid(
+            "routing profile has no routes".to_string(),
+        ));
+    }
+    let mut alert_codes = BTreeSet::new();
+    for rule in &profile.rules {
+        if !is_bounded_code(&rule.alert_code) {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(format!(
+                "alert code {} is not bounded",
+                rule.alert_code
+            )));
+        }
+        if !route_ids.contains(rule.route_id.as_str()) {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(format!(
+                "rule {} references unknown route {}",
+                rule.alert_code, rule.route_id
+            )));
+        }
+        if !alert_codes.insert(rule.alert_code.as_str()) {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(format!(
+                "duplicate alert rule {}",
+                rule.alert_code
+            )));
+        }
+    }
+    if alert_codes.is_empty() {
+        return Err(PheromoneRelayError::AlertRoutingInvalid(
+            "routing profile has no rules".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_alert_route(route: &RelayAlertRoute) -> Result<(), PheromoneRelayError> {
+    for (field, value) in [
+        ("route_id", route.route_id.as_str()),
+        ("notification_route", route.notification_route.as_str()),
+        ("opsgenie", route.opsgenie.as_str()),
+        ("target_ref", route.target_ref.as_str()),
+    ] {
+        if !is_bounded_route_token(value) {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(format!(
+                "alert route field {field} is not bounded"
+            )));
+        }
+        reject_secret_marker(field, value)?;
+    }
+    if route.target_ref.contains("://") {
+        return Err(PheromoneRelayError::AlertRoutingInvalid(
+            "alert route target ref must not be a dynamic URL".to_string(),
+        ));
+    }
+    if route.runbook.trim().is_empty()
+        || route.runbook.contains("://")
+        || route.runbook.to_ascii_lowercase().contains("token")
+    {
+        return Err(PheromoneRelayError::AlertRoutingInvalid(
+            "alert route runbook must be a local non-secret reference".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn reject_secret_marker(field: &str, value: &str) -> Result<(), PheromoneRelayError> {
+    let lower = value.to_ascii_lowercase();
+    if ["secret", "token", "password", "apikey", "api_key"]
+        .iter()
+        .any(|marker| lower.contains(marker))
+    {
+        return Err(PheromoneRelayError::AlertRoutingInvalid(format!(
+            "alert route field {field} appears to contain secret material"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_suppression_state(
+    state: &RelayAlertSuppressionStateDocument,
+    profile: &RelayAlertRoutingProfileDocument,
+) -> Result<(), PheromoneRelayError> {
+    if state.schema != PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA {
+        return Err(PheromoneRelayError::UnsupportedSchema(state.schema.clone()));
+    }
+    if state.local_kernel_id != profile.local_kernel_id {
+        return Err(PheromoneRelayError::AlertRoutingInvalid(
+            "suppression state local kernel id mismatch".to_string(),
+        ));
+    }
+    let rules = alert_rule_map(profile)?;
+    let routes = alert_route_map(profile)?;
+    let mut seen = BTreeSet::new();
+    for entry in &state.entries {
+        let rule = rules.get(&entry.alert_code).ok_or_else(|| {
+            PheromoneRelayError::AlertRoutingInvalid(format!(
+                "suppression references unknown alert {}",
+                entry.alert_code
+            ))
+        })?;
+        if !routes.contains_key(&entry.route_id) || rule.route_id != entry.route_id {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(format!(
+                "suppression route {} does not match alert {}",
+                entry.route_id, entry.alert_code
+            )));
+        }
+        if entry.starts_at_unix_ms >= entry.expires_at_unix_ms {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(
+                "suppression window is empty".to_string(),
+            ));
+        }
+        let window = entry
+            .expires_at_unix_ms
+            .saturating_sub(entry.starts_at_unix_ms);
+        if window > profile.max_suppression_ms {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(
+                "suppression window exceeds routing profile maximum".to_string(),
+            ));
+        }
+        if !is_bounded_code(&entry.reason) {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(
+                "suppression reason is not bounded".to_string(),
+            ));
+        }
+        let key = (&entry.alert_code, &entry.route_id);
+        if !seen.insert(key) {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(format!(
+                "duplicate suppression for alert {}",
+                entry.alert_code
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_observability_source(
+    report: &RelayObservabilityReport,
+    profile: &RelayAlertRoutingProfileDocument,
+    now_unix_ms: u64,
+) -> Result<(), PheromoneRelayError> {
+    if report.schema != PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA {
+        return Err(PheromoneRelayError::UnsupportedSchema(
+            report.schema.clone(),
+        ));
+    }
+    if report.local_kernel_id != profile.local_kernel_id {
+        return Err(PheromoneRelayError::AlertSourceInvalid(
+            "observability report local kernel id mismatch".to_string(),
+        ));
+    }
+    if report.generated_at_unix_ms > now_unix_ms {
+        return Err(PheromoneRelayError::AlertSourceInvalid(
+            "observability report timestamp is in the future".to_string(),
+        ));
+    }
+    if now_unix_ms.saturating_sub(report.generated_at_unix_ms) > profile.max_source_age_ms {
+        return Err(PheromoneRelayError::AlertSourceInvalid(
+            "observability report is stale".to_string(),
+        ));
+    }
+    for recommendation in &report.recommendations {
+        if !is_bounded_code(&recommendation.code) {
+            return Err(PheromoneRelayError::AlertSourceInvalid(format!(
+                "recommendation code {} is not bounded",
+                recommendation.code
+            )));
+        }
+    }
+    let recommendation_codes = report
+        .recommendations
+        .iter()
+        .map(|recommendation| recommendation.code.as_str())
+        .collect::<BTreeSet<_>>();
+    require_alert_recommendation(
+        report.queue.dead_letter > 0,
+        &recommendation_codes,
+        "dead_letters_present",
+    )?;
+    require_alert_recommendation(
+        report.queue.stale_lease_count > 0,
+        &recommendation_codes,
+        "stale_leases_present",
+    )?;
+    require_alert_recommendation(
+        report
+            .recent_failures
+            .iter()
+            .any(|failure| failure.code == "relay_nonce_replay" && failure.count > 0),
+        &recommendation_codes,
+        "relay_nonce_replay",
+    )?;
+    require_alert_recommendation(
+        report
+            .recent_failures
+            .iter()
+            .any(|failure| failure.code == "endpoint_denied" && failure.count > 0),
+        &recommendation_codes,
+        "endpoint_denied",
+    )?;
+    require_alert_recommendation(
+        report
+            .recent_failures
+            .iter()
+            .any(|failure| failure.code == "catchup_denied" && failure.count > 0),
+        &recommendation_codes,
+        "catchup_denied",
+    )?;
+    Ok(())
+}
+
+fn require_alert_recommendation(
+    required: bool,
+    recommendation_codes: &BTreeSet<&str>,
+    code: &str,
+) -> Result<(), PheromoneRelayError> {
+    if required && !recommendation_codes.contains(code) {
+        return Err(PheromoneRelayError::AlertSourceInvalid(format!(
+            "observability report omitted required {code} recommendation"
+        )));
+    }
+    Ok(())
+}
+
+fn alert_route_map(
+    profile: &RelayAlertRoutingProfileDocument,
+) -> Result<BTreeMap<String, RelayAlertRoute>, PheromoneRelayError> {
+    let mut routes = BTreeMap::new();
+    for route in &profile.routes {
+        if routes
+            .insert(route.route_id.clone(), route.clone())
+            .is_some()
+        {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(format!(
+                "duplicate alert route {}",
+                route.route_id
+            )));
+        }
+    }
+    Ok(routes)
+}
+
+fn alert_rule_map(
+    profile: &RelayAlertRoutingProfileDocument,
+) -> Result<BTreeMap<String, RelayAlertRule>, PheromoneRelayError> {
+    let mut rules = BTreeMap::new();
+    for rule in &profile.rules {
+        if rules
+            .insert(rule.alert_code.clone(), rule.clone())
+            .is_some()
+        {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(format!(
+                "duplicate alert rule {}",
+                rule.alert_code
+            )));
+        }
+    }
+    Ok(rules)
+}
+
+fn matching_event_evidence(
+    alert_code: &str,
+    input: &RelayAlertEvaluationInput<'_>,
+) -> Result<Vec<String>, PheromoneRelayError> {
+    let mut evidence = Vec::new();
+    for event in input.event_reports {
+        if event.schema != PHEROMONE_RELAY_EVENT_REPORT_SCHEMA {
+            return Err(PheromoneRelayError::UnsupportedSchema(event.schema.clone()));
+        }
+        if event.local_kernel_id != input.observability.local_kernel_id {
+            return Err(PheromoneRelayError::AlertSourceInvalid(
+                "event report local kernel id mismatch".to_string(),
+            ));
+        }
+        if event.generated_at_unix_ms > input.now_unix_ms {
+            return Err(PheromoneRelayError::AlertSourceInvalid(
+                "event report timestamp is in the future".to_string(),
+            ));
+        }
+        let stable = event.stable_failure_code.as_deref();
+        if event.code == alert_code || stable == Some(alert_code) {
+            evidence.push(canonical_sha256(event)?);
+        }
+    }
+    Ok(evidence)
+}
+
+fn active_suppression_until(
+    state: Option<&RelayAlertSuppressionStateDocument>,
+    alert_code: &str,
+    route_id: &str,
+    now_unix_ms: u64,
+) -> Option<u64> {
+    let state = state?;
+    state
+        .entries
+        .iter()
+        .find(|entry| {
+            entry.alert_code == alert_code
+                && entry.route_id == route_id
+                && entry.starts_at_unix_ms <= now_unix_ms
+                && entry.expires_at_unix_ms > now_unix_ms
+        })
+        .map(|entry| entry.expires_at_unix_ms)
+}
+
+fn alert_labels(
+    route: &RelayAlertRoute,
+    rule: &RelayAlertRule,
+) -> Result<BTreeMap<String, String>, PheromoneRelayError> {
+    let mut labels = BTreeMap::new();
+    labels.insert(
+        "notification_route".to_string(),
+        route.notification_route.clone(),
+    );
+    labels.insert("opsgenie".to_string(), route.opsgenie.clone());
+    labels.insert("service".to_string(), "chiodos-pheromone-relay".to_string());
+    labels.insert("severity".to_string(), rule.severity.as_str().to_string());
+    for (name, value) in &labels {
+        if !matches!(
+            name.as_str(),
+            "notification_route" | "opsgenie" | "service" | "severity"
+        ) || !is_bounded_route_token(value)
+        {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(format!(
+                "alert label {name} is not bounded"
+            )));
+        }
+    }
+    Ok(labels)
+}
+
+fn bump_trend_point(
+    points: &mut BTreeMap<String, RelayTrendPoint>,
+    code: &str,
+    severity: &str,
+    observed_at_unix_ms: u64,
+) -> Result<(), PheromoneRelayError> {
+    if !is_bounded_code(code) {
+        return Err(PheromoneRelayError::AlertSourceInvalid(format!(
+            "trend code {code} is not bounded"
+        )));
+    }
+    points
+        .entry(code.to_string())
+        .and_modify(|point| {
+            point.count = point.count.saturating_add(1);
+            point.first_seen_unix_ms = point.first_seen_unix_ms.min(observed_at_unix_ms);
+            point.last_seen_unix_ms = point.last_seen_unix_ms.max(observed_at_unix_ms);
+        })
+        .or_insert_with(|| RelayTrendPoint {
+            code: code.to_string(),
+            count: 1,
+            first_seen_unix_ms: observed_at_unix_ms,
+            last_seen_unix_ms: observed_at_unix_ms,
+            severity: severity.to_string(),
+        });
+    Ok(())
+}
+
+fn is_bounded_code(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty()
+        && value.len() <= 96
+        && value.chars().all(|ch| {
+            ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '_' | '-' | '.')
+        })
+}
+
+fn is_bounded_route_token(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty()
+        && value.len() <= 128
+        && value.chars().all(|ch| {
+            ch.is_ascii_lowercase()
+                || ch.is_ascii_digit()
+                || matches!(ch, '_' | '-' | '.' | ':' | '/')
+        })
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

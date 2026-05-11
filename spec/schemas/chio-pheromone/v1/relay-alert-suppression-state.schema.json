@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-suppression-state.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Suppression State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "localKernelId", "entries"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-suppression-state.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "alertCode",
+          "routeId",
+          "reason",
+          "startsAtUnixMs",
+          "expiresAtUnixMs"
+        ],
+        "properties": {
+          "alertCode": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+          "routeId": { "type": "string", "pattern": "^[a-z0-9_.:-]{1,128}$" },
+          "reason": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+          "startsAtUnixMs": { "type": "integer", "minimum": 0 },
+          "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

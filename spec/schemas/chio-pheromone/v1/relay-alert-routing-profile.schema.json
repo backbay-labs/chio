@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-routing-profile.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Routing Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "localKernelId",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs",
+    "maxSourceAgeMs",
+    "maxSuppressionMs",
+    "allowedLabelNames",
+    "routes",
+    "rules"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-routing-profile.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+    "maxSourceAgeMs": { "type": "integer", "minimum": 1 },
+    "maxSuppressionMs": { "type": "integer", "minimum": 1 },
+    "allowedLabelNames": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "enum": ["notification_route", "opsgenie", "service", "severity"]
+      }
+    },
+    "routes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "routeId",
+          "kind",
+          "notificationRoute",
+          "opsgenie",
+          "targetRef",
+          "runbook"
+        ],
+        "properties": {
+          "routeId": { "type": "string", "pattern": "^[a-z0-9_.:-]{1,128}$" },
+          "kind": { "enum": ["pager-duty", "ops-genie", "slack", "email", "webhook"] },
+          "notificationRoute": { "type": "string", "pattern": "^[a-z0-9_.:-]{1,128}$" },
+          "opsgenie": { "type": "string", "pattern": "^[a-z0-9_.:-]{1,128}$" },
+          "targetRef": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "runbook": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "alertCode",
+          "routeId",
+          "severity",
+          "minWindowMs",
+          "unsuppressible",
+          "requireEventEvidence"
+        ],
+        "properties": {
+          "alertCode": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+          "routeId": { "type": "string", "pattern": "^[a-z0-9_.:-]{1,128}$" },
+          "severity": { "enum": ["info", "warning", "critical"] },
+          "minWindowMs": { "type": "integer", "minimum": 0 },
+          "unsuppressible": { "type": "boolean" },
+          "requireEventEvidence": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

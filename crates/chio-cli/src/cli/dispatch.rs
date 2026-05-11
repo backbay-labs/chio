@@ -2574,6 +2574,38 @@ fn main() {
                         format,
                         output,
                     } => cmd_chiodos_pheromone_relay_metrics(&store, format.into(), &output),
+                    ChiodosPheromoneRelayCommands::Alert { command } => match command {
+                        ChiodosPheromoneRelayAlertCommands::Evaluate {
+                            observability_report,
+                            event_dir,
+                            routing_profile,
+                            suppression_state,
+                            now_unix_ms,
+                            report,
+                        } => cmd_chiodos_pheromone_relay_alert_evaluate(
+                            &observability_report,
+                            &event_dir,
+                            &routing_profile,
+                            &suppression_state,
+                            now_unix_ms,
+                            &report,
+                        ),
+                    },
+                    ChiodosPheromoneRelayCommands::Trend {
+                        reports_dir,
+                        event_dir,
+                        routing_profile,
+                        since_unix_ms,
+                        until_unix_ms,
+                        report,
+                    } => cmd_chiodos_pheromone_relay_trend(
+                        &reports_dir,
+                        &event_dir,
+                        &routing_profile,
+                        since_unix_ms,
+                        until_unix_ms,
+                        &report,
+                    ),
                     ChiodosPheromoneRelayCommands::Directory { command } => match command {
                         ChiodosPheromoneRelayDirectoryCommands::Inspect { state, report } => {
                             cmd_chiodos_pheromone_relay_directory_inspect(&state, &report)
@@ -3361,12 +3393,13 @@ fn cmd_chiodos_pheromone_relay_tick(
     peer_directory_state: Option<&Path>,
     profile: chio_pheromone_relay::RelayProfile,
     trusted_issuers: Option<&Path>,
-    now_unix_ms: u64,
+    now_unix_ms: Option<u64>,
     max_batches: usize,
     signing_key: &Path,
     report: &Path,
     report_dir: Option<&Path>,
 ) -> Result<(), CliError> {
+    let now_unix_ms = now_unix_ms.unwrap_or_else(unix_now_ms);
     let peer_directory = load_relay_peer_directory_from_paths(
         peer_directory,
         peer_directory_state,
@@ -3586,6 +3619,138 @@ fn cmd_chiodos_pheromone_relay_metrics(
         .relay_metrics_snapshot("local", now)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos relay metrics: {error}")))?;
     write_json_string(output, &snapshot.render(format))
+}
+
+fn cmd_chiodos_pheromone_relay_alert_evaluate(
+    observability_report: &Path,
+    event_dir: &Path,
+    routing_profile: &Path,
+    suppression_state: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let observability: chio_pheromone_relay::RelayObservabilityReport = serde_json::from_str(
+        &read_utf8_json_file(observability_report, "Chiodos relay observability report")?,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay observability report: {error}"))
+    })?;
+    let profile = chio_pheromone_relay::relay_alert_routing_profile_from_json(
+        &read_utf8_json_file(routing_profile, "Chiodos relay alert routing profile")?,
+        now_unix_ms,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert routing profile: {error}"))
+    })?;
+    let suppression = chio_pheromone_relay::relay_alert_suppression_state_from_json(
+        &read_utf8_json_file(suppression_state, "Chiodos relay alert suppression state")?,
+        &profile,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert suppression state: {error}"))
+    })?;
+    let events = read_relay_event_reports(event_dir)?;
+    let alert_report =
+        chio_pheromone_relay::evaluate_relay_alerts(chio_pheromone_relay::RelayAlertEvaluationInput {
+            observability: &observability,
+            routing_profile: &profile,
+            suppression_state: Some(&suppression),
+            event_reports: &events,
+            now_unix_ms,
+            expected_source_report_sha256: None,
+        })
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay alert evaluate: {error}")))?;
+    write_pretty_json(report, &alert_report, "Chiodos relay alert report")
+}
+
+fn cmd_chiodos_pheromone_relay_trend(
+    reports_dir: &Path,
+    event_dir: &Path,
+    routing_profile: &Path,
+    since_unix_ms: u64,
+    until_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let profile = chio_pheromone_relay::relay_alert_routing_profile_from_json(
+        &read_utf8_json_file(routing_profile, "Chiodos relay alert routing profile")?,
+        until_unix_ms,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert routing profile: {error}"))
+    })?;
+    let reports = read_relay_observability_reports(reports_dir)?;
+    let events = read_relay_event_reports(event_dir)?;
+    let trend = chio_pheromone_relay::generate_relay_trend_report(
+        chio_pheromone_relay::RelayTrendInput {
+            local_kernel_id: &profile.local_kernel_id,
+            observability_reports: &reports,
+            event_reports: &events,
+            routing_profile: &profile,
+            since_unix_ms,
+            until_unix_ms,
+        },
+    )
+    .map_err(|error| CliError::cli_other_error(format!("Chiodos relay trend: {error}")))?;
+    write_pretty_json(report, &trend, "Chiodos relay trend report")
+}
+
+fn read_relay_observability_reports(
+    dir: &Path,
+) -> Result<Vec<chio_pheromone_relay::RelayObservabilityReport>, CliError> {
+    read_json_documents_from_dir(
+        dir,
+        "relay observability report",
+        chio_pheromone_relay::PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA,
+    )
+}
+
+fn read_relay_event_reports(
+    dir: &Path,
+) -> Result<Vec<chio_pheromone_relay::RelayEventReport>, CliError> {
+    read_json_documents_from_dir(
+        dir,
+        "relay event report",
+        chio_pheromone_relay::PHEROMONE_RELAY_EVENT_REPORT_SCHEMA,
+    )
+}
+
+fn read_json_documents_from_dir<T: DeserializeOwned>(
+    dir: &Path,
+    label: &str,
+    schema: &str,
+) -> Result<Vec<T>, CliError> {
+    let entries = fs::read_dir(dir).map_err(|error| {
+        CliError::cli_io_error(format!("failed to read Chiodos {label} dir {}: {error}", dir.display()))
+    })?;
+    let mut paths = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to read Chiodos {label} dir entry {}: {error}",
+                dir.display()
+            ))
+        })?;
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    let mut documents = Vec::new();
+    for path in paths {
+        let json = read_utf8_json_file(&path, label)?;
+        let value: serde_json::Value = serde_json::from_str(&json).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos {label} {}: {error}", path.display()))
+        })?;
+        if value.get("schema").and_then(|schema| schema.as_str()) != Some(schema) {
+            continue;
+        }
+        let document = serde_json::from_str(&json).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos {label} {}: {error}", path.display()))
+        })?;
+        documents.push(document);
+    }
+    Ok(documents)
 }
 
 fn cmd_chiodos_pheromone_relay_directory_inspect(

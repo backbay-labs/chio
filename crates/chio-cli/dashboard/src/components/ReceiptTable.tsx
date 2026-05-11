@@ -11,6 +11,7 @@ import type { Filters, Receipt } from '../types'
 import { decisionKind, formatMinorUnits, receiptSubjectKey } from '../types'
 import { OperatorSummary } from './OperatorSummary'
 import { PortableReputationPanel } from './PortableReputationPanel'
+import { RelayAlertRoutingSummary } from './RelayAlertRoutingSummary'
 import { RelayObservabilitySummary } from './RelayObservabilitySummary'
 
 const DelegationChain = lazy(async () => {
@@ -332,6 +333,7 @@ export function ReceiptTable({ filters }: ReceiptTableProps) {
         <div className="receipt-table-container">
           <OperatorSummary filters={filters} />
           <RelayObservabilitySummary />
+          <RelayAlertRoutingSummary />
           <PortableReputationPanel subjectKey={filters.agentSubject || undefined} />
           {receipts.length === 0 ? (
             <div className="state-empty">No receipts found</div>

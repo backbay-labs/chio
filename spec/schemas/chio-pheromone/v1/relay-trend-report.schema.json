@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-trend-report.schema.json",
+  "title": "Chiodos Pheromone Relay Trend Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "localKernelId",
+    "sinceUnixMs",
+    "untilUnixMs",
+    "sourceReportCount",
+    "eventReportCount",
+    "points"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-trend-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "minLength": 1 },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "sinceUnixMs": { "type": "integer", "minimum": 0 },
+    "untilUnixMs": { "type": "integer", "minimum": 0 },
+    "sourceReportCount": { "type": "integer", "minimum": 0 },
+    "eventReportCount": { "type": "integer", "minimum": 0 },
+    "points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "count", "firstSeenUnixMs", "lastSeenUnixMs", "severity"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+          "count": { "type": "integer", "minimum": 0 },
+          "firstSeenUnixMs": { "type": "integer", "minimum": 0 },
+          "lastSeenUnixMs": { "type": "integer", "minimum": 0 },
+          "severity": { "enum": ["info", "warning", "critical"] }
+        }
+      }
+    }
+  }
+}

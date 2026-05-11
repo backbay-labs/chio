@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-negative-fixture-corpus.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Negative Fixture Corpus",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "cases"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-negative-fixture-corpus.v1" },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "target", "expectedFailureCode"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "target": { "type": "string", "minLength": 1 },
+          "expectedFailureCode": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

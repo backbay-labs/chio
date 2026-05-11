@@ -7,6 +7,8 @@ groups:
         labels:
           severity: p2
           service: chiodos-pheromone-relay
+          notification_route: pagerduty-primary
+          opsgenie: relay-oncall
         annotations:
           summary: Chiodos pheromone relay has dead-lettered batches
           runbook: docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md
@@ -17,6 +19,8 @@ groups:
         labels:
           severity: p2
           service: chiodos-pheromone-relay
+          notification_route: slack-ops-digest
+          opsgenie: relay-oncall
         annotations:
           summary: Chiodos pheromone relay retry queue is elevated
           runbook: docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md
@@ -27,6 +31,8 @@ groups:
         labels:
           severity: p2
           service: chiodos-pheromone-relay
+          notification_route: slack-ops-digest
+          opsgenie: relay-oncall
         annotations:
           summary: Chiodos pheromone relay has stale scheduler leases
           runbook: docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md
@@ -37,6 +43,8 @@ groups:
         labels:
           severity: p1
           service: chiodos-pheromone-relay
+          notification_route: opsgenie-auth-watch
+          opsgenie: relay-security
         annotations:
           summary: Chiodos pheromone relay is rejecting replayed relay nonces
           runbook: docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md

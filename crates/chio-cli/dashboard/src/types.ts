@@ -295,6 +295,61 @@ export interface RelayObservabilityReport {
   recommendations: RelayOperatorRecommendation[]
 }
 
+export interface RelayAlert {
+  code: string
+  state: 'firing' | 'suppressed' | 'resolved'
+  severity: 'info' | 'warning' | 'critical'
+  notificationRoute: string
+  opsgenie: string
+  dedupeKey: string
+  runbook: string
+  firstSeenUnixMs: number
+  lastSeenUnixMs: number
+  windowMs: number
+  suppressedUntilUnixMs?: number | null
+  sourceReportSha256: string
+  eventEvidenceSha256: string[]
+  recommendationCodes: string[]
+  labels: Record<string, string>
+}
+
+export interface RelayAlertCheck {
+  code: string
+  accepted: boolean
+  detail: string
+}
+
+export interface RelayAlertReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  sourceReportSha256: string
+  alerts: RelayAlert[]
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayTrendPoint {
+  code: string
+  count: number
+  firstSeenUnixMs: number
+  lastSeenUnixMs: number
+  severity: 'info' | 'warning' | 'critical'
+}
+
+export interface RelayTrendReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  sinceUnixMs: number
+  untilUnixMs: number
+  sourceReportCount: number
+  eventReportCount: number
+  points: RelayTrendPoint[]
+}
+
 export interface PassportVerification {
   subject: string
   issuer?: string | null

@@ -11,7 +11,6 @@ ExecStart=/usr/local/bin/chio chiodos pheromone relay tick \
   --peer-directory-state /etc/chio/peer-directory-state.json \
   --profile production \
   --trusted-issuers /etc/chio/trusted-peer-directory-issuers.json \
-  --now-unix-ms 1766000000500 \
   --max-batches 32 \
   --signing-key /etc/chio/private/relay-signing-key.json \
   --report /var/lib/chio-pheromone-relay/reports/tick.json \

@@ -1,0 +1,134 @@
+{
+  "schema": "chio.pheromone.relay-alert-report.v1",
+  "accepted": false,
+  "code": "alerts_firing",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000060000,
+  "sourceReportSha256": "0397787dae9053ccac9d02fa183d25a9ac077838bccb760ae1821fabe3ae5b0c",
+  "alerts": [
+    {
+      "code": "dead_letters_present",
+      "state": "firing",
+      "severity": "critical",
+      "notificationRoute": "pagerduty-primary",
+      "opsgenie": "relay-oncall",
+      "dedupeKey": "chiodos-relay:did:chio:dataco:dead_letters_present:pagerduty-primary",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
+      "firstSeenUnixMs": 1766000000500,
+      "lastSeenUnixMs": 1766000060000,
+      "windowMs": 300000,
+      "suppressedUntilUnixMs": null,
+      "sourceReportSha256": "0397787dae9053ccac9d02fa183d25a9ac077838bccb760ae1821fabe3ae5b0c",
+      "eventEvidenceSha256": [
+        "2242d9b6631aefe540d72c5c0afcb002e8ebd73725d6766fbbd0f5481320520f"
+      ],
+      "recommendationCodes": [
+        "dead_letters_present",
+        "stale_leases_present",
+        "relay_nonce_replay",
+        "endpoint_denied"
+      ],
+      "labels": {
+        "notification_route": "pagerduty-primary",
+        "opsgenie": "relay-oncall",
+        "service": "chiodos-pheromone-relay",
+        "severity": "critical"
+      }
+    },
+    {
+      "code": "stale_leases_present",
+      "state": "suppressed",
+      "severity": "warning",
+      "notificationRoute": "slack-ops-digest",
+      "opsgenie": "relay-oncall",
+      "dedupeKey": "chiodos-relay:did:chio:dataco:stale_leases_present:ops-digest",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox",
+      "firstSeenUnixMs": 1766000000500,
+      "lastSeenUnixMs": 1766000060000,
+      "windowMs": 300000,
+      "suppressedUntilUnixMs": 1766000300000,
+      "sourceReportSha256": "0397787dae9053ccac9d02fa183d25a9ac077838bccb760ae1821fabe3ae5b0c",
+      "eventEvidenceSha256": [],
+      "recommendationCodes": [
+        "dead_letters_present",
+        "stale_leases_present",
+        "relay_nonce_replay",
+        "endpoint_denied"
+      ],
+      "labels": {
+        "notification_route": "slack-ops-digest",
+        "opsgenie": "relay-oncall",
+        "service": "chiodos-pheromone-relay",
+        "severity": "warning"
+      }
+    },
+    {
+      "code": "relay_nonce_replay",
+      "state": "firing",
+      "severity": "critical",
+      "notificationRoute": "opsgenie-auth-watch",
+      "opsgenie": "relay-security",
+      "dedupeKey": "chiodos-relay:did:chio:dataco:relay_nonce_replay:auth-watch",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#replay-storm",
+      "firstSeenUnixMs": 1766000000500,
+      "lastSeenUnixMs": 1766000060000,
+      "windowMs": 120000,
+      "suppressedUntilUnixMs": null,
+      "sourceReportSha256": "0397787dae9053ccac9d02fa183d25a9ac077838bccb760ae1821fabe3ae5b0c",
+      "eventEvidenceSha256": [
+        "c1a0942c2111cd731bccae86d6945c6a339c9f4f44ccc65664d40b41fa82dcd9"
+      ],
+      "recommendationCodes": [
+        "dead_letters_present",
+        "stale_leases_present",
+        "relay_nonce_replay",
+        "endpoint_denied"
+      ],
+      "labels": {
+        "notification_route": "opsgenie-auth-watch",
+        "opsgenie": "relay-security",
+        "service": "chiodos-pheromone-relay",
+        "severity": "critical"
+      }
+    },
+    {
+      "code": "endpoint_denied",
+      "state": "firing",
+      "severity": "critical",
+      "notificationRoute": "opsgenie-auth-watch",
+      "opsgenie": "relay-security",
+      "dedupeKey": "chiodos-relay:did:chio:dataco:endpoint_denied:auth-watch",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#replay-storm",
+      "firstSeenUnixMs": 1766000000500,
+      "lastSeenUnixMs": 1766000060000,
+      "windowMs": 120000,
+      "suppressedUntilUnixMs": null,
+      "sourceReportSha256": "0397787dae9053ccac9d02fa183d25a9ac077838bccb760ae1821fabe3ae5b0c",
+      "eventEvidenceSha256": [],
+      "recommendationCodes": [
+        "dead_letters_present",
+        "stale_leases_present",
+        "relay_nonce_replay",
+        "endpoint_denied"
+      ],
+      "labels": {
+        "notification_route": "opsgenie-auth-watch",
+        "opsgenie": "relay-security",
+        "service": "chiodos-pheromone-relay",
+        "severity": "critical"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "code": "source_report",
+      "accepted": true,
+      "detail": "observability report is current and hash-bound"
+    },
+    {
+      "code": "routing_profile",
+      "accepted": true,
+      "detail": "alert routing profile uses bounded routes and labels"
+    }
+  ]
+}

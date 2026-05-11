@@ -8,8 +8,9 @@ Production profiles require:
 - a trusted peer-directory issuer file
 - HTTPS relay endpoints with pinned `/v1/chiodos/pheromone/*` paths
 - a local signing key readable only by the relay operator
+- an operator token environment variable for observability and metrics endpoints
 - a single writer for the SQLite relay store
 
 The files in this directory are examples, not a packaged service manager. Operators should adjust paths and users while preserving the security properties above.
 
-See `OBSERVABILITY.md` for the canonical relay observability report, bounded metrics, and alert examples.
+See `OBSERVABILITY.md` for the canonical relay observability report, alert routing artifacts, trend reports, bounded metrics, and alert examples.

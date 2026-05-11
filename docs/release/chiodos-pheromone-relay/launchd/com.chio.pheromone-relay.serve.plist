@@ -31,6 +31,8 @@
     <string>/etc/chio/verification-context.json</string>
     <string>--report-dir</string>
     <string>/var/lib/chio-pheromone-relay/reports</string>
+    <string>--operator-token-env</string>
+    <string>CHIO_RELAY_OPERATOR_TOKEN</string>
   </array>
   <key>RunAtLoad</key>
   <true/>

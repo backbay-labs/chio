@@ -1,0 +1,10 @@
+{
+  "schema": "chio.pheromone.relay-event-report.v1",
+  "accepted": false,
+  "code": "dead_letters_present",
+  "detail": "dead-lettered outbound relay batch was recorded by the bounded relay event sink",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000000525,
+  "eventKind": "outbound_delivery",
+  "stableFailureCode": "dead_letters_present"
+}

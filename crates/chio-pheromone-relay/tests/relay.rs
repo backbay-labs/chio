@@ -13,17 +13,24 @@ use chio_pheromone::{
     Severity, PHEROMONE_DEPOSIT_SCHEMA,
 };
 use chio_pheromone_relay::{
-    deliver_due_batches, promote_peer_directory_candidate, sign_peer_directory_bundle,
-    sign_relay_http_request, CatchupRequest, CatchupResponse, PeerDirectory,
-    PeerDirectoryBundleSigningInput, PeerDirectoryBundleTrust, PeerDirectoryDocument,
-    PeerDirectoryEntry, PeerDirectoryStateDocument, PheromoneRelayClient, PheromoneRelayConfig,
-    PheromoneRelayError, PheromoneRelayService, RelayBatchReceiver, RelayHttpSigningInput,
-    RelayHttpVerificationContext, RelayLadderRef, RelayMetricsFormat, RelayNonceRecorder,
-    RelayNonceSet, RelayObservabilityInput, RelayProfile, RelayProfileLimits, RelayRole,
+    deliver_due_batches, evaluate_relay_alerts, generate_relay_trend_report,
+    promote_peer_directory_candidate, relay_alert_routing_profile_from_json,
+    relay_alert_suppression_state_from_json, sign_peer_directory_bundle, sign_relay_http_request,
+    CatchupRequest, CatchupResponse, PeerDirectory, PeerDirectoryBundleSigningInput,
+    PeerDirectoryBundleTrust, PeerDirectoryDocument, PeerDirectoryEntry,
+    PeerDirectoryStateDocument, PheromoneRelayClient, PheromoneRelayConfig, PheromoneRelayError,
+    PheromoneRelayService, RelayAlertEvaluationInput, RelayAlertRoute, RelayAlertRouteKind,
+    RelayAlertRoutingProfileDocument, RelayAlertRule, RelayAlertSeverity,
+    RelayAlertSuppressionEntry, RelayAlertSuppressionStateDocument, RelayBatchReceiver,
+    RelayEventReport, RelayHttpSigningInput, RelayHttpVerificationContext, RelayLadderRef,
+    RelayMetricsFormat, RelayNonceRecorder, RelayNonceSet, RelayObservabilityInput,
+    RelayObservabilityReport, RelayProfile, RelayProfileLimits, RelayRole, RelayTrendInput,
     SqlitePheromoneRelayStore, TrustedPeerDirectoryIssuer, PHEROMONE_BATCH_RELAY_PATH,
     PHEROMONE_CATCHUP_RELAY_PATH, PHEROMONE_CATCHUP_REQUEST_SCHEMA,
-    PHEROMONE_PEER_DIRECTORY_SCHEMA, PHEROMONE_RELAY_METRICS_SNAPSHOT_SCHEMA,
+    PHEROMONE_PEER_DIRECTORY_SCHEMA, PHEROMONE_RELAY_ALERT_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ROUTING_PROFILE_SCHEMA, PHEROMONE_RELAY_METRICS_SNAPSHOT_SCHEMA,
     PHEROMONE_RELAY_OBSERVABILITY_PATH, PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA,
+    PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA, PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
 };
 use chio_pheromone_runtime::{
     PheromoneFrameReport, PheromoneReceiveReport, PHEROMONE_RECEIVE_REPORT_SCHEMA,
@@ -660,6 +667,320 @@ fn relay_observability_report_summarizes_directory_store_and_bounded_failures() 
     assert!(text.contains("chio_pheromone_relay_oldest_pending_age_seconds"));
     assert!(text.contains("status=\"retry\""));
     assert!(!text.contains("did:chio:llamaworks"));
+}
+
+fn degraded_observability_report() -> RelayObservabilityReport {
+    RelayObservabilityReport {
+        schema: PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA.to_string(),
+        accepted: false,
+        code: "degraded".to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        generated_at_unix_ms: NOW,
+        directory: chio_pheromone_relay::RelayDirectorySummary {
+            active_version: Some(4),
+            active_bundle_sha256: Some("a".repeat(64)),
+            directory_sha256: Some("b".repeat(64)),
+            issuer: Some("did:chio:relay-ops".to_string()),
+            expires_at_unix_ms: Some(NOW + 600_000),
+            removed_peer_count: 0,
+            removed_peer_ids: Vec::new(),
+            rejected_candidate_count: 0,
+            last_rejection_code: None,
+            profile: RelayProfile::Production,
+        },
+        queue: chio_pheromone_relay::RelayQueueSummary {
+            pending: 0,
+            retry: 4,
+            leased: 0,
+            delivered: 12,
+            dead_letter: 1,
+            oldest_pending_age_ms: Some(300_000),
+            stale_lease_count: 0,
+            inbox_count: 12,
+            cursor_count: 3,
+            catchup_event_count: 2,
+        },
+        recent_failures: vec![chio_pheromone_relay::RelayFailureSummary {
+            code: "endpoint_denied".to_string(),
+            count: 1,
+        }],
+        recommendations: vec![
+            chio_pheromone_relay::RelayOperatorRecommendation {
+                code: "dead_letters_present".to_string(),
+                severity: "warning".to_string(),
+            },
+            chio_pheromone_relay::RelayOperatorRecommendation {
+                code: "retries_pending".to_string(),
+                severity: "info".to_string(),
+            },
+            chio_pheromone_relay::RelayOperatorRecommendation {
+                code: "endpoint_denied".to_string(),
+                severity: "warning".to_string(),
+            },
+        ],
+    }
+}
+
+fn alert_profile() -> RelayAlertRoutingProfileDocument {
+    RelayAlertRoutingProfileDocument {
+        schema: PHEROMONE_RELAY_ALERT_ROUTING_PROFILE_SCHEMA.to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 600_000,
+        max_source_age_ms: 300_000,
+        max_suppression_ms: 3_600_000,
+        allowed_label_names: vec![
+            "notification_route".to_string(),
+            "opsgenie".to_string(),
+            "service".to_string(),
+            "severity".to_string(),
+        ],
+        routes: vec![
+            RelayAlertRoute {
+                route_id: "pagerduty-primary".to_string(),
+                kind: RelayAlertRouteKind::PagerDuty,
+                notification_route: "pagerduty-primary".to_string(),
+                opsgenie: "relay-oncall".to_string(),
+                target_ref: "alertmanager:pagerduty-primary".to_string(),
+                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
+                    .to_string(),
+            },
+            RelayAlertRoute {
+                route_id: "ops-digest".to_string(),
+                kind: RelayAlertRouteKind::Slack,
+                notification_route: "slack-ops-digest".to_string(),
+                opsgenie: "relay-oncall".to_string(),
+                target_ref: "alertmanager:slack-ops-digest".to_string(),
+                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox".to_string(),
+            },
+        ],
+        rules: vec![
+            RelayAlertRule {
+                alert_code: "dead_letters_present".to_string(),
+                route_id: "pagerduty-primary".to_string(),
+                severity: RelayAlertSeverity::Critical,
+                min_window_ms: 300_000,
+                unsuppressible: true,
+                require_event_evidence: true,
+            },
+            RelayAlertRule {
+                alert_code: "retries_pending".to_string(),
+                route_id: "ops-digest".to_string(),
+                severity: RelayAlertSeverity::Info,
+                min_window_ms: 600_000,
+                unsuppressible: false,
+                require_event_evidence: false,
+            },
+            RelayAlertRule {
+                alert_code: "endpoint_denied".to_string(),
+                route_id: "pagerduty-primary".to_string(),
+                severity: RelayAlertSeverity::Critical,
+                min_window_ms: 300_000,
+                unsuppressible: true,
+                require_event_evidence: false,
+            },
+        ],
+    }
+}
+
+#[test]
+fn relay_alert_evaluation_routes_degraded_observability_with_bounded_evidence() {
+    let observability = degraded_observability_report();
+    let profile = relay_alert_routing_profile_from_json(
+        &serde_json::to_string(&alert_profile()).unwrap(),
+        NOW,
+    )
+    .unwrap();
+    let event = RelayEventReport {
+        schema: chio_pheromone_relay::PHEROMONE_RELAY_EVENT_REPORT_SCHEMA.to_string(),
+        accepted: false,
+        code: "dead_letters_present".to_string(),
+        detail: "dead-lettered relay batch".to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        generated_at_unix_ms: NOW - 30_000,
+        event_kind: "outbound_delivery".to_string(),
+        stable_failure_code: Some("dead_letters_present".to_string()),
+    };
+    let report = evaluate_relay_alerts(RelayAlertEvaluationInput {
+        observability: &observability,
+        routing_profile: &profile,
+        suppression_state: None,
+        event_reports: &[event],
+        now_unix_ms: NOW + 60_000,
+        expected_source_report_sha256: None,
+    })
+    .unwrap();
+
+    assert_eq!(report.schema, PHEROMONE_RELAY_ALERT_REPORT_SCHEMA);
+    assert!(!report.accepted);
+    assert_eq!(report.alerts.len(), 3);
+    let critical = report
+        .alerts
+        .iter()
+        .find(|alert| alert.code == "dead_letters_present")
+        .unwrap();
+    assert_eq!(critical.state, "firing");
+    assert_eq!(critical.severity, "critical");
+    assert_eq!(critical.notification_route, "pagerduty-primary");
+    assert_eq!(critical.opsgenie, "relay-oncall");
+    assert_eq!(critical.event_evidence_sha256.len(), 1);
+    assert!(critical.labels.keys().all(|key| {
+        matches!(
+            key.as_str(),
+            "notification_route" | "opsgenie" | "service" | "severity"
+        )
+    }));
+}
+
+#[test]
+fn relay_alert_evaluation_rejects_secrets_dynamic_urls_and_bad_suppression() {
+    let mut profile = alert_profile();
+    profile.routes[0].target_ref = "https://hooks.example.test/secret-token".to_string();
+    let err = relay_alert_routing_profile_from_json(&serde_json::to_string(&profile).unwrap(), NOW)
+        .unwrap_err();
+    assert_eq!(err.code(), "alert_routing_invalid");
+
+    let profile = relay_alert_routing_profile_from_json(
+        &serde_json::to_string(&alert_profile()).unwrap(),
+        NOW,
+    )
+    .unwrap();
+    let suppression = RelayAlertSuppressionStateDocument {
+        schema: PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA.to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        entries: vec![RelayAlertSuppressionEntry {
+            alert_code: "dead_letters_present".to_string(),
+            route_id: "pagerduty-primary".to_string(),
+            reason: "operator_acknowledged".to_string(),
+            starts_at_unix_ms: NOW,
+            expires_at_unix_ms: NOW + 120_000,
+        }],
+    };
+    let suppression = relay_alert_suppression_state_from_json(
+        &serde_json::to_string(&suppression).unwrap(),
+        &profile,
+    )
+    .unwrap();
+    let observability = degraded_observability_report();
+    let event = RelayEventReport {
+        schema: chio_pheromone_relay::PHEROMONE_RELAY_EVENT_REPORT_SCHEMA.to_string(),
+        accepted: false,
+        code: "dead_letters_present".to_string(),
+        detail: "dead-lettered relay batch".to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        generated_at_unix_ms: NOW,
+        event_kind: "outbound_delivery".to_string(),
+        stable_failure_code: Some("dead_letters_present".to_string()),
+    };
+    let report = evaluate_relay_alerts(RelayAlertEvaluationInput {
+        observability: &observability,
+        routing_profile: &profile,
+        suppression_state: Some(&suppression),
+        event_reports: &[event],
+        now_unix_ms: NOW + 60_000,
+        expected_source_report_sha256: None,
+    })
+    .unwrap();
+    let critical = report
+        .alerts
+        .iter()
+        .find(|alert| alert.code == "dead_letters_present")
+        .unwrap();
+    assert_eq!(critical.state, "firing");
+    assert_eq!(critical.suppressed_until_unix_ms, None);
+
+    let overlong = RelayAlertSuppressionStateDocument {
+        schema: PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA.to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        entries: vec![RelayAlertSuppressionEntry {
+            alert_code: "retries_pending".to_string(),
+            route_id: "ops-digest".to_string(),
+            reason: "maintenance".to_string(),
+            starts_at_unix_ms: NOW,
+            expires_at_unix_ms: NOW + 3_600_001,
+        }],
+    };
+    let err = relay_alert_suppression_state_from_json(
+        &serde_json::to_string(&overlong).unwrap(),
+        &profile,
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_routing_invalid");
+
+    let mut false_clear = degraded_observability_report();
+    false_clear.recommendations.clear();
+    let err = evaluate_relay_alerts(RelayAlertEvaluationInput {
+        observability: &false_clear,
+        routing_profile: &profile,
+        suppression_state: None,
+        event_reports: &[],
+        now_unix_ms: NOW + 60_000,
+        expected_source_report_sha256: None,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_source_invalid");
+
+    let err = evaluate_relay_alerts(RelayAlertEvaluationInput {
+        observability: &observability,
+        routing_profile: &profile,
+        suppression_state: None,
+        event_reports: &[],
+        now_unix_ms: NOW + 60_000,
+        expected_source_report_sha256: None,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_source_invalid");
+
+    let err = evaluate_relay_alerts(RelayAlertEvaluationInput {
+        observability: &observability,
+        routing_profile: &profile,
+        suppression_state: None,
+        event_reports: &[],
+        now_unix_ms: NOW + 60_000,
+        expected_source_report_sha256: Some("0"),
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_source_invalid");
+}
+
+#[test]
+fn relay_trend_report_aggregates_bounded_codes() {
+    let profile = relay_alert_routing_profile_from_json(
+        &serde_json::to_string(&alert_profile()).unwrap(),
+        NOW,
+    )
+    .unwrap();
+    let report = generate_relay_trend_report(RelayTrendInput {
+        local_kernel_id: "did:chio:buyer-kernel",
+        observability_reports: &[degraded_observability_report()],
+        event_reports: &[RelayEventReport {
+            schema: chio_pheromone_relay::PHEROMONE_RELAY_EVENT_REPORT_SCHEMA.to_string(),
+            accepted: false,
+            code: "endpoint_denied".to_string(),
+            detail: "endpoint rejected".to_string(),
+            local_kernel_id: "did:chio:buyer-kernel".to_string(),
+            generated_at_unix_ms: NOW + 1_000,
+            event_kind: "request_rejected".to_string(),
+            stable_failure_code: Some("endpoint_denied".to_string()),
+        }],
+        routing_profile: &profile,
+        since_unix_ms: NOW - 60_000,
+        until_unix_ms: NOW + 60_000,
+    })
+    .unwrap();
+
+    assert_eq!(report.schema, PHEROMONE_RELAY_TREND_REPORT_SCHEMA);
+    assert!(report.accepted);
+    assert_eq!(report.source_report_count, 1);
+    assert_eq!(report.event_report_count, 1);
+    assert!(report
+        .points
+        .iter()
+        .any(|point| point.code == "dead_letters_present" && point.count == 1));
+    assert!(report
+        .points
+        .iter()
+        .all(|point| !point.code.contains("did:chio") && !point.code.contains("treaty:")));
 }
 
 #[tokio::test]

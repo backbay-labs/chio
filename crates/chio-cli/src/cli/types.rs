@@ -984,9 +984,9 @@ enum ChiodosPheromoneRelayCommands {
         #[arg(long, value_name = "PATH")]
         trusted_issuers: Option<PathBuf>,
 
-        /// Evaluation time in Unix milliseconds.
+        /// Evaluation time in Unix milliseconds. Defaults to the local clock.
         #[arg(long)]
-        now_unix_ms: u64,
+        now_unix_ms: Option<u64>,
 
         /// Maximum batches to lease this tick.
         #[arg(long)]
@@ -1110,6 +1110,39 @@ enum ChiodosPheromoneRelayCommands {
         output: PathBuf,
     },
 
+    /// Evaluate relay alert routing from canonical observability artifacts.
+    Alert {
+        #[command(subcommand)]
+        command: ChiodosPheromoneRelayAlertCommands,
+    },
+
+    /// Aggregate long-horizon relay operations trends from report artifacts.
+    Trend {
+        /// Directory containing relay observability reports.
+        #[arg(long, value_name = "DIR")]
+        reports_dir: PathBuf,
+
+        /// Directory containing bounded relay event reports.
+        #[arg(long, value_name = "DIR")]
+        event_dir: PathBuf,
+
+        /// Relay alert routing profile JSON.
+        #[arg(long, value_name = "PATH")]
+        routing_profile: PathBuf,
+
+        /// Lower bound in Unix milliseconds.
+        #[arg(long)]
+        since_unix_ms: u64,
+
+        /// Upper bound in Unix milliseconds.
+        #[arg(long)]
+        until_unix_ms: u64,
+
+        /// Output path for relay trend report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
     /// Inspect, promote, or reject verifier-owned relay peer-directory state.
     Directory {
         #[command(subcommand)]
@@ -1120,6 +1153,36 @@ enum ChiodosPheromoneRelayCommands {
     Supervisor {
         #[command(subcommand)]
         command: ChiodosPheromoneRelaySupervisorCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosPheromoneRelayAlertCommands {
+    /// Evaluate routeable relay alerts from current observability.
+    Evaluate {
+        /// Canonical relay observability report JSON.
+        #[arg(long, value_name = "PATH")]
+        observability_report: PathBuf,
+
+        /// Directory containing bounded relay event reports.
+        #[arg(long, value_name = "DIR")]
+        event_dir: PathBuf,
+
+        /// Relay alert routing profile JSON.
+        #[arg(long, value_name = "PATH")]
+        routing_profile: PathBuf,
+
+        /// Relay alert suppression state JSON.
+        #[arg(long, value_name = "PATH")]
+        suppression_state: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for relay alert report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
     },
 }
 

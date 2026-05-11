@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-report.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "sourceReportSha256",
+    "alerts",
+    "checks"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "minLength": 1 },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "sourceReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "alerts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "state",
+          "severity",
+          "notificationRoute",
+          "opsgenie",
+          "dedupeKey",
+          "runbook",
+          "firstSeenUnixMs",
+          "lastSeenUnixMs",
+          "windowMs",
+          "suppressedUntilUnixMs",
+          "sourceReportSha256",
+          "eventEvidenceSha256",
+          "recommendationCodes",
+          "labels"
+        ],
+        "properties": {
+          "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+          "state": { "enum": ["firing", "suppressed", "resolved"] },
+          "severity": { "enum": ["info", "warning", "critical"] },
+          "notificationRoute": { "type": "string", "pattern": "^[a-z0-9_.:-]{1,128}$" },
+          "opsgenie": { "type": "string", "pattern": "^[a-z0-9_.:-]{1,128}$" },
+          "dedupeKey": { "type": "string", "minLength": 1 },
+          "runbook": { "type": "string", "minLength": 1 },
+          "firstSeenUnixMs": { "type": "integer", "minimum": 0 },
+          "lastSeenUnixMs": { "type": "integer", "minimum": 0 },
+          "windowMs": { "type": "integer", "minimum": 0 },
+          "suppressedUntilUnixMs": {
+            "anyOf": [
+              { "type": "integer", "minimum": 0 },
+              { "type": "null" }
+            ]
+          },
+          "sourceReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "eventEvidenceSha256": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          },
+          "recommendationCodes": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" }
+          },
+          "labels": {
+            "type": "object",
+            "additionalProperties": { "type": "string", "pattern": "^[a-z0-9_.:-]{1,128}$" },
+            "propertyNames": {
+              "enum": ["notification_route", "opsgenie", "service", "severity"]
+            }
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "accepted", "detail"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "accepted": { "type": "boolean" },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

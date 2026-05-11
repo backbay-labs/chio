@@ -1,0 +1,98 @@
+{
+  "schema": "chio.pheromone.relay-alert-routing-profile.v1",
+  "localKernelId": "did:chio:dataco",
+  "issuedAtUnixMs": 1765999900000,
+  "expiresAtUnixMs": 1766002000000,
+  "maxSourceAgeMs": 300000,
+  "maxSuppressionMs": 3600000,
+  "allowedLabelNames": [
+    "notification_route",
+    "opsgenie",
+    "service",
+    "severity"
+  ],
+  "routes": [
+    {
+      "routeId": "pagerduty-primary",
+      "kind": "pager-duty",
+      "notificationRoute": "pagerduty-primary",
+      "opsgenie": "relay-oncall",
+      "targetRef": "alertmanager:pagerduty-primary",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
+    },
+    {
+      "routeId": "ops-digest",
+      "kind": "slack",
+      "notificationRoute": "slack-ops-digest",
+      "opsgenie": "relay-oncall",
+      "targetRef": "alertmanager:slack-ops-digest",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox"
+    },
+    {
+      "routeId": "auth-watch",
+      "kind": "ops-genie",
+      "notificationRoute": "opsgenie-auth-watch",
+      "opsgenie": "relay-security",
+      "targetRef": "alertmanager:relay-auth-watch",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#replay-storm"
+    }
+  ],
+  "rules": [
+    {
+      "alertCode": "dead_letters_present",
+      "routeId": "pagerduty-primary",
+      "severity": "critical",
+      "minWindowMs": 300000,
+      "unsuppressible": true,
+      "requireEventEvidence": true
+    },
+    {
+      "alertCode": "stale_leases_present",
+      "routeId": "ops-digest",
+      "severity": "warning",
+      "minWindowMs": 300000,
+      "unsuppressible": false,
+      "requireEventEvidence": false
+    },
+    {
+      "alertCode": "relay_nonce_replay",
+      "routeId": "auth-watch",
+      "severity": "critical",
+      "minWindowMs": 120000,
+      "unsuppressible": true,
+      "requireEventEvidence": true
+    },
+    {
+      "alertCode": "endpoint_denied",
+      "routeId": "auth-watch",
+      "severity": "critical",
+      "minWindowMs": 120000,
+      "unsuppressible": true,
+      "requireEventEvidence": false
+    },
+    {
+      "alertCode": "catchup_denied",
+      "routeId": "ops-digest",
+      "severity": "warning",
+      "minWindowMs": 300000,
+      "unsuppressible": false,
+      "requireEventEvidence": false
+    },
+    {
+      "alertCode": "directory_expiring",
+      "routeId": "ops-digest",
+      "severity": "warning",
+      "minWindowMs": 600000,
+      "unsuppressible": false,
+      "requireEventEvidence": false
+    },
+    {
+      "alertCode": "retries_pending",
+      "routeId": "ops-digest",
+      "severity": "info",
+      "minWindowMs": 600000,
+      "unsuppressible": false,
+      "requireEventEvidence": false
+    }
+  ]
+}

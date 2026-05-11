@@ -1,0 +1,53 @@
+name: Chiodos Pheromone Relay Alert Routing
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-pheromone-relay/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-metrics-spec/**"
+      - "crates/chio-spec-validate/**"
+      - "examples/chiodos-3vendor/fixtures/pheromone/relay/**"
+      - "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md"
+      - "docs/release/chiodos-pheromone-relay/**"
+      - "deploy/prometheus/**"
+      - "spec/schemas/chio-pheromone/v1/**"
+      - "spec/schemas/registry.json"
+      - "scripts/check-chiodos-pheromone-relay-alert-routing.sh"
+      - ".github/workflows/chiodos-pheromone-relay-alert-routing.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/chio-pheromone-relay/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-metrics-spec/**"
+      - "crates/chio-spec-validate/**"
+      - "examples/chiodos-3vendor/fixtures/pheromone/relay/**"
+      - "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md"
+      - "docs/release/chiodos-pheromone-relay/**"
+      - "deploy/prometheus/**"
+      - "spec/schemas/chio-pheromone/v1/**"
+      - "spec/schemas/registry.json"
+      - "scripts/check-chiodos-pheromone-relay-alert-routing.sh"
+      - ".github/workflows/chiodos-pheromone-relay-alert-routing.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  chiodos-pheromone-relay-alert-routing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: crates/chio-cli/dashboard/package-lock.json
+      - name: Install dashboard dependencies
+        working-directory: crates/chio-cli/dashboard
+        run: npm ci
+      - name: Check Chiodos pheromone relay alert routing
+        run: bash scripts/check-chiodos-pheromone-relay-alert-routing.sh

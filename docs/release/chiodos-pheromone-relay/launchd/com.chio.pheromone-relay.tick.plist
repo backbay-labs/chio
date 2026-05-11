@@ -19,8 +19,6 @@
     <string>production</string>
     <string>--trusted-issuers</string>
     <string>/etc/chio/trusted-peer-directory-issuers.json</string>
-    <string>--now-unix-ms</string>
-    <string>1766000000500</string>
     <string>--max-batches</string>
     <string>32</string>
     <string>--signing-key</string>

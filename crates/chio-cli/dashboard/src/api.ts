@@ -11,7 +11,9 @@ import type {
   ReceiptAnalyticsFilters,
   ReceiptAnalyticsResponse,
   ReceiptQueryResponse,
+  RelayAlertReport,
   RelayObservabilityReport,
+  RelayTrendReport,
 } from './types'
 
 const TOKEN_KEY = 'chio_token'
@@ -170,6 +172,36 @@ export async function fetchRelayObservabilityReport(): Promise<RelayObservabilit
     throw new Error(`Relay observability request failed: ${res.status} ${res.statusText}`)
   }
   return res.json() as Promise<RelayObservabilityReport>
+}
+
+export async function fetchRelayAlertReport(): Promise<RelayAlertReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/alerts', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertReport>
+}
+
+export async function fetchRelayTrendReport(): Promise<RelayTrendReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/trends', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay trend request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayTrendReport>
 }
 
 /**

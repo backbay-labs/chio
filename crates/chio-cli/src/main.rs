@@ -455,6 +455,124 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn chiodos_pheromone_relay_alert_evaluate_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "alert",
+            "evaluate",
+            "--observability-report",
+            "relay-observability.json",
+            "--event-dir",
+            "relay-events",
+            "--routing-profile",
+            "alert-routing-profile.json",
+            "--suppression-state",
+            "alert-suppression-state.json",
+            "--now-unix-ms",
+            "1766000000500",
+            "--report",
+            "relay-alert-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Alert {
+                                        command:
+                                            ChiodosPheromoneRelayAlertCommands::Evaluate {
+                                                observability_report,
+                                                event_dir,
+                                                routing_profile,
+                                                suppression_state,
+                                                now_unix_ms,
+                                                report,
+                                            },
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(
+                    observability_report,
+                    std::path::PathBuf::from("relay-observability.json")
+                );
+                assert_eq!(event_dir, std::path::PathBuf::from("relay-events"));
+                assert_eq!(
+                    routing_profile,
+                    std::path::PathBuf::from("alert-routing-profile.json")
+                );
+                assert_eq!(
+                    suppression_state,
+                    std::path::PathBuf::from("alert-suppression-state.json")
+                );
+                assert_eq!(now_unix_ms, 1_766_000_000_500);
+                assert_eq!(report, std::path::PathBuf::from("relay-alert-report.json"));
+            }
+            _ => panic!("expected chiodos pheromone relay alert evaluate subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_pheromone_relay_trend_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "trend",
+            "--reports-dir",
+            "relay-reports",
+            "--event-dir",
+            "relay-events",
+            "--routing-profile",
+            "alert-routing-profile.json",
+            "--since-unix-ms",
+            "1765990000000",
+            "--until-unix-ms",
+            "1766000000500",
+            "--report",
+            "relay-trend-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Trend {
+                                        reports_dir,
+                                        event_dir,
+                                        routing_profile,
+                                        since_unix_ms,
+                                        until_unix_ms,
+                                        report,
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(reports_dir, std::path::PathBuf::from("relay-reports"));
+                assert_eq!(event_dir, std::path::PathBuf::from("relay-events"));
+                assert_eq!(
+                    routing_profile,
+                    std::path::PathBuf::from("alert-routing-profile.json")
+                );
+                assert_eq!(since_unix_ms, 1_765_990_000_000);
+                assert_eq!(until_unix_ms, 1_766_000_000_500);
+                assert_eq!(report, std::path::PathBuf::from("relay-trend-report.json"));
+            }
+            _ => panic!("expected chiodos pheromone relay trend subcommand"),
+        }
+    }
+
+    #[test]
     fn chiodos_pheromone_relay_lint_subcommand_parses() {
         let cli = Cli::try_parse_from([
             "chio",

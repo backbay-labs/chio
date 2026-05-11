@@ -21,7 +21,8 @@ ExecStart=/usr/local/bin/chio chiodos pheromone relay serve \
   --proof-package /etc/chio/buyer-auditor-proof-package.json \
   --trust-bundle /etc/chio/verifier-trust-bundle.json \
   --context /etc/chio/verification-context.json \
-  --report-dir /var/lib/chio-pheromone-relay/reports
+  --report-dir /var/lib/chio-pheromone-relay/reports \
+  --operator-token-env CHIO_RELAY_OPERATOR_TOKEN
 Restart=on-failure
 RestartSec=5s
 NoNewPrivileges=true

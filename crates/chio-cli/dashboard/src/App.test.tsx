@@ -127,7 +127,11 @@ describe('App operator paths', () => {
           }),
         })
       }
-      if (url.startsWith('/v1/chiodos/pheromone/observability')) {
+      if (
+        url.startsWith('/v1/chiodos/pheromone/observability')
+        || url.startsWith('/v1/chiodos/pheromone/alerts')
+        || url.startsWith('/v1/chiodos/pheromone/trends')
+      ) {
         return Promise.resolve({
           ok: false,
           status: 404,
@@ -243,7 +247,11 @@ describe('App operator paths', () => {
           }),
         })
       }
-      if (url.startsWith('/v1/chiodos/pheromone/observability')) {
+      if (
+        url.startsWith('/v1/chiodos/pheromone/observability')
+        || url.startsWith('/v1/chiodos/pheromone/alerts')
+        || url.startsWith('/v1/chiodos/pheromone/trends')
+      ) {
         return Promise.resolve({
           ok: false,
           status: 404,

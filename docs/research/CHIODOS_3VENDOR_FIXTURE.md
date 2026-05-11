@@ -802,7 +802,7 @@ Items not yet owed in either spec's open-items list:
 
 1. **Hidden disclosure predicates.** Range proofs, VC Data Integrity BBS interop, and zkVM bindings remain deferred beyond reveal-set BBS.
 2. **BBS+ secondary signature placement on receipts.** Parallel field on the body, detached envelope (used in section 8), or sidecar artefact indexed by receipt id.
-3. **Relay observability dashboards.** The relay emits local reports and metrics, but operator dashboards and alert threshold packs are still future work.
+3. **Relay alert delivery.** The relay now emits observability, alert, trend, and bounded event reports with dashboard cards. Credentialed delivery into downstream PagerDuty, OpsGenie, Slack, email, and webhook systems remains deferred to downstream alertmanager integrations.
 4. **Destructive-authorization receipt content.** Whether it mirrors `cross_org_visibility` and `partition_fallback.blast_radius_cap` so auditors can re-check the cap without re-walking the manifest.
 
 ---

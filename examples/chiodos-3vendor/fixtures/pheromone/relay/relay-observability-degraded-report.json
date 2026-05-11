@@ -48,6 +48,14 @@
     {
       "code": "stale_leases_present",
       "severity": "warning"
+    },
+    {
+      "code": "relay_nonce_replay",
+      "severity": "critical"
+    },
+    {
+      "code": "endpoint_denied",
+      "severity": "critical"
     }
   ]
 }

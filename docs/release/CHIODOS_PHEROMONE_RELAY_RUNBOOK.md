@@ -13,7 +13,7 @@ Profiles:
 
 Recommended deployment:
 
-1. Generate the relay observability report before inspecting raw store rows.
+1. Generate the relay alert report, then the relay trend report, then the relay observability report before inspecting raw store rows.
 2. Terminate TLS at a reverse proxy owned by the same operator boundary as the relay.
 3. Pin the relay upstream path to `/v1/chiodos/pheromone`.
 4. Disable redirects on egress.
@@ -35,7 +35,7 @@ chio chiodos pheromone relay directory promote \
   --candidate peer-directory-candidate.json \
   --trusted-issuers trusted-peer-directory-issuers.json \
   --profile production \
-  --now-unix-ms 1766000000500 \
+  --now-unix-ms <now-unix-ms> \
   --report peer-directory-rotation-report.json
 
 chio chiodos pheromone relay serve \
@@ -70,11 +70,26 @@ chio chiodos pheromone relay tick \
   --peer-directory-state peer-directory-state.json \
   --profile production \
   --trusted-issuers trusted-peer-directory-issuers.json \
-  --now-unix-ms 1766000000500 \
   --max-batches 32 \
   --signing-key relay-signing-key.json \
   --report relay-tick.json \
   --report-dir reports
+
+chio chiodos pheromone relay alert evaluate \
+  --observability-report relay-observability-report.json \
+  --event-dir reports \
+  --routing-profile relay-alert-routing-profile.json \
+  --suppression-state relay-alert-suppression-state.json \
+  --now-unix-ms <now-unix-ms> \
+  --report relay-alert-report.json
+
+chio chiodos pheromone relay trend \
+  --reports-dir reports \
+  --event-dir reports \
+  --routing-profile relay-alert-routing-profile.json \
+  --since-unix-ms <since-unix-ms> \
+  --until-unix-ms <until-unix-ms> \
+  --report relay-trend-report.json
 
 chio chiodos pheromone relay supervisor lint \
   --profile relay-supervisor-profile.json \
@@ -100,28 +115,34 @@ Production observability and metrics endpoints require `Authorization: Bearer <t
 
 ## Observability Workflow
 
-1. Run `relay observe` and read `relay-observability-report.v1`.
-2. If `accepted` is false, triage recommendation codes before opening raw SQLite.
-3. Use bounded event reports in `--report-dir` to inspect recent batch receive, catch-up, outbound delivery, and request rejection evidence.
-4. Export `relay metrics --format prometheus` for alerting. Labels are bounded to status or reason only.
-5. Use the receipt dashboard relay cards as a view over the canonical report. Missing relay reports render as `unknown` and do not block receipt workflows.
+1. Read `relay-alert-report.v1`.
+2. If alerts are firing, read `relay-trend-report.v1` to check whether the condition is isolated or growing.
+3. Run `relay observe` and read `relay-observability-report.v1` for queue and directory context.
+4. Use bounded event reports in `--report-dir` to inspect recent batch receive, catch-up, outbound delivery, and request rejection evidence.
+5. Use raw SQLite inspection only after alert, trend, observability, and bounded event reports have narrowed the incident.
+6. Export `relay metrics --format prometheus` for downstream Alertmanager routing. Labels are bounded to status, reason, notification route, service, severity, and downstream route aliases.
+7. Use the receipt dashboard relay cards as a view over the canonical reports. Missing relay reports render as `unknown` and do not block receipt workflows.
 
 ## Recovery Procedures
 
 ### Stuck Outbox
 
-1. Run `relay observe` and inspect pending, retry, dead-letter, and recommendation codes.
-2. Run `relay tick` with the correct sender signing key.
-3. If attempts keep increasing with transport failures, confirm the peer directory endpoint and reverse-proxy route.
-4. If stale leases are present, restart the relay and run one tick. Expired leases are recovered into retry state.
+1. Read `relay-alert-report.v1` and confirm whether `retries_pending` or `dead_letters_present` is firing.
+2. Read `relay-trend-report.v1` for retry and dead-letter trend direction.
+3. Run `relay observe` and inspect pending, retry, dead-letter, and recommendation codes.
+4. Run `relay tick` with the correct sender signing key.
+5. If attempts keep increasing with transport failures, confirm the peer directory endpoint and reverse-proxy route.
+6. If stale leases are present, restart the relay and run one tick. Expired leases are recovered into retry state.
 
 ### Dead-Letter Triage
 
-1. Read `relay-observability-report.v1` and group dead letters by recent bounded failure code.
-2. For `endpoint_denied`, lint the current peer-directory state against the active profile.
-3. For `sender_mismatch`, confirm the local signing-key `kernelId` matches the outbox sender.
-4. For receiver rejections, inspect the receiver report and rerun the runtime gate with the same proof package, trust bundle, and context.
-5. Requeue only after the root cause is fixed and the replacement batch hashes are understood.
+1. Read `relay-alert-report.v1` and follow the linked runbook reference for the firing `dead_letters_present` alert.
+2. Read `relay-trend-report.v1` to separate a one-off dead letter from sustained pressure.
+3. Read `relay-observability-report.v1` and group dead letters by recent bounded failure code.
+4. For `endpoint_denied`, lint the current peer-directory state against the active profile.
+5. For `sender_mismatch`, confirm the local signing-key `kernelId` matches the outbox sender.
+6. For receiver rejections, inspect the receiver report and rerun the runtime gate with the same proof package, trust bundle, and context.
+7. Requeue only after the root cause is fixed and the replacement batch hashes are understood.
 
 ### Directory Rotation
 

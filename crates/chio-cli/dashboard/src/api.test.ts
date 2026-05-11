@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchAgentCostSeries,
   fetchOperatorReport,
+  fetchRelayAlertReport,
   fetchRelayObservabilityReport,
+  fetchRelayTrendReport,
   fetchReputationComparison,
   fetchReceiptAnalytics,
   getToken,
@@ -290,6 +292,67 @@ describe('dashboard api helpers', () => {
 
     await expect(fetchRelayObservabilityReport()).rejects.toThrow(
       'Relay observability request failed: 503 Service Unavailable',
+    )
+  })
+
+  it('fetches relay alert reports with bearer auth', async () => {
+    sessionStorage.setItem('chio_token', 'bearer-token')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        schema: 'chio.pheromone.relay-alert-report.v1',
+        accepted: true,
+        code: 'accepted',
+        localKernelId: 'did:chio:buyer-kernel',
+        generatedAtUnixMs: 1_766_000_060_000,
+        sourceReportSha256: 'a'.repeat(64),
+        alerts: [],
+        checks: [],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchRelayAlertReport()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/chiodos/pheromone/alerts',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer bearer-token',
+          'Content-Type': 'application/json',
+        }),
+      }),
+    )
+  })
+
+  it('fetches relay trend reports with bearer auth', async () => {
+    sessionStorage.setItem('chio_token', 'bearer-token')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        schema: 'chio.pheromone.relay-trend-report.v1',
+        accepted: true,
+        code: 'accepted',
+        localKernelId: 'did:chio:buyer-kernel',
+        sinceUnixMs: 1_766_000_000_000,
+        untilUnixMs: 1_766_001_000_000,
+        sourceReportCount: 0,
+        eventReportCount: 0,
+        points: [],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchRelayTrendReport()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/chiodos/pheromone/trends',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer bearer-token',
+          'Content-Type': 'application/json',
+        }),
+      }),
     )
   })
 
