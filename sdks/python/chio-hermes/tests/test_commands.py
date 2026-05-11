@@ -1,16 +1,4 @@
-"""`/chio` slash command coverage.
-
-The slash command handler returned by `make_slash_handler(handle)`
-exposes three subcommands:
-
-* `status`   -- summarises sidecar URL, masked capability id, fail-open,
-                configured-yes/no, and recent denial / pending counts.
-* `receipts` -- last N receipts (default 5, capped at 50).
-* `policy`   -- pretty-prints the active CodeAgentPolicy summary.
-
-An unknown subcommand falls back to a usage hint that lists the three
-options.
-"""
+"""`/chio` slash command coverage."""
 
 from __future__ import annotations
 
@@ -63,7 +51,6 @@ async def test_chio_receipts_returns_up_to_n(tmp_workspace: Path) -> None:
     handle_slash = make_slash_handler(runtime)
     out = await handle_slash("receipts 3")
     assert out is not None
-    # 3 records means 3 lines starting with "  - tool=", plus the header.
     record_lines = [line for line in out.splitlines() if line.startswith("  - ")]
     assert len(record_lines) == 3
 

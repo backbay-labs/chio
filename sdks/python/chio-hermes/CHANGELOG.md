@@ -7,19 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Tracking work toward the next release. See [v0.1.0](#010) for the initial release notes.
-
 ## [0.1.0]
 
 ### Added
 
-- Initial release. Adds Hermes Agent plugin wrapping `chio_code_agent.CodeAgent`
+- Initial release. Hermes Agent plugin wrapping `chio_code_agent.CodeAgent`
   for file/shell/git tools. Registers 12 capability-scoped tools under the
   `chio` toolset, captures signed Chio receipts in `post_tool_call`, and
   enforces local policy in `pre_tool_call`.
 - Session-lifecycle hooks: `on_session_start` clears stale pending entries,
   `on_session_end` drains the in-memory pending buffer through the JSONL
-  writer so leftover work is not lost when a session terminates.
+  writer.
 - `hermes chio` CLI subcommand for capability lifecycle (`issue`, `list`,
   `revoke`).
 - `/chio` in-session slash command for status and recent receipts.
@@ -28,9 +26,8 @@ Tracking work toward the next release. See [v0.1.0](#010) for the initial releas
 
 ### Notes
 
-- All four registered hooks (`pre_tool_call`, `post_tool_call`,
-  `on_session_start`, `on_session_end`) are plain `def` callables.
-  Hermes's `PluginManager.invoke_hook` dispatches synchronously
+- All four registered hooks are plain `def` callables. Hermes's
+  `PluginManager.invoke_hook` dispatches synchronously
   (`hermes_cli/plugins.py:1218-1232` does `ret = cb(**kwargs)` with no
   await), so async hooks would silently drop their bodies. See
   `docs/integrations/HERMES.md` "Known issues" for upstream-Hermes
@@ -38,5 +35,4 @@ Tracking work toward the next release. See [v0.1.0](#010) for the initial releas
   `hermes setup` for entry-point plugins.
 - `register(ctx)` requires a Hermes plugin context whose `register_tool`
   accepts `check_fn`, `requires_env`, and `description` keyword
-  arguments. A future Hermes that drops or renames any of those will
-  raise `TypeError` at plugin registration.
+  arguments.

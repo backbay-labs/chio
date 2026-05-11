@@ -1,15 +1,7 @@
 """`hermes chio` CLI subcommand tests.
 
-The CLI exposes three subcommands (per FINAL-PLAN section 6):
-
-* ``issue``  -- mints a capability via ``ChioClient.create_capability``
-                and writes it to ``~/.hermes/profiles/<active>/chio-capabilities.json``.
-* ``list``   -- reads that JSON cache and prints (human or `--json`).
-* ``revoke`` -- shells out to ``chio trust revoke --capability-id <id>``
-                and updates the cache.
-
-Tests mock both the chio client and ``subprocess.run`` so no real chio
-binary is required.
+Mocks both the chio client and `subprocess.run` so no real chio binary
+is required.
 """
 
 from __future__ import annotations
@@ -28,10 +20,6 @@ from chio_sdk.testing import MockChioClient
 
 from chio_hermes import cli
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="hermes chio")
@@ -49,11 +37,6 @@ def _fake_cache_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         cli, "_cache_path", lambda: profile_dir / "chio-capabilities.json"
     )
     return profile_dir
-
-
-# ---------------------------------------------------------------------------
-# setup() registers all three subcommands
-# ---------------------------------------------------------------------------
 
 
 def test_setup_registers_issue_list_revoke() -> None:
@@ -76,11 +59,6 @@ def test_setup_uses_subcommand_dest() -> None:
     assert ns.subcommand == "issue"
 
 
-# ---------------------------------------------------------------------------
-# `issue` builds the scope with Operation.INVOKE (uppercase enum member)
-# ---------------------------------------------------------------------------
-
-
 def test_build_scope_uses_INVOKE_operation() -> None:
     scope = cli._build_scope(["fs"], "*")
     assert scope.grants[0].operations == [Operation.INVOKE]
@@ -93,8 +71,8 @@ def test_issue_calls_create_capability(
 
     client = MockChioClient()
 
-    # Patch the ChioClient constructor used inside _do_issue to return
-    # our mock without touching the network.
+    # Patch the ChioClient constructor used inside _do_issue so the
+    # mock is returned without touching the network.
     class _FakeClientCtor:
         def __init__(self, **_kw: Any) -> None: ...
 
@@ -131,11 +109,6 @@ def test_issue_calls_create_capability(
     assert cache.exists(), "issue must write the local capability cache"
     cached = json.loads(cache.read_text(encoding="utf-8"))
     assert cached, "cache must be non-empty after issue"
-
-
-# ---------------------------------------------------------------------------
-# `list` reads the cache (bare list of dicts with `capability_id`).
-# ---------------------------------------------------------------------------
 
 
 def test_list_reads_cache_and_prints_json(
@@ -182,11 +155,6 @@ def test_list_reads_cache_and_prints_json(
     assert isinstance(parsed, list)
     serialised = json.dumps(parsed)
     assert "cap-aaaa" in serialised
-
-
-# ---------------------------------------------------------------------------
-# `revoke` shells out to `chio trust revoke ...`
-# ---------------------------------------------------------------------------
 
 
 def test_revoke_invokes_chio_trust_revoke_subprocess(

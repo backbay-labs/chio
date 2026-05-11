@@ -1,15 +1,13 @@
 """Receipt buffer + JSONL store for the chio-hermes plugin.
 
-Hermes does NOT dispatch `tool_call_id` into the handler kwargs; it
+Hermes does not dispatch `tool_call_id` into the handler kwargs; it
 only passes `task_id`. The plugin therefore keys pending receipts by
-`task_id` alone with FIFO semantics: callers `push` an entry under a
-task and `pop_next` it back in the order it arrived.
+`task_id` alone with FIFO semantics.
 
 The JSONL log at `<hermes_home>/logs/chio-receipts.jsonl` is a
 user-side convenience for the active Hermes session, NOT the canonical
 audit store. Tamper-evident long-term storage lives in the sidecar's
-`--receipts-db`. We surface the convenience log so `/chio receipts`
-can answer "what did this session see" without an extra round-trip.
+`--receipts-db`.
 """
 
 from __future__ import annotations
@@ -24,11 +22,9 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_RECEIPT_BUFFER_MAX = 1000
-"""Default cap on the in-memory deque length (per `CHIO_RECEIPT_BUFFER_MAX`)."""
 
 
 def _buffer_max() -> int:
-    """Read `CHIO_RECEIPT_BUFFER_MAX` lazily so tests can vary it."""
     raw = os.environ.get("CHIO_RECEIPT_BUFFER_MAX")
     if not raw:
         return DEFAULT_RECEIPT_BUFFER_MAX
@@ -44,8 +40,6 @@ def _resolve_log_path() -> Path:
 
     The lazy import keeps Hermes off the package import path so the
     plugin still registers when Hermes is not installed (Path A users).
-    Falls back to `~/.hermes/logs/chio-receipts.jsonl` when
-    `hermes_constants.get_hermes_home` is not importable.
     """
     try:
         from hermes_constants import get_hermes_home
@@ -59,9 +53,9 @@ def _resolve_log_path() -> Path:
 def _canonical_dumps(record: dict[str, Any]) -> bytes:
     """Serialise a receipt as canonical JSON bytes.
 
-    Sorted keys, no whitespace, UTF-8. Mirrors the `_canonical_json`
-    helper in chio-sdk-python so the JSONL line is byte-identical to
-    what other adapters log.
+    Sorted keys, no whitespace, UTF-8. Mirrors `_canonical_json` in
+    chio-sdk-python so the JSONL line is byte-identical to other
+    adapter logs.
     """
     return json.dumps(
         record, sort_keys=True, separators=(",", ":"), ensure_ascii=True
@@ -71,9 +65,9 @@ def _canonical_dumps(record: dict[str, Any]) -> bytes:
 def append_jsonl(path: Path, record: dict[str, Any]) -> None:
     """Append `record` as one canonical-JSON line to `path`.
 
-    Raises `OSError` on disk failure so callers can decide how to handle
-    it. `ReceiptBuffer.record` wraps this with suppression for the
-    production path; direct unit tests can probe the raising behaviour.
+    Raises `OSError` on disk failure. `ReceiptBuffer.record` wraps this
+    with suppression for the production path; direct callers can probe
+    the raising behaviour.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("ab") as fh:
@@ -95,16 +89,12 @@ class ReceiptBuffer:
         self._denials = 0
         self._lock = threading.Lock()
 
-    # ------------------------------------------------------------------
-    # Pending receipts (push pre-call, pop_next post-call)
-    # ------------------------------------------------------------------
-
     def push(self, task_id: str | None, record: dict[str, Any]) -> None:
         """Record a pending receipt entry under `task_id`.
 
-        `task_id` is allowed to be `None` because some Hermes paths
-        (e.g. CLI smoke calls) do not propagate it; we coalesce those
-        under a sentinel key so `pop_next(None)` still works.
+        `task_id` may be `None` because some Hermes paths (e.g. CLI
+        smoke calls) do not propagate it; coalesce under a sentinel
+        key so `pop_next(None)` still works.
         """
         key = task_id or ""
         with self._lock:
@@ -123,7 +113,6 @@ class ReceiptBuffer:
             return entry
 
     def clear_pending(self) -> None:
-        """Drop every pending entry (used by `on_session_start`)."""
         with self._lock:
             self._pending.clear()
 
@@ -136,17 +125,12 @@ class ReceiptBuffer:
             self._pending.clear()
         yield from collected
 
-    # ------------------------------------------------------------------
-    # Recorded receipts (in-memory deque + JSONL append)
-    # ------------------------------------------------------------------
-
     def record(self, receipt: dict[str, Any]) -> None:
         """Append a finalised receipt to the in-memory deque + JSONL log.
 
-        Tolerates JSONL write failures: errors are logged to stderr but
-        never raised so a transient disk problem cannot crash Hermes.
-        The JSONL write happens INSIDE the lock so concurrent recorders
-        cannot interleave bytes within a line.
+        Tolerates JSONL write failures so a transient disk problem
+        cannot crash Hermes. The JSONL write happens INSIDE the lock so
+        concurrent recorders cannot interleave bytes within a line.
         """
         with self._lock:
             self._buffer.append(receipt)
@@ -160,22 +144,15 @@ class ReceiptBuffer:
                     file=sys.stderr,
                 )
 
-    # ------------------------------------------------------------------
-    # Introspection helpers used by `/chio` slash commands
-    # ------------------------------------------------------------------
-
     def recent(self, n: int = 5) -> list[dict[str, Any]]:
-        """Return up to `n` most recent recorded receipts."""
         with self._lock:
             return list(self._buffer)[-max(0, int(n)) :]
 
     def denial_count(self) -> int:
-        """Return the running count of recorded denials."""
         with self._lock:
             return self._denials
 
     def pending_total(self) -> int:
-        """Return the total number of pending entries across all tasks."""
         with self._lock:
             return sum(len(q) for q in self._pending.values())
 

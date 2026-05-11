@@ -1,16 +1,8 @@
 """Verify that `register(ctx)` wires the documented surface.
 
-The plugin contract says one call to `register(ctx)` registers:
-
-* 12 async tools, all under toolset ``"chio"`` and all with
-  ``is_async=True`` (per FINAL-PLAN section 5).
-* Four hooks: ``pre_tool_call``, ``post_tool_call``,
-  ``on_session_start``, ``on_session_end``.
-* One CLI command (`chio`).
-* One slash command (`chio`).
-
-Tests use the in-test ``FakePluginContext`` from ``conftest.py`` so no
-Hermes runtime is required.
+One call registers 12 async tools under toolset `chio` (all
+`is_async=True`), four hooks (pre/post tool call + session
+start/end), one CLI command, and one slash command.
 """
 
 from __future__ import annotations
@@ -34,11 +26,6 @@ EXPECTED_TOOLS = {
     "chio_git_commit",
     "chio_git_run",
 }
-
-
-# ---------------------------------------------------------------------------
-# Counts
-# ---------------------------------------------------------------------------
 
 
 def test_register_registers_twelve_tools(
@@ -75,11 +62,6 @@ def test_register_registers_one_slash_command(
     assert list(fake_plugin_context.cmds.keys()) == ["chio"]
 
 
-# ---------------------------------------------------------------------------
-# Per-tool invariants
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("tool_name", sorted(EXPECTED_TOOLS))
 def test_each_tool_uses_chio_toolset_and_is_async(
     tool_name: str,
@@ -110,8 +92,7 @@ def test_each_tool_schema_is_a_valid_json_schema_dict(
     assert schema.get("type") == "object", (
         f"{tool_name} schema must be a JSON Schema object"
     )
-    # Section 8.1 mandates additionalProperties: false so schema validation
-    # rejects unexpected keys at parse time.
+    # additionalProperties: false rejects unexpected keys at parse time.
     assert schema.get("additionalProperties") is False, (
         f"{tool_name} schema must set `additionalProperties: false`"
     )
@@ -132,12 +113,8 @@ def test_each_tool_handler_is_callable(
 def test_check_fn_returns_false_when_env_missing(
     fake_plugin_context: FakePluginContext, unconfigured_env: None
 ) -> None:
-    """Hermes hides the tool from the model when `check_fn()` is False.
-
-    With required env vars unset, every tool's `check_fn` MUST return
-    False so the model is not tempted to call a tool that will only
-    return `chio_not_configured`.
-    """
+    """Hermes hides tools when `check_fn()` is False so the model does
+    not call something that can only return `chio_not_configured`."""
     register(fake_plugin_context)
     for tool in fake_plugin_context.tools.values():
         check_fn = tool.kwargs.get("check_fn")

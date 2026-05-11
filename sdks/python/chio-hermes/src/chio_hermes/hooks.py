@@ -1,32 +1,22 @@
 """Hermes hook factories for the chio-hermes plugin.
 
-Four factories, one per Hermes hook the plugin advertises in
-`plugin.yaml`:
+Hermes's `PluginManager.invoke_hook` (`hermes_cli/plugins.py:1222`)
+runs callbacks as `ret = cb(**kwargs)` with NO await, so every hook
+here is a plain `def`. Returning a coroutine would silently drop the
+body and trigger a `RuntimeWarning` at GC time.
 
-* `make_pre_tool_call(handle)` -- sync pre-hook that runs a local
-  policy precheck for `chio_*` tools. Hermes treats a
-  `{"action": "block", "message": ...}` return value as a deny verdict
-  and surfaces the message to the model. Non-`chio_*` tools pass
-  through (`None`).
-* `make_post_tool_call(handle)` -- sync post-hook that builds the
-  finalised receipt record from the kwargs Hermes hands it and
-  appends it to the JSONL store.
-* `make_on_session_start(handle)` -- sync session-start hook that
-  flushes any leftover pending entries (from a crashed prior session).
-* `make_on_session_end(handle)` -- sync session-end hook that drains
-  pending entries through the JSONL writer so they are not lost.
+* `make_pre_tool_call`   - policy precheck for `chio_*` tools; returns
+  `{"action": "block", "message": ...}` for a deny verdict, `None`
+  otherwise.
+* `make_post_tool_call`  - finalises the receipt record from the
+  kwargs Hermes hands the hook and appends it to JSONL.
+* `make_on_session_start` - drops any leftover pending entries from a
+  crashed prior session.
+* `make_on_session_end`   - drains pending entries through the JSONL
+  writer so they are not lost.
 
-Hermes's `PluginManager.invoke_hook` dispatches callbacks synchronously
-(`hermes_cli/plugins.py:1222` does `ret = cb(**kwargs)` with no await),
-so these hooks MUST be plain `def` functions. Returning a coroutine
-silently drops the hook body and triggers a `RuntimeWarning` at GC
-time. All hook bodies are pure-sync work (policy checks, in-memory
-buffer mutation, JSONL append), so there is no async surface to
-preserve.
-
-Every factory tolerates `**kwargs` because the Hermes hook signature
-is expected to evolve and we do not want a kwarg add to break the
-plugin.
+Every factory tolerates `**kwargs` because the upstream hook signature
+is expected to evolve.
 """
 
 from __future__ import annotations
@@ -39,13 +29,8 @@ from typing import Any
 from chio_hermes.runtime import RuntimeHandle
 
 PreHook = Callable[..., Any]
-"""Sync pre_tool_call hook signature."""
-
 PostHook = Callable[..., None]
-"""Sync post_tool_call hook signature."""
-
 SessionHook = Callable[..., None]
-"""Sync session lifecycle hook signature."""
 
 
 def _is_chio_tool(tool_name: str | None) -> bool:
@@ -53,12 +38,7 @@ def _is_chio_tool(tool_name: str | None) -> bool:
 
 
 def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
-    """Return a sync pre-hook that pre-checks Chio tools against policy.
-
-    Callers MUST pre-configure the handle and load a denying policy to
-    exercise the deny branch; an unconfigured handle returns ``None`` so
-    the handler emits the canonical `chio_not_configured` envelope.
-    """
+    """Return a sync pre-hook that pre-checks Chio tools against policy."""
 
     def pre_tool_call(
         tool_name: str | None = None,
@@ -69,8 +49,8 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
         if not _is_chio_tool(tool_name):
             return None
         if not handle.is_configured() or handle.policy is None:
-            # Degraded mode: handler will emit chio_not_configured;
-            # pre-hook stays silent so the canonical envelope wins.
+            # Degraded mode: handler emits chio_not_configured; pre-hook
+            # stays silent so the canonical envelope wins.
             return None
         params = dict(args or {})
 
@@ -97,7 +77,7 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
                 for path in params.get("paths", []) or []:
                     handle.policy.check_write(path, cwd=handle.cwd)
         except ChioCodeAgentDeniedError as exc:
-            _ = task_id  # explicitly unused; reserved for future telemetry
+            _ = task_id  # reserved for future telemetry
             return {
                 "action": "block",
                 "message": str(exc),
@@ -114,10 +94,8 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
 def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
     """Return a sync post-hook that records the canonical receipt.
 
-    Builds the entire record from the kwargs Hermes hands it (no
-    pop_next; pre-call push lives only on `ReceiptBuffer` for unit-test
-    use). JSONL write failures are swallowed so a hook exception never
-    kills the Hermes session.
+    JSONL write failures are swallowed so a hook exception never kills
+    the Hermes session.
     """
 
     def post_tool_call(

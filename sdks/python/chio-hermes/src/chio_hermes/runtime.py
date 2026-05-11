@@ -1,25 +1,18 @@
-"""`RuntimeHandle` (the per-`register(ctx)` plugin state container).
+"""`RuntimeHandle`: per-`register(ctx)` plugin state container.
 
-`RuntimeHandle` bundles the live `ChioClient`, the `CodeAgent` facade,
-the active `CodeAgentPolicy`, the `ReceiptBuffer`, and the resolved
-configuration. It is constructed inside `register(ctx)` and threaded
-into every handler / hook / slash factory via closure capture so the
-plugin keeps no module-level mutable state.
+Bundles the live `ChioClient`, `CodeAgent` facade, active
+`CodeAgentPolicy`, `ReceiptBuffer`, and resolved configuration.
+Threaded into every handler / hook / slash factory via closure capture
+so the plugin keeps no module-level mutable state.
 
-Construction is fail-soft: missing env vars or a missing chio-code-agent
-install yield a "degraded" handle whose `is_configured()` returns False.
-Tools registered against a degraded handle short-circuit to a
-`chio_not_configured` error JSON instead of crashing Hermes startup.
+Construction is fail-soft: missing env or a missing chio-code-agent
+install yields a "degraded" handle whose `is_configured()` returns
+False; tools registered against it short-circuit to `chio_not_configured`
+JSON instead of crashing Hermes startup.
 
-Configuration source precedence (later overrides earlier):
-
-1. `plugins.entries.chio.*` (lowest, supplied via Hermes config.yaml).
-2. `~/.hermes/.env` (loaded by Hermes into the process env before
-   `register` is called).
-3. In-process env vars (highest).
-
-We only see (3) at runtime; the precedence is implicit because Hermes
-populates the process env from layers (1) and (2) before invoking us.
+Hermes populates the process env from `plugins.entries.chio.*` and
+`~/.hermes/.env` before invoking `register`, so this module only needs
+to read process env directly.
 """
 
 from __future__ import annotations
@@ -31,35 +24,16 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_SIDECAR_URL = "http://127.0.0.1:9090"
-"""Sidecar URL used when `CHIO_SIDECAR_URL` is unset."""
 
 
 @dataclass
 class RuntimeHandle:
     """All long-lived plugin state, owned by one `register(ctx)` call.
 
-    Attributes
-    ----------
-    chio_client:
-        Live `ChioClient` (or `None` in degraded mode).
-    capability_id:
-        Capability token id from `CHIO_CAPABILITY_ID`; `None` until set.
-    code_agent:
-        `CodeAgent` facade wired to `chio_client` + `policy` + cwd.
-    receipts:
-        `ReceiptBuffer` shared between handlers, hooks, and `/chio`.
-    fail_open:
-        When True, the *configuration-missing* path returns success-shaped
-        empty JSON instead of an error. NEVER disables policy enforcement
-        or sidecar deny verdicts. Documented as an unsafe escape hatch.
-    policy:
-        Compiled `CodeAgentPolicy` enforced by the pre-flight checks.
-    sidecar_url:
-        Resolved sidecar URL (kept for `/chio status`).
-    cwd:
-        Resolved workspace root the executors confine I/O to.
-    init_error:
-        Populated when construction failed; surfaced by `/chio status`.
+    `fail_open`, when True, returns success-shaped empty JSON for the
+    *configuration-missing* path. It NEVER disables policy enforcement
+    or sidecar deny verdicts; it is documented as an unsafe escape
+    hatch.
     """
 
     chio_client: Any | None = None
@@ -72,12 +46,7 @@ class RuntimeHandle:
     cwd: Path = field(default_factory=Path.cwd)
     init_error: str | None = None
 
-    # ------------------------------------------------------------------
-    # Status helpers
-    # ------------------------------------------------------------------
-
     def is_configured(self) -> bool:
-        """Return True when the plugin has both env vars + a live client."""
         return (
             self.chio_client is not None
             and self.code_agent is not None
@@ -136,8 +105,7 @@ def build_runtime_handle() -> RuntimeHandle:
 
     Never raises. Any failure produces a degraded handle whose
     `is_configured()` returns False and whose `init_error` describes
-    the problem. Tools dispatched against a degraded handle return the
-    `chio_not_configured` JSON shape instead of crashing the worker.
+    the problem.
     """
     from chio_hermes.receipts import ReceiptBuffer
 

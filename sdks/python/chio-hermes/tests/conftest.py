@@ -1,10 +1,8 @@
 """Shared fixtures for the chio-hermes test suite.
 
-These fixtures intentionally do NOT require a running Hermes runtime.
 The plugin only consumes the `ctx` object passed into `register(ctx)`,
 so a `FakePluginContext` test double is sufficient to verify wiring.
-Sidecar interactions are exercised against `chio_sdk.testing.MockChioClient`
-(matches the pattern used by chio-code-agent and chio-crewai).
+Sidecar interactions run against `chio_sdk.testing.MockChioClient`.
 """
 
 from __future__ import annotations
@@ -16,39 +14,27 @@ from typing import Any
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# FakePluginContext
-# ---------------------------------------------------------------------------
-
 
 @dataclass
 class _RegisteredTool:
-    """Snapshot of a single ctx.register_tool call."""
-
     name: str
     kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class _RegisteredHook:
-    """Snapshot of a single ctx.register_hook call."""
-
     name: str
     handler: Callable[..., Any]
 
 
 @dataclass
 class _RegisteredCli:
-    """Snapshot of a single ctx.register_cli_command call."""
-
     name: str
     kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class _RegisteredCommand:
-    """Snapshot of a single ctx.register_command call."""
-
     name: str
     kwargs: dict[str, Any] = field(default_factory=dict)
 
@@ -56,9 +42,8 @@ class _RegisteredCommand:
 class FakePluginContext:
     """Test double for the Hermes `ctx` argument.
 
-    Records every ``register_tool`` / ``register_hook`` /
-    ``register_cli_command`` / ``register_command`` call so tests can
-    assert wiring without standing up a real Hermes runtime.
+    Records every ``register_*`` call so tests can assert wiring
+    without standing up a real Hermes runtime.
     """
 
     def __init__(self) -> None:
@@ -67,7 +52,6 @@ class FakePluginContext:
         self.cli: dict[str, _RegisteredCli] = {}
         self.cmds: dict[str, _RegisteredCommand] = {}
 
-    # The Hermes plugin protocol uses keyword-only registration calls.
     def register_tool(self, **kw: Any) -> None:
         name = kw["name"]
         self.tools[name] = _RegisteredTool(name=name, kwargs=dict(kw))
@@ -84,14 +68,8 @@ class FakePluginContext:
         self.cmds[name] = _RegisteredCommand(name=name, kwargs=dict(kw))
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def fake_plugin_context() -> FakePluginContext:
-    """A fresh FakePluginContext per test."""
     return FakePluginContext()
 
 
@@ -99,12 +77,8 @@ def fake_plugin_context() -> FakePluginContext:
 def tmp_workspace(tmp_path: Path) -> Path:
     """A tmp_path-based fake git workspace.
 
-    Lays down a realistic project tree (src/, tests/, docs/, README.md,
-    .env, src/main.py) and a stub `.git/` directory so policy checks
-    that consult the workspace shape have something to look at. The
-    workspace itself is not initialised as a real git repo to keep tests
-    hermetic; tests that need git semantics should monkeypatch the
-    relevant executor.
+    Lays down a project tree with a stub `.git/` so policy checks have
+    something to look at; not a real git repo.
     """
     (tmp_path / "src").mkdir()
     (tmp_path / "tests").mkdir()
@@ -123,10 +97,9 @@ def tmp_hermes_home(
 ) -> Iterator[Path]:
     """Monkeypatch `_resolve_log_path` to a tmp directory.
 
-    The plugin's receipts module imports `get_hermes_home` lazily inside
-    `_resolve_log_path`. We patch the receipts module's lookup helper to
-    return our tmp directory, ensuring the JSONL writer never escapes
-    the test sandbox.
+    Receipts module imports `get_hermes_home` lazily inside
+    `_resolve_log_path`; patching the helper keeps the JSONL writer
+    inside the test sandbox.
     """
     home = tmp_path / "hermes-home"
     home.mkdir()
@@ -163,15 +136,10 @@ def configured_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def unconfigured_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Strip the required env vars so `RuntimeHandle.is_configured()` is False."""
+    """Strip the required env vars so `is_configured()` is False."""
     monkeypatch.delenv("CHIO_SIDECAR_URL", raising=False)
     monkeypatch.delenv("CHIO_CAPABILITY_ID", raising=False)
     monkeypatch.delenv("CHIO_POLICY_FILE", raising=False)
-
-
-# ---------------------------------------------------------------------------
-# Runtime construction helpers
-# ---------------------------------------------------------------------------
 
 
 def make_configured_runtime(
@@ -183,9 +151,8 @@ def make_configured_runtime(
 ) -> Any:
     """Build a fully wired :class:`RuntimeHandle` for handler/hook tests.
 
-    Constructs a real :class:`CodeAgent` so the handler is_configured()
-    check passes. Defaults to an allow-all :class:`MockChioClient` and
-    the bundled :data:`DEFAULT_POLICY`.
+    Defaults to an allow-all :class:`MockChioClient` and the bundled
+    :data:`DEFAULT_POLICY`.
     """
     from chio_code_agent.agent import CodeAgent
     from chio_code_agent.policy import DEFAULT_POLICY
@@ -214,23 +181,13 @@ def make_configured_runtime(
     return handle
 
 
-# ---------------------------------------------------------------------------
-# Sync-dispatch test double that mirrors Hermes's invoke_hook
-# ---------------------------------------------------------------------------
-
-
 class SyncFakePluginContext(FakePluginContext):
     """FakePluginContext that exposes a Hermes-faithful sync hook caller.
 
     Hermes's `PluginManager.invoke_hook` (`hermes_cli/plugins.py:1218-1232`)
-    walks registered callbacks and calls each as `ret = cb(**kwargs)` with
-    NO await. If a hook returns a coroutine the value is appended to the
-    results list and silently dropped by downstream consumers (e.g.
-    `get_pre_tool_call_block_message` only inspects dict returns).
-
-    Tests that need to verify our hooks survive sync dispatch use
-    `invoke_hook_sync(name, **kwargs)` here. It mirrors the upstream
-    semantics exactly: no await, no asyncio.run.
+    walks registered callbacks and calls each as `ret = cb(**kwargs)`
+    with NO await; coroutine returns are silently dropped. Tests use
+    `invoke_hook_sync` to mirror that semantics exactly.
     """
 
     def invoke_hook_sync(self, name: str, **kwargs: Any) -> list[Any]:
@@ -245,7 +202,6 @@ class SyncFakePluginContext(FakePluginContext):
 
 @pytest.fixture
 def sync_fake_plugin_context() -> SyncFakePluginContext:
-    """A fresh SyncFakePluginContext per test."""
     return SyncFakePluginContext()
 
 

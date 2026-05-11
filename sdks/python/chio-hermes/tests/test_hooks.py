@@ -1,21 +1,8 @@
 """Hook-layer tests.
 
-`pre_tool_call`:
-* returns ``None`` for an allowed call
-* returns a block dict for a denied call (when policy raises)
-* ignores non-`chio_*` tools
-
-`post_tool_call`:
-* writes a receipt with the actual `result` and `duration_ms`
-* tolerates a JSONL writer failure (does not propagate exceptions)
-
-`on_session_start` / `on_session_end`:
-* clear / drain pending receipts
-
-NOTE: Hermes dispatches hook callbacks synchronously (no await). All
-hooks here are plain `def` and asserted to NEVER return a coroutine.
-The dedicated regression coverage for sync dispatch lives in
-`tests/test_hook_sync_dispatch.py`.
+Hermes dispatches hooks synchronously (no await); all hooks are plain
+`def` and asserted to never return a coroutine. Sync-dispatch
+regression coverage lives in `tests/test_hook_sync_dispatch.py`.
 """
 
 from __future__ import annotations
@@ -41,18 +28,12 @@ from tests.conftest import make_configured_runtime
 
 
 def _runtime_with_buf(buf: ReceiptBuffer) -> RuntimeHandle:
-    """Build a RuntimeHandle around an explicit ReceiptBuffer."""
     return RuntimeHandle(
         chio_client=MockChioClient(),
         capability_id="cap-test-12345678",
         cwd=Path.cwd(),
         receipts=buf,
     )
-
-
-# ---------------------------------------------------------------------------
-# pre_tool_call
-# ---------------------------------------------------------------------------
 
 
 def test_pre_tool_call_returns_block_dict_for_denied_path(
@@ -102,21 +83,16 @@ def test_pre_tool_call_returns_none_for_allowed_call(
 def test_pre_tool_call_ignores_non_chio_tool(
     tmp_workspace: Path,
 ) -> None:
-    """Non-chio_ tools must pass through untouched (other plugins own them)."""
+    """Non-chio_ tools pass through untouched (other plugins own them)."""
     runtime = make_configured_runtime(cwd=tmp_workspace)
     hook = make_pre_tool_call(runtime)
     result = hook(
-        tool_name="read_file",  # a built-in Hermes tool, not ours
+        tool_name="read_file",  # built-in Hermes tool, not ours
         args={"path": ".env"},
         task_id="task-1",
     )
     assert not inspect.iscoroutine(result)
     assert result is None
-
-
-# ---------------------------------------------------------------------------
-# post_tool_call
-# ---------------------------------------------------------------------------
 
 
 def test_post_tool_call_writes_receipt_with_result_and_duration(
@@ -156,10 +132,10 @@ def test_post_tool_call_tolerates_writer_failure(
     tmp_hermes_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """If the JSONL writer raises, the hook MUST swallow it.
+    """JSONL writer failure must not propagate.
 
-    Hermes treats any hook exception as a fatal error for the session,
-    which would convert a debug-only side effect into a session killer.
+    Hermes treats any hook exception as a fatal session error; that
+    would convert a debug-only side effect into a session killer.
     """
     runtime = make_configured_runtime(cwd=tmp_workspace)
 
@@ -180,11 +156,6 @@ def test_post_tool_call_tolerates_writer_failure(
     assert result is None
 
 
-# ---------------------------------------------------------------------------
-# Receipt buffer push/pop_next FIFO across tasks
-# ---------------------------------------------------------------------------
-
-
 def test_buffer_push_pop_next_isolates_per_task() -> None:
     buf = ReceiptBuffer()
     buf.push("task-A", {"i": 0})
@@ -194,11 +165,6 @@ def test_buffer_push_pop_next_isolates_per_task() -> None:
     assert buf.pop_next("task-A") == {"i": 2}
     assert buf.pop_next("task-A") is None
     assert buf.pop_next("task-B") == {"i": 1}
-
-
-# ---------------------------------------------------------------------------
-# Session lifecycle hooks
-# ---------------------------------------------------------------------------
 
 
 def test_on_session_start_clears_pending() -> None:

@@ -1,22 +1,19 @@
 """JSON Schema definitions for the chio-hermes tool surface.
 
-The schemas are kept in a dedicated module so tests can assert that the
-parameter names line up with `chio_code_agent.tools` method signatures
-without dragging in the full plugin stack. Every schema is a strict JSON
-Schema (no `additionalProperties` unless explicitly needed) so Hermes's
-validator rejects unknown keys at parse time.
-
-Tool name conventions follow the `provides_tools` block in
-`plugin.yaml`: `chio_file_*`, `chio_shell_*`, `chio_git_*`. Parameter
-keys mirror the kwargs of the corresponding `CodeAgent` method.
+Schemas live here so tests can assert that parameter names line up with
+`chio_code_agent.tools` method signatures without dragging in the full
+plugin stack. Every schema sets `additionalProperties: false` so
+Hermes's validator rejects unknown keys at parse time. Tool names match
+`provides_tools` in `plugin.yaml`; parameter keys mirror the kwargs of
+the corresponding `CodeAgent` method.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-# Reusable property fragments. Defined once so manifest tests can assert
-# they are referenced by name rather than copy-pasted.
+# Reusable property fragments: defined once so manifest tests can
+# assert they are referenced by name rather than copy-pasted.
 _PATH_PROPERTY: dict[str, Any] = {
     "type": "string",
     "minLength": 1,
@@ -227,7 +224,6 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     "chio_git_commit": CHIO_GIT_COMMIT,
     "chio_git_run": CHIO_GIT_RUN,
 }
-"""Tool name -> JSON Schema map. Keys equal `provides_tools` in plugin.yaml."""
 
 
 __all__ = [

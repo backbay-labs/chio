@@ -15,9 +15,9 @@ and confuses the audit trail.
 `chio mcp serve --preset code-agent` wraps an upstream MCP server, runs
 every `tools/call` through the bundled `code-agent` policy, emits a
 signed receipt, and forwards the call. The `--` separator marks the
-start of the wrapped server's argv (verified at
-`crates/chio-cli/src/cli/types.rs:1486-1529`; `command: Vec<String>`
-is declared with `trailing_var_arg = true, required = true`).
+start of the wrapped server's argv (`crates/chio-cli/src/cli/types.rs:1486-1529`;
+`command: Vec<String>` is declared with `trailing_var_arg = true,
+required = true`).
 
 Add an entry under `mcp_servers` in `~/.hermes/config.yaml`:
 
@@ -46,10 +46,9 @@ mcp_servers:
     transport: stdio
 ```
 
-Verify the wiring with `hermes mcp test chio`. The `--preset code-agent`
-policy is bundled; for a custom policy use
-`--policy <path/to/policy.yaml>` instead. The two flags are mutually
-exclusive (`conflicts_with = "preset"` on the clap definition).
+Verify with `hermes mcp test chio`. The `--preset code-agent` policy
+is bundled; for a custom policy use `--policy <path/to/policy.yaml>`
+(mutually exclusive with `--preset`, via `conflicts_with = "preset"`).
 
 There is no "hosted MCP edge that ships its own tools" mode today;
 Path A always wraps an external MCP server.
@@ -105,7 +104,7 @@ the `chio_` prefix to avoid collision with the bundled Hermes tools
 | `chio_git_commit`  | `git commit -m <message>`.                            |
 | `chio_git_run`     | Arbitrary `git <command>` (gated by policy).          |
 
-Default policy summary: safe file reads are allowed, writes to `.env`,
+Default policy: safe file reads are allowed, writes to `.env`,
 `.git/**`, and `.ssh/**` are denied, `git push --force` is denied,
 `rm -rf /` is denied. Full policy lives in
 `sdks/python/chio-code-agent/src/chio_code_agent/default_policy.yaml`;
@@ -132,12 +131,12 @@ hermes chio revoke cap-aaaa11112222 --reason "rotation"
 `hermes chio issue` calls `ChioClient.create_capability` and writes the
 returned `CapabilityToken` into
 `~/.hermes/profiles/<active>/chio-capabilities.json`. `hermes chio list`
-reads only that local cache; `chio-sdk-python` has no list RPC today.
+reads only the local cache; `chio-sdk-python` has no list RPC today.
 `hermes chio revoke` invokes
-`chio trust revoke --capability-id <id>` (verified at
-`crates/chio-cli/src/cli/types.rs:1897-1902`) and updates the cache.
+`chio trust revoke --capability-id <id>` (`crates/chio-cli/src/cli/types.rs:1897-1902`)
+and updates the cache.
 
-There is intentionally no `hermes chio status` subcommand; use the
+There is no `hermes chio status` subcommand by design; use the
 in-session `/chio status` slash command, or `hermes -c "/chio status"`
 from a script.
 
@@ -178,9 +177,8 @@ by handler-completion time, not by Hermes dispatch order.
 
 ### 2.5 Failure modes
 
-Per FINAL-PLAN section 8.1, every error path returns canonical JSON
-(sorted keys, no whitespace) so Hermes's tool-output parser can route
-it consistently:
+Every error path returns canonical JSON (sorted keys, no whitespace) so
+Hermes's tool-output parser can route it consistently:
 
 | Case                          | Envelope                                                                                                                       |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |

@@ -1,19 +1,16 @@
 """Async tool handlers for the chio-hermes plugin.
 
-Each handler is `async def handler(args, **kwargs) -> str`. The return
-value is ALWAYS a JSON string (canonical: sorted keys, no whitespace,
-ASCII-safe). The envelope follows FINAL-PLAN section 8.1:
+Each handler is `async def handler(args, **kwargs) -> str` and ALWAYS
+returns canonical JSON (sorted keys, no whitespace, ASCII-safe).
+Envelope shapes:
 
 * allow:   `{"status":"allowed","result":...,"receipt_id":"...","tool_name":"...","tool_server":"..."}`
 * deny:    `{"error":"denied","guard":"...","reason":"...","receipt_id":...}`
 * typed:   `{"error":"chio_<slug>","message":"...", ...}`
 
-Slugs (full catalogue): `denied`, `chio_sidecar_unreachable`,
-`chio_capability_expired`, `chio_not_configured`, `chio_error`,
-`chio_executor_error`.
-
-The handler does NOT push pending receipts; the post_tool_call hook
-constructs the entire record from the kwargs Hermes hands it.
+Slugs: `denied`, `chio_sidecar_unreachable`, `chio_capability_expired`,
+`chio_not_configured`, `chio_error`, `chio_executor_error`. Receipts are
+recorded by the post_tool_call hook, not here.
 """
 
 from __future__ import annotations
@@ -28,11 +25,6 @@ from chio_hermes import executors as _exec
 if TYPE_CHECKING:
     from chio_hermes.manifest import ToolEntry, ToolHandler
     from chio_hermes.runtime import RuntimeHandle
-
-
-# ---------------------------------------------------------------------------
-# JSON envelope helpers (canonical: sorted keys, no whitespace)
-# ---------------------------------------------------------------------------
 
 
 def _dumps(payload: dict[str, Any]) -> str:
@@ -111,11 +103,6 @@ def _typed_error(error: str, message: str, **extra: Any) -> str:
     return _dumps(payload)
 
 
-# ---------------------------------------------------------------------------
-# Wrapper that owns the envelope shaping for every tool
-# ---------------------------------------------------------------------------
-
-
 def _wrap_envelope(
     handle: RuntimeHandle,
     tool_name: str,
@@ -123,9 +110,9 @@ def _wrap_envelope(
 ) -> ToolHandler:
     """Standard envelope around a per-tool inner coroutine.
 
-    Catches the chio-code-agent + chio-sdk error hierarchy plus a bare
-    `Exception` and converts each to the canonical JSON shape. The
-    handler never raises; it always returns a JSON string.
+    Catches the chio-code-agent + chio-sdk error hierarchy and a bare
+    `Exception`, converting each to the canonical JSON shape. Never
+    raises.
     """
 
     async def handler(args: dict[str, Any] | None = None, **_kwargs: Any) -> str:
@@ -137,8 +124,8 @@ def _wrap_envelope(
             )
             return _typed_error("chio_not_configured", message)
 
-        # Lazy import keeps chio_code_agent off the import path when the
-        # plugin is in degraded mode.
+        # Lazy import keeps chio_code_agent off the import path in
+        # degraded mode.
         try:
             from chio_code_agent.errors import (
                 ChioCodeAgentDeniedError,
@@ -213,20 +200,8 @@ def _wrap_envelope(
 
 
 def make_handler(runtime: RuntimeHandle, entry: ToolEntry) -> ToolHandler:
-    """Public factory used by `plugin.register` and tests.
-
-    Delegates to the per-tool factory captured on `entry.factory`. The
-    indirection keeps the registration loop minimal while letting tests
-    construct a handler for any specific entry without touching
-    `TOOL_TABLE` ordering.
-    """
+    """Public factory delegating to the per-tool factory on `entry`."""
     return entry.factory(runtime)
-
-
-# ---------------------------------------------------------------------------
-# Per-tool factories. Each calls the matching `CodeAgent.<...>` method
-# with the executor wired in (cwd plumbed through from RuntimeHandle).
-# ---------------------------------------------------------------------------
 
 
 def _require(args: dict[str, Any], key: str) -> Any:
@@ -238,10 +213,9 @@ def _require(args: dict[str, Any], key: str) -> Any:
 def _agent(handle: RuntimeHandle) -> Any:
     """Narrow `handle.code_agent` from `Any | None` to `Any`.
 
-    The wrapper short-circuits with `chio_not_configured` when
-    `is_configured()` is False, so by the time an inner closure runs
-    `handle.code_agent` is non-None. Mypy cannot follow the closure
-    capture, so we centralise the narrowing here.
+    The wrapper short-circuits with `chio_not_configured` before the
+    inner closure runs, so by this point `code_agent` is non-None.
+    Mypy cannot follow the closure capture; centralise the assert here.
     """
     agent = handle.code_agent
     assert agent is not None, "handle.code_agent must be set in configured mode"

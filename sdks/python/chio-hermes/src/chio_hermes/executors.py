@@ -1,26 +1,16 @@
-"""Async I/O executors used by the chio-hermes tool surface.
+"""Async I/O executors for the chio-hermes tool surface.
 
-`chio_code_agent` ships default executors only for `FileTool.read_file`
-and `FileTool.write_file`. The other ten methods take an `executor`
-kwarg with no default and silently no-op the I/O when omitted. This
-module supplies the missing executors locally so the plugin can wire
-real filesystem / subprocess / git effects after the sidecar emits an
-allow verdict.
+`chio_code_agent` ships default executors for `read_file` / `write_file`
+only; the other ten tool methods accept an `executor` kwarg with no
+default and silently no-op without one. This module supplies the
+missing executors so the plugin can apply real filesystem / subprocess
+/ git effects after the sidecar emits an allow verdict.
 
-Constraints enforced by every executor here:
-
-* All paths are resolved relative to the explicit `cwd` kwarg the
-  caller passes in. Paths that escape the root via symlinks or `..`
-  are rejected before the I/O runs. The `CHIO_WORKSPACE_ROOT` env var
-  is honoured only as a fallback for ad-hoc CLI use.
-* All shell-outs use argv lists (NEVER `shell=True`), capture stdout +
-  stderr, time out at `CHIO_SHELL_TIMEOUT` (default 60 seconds), and
-  surface the result as a JSON-serialisable dict.
-* Subprocess executors are async and wrap `subprocess.run` in
-  `asyncio.to_thread` so the Hermes event loop is never blocked.
-
-The executor layer is the I/O surface; Chio guards the policy and
-receipt layer above it. Subprocess output is unredacted.
+All paths are resolved relative to the explicit `cwd` kwarg and
+rejected if they escape via symlink or `..`. Subprocess calls always
+pass an argv list (NEVER `shell=True`), capture stdout + stderr,
+honour `CHIO_SHELL_TIMEOUT` (default 60 s), and run inside
+`asyncio.to_thread` so the Hermes event loop stays free.
 """
 
 from __future__ import annotations
@@ -33,20 +23,13 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_SHELL_TIMEOUT = 60
-"""Default subprocess timeout in seconds; overridable via CHIO_SHELL_TIMEOUT."""
-
-
-# ---------------------------------------------------------------------------
-# Path / workspace helpers
-# ---------------------------------------------------------------------------
 
 
 def workspace_root() -> Path:
     """Return the workspace root for ad-hoc CLI use.
 
-    Reads `CHIO_WORKSPACE_ROOT` lazily. Hermes-side callers should pass
-    `cwd=` explicitly through the handler factories; this helper is a
-    fallback for unit tests of executors that omit `cwd`.
+    Hermes-side callers thread `cwd=` through the handler factories;
+    this fallback is for unit tests of executors invoked without `cwd`.
     """
     raw = os.environ.get("CHIO_WORKSPACE_ROOT")
     base = Path(raw) if raw else Path.cwd()
@@ -54,7 +37,6 @@ def workspace_root() -> Path:
 
 
 def shell_timeout() -> int:
-    """Return the configured subprocess timeout in seconds."""
     raw = os.environ.get("CHIO_SHELL_TIMEOUT")
     if not raw:
         return DEFAULT_SHELL_TIMEOUT
@@ -68,10 +50,8 @@ def shell_timeout() -> int:
 def _resolve_within(path: str, root: Path) -> Path:
     """Resolve `path` and confirm it lives inside `root`.
 
-    Raises `PermissionError` for symlink escapes, `..` traversal, or
-    absolute paths outside the workspace root. The check is purely
-    lexical for non-existent targets so we can also gate writes that
-    create new files.
+    Falls back to a lexical resolve for non-existent targets so writes
+    that create new files are still gated.
     """
     candidate = Path(path)
     if not candidate.is_absolute():
@@ -79,8 +59,8 @@ def _resolve_within(path: str, root: Path) -> Path:
     try:
         resolved = candidate.resolve()
     except OSError:
-        # Target may not exist yet (e.g. chio_file_write creating a
-        # file). Fall back to a lexical resolve that still handles `..`.
+        # Target may not exist yet (e.g. chio_file_write); lexical
+        # resolve still handles `..`.
         resolved = Path(os.path.normpath(str(candidate)))
     try:
         resolved.relative_to(root)
@@ -98,13 +78,6 @@ def _run_subprocess(
     timeout: int,
     stdin: str | None = None,
 ) -> dict[str, Any]:
-    """Run `argv` via `subprocess.run` and return a JSON-friendly dict.
-
-    Always uses an argv list (NEVER `shell=True`). Captures stdout +
-    stderr as UTF-8 text. A non-zero exit code is reported via the
-    returned dict; the caller decides whether to surface it as an
-    executor error to the handler layer.
-    """
     completed = subprocess.run(  # noqa: S603 - argv is a list, never shell=True
         argv,
         cwd=str(cwd),
@@ -123,15 +96,9 @@ def _run_subprocess(
 
 
 def _resolve_cwd(cwd: Path | None) -> Path:
-    """Return `cwd` if supplied, else the env-derived workspace root."""
     if cwd is not None:
         return Path(cwd).resolve()
     return workspace_root()
-
-
-# ---------------------------------------------------------------------------
-# File executors
-# ---------------------------------------------------------------------------
 
 
 async def edit_file_executor(
@@ -139,9 +106,7 @@ async def edit_file_executor(
 ) -> dict[str, Any]:
     """Apply `patch` to `path` via `patch -p0` reading the diff on stdin.
 
-    Using `patch(1)` keeps us free of an extra `unidiff` dependency. The
-    path is confined to `cwd` (the resolved workspace root) before the
-    shell-out.
+    Using `patch(1)` avoids an extra `unidiff` dependency.
     """
     root = _resolve_cwd(cwd)
     target = _resolve_within(path, root)
@@ -162,12 +127,6 @@ async def edit_file_executor(
 async def list_directory_executor(
     *, path: str, cwd: Path | None = None
 ) -> dict[str, Any]:
-    """List immediate entries of `path` via `pathlib`.
-
-    Returns a dict with `entries` (sorted basenames) and `path` (the
-    resolved absolute path). Symlink escapes are rejected by
-    `_resolve_within`.
-    """
     root = _resolve_cwd(cwd)
     target = _resolve_within(path, root)
     if not target.exists():
@@ -183,8 +142,7 @@ async def search_files_executor(
 ) -> dict[str, Any]:
     """Search files by glob via `Path.rglob(query)` under `path`.
 
-    Returns a list of paths relative to the workspace root so the
-    output is stable across test runs.
+    Returns paths relative to the workspace root for stable test output.
     """
     root = _resolve_cwd(cwd)
     target = _resolve_within(path, root)
@@ -196,15 +154,10 @@ async def search_files_executor(
             matches.append(str(hit.relative_to(root)))
         except ValueError:
             # rglob can return paths under symlinked subtrees; keep the
-            # absolute path for those rather than dropping them silently.
+            # absolute path rather than dropping silently.
             matches.append(str(hit))
     matches.sort()
     return {"path": str(target), "query": query, "matches": matches}
-
-
-# ---------------------------------------------------------------------------
-# Shell executors
-# ---------------------------------------------------------------------------
 
 
 async def shell_run_executor(
@@ -220,15 +173,9 @@ async def shell_run_executor(
     )
 
 
-# ---------------------------------------------------------------------------
-# Git executors
-# ---------------------------------------------------------------------------
-
-
 async def _git(
     *args: str, cwd: Path | None = None, stdin: str | None = None
 ) -> dict[str, Any]:
-    """Internal helper that runs `git ...` in the resolved workspace root."""
     root = _resolve_cwd(cwd)
     return await asyncio.to_thread(
         _run_subprocess,
@@ -240,14 +187,12 @@ async def _git(
 
 
 async def git_status_executor(*, cwd: Path | None = None) -> dict[str, Any]:
-    """Run `git status --porcelain=v1` for stable machine-parseable output."""
     return await _git("status", "--porcelain=v1", cwd=cwd)
 
 
 async def git_diff_executor(
     *, paths: list[str] | None = None, cwd: Path | None = None
 ) -> dict[str, Any]:
-    """Run `git diff` (optionally constrained to `paths`)."""
     args: list[str] = ["diff"]
     if paths:
         args.append("--")
@@ -258,14 +203,12 @@ async def git_diff_executor(
 async def git_log_executor(
     *, limit: int = 20, cwd: Path | None = None
 ) -> dict[str, Any]:
-    """Run `git log --oneline -n <limit>` for stable output."""
     return await _git("log", f"-n{int(limit)}", "--oneline", cwd=cwd)
 
 
 async def git_add_executor(
     *, paths: list[str], cwd: Path | None = None
 ) -> dict[str, Any]:
-    """Stage `paths` via `git add --`."""
     if not paths:
         raise ValueError("git_add requires at least one path")
     return await _git("add", "--", *paths, cwd=cwd)
@@ -274,7 +217,6 @@ async def git_add_executor(
 async def git_commit_executor(
     *, message: str, cwd: Path | None = None
 ) -> dict[str, Any]:
-    """Create a commit with `message` (`git commit -m <message>`)."""
     if not message:
         raise ValueError("git_commit requires a non-empty message")
     return await _git("commit", "-m", message, cwd=cwd)

@@ -1,10 +1,7 @@
 """Verify `plugin.yaml` matches the documented Hermes plugin contract.
 
-These checks are deliberately schema-light: they assert the keys and
-shapes that downstream Hermes loaders rely on (`name`, `version`,
-`description`, `kind`, `requires_env` dict-form, `provides_tools`,
-`provides_hooks`) and do NOT assume that the Hermes runtime is
-installed.
+Schema-light: asserts the keys and shapes downstream Hermes loaders
+rely on without requiring a Hermes runtime.
 """
 
 from __future__ import annotations
@@ -15,9 +12,8 @@ import pytest
 import yaml
 
 # The plugin manifest ships at the package root and is force-included
-# into the wheel at `chio_hermes/plugin.yaml`. The source-tree copy is
-# the one we validate here; tests must not depend on the wheel being
-# built.
+# into the wheel at `chio_hermes/plugin.yaml`. Validate the source-tree
+# copy so tests do not depend on a built wheel.
 MANIFEST_PATH = Path(__file__).resolve().parent.parent / "plugin.yaml"
 
 
@@ -27,11 +23,6 @@ def manifest() -> dict:
     data = yaml.safe_load(raw)
     assert isinstance(data, dict), "plugin.yaml must parse to a mapping"
     return data
-
-
-# ---------------------------------------------------------------------------
-# Required top-level fields
-# ---------------------------------------------------------------------------
 
 
 def test_manifest_file_exists() -> None:
@@ -52,19 +43,14 @@ def test_name_matches_entry_point_alias(manifest: dict) -> None:
 
 
 def test_kind_is_standalone(manifest: dict) -> None:
-    # The standalone-kind loader is the one that reads `requires_env` in
-    # dict form; if `kind` ever changes, the requires_env shape needs a
-    # paired update. Pin it here so the change cannot land silently.
+    # The standalone-kind loader is the one that reads `requires_env`
+    # in dict form; if `kind` ever changes, the requires_env shape
+    # needs a paired update.
     assert manifest["kind"] == "standalone"
 
 
-# ---------------------------------------------------------------------------
-# requires_env
-# ---------------------------------------------------------------------------
-
-
 def test_requires_env_is_dict_form(manifest: dict) -> None:
-    """`requires_env` MUST be a list of dicts so `password: true` masks the secret."""
+    """`requires_env` must be a list of dicts so `password: true` masks the secret."""
     requires_env = manifest.get("requires_env")
     assert isinstance(requires_env, list) and requires_env, (
         "requires_env must be a non-empty list (dict form)"
@@ -78,9 +64,8 @@ def test_requires_env_is_dict_form(manifest: dict) -> None:
 
 
 def test_requires_env_includes_capability_id_with_password(manifest: dict) -> None:
-    """CHIO_CAPABILITY_ID must be present and marked `password: true`.
+    """`hermes setup` reads `password` to decide whether to mask the prompt.
 
-    `hermes setup` reads `password` to decide whether to mask the prompt.
     Without this, the long-lived bearer token would be echoed to the
     terminal and any TTY scrollback would carry it.
     """
@@ -92,11 +77,6 @@ def test_requires_env_includes_capability_id_with_password(manifest: dict) -> No
 def test_requires_env_includes_sidecar_url(manifest: dict) -> None:
     by_name = {entry["name"]: entry for entry in manifest["requires_env"]}
     assert "CHIO_SIDECAR_URL" in by_name
-
-
-# ---------------------------------------------------------------------------
-# provides_tools
-# ---------------------------------------------------------------------------
 
 
 EXPECTED_TOOLS = {
@@ -135,11 +115,6 @@ def test_provides_tools_set_matches_expected(manifest: dict) -> None:
     assert set(manifest["provides_tools"]) == EXPECTED_TOOLS
 
 
-# ---------------------------------------------------------------------------
-# provides_hooks
-# ---------------------------------------------------------------------------
-
-
 def test_provides_hooks_includes_four_hooks(manifest: dict) -> None:
     hooks = manifest.get("provides_hooks")
     assert isinstance(hooks, list) and hooks, (
@@ -154,8 +129,7 @@ def test_provides_hooks_includes_four_hooks(manifest: dict) -> None:
 
 
 def test_provides_hooks_uses_canonical_name(manifest: dict) -> None:
-    """Some bundled examples use `hooks:` shorthand; the canonical loader
-    only reads `provides_hooks`."""
+    """Canonical loader only reads `provides_hooks`; `hooks:` is dropped silently."""
     assert "hooks" not in manifest, (
         "use `provides_hooks` (canonical loader name); "
         "`hooks:` is silently dropped"

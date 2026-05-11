@@ -1,7 +1,4 @@
-"""Failure-mode coverage matching FINAL-PLAN section 8.1.
-
-Every failure JSON shape documented in section 8.1 has a corresponding
-assertion here:
+"""Failure-mode coverage for every error envelope shape.
 
 | Case                              | Slug                          |
 |-----------------------------------|-------------------------------|
@@ -41,11 +38,6 @@ def _envelope(result: str) -> dict[str, Any]:
     return payload
 
 
-# ---------------------------------------------------------------------------
-# 1. Sidecar unreachable -> chio_sidecar_unreachable
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_sidecar_unreachable_returns_runtime_unavailable_envelope(
     tmp_workspace: Path,
@@ -62,11 +54,6 @@ async def test_sidecar_unreachable_returns_runtime_unavailable_envelope(
     result = await handler({"path": "README.md"}, task_id="task-down")
     payload = _envelope(result)
     assert payload["error"] == "chio_sidecar_unreachable"
-
-
-# ---------------------------------------------------------------------------
-# 2. Capability expired -> chio_capability_expired + ExpiredCapabilityGuard
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -91,19 +78,14 @@ async def test_capability_expired_returns_denied_envelope(
     assert payload["guard"] == "ExpiredCapabilityGuard"
 
 
-# ---------------------------------------------------------------------------
-# 3. Configuration missing -> chio_not_configured
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_configuration_missing_returns_not_configured_envelope(
     tmp_workspace: Path, unconfigured_env: None
 ) -> None:
-    # Build a degraded handle directly (no code_agent => is_configured False).
+    # Degraded handle (no code_agent) so is_configured() is False.
     runtime = RuntimeHandle(
         chio_client=MockChioClient(),
-        capability_id=None,  # explicit "no capability"
+        capability_id=None,
         cwd=tmp_workspace,
     )
     handler = _read_file_handler(runtime)
@@ -113,11 +95,6 @@ async def test_configuration_missing_returns_not_configured_envelope(
 
     assert payload["error"] == "chio_not_configured"
     assert "CHIO_CAPABILITY_ID" in payload["message"]
-
-
-# ---------------------------------------------------------------------------
-# 4. Generic exception -> chio_error envelope
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -134,11 +111,6 @@ async def test_generic_exception_returns_chio_error_envelope(
     result = await handler({"path": "README.md"}, task_id="task-boom")
     payload = _envelope(result)
     assert payload["error"] == "chio_error"
-
-
-# ---------------------------------------------------------------------------
-# 5. Executor I/O failure after allow -> chio_executor_error + receipt_id
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -170,17 +142,12 @@ async def test_executor_error_after_allow(
     assert payload["receipt_id"] == "rcpt-after-allow"
 
 
-# ---------------------------------------------------------------------------
-# 6. Sidecar deny propagates the receipt id from the deny verdict
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_sidecar_deny_includes_receipt_id(
     tmp_workspace: Path,
 ) -> None:
-    """When the sidecar returns a deny receipt, the envelope's receipt_id
-    must propagate so the user can correlate the deny with the audit log."""
+    """A sidecar deny receipt's receipt_id propagates so the user can
+    correlate the deny with the audit log."""
     from chio_sdk.errors import ChioDeniedError
 
     class _DenyWithReceipt(MockChioClient):
@@ -203,11 +170,6 @@ async def test_sidecar_deny_includes_receipt_id(
     assert payload["guard"] == "ForbiddenPathGuard"
 
 
-# ---------------------------------------------------------------------------
-# 7. Plugin reload tolerance -- register(ctx) is idempotent
-# ---------------------------------------------------------------------------
-
-
 def test_register_is_idempotent_under_reload(
     tmp_workspace: Path,
     fake_plugin_context: FakePluginContext,
@@ -224,11 +186,10 @@ def test_register_is_idempotent_under_reload(
 def test_register_then_register_same_ctx_does_not_double_register(
     fake_plugin_context: FakePluginContext, configured_env: None
 ) -> None:
-    """Hermes is responsible for de-duplicating registrations on reload.
+    """Pin the no-crash contract on second registration.
 
-    The plugin's contract is "do not crash on second registration".
-    `FakePluginContext.register_tool` overwrites by name; real Hermes may
-    raise on duplicate names. This test pins the no-crash contract.
+    `FakePluginContext.register_tool` overwrites by name; real Hermes
+    may raise on duplicate names.
     """
     plugin_register(fake_plugin_context)
     plugin_register(fake_plugin_context)

@@ -1,16 +1,8 @@
 """`/chio` slash command factory.
 
-Subcommands:
-
-* `/chio status`   -- sidecar URL, masked capability id, fail-open
-                       flag, recent denial count, configured-yes/no.
-* `/chio receipts` -- last N receipts (id, tool, decision, timestamp).
-                       Default N=5, max 50.
-* `/chio policy`   -- pretty-prints the active CodeAgentPolicy summary.
-
-`make_slash_handler(handle)` returns the actual async closure Hermes
-registers; tests can call the closure directly, and `plugin.register`
-wires it into `ctx.register_command(...)`.
+`make_slash_handler(handle)` returns the async closure Hermes registers
+via `ctx.register_command(...)`. Subcommands: `status`, `receipts [N]`,
+`policy`.
 """
 
 from __future__ import annotations
@@ -23,7 +15,6 @@ from typing import Any
 from chio_hermes.runtime import RuntimeHandle
 
 SlashHandler = Callable[[str], Awaitable[str | None]]
-"""Async signature accepted by `ctx.register_command(...)`."""
 
 
 def _format_status(handle: RuntimeHandle) -> str:

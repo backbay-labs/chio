@@ -1,13 +1,10 @@
 """Byte-canonical conformance check for the JSONL receipt log.
 
-Per FINAL-PLAN section 10 case 7, we write one receipt via
-`append_jsonl`, read the line back, and compare it byte-for-byte
-against a frozen golden string. This ensures the on-disk audit trail
-is deterministic across Python versions, dict insertion orders, and
-locale settings.
-
-The fixture deliberately uses keys in NON-sorted insertion order and a
-nested dict; canonical JSON must sort both.
+Writes one receipt via `append_jsonl`, reads it back, and compares
+byte-for-byte against a frozen golden so the on-disk audit trail is
+deterministic across Python versions, dict insertion orders, and
+locales. The fixture deliberately uses non-sorted insertion order and
+a nested dict; canonical JSON must sort both.
 """
 
 from __future__ import annotations
@@ -21,11 +18,9 @@ import pytest
 
 from chio_hermes.receipts import _canonical_dumps, append_jsonl
 
-# Frozen golden. Keys are sorted at every level; separators are
-# `","` and `":"` with no whitespace; ASCII only. If this golden ever
-# changes, the receipt format has changed and the JSONL log is no
-# longer cross-version-stable; bump the receipt format version
-# explicitly rather than papering over the diff in this test.
+# Frozen golden. If this changes, the receipt format has changed and
+# the JSONL log is no longer cross-version-stable; bump the receipt
+# format version explicitly rather than papering over the diff here.
 GOLDEN_LINE = (
     '{"capability_id":"cap-aaaa11112222","decision":'
     '{"guard":"ForbiddenPathGuard","reason":"path .env is forbidden",'
@@ -60,8 +55,6 @@ def test_record_byte_identity_against_golden(tmp_path: Path) -> None:
 
 
 def test_canonical_dumps_helper_matches_byte_form() -> None:
-    """Direct exercise of the helper so a regression in the surface is
-    caught even if no one calls `record` in the test."""
     out = _canonical_dumps({"b": 2, "a": 1})
     assert out == b'{"a":1,"b":2}'
 
@@ -69,10 +62,7 @@ def test_canonical_dumps_helper_matches_byte_form() -> None:
 def test_post_hook_record_round_trip_byte_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """End-to-end byte identity for a record built like a post-hook.
-
-    Frozen `time.time()` so the golden line is stable.
-    """
+    """End-to-end byte identity for a record built like a post-hook."""
     monkeypatch.setattr(time, "time", lambda: 1700000000)
     log = tmp_path / "chio-receipts.jsonl"
     record: dict[str, Any] = {

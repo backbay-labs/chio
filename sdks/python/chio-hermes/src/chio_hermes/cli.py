@@ -1,18 +1,13 @@
 """`hermes chio` CLI subcommand: capability lifecycle helpers.
 
-Three subcommands:
+* `issue`  mints a capability via `ChioClient.create_capability` and
+  caches metadata in `<hermes_home>/profiles/<active>/chio-capabilities.json`.
+* `list`   reads the local cache; never calls Chio APIs.
+* `revoke` shells out to `chio trust revoke --capability-id <id>` and
+  marks the cache entry revoked on success.
 
-* `issue`  -- mints a capability via `ChioClient.create_capability` and
-              caches the metadata in `<hermes_home>/profiles/<active>/
-              chio-capabilities.json` so `list` and `revoke` can show it.
-* `list`   -- pure local read of the JSON cache; never calls Chio APIs.
-* `revoke` -- shells out to `chio trust revoke --capability-id <id>`
-              (verified at `crates/chio-cli/src/cli/types.rs:1897-1902`)
-              and removes the entry from the local cache on success.
-
-Hermes registers async-capable handler functions but the documented
-shape for CLI commands is sync; we use `asyncio.run(...)` internally
-for the one async call (`create_capability`).
+Hermes invokes CLI handlers synchronously, so async work runs through
+`asyncio.run` for the one async call (`create_capability`).
 """
 
 from __future__ import annotations
@@ -27,10 +22,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-# ---------------------------------------------------------------------------
-# Cache file resolution
-# ---------------------------------------------------------------------------
-
 
 def _hermes_home() -> Path:
     """Resolve `<hermes_home>` lazily so `chio_hermes` imports without Hermes."""
@@ -43,17 +34,14 @@ def _hermes_home() -> Path:
 
 
 def _active_profile() -> str:
-    """Read the active Hermes profile from env, defaulting to `default`."""
     return os.environ.get("HERMES_PROFILE", "default")
 
 
 def _cache_path() -> Path:
-    """Return the on-disk path for the local capability cache."""
     return _hermes_home() / "profiles" / _active_profile() / "chio-capabilities.json"
 
 
 def _load_cache() -> list[dict[str, Any]]:
-    """Read the capability cache; return an empty list when missing."""
     path = _cache_path()
     if not path.exists():
         return []
@@ -71,16 +59,10 @@ def _load_cache() -> list[dict[str, Any]]:
 
 
 def _save_cache(entries: list[dict[str, Any]]) -> None:
-    """Write the capability cache atomically (simple replace; no locking)."""
     path = _cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     serialised = json.dumps(entries, sort_keys=True, indent=2)
     path.write_text(serialised + "\n", encoding="utf-8")
-
-
-# ---------------------------------------------------------------------------
-# Argparse wiring
-# ---------------------------------------------------------------------------
 
 
 def setup(parser: argparse.ArgumentParser) -> None:
@@ -149,13 +131,7 @@ def setup(parser: argparse.ArgumentParser) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Command implementations
-# ---------------------------------------------------------------------------
-
-
 def _build_scope(tool_servers: list[str], tool_name: str) -> Any:
-    """Construct a `ChioScope` with one `ToolGrant` per requested server."""
     from chio_sdk.models import (
         ChioScope,
         Operation,
@@ -174,7 +150,6 @@ def _build_scope(tool_servers: list[str], tool_name: str) -> Any:
 
 
 def _do_issue(args: argparse.Namespace) -> int:
-    """Implementation for `hermes chio issue`."""
     if not args.tool_server:
         print(
             "error: at least one --tool-server is required",
@@ -249,7 +224,6 @@ def _do_issue(args: argparse.Namespace) -> int:
 
 
 def _do_list(args: argparse.Namespace) -> int:
-    """Implementation for `hermes chio list`."""
     cache = _load_cache()
     if args.active_only:
         cache = [entry for entry in cache if not entry.get("revoked")]
@@ -273,7 +247,6 @@ def _do_list(args: argparse.Namespace) -> int:
 
 
 def _do_revoke(args: argparse.Namespace) -> int:
-    """Implementation for `hermes chio revoke`."""
     proc = subprocess.run(  # noqa: S603 - argv list, no shell
         ["chio", "trust", "revoke", "--capability-id", args.capability_id],
         capture_output=True,
@@ -309,7 +282,6 @@ def _do_revoke(args: argparse.Namespace) -> int:
 
 
 def handle(args: argparse.Namespace) -> int:
-    """Dispatch the parsed argparse namespace to the matching subcommand."""
     sub = getattr(args, "subcommand", None)
     if sub == "issue":
         return _do_issue(args)

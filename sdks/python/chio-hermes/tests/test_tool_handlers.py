@@ -1,15 +1,12 @@
 """Per-handler unit tests against `MockChioClient`.
 
-For every entry in `manifest.TOOL_TABLE` the handler MUST:
+Every entry in `manifest.TOOL_TABLE` must:
 
-* Return a JSON string (never raise).
-* On the allow path, return a payload with ``"status": "allowed"``,
-  the canonical envelope from FINAL-PLAN section 8.1.
-* On the deny path (e.g. forbidden path like `.env`), return
-  ``"error": "denied"`` per section 8.1.
+* return a JSON string (never raise),
+* on allow, return `"status": "allowed"` per the canonical envelope,
+* on deny (e.g. `.env`), return `"error": "denied"`.
 
-These tests use `MockChioClient` per FINAL-PLAN section 10. They do NOT
-touch the live sidecar.
+No live sidecar is touched.
 """
 
 from __future__ import annotations
@@ -51,9 +48,8 @@ def tool_table() -> list[ToolEntry]:
 def _entry_args_for(entry_name: str, _workspace: Path) -> dict[str, Any]:
     """Build a minimal valid `args` dict per tool name.
 
-    Paths target locations under ``src/`` so they fall inside
-    DEFAULT_POLICY's ``writable_roots`` (``{docs, src, tests}``); the
-    local pre-flight allows them through to the mock sidecar.
+    Paths target locations under `src/` so they fall inside
+    DEFAULT_POLICY's `writable_roots` (`{docs, src, tests}`).
     """
     if entry_name == "chio_file_read":
         return {"path": "README.md"}
@@ -82,20 +78,14 @@ def _entry_args_for(entry_name: str, _workspace: Path) -> dict[str, Any]:
     raise AssertionError(f"unknown tool {entry_name!r}")
 
 
-# ---------------------------------------------------------------------------
-# Allow path: every handler returns a JSON string with status=allowed
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_every_handler_returns_json_string_on_allow(
     tool_table: list[ToolEntry],
     tmp_workspace: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Patch every executor that would shell out so the test stays
-    # hermetic. The contract under test is the envelope shape, not the
-    # underlying I/O.
+    # Patch every shell-out executor so the test stays hermetic; the
+    # contract under test is the envelope shape, not the I/O.
     from chio_hermes import executors as _exec
 
     async def _ok(**_kw: Any) -> dict[str, Any]:
@@ -121,8 +111,8 @@ async def test_every_handler_returns_json_string_on_allow(
     for entry in tool_table:
         # chio_git_run routes through git/run, which is not in
         # DEFAULT_POLICY.allowed_tools; the local pre-flight denies
-        # before the sidecar verdict is consulted. That is correct
-        # fail-closed behaviour and is exercised separately.
+        # before the sidecar verdict is consulted. Correct fail-closed
+        # behaviour, exercised separately.
         if entry.name == "chio_git_run":
             continue
         handler = make_handler(runtime, entry)
@@ -143,18 +133,12 @@ async def test_every_handler_returns_json_string_on_allow(
         assert "result" in payload
 
 
-# ---------------------------------------------------------------------------
-# Deny path: forbidden path returns the canonical denied envelope
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_handlers_deny_forbidden_path(
     tool_table: list[ToolEntry], tmp_workspace: Path
 ) -> None:
-    """Every chio_file_* handler must surface the canonical denied envelope
-    when the local pre-flight rejects ``.env`` (matched by DEFAULT_POLICY's
-    ``forbidden_path_patterns``)."""
+    """Every chio_file_* handler surfaces the canonical denied envelope
+    when the local pre-flight rejects `.env`."""
     client = MockChioClient(policy=_deny_env_policy)
     runtime = make_configured_runtime(chio_client=client, cwd=tmp_workspace)
 
@@ -180,17 +164,11 @@ async def test_handlers_deny_forbidden_path(
         assert payload["error"] == "denied", (
             f"{name} must surface the canonical denied envelope, got {payload!r}"
         )
-        # The local pre-flight in DEFAULT_POLICY raises before the sidecar
-        # is consulted, so the guard is "forbidden_path" (NOT the
-        # sidecar's "ForbiddenPathGuard"). The mock _deny_env_policy is
-        # never reached for these inputs.
+        # The local pre-flight raises before the sidecar is consulted,
+        # so the guard is "forbidden_path" (NOT the sidecar's
+        # "ForbiddenPathGuard"); _deny_env_policy is never reached.
         assert payload["guard"] == "forbidden_path"
         assert payload["reason"] is not None
-
-
-# ---------------------------------------------------------------------------
-# Handlers must never raise: even on bare-Exception we get an envelope.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -198,14 +176,13 @@ async def test_handler_never_raises_on_internal_error(
     tool_table: list[ToolEntry],
     tmp_workspace: Path,
 ) -> None:
-    """When the sidecar raises a bare exception, every handler must
-    convert it to the canonical `chio_error` envelope (and never let
-    the exception propagate up through Hermes).
+    """A bare exception from the sidecar surfaces as `chio_error` and
+    never propagates past the handler.
 
     `chio_git_run` is excluded because it routes through `git/run`,
-    which is not in `DEFAULT_POLICY.allowed_tools`; the local pre-flight
-    raises `ChioCodeAgentDeniedError` BEFORE the sidecar is consulted.
-    That is correct fail-closed behaviour for an unmapped subcommand.
+    which is not in `DEFAULT_POLICY.allowed_tools`; the local
+    pre-flight raises `ChioCodeAgentDeniedError` BEFORE the sidecar is
+    consulted (correct fail-closed behaviour for an unmapped subcommand).
     """
 
     class _Boom(MockChioClient):
@@ -229,17 +206,13 @@ async def test_handler_never_raises_on_internal_error(
         )
 
 
-# ---------------------------------------------------------------------------
-# chio_git_run routes through `git/run` which is NOT in
-# DEFAULT_POLICY.allowed_tools, so every dispatch must fail-closed at
-# the local pre-flight (correct behaviour for an unmapped subcommand).
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_chio_git_run_fails_closed_when_not_in_allow_list(
     tmp_workspace: Path,
 ) -> None:
+    """`chio_git_run` routes through `git/run`, not in
+    DEFAULT_POLICY.allowed_tools; every dispatch fail-closes at the
+    local pre-flight."""
     by_name = {entry.name: entry for entry in TOOL_TABLE}
     client = MockChioClient(policy=_allow_all_policy)
     runtime = make_configured_runtime(chio_client=client, cwd=tmp_workspace)
@@ -251,11 +224,6 @@ async def test_chio_git_run_fails_closed_when_not_in_allow_list(
     assert payload["reason"] == "not_in_allow_list"
 
 
-# ---------------------------------------------------------------------------
-# tool_server inference covers the three sidecar servers
-# ---------------------------------------------------------------------------
-
-
 def test_tool_server_inference_covers_three_servers() -> None:
     from chio_hermes.handlers import _tool_server_for
 
@@ -265,15 +233,10 @@ def test_tool_server_inference_covers_three_servers() -> None:
     assert _tool_server_for("chio_git_status") == "git"
 
 
-# ---------------------------------------------------------------------------
-# Receipt buffer push/pop_next direct calls (no fallback chain).
-# ---------------------------------------------------------------------------
-
-
 def test_receipt_buffer_push_pop_next_direct() -> None:
-    """The handler no longer pushes pending receipts (post-hook owns the
-    record). The push/pop_next API is still exposed on `ReceiptBuffer`
-    for unit tests and future deferred-record use cases.
+    """The handler no longer pushes pending receipts (the post-hook
+    owns the record). The push/pop_next API is still exposed on
+    `ReceiptBuffer` for unit tests and future deferred-record use cases.
     """
     buf = ReceiptBuffer()
     record = {"tool_name": "chio_file_read", "args": {"path": "README.md"}}

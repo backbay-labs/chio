@@ -1,25 +1,12 @@
 """Regression tests for Hermes-faithful sync hook dispatch.
 
 Hermes's `PluginManager.invoke_hook` (`hermes_cli/plugins.py:1218-1232`)
-calls every registered hook callback as `ret = cb(**kwargs)` with NO
-await. If our hook factories return coroutines, the coroutine object
-ends up in the results list and gets garbage-collected (raising a
-`RuntimeWarning: coroutine ... was never awaited`), and the hook's
-side effects (policy verdict, receipt JSONL append, pending flush)
-NEVER run.
-
-These tests exercise the registered hooks the same way Hermes does -
-through `SyncFakePluginContext.invoke_hook_sync` - and assert that:
-
-* `pre_tool_call` returns `dict | None`, NEVER a coroutine
-* `post_tool_call` writes the receipt synchronously (verifiable on
-  the JSONL file BEFORE returning)
-* `on_session_start` / `on_session_end` mutate the buffer state
-  synchronously
-
-The unit tests in `test_hooks.py` verify each factory's body in
-isolation; this file is the integration-style guard against the
-specific bug F1 in DOGFOOD.md (silently dropped coroutines).
+calls every registered callback as `ret = cb(**kwargs)` with NO await.
+If our hook factories return coroutines, the coroutine ends up in the
+results list and gets garbage-collected (raising `RuntimeWarning:
+coroutine ... was never awaited`), and the hook's side effects never
+run. These tests exercise the registered hooks the way Hermes does,
+through `SyncFakePluginContext.invoke_hook_sync`.
 """
 
 from __future__ import annotations
@@ -55,17 +42,12 @@ def _runtime_with_buf(buf: ReceiptBuffer) -> RuntimeHandle:
     )
 
 
-# ---------------------------------------------------------------------------
-# pre_tool_call sync dispatch
-# ---------------------------------------------------------------------------
-
-
 def test_pre_tool_call_sync_dispatch_returns_dict_not_coroutine(
     sync_fake_plugin_context: SyncFakePluginContext,
     monkeypatch: pytest.MonkeyPatch,
     tmp_workspace: Path,
 ) -> None:
-    """The deny path must return a dict directly, not a coroutine."""
+    """The deny path returns a dict directly, not a coroutine."""
     runtime = make_configured_runtime(cwd=tmp_workspace)
 
     def _raise(*_args: Any, **_kwargs: Any) -> None:
@@ -147,23 +129,14 @@ def test_pre_tool_call_sync_dispatch_skips_non_chio_tool(
     assert results == []
 
 
-# ---------------------------------------------------------------------------
-# post_tool_call sync dispatch
-# ---------------------------------------------------------------------------
-
-
 def test_post_tool_call_sync_dispatch_writes_receipt_to_jsonl(
     sync_fake_plugin_context: SyncFakePluginContext,
     tmp_workspace: Path,
     tmp_hermes_home: Path,
 ) -> None:
-    """The post hook must write the JSONL line synchronously.
+    """The post hook writes the JSONL line synchronously.
 
-    This is the bug F1 verification: prior to the fix, the post hook
-    returned a coroutine that Hermes never awaited, so the JSONL file
-    stayed empty. The file's contents AFTER `invoke_hook_sync` returns
-    are the load-bearing assertion here - if the body never ran, the
-    file is empty.
+    If the body never ran (coroutine bug), the file would be empty.
     """
     runtime = make_configured_runtime(cwd=tmp_workspace)
     sync_fake_plugin_context.register_hook(
@@ -198,14 +171,7 @@ def test_post_tool_call_sync_dispatch_no_runtime_warning(
     tmp_workspace: Path,
     tmp_hermes_home: Path,
 ) -> None:
-    """The exact reproduction from DOGFOOD F1.
-
-    `python -W error::RuntimeWarning` would raise
-    `RuntimeWarning: coroutine ... was never awaited` if the hook
-    returned a coroutine. We turn RuntimeWarning into an error and
-    invoke through the sync dispatcher; if the hook is sync, no warning
-    is raised.
-    """
+    """RuntimeWarning -> error: a sync hook must not raise it."""
     runtime = make_configured_runtime(cwd=tmp_workspace)
     sync_fake_plugin_context.register_hook(
         "post_tool_call", make_post_tool_call(runtime)
@@ -221,11 +187,6 @@ def test_post_tool_call_sync_dispatch_no_runtime_warning(
             task_id="task-no-warn",
             duration_ms=1,
         )
-
-
-# ---------------------------------------------------------------------------
-# Session lifecycle sync dispatch
-# ---------------------------------------------------------------------------
 
 
 def test_on_session_start_sync_dispatch_clears_pending_immediately(
@@ -285,23 +246,13 @@ def test_on_session_end_sync_dispatch_flushes_pending_immediately(
         assert entry["session_end_flush"] is True
 
 
-# ---------------------------------------------------------------------------
-# End-to-end through register(): hooks registered into a sync ctx must
-# survive Hermes-style dispatch.
-# ---------------------------------------------------------------------------
-
-
 def test_register_hooks_survive_sync_dispatch(
     sync_fake_plugin_context: SyncFakePluginContext,
     monkeypatch: pytest.MonkeyPatch,
     tmp_workspace: Path,
     tmp_hermes_home: Path,
 ) -> None:
-    """register() into a sync ctx, then invoke each hook the way Hermes does.
-
-    Mirrors the dogfood reproduction from DOGFOOD section 7 F1, scoped
-    down to one process.
-    """
+    """End-to-end: register() into a sync ctx, invoke each hook the way Hermes does."""
     monkeypatch.setenv("CHIO_SIDECAR_URL", "http://127.0.0.1:9090")
     monkeypatch.setenv("CHIO_CAPABILITY_ID", "cap-sync-dispatch-test")
     monkeypatch.chdir(tmp_workspace)

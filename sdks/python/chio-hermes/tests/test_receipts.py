@@ -1,16 +1,11 @@
 """ReceiptBuffer + JSONL writer behaviour.
 
-The receipts module owns three contracts:
+Three contracts:
 
-1. **FIFO order** -- `push` then `pop_next` for the same `task_id`
-   returns records in the order they were pushed (Hermes parallel
-   tools share a `task_id`).
-2. **Canonical JSON on disk** -- `append_jsonl` writes one JSON Lines
-   entry per call, with sorted keys, no whitespace, ASCII-safe
-   encoding.
-3. **Suppression boundary** -- `record` swallows OSError so a transient
-   disk problem cannot crash Hermes; `append_jsonl` itself raises so
-   direct callers can decide.
+1. FIFO order on `push` / `pop_next` for the same `task_id`.
+2. Canonical JSON (sorted keys, no whitespace, ASCII-safe) on disk.
+3. `record` swallows OSError so a transient disk problem cannot crash
+   Hermes; `append_jsonl` itself raises so direct callers can decide.
 """
 
 from __future__ import annotations
@@ -28,10 +23,6 @@ from chio_hermes.receipts import (
     _resolve_log_path,
     append_jsonl,
 )
-
-# ---------------------------------------------------------------------------
-# FIFO push / pop_next
-# ---------------------------------------------------------------------------
 
 
 def test_push_pop_fifo_order() -> None:
@@ -65,11 +56,6 @@ def test_drain_pending_yields_and_clears() -> None:
     assert buf.pending_total() == 0
 
 
-# ---------------------------------------------------------------------------
-# Canonical JSON on disk
-# ---------------------------------------------------------------------------
-
-
 def test_append_jsonl_writes_canonical_json(tmp_path: Path) -> None:
     log_path = tmp_path / "chio-receipts.jsonl"
     payload = {"z": 1, "a": 2, "nested": {"y": 1, "x": 2}}
@@ -97,26 +83,15 @@ def test_canonical_dumps_helper_is_byte_stable() -> None:
     assert out == b'{"a":1,"b":2}'
 
 
-# ---------------------------------------------------------------------------
-# Buffer cap
-# ---------------------------------------------------------------------------
-
-
 def test_buffer_cap_uses_default() -> None:
     buf = ReceiptBuffer()
-    # Default cap applies to the recorded buffer (deque maxlen).
     for i in range(DEFAULT_RECEIPT_BUFFER_MAX + 5):
         buf._buffer.append({"i": i})  # type: ignore[attr-defined]
     assert len(buf._buffer) == DEFAULT_RECEIPT_BUFFER_MAX  # type: ignore[attr-defined]
 
 
-# ---------------------------------------------------------------------------
-# File-IO failure behaviour
-# ---------------------------------------------------------------------------
-
-
 def test_append_jsonl_propagates_oserror(tmp_path: Path) -> None:
-    """The free function must raise OSError so callers can decide."""
+    """Free function raises OSError so callers can decide."""
     bad_path = tmp_path / "chio-receipts.jsonl"
     bad_path.mkdir()  # making it a dir guarantees open() raises
     with pytest.raises(OSError):
@@ -129,8 +104,7 @@ def test_record_to_unwritable_path_swallows_oserror(
     """`ReceiptBuffer.record` must NOT raise when the JSONL writer fails.
 
     Hermes treats any exception from a hook (which calls `record`) as a
-    fatal session error; suppression here prevents disk pressure from
-    killing the worker.
+    fatal session error.
     """
     import chio_hermes.receipts as _receipts
 
@@ -142,15 +116,10 @@ def test_record_to_unwritable_path_swallows_oserror(
     buf.record({"tool_name": "chio_file_read"})  # must not raise
 
 
-# ---------------------------------------------------------------------------
-# Concurrency: torn-line safety
-# ---------------------------------------------------------------------------
-
-
 def test_record_writes_under_lock_no_torn_lines(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """N parallel `record` calls must produce N intact JSON lines."""
+    """N parallel `record` calls produce N intact JSON lines."""
     import chio_hermes.receipts as _receipts
 
     log = tmp_path / "chio-receipts.jsonl"
@@ -171,11 +140,9 @@ def test_record_writes_under_lock_no_torn_lines(
     lines = log.read_text(encoding="utf-8").splitlines()
     assert len(lines) == n
     for line in lines:
-        # Each line must parse independently as canonical JSON.
         json.loads(line)
 
 
 def test_resolve_log_path_returns_path() -> None:
-    """Smoke check that the resolver returns a Path object."""
     p = _resolve_log_path()
     assert isinstance(p, Path)
