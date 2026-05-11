@@ -673,6 +673,7 @@ async fn relay_observability_endpoint_requires_operator_token_when_configured() 
     let service = PheromoneRelayService::new(
         PheromoneRelayConfig {
             local_kernel_id: "did:chio:buyer-kernel".to_string(),
+            profile: RelayProfile::Production,
             now_unix_ms: NOW,
             freshness_window_ms: 60_000,
             max_body_bytes: 256_000,
@@ -711,6 +712,10 @@ async fn relay_observability_endpoint_requires_operator_token_when_configured() 
         accepted["schema"].as_str(),
         Some(PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA)
     );
+    assert_eq!(
+        accepted["directory"]["profile"].as_str(),
+        Some("production")
+    );
     server.abort();
 }
 
@@ -742,6 +747,7 @@ async fn loopback_http_delivery_posts_signed_batch_to_receiver() {
     let service = PheromoneRelayService::new(
         PheromoneRelayConfig {
             local_kernel_id: "did:chio:buyer-kernel".to_string(),
+            profile: RelayProfile::LocalDev,
             now_unix_ms: NOW,
             freshness_window_ms: 60_000,
             max_body_bytes: 256_000,
@@ -817,6 +823,7 @@ async fn relay_tick_delivers_leased_batches_with_real_request_signature() {
     let service = PheromoneRelayService::new(
         PheromoneRelayConfig {
             local_kernel_id: "did:chio:buyer-kernel".to_string(),
+            profile: RelayProfile::LocalDev,
             now_unix_ms: NOW,
             freshness_window_ms: 60_000,
             max_body_bytes: 256_000,

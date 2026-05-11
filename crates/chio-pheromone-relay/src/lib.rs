@@ -2052,6 +2052,7 @@ impl RelayNonceRecorder for SqlitePheromoneRelayStore {
 #[derive(Debug, Clone)]
 pub struct PheromoneRelayConfig {
     pub local_kernel_id: String,
+    pub profile: RelayProfile,
     pub now_unix_ms: u64,
     pub freshness_window_ms: u64,
     pub max_body_bytes: usize,
@@ -2219,7 +2220,7 @@ async fn handle_observability(
             generated_at_unix_ms: now,
             peer_directory: Some(&service.directory),
             peer_directory_state: None,
-            profile: RelayProfile::LocalDev,
+            profile: service.config.profile,
             recent_failure_limit: 25,
         })
         .map(Json)

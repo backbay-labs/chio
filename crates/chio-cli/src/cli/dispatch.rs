@@ -3297,6 +3297,7 @@ fn cmd_chiodos_pheromone_relay_serve(
     let service = chio_pheromone_relay::PheromoneRelayService::new(
         chio_pheromone_relay::PheromoneRelayConfig {
             local_kernel_id: peer_directory.local_kernel_id().to_string(),
+            profile,
             now_unix_ms: now,
             freshness_window_ms: 60_000,
             max_body_bytes: 1_048_576,
