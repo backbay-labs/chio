@@ -134,12 +134,39 @@ cargo run -p chio-cli --bin chio -- chiodos pheromone query \
   --reputation-epoch 42 \
   --peer-weights "$FIXTURE_DIR/peer-weights.json" \
   --report "$tmpdir/query-report.json"
-python3 - "$tmpdir/query-report.json" <<'PY'
+python3 - "$tmpdir/query-report.json" "$FIXTURE_DIR/transit-policy.json" "$FIXTURE_DIR/peer-weights.json" "$store" <<'PY'
 import json
+import sqlite3
 import sys
 report = json.loads(open(sys.argv[1], encoding="utf-8").read())
+policy = json.loads(open(sys.argv[2], encoding="utf-8").read())
+weights = json.loads(open(sys.argv[3], encoding="utf-8").read())
+store = sys.argv[4]
 if not report.get("accepted"):
     raise SystemExit("CLI query did not accept the stored fixture")
+concentration = report.get("concentration", {})
+total = concentration.get("total_strength")
+unweighted = concentration.get("unweighted_total_strength")
+if not isinstance(total, (int, float)) or not isinstance(unweighted, (int, float)):
+    raise SystemExit("CLI query report does not carry usable concentration strength")
+with sqlite3.connect(store) as conn:
+    persisted = conn.execute(
+        "SELECT COUNT(*) FROM chio_pheromone_passport_admissions"
+    ).fetchone()[0]
+if persisted < 1:
+    raise SystemExit("CLI receive did not persist passport admission history")
+if unweighted > 0:
+    passport = policy["admission"]["passports"][0]
+    epoch = weights["reputationEpoch"]
+    first_seen = passport["firstSeenEpoch"]
+    discount = min((epoch - first_seen + 1) / 8, 1.0)
+    weight = weights["weights"][0]["weight"]
+    expected_ratio = weight * discount
+    actual_ratio = total / unweighted
+    if abs(actual_ratio - expected_ratio) > 0.000001:
+        raise SystemExit(
+            f"CLI query ratio {actual_ratio} did not use persisted passport history {expected_ratio}"
+        )
 PY
 
 set +e
