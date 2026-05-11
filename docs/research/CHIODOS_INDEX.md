@@ -167,6 +167,8 @@ What is decided (in spec):
 - Per-action-class consistency model
   (`crdt-commutative` / `totally-ordered` / `quorum-required`).
 - Pheromone substrate wire format (v0.2).
+- Local pheromone deposit and hub-transit evidence, including signed
+  workflow context and relay-owned transit chain validation.
 - Governance ladder manifest schema (v0.1).
 - Selective disclosure via BBS+ default with zkVM escape hatch (v0.1).
 - in-toto bilateral-cosign-invocation predicate proposal (v0.1).
@@ -198,6 +200,8 @@ What is deferred (post-v0.1):
 - `spec/CHIODOS_WORKFLOW_COMPOSITION.md` for chained workflow
   receipts (mentioned in BILATERAL_COSIGN_INVOCATION as a separate
   spec).
+- Live pheromone relay runtime: persistence adapters, catch-up,
+  scheduling, daemon transport, and workflow-context consumption.
 
 ---
 

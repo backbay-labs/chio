@@ -1,0 +1,85 @@
+{
+  "schema": "chio.pheromone-batch.v1",
+  "recipient_kernel_id": "did:chio:dataco",
+  "treaty_id": "treaty:buyer-dataco:support-ops",
+  "frames": [
+    {
+      "schema": "chio.pheromone-deposit-gossip.v1",
+      "deposit": {
+        "schema": "chio.pheromone-deposit.v1",
+        "kernel_id": "did:chio:llamaworks",
+        "agent_passport_key_hash": "1f5fe64ec2f8c901be3aad94a41d70c12d2f3a8f43755f902e665c96f41c87e3",
+        "agent_passport_jwk_thumbprint": "lWkhqaoVMPD-k3r62OPO7M8ak2U9g1rMbZFNL9STZ50",
+        "subject_class": "support.prompt_injection",
+        "subject_class_namespace": "dev.chio.support",
+        "indicator": {
+          "indicatorDigest": "ec8cf4e0ba62aa1d2a7609e2653fc88aa1df035bbbab9b9c82781053fc27bf24",
+          "kind": "prompt_injection",
+          "workflowId": "wf-chiodos-refund-001"
+        },
+        "severity": "high",
+        "confidence": 0.82,
+        "timestamp_unix_ms": 1766000000000,
+        "decay_half_life_secs": 3600.0,
+        "evaporation_floor": 0.01,
+        "nonce": "pheromone-nonce-llamaworks-001",
+        "treaty_scope": [
+          "treaty:buyer-llamaworks:support-ops"
+        ],
+        "cost_commitment": {
+          "schema": "chio.pheromone-cost-commitment.v1",
+          "telemetry_chain_root": "eff50e78eb649fabf8abbc0e1c81f4ce4db82bb6552dcdd459a8bff24d6f8679",
+          "chain_position": 7,
+          "chain_position_proof": {
+            "fixture": "telemetry-chain-position"
+          },
+          "observed_at_unix_ms": 1766000000000
+        },
+        "workflow_context": {
+          "schema": "chio.pheromone-workflow-context.v1",
+          "workflow_id": "wf-chiodos-refund-001",
+          "workflow_receipt_id": "wf-chiodos-refund-001",
+          "workflow_receipt_sha256": "6ed5840315a86b7fa88d5444b029546ac56cffdb980e96c87fef0c4505568718",
+          "workflow_intersection_id": "workflow-intersection:buyer-refund:001",
+          "workflow_intersection_sha256": "f293aba39396f914bffc825257bcc3eb583dc997a1409a134d98caa6b8a5d928",
+          "step_index": 0,
+          "tool_receipt_id": "rcpt-vendor-a",
+          "bilateral_dsse_sha256": "b3e25054b239d741faa6f87a9d9cd618243734b254c8d022b42250e0782f3838",
+          "consistency_anchor": "chiodos:consistency:wf-chiodos-refund-001:0"
+        },
+        "signature": "2251126a62bb392b159ed62d8c4c03fe666ae537a2a4c211b30c94a2351e2a56ecd1c8436f02b3ca272de6f4150a165f4d81b3ced2672f18e9917eefdd365302"
+      },
+      "origin_kernel_id": "did:chio:llamaworks",
+      "gossiping_peer_kernel_id": "did:chio:buyer-kernel",
+      "treaty_id": "treaty:buyer-dataco:support-ops",
+      "ts_unix_ms": 1766000000500,
+      "transit_chain": {
+        "hops": [
+          {
+            "from_kernel_id": "did:chio:llamaworks",
+            "to_kernel_id": "did:chio:buyer-kernel",
+            "treaty_id": "treaty:buyer-llamaworks:support-ops",
+            "ladder_manifest_id": "ladder:llamaworks:support:v1",
+            "ladder_manifest_sha256": "f3986da48b82e0d79dab80d1e6660a261e7efc6b06e1d96755bbbedb21d6e197",
+            "ladder_manifest_expires_at_unix_ms": 1766000060000,
+            "ladder_intersection_id": "intersection:buyer:llamaworks",
+            "action_class_id": "whisker.pheromone_deposit",
+            "emitted_at_unix_ms": 1766000000100
+          },
+          {
+            "from_kernel_id": "did:chio:buyer-kernel",
+            "to_kernel_id": "did:chio:dataco",
+            "treaty_id": "treaty:buyer-dataco:support-ops",
+            "ladder_manifest_id": "ladder:buyer:refund:v1",
+            "ladder_manifest_sha256": "baa26007ba6c2515c233c8bc78e4ea338d81a51e555bd58decdbdebbfd60c4f9",
+            "ladder_manifest_expires_at_unix_ms": 1766000060000,
+            "ladder_intersection_id": "intersection:buyer:dataco",
+            "action_class_id": "whisker.pheromone_deposit",
+            "emitted_at_unix_ms": 1766000000100
+          }
+        ]
+      }
+    }
+  ],
+  "flushed_at_unix_ms": 1766000000500
+}

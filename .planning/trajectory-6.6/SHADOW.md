@@ -1,6 +1,7 @@
 # Chiodos 6.6 Shadow: Pheromone Transit And Workflow Context
 
-Chiodos 6.6 is the shadow target after runtime authority issuance exits.
+Chiodos 6.6 has graduated from shadow planning into the active pheromone
+transit evidence lane.
 
 Candidate scope:
 
@@ -16,4 +17,3 @@ Deferred until 6.5 exits:
 - Networked workflow orchestration.
 - Hidden range predicates, VC Data Integrity BBS interop, zkVM proofs, FROST
   quorum classes, partition-contingency execution, and settlement execution.
-

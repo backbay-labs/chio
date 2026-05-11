@@ -13,6 +13,7 @@ pub mod bilateral;
 pub mod bilateral_dsse;
 pub mod bilateral_verifier;
 pub mod metrics;
+pub mod pheromone_gossip;
 pub mod revocation_gossip;
 // spec/CHIODOS_SELECTIVE_DISCLOSURE.md §6 BBS+ projection. Default-off
 // behind the honestly-named `bbs-stub` feature: the implementation is a
@@ -28,6 +29,12 @@ pub use metrics::{
     record_federation_hop, render_federation_metrics_prometheus,
     CHIO_FEDERATION_HOP_LATENCY_SECONDS, CHIO_FEDERATION_HOP_TOTAL, HOP_RESULT_ERROR,
     HOP_RESULT_OK,
+};
+pub use pheromone_gossip::{
+    verify_pheromone_gossip_frame, PheromoneDepositGossip, PheromoneGossipBatch,
+    PheromoneGossipError, PheromoneGossipPushQueue, PheromoneTransitChain, PheromoneTransitHop,
+    PheromoneTransitPolicy, PHEROMONE_GOSSIP_BATCH_SCHEMA, PHEROMONE_GOSSIP_SCHEMA,
+    PHEROMONE_TRANSIT_POLICY_SCHEMA,
 };
 
 pub use bilateral::{

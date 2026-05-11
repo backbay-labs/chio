@@ -49,6 +49,7 @@ not the right substrate for those semantics.
 | `chio.pheromone-batch.v1` | Coalesced per-peer batch of gossip envelopes | 3 |
 | `chio.pheromone-concentration.v1` | Result of a concentration query at an anchored epoch | 4 |
 | `chio.pheromone-cost-commitment.v1` | Optional observation-cost reference attached to a deposit | 7 |
+| `chio.pheromone-transit-policy.v1` | Receiver-owned relay authorization policy | 3 |
 
 Unknown schema ids MUST be rejected fail-closed (see `PROTOCOL.md` section
 2 compatibility rule).
@@ -81,6 +82,7 @@ signature is computed over that body and reattached as the value of
 | `nonce` | string | Yes | 128-bit base64url replay nonce, unique within `(kernel_id, agent_passport_key_hash, replay_window)` |
 | `treaty_scope` | string[] | Yes | Treaty ids under which this deposit may be gossiped (empty list means local-only) |
 | `cost_commitment` | object | No | `chio.pheromone-cost-commitment.v1` body when present (see section 7) |
+| `workflow_context` | object | No | Origin-owned `chio.pheromone-workflow-context.v1` body binding this deposit to workflow receipt evidence (see section 2.5) |
 | `signature` | string | Yes | Ed25519 signature over the JCS encoding of this object with `signature` removed |
 
 The `signature` field uses the self-describing encoding from
@@ -112,6 +114,31 @@ within a sliding replay window. The window length is a substrate
 configuration parameter; the recommended default is 24 hours. Deposits
 outside the window MUST be rejected with `replay_window_exceeded`.
 
+### 2.5 Workflow context
+
+`workflow_context`, when present, is origin-owned and part of the signed
+deposit body. Relays MUST NOT rewrite it. Receivers MUST treat any mismatch
+between this context and locally resolved workflow evidence as fail-closed
+with `workflow_context_mismatch`.
+
+`chio.pheromone-workflow-context.v1`:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `schema` | string | Yes | MUST be `"chio.pheromone-workflow-context.v1"` |
+| `workflow_id` | string | Yes | Workflow id the deposit comments on |
+| `workflow_receipt_id` | string | Yes | Stable workflow receipt id |
+| `workflow_receipt_sha256` | string | Yes | SHA-256 of the canonical workflow receipt artifact |
+| `workflow_intersection_id` | string | Yes | Chiodos workflow-intersection artifact id |
+| `workflow_intersection_sha256` | string | Yes | SHA-256 of the canonical workflow intersection artifact |
+| `step_index` | u64 | Yes | Workflow step index |
+| `tool_receipt_id` | string | Yes | Tool receipt id referenced by the step |
+| `bilateral_dsse_sha256` | string | Yes | SHA-256 of the strict bilateral DSSE envelope for the step |
+| `consistency_anchor` | string | Yes | Consistency anchor expected by the strict bilateral predicate |
+
+The context carries ids and hashes only. Raw workflow inputs, tool arguments,
+indicators, and private customer data MUST NOT be copied into this object.
+
 ---
 
 ## 3. Federation Gossip
@@ -136,11 +163,48 @@ not the gossiping peer.
 | `gossiping_peer_kernel_id` | string | Yes | The bilateral peer pushing this frame (may differ from `origin_kernel_id`) |
 | `treaty_id` | string | Yes | The treaty under which this frame is scoped; MUST appear in `deposit.treaty_scope` |
 | `ts_unix_ms` | u64 | Yes | Sender wall-clock at frame emission, for freshness gating |
+| `transit_chain` | object | No | Relay-owned `chio.pheromone-transit-chain.v1`; absent for direct treaty gossip |
 
-Receivers MUST run the structural envelope check (schema + origin agreement
-+ treaty membership), then run `validate_deposit` (signature, replay nonce,
-diversity caps, observation-cost gate where required) before merging the
-deposit into local storage. Failures are dropped fail-closed.
+Receivers MUST run the structural envelope check (schema + origin agreement),
+then validate treaty authorization. Direct gossip has no `transit_chain` and
+requires `treaty_id` to appear in `deposit.treaty_scope`. Relayed gossip MAY
+use a downstream `treaty_id` absent from `deposit.treaty_scope` only when the
+transit chain proves an ingress treaty in scope and every hop is authorized by
+fresh pinned ladder material. Receivers then run `validate_deposit`
+(signature, replay nonce, diversity caps, observation-cost gate where
+required) before merging the deposit into local storage. Failures are dropped
+fail-closed.
+
+### 3.1.1 Transit chain
+
+`chio.pheromone-transit-chain.v1` is relay-owned envelope metadata. It is not
+part of the origin-signed deposit body, and relays MAY append hops without
+invalidating the origin signature. Receivers MUST reject a transit chain that
+is empty, exceeds the local hop cap, repeats a kernel id, breaks hop
+adjacency, uses stale ladder references, omits a required ladder intersection,
+or declares a non-`crdt-commutative` pheromone action class.
+
+Each hop carries:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `from_kernel_id` | string | Yes | Kernel id sending the deposit on this hop |
+| `to_kernel_id` | string | Yes | Kernel id receiving the deposit on this hop |
+| `treaty_id` | string | Yes | Treaty authorizing this hop |
+| `ladder_manifest_ref` | object | Yes | Fresh pinned ladder manifest reference for the sending peer |
+| `ladder_intersection_id` | string | Yes | Co-signed ladder intersection authorizing the pheromone class |
+| `action_class_id` | string | Yes | Action class, normally `whisker.pheromone_deposit` or a deployment alias |
+| `emitted_at_unix_ms` | u64 | Yes | Sender wall-clock when this hop was emitted |
+
+The first hop's treaty MUST appear in `deposit.treaty_scope`. The last hop's
+treaty MUST equal the enclosing gossip frame's `treaty_id`.
+
+### 3.1.2 Transit policy
+
+`chio.pheromone-transit-policy.v1` is verifier-owned receiver input. It
+declares accepted relay hubs, ingress treaty ids, egress treaty ids, subject
+class namespaces, maximum hop count, and validity window. Package-carried or
+frame-carried material MUST NOT add transit trust.
 
 ### 3.2 PheromoneBatch envelope
 

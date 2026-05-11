@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/deposit.schema.json",
+  "title": "Chiodos Pheromone Deposit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "kernel_id",
+    "agent_passport_key_hash",
+    "agent_passport_jwk_thumbprint",
+    "subject_class",
+    "subject_class_namespace",
+    "indicator",
+    "severity",
+    "confidence",
+    "timestamp_unix_ms",
+    "decay_half_life_secs",
+    "nonce",
+    "treaty_scope",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone-deposit.v1" },
+    "kernel_id": { "type": "string", "minLength": 1 },
+    "agent_passport_key_hash": { "$ref": "#/$defs/hex64" },
+    "agent_passport_jwk_thumbprint": { "type": "string", "minLength": 1 },
+    "subject_class": { "type": "string", "minLength": 1 },
+    "subject_class_namespace": { "type": "string", "minLength": 1 },
+    "indicator": { "type": "object" },
+    "severity": { "enum": ["low", "medium", "high", "critical"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "timestamp_unix_ms": { "type": "integer", "minimum": 0 },
+    "decay_half_life_secs": { "type": "number", "exclusiveMinimum": 0 },
+    "evaporation_floor": { "type": "number", "minimum": 0, "maximum": 1 },
+    "nonce": { "type": "string", "minLength": 1 },
+    "treaty_scope": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "cost_commitment": { "$ref": "#/$defs/costCommitment" },
+    "workflow_context": { "$ref": "#/$defs/workflowContext" },
+    "signature": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "costCommitment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "telemetry_chain_root",
+        "chain_position",
+        "chain_position_proof",
+        "observed_at_unix_ms"
+      ],
+      "properties": {
+        "schema": { "const": "chio.pheromone-cost-commitment.v1" },
+        "telemetry_chain_root": { "$ref": "#/$defs/hex64" },
+        "chain_position": { "type": "integer", "minimum": 0 },
+        "chain_position_proof": {},
+        "observed_at_unix_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "workflowContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "workflow_id",
+        "workflow_receipt_id",
+        "workflow_receipt_sha256",
+        "workflow_intersection_id",
+        "workflow_intersection_sha256",
+        "step_index",
+        "tool_receipt_id",
+        "bilateral_dsse_sha256",
+        "consistency_anchor"
+      ],
+      "properties": {
+        "schema": { "const": "chio.pheromone-workflow-context.v1" },
+        "workflow_id": { "type": "string", "minLength": 1 },
+        "workflow_receipt_id": { "type": "string", "minLength": 1 },
+        "workflow_receipt_sha256": { "$ref": "#/$defs/hex64" },
+        "workflow_intersection_id": { "type": "string", "minLength": 1 },
+        "workflow_intersection_sha256": { "$ref": "#/$defs/hex64" },
+        "step_index": { "type": "integer", "minimum": 0 },
+        "tool_receipt_id": { "type": "string", "minLength": 1 },
+        "bilateral_dsse_sha256": { "$ref": "#/$defs/hex64" },
+        "consistency_anchor": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

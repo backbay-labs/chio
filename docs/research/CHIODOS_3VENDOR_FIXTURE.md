@@ -611,19 +611,40 @@ treaty.
     "pattern_hash": "sha256:1a2b...", "ticket_id_hash": "sha256:cust-ticket-887766",
     "vendor_workflow_id_hash": "sha256:wf-001-hash"
   },
+  "workflow_context": {
+    "schema": "chio.pheromone-workflow-context.v1",
+    "workflow_id": "wf-chiodos-refund-001",
+    "workflow_receipt_id": "wfr:buyer:support-refund:001",
+    "workflow_receipt_sha256": "sha256:...",
+    "workflow_intersection_id": "workflow-intersection:buyer-refund:001",
+    "workflow_intersection_sha256": "sha256:...",
+    "step_index": 1,
+    "tool_receipt_id": "rcpt:llamaworks:draft-response:wf-001:b",
+    "bilateral_dsse_sha256": "sha256:...",
+    "consistency_anchor": "chiodos:consistency:wf-chiodos-refund-001:1"
+  },
+  "cost_commitment": {
+    "schema": "chio.pheromone-cost-commitment.v1",
+    "telemetry_chain_root": "sha256:...",
+    "chain_position": 7,
+    "chain_position_proof": { "shape": "fixture" },
+    "observed_at_unix_ms": 1746360350000
+  },
   "severity": "medium", "confidence": 0.72,
   "timestamp_unix_ms": 1746360350000, "decay_half_life_secs": 3600,
   "nonce": "AO5fQrN2u4G7xLhz9PSjmQ==",
-  "treaty_scope": ["treaty:buyer-llamaworks:support-ops", "treaty:buyer-dataco:support-ops", "treaty:buyer-payswift:support-ops"],
+  "treaty_scope": ["treaty:buyer-llamaworks:support-ops"],
   "signature": "ed25519:0xLLAMAWORKS_AGENT_DEPOSIT_SIG"
 }
 ```
 
 Signed by an **agent passport key**, not the kernel key (see
 [CHIODOS_PHEROMONE.md](../../spec/CHIODOS_PHEROMONE.md) section 5.1).
-Listing three buyer-side treaties in `treaty_scope` exposes Gap G7:
-LlamaWorks has no direct bilateral treaty with DataCo or PaySwift; the
-deposit must be hub-relayed by Buyer Corp.
+The signed `workflow_context` binds the deposit to the workflow receipt,
+workflow intersection, step, tool receipt, bilateral DSSE envelope, and
+consistency anchor. The origin only scopes the deposit to its direct
+Buyer Corp treaty; downstream reach is represented by relay-owned
+`transit_chain` metadata outside the signed deposit.
 
 ### 9.2 PheromoneDepositGossip envelopes
 
@@ -644,15 +665,38 @@ treaties:
   "schema": "chio.pheromone-deposit-gossip.v1", "deposit": { "...": "same body..." },
   "origin_kernel_id": "did:chio:llamaworks",
   "gossiping_peer_kernel_id": "did:chio:buyer-corp",
-  "treaty_id": "treaty:buyer-dataco:support-ops", "ts_unix_ms": 1746360351000
+  "treaty_id": "treaty:buyer-dataco:support-ops",
+  "ts_unix_ms": 1746360351000,
+  "transit_chain": {
+    "hops": [
+      {
+        "from_kernel_id": "did:chio:llamaworks",
+        "to_kernel_id": "did:chio:buyer-corp",
+        "treaty_id": "treaty:buyer-llamaworks:support-ops",
+        "ladder_manifest_id": "llamaworks.support-ops.ladder.2026-05-04",
+        "ladder_manifest_sha256": "sha256:...",
+        "ladder_intersection_id": "buyer-llamaworks.support-ops.2026-05-04",
+        "action_class_id": "whisker.pheromone_deposit"
+      },
+      {
+        "from_kernel_id": "did:chio:buyer-corp",
+        "to_kernel_id": "did:chio:dataco",
+        "treaty_id": "treaty:buyer-dataco:support-ops",
+        "ladder_manifest_id": "buyer.support-ops.ladder.2026-05-04",
+        "ladder_manifest_sha256": "sha256:...",
+        "ladder_intersection_id": "buyer-dataco.support-ops.2026-05-04",
+        "action_class_id": "whisker.pheromone_deposit"
+      }
+    ]
+  }
 }
 ```
 
-(Gap G7: the relayed envelope's `treaty_id` is **not** in the
-originator's `treaty_scope` under any treaty Buyer Corp shares with
-DataCo. The spec's section 3.1 receiver check rejects this envelope; a
-transit-treaty rule is unspecified.) Receivers MUST still run
-`validate_deposit` (signature, replay nonce, per-origin bucket).
+The relayed envelope's `treaty_id` is not in the originator's
+`treaty_scope`; receiver acceptance depends on a valid transit chain.
+Receivers still run deposit validation (signature, passport admission,
+replay nonce, per-origin bucket, diversity, cost, and workflow-context
+checks) before accepting a relayed frame.
 
 ---
 
@@ -717,14 +761,14 @@ Resolved items are kept here for audit continuity.
   per-step fields, including `amount_minor <= 25000`, still need a
   range-proof or zkVM lane.
 
-- **G7. Hub-relayed pheromone gossip is unspecified.** The fixture
-  relays a LlamaWorks deposit through Buyer Corp to DataCo and
-  PaySwift under different treaties. The receiver check
-  ([CHIODOS_PHEROMONE.md:139-141](../../spec/CHIODOS_PHEROMONE.md))
-  rejects envelopes whose `treaty_id` is not in
-  `deposit.treaty_scope`. Either the originator must enumerate
-  downstream treaties transitively (impossible without discovery), or
-  a transit-treaty rule must be added.
+- **G7. Hub-relayed pheromone gossip is locally specified and fixture-backed.**
+  The fixture relays a LlamaWorks deposit through Buyer Corp to DataCo
+  and PaySwift with relay-owned `transit_chain` metadata outside the
+  signed deposit. Direct gossip still requires `frame.treaty_id` to be
+  in `deposit.treaty_scope`; relayed gossip requires ingress treaty
+  scope, hop adjacency, fresh ladder refs, accepted intersections,
+  bounded hops, and an accepted hub. Live daemon relay and catch-up
+  protocols remain deferred.
 
 - **G8. Workflow-intersection artifact is implemented and verifier-owned.**
   `chio.chiodos-workflow-intersection.v1` binds the workflow id, workflow
@@ -742,11 +786,11 @@ Resolved items are kept here for audit continuity.
   verifier-owned governance authority key, authority lifecycle, and
   signed revocation checkpoint.
 
-- **G11. Pheromone deposits lack a workflow back-reference.** The
-  prompt-injection deposit is causally tied to `wf-001` but the
-  substrate has no typed `workflow_context` field; cross-incident
-  replay across vendors must reconstruct the linkage from opaque
-  indicator hashes.
+- **G11. Pheromone deposits carry signed workflow context.** The
+  prompt-injection deposit carries `chio.pheromone-workflow-context.v1`
+  inside the signed body, binding it to the workflow receipt, workflow
+  intersection, step index, tool receipt, bilateral DSSE hash, and
+  consistency anchor.
 
 ---
 
@@ -756,7 +800,7 @@ Items not yet owed in either spec's open-items list:
 
 1. **Hidden disclosure predicates.** Range proofs, VC Data Integrity BBS interop, and zkVM bindings remain deferred beyond reveal-set BBS.
 2. **BBS+ secondary signature placement on receipts.** Parallel field on the body, detached envelope (used in section 8), or sidecar artefact indexed by receipt id.
-3. **Transit-chain placement.** Inside the signed deposit body (breaks originator signature) or in the gossip envelope (preferred).
+3. **Live pheromone relay.** The local transit evidence format is defined; persistence adapters, catch-up, relay scheduling, and network transport remain open.
 4. **Destructive-authorization receipt content.** Whether it mirrors `cross_org_visibility` and `partition_fallback.blast_radius_cap` so auditors can re-check the cap without re-walking the manifest.
 
 ---
@@ -766,7 +810,7 @@ Items not yet owed in either spec's open-items list:
 In priority order:
 
 1. Chiodos authority specs: promote the runtime issuance schemas for `chio.chiodos.authority-profile.v1`, `chio.chiodos.issuance-request.v1`, and `chio.chiodos.issuance-bundle.v1` into any future networked issuance spec (G4 follow-on).
-2. [CHIODOS_PHEROMONE.md](../../spec/CHIODOS_PHEROMONE.md): add transit-treaty rule, `transit_chain`, and optional `workflow_context` field (G7, G11).
+2. Future pheromone runtime spec: define persistence adapters, catch-up, relay scheduling, network transport, and workflow-context consumption rules.
 3. Future disclosure spec: define hidden range predicates, VC Data Integrity BBS interop, and zkVM proof binding only when those proofs are implemented (G6).
 
 ---
@@ -789,6 +833,6 @@ Research note with runnable fixture companion. The committed fixture is
 verified by the production `chio-chiodos` crate and `chio chiodos verify`
 using a verifier-owned trust bundle and verifier context. The fixture is
 generated through `chio-chiodos-authority` issuance rather than hand-built
-lease and governance helpers. Remaining open work is G7/G11 pheromone
-transit, networked authority distribution, partition-contingency execution,
-and G6 hidden predicate support beyond reveal-set BBS.
+lease and governance helpers. Remaining open work is live pheromone
+runtime relay, networked authority distribution, partition-contingency
+execution, and G6 hidden predicate support beyond reveal-set BBS.

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/workflow-context.schema.json",
+  "title": "Chiodos Pheromone Workflow Context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "workflow_id",
+    "workflow_receipt_id",
+    "workflow_receipt_sha256",
+    "workflow_intersection_id",
+    "workflow_intersection_sha256",
+    "step_index",
+    "tool_receipt_id",
+    "bilateral_dsse_sha256",
+    "consistency_anchor"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone-workflow-context.v1" },
+    "workflow_id": { "type": "string", "minLength": 1 },
+    "workflow_receipt_id": { "type": "string", "minLength": 1 },
+    "workflow_receipt_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "workflow_intersection_id": { "type": "string", "minLength": 1 },
+    "workflow_intersection_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "step_index": { "type": "integer", "minimum": 0 },
+    "tool_receipt_id": { "type": "string", "minLength": 1 },
+    "bilateral_dsse_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "consistency_anchor": { "type": "string", "minLength": 1 }
+  }
+}

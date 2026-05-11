@@ -2,6 +2,19 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+use chio_core_types::{canonical_json_bytes, sha256_hex, Keypair};
+use chio_federation::{
+    verify_pheromone_gossip_frame, PheromoneDepositGossip, PheromoneGossipBatch,
+    PheromoneTransitChain, PheromoneTransitHop, PheromoneTransitPolicy,
+    PHEROMONE_GOSSIP_BATCH_SCHEMA, PHEROMONE_GOSSIP_SCHEMA, PHEROMONE_TRANSIT_POLICY_SCHEMA,
+};
+use chio_pheromone::{
+    agent_passport_jwk_thumbprint, agent_passport_key_hash, sign_deposit, CostCommitmentPolicy,
+    DepositQuery, InMemoryPheromoneSubstrate, PassportAdmission, PheromoneCostCommitment,
+    PheromoneDepositBody, PheromoneSubstrate, PheromoneValidationContext, PheromoneWorkflowContext,
+    Severity, SubjectClassPolicy, PHEROMONE_COST_COMMITMENT_SCHEMA, PHEROMONE_DEPOSIT_SCHEMA,
+    PHEROMONE_WORKFLOW_CONTEXT_SCHEMA,
+};
 use chiodos_three_vendor_example::{
     authority_issuance_request, authority_profile_document, authority_profile_json,
     authority_signing_keys_document, disclosure_policy, fresh_proof_package, issuance_request_json,
@@ -106,12 +119,256 @@ fn run() -> Result<(), ChiodosPackageError> {
             )
             .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
         }
+        [_, flag, dir] if flag == "--pheromone-out-dir" => {
+            write_pheromone_fixtures(&package, &PathBuf::from(dir))?;
+        }
         _ => {
             return Err(ChiodosPackageError::Json(
-                "usage: generate-chiodos-proof-package [--report|--out-dir DIR|--signed-negative-dir DIR|--authority-input-dir DIR]"
+                "usage: generate-chiodos-proof-package [--report|--out-dir DIR|--signed-negative-dir DIR|--authority-input-dir DIR|--pheromone-out-dir DIR]"
                     .to_string(),
             ));
         }
     }
     Ok(())
+}
+
+fn write_pheromone_fixtures(
+    package: &chiodos_three_vendor_example::ChiodosProofPackage,
+    dir: &PathBuf,
+) -> Result<(), ChiodosPackageError> {
+    fs::create_dir_all(dir).map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    let passport_key = Keypair::from_seed(&[31; 32]);
+    let buyer_kernel_key = Keypair::from_seed(&[11; 32]);
+    let step = package
+        .workflow_receipt
+        .steps
+        .first()
+        .ok_or_else(|| ChiodosPackageError::Json("workflow has no steps".to_string()))?;
+    let workflow_receipt_sha256 = canonical_sha256(&package.workflow_receipt)?;
+    let workflow_intersection_sha256 = canonical_sha256(&package.workflow_intersection)?;
+    let workflow_context = PheromoneWorkflowContext {
+        schema: PHEROMONE_WORKFLOW_CONTEXT_SCHEMA.to_string(),
+        workflow_id: package.workflow_id.clone(),
+        workflow_receipt_id: package.workflow_receipt.id.clone(),
+        workflow_receipt_sha256,
+        workflow_intersection_id: package.workflow_intersection.intersection_id.clone(),
+        workflow_intersection_sha256,
+        step_index: step.step_index as u64,
+        tool_receipt_id: step
+            .tool_receipt_id
+            .clone()
+            .ok_or_else(|| ChiodosPackageError::Json("step has no tool receipt".to_string()))?,
+        bilateral_dsse_sha256: step.bilateral_dsse_sha256.clone().ok_or_else(|| {
+            ChiodosPackageError::Json("step has no bilateral DSSE hash".to_string())
+        })?,
+        consistency_anchor: step.consistency_anchor.clone().ok_or_else(|| {
+            ChiodosPackageError::Json("step has no consistency anchor".to_string())
+        })?,
+    };
+    let public_key = passport_key.public_key();
+    let deposit = sign_deposit(
+        PheromoneDepositBody {
+            schema: PHEROMONE_DEPOSIT_SCHEMA.to_string(),
+            kernel_id: "did:chio:llamaworks".to_string(),
+            agent_passport_key_hash: agent_passport_key_hash(&public_key),
+            agent_passport_jwk_thumbprint: agent_passport_jwk_thumbprint(&public_key),
+            subject_class: "support.prompt_injection".to_string(),
+            subject_class_namespace: "dev.chio.support".to_string(),
+            indicator: serde_json::json!({
+                "kind": "prompt_injection",
+                "workflowId": package.workflow_id,
+                "indicatorDigest": sha256_hex(b"llamaworks-prompt-injection-indicator")
+            }),
+            severity: Severity::High,
+            confidence: 0.82,
+            timestamp_unix_ms: package.generated_at_unix_ms,
+            decay_half_life_secs: 3_600.0,
+            evaporation_floor: Some(0.01),
+            nonce: "pheromone-nonce-llamaworks-001".to_string(),
+            treaty_scope: vec!["treaty:buyer-llamaworks:support-ops".to_string()],
+            cost_commitment: Some(PheromoneCostCommitment {
+                schema: PHEROMONE_COST_COMMITMENT_SCHEMA.to_string(),
+                telemetry_chain_root: sha256_hex(b"llamaworks-telemetry-chain-root"),
+                chain_position: 7,
+                chain_position_proof: serde_json::json!({"fixture": "telemetry-chain-position"}),
+                observed_at_unix_ms: package.generated_at_unix_ms,
+            }),
+            workflow_context: Some(workflow_context),
+        },
+        &passport_key,
+    )
+    .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    let policy = PheromoneTransitPolicy {
+        schema: PHEROMONE_TRANSIT_POLICY_SCHEMA.to_string(),
+        accepted_hubs: vec!["did:chio:buyer-kernel".to_string()],
+        allowed_ingress_treaties: vec!["treaty:buyer-llamaworks:support-ops".to_string()],
+        allowed_egress_treaties: vec![
+            "treaty:buyer-dataco:support-ops".to_string(),
+            "treaty:buyer-payswift:support-ops".to_string(),
+        ],
+        allowed_subject_class_namespaces: vec!["dev.chio.support".to_string()],
+        valid_from_unix_ms: package.generated_at_unix_ms.saturating_sub(60_000),
+        valid_until_unix_ms: package.generated_at_unix_ms.saturating_add(60_000),
+        max_hops: 2,
+        required_action_class_id: "whisker.pheromone_deposit".to_string(),
+    };
+    let frame = PheromoneDepositGossip {
+        schema: PHEROMONE_GOSSIP_SCHEMA.to_string(),
+        deposit: deposit.clone(),
+        origin_kernel_id: "did:chio:llamaworks".to_string(),
+        gossiping_peer_kernel_id: "did:chio:buyer-kernel".to_string(),
+        treaty_id: "treaty:buyer-dataco:support-ops".to_string(),
+        ts_unix_ms: package.generated_at_unix_ms.saturating_add(500),
+        transit_chain: Some(PheromoneTransitChain {
+            hops: vec![
+                transit_hop(
+                    "did:chio:llamaworks",
+                    "did:chio:buyer-kernel",
+                    "treaty:buyer-llamaworks:support-ops",
+                    "ladder:llamaworks:support:v1",
+                    "intersection:buyer:llamaworks",
+                    package.generated_at_unix_ms,
+                ),
+                transit_hop(
+                    "did:chio:buyer-kernel",
+                    "did:chio:dataco",
+                    "treaty:buyer-dataco:support-ops",
+                    "ladder:buyer:refund:v1",
+                    "intersection:buyer:dataco",
+                    package.generated_at_unix_ms,
+                ),
+            ],
+        }),
+    };
+    verify_pheromone_gossip_frame(
+        &frame,
+        &policy,
+        package.generated_at_unix_ms.saturating_add(500),
+    )
+    .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    let batch = PheromoneGossipBatch {
+        schema: PHEROMONE_GOSSIP_BATCH_SCHEMA.to_string(),
+        recipient_kernel_id: "did:chio:dataco".to_string(),
+        treaty_id: frame.treaty_id.clone(),
+        frames: vec![frame],
+        flushed_at_unix_ms: package.generated_at_unix_ms.saturating_add(500),
+    };
+    let substrate = InMemoryPheromoneSubstrate::new();
+    let context = PheromoneValidationContext {
+        now_unix_ms: package.generated_at_unix_ms.saturating_add(500),
+        replay_window_ms: 86_400_000,
+        active_peers_in_treaty: 9,
+        known_reputation_epochs: vec![42],
+        passports: vec![PassportAdmission {
+            kernel_id: "did:chio:llamaworks".to_string(),
+            public_key,
+            valid_from_unix_ms: package.generated_at_unix_ms.saturating_sub(60_000),
+            valid_until_unix_ms: package.generated_at_unix_ms.saturating_add(60_000),
+            first_seen_epoch: 37,
+            revoked: false,
+        }],
+        kernel_public_keys: vec![buyer_kernel_key.public_key()],
+        subject_classes: vec![SubjectClassPolicy {
+            subject_class: "support.prompt_injection".to_string(),
+            subject_class_namespace: "dev.chio.support".to_string(),
+            allowed_treaties: vec!["treaty:buyer-llamaworks:support-ops".to_string()],
+            cost_commitment: CostCommitmentPolicy::Required,
+            destructive: true,
+        }],
+        max_deposits_per_pair: 8,
+    };
+    substrate
+        .deposit(deposit.clone(), &context)
+        .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    let concentration = substrate
+        .query_concentration(
+            "support.prompt_injection",
+            "dev.chio.support",
+            package.generated_at_unix_ms.saturating_add(1_000),
+            42,
+            &context,
+            &|_, _| 0.75,
+        )
+        .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    let negative_cases = serde_json::json!({
+        "schema": "chio.pheromone.negative-fixture-corpus.v1",
+        "cases": [
+            {
+                "id": "workflow-receipt-hash-mismatch",
+                "target": "deposit",
+                "mutation": {"op": "set", "path": ["workflow_context", "workflow_receipt_sha256"], "value": "0".repeat(64)},
+                "expected_failure_code": "signature_invalid"
+            },
+            {
+                "id": "dsse-hash-mismatch",
+                "target": "deposit",
+                "mutation": {"op": "set", "path": ["workflow_context", "bilateral_dsse_sha256"], "value": "1".repeat(64)},
+                "expected_failure_code": "signature_invalid"
+            },
+            {
+                "id": "missing-cost-commitment",
+                "target": "deposit",
+                "mutation": {"op": "remove", "path": ["cost_commitment"]},
+                "expected_failure_code": "observation_cost_commitment_required"
+            },
+            {
+                "id": "stale-transit-policy",
+                "target": "policy",
+                "mutation": {"op": "set", "path": ["valid_until_unix_ms"], "value": package.generated_at_unix_ms},
+                "expected_failure_code": "transit_policy_violation"
+            }
+        ]
+    });
+
+    write_json(dir.join("deposit.json"), &deposit)?;
+    write_json(dir.join("gossip-batch.json"), &batch)?;
+    write_json(dir.join("transit-policy.json"), &policy)?;
+    write_json(dir.join("concentration.json"), &concentration)?;
+    write_json(dir.join("negative-cases.json"), &negative_cases)?;
+    let queried = substrate
+        .query_deposits(&DepositQuery {
+            subject_class: Some("support.prompt_injection".to_string()),
+            treaty_id: Some("treaty:buyer-llamaworks:support-ops".to_string()),
+        })
+        .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    if queried.len() != 1 {
+        return Err(ChiodosPackageError::Json(
+            "pheromone fixture query did not return one deposit".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn transit_hop(
+    from_kernel_id: &str,
+    to_kernel_id: &str,
+    treaty_id: &str,
+    manifest_id: &str,
+    intersection_id: &str,
+    generated_at_unix_ms: u64,
+) -> PheromoneTransitHop {
+    PheromoneTransitHop {
+        from_kernel_id: from_kernel_id.to_string(),
+        to_kernel_id: to_kernel_id.to_string(),
+        treaty_id: treaty_id.to_string(),
+        ladder_manifest_id: manifest_id.to_string(),
+        ladder_manifest_sha256: sha256_hex(format!("{manifest_id}:{from_kernel_id}").as_bytes()),
+        ladder_manifest_expires_at_unix_ms: generated_at_unix_ms.saturating_add(60_000),
+        ladder_intersection_id: intersection_id.to_string(),
+        action_class_id: "whisker.pheromone_deposit".to_string(),
+        emitted_at_unix_ms: generated_at_unix_ms.saturating_add(100),
+    }
+}
+
+fn canonical_sha256<T: serde::Serialize>(value: &T) -> Result<String, ChiodosPackageError> {
+    let bytes = canonical_json_bytes(value)
+        .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    Ok(sha256_hex(&bytes))
+}
+
+fn write_json<T: serde::Serialize>(path: PathBuf, value: &T) -> Result<(), ChiodosPackageError> {
+    let json = serde_json::to_string_pretty(value)
+        .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    fs::write(path, format!("{json}\n"))
+        .map_err(|error| ChiodosPackageError::Json(error.to_string()))
 }

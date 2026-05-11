@@ -3253,6 +3253,7 @@ dependencies = [
  "chio-listing",
  "chio-metrics-spec",
  "chio-open-market",
+ "chio-pheromone",
  "chio-revocation-oracle",
  "hex",
  "serde",
@@ -3833,6 +3834,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-pheromone"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chio-core-types",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-policy"
 version = "0.1.0"
 dependencies = [
@@ -4271,6 +4285,7 @@ dependencies = [
  "chio-core-types",
  "chio-federation",
  "chio-governance",
+ "chio-pheromone",
  "chio-selective-disclosure",
  "chio-workflow",
  "serde",

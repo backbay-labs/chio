@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/cost-commitment.schema.json",
+  "title": "Chiodos Pheromone Cost Commitment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "telemetry_chain_root",
+    "chain_position",
+    "chain_position_proof",
+    "observed_at_unix_ms"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone-cost-commitment.v1" },
+    "telemetry_chain_root": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "chain_position": { "type": "integer", "minimum": 0 },
+    "chain_position_proof": {},
+    "observed_at_unix_ms": { "type": "integer", "minimum": 0 }
+  }
+}
