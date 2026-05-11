@@ -1,6 +1,6 @@
 //! Runtime Chiodos authority artifact issuance.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use chio_chiodos::{
     ChiodosAuthorityStatus, ChiodosDisclosurePolicy, ChiodosPackageError,
@@ -194,7 +194,7 @@ impl AuthorityProfileDocument {
         for authority in &self.lease_authorities {
             validate_non_empty(&authority.issuer, "leaseAuthorities.issuer")
                 .map_err(ChiodosAuthorityError::Profile)?;
-            validate_optional_key_id(authority.key_id.as_deref(), "leaseAuthorities.keyId")
+            validate_required_key_id(authority.key_id.as_deref(), "leaseAuthorities.keyId")
                 .map_err(ChiodosAuthorityError::Profile)?;
             let (valid_from, valid_until) = required_window(
                 authority.valid_from_unix_ms,
@@ -232,7 +232,7 @@ impl AuthorityProfileDocument {
                 "governanceAuthorities.authorizingKernel",
             )
             .map_err(ChiodosAuthorityError::Profile)?;
-            validate_optional_key_id(authority.key_id.as_deref(), "governanceAuthorities.keyId")
+            validate_required_key_id(authority.key_id.as_deref(), "governanceAuthorities.keyId")
                 .map_err(ChiodosAuthorityError::Profile)?;
             let (valid_from, valid_until) = required_window(
                 authority.valid_from_unix_ms,
@@ -826,28 +826,17 @@ pub fn assemble_verifier_trust_bundle(
     profile.validate()?;
     peer_pins.validate()?;
     let workflow_intersection_sha256 = canonical_sha256(workflow_intersection)?;
-    let mut workflow_intersections = BTreeMap::new();
-    if workflow_intersections
-        .insert(
-            workflow_intersection.intersection_id.clone(),
-            ChiodosTrustedWorkflowIntersection {
-                intersection_id: workflow_intersection.intersection_id.clone(),
-                sha256: workflow_intersection_sha256,
-            },
-        )
-        .is_some()
-    {
-        return Err(ChiodosAuthorityError::TrustBundle(
-            "duplicate workflow intersection".to_string(),
-        ));
-    }
+    let trusted_workflow_intersection = ChiodosTrustedWorkflowIntersection {
+        intersection_id: workflow_intersection.intersection_id.clone(),
+        sha256: workflow_intersection_sha256,
+    };
     let document = ChiodosVerifierTrustBundleDocument {
         schema: VERIFIER_TRUST_BUNDLE_SCHEMA.to_string(),
         trusted_bbs_issuers: profile.trusted_bbs_issuers.clone(),
         peers: peer_pins.peers.clone(),
         vendors: peer_pins.vendors.clone(),
         action_classes: peer_pins.action_classes.clone(),
-        workflow_intersections: workflow_intersections.into_values().collect(),
+        workflow_intersections: vec![trusted_workflow_intersection],
         lease_authorities: profile.lease_authorities.clone(),
         governance_authorities: profile.governance_authorities.clone(),
         disclosure_policy: Some(disclosure_policy),
@@ -1004,8 +993,9 @@ fn ensure_reference_workflow_classes(
     Ok(())
 }
 
-fn validate_optional_key_id(value: Option<&str>, field: &str) -> Result<(), String> {
-    validate_non_empty(value.unwrap_or_default(), field)
+fn validate_required_key_id(value: Option<&str>, field: &str) -> Result<(), String> {
+    let key_id = value.ok_or_else(|| format!("{field} is required"))?;
+    validate_non_empty(key_id, field)
 }
 
 fn validate_non_empty(value: &str, field: &str) -> Result<(), String> {
@@ -1216,6 +1206,23 @@ mod tests {
         profile.lease_authorities[0].status = Some(ChiodosAuthorityStatus::Inactive);
         let error = issue_authority_bundle(&profile, &request(), &signing_keys()).unwrap_err();
         assert!(error.to_string().contains("not active"));
+    }
+
+    #[test]
+    fn profile_requires_authority_key_ids() {
+        let mut lease_profile = profile();
+        lease_profile.lease_authorities[0].key_id = None;
+        let error = lease_profile.validate().unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("leaseAuthorities.keyId is required"));
+
+        let mut governance_profile = profile();
+        governance_profile.governance_authorities[0].key_id = None;
+        let error = governance_profile.validate().unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("governanceAuthorities.keyId is required"));
     }
 
     #[test]
