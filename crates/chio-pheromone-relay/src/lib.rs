@@ -768,14 +768,22 @@ fn removed_peer_ids(
         .iter()
         .map(|peer| peer.kernel_id.as_str())
         .collect::<BTreeSet<_>>();
-    previous
-        .bundle
-        .directory
-        .peers
+    let mut removed = previous
+        .removed_peer_ids
         .iter()
-        .filter(|peer| !next_ids.contains(peer.kernel_id.as_str()))
-        .map(|peer| peer.kernel_id.clone())
-        .collect()
+        .filter(|peer_id| !next_ids.contains(peer_id.as_str()))
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    removed.extend(
+        previous
+            .bundle
+            .directory
+            .peers
+            .iter()
+            .filter(|peer| !next_ids.contains(peer.kernel_id.as_str()))
+            .map(|peer| peer.kernel_id.clone()),
+    );
+    removed.into_iter().collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
