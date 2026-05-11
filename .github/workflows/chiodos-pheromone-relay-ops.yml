@@ -1,0 +1,39 @@
+name: Chiodos Pheromone Relay Ops
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-pheromone-relay/**"
+      - "crates/chio-pheromone-runtime/**"
+      - "crates/chio-federation/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-metrics-spec/**"
+      - "examples/chiodos-3vendor/**"
+      - "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md"
+      - "spec/schemas/chio-pheromone/**"
+      - "spec/schemas/registry.json"
+      - "scripts/check-chiodos-pheromone-relay-ops.sh"
+      - ".github/workflows/chiodos-pheromone-relay-ops.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/chio-pheromone-relay/**"
+      - "crates/chio-pheromone-runtime/**"
+      - "crates/chio-federation/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-metrics-spec/**"
+      - "examples/chiodos-3vendor/**"
+      - "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md"
+      - "spec/schemas/chio-pheromone/**"
+      - "spec/schemas/registry.json"
+      - "scripts/check-chiodos-pheromone-relay-ops.sh"
+      - ".github/workflows/chiodos-pheromone-relay-ops.yml"
+
+jobs:
+  chiodos-pheromone-relay-ops:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check Chiodos pheromone relay operations
+        run: bash scripts/check-chiodos-pheromone-relay-ops.sh

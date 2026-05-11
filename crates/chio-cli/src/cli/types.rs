@@ -857,6 +857,25 @@ enum ChiodosPheromoneCommands {
 
 #[derive(Subcommand)]
 enum ChiodosPheromoneRelayCommands {
+    /// Lint a relay peer directory against an operational profile.
+    Lint {
+        /// Raw peer directory or signed peer-directory bundle JSON.
+        #[arg(long, value_name = "PATH")]
+        peer_directory: PathBuf,
+
+        /// Relay operational profile.
+        #[arg(long, value_enum)]
+        profile: RelayProfileArg,
+
+        /// Trusted peer-directory issuer config required for production bundles.
+        #[arg(long, value_name = "PATH")]
+        trusted_issuers: Option<PathBuf>,
+
+        /// Output path for lint report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
     /// Serve signed pheromone relay HTTP endpoints.
     Serve {
         /// Listen address for the relay HTTP service.
@@ -870,6 +889,14 @@ enum ChiodosPheromoneRelayCommands {
         /// Verifier-owned peer directory JSON.
         #[arg(long, value_name = "PATH")]
         peer_directory: PathBuf,
+
+        /// Relay operational profile.
+        #[arg(long, value_enum, default_value = "local-dev")]
+        profile: RelayProfileArg,
+
+        /// Trusted peer-directory issuer config for signed bundles.
+        #[arg(long, value_name = "PATH")]
+        trusted_issuers: Option<PathBuf>,
 
         /// Local transit policy JSON with receiver admission material.
         #[arg(long, value_name = "PATH")]
@@ -902,6 +929,14 @@ enum ChiodosPheromoneRelayCommands {
         #[arg(long, value_name = "PATH")]
         peer_directory: PathBuf,
 
+        /// Relay operational profile.
+        #[arg(long, value_enum, default_value = "local-dev")]
+        profile: RelayProfileArg,
+
+        /// Trusted peer-directory issuer config for signed bundles.
+        #[arg(long, value_name = "PATH")]
+        trusted_issuers: Option<PathBuf>,
+
         /// Evaluation time in Unix milliseconds.
         #[arg(long)]
         now_unix_ms: u64,
@@ -921,6 +956,14 @@ enum ChiodosPheromoneRelayCommands {
         #[arg(long, value_name = "PATH")]
         peer_directory: PathBuf,
 
+        /// Relay operational profile.
+        #[arg(long, value_enum, default_value = "local-dev")]
+        profile: RelayProfileArg,
+
+        /// Trusted peer-directory issuer config for signed bundles.
+        #[arg(long, value_name = "PATH")]
+        trusted_issuers: Option<PathBuf>,
+
         /// Evaluation time in Unix milliseconds.
         #[arg(long)]
         now_unix_ms: u64,
@@ -928,6 +971,10 @@ enum ChiodosPheromoneRelayCommands {
         /// Maximum batches to lease this tick.
         #[arg(long)]
         max_batches: usize,
+
+        /// Local relay signing key JSON for the sender kernel.
+        #[arg(long, value_name = "PATH")]
+        signing_key: PathBuf,
 
         /// Output path for tick report JSON.
         #[arg(long, value_name = "PATH")]
@@ -971,6 +1018,21 @@ enum ChiodosPheromoneRelayCommands {
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+enum RelayProfileArg {
+    LocalDev,
+    Production,
+}
+
+impl From<RelayProfileArg> for chio_pheromone_relay::RelayProfile {
+    fn from(value: RelayProfileArg) -> Self {
+        match value {
+            RelayProfileArg::LocalDev => Self::LocalDev,
+            RelayProfileArg::Production => Self::Production,
+        }
+    }
 }
 
 #[derive(Subcommand)]

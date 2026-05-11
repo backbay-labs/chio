@@ -248,6 +248,12 @@
       "schemaFile": "spec/schemas/chio-pheromone/v1/peer-directory.schema.json"
     },
     {
+      "schema": "chio.pheromone.peer-directory-bundle.v1",
+      "artifactKind": "chiodos_pheromone_peer_directory_bundle",
+      "introducedBy": "chiodos-relay-operations/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/peer-directory-bundle.schema.json"
+    },
+    {
       "schema": "chio.pheromone.relay-config.v1",
       "artifactKind": "chiodos_pheromone_relay_config",
       "introducedBy": "chiodos-live-pheromone-relay/v1",
@@ -270,6 +276,12 @@
       "artifactKind": "chiodos_pheromone_relay_operator_report",
       "introducedBy": "chiodos-live-pheromone-relay/v1",
       "schemaFile": "spec/schemas/chio-pheromone/v1/relay-operator-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-health-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_health_report",
+      "introducedBy": "chiodos-relay-operations/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-health-report.schema.json"
     },
     {
       "schema": "chio.pheromone.catchup-request.v1",

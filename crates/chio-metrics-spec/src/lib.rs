@@ -97,9 +97,23 @@ pub const CHIO_KERNEL_DECISION_LATENCY_SECONDS: &str = "chio_kernel_decision_lat
 pub const CHIO_OTEL_INGRESS_DROP_TOTAL: &str = "chio_otel_ingress_drop_total";
 pub const CHIO_OTEL_SINK_DROP_TOTAL: &str = "chio_otel_sink_drop_total";
 pub const CHIO_PHEROMONE_QUEUE_OVERFLOW_TOTAL: &str = "chio_pheromone_queue_overflow_total";
+pub const CHIO_PHEROMONE_RELAY_CATCHUP_BYTES_SERVED_TOTAL: &str =
+    "chio_pheromone_relay_catchup_bytes_served_total";
+pub const CHIO_PHEROMONE_RELAY_CATCHUP_DENIES_TOTAL: &str =
+    "chio_pheromone_relay_catchup_denies_total";
+pub const CHIO_PHEROMONE_RELAY_DEAD_LETTERS_TOTAL: &str = "chio_pheromone_relay_dead_letters_total";
 pub const CHIO_PHEROMONE_RELAY_DELIVERY_TOTAL: &str = "chio_pheromone_relay_delivery_total";
+pub const CHIO_PHEROMONE_RELAY_ENDPOINT_DENIED_TOTAL: &str =
+    "chio_pheromone_relay_endpoint_denied_total";
 pub const CHIO_PHEROMONE_RELAY_LATENCY_SECONDS: &str = "chio_pheromone_relay_latency_seconds";
+pub const CHIO_PHEROMONE_RELAY_NONCE_REPLAY_CONFLICTS_TOTAL: &str =
+    "chio_pheromone_relay_nonce_replay_conflicts_total";
+pub const CHIO_PHEROMONE_RELAY_OLDEST_PENDING_AGE_SECONDS: &str =
+    "chio_pheromone_relay_oldest_pending_age_seconds";
 pub const CHIO_PHEROMONE_RELAY_REJECTIONS_TOTAL: &str = "chio_pheromone_relay_rejections_total";
+pub const CHIO_PHEROMONE_RELAY_STALE_DIRECTORIES_TOTAL: &str =
+    "chio_pheromone_relay_stale_directories_total";
+pub const CHIO_PHEROMONE_RELAY_STALE_LEASES: &str = "chio_pheromone_relay_stale_leases";
 pub const CHIO_PHEROMONE_RECEIVER_DEPOSITS_TOTAL: &str = "chio_pheromone_receiver_deposits_total";
 pub const CHIO_PHEROMONE_RECEIVER_LATENCY_SECONDS: &str = "chio_pheromone_receiver_latency_seconds";
 pub const CHIO_PHEROMONE_RECEIVER_REJECTIONS_TOTAL: &str =
@@ -309,10 +323,34 @@ pub const REGISTRY: &[MetricDescriptor] = &[
         labels = ["reason"]
     ),
     describe!(
+        name = CHIO_PHEROMONE_RELAY_CATCHUP_BYTES_SERVED_TOTAL,
+        help = "Total bounded catch-up bytes served by relay.",
+        kind = Counter,
+        labels = ["responder", "treaty"]
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RELAY_CATCHUP_DENIES_TOTAL,
+        help = "Total bounded catch-up requests denied by reason.",
+        kind = Counter,
+        labels = ["reason"]
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RELAY_DEAD_LETTERS_TOTAL,
+        help = "Total relay outbox batches moved to dead letter.",
+        kind = Counter,
+        labels = ["reason"]
+    ),
+    describe!(
         name = CHIO_PHEROMONE_RELAY_DELIVERY_TOTAL,
         help = "Total live pheromone relay delivery outcomes.",
         kind = Counter,
         labels = ["recipient", "outcome"]
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RELAY_ENDPOINT_DENIED_TOTAL,
+        help = "Total relay endpoints denied by profile lint or delivery policy.",
+        kind = Counter,
+        labels = ["profile", "reason"]
     ),
     describe!(
         name = CHIO_PHEROMONE_RELAY_LATENCY_SECONDS,
@@ -322,10 +360,34 @@ pub const REGISTRY: &[MetricDescriptor] = &[
         buckets = ["0.001", "0.005", "0.01", "0.025", "0.05", "0.1", "0.25", "0.5", "1.0"]
     ),
     describe!(
+        name = CHIO_PHEROMONE_RELAY_NONCE_REPLAY_CONFLICTS_TOTAL,
+        help = "Total relay nonce replay conflicts.",
+        kind = Counter,
+        labels = ["peer"]
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RELAY_OLDEST_PENDING_AGE_SECONDS,
+        help = "Oldest pending relay outbox age in seconds.",
+        kind = Gauge,
+        labels = []
+    ),
+    describe!(
         name = CHIO_PHEROMONE_RELAY_REJECTIONS_TOTAL,
         help = "Total live pheromone relay rejections by bounded reason.",
         kind = Counter,
         labels = ["reason"]
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RELAY_STALE_DIRECTORIES_TOTAL,
+        help = "Total stale peer-directory bundles or documents rejected.",
+        kind = Counter,
+        labels = ["profile"]
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RELAY_STALE_LEASES,
+        help = "Relay scheduler leases past their expiry.",
+        kind = Gauge,
+        labels = []
     ),
     describe!(
         name = CHIO_RECEIPT_WRITE_LATENCY_SECONDS,

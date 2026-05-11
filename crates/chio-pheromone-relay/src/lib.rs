@@ -10,7 +10,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::sha256_hex;
@@ -24,10 +24,12 @@ use serde_json::Value;
 use url::Url;
 
 pub const PHEROMONE_PEER_DIRECTORY_SCHEMA: &str = "chio.pheromone.peer-directory.v1";
+pub const PHEROMONE_PEER_DIRECTORY_BUNDLE_SCHEMA: &str = "chio.pheromone.peer-directory-bundle.v1";
 pub const PHEROMONE_RELAY_CONFIG_SCHEMA: &str = "chio.pheromone.relay-config.v1";
 pub const PHEROMONE_RELAY_HTTP_REQUEST_SCHEMA: &str = "chio.pheromone.relay-http-request.v1";
 pub const PHEROMONE_RELAY_TICK_REPORT_SCHEMA: &str = "chio.pheromone.relay-tick-report.v1";
 pub const PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA: &str = "chio.pheromone.relay-operator-report.v1";
+pub const PHEROMONE_RELAY_HEALTH_REPORT_SCHEMA: &str = "chio.pheromone.relay-health-report.v1";
 pub const PHEROMONE_CATCHUP_REQUEST_SCHEMA: &str = "chio.pheromone.catchup-request.v1";
 pub const PHEROMONE_CATCHUP_RESPONSE_SCHEMA: &str = "chio.pheromone.catchup-response.v1";
 pub const PHEROMONE_RELAY_NEGATIVE_CORPUS_SCHEMA: &str =
@@ -35,6 +37,8 @@ pub const PHEROMONE_RELAY_NEGATIVE_CORPUS_SCHEMA: &str =
 
 pub const PHEROMONE_BATCH_RELAY_PATH: &str = "/v1/chiodos/pheromone/batches";
 pub const PHEROMONE_CATCHUP_RELAY_PATH: &str = "/v1/chiodos/pheromone/catchup";
+pub const PHEROMONE_HEALTH_PATH: &str = "/v1/chiodos/pheromone/health";
+pub const PHEROMONE_READY_PATH: &str = "/v1/chiodos/pheromone/ready";
 
 #[derive(Debug, thiserror::Error)]
 pub enum PheromoneRelayError {
@@ -44,12 +48,20 @@ pub enum PheromoneRelayError {
     DuplicatePeer(String),
     #[error("duplicate_endpoint: {0}")]
     DuplicateEndpoint(String),
+    #[error("peer_directory_unsigned: {0}")]
+    PeerDirectoryUnsigned(String),
+    #[error("unknown_peer_directory_issuer: {0}")]
+    UnknownPeerDirectoryIssuer(String),
+    #[error("peer_directory_rollback: {0}")]
+    PeerDirectoryRollback(String),
     #[error("unknown_peer: {0}")]
     UnknownPeer(String),
     #[error("peer_directory_stale: {0}")]
     PeerDirectoryStale(String),
     #[error("endpoint_denied: {0}")]
     EndpointDenied(String),
+    #[error("relay_profile_denied: {0}")]
+    RelayProfileDenied(String),
     #[error("catchup_denied: {0}")]
     CatchupDenied(String),
     #[error("body_hash_mismatch: {0}")]
@@ -89,9 +101,13 @@ impl PheromoneRelayError {
             Self::UnsupportedSchema(_) => "unsupported_schema",
             Self::DuplicatePeer(_) => "duplicate_peer",
             Self::DuplicateEndpoint(_) => "duplicate_endpoint",
+            Self::PeerDirectoryUnsigned(_) => "peer_directory_unsigned",
+            Self::UnknownPeerDirectoryIssuer(_) => "unknown_peer_directory_issuer",
+            Self::PeerDirectoryRollback(_) => "peer_directory_rollback",
             Self::UnknownPeer(_) => "unknown_peer",
             Self::PeerDirectoryStale(_) => "peer_directory_stale",
             Self::EndpointDenied(_) => "endpoint_denied",
+            Self::RelayProfileDenied(_) => "relay_profile_denied",
             Self::CatchupDenied(_) => "catchup_denied",
             Self::BodyHashMismatch(_) => "body_hash_mismatch",
             Self::SignatureInvalid => "signature_invalid",
@@ -143,6 +159,36 @@ pub enum RelayRole {
     Receiver,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RelayProfile {
+    LocalDev,
+    Production,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayProfileLimits {
+    pub freshness_window_ms: u64,
+    pub max_body_bytes: usize,
+    pub max_batch_frames: usize,
+    pub max_catchup_frames: usize,
+    pub max_catchup_bytes: usize,
+}
+
+impl RelayProfileLimits {
+    #[must_use]
+    pub fn production_defaults() -> Self {
+        Self {
+            freshness_window_ms: 60_000,
+            max_body_bytes: 256_000,
+            max_batch_frames: 128,
+            max_catchup_frames: 256,
+            max_catchup_bytes: 1_048_576,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelayLadderRef {
@@ -176,16 +222,84 @@ pub struct PeerDirectoryDocument {
     pub peers: Vec<PeerDirectoryEntry>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerDirectoryBundleBody {
+    pub schema: String,
+    pub issuer: String,
+    pub key_id: String,
+    pub directory_sha256: String,
+    pub version: u64,
+    pub previous_version_sha256: Option<String>,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerDirectoryBundleDocument {
+    pub schema: String,
+    pub body: PeerDirectoryBundleBody,
+    pub directory: PeerDirectoryDocument,
+    pub signature: Signature,
+}
+
+#[derive(Debug, Clone)]
+pub struct TrustedPeerDirectoryIssuer {
+    pub issuer: String,
+    pub key_id: String,
+    pub public_key: PublicKey,
+}
+
+#[derive(Debug, Clone)]
+pub struct PeerDirectoryBundleTrust {
+    pub issuers: Vec<TrustedPeerDirectoryIssuer>,
+    pub min_version: u64,
+    pub now_unix_ms: u64,
+    pub profile: RelayProfile,
+    pub limits: RelayProfileLimits,
+}
+
+pub struct PeerDirectoryBundleSigningInput<'a> {
+    pub issuer: &'a str,
+    pub key_id: &'a str,
+    pub version: u64,
+    pub previous_version_sha256: Option<String>,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+    pub directory: &'a PeerDirectoryDocument,
+    pub keypair: &'a Keypair,
+}
+
 #[derive(Debug, Clone)]
 pub struct PeerDirectory {
     document: PeerDirectoryDocument,
     peers: BTreeMap<String, PeerDirectoryEntry>,
+    version: Option<u64>,
 }
 
 impl PeerDirectory {
     pub fn from_document(
         document: PeerDirectoryDocument,
         now_unix_ms: u64,
+    ) -> Result<Self, PheromoneRelayError> {
+        Self::from_document_internal(document, now_unix_ms, None)
+    }
+
+    pub fn from_document_with_profile(
+        document: PeerDirectoryDocument,
+        now_unix_ms: u64,
+        profile: RelayProfile,
+        limits: &RelayProfileLimits,
+    ) -> Result<Self, PheromoneRelayError> {
+        validate_peer_directory_profile(&document, profile, limits)?;
+        Self::from_document_internal(document, now_unix_ms, None)
+    }
+
+    fn from_document_internal(
+        document: PeerDirectoryDocument,
+        now_unix_ms: u64,
+        version: Option<u64>,
     ) -> Result<Self, PheromoneRelayError> {
         if document.schema != PHEROMONE_PEER_DIRECTORY_SCHEMA {
             return Err(PheromoneRelayError::UnsupportedSchema(document.schema));
@@ -224,12 +338,26 @@ impl PeerDirectory {
                 "peer directory contains no peers".to_string(),
             ));
         }
-        Ok(Self { document, peers })
+        Ok(Self {
+            document,
+            peers,
+            version,
+        })
     }
 
     #[must_use]
     pub fn local_kernel_id(&self) -> &str {
         &self.document.local_kernel_id
+    }
+
+    #[must_use]
+    pub fn version(&self) -> Option<u64> {
+        self.version
+    }
+
+    #[must_use]
+    pub fn document(&self) -> &PeerDirectoryDocument {
+        &self.document
     }
 
     pub fn peer(&self, kernel_id: &str) -> Result<&PeerDirectoryEntry, PheromoneRelayError> {
@@ -252,6 +380,101 @@ pub fn peer_directory_from_json(
 ) -> Result<PeerDirectory, PheromoneRelayError> {
     let document: PeerDirectoryDocument = serde_json::from_str(json)?;
     PeerDirectory::from_document(document, now_unix_ms)
+}
+
+pub fn peer_directory_from_json_with_profile(
+    json: &str,
+    now_unix_ms: u64,
+    profile: RelayProfile,
+    limits: &RelayProfileLimits,
+) -> Result<PeerDirectory, PheromoneRelayError> {
+    let document: PeerDirectoryDocument = serde_json::from_str(json)?;
+    PeerDirectory::from_document_with_profile(document, now_unix_ms, profile, limits)
+}
+
+pub fn sign_peer_directory_bundle(
+    input: PeerDirectoryBundleSigningInput<'_>,
+) -> Result<PeerDirectoryBundleDocument, PheromoneRelayError> {
+    let directory_sha256 = canonical_sha256(input.directory)?;
+    let body = PeerDirectoryBundleBody {
+        schema: PHEROMONE_PEER_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+        issuer: input.issuer.to_string(),
+        key_id: input.key_id.to_string(),
+        directory_sha256,
+        version: input.version,
+        previous_version_sha256: input.previous_version_sha256,
+        issued_at_unix_ms: input.issued_at_unix_ms,
+        expires_at_unix_ms: input.expires_at_unix_ms,
+    };
+    let (signature, _) = input
+        .keypair
+        .sign_canonical(&body)
+        .map_err(|error| PheromoneRelayError::CanonicalJson(error.to_string()))?;
+    Ok(PeerDirectoryBundleDocument {
+        schema: PHEROMONE_PEER_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+        body,
+        directory: input.directory.clone(),
+        signature,
+    })
+}
+
+impl PeerDirectoryBundleDocument {
+    pub fn verify(
+        &self,
+        trust: &PeerDirectoryBundleTrust,
+    ) -> Result<PeerDirectory, PheromoneRelayError> {
+        if self.schema != PHEROMONE_PEER_DIRECTORY_BUNDLE_SCHEMA {
+            return Err(PheromoneRelayError::UnsupportedSchema(self.schema.clone()));
+        }
+        if self.body.schema != PHEROMONE_PEER_DIRECTORY_BUNDLE_SCHEMA {
+            return Err(PheromoneRelayError::UnsupportedSchema(
+                self.body.schema.clone(),
+            ));
+        }
+        if self.body.version < trust.min_version {
+            return Err(PheromoneRelayError::PeerDirectoryRollback(format!(
+                "bundle version {} is below trusted floor {}",
+                self.body.version, trust.min_version
+            )));
+        }
+        if trust.now_unix_ms < self.body.issued_at_unix_ms
+            || trust.now_unix_ms >= self.body.expires_at_unix_ms
+        {
+            return Err(PheromoneRelayError::PeerDirectoryStale(
+                "peer directory bundle is outside its validity window".to_string(),
+            ));
+        }
+        let actual_directory_sha256 = canonical_sha256(&self.directory)?;
+        if actual_directory_sha256 != self.body.directory_sha256 {
+            return Err(PheromoneRelayError::BodyHashMismatch(format!(
+                "directory hash {actual_directory_sha256} does not match signed hash {}",
+                self.body.directory_sha256
+            )));
+        }
+        let issuer = trust
+            .issuers
+            .iter()
+            .find(|issuer| issuer.issuer == self.body.issuer && issuer.key_id == self.body.key_id)
+            .ok_or_else(|| {
+                PheromoneRelayError::UnknownPeerDirectoryIssuer(format!(
+                    "{}#{}",
+                    self.body.issuer, self.body.key_id
+                ))
+            })?;
+        if !issuer
+            .public_key
+            .verify_canonical(&self.body, &self.signature)
+            .map_err(|error| PheromoneRelayError::CanonicalJson(error.to_string()))?
+        {
+            return Err(PheromoneRelayError::SignatureInvalid);
+        }
+        validate_peer_directory_profile(&self.directory, trust.profile, &trust.limits)?;
+        PeerDirectory::from_document_internal(
+            self.directory.clone(),
+            trust.now_unix_ms,
+            Some(self.body.version),
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -542,6 +765,34 @@ pub struct RelayOperatorReport {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RelayHealthCheck {
+    pub code: String,
+    pub accepted: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayHealthReport {
+    pub schema: String,
+    pub accepted: bool,
+    pub code: String,
+    pub detail: String,
+    pub local_kernel_id: String,
+    pub generated_at_unix_ms: u64,
+    pub peer_directory_version: Option<u64>,
+    pub queue_depth: u64,
+    pub oldest_pending_age_ms: Option<u64>,
+    pub retry_count: u64,
+    pub dead_letter_count: u64,
+    pub inbox_count: u64,
+    pub cursor_count: u64,
+    pub stale_lease_count: u64,
+    pub checks: Vec<RelayHealthCheck>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RelayDeliveryReport {
     pub schema: String,
     pub accepted: bool,
@@ -598,6 +849,7 @@ impl SqlitePheromoneRelayStore {
                 sender_kernel_id TEXT NOT NULL,
                 recipient_kernel_id TEXT NOT NULL,
                 treaty_id TEXT NOT NULL,
+                queued_at_unix_ms INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL,
                 attempts INTEGER NOT NULL,
                 next_attempt_unix_ms INTEGER NOT NULL,
@@ -632,6 +884,7 @@ impl SqlitePheromoneRelayStore {
             );
             "#,
         )?;
+        ensure_outbox_queued_column(&conn)?;
         Ok(())
     }
 
@@ -654,9 +907,10 @@ impl SqlitePheromoneRelayStore {
         conn.execute(
             r#"
             INSERT INTO chio_pheromone_relay_outbox
-                (outbox_id, sender_kernel_id, recipient_kernel_id, treaty_id, status,
-                 attempts, next_attempt_unix_ms, lease_expires_unix_ms, last_error_code, batch_json)
-            VALUES (?1, ?2, ?3, ?4, 'pending', 0, ?5, NULL, NULL, ?6)
+                (outbox_id, sender_kernel_id, recipient_kernel_id, treaty_id,
+                 queued_at_unix_ms, status, attempts, next_attempt_unix_ms,
+                 lease_expires_unix_ms, last_error_code, batch_json)
+            VALUES (?1, ?2, ?3, ?4, ?5, 'pending', 0, ?5, NULL, NULL, ?6)
             ON CONFLICT(outbox_id) DO NOTHING
             "#,
             params![
@@ -677,6 +931,16 @@ impl SqlitePheromoneRelayStore {
         max_batches: usize,
     ) -> Result<Vec<RelayOutboxBatch>, PheromoneRelayError> {
         let conn = self.conn.lock()?;
+        conn.execute(
+            r#"
+            UPDATE chio_pheromone_relay_outbox
+            SET status = 'retry',
+                lease_expires_unix_ms = NULL,
+                last_error_code = 'stale_lease_recovered'
+            WHERE status = 'leased' AND lease_expires_unix_ms <= ?1
+            "#,
+            params![i64_from_u64(now_unix_ms, "now_unix_ms")?],
+        )?;
         let mut stmt = conn.prepare(
             r#"
             SELECT outbox_id, sender_kernel_id, recipient_kernel_id, treaty_id, attempts, batch_json
@@ -885,6 +1149,58 @@ impl SqlitePheromoneRelayStore {
         })
     }
 
+    pub fn health_report(
+        &self,
+        local_kernel_id: &str,
+        generated_at_unix_ms: u64,
+        peer_directory_version: Option<u64>,
+    ) -> Result<RelayHealthReport, PheromoneRelayError> {
+        let conn = self.conn.lock()?;
+        let queue_depth = count_outbox_statuses(&conn, &["pending", "retry", "leased"])?;
+        let retry_count = count_outbox_statuses(&conn, &["retry"])?;
+        let dead_letter_count = count_outbox_statuses(&conn, &["dead_letter"])?;
+        let inbox_count = count_rows(&conn, "chio_pheromone_relay_inbox")?;
+        let cursor_count = count_rows(&conn, "chio_pheromone_relay_cursors")?;
+        let stale_lease_count = count_stale_leases(&conn, generated_at_unix_ms)?;
+        let oldest_pending = oldest_pending_queued_at(&conn)?;
+        let oldest_pending_age_ms =
+            oldest_pending.map(|queued| generated_at_unix_ms.saturating_sub(queued));
+        let mut checks = Vec::new();
+        checks.push(RelayHealthCheck {
+            code: "store.connected".to_string(),
+            accepted: true,
+            detail: "SQLite relay store is reachable".to_string(),
+        });
+        checks.push(RelayHealthCheck {
+            code: "outbox.pressure".to_string(),
+            accepted: queue_depth < 10_000,
+            detail: format!("queue_depth={queue_depth}"),
+        });
+        checks.push(RelayHealthCheck {
+            code: "leases.fresh".to_string(),
+            accepted: stale_lease_count == 0,
+            detail: format!("stale_lease_count={stale_lease_count}"),
+        });
+        let accepted = checks.iter().all(|check| check.accepted);
+        Ok(RelayHealthReport {
+            schema: PHEROMONE_RELAY_HEALTH_REPORT_SCHEMA.to_string(),
+            accepted,
+            code: if accepted { "accepted" } else { "degraded" }.to_string(),
+            detail: "relay health evaluated from durable store state".to_string(),
+            local_kernel_id: local_kernel_id.to_string(),
+            generated_at_unix_ms,
+            peer_directory_version,
+            queue_depth,
+            oldest_pending_age_ms,
+            retry_count,
+            dead_letter_count,
+            inbox_count,
+            cursor_count,
+            stale_lease_count,
+            checks,
+        })
+    }
+
     pub fn record_inbox(
         &self,
         sender_kernel_id: &str,
@@ -1033,11 +1349,55 @@ impl PheromoneRelayService {
         let router = Router::new()
             .route(PHEROMONE_BATCH_RELAY_PATH, post(handle_batch_relay))
             .route(PHEROMONE_CATCHUP_RELAY_PATH, post(handle_catchup_relay))
+            .route(PHEROMONE_HEALTH_PATH, get(handle_health))
+            .route(PHEROMONE_READY_PATH, get(handle_ready))
             .layer(DefaultBodyLimit::max(max_body_bytes))
             .with_state(Arc::new(self));
         axum::serve(listener, router)
             .await
             .map_err(|error| PheromoneRelayError::Http(error.to_string()))
+    }
+}
+
+async fn handle_health(
+    State(service): State<Arc<PheromoneRelayService>>,
+) -> Result<Json<RelayHealthReport>, (StatusCode, Json<RelayOperatorReport>)> {
+    service
+        .store
+        .health_report(
+            &service.config.local_kernel_id,
+            service.config.now_unix_ms,
+            service.directory.version(),
+        )
+        .map(Json)
+        .map_err(|error| relay_http_error(&service, error))
+}
+
+async fn handle_ready(
+    State(service): State<Arc<PheromoneRelayService>>,
+) -> Result<Json<RelayHealthReport>, (StatusCode, Json<RelayOperatorReport>)> {
+    let report = service
+        .store
+        .health_report(
+            &service.config.local_kernel_id,
+            service.config.now_unix_ms,
+            service.directory.version(),
+        )
+        .map_err(|error| relay_http_error(&service, error))?;
+    if report.accepted {
+        Ok(Json(report))
+    } else {
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(RelayOperatorReport {
+                schema: PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA.to_string(),
+                accepted: false,
+                code: report.code.clone(),
+                detail: report.detail.clone(),
+                local_kernel_id: report.local_kernel_id.clone(),
+                generated_at_unix_ms: report.generated_at_unix_ms,
+            }),
+        ))
     }
 }
 
@@ -1169,6 +1529,94 @@ fn relay_http_error(
     )
 }
 
+pub async fn deliver_due_batches(
+    store: &(impl PheromoneRelayStore + ?Sized),
+    directory: PeerDirectory,
+    keypair: Keypair,
+    sender_kernel_id: &str,
+    now_unix_ms: u64,
+    max_batches: usize,
+) -> Result<RelayTickReport, PheromoneRelayError> {
+    let client = PheromoneRelayClient::new(directory, keypair, now_unix_ms, 60_000)?;
+    let due = store.lease_due_batches(now_unix_ms, max_batches)?;
+    let mut report = RelayTickReport {
+        schema: PHEROMONE_RELAY_TICK_REPORT_SCHEMA.to_string(),
+        accepted: true,
+        delivered: 0,
+        retried: 0,
+        dead_lettered: 0,
+        duplicate_idempotent: 0,
+        failures: Vec::new(),
+    };
+    for entry in due {
+        if entry.sender_kernel_id != sender_kernel_id {
+            store.mark_retry(
+                &entry.outbox_id,
+                "sender_mismatch",
+                now_unix_ms.saturating_add(60_000),
+            )?;
+            report.accepted = false;
+            report.retried = report.retried.saturating_add(1);
+            report
+                .failures
+                .push(format!("{}: sender_mismatch", entry.outbox_id));
+            continue;
+        }
+        let nonce = format!("relay-tick:{}:{}", entry.outbox_id, entry.attempts + 1);
+        match client
+            .post_batch(
+                sender_kernel_id,
+                &entry.recipient_kernel_id,
+                &entry.batch,
+                &nonce,
+            )
+            .await
+        {
+            Ok(receive_report) if receive_report.accepted => {
+                store.mark_delivered(&entry.outbox_id)?;
+                report.delivered = report.delivered.saturating_add(1);
+            }
+            Ok(receive_report) => {
+                let code = receive_report
+                    .frames
+                    .iter()
+                    .find(|frame| !frame.accepted)
+                    .map(|frame| frame.code.as_str())
+                    .unwrap_or("receiver_rejected");
+                mark_delivery_failure(store, &entry, code, now_unix_ms, &mut report)?;
+            }
+            Err(error) => {
+                mark_delivery_failure(store, &entry, error.code(), now_unix_ms, &mut report)?;
+            }
+        }
+    }
+    Ok(report)
+}
+
+fn mark_delivery_failure(
+    store: &(impl PheromoneRelayStore + ?Sized),
+    entry: &RelayOutboxBatch,
+    code: &str,
+    now_unix_ms: u64,
+    report: &mut RelayTickReport,
+) -> Result<(), PheromoneRelayError> {
+    report.accepted = false;
+    report.failures.push(format!("{}: {code}", entry.outbox_id));
+    if entry.attempts.saturating_add(1) >= 3 {
+        store.mark_dead_letter(&entry.outbox_id, code)?;
+        report.dead_lettered = report.dead_lettered.saturating_add(1);
+    } else {
+        let backoff_ms = 60_000u64.saturating_mul(entry.attempts.saturating_add(1));
+        store.mark_retry(
+            &entry.outbox_id,
+            code,
+            now_unix_ms.saturating_add(backoff_ms),
+        )?;
+        report.retried = report.retried.saturating_add(1);
+    }
+    Ok(())
+}
+
 pub struct PheromoneRelayClient {
     directory: PeerDirectory,
     keypair: Keypair,
@@ -1271,6 +1719,63 @@ fn validate_endpoint(endpoint: &str) -> Result<(), PheromoneRelayError> {
     Ok(())
 }
 
+fn validate_peer_directory_profile(
+    document: &PeerDirectoryDocument,
+    profile: RelayProfile,
+    limits: &RelayProfileLimits,
+) -> Result<(), PheromoneRelayError> {
+    if limits.freshness_window_ms == 0 || limits.max_body_bytes == 0 {
+        return Err(PheromoneRelayError::RelayProfileDenied(
+            "relay profile limits must be positive".to_string(),
+        ));
+    }
+    for peer in &document.peers {
+        let url = Url::parse(&peer.endpoint)
+            .map_err(|error| PheromoneRelayError::EndpointDenied(error.to_string()))?;
+        match profile {
+            RelayProfile::LocalDev => {
+                if url.scheme() == "http" && !is_loopback_host(&url) {
+                    return Err(PheromoneRelayError::EndpointDenied(format!(
+                        "local-dev HTTP endpoint {} is not loopback",
+                        peer.endpoint
+                    )));
+                }
+            }
+            RelayProfile::Production => {
+                if url.scheme() != "https" {
+                    return Err(PheromoneRelayError::EndpointDenied(format!(
+                        "production endpoint {} must use HTTPS",
+                        peer.endpoint
+                    )));
+                }
+            }
+        }
+        if peer.max_batch_frames == 0 || peer.max_batch_frames > limits.max_batch_frames {
+            return Err(PheromoneRelayError::RelayProfileDenied(format!(
+                "peer {} max batch frames {} exceeds profile bound {}",
+                peer.kernel_id, peer.max_batch_frames, limits.max_batch_frames
+            )));
+        }
+        if peer.max_catchup_frames == 0 || peer.max_catchup_frames > limits.max_catchup_frames {
+            return Err(PheromoneRelayError::RelayProfileDenied(format!(
+                "peer {} max catch-up frames {} exceeds profile bound {}",
+                peer.kernel_id, peer.max_catchup_frames, limits.max_catchup_frames
+            )));
+        }
+        if peer.max_catchup_bytes == 0 || peer.max_catchup_bytes > limits.max_catchup_bytes {
+            return Err(PheromoneRelayError::RelayProfileDenied(format!(
+                "peer {} max catch-up bytes {} exceeds profile bound {}",
+                peer.kernel_id, peer.max_catchup_bytes, limits.max_catchup_bytes
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn is_loopback_host(url: &Url) -> bool {
+    matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"))
+}
+
 fn canonical_sha256<T: Serialize>(value: &T) -> Result<String, PheromoneRelayError> {
     let bytes = canonical_json_bytes(value)
         .map_err(|error| PheromoneRelayError::CanonicalJson(error.to_string()))?;
@@ -1289,4 +1794,68 @@ fn parse_cursor(cursor: &str) -> Result<u64, PheromoneRelayError> {
     cursor
         .parse::<u64>()
         .map_err(|_| PheromoneRelayError::CatchupDenied("catch-up cursor is invalid".to_string()))
+}
+
+fn ensure_outbox_queued_column(conn: &Connection) -> Result<(), PheromoneRelayError> {
+    let mut stmt = conn.prepare("PRAGMA table_info(chio_pheromone_relay_outbox)")?;
+    let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
+    for column in columns {
+        if column? == "queued_at_unix_ms" {
+            return Ok(());
+        }
+    }
+    conn.execute(
+        "ALTER TABLE chio_pheromone_relay_outbox ADD COLUMN queued_at_unix_ms INTEGER NOT NULL DEFAULT 0",
+        [],
+    )?;
+    Ok(())
+}
+
+fn count_outbox_statuses(conn: &Connection, statuses: &[&str]) -> Result<u64, PheromoneRelayError> {
+    let placeholders = statuses.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT COUNT(*) FROM chio_pheromone_relay_outbox WHERE status IN ({placeholders})"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let count: i64 = stmt.query_row(rusqlite::params_from_iter(statuses.iter()), |row| {
+        row.get(0)
+    })?;
+    u64_from_i64(count, "count")
+}
+
+fn count_rows(conn: &Connection, table: &str) -> Result<u64, PheromoneRelayError> {
+    let allowed = ["chio_pheromone_relay_inbox", "chio_pheromone_relay_cursors"];
+    if !allowed.contains(&table) {
+        return Err(PheromoneRelayError::Sqlite(format!(
+            "unsupported count table {table}"
+        )));
+    }
+    let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+        row.get(0)
+    })?;
+    u64_from_i64(count, "count")
+}
+
+fn count_stale_leases(conn: &Connection, now_unix_ms: u64) -> Result<u64, PheromoneRelayError> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM chio_pheromone_relay_outbox WHERE status = 'leased' AND lease_expires_unix_ms <= ?1",
+        params![i64_from_u64(now_unix_ms, "now_unix_ms")?],
+        |row| row.get(0),
+    )?;
+    u64_from_i64(count, "stale lease count")
+}
+
+fn oldest_pending_queued_at(conn: &Connection) -> Result<Option<u64>, PheromoneRelayError> {
+    let queued: Option<i64> = conn.query_row(
+        "SELECT MIN(queued_at_unix_ms) FROM chio_pheromone_relay_outbox WHERE status IN ('pending', 'retry', 'leased')",
+        [],
+        |row| row.get(0),
+    )?;
+    queued
+        .map(|value| u64_from_i64(value, "queued_at_unix_ms"))
+        .transpose()
+}
+
+fn u64_from_i64(value: i64, field: &str) -> Result<u64, PheromoneRelayError> {
+    u64::try_from(value).map_err(|_| PheromoneRelayError::Sqlite(format!("{field} is negative")))
 }

@@ -20,6 +20,41 @@
       "id": "endpoint-denied",
       "target": "peer-directory",
       "expectedFailureCode": "endpoint_denied"
+    },
+    {
+      "id": "unsigned-production-directory",
+      "target": "peer-directory",
+      "expectedFailureCode": "peer_directory_unsigned"
+    },
+    {
+      "id": "stale-peer-directory-bundle",
+      "target": "peer-directory-bundle",
+      "expectedFailureCode": "peer_directory_stale"
+    },
+    {
+      "id": "rollback-peer-directory-bundle",
+      "target": "peer-directory-bundle",
+      "expectedFailureCode": "peer_directory_rollback"
+    },
+    {
+      "id": "sender-mismatch",
+      "target": "relay-http-request",
+      "expectedFailureCode": "sender_mismatch"
+    },
+    {
+      "id": "recipient-mismatch",
+      "target": "relay-http-request",
+      "expectedFailureCode": "recipient_mismatch"
+    },
+    {
+      "id": "stale-relay-request",
+      "target": "relay-http-request",
+      "expectedFailureCode": "relay_request_stale"
+    },
+    {
+      "id": "oversized-catchup",
+      "target": "catchup-request",
+      "expectedFailureCode": "catchup_denied"
     }
   ]
 }

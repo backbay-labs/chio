@@ -13,10 +13,12 @@ use chio_pheromone::{
     Severity, PHEROMONE_DEPOSIT_SCHEMA,
 };
 use chio_pheromone_relay::{
-    sign_relay_http_request, CatchupRequest, CatchupResponse, PeerDirectory, PeerDirectoryDocument,
-    PeerDirectoryEntry, PheromoneRelayClient, PheromoneRelayConfig, PheromoneRelayError,
-    PheromoneRelayService, RelayBatchReceiver, RelayHttpSigningInput, RelayHttpVerificationContext,
-    RelayLadderRef, RelayNonceRecorder, RelayNonceSet, RelayRole, SqlitePheromoneRelayStore,
+    deliver_due_batches, sign_peer_directory_bundle, sign_relay_http_request, CatchupRequest,
+    CatchupResponse, PeerDirectory, PeerDirectoryBundleSigningInput, PeerDirectoryBundleTrust,
+    PeerDirectoryDocument, PeerDirectoryEntry, PheromoneRelayClient, PheromoneRelayConfig,
+    PheromoneRelayError, PheromoneRelayService, RelayBatchReceiver, RelayHttpSigningInput,
+    RelayHttpVerificationContext, RelayLadderRef, RelayNonceRecorder, RelayNonceSet, RelayProfile,
+    RelayProfileLimits, RelayRole, SqlitePheromoneRelayStore, TrustedPeerDirectoryIssuer,
     PHEROMONE_BATCH_RELAY_PATH, PHEROMONE_CATCHUP_RELAY_PATH, PHEROMONE_CATCHUP_REQUEST_SCHEMA,
     PHEROMONE_PEER_DIRECTORY_SCHEMA,
 };
@@ -132,6 +134,81 @@ fn peer_directory_rejects_duplicate_peer_ids() {
     let err = PeerDirectory::from_document(document, NOW).unwrap_err();
 
     assert_eq!(err.code(), "duplicate_peer");
+}
+
+#[test]
+fn signed_peer_directory_bundle_verifies_trust_and_rejects_rollback() {
+    let issuer = key(9);
+    let sender = key(1);
+    let document = directory(&sender, "https://relay.example.test".to_string());
+    let bundle = sign_peer_directory_bundle(PeerDirectoryBundleSigningInput {
+        issuer: "did:chio:relay-ops",
+        key_id: "relay-ops-2026",
+        version: 3,
+        previous_version_sha256: Some("c".repeat(64)),
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 60_000,
+        directory: &document,
+        keypair: &issuer,
+    })
+    .unwrap();
+    let trust = PeerDirectoryBundleTrust {
+        issuers: vec![TrustedPeerDirectoryIssuer {
+            issuer: "did:chio:relay-ops".to_string(),
+            key_id: "relay-ops-2026".to_string(),
+            public_key: issuer.public_key(),
+        }],
+        min_version: 3,
+        now_unix_ms: NOW,
+        profile: RelayProfile::Production,
+        limits: RelayProfileLimits::production_defaults(),
+    };
+
+    let verified = bundle.verify(&trust).unwrap();
+
+    assert_eq!(verified.local_kernel_id(), "did:chio:buyer-kernel");
+    assert_eq!(verified.version(), Some(3));
+
+    let mut rollback_trust = trust.clone();
+    rollback_trust.min_version = 4;
+    let rollback = bundle.verify(&rollback_trust).unwrap_err();
+    assert_eq!(rollback.code(), "peer_directory_rollback");
+
+    let mut unknown_issuer = trust;
+    unknown_issuer.issuers.clear();
+    let unknown = bundle.verify(&unknown_issuer).unwrap_err();
+    assert_eq!(unknown.code(), "unknown_peer_directory_issuer");
+}
+
+#[test]
+fn relay_profiles_reject_unsafe_production_endpoints() {
+    let sender = key(1);
+    let loopback = directory(&sender, "http://127.0.0.1:18080".to_string());
+    let limits = RelayProfileLimits::production_defaults();
+
+    PeerDirectory::from_document_with_profile(
+        loopback.clone(),
+        NOW,
+        RelayProfile::LocalDev,
+        &limits,
+    )
+    .unwrap();
+
+    let denied =
+        PeerDirectory::from_document_with_profile(loopback, NOW, RelayProfile::Production, &limits)
+            .unwrap_err();
+    assert_eq!(denied.code(), "endpoint_denied");
+
+    let mut excessive = directory(&sender, "https://relay.example.test".to_string());
+    excessive.peers[0].max_catchup_bytes = limits.max_catchup_bytes + 1;
+    let over_limit = PeerDirectory::from_document_with_profile(
+        excessive,
+        NOW,
+        RelayProfile::Production,
+        &limits,
+    )
+    .unwrap_err();
+    assert_eq!(over_limit.code(), "relay_profile_denied");
 }
 
 #[test]
@@ -333,6 +410,67 @@ async fn loopback_http_delivery_posts_signed_batch_to_receiver() {
         .unwrap();
     assert!(catchup_response.accepted);
     assert_eq!(catchup_response.frames, vec![catchup_batch]);
+    server.abort();
+}
+
+#[tokio::test]
+async fn relay_tick_delivers_leased_batches_with_real_request_signature() {
+    let sender = key(1);
+    let recipient = key(2);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let receiver_directory =
+        PeerDirectory::from_document(directory(&sender, format!("http://{address}")), NOW).unwrap();
+    let sender_directory = PeerDirectory::from_document(
+        client_directory(&recipient, format!("http://{address}")),
+        NOW,
+    )
+    .unwrap();
+    let receiver_store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+    let service = PheromoneRelayService::new(
+        PheromoneRelayConfig {
+            local_kernel_id: "did:chio:buyer-kernel".to_string(),
+            now_unix_ms: NOW,
+            freshness_window_ms: 60_000,
+            max_body_bytes: 256_000,
+        },
+        receiver_directory,
+        Arc::new(AcceptingReceiver),
+        receiver_store,
+    );
+    let server = tokio::spawn(service.serve(listener));
+    let outbox_store = SqlitePheromoneRelayStore::open_in_memory().unwrap();
+    let batch = sample_batch();
+    outbox_store
+        .enqueue_batch(
+            "did:chio:llamaworks",
+            "did:chio:buyer-kernel",
+            &batch.treaty_id,
+            &batch,
+            NOW,
+        )
+        .unwrap();
+
+    let report = deliver_due_batches(
+        &outbox_store,
+        sender_directory,
+        sender,
+        "did:chio:llamaworks",
+        NOW,
+        4,
+    )
+    .await
+    .unwrap();
+
+    assert!(report.accepted);
+    assert_eq!(report.delivered, 1);
+    assert_eq!(report.retried, 0);
+    assert_eq!(report.dead_lettered, 0);
+    assert!(report.failures.is_empty());
+    assert!(outbox_store
+        .lease_due_batches(NOW + 60_000, 4)
+        .unwrap()
+        .is_empty());
     server.abort();
 }
 

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-health-report.schema.json",
+  "title": "Chiodos Pheromone Relay Health Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "detail",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "peerDirectoryVersion",
+    "queueDepth",
+    "oldestPendingAgeMs",
+    "retryCount",
+    "deadLetterCount",
+    "inboxCount",
+    "cursorCount",
+    "staleLeaseCount",
+    "checks"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-health-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "minLength": 1 },
+    "detail": { "type": "string", "minLength": 1 },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "peerDirectoryVersion": {
+      "anyOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "null" }
+      ]
+    },
+    "queueDepth": { "type": "integer", "minimum": 0 },
+    "oldestPendingAgeMs": {
+      "anyOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "null" }
+      ]
+    },
+    "retryCount": { "type": "integer", "minimum": 0 },
+    "deadLetterCount": { "type": "integer", "minimum": 0 },
+    "inboxCount": { "type": "integer", "minimum": 0 },
+    "cursorCount": { "type": "integer", "minimum": 0 },
+    "staleLeaseCount": { "type": "integer", "minimum": 0 },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "accepted", "detail"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "accepted": { "type": "boolean" },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

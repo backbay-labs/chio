@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/peer-directory-bundle.schema.json",
+  "title": "Chiodos Pheromone Peer Directory Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "body", "directory", "signature"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.peer-directory-bundle.v1" },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "issuer",
+        "keyId",
+        "directorySha256",
+        "version",
+        "issuedAtUnixMs",
+        "expiresAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.pheromone.peer-directory-bundle.v1" },
+        "issuer": { "type": "string", "minLength": 1 },
+        "keyId": { "type": "string", "minLength": 1 },
+        "directorySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "version": { "type": "integer", "minimum": 0 },
+        "previousVersionSha256": {
+          "anyOf": [
+            { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            { "type": "null" }
+          ]
+        },
+        "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "directory": { "$ref": "peer-directory.schema.json" },
+    "signature": { "type": "string", "minLength": 64 }
+  }
+}

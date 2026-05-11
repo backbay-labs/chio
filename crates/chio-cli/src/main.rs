@@ -358,6 +358,81 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn chiodos_pheromone_relay_lint_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "lint",
+            "--peer-directory",
+            "peer-directory-bundle.json",
+            "--profile",
+            "production",
+            "--trusted-issuers",
+            "trusted-issuers.json",
+            "--report",
+            "lint-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Lint {
+                                        peer_directory,
+                                        profile,
+                                        trusted_issuers,
+                                        report,
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(
+                    peer_directory,
+                    std::path::PathBuf::from("peer-directory-bundle.json")
+                );
+                assert!(matches!(profile, RelayProfileArg::Production));
+                assert_eq!(
+                    trusted_issuers,
+                    Some(std::path::PathBuf::from("trusted-issuers.json"))
+                );
+                assert_eq!(report, std::path::PathBuf::from("lint-report.json"));
+            }
+            _ => panic!("expected chiodos pheromone relay lint subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_pheromone_relay_tick_requires_signing_key() {
+        let result = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "tick",
+            "--store",
+            "relay.sqlite3",
+            "--peer-directory",
+            "peer-directory.json",
+            "--now-unix-ms",
+            "1766000000500",
+            "--max-batches",
+            "4",
+            "--report",
+            "tick-report.json",
+        ]);
+        let error = match result {
+            Ok(_) => panic!("relay tick must require --signing-key"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
     fn chiodos_verify_requires_trust_bundle() {
         let result = Cli::try_parse_from([
             "chio",

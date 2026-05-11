@@ -15,12 +15,12 @@ case "${1:-}" in
     shift
     ;;
   *)
-    echo "usage: check-chiodos-pheromone-relay.sh [--schema-only|--negative-only]" >&2
+    echo "usage: check-chiodos-pheromone-relay-ops.sh [--schema-only|--negative-only]" >&2
     exit 2
     ;;
 esac
 if [[ $# -ne 0 ]]; then
-  echo "usage: check-chiodos-pheromone-relay.sh [--schema-only|--negative-only]" >&2
+  echo "usage: check-chiodos-pheromone-relay-ops.sh [--schema-only|--negative-only]" >&2
   exit 2
 fi
 
@@ -39,41 +39,37 @@ schema_dir, registry_path, fixture_dir = map(pathlib.Path, sys.argv[1:])
 registry = json.loads(registry_path.read_text(encoding="utf-8"))
 registered = {entry.get("schema"): entry.get("schemaFile") for entry in registry.get("artifacts", [])}
 expected = {
-    "chio.pheromone.peer-directory.v1": "peer-directory.schema.json",
-    "chio.pheromone.relay-config.v1": "relay-config.schema.json",
-    "chio.pheromone.relay-http-request.v1": "relay-http-request.schema.json",
-    "chio.pheromone.relay-tick-report.v1": "relay-tick-report.schema.json",
-    "chio.pheromone.relay-operator-report.v1": "relay-operator-report.schema.json",
-    "chio.pheromone.catchup-request.v1": "catchup-request.schema.json",
-    "chio.pheromone.catchup-response.v1": "catchup-response.schema.json",
-    "chio.pheromone.relay-negative-fixture-corpus.v1": "relay-negative-fixture-corpus.schema.json",
+    "chio.pheromone.peer-directory-bundle.v1": "peer-directory-bundle.schema.json",
+    "chio.pheromone.relay-health-report.v1": "relay-health-report.schema.json",
 }
 for schema_id, filename in expected.items():
     path = schema_dir / filename
     if not path.is_file():
         raise SystemExit(f"missing schema {filename}")
     schema = json.loads(path.read_text(encoding="utf-8"))
-    if schema.get("type") != "object" or "$id" not in schema:
-        raise SystemExit(f"schema {filename} is not a frozen object schema")
+    if schema.get("type") != "object" or schema.get("additionalProperties") is not False:
+        raise SystemExit(f"schema {filename} is not a strict object schema")
     want = f"spec/schemas/chio-pheromone/v1/{filename}"
     if registered.get(schema_id) != want:
         raise SystemExit(f"schema {schema_id} is not registered at {want}")
 
-peer_directory = json.loads((fixture_dir / "peer-directory.json").read_text(encoding="utf-8"))
-if peer_directory.get("localKernelId") != "did:chio:dataco":
-    raise SystemExit("relay peer directory local kernel is not verifier-owned dataco")
-if peer_directory.get("schema") != "chio.pheromone.peer-directory.v1":
-    raise SystemExit("relay peer directory schema mismatch")
-if not peer_directory.get("peers"):
-    raise SystemExit("relay peer directory has no pinned peers")
-
 negative = json.loads((fixture_dir / "negative-cases.json").read_text(encoding="utf-8"))
 codes = {case.get("expectedFailureCode") for case in negative.get("cases", [])}
-required = {"unknown_peer", "body_hash_mismatch", "relay_nonce_replay", "endpoint_denied"}
+required = {
+    "peer_directory_stale",
+    "peer_directory_rollback",
+    "peer_directory_unsigned",
+    "endpoint_denied",
+    "sender_mismatch",
+    "recipient_mismatch",
+    "relay_request_stale",
+    "relay_nonce_replay",
+    "catchup_denied",
+}
 missing = sorted(required - codes)
 if missing:
-    raise SystemExit(f"relay negative corpus missing codes: {missing}")
-print("OK Chiodos pheromone relay metadata")
+    raise SystemExit(f"relay ops negative corpus missing codes: {missing}")
+print("OK Chiodos pheromone relay ops metadata")
 PY
 
 validate_schema() {
@@ -84,20 +80,17 @@ validate_schema() {
 
 validate_schema "$SCHEMA_DIR/peer-directory.schema.json" "$FIXTURE_DIR/peer-directory.json"
 validate_schema "$SCHEMA_DIR/relay-operator-report.schema.json" "$FIXTURE_DIR/operator-report.json"
+validate_schema "$SCHEMA_DIR/relay-health-report.schema.json" "$FIXTURE_DIR/health-report.json"
 validate_schema "$SCHEMA_DIR/relay-tick-report.schema.json" "$FIXTURE_DIR/tick-report.json"
-validate_schema "$SCHEMA_DIR/catchup-request.schema.json" "$FIXTURE_DIR/catchup-request.json"
-validate_schema "$SCHEMA_DIR/catchup-response.schema.json" "$FIXTURE_DIR/catchup-response.json"
 validate_schema "$SCHEMA_DIR/relay-negative-fixture-corpus.schema.json" "$FIXTURE_DIR/negative-cases.json"
 
 if [[ "$MODE" == "schema-only" ]]; then
   exit 0
 fi
 
-cargo test -p chio-pheromone-relay
-cargo test -p chio-cli chiodos_pheromone
-
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
+
 python3 - "$tmpdir/relay-signing-key.json" <<'PY'
 import json
 import pathlib
@@ -110,11 +103,31 @@ path.write_text(json.dumps({
 }, indent=2) + "\n", encoding="utf-8")
 PY
 
-cargo run -p chio-cli --bin chio -- chiodos pheromone relay status \
-  --store "$tmpdir/relay.sqlite3" \
-  --report "$tmpdir/status.json"
+cargo run -p chio-cli --bin chio -- chiodos pheromone relay lint \
+  --peer-directory "$FIXTURE_DIR/peer-directory.json" \
+  --profile local-dev \
+  --report "$tmpdir/lint.json"
+validate_schema "$SCHEMA_DIR/relay-health-report.schema.json" "$tmpdir/lint.json"
 
-validate_schema "$SCHEMA_DIR/relay-operator-report.schema.json" "$tmpdir/status.json"
+cargo run -p chio-cli --bin chio -- chiodos pheromone relay lint \
+  --peer-directory "$FIXTURE_DIR/peer-directory.json" \
+  --profile production \
+  --report "$tmpdir/lint-production.json"
+validate_schema "$SCHEMA_DIR/relay-health-report.schema.json" "$tmpdir/lint-production.json"
+python3 - "$tmpdir/lint-production.json" <<'PY'
+import json
+import pathlib
+import sys
+
+report = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+if report.get("accepted") is not False or report.get("code") != "peer_directory_unsigned":
+    raise SystemExit("production lint did not reject unsigned peer directory")
+PY
+
+cargo test -p chio-pheromone-relay signed_peer_directory_bundle_verifies_trust_and_rejects_rollback
+cargo test -p chio-pheromone-relay relay_profiles_reject_unsafe_production_endpoints
+cargo test -p chio-pheromone-relay relay_tick_delivers_leased_batches_with_real_request_signature
+cargo test -p chio-cli --bin chio chiodos_pheromone
 
 cargo run -p chio-cli --bin chio -- chiodos pheromone relay tick \
   --store "$tmpdir/relay.sqlite3" \
@@ -123,7 +136,6 @@ cargo run -p chio-cli --bin chio -- chiodos pheromone relay tick \
   --max-batches 4 \
   --signing-key "$tmpdir/relay-signing-key.json" \
   --report "$tmpdir/tick.json"
-
 validate_schema "$SCHEMA_DIR/relay-tick-report.schema.json" "$tmpdir/tick.json"
 
 if [[ "$MODE" == "negative-only" ]]; then
@@ -131,4 +143,4 @@ if [[ "$MODE" == "negative-only" ]]; then
   exit 0
 fi
 
-bash "$ROOT/scripts/check-chiodos-pheromone-runtime.sh"
+bash "$ROOT/scripts/check-chiodos-pheromone-relay.sh" --schema-only
