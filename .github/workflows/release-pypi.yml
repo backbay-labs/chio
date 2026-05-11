@@ -80,6 +80,7 @@ jobs:
             "sdks/python/chio-observability"
             "sdks/python/chio-langgraph"
             "sdks/python/chio-code-agent"
+            "sdks/python/chio-hermes"
             "sdks/lambda/chio-lambda-python"
           )
 
