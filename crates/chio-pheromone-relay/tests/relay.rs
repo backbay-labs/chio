@@ -319,6 +319,52 @@ fn peer_directory_state_quarantines_removed_peers() {
     let active = state.active_directory(&trust).unwrap();
     let removed = active.peer("did:chio:removed-peer").unwrap_err();
     assert_eq!(removed.code(), "peer_removed");
+
+    let second_active_hash = state.active.as_ref().unwrap().bundle_sha256.clone();
+    let mut third = second.clone();
+    third.peers[0].endpoint = "https://relay-v3.example.test".to_string();
+    let third_bundle = sign_peer_directory_bundle(PeerDirectoryBundleSigningInput {
+        issuer: "did:chio:relay-ops",
+        key_id: "relay-ops-2026",
+        version: 3,
+        previous_version_sha256: Some(second_active_hash),
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 60_000,
+        directory: &third,
+        keypair: &issuer,
+    })
+    .unwrap();
+
+    let third_report =
+        promote_peer_directory_candidate(&mut state, third_bundle, &trust, NOW).unwrap();
+    assert_eq!(third_report.removed_peer_ids, vec!["did:chio:removed-peer"]);
+    let active = state.active_directory(&trust).unwrap();
+    let removed = active.peer("did:chio:removed-peer").unwrap_err();
+    assert_eq!(removed.code(), "peer_removed");
+
+    let third_active_hash = state.active.as_ref().unwrap().bundle_sha256.clone();
+    let mut fourth = third;
+    fourth.peers.push(first.peers[1].clone());
+    let fourth_bundle = sign_peer_directory_bundle(PeerDirectoryBundleSigningInput {
+        issuer: "did:chio:relay-ops",
+        key_id: "relay-ops-2026",
+        version: 4,
+        previous_version_sha256: Some(third_active_hash),
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 60_000,
+        directory: &fourth,
+        keypair: &issuer,
+    })
+    .unwrap();
+
+    let fourth_report =
+        promote_peer_directory_candidate(&mut state, fourth_bundle, &trust, NOW).unwrap();
+    assert!(fourth_report.removed_peer_ids.is_empty());
+    let active = state.active_directory(&trust).unwrap();
+    assert_eq!(
+        active.peer("did:chio:removed-peer").unwrap().kernel_id,
+        "did:chio:removed-peer"
+    );
 }
 
 #[test]
