@@ -174,6 +174,54 @@
       "artifactKind": "chiodos_peer_pins",
       "introducedBy": "chiodos-runtime-authority/v1",
       "schemaFile": "spec/schemas/chiodos/v1/peer-pins.schema.json"
+    },
+    {
+      "schema": "chio.pheromone-deposit.v1",
+      "artifactKind": "chiodos_pheromone_deposit",
+      "introducedBy": "chiodos-pheromone-transit/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/deposit.schema.json"
+    },
+    {
+      "schema": "chio.pheromone-cost-commitment.v1",
+      "artifactKind": "chiodos_pheromone_cost_commitment",
+      "introducedBy": "chiodos-pheromone-transit/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/cost-commitment.schema.json"
+    },
+    {
+      "schema": "chio.pheromone-workflow-context.v1",
+      "artifactKind": "chiodos_pheromone_workflow_context",
+      "introducedBy": "chiodos-pheromone-transit/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/workflow-context.schema.json"
+    },
+    {
+      "schema": "chio.pheromone-deposit-gossip.v1",
+      "artifactKind": "chiodos_pheromone_deposit_gossip",
+      "introducedBy": "chiodos-pheromone-transit/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/gossip.schema.json"
+    },
+    {
+      "schema": "chio.pheromone-batch.v1",
+      "artifactKind": "chiodos_pheromone_batch",
+      "introducedBy": "chiodos-pheromone-transit/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/batch.schema.json"
+    },
+    {
+      "schema": "chio.pheromone-concentration.v1",
+      "artifactKind": "chiodos_pheromone_concentration",
+      "introducedBy": "chiodos-pheromone-transit/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/concentration.schema.json"
+    },
+    {
+      "schema": "chio.pheromone-transit-policy.v1",
+      "artifactKind": "chiodos_pheromone_transit_policy",
+      "introducedBy": "chiodos-pheromone-transit/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/transit-policy.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_pheromone_negative_fixture_corpus",
+      "introducedBy": "chiodos-pheromone-transit/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/negative-fixture-corpus.schema.json"
     }
   ]
 }

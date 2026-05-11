@@ -1,0 +1,20 @@
+{
+  "schema": "chio.pheromone-transit-policy.v1",
+  "accepted_hubs": [
+    "did:chio:buyer-kernel"
+  ],
+  "allowed_ingress_treaties": [
+    "treaty:buyer-llamaworks:support-ops"
+  ],
+  "allowed_egress_treaties": [
+    "treaty:buyer-dataco:support-ops",
+    "treaty:buyer-payswift:support-ops"
+  ],
+  "allowed_subject_class_namespaces": [
+    "dev.chio.support"
+  ],
+  "valid_from_unix_ms": 1765999940000,
+  "valid_until_unix_ms": 1766000060000,
+  "max_hops": 2,
+  "required_action_class_id": "whisker.pheromone_deposit"
+}

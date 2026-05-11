@@ -1,0 +1,14 @@
+{
+  "schema": "chio.pheromone-concentration.v1",
+  "subject_class": "support.prompt_injection",
+  "subject_class_namespace": "dev.chio.support",
+  "total_strength": 0.4611611990666702,
+  "unweighted_total_strength": 0.8198421316740803,
+  "distinct_origin_pairs": 1,
+  "peak_confidence": 0.82,
+  "reputation_epoch": 42,
+  "evaluated_at_unix_ms": 1766000001000,
+  "treaty_scopes": [
+    "treaty:buyer-llamaworks:support-ops"
+  ]
+}

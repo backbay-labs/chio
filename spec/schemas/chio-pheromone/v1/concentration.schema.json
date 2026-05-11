@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/concentration.schema.json",
+  "title": "Chiodos Pheromone Concentration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "subject_class",
+    "subject_class_namespace",
+    "total_strength",
+    "unweighted_total_strength",
+    "distinct_origin_pairs",
+    "peak_confidence",
+    "reputation_epoch",
+    "evaluated_at_unix_ms",
+    "treaty_scopes"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone-concentration.v1" },
+    "subject_class": { "type": "string", "minLength": 1 },
+    "subject_class_namespace": { "type": "string", "minLength": 1 },
+    "total_strength": { "type": "number", "minimum": 0 },
+    "unweighted_total_strength": { "type": "number", "minimum": 0 },
+    "distinct_origin_pairs": { "type": "integer", "minimum": 0 },
+    "peak_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "reputation_epoch": { "type": "integer", "minimum": 0 },
+    "evaluated_at_unix_ms": { "type": "integer", "minimum": 0 },
+    "treaty_scopes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}

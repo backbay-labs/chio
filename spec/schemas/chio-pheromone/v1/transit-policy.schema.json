@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/transit-policy.schema.json",
+  "title": "Chiodos Pheromone Transit Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted_hubs",
+    "allowed_ingress_treaties",
+    "allowed_egress_treaties",
+    "allowed_subject_class_namespaces",
+    "valid_from_unix_ms",
+    "valid_until_unix_ms",
+    "max_hops",
+    "required_action_class_id"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone-transit-policy.v1" },
+    "accepted_hubs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "allowed_ingress_treaties": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "allowed_egress_treaties": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "allowed_subject_class_namespaces": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "valid_from_unix_ms": { "type": "integer", "minimum": 0 },
+    "valid_until_unix_ms": { "type": "integer", "minimum": 0 },
+    "max_hops": { "type": "integer", "minimum": 1 },
+    "required_action_class_id": { "type": "string", "minLength": 1 }
+  }
+}

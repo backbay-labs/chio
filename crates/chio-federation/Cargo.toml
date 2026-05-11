@@ -29,6 +29,7 @@ chio-core-types = { path = "../chio-core-types" }
 chio-listing = { path = "../chio-listing" }
 chio-metrics-spec = { workspace = true }
 chio-open-market = { path = "../chio-open-market" }
+chio-pheromone = { path = "../chio-pheromone" }
 chio-revocation-oracle = { path = "../chio-revocation-oracle" }
 serde = { workspace = true }
 serde_json = { workspace = true }
