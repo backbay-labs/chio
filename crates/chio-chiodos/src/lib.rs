@@ -318,6 +318,11 @@ pub struct ChiodosVerifierTrustBundle {
 }
 
 impl ChiodosVerifierTrustBundle {
+    #[must_use]
+    pub fn document_sha256(&self) -> &str {
+        &self.document_sha256
+    }
+
     pub fn from_document(
         document: ChiodosVerifierTrustBundleDocument,
     ) -> Result<Self, ChiodosPackageError> {

@@ -29,6 +29,12 @@ pub enum PheromoneGossipError {
     TransitPolicyViolation(String),
     #[error("unknown_peer: {0}")]
     UnknownPeer(String),
+    #[error("batch_recipient_mismatch: {0}")]
+    BatchRecipientMismatch(String),
+    #[error("batch_treaty_mismatch: {0}")]
+    BatchTreatyMismatch(String),
+    #[error("authenticated_sender_mismatch: {0}")]
+    AuthenticatedSenderMismatch(String),
     #[error("invalid_configuration: {0}")]
     InvalidConfiguration(String),
     #[error("queue_poisoned: pheromone gossip queue lock is poisoned")]
@@ -45,6 +51,9 @@ impl PheromoneGossipError {
             Self::TransitChainInvalid(_) => "transit_chain_invalid",
             Self::TransitPolicyViolation(_) => "transit_policy_violation",
             Self::UnknownPeer(_) => "unknown_peer",
+            Self::BatchRecipientMismatch(_) => "batch_recipient_mismatch",
+            Self::BatchTreatyMismatch(_) => "batch_treaty_mismatch",
+            Self::AuthenticatedSenderMismatch(_) => "authenticated_sender_mismatch",
             Self::InvalidConfiguration(_) => "invalid_configuration",
             Self::QueuePoisoned => "queue_poisoned",
         }
@@ -78,6 +87,13 @@ pub struct PheromoneGossipBatch {
     pub treaty_id: String,
     pub frames: Vec<PheromoneDepositGossip>,
     pub flushed_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PheromoneGossipBatchVerificationContext {
+    pub now_unix_ms: u64,
+    pub recipient_kernel_id: String,
+    pub authenticated_sender_kernel_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,6 +169,61 @@ pub fn verify_pheromone_gossip_frame(
         None => verify_direct_frame(frame),
         Some(chain) => verify_relay_frame(frame, chain, policy, now_unix_ms),
     }
+}
+
+pub fn verify_pheromone_gossip_batch(
+    batch: &PheromoneGossipBatch,
+    policy: &PheromoneTransitPolicy,
+    context: &PheromoneGossipBatchVerificationContext,
+) -> Result<(), PheromoneGossipError> {
+    if batch.schema != PHEROMONE_GOSSIP_BATCH_SCHEMA {
+        return Err(PheromoneGossipError::UnsupportedSchema(
+            batch.schema.clone(),
+        ));
+    }
+    if batch.recipient_kernel_id != context.recipient_kernel_id {
+        return Err(PheromoneGossipError::BatchRecipientMismatch(format!(
+            "batch recipient {} does not match receiver {}",
+            batch.recipient_kernel_id, context.recipient_kernel_id
+        )));
+    }
+    for frame in &batch.frames {
+        if frame.treaty_id != batch.treaty_id {
+            return Err(PheromoneGossipError::BatchTreatyMismatch(format!(
+                "frame treaty {} does not match batch treaty {}",
+                frame.treaty_id, batch.treaty_id
+            )));
+        }
+        if frame.gossiping_peer_kernel_id != context.authenticated_sender_kernel_id {
+            return Err(PheromoneGossipError::AuthenticatedSenderMismatch(format!(
+                "frame gossiping peer {} does not match authenticated sender {}",
+                frame.gossiping_peer_kernel_id, context.authenticated_sender_kernel_id
+            )));
+        }
+        match &frame.transit_chain {
+            None => {
+                if frame.origin_kernel_id != context.authenticated_sender_kernel_id {
+                    return Err(PheromoneGossipError::AuthenticatedSenderMismatch(format!(
+                        "direct frame origin {} does not match authenticated sender {}",
+                        frame.origin_kernel_id, context.authenticated_sender_kernel_id
+                    )));
+                }
+            }
+            Some(chain) => {
+                let last = chain.hops.last().ok_or_else(|| {
+                    PheromoneGossipError::TransitChainInvalid("missing last hop".to_string())
+                })?;
+                if last.to_kernel_id != context.recipient_kernel_id {
+                    return Err(PheromoneGossipError::BatchRecipientMismatch(format!(
+                        "final transit recipient {} does not match receiver {}",
+                        last.to_kernel_id, context.recipient_kernel_id
+                    )));
+                }
+            }
+        }
+        verify_pheromone_gossip_frame(frame, policy, context.now_unix_ms)?;
+    }
+    Ok(())
 }
 
 fn verify_direct_frame(frame: &PheromoneDepositGossip) -> Result<(), PheromoneGossipError> {
@@ -282,18 +353,29 @@ fn verify_relay_frame(
 
 #[derive(Debug)]
 pub struct PheromoneGossipPushQueue {
+    local_kernel_id: String,
     capacity_per_peer_treaty: usize,
     inner: Mutex<HashMap<(String, String), VecDeque<PheromoneDeposit>>>,
 }
 
 impl PheromoneGossipPushQueue {
-    pub fn new(capacity_per_peer_treaty: usize) -> Result<Self, PheromoneGossipError> {
+    pub fn new(
+        local_kernel_id: impl Into<String>,
+        capacity_per_peer_treaty: usize,
+    ) -> Result<Self, PheromoneGossipError> {
+        let local_kernel_id = local_kernel_id.into();
+        if local_kernel_id.trim().is_empty() {
+            return Err(PheromoneGossipError::InvalidConfiguration(
+                "local_kernel_id must not be empty".to_string(),
+            ));
+        }
         if capacity_per_peer_treaty == 0 {
             return Err(PheromoneGossipError::InvalidConfiguration(
                 "capacity_per_peer_treaty must be > 0".to_string(),
             ));
         }
         Ok(Self {
+            local_kernel_id,
             capacity_per_peer_treaty,
             inner: Mutex::new(HashMap::new()),
         })
@@ -314,7 +396,15 @@ impl PheromoneGossipPushQueue {
     pub fn enqueue(&self, deposit: PheromoneDeposit) -> Result<usize, PheromoneGossipError> {
         let mut guard = self.inner.lock()?;
         let mut delivered = 0_usize;
-        for queue in guard.values_mut() {
+        for ((_, treaty), queue) in guard.iter_mut() {
+            if !deposit
+                .body
+                .treaty_scope
+                .iter()
+                .any(|scoped_treaty| scoped_treaty == treaty)
+            {
+                continue;
+            }
             if queue.len() == self.capacity_per_peer_treaty {
                 queue.pop_front();
             }
@@ -343,7 +433,7 @@ impl PheromoneGossipPushQueue {
                     .map(|deposit| PheromoneDepositGossip {
                         schema: PHEROMONE_GOSSIP_SCHEMA.to_string(),
                         origin_kernel_id: deposit.body.kernel_id.clone(),
-                        gossiping_peer_kernel_id: recipient.clone(),
+                        gossiping_peer_kernel_id: self.local_kernel_id.clone(),
                         treaty_id: treaty.clone(),
                         ts_unix_ms: flushed_at_unix_ms,
                         transit_chain: None,

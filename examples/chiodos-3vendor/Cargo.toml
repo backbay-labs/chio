@@ -22,6 +22,7 @@ chio-core-types = { version = "0.1.0", path = "../../crates/chio-core-types" }
 chio-federation = { version = "0.1.0", path = "../../crates/chio-federation" }
 chio-governance = { version = "0.1.0", path = "../../crates/chio-governance" }
 chio-pheromone = { version = "0.1.0", path = "../../crates/chio-pheromone" }
+chio-pheromone-runtime = { version = "0.1.0", path = "../../crates/chio-pheromone-runtime" }
 chio-selective-disclosure = { version = "0.1.0", path = "../../crates/chio-selective-disclosure", features = ["bbs"] }
 chio-workflow = { version = "0.1.0", path = "../../crates/chio-workflow" }
 serde = { workspace = true }

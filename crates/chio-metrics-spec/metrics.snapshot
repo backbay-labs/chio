@@ -21,6 +21,10 @@ chio_guard_verdict_total|counter|guard_id,verdict||Total WASM guard verdicts by 
 chio_kernel_decision_latency_seconds|histogram|surface,outcome|0.025,0.05,0.075,0.1,0.25,0.5,1.0,2.5|Kernel mediation decision latency in seconds.
 chio_otel_ingress_drop_total|counter|||Total OTEL ingress batches dropped by bounded queue admission.
 chio_otel_sink_drop_total|counter|||Total OTEL receipt sink batches dropped before append.
+chio_pheromone_queue_overflow_total|counter|treaty,recipient||Total local pheromone gossip queue overflows.
+chio_pheromone_receiver_deposits_total|counter|outcome||Total local pheromone receiver deposit admission outcomes.
+chio_pheromone_receiver_latency_seconds|histogram|outcome|0.001,0.005,0.01,0.025,0.05,0.1,0.25,0.5,1.0|Local pheromone receiver batch verification latency in seconds.
+chio_pheromone_receiver_rejections_total|counter|reason||Total local pheromone receiver rejections by bounded reason.
 chio_receipt_write_latency_seconds|histogram|store,outcome|0.01,0.025,0.05,0.1,0.25,0.5,1.0|Receipt write latency at the local store boundary in seconds.
 chio_receipt_write_total|counter|outcome||Total receipt write outcomes after policy or guard evaluation.
 chio_sidecar_requests_total|counter|outcome||Total sidecar request outcomes at the mediation edge.

@@ -222,6 +222,24 @@
       "artifactKind": "chiodos_pheromone_negative_fixture_corpus",
       "introducedBy": "chiodos-pheromone-transit/v1",
       "schemaFile": "spec/schemas/chio-pheromone/v1/negative-fixture-corpus.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.receive-report.v1",
+      "artifactKind": "chiodos_pheromone_receive_report",
+      "introducedBy": "chiodos-pheromone-runtime/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/receive-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.query-report.v1",
+      "artifactKind": "chiodos_pheromone_query_report",
+      "introducedBy": "chiodos-pheromone-runtime/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/query-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.peer-weights.v1",
+      "artifactKind": "chiodos_pheromone_peer_weights",
+      "introducedBy": "chiodos-pheromone-runtime/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/peer-weights.schema.json"
     }
   ]
 }
