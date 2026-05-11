@@ -101,9 +101,12 @@ The plugin reuses the `chio_code_agent` default policy unchanged:
 - **Denies outright:** `rm -rf /`, `chmod 777`, `curl | sh`, `sudo`,
   `git push --force`, `git reset --hard origin`, `mkfs.*`,
   `dd if=... of=/dev/...`.
-- **Requires approval:** `rm -rf <subdir>`, `mv`, `cp -r`, `git reset
-  --hard`, `git clean -fd`. Pass `approved=true` in the tool args once
-  the user has confirmed.
+- **Approval-required (denied today):** `rm -rf <subdir>`, `mv`,
+  `cp -r`, `git reset --hard`, `git clean -fd`. The `chio_shell_run`
+  schema does NOT expose an `approved` field, so the model cannot
+  self-approve these. They surface as a `denied` envelope until a
+  future release adds a sidecar-mediated human-in-the-loop
+  confirmation channel.
 
 Custom policies load from `CHIO_POLICY_FILE` (path to YAML); if unset
 the bundled `DEFAULT_POLICY` is used.
@@ -175,7 +178,6 @@ stack both, or every tool call will be policy-checked twice.
 | `CHIO_CAPABILITY_ID` | yes | (none) | Capability id from `hermes chio issue`. Without this the handlers return `chio_not_configured`. Stored in `~/.hermes/.env` with mode `0600` is recommended. |
 | `CHIO_POLICY_FILE` | no | (bundled `DEFAULT_POLICY`) | Path to a YAML policy. |
 | `CHIO_RECEIPT_BUFFER_MAX` | no | `1000` | In-memory recorded-receipt buffer cap (cap on the global FIFO deque exposed via `/chio receipts`, NOT a per-task limit). |
-| `CHIO_FAIL_OPEN` | no | `0` | Set `1` to downgrade `chio_not_configured` errors only. Never disables policy or sidecar verdicts. Documented as an unsafe escape hatch. |
 
 ## Configuration precedence
 

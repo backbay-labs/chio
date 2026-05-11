@@ -11,8 +11,7 @@ kind: standalone
 # the secret. The generic loader (hermes_cli/plugins.py _parse_manifest)
 # reads `requires_env` only; `optional_env` is silently dropped for
 # kind: standalone plugins, so optional knobs (CHIO_POLICY_FILE,
-# CHIO_RECEIPT_BUFFER_MAX, CHIO_FAIL_OPEN) are documented in the README
-# instead.
+# CHIO_RECEIPT_BUFFER_MAX) are documented in the README instead.
 requires_env:
   - name: CHIO_SIDECAR_URL
     description: "URL of the Chio sidecar (e.g. http://127.0.0.1:9090)"

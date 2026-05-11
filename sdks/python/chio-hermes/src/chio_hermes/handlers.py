@@ -274,10 +274,14 @@ def _factory_file_search(handle: RuntimeHandle) -> ToolHandler:
 def _factory_shell_run(handle: RuntimeHandle) -> ToolHandler:
     async def inner(args: dict[str, Any]) -> Any:
         command = _require(args, "command")
-        approved = args.get("approved")
+        # Hard-coded `approved=False`: there is no trusted human-in-the-
+        # loop confirmation channel today, and `approved` is NOT in the
+        # public JSON schema, so any caller-supplied `approved` is
+        # discarded here. Approval-required commands fall through to
+        # `chio_code_agent`'s deny path. See README "Requires approval".
         return await _agent(handle).shell.run_command(
             command,
-            approved=approved,
+            approved=False,
             executor=partial(_exec.shell_run_executor, cwd=handle.cwd),
         )
 

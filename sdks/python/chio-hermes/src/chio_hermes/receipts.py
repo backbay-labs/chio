@@ -68,11 +68,19 @@ def append_jsonl(path: Path, record: dict[str, Any]) -> None:
     Raises `OSError` on disk failure. `ReceiptBuffer.record` wraps this
     with suppression for the production path; direct callers can probe
     the raising behaviour.
+
+    The serialised record (including the trailing newline) is built in
+    memory and emitted with a single ``fh.write`` call. POSIX
+    append-mode is atomic per-`write` up to ``PIPE_BUF`` (~4 KiB on
+    Linux), so a single write keeps the line whole even if the process
+    is killed mid-write; splitting the JSON body and the trailing
+    newline into two writes (the historical shape) leaves a partial
+    line on disk when the process dies between them.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
+    payload = _canonical_dumps(record) + b"\n"
     with path.open("ab") as fh:
-        fh.write(_canonical_dumps(record))
-        fh.write(b"\n")
+        fh.write(payload)
 
 
 class ReceiptBuffer:

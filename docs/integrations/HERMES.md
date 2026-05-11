@@ -81,7 +81,6 @@ capability id is masked because `requires_env.password` is `true`):
 | `CHIO_CAPABILITY_ID`      | yes      | Capability id issued by `hermes chio issue`. Long-lived bearer token; prefer `~/.hermes/.env` mode `0600`. |
 | `CHIO_POLICY_FILE`        | no       | Path to a custom policy YAML. Defaults to the bundled `chio-code-agent` policy.                             |
 | `CHIO_RECEIPT_BUFFER_MAX` | no       | In-memory recorded-receipt buffer cap (cap on the global FIFO deque exposed via `/chio receipts`, NOT a per-task limit); default `1000`. |
-| `CHIO_FAIL_OPEN`          | no       | Unsafe escape hatch; downgrades the configuration-missing path only. Never disables policy.                 |
 
 ### 2.1 What is wrapped
 

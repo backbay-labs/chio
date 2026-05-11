@@ -96,20 +96,16 @@ CHIO_SHELL_RUN: dict[str, Any] = {
     "title": "chio_shell_run",
     "description": (
         "Run a shell command via argv-tokenized exec (NEVER shell=True). "
-        "Subject to the bundled CodeAgentPolicy approval list."
+        "Subject to the bundled CodeAgentPolicy approval list. "
+        "Approval-required commands (e.g. `rm -rf <subdir>`, `mv`, "
+        "`git reset --hard`) are denied; there is no model-supplied "
+        "approval channel today."
     ),
     "properties": {
         "command": {
             "type": "string",
             "minLength": 1,
             "description": "Shell command line; tokenized via shlex before exec.",
-        },
-        "approved": {
-            "type": "boolean",
-            "description": (
-                "Set true to confirm a human approved an "
-                "approval-required command."
-            ),
         },
     },
     "required": ["command"],

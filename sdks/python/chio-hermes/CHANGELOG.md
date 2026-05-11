@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `chio_shell_run` no longer exposes a model-supplied `approved`
+  parameter. The JSON Schema dropped the `approved` property and the
+  handler now passes `approved=False` unconditionally. Approval-
+  required commands surface as a `denied` envelope; a sidecar-mediated
+  human-in-the-loop confirmation channel is planned for a future
+  release.
+
+### Fixed
+
+- `ReceiptBuffer.denial_count()` now reflects denied tool calls in
+  production. The post-hook decodes the handler's JSON envelope and
+  surfaces `status` / `error` at the top level of the receipt record so
+  the deny counter (and `/chio status`) increments as expected.
+- `append_jsonl` writes the canonical-JSON record and trailing newline
+  in one `fh.write` call. POSIX append-mode is atomic per write up to
+  `PIPE_BUF`, so a SIGTERM/OOM mid-record no longer leaves a torn line
+  in `chio-receipts.jsonl`.
+
+### Removed
+
+- `CHIO_FAIL_OPEN` env var. The flag was documented as an escape hatch
+  but never consumed; shipping a no-op env var that claims to relax
+  fail-closed is worse than not shipping it. A future release may add a
+  real fail-open with sidecar-mediated semantics.
+
 ## [0.1.0]
 
 ### Added

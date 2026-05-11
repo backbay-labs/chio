@@ -23,7 +23,6 @@ def _format_status(handle: RuntimeHandle) -> str:
         f"  sidecar URL:   {handle.sidecar_url}",
         f"  capability id: ...{handle.masked_capability_id()}",
         f"  configured:    {handle.is_configured()}",
-        f"  fail_open:     {handle.fail_open}",
         f"  workspace:     {handle.cwd}",
     ]
     if handle.receipts is not None:

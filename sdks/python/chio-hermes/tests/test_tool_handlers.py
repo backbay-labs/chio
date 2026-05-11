@@ -244,3 +244,79 @@ def test_receipt_buffer_push_pop_next_direct() -> None:
     popped = buf.pop_next("task-1")
     assert popped == record
     assert buf.pop_next("task-1") is None
+
+
+def test_chio_shell_run_schema_does_not_expose_approved() -> None:
+    """The `approved` field used to be a model-supplied JSON schema
+    property. A model that sets `approved=true` could bypass the
+    bundled CodeAgentPolicy approval list (rm -rf <subdir>, mv,
+    git reset --hard, ...). Drop the property entirely so Hermes's
+    `additionalProperties: false` validator rejects any attempt by
+    the model to set it.
+    """
+    from chio_hermes.schemas import CHIO_SHELL_RUN
+
+    assert "approved" not in CHIO_SHELL_RUN["properties"], (
+        "chio_shell_run schema must not expose `approved`; the model "
+        "must not be able to self-approve approval-required commands"
+    )
+    assert CHIO_SHELL_RUN.get("additionalProperties") is False
+
+
+@pytest.mark.asyncio
+async def test_chio_shell_run_handler_ignores_caller_supplied_approved(
+    tmp_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The handler must pass `approved=False` to the underlying
+    `CodeAgent.shell.run_command` regardless of what the caller (the
+    LLM) supplies in `args`. Spy on `run_command` to capture the
+    forwarded kwargs and assert `approved` is False even when the
+    caller sets it to True.
+    """
+    from chio_hermes import executors as _exec
+
+    runtime = make_configured_runtime(
+        chio_client=MockChioClient(policy=_allow_all_policy),
+        cwd=tmp_workspace,
+    )
+
+    captured: dict[str, Any] = {}
+
+    real_run_command = runtime.code_agent.shell.run_command
+
+    async def _spy_run_command(command: str, **kwargs: Any) -> Any:
+        captured["command"] = command
+        captured["kwargs"] = dict(kwargs)
+        # Drop `executor` from kwargs because the spy substitutes its
+        # own no-op shell executor below; we still want the chio-code-
+        # agent policy chain to fire on `approved`.
+        return await real_run_command(command, **kwargs)
+
+    runtime.code_agent.shell.run_command = _spy_run_command  # type: ignore[method-assign]
+
+    async def _ok(**_kw: Any) -> dict[str, Any]:
+        return {"ok": True}
+
+    monkeypatch.setattr(_exec, "shell_run_executor", _ok)
+
+    by_name = {entry.name: entry for entry in TOOL_TABLE}
+    handler = make_handler(runtime, by_name["chio_shell_run"])
+
+    # Caller smuggles `approved=True` into args; handler MUST drop it.
+    result = await handler(
+        {"command": "echo hi", "approved": True}, task_id="task-approval"
+    )
+
+    assert isinstance(result, str)
+    payload = json.loads(result)
+    # The policy preflight MAY refuse `approved` as an additional arg
+    # depending on schema validation order, but the call must reach the
+    # handler so we can inspect what it forwarded. The contract under
+    # test is the forwarded kwarg, not the envelope shape.
+    assert "kwargs" in captured, (
+        f"handler did not invoke run_command (envelope: {payload!r})"
+    )
+    assert captured["kwargs"].get("approved") is False, (
+        "chio_shell_run must pass approved=False unconditionally; got "
+        f"approved={captured['kwargs'].get('approved')!r}"
+    )

@@ -21,6 +21,7 @@ is expected to evolve.
 
 from __future__ import annotations
 
+import json
 import sys
 import time
 from collections.abc import Callable
@@ -91,6 +92,34 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
     return pre_tool_call
 
 
+def _envelope_status_fields(result: Any) -> tuple[str | None, str | None]:
+    """Best-effort decode of a handler's JSON envelope.
+
+    Handlers always return canonical-JSON strings shaped as either
+    ``{"status":"allowed", ...}`` or ``{"error":"denied", ...}`` /
+    ``{"error":"chio_<slug>", ...}``. The post-hook needs the top-level
+    `status` and `error` keys hoisted onto the receipt record so that
+    `ReceiptBuffer.denial_count` (which reads `receipt.get("status")`
+    and `receipt.get("error")`) sees the deny verdict. Anything that
+    is not a parseable JSON object yields ``(None, None)`` and the
+    counter stays unchanged.
+    """
+    if not isinstance(result, str):
+        return None, None
+    try:
+        decoded = json.loads(result)
+    except (TypeError, ValueError):
+        return None, None
+    if not isinstance(decoded, dict):
+        return None, None
+    status = decoded.get("status")
+    error = decoded.get("error")
+    return (
+        status if isinstance(status, str) else None,
+        error if isinstance(error, str) else None,
+    )
+
+
 def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
     """Return a sync post-hook that records the canonical receipt.
 
@@ -108,6 +137,7 @@ def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
     ) -> None:
         if not _is_chio_tool(tool_name) or handle.receipts is None:
             return
+        status, error = _envelope_status_fields(result)
         record: dict[str, Any] = {
             "tool_name": tool_name,
             "args": dict(args or {}),
@@ -116,6 +146,14 @@ def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
             "recorded_at": time.time(),
             "result": result,
         }
+        # Surface envelope-level status / error at the top of the
+        # record so ReceiptBuffer.denial_count() (and any future
+        # /chio status counter) can inspect a single key without
+        # re-parsing the JSON `result` string.
+        if status is not None:
+            record["status"] = status
+        if error is not None:
+            record["error"] = error
         try:
             handle.receipts.record(record)
         except Exception as exc:  # noqa: BLE001 - tolerate any IO failure

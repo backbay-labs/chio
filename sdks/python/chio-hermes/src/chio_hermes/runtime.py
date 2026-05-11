@@ -30,17 +30,16 @@ DEFAULT_SIDECAR_URL = "http://127.0.0.1:9090"
 class RuntimeHandle:
     """All long-lived plugin state, owned by one `register(ctx)` call.
 
-    `fail_open`, when True, returns success-shaped empty JSON for the
-    *configuration-missing* path. It NEVER disables policy enforcement
-    or sidecar deny verdicts; it is documented as an unsafe escape
-    hatch.
+    The handle is fail-closed by construction: there is no fail-open
+    escape hatch in v0.1.x. A future release may add one with
+    sidecar-mediated semantics; until then any configuration gap
+    surfaces as `chio_not_configured` from the tool envelope.
     """
 
     chio_client: Any | None = None
     capability_id: str | None = None
     code_agent: Any | None = None
     receipts: Any | None = None
-    fail_open: bool = False
     policy: Any | None = None
     sidecar_url: str = DEFAULT_SIDECAR_URL
     cwd: Path = field(default_factory=Path.cwd)
@@ -60,12 +59,6 @@ class RuntimeHandle:
             return "<unset>"
         cap = self.capability_id
         return cap[-8:] if len(cap) > 8 else cap
-
-
-def _truthy(value: str | None) -> bool:
-    if value is None:
-        return False
-    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _load_policy() -> Any | None:
@@ -111,14 +104,12 @@ def build_runtime_handle() -> RuntimeHandle:
 
     sidecar_url = os.environ.get("CHIO_SIDECAR_URL", DEFAULT_SIDECAR_URL)
     capability_id = os.environ.get("CHIO_CAPABILITY_ID")
-    fail_open = _truthy(os.environ.get("CHIO_FAIL_OPEN"))
     workspace_raw = os.environ.get("CHIO_WORKSPACE_ROOT")
     workspace_root = Path(workspace_raw).resolve() if workspace_raw else Path.cwd().resolve()
 
     handle = RuntimeHandle(
         sidecar_url=sidecar_url,
         capability_id=capability_id,
-        fail_open=fail_open,
         cwd=workspace_root,
         receipts=ReceiptBuffer(),
     )

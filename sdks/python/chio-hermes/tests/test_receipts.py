@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -146,3 +147,88 @@ def test_record_writes_under_lock_no_torn_lines(
 def test_resolve_log_path_returns_path() -> None:
     p = _resolve_log_path()
     assert isinstance(p, Path)
+
+
+def test_denial_count_increments_on_top_level_status_denied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ReceiptBuffer.record` reads `status` and `error` from the top
+    level of the receipt record. The post-hook (`hooks.py`) is
+    responsible for hoisting them out of the JSON envelope; this test
+    pins the buffer-side contract by feeding three records (2 allowed,
+    1 denied) and asserting the counter is 1.
+    """
+    import chio_hermes.receipts as _receipts
+
+    log = tmp_path / "chio-receipts.jsonl"
+    monkeypatch.setattr(_receipts, "_resolve_log_path", lambda: log)
+
+    buf = ReceiptBuffer()
+    buf.record({"tool_name": "chio_file_read", "status": "allowed"})
+    buf.record({"tool_name": "chio_file_write", "status": "allowed"})
+    buf.record(
+        {
+            "tool_name": "chio_file_write",
+            "status": "denied",
+            "error": "denied",
+        }
+    )
+    assert buf.denial_count() == 1
+
+
+def test_append_jsonl_no_torn_line_on_partial_write_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A signal between the JSON body and the trailing newline must not
+    leave a torn line on disk. The historical implementation issued
+    two `write` calls; collapsing to one buffer makes the write atomic
+    up to PIPE_BUF (~4 KiB). Simulate the crash by patching the file
+    object's `write` to raise before any bytes hit disk: there must be
+    NO partial line after the failure.
+    """
+    log = tmp_path / "chio-receipts.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+
+    real_open = Path.open
+
+    class _CrashOnWrite:
+        def __init__(self, fh: Any) -> None:
+            self._fh = fh
+            self.calls = 0
+
+        def write(self, _data: bytes) -> int:
+            self.calls += 1
+            raise OSError("simulated SIGTERM mid-write")
+
+        def __enter__(self) -> _CrashOnWrite:
+            self._fh.__enter__()
+            return self
+
+        def __exit__(self, *exc: Any) -> Any:
+            return self._fh.__exit__(*exc)
+
+    spies: list[_CrashOnWrite] = []
+
+    def _spy_open(self: Path, *args: Any, **kwargs: Any) -> Any:
+        # Only spy on the JSONL append; leave other open() calls
+        # untouched so post-crash inspection still works.
+        if self == log and "ab" in args:
+            wrapper = _CrashOnWrite(real_open(self, *args, **kwargs))
+            spies.append(wrapper)
+            return wrapper
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", _spy_open)
+
+    with pytest.raises(OSError):
+        append_jsonl(log, {"id": "rcpt-crash"})
+
+    # Single write attempt; no partial bytes on disk.
+    assert spies and spies[0].calls == 1, (
+        "append_jsonl must issue exactly one fh.write call so a crash "
+        "between two writes cannot tear the line"
+    )
+    monkeypatch.undo()
+    if log.exists():
+        # File was created by the open(ab) but no bytes were committed.
+        assert log.read_bytes() == b""
