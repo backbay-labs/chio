@@ -55,6 +55,26 @@
       "id": "oversized-catchup",
       "target": "catchup-request",
       "expectedFailureCode": "catchup_denied"
+    },
+    {
+      "id": "missing-active-directory-state",
+      "target": "peer-directory-state",
+      "expectedFailureCode": "peer_directory_state_invalid"
+    },
+    {
+      "id": "removed-peer-quarantine",
+      "target": "peer-directory-state",
+      "expectedFailureCode": "peer_removed"
+    },
+    {
+      "id": "broken-previous-version-hash",
+      "target": "peer-directory-candidate",
+      "expectedFailureCode": "peer_directory_rollback"
+    },
+    {
+      "id": "bad-supervisor-profile",
+      "target": "relay-supervisor-profile",
+      "expectedFailureCode": "supervisor_profile_invalid"
     }
   ]
 }

@@ -120,8 +120,8 @@ import pathlib
 import sys
 
 report = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-if report.get("accepted") is not False or report.get("code") != "peer_directory_unsigned":
-    raise SystemExit("production lint did not reject unsigned peer directory")
+if report.get("accepted") is not False or report.get("code") != "relay_profile_denied":
+    raise SystemExit("production lint did not reject raw peer directory")
 PY
 
 cargo test -p chio-pheromone-relay signed_peer_directory_bundle_verifies_trust_and_rejects_rollback

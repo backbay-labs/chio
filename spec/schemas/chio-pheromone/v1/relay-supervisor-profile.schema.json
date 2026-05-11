@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-supervisor-profile.schema.json",
+  "title": "Chiodos Pheromone Relay Supervisor Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "profile",
+    "serviceName",
+    "listen",
+    "storePath",
+    "peerDirectoryStatePath",
+    "signingKeyPath",
+    "healthPath",
+    "readyPath",
+    "singleWriter",
+    "reverseProxy"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-supervisor-profile.v1" },
+    "profile": { "enum": ["localDev", "production"] },
+    "serviceName": { "type": "string", "minLength": 1 },
+    "listen": { "type": "string", "minLength": 1 },
+    "storePath": { "type": "string", "minLength": 1 },
+    "peerDirectoryStatePath": { "type": "string", "minLength": 1 },
+    "signingKeyPath": { "type": "string", "minLength": 1 },
+    "healthPath": { "type": "string", "minLength": 1 },
+    "readyPath": { "type": "string", "minLength": 1 },
+    "singleWriter": { "type": "boolean" },
+    "reverseProxy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheme",
+        "pinnedPathPrefix",
+        "maxBodyBytes",
+        "redirectsDisabled"
+      ],
+      "properties": {
+        "scheme": { "enum": ["http", "https"] },
+        "pinnedPathPrefix": { "type": "string", "minLength": 1 },
+        "maxBodyBytes": { "type": "integer", "minimum": 1 },
+        "redirectsDisabled": { "type": "boolean" }
+      }
+    }
+  }
+}

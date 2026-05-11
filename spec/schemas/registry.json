@@ -254,6 +254,30 @@
       "schemaFile": "spec/schemas/chio-pheromone/v1/peer-directory-bundle.schema.json"
     },
     {
+      "schema": "chio.pheromone.peer-directory-state.v1",
+      "artifactKind": "chiodos_pheromone_peer_directory_state",
+      "introducedBy": "chiodos-static-relay-directory/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/peer-directory-state.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.peer-directory-rotation-report.v1",
+      "artifactKind": "chiodos_pheromone_peer_directory_rotation_report",
+      "introducedBy": "chiodos-static-relay-directory/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/peer-directory-rotation-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-supervisor-profile.v1",
+      "artifactKind": "chiodos_pheromone_relay_supervisor_profile",
+      "introducedBy": "chiodos-static-relay-directory/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-supervisor-profile.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-drill-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_drill_report",
+      "introducedBy": "chiodos-static-relay-directory/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-drill-report.schema.json"
+    },
+    {
       "schema": "chio.pheromone.relay-config.v1",
       "artifactKind": "chiodos_pheromone_relay_config",
       "introducedBy": "chiodos-live-pheromone-relay/v1",

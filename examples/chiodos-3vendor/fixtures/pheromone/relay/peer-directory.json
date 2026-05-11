@@ -1,13 +1,13 @@
 {
   "schema": "chio.pheromone.peer-directory.v1",
   "localKernelId": "did:chio:dataco",
-  "issuedAtUnixMs": 1765999940000,
-  "expiresAtUnixMs": 1766000060000,
+  "issuedAtUnixMs": 1765999999500,
+  "expiresAtUnixMs": 1766000060500,
   "peers": [
     {
       "kernelId": "did:chio:buyer-kernel",
-      "publicKey": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
-      "endpoint": "http://127.0.0.1:18080",
+      "publicKey": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+      "endpoint": "https://relay-buyer.example.test",
       "treatySubscriptions": [
         "treaty:buyer-dataco:support-ops"
       ],
@@ -19,7 +19,7 @@
         {
           "ladderManifestId": "ladder:buyer:refund:v1",
           "ladderManifestSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-          "expiresAtUnixMs": 1766000060000
+          "expiresAtUnixMs": 1766000060500
         }
       ],
       "maxBatchFrames": 8,

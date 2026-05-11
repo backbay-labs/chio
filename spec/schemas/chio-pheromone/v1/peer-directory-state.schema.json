@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/peer-directory-state.schema.json",
+  "title": "Chiodos Pheromone Peer Directory State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "versionFloor",
+    "active",
+    "candidate",
+    "rejected"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.peer-directory-state.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "versionFloor": { "type": "integer", "minimum": 0 },
+    "active": {
+      "anyOf": [
+        { "$ref": "#/$defs/stateEntry" },
+        { "type": "null" }
+      ]
+    },
+    "candidate": {
+      "anyOf": [
+        { "$ref": "#/$defs/stateEntry" },
+        { "type": "null" }
+      ]
+    },
+    "rejected": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rejectedEntry" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "stateEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundle",
+        "bundleSha256",
+        "directorySha256",
+        "version",
+        "promotedAtUnixMs",
+        "removedPeerIds"
+      ],
+      "properties": {
+        "bundle": { "$ref": "#/$defs/bundle" },
+        "bundleSha256": { "$ref": "#/$defs/sha256" },
+        "directorySha256": { "$ref": "#/$defs/sha256" },
+        "version": { "type": "integer", "minimum": 0 },
+        "promotedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "removedPeerIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "body", "directory", "signature"],
+      "properties": {
+        "schema": { "const": "chio.pheromone.peer-directory-bundle.v1" },
+        "body": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema",
+            "issuer",
+            "keyId",
+            "directorySha256",
+            "version",
+            "issuedAtUnixMs",
+            "expiresAtUnixMs"
+          ],
+          "properties": {
+            "schema": { "const": "chio.pheromone.peer-directory-bundle.v1" },
+            "issuer": { "type": "string", "minLength": 1 },
+            "keyId": { "type": "string", "minLength": 1 },
+            "directorySha256": { "$ref": "#/$defs/sha256" },
+            "version": { "type": "integer", "minimum": 0 },
+            "previousVersionSha256": {
+              "anyOf": [
+                { "$ref": "#/$defs/sha256" },
+                { "type": "null" }
+              ]
+            },
+            "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+            "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "directory": { "$ref": "#/$defs/directory" },
+        "signature": { "type": "string", "minLength": 64 }
+      }
+    },
+    "directory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "localKernelId", "issuedAtUnixMs", "expiresAtUnixMs", "peers"],
+      "properties": {
+        "schema": { "const": "chio.pheromone.peer-directory.v1" },
+        "localKernelId": { "type": "string", "minLength": 1 },
+        "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+        "peers": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/peer" }
+        }
+      }
+    },
+    "peer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kernelId",
+        "publicKey",
+        "endpoint",
+        "treatySubscriptions",
+        "relayRole",
+        "allowedSubjectClassNamespaces",
+        "acceptedLadderRefs",
+        "maxBatchFrames",
+        "maxCatchupFrames",
+        "maxCatchupBytes"
+      ],
+      "properties": {
+        "kernelId": { "type": "string", "minLength": 1 },
+        "publicKey": { "type": "string", "minLength": 64 },
+        "endpoint": { "type": "string", "format": "uri" },
+        "treatySubscriptions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "relayRole": { "enum": ["origin", "hub", "receiver"] },
+        "allowedSubjectClassNamespaces": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "acceptedLadderRefs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ladderRef" }
+        },
+        "maxBatchFrames": { "type": "integer", "minimum": 1 },
+        "maxCatchupFrames": { "type": "integer", "minimum": 1 },
+        "maxCatchupBytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "ladderRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ladderManifestId", "ladderManifestSha256", "expiresAtUnixMs"],
+      "properties": {
+        "ladderManifestId": { "type": "string", "minLength": 1 },
+        "ladderManifestSha256": { "$ref": "#/$defs/sha256" },
+        "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "rejectedEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundleSha256",
+        "version",
+        "rejectedAtUnixMs",
+        "code",
+        "detail"
+      ],
+      "properties": {
+        "bundleSha256": {
+          "anyOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        },
+        "version": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "rejectedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "code": { "type": "string", "minLength": 1 },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

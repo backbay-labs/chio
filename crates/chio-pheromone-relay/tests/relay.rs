@@ -13,9 +13,10 @@ use chio_pheromone::{
     Severity, PHEROMONE_DEPOSIT_SCHEMA,
 };
 use chio_pheromone_relay::{
-    deliver_due_batches, sign_peer_directory_bundle, sign_relay_http_request, CatchupRequest,
-    CatchupResponse, PeerDirectory, PeerDirectoryBundleSigningInput, PeerDirectoryBundleTrust,
-    PeerDirectoryDocument, PeerDirectoryEntry, PheromoneRelayClient, PheromoneRelayConfig,
+    deliver_due_batches, promote_peer_directory_candidate, sign_peer_directory_bundle,
+    sign_relay_http_request, CatchupRequest, CatchupResponse, PeerDirectory,
+    PeerDirectoryBundleSigningInput, PeerDirectoryBundleTrust, PeerDirectoryDocument,
+    PeerDirectoryEntry, PeerDirectoryStateDocument, PheromoneRelayClient, PheromoneRelayConfig,
     PheromoneRelayError, PheromoneRelayService, RelayBatchReceiver, RelayHttpSigningInput,
     RelayHttpVerificationContext, RelayLadderRef, RelayNonceRecorder, RelayNonceSet, RelayProfile,
     RelayProfileLimits, RelayRole, SqlitePheromoneRelayStore, TrustedPeerDirectoryIssuer,
@@ -178,6 +179,146 @@ fn signed_peer_directory_bundle_verifies_trust_and_rejects_rollback() {
     unknown_issuer.issuers.clear();
     let unknown = bundle.verify(&unknown_issuer).unwrap_err();
     assert_eq!(unknown.code(), "unknown_peer_directory_issuer");
+}
+
+#[test]
+fn peer_directory_state_promotes_only_continuous_candidates() {
+    let issuer = key(9);
+    let sender = key(1);
+    let first = directory(&sender, "https://relay-v1.example.test".to_string());
+    let first_bundle = sign_peer_directory_bundle(PeerDirectoryBundleSigningInput {
+        issuer: "did:chio:relay-ops",
+        key_id: "relay-ops-2026",
+        version: 1,
+        previous_version_sha256: None,
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 60_000,
+        directory: &first,
+        keypair: &issuer,
+    })
+    .unwrap();
+    let mut state = PeerDirectoryStateDocument::new("did:chio:buyer-kernel", NOW);
+    let trust = PeerDirectoryBundleTrust {
+        issuers: vec![TrustedPeerDirectoryIssuer {
+            issuer: "did:chio:relay-ops".to_string(),
+            key_id: "relay-ops-2026".to_string(),
+            public_key: issuer.public_key(),
+        }],
+        min_version: 1,
+        now_unix_ms: NOW,
+        profile: RelayProfile::Production,
+        limits: RelayProfileLimits::production_defaults(),
+    };
+
+    let first_report =
+        promote_peer_directory_candidate(&mut state, first_bundle, &trust, NOW).unwrap();
+    assert!(first_report.accepted);
+    assert_eq!(state.active.as_ref().unwrap().version, 1);
+    let active = state.active_directory(&trust).unwrap();
+    let active_hash = state.active.as_ref().unwrap().bundle_sha256.clone();
+    assert_eq!(active.version(), Some(1));
+
+    let mut second = first.clone();
+    second.peers[0].endpoint = "https://relay-v2.example.test".to_string();
+    let broken_candidate = sign_peer_directory_bundle(PeerDirectoryBundleSigningInput {
+        issuer: "did:chio:relay-ops",
+        key_id: "relay-ops-2026",
+        version: 2,
+        previous_version_sha256: Some("f".repeat(64)),
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 60_000,
+        directory: &second,
+        keypair: &issuer,
+    })
+    .unwrap();
+
+    let broken =
+        promote_peer_directory_candidate(&mut state, broken_candidate, &trust, NOW).unwrap_err();
+    assert_eq!(broken.code(), "peer_directory_rollback");
+    assert_eq!(state.active.as_ref().unwrap().version, 1);
+    assert!(!state.rejected.is_empty());
+
+    let continuous = sign_peer_directory_bundle(PeerDirectoryBundleSigningInput {
+        issuer: "did:chio:relay-ops",
+        key_id: "relay-ops-2026",
+        version: 2,
+        previous_version_sha256: Some(active_hash),
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 60_000,
+        directory: &second,
+        keypair: &issuer,
+    })
+    .unwrap();
+    let second_report =
+        promote_peer_directory_candidate(&mut state, continuous, &trust, NOW).unwrap();
+    assert!(second_report.accepted);
+    assert_eq!(state.active.as_ref().unwrap().version, 2);
+}
+
+#[test]
+fn peer_directory_state_quarantines_removed_peers() {
+    let issuer = key(9);
+    let sender = key(1);
+    let mut first = directory(&sender, "https://relay-v1.example.test".to_string());
+    first.peers.push(PeerDirectoryEntry {
+        kernel_id: "did:chio:removed-peer".to_string(),
+        public_key: key(44).public_key(),
+        endpoint: "https://removed.example.test".to_string(),
+        treaty_subscriptions: vec!["treaty:buyer-removed:support-ops".to_string()],
+        relay_role: RelayRole::Origin,
+        allowed_subject_class_namespaces: vec!["dev.chio.support".to_string()],
+        accepted_ladder_refs: first.peers[0].accepted_ladder_refs.clone(),
+        max_batch_frames: 8,
+        max_catchup_frames: 16,
+        max_catchup_bytes: 64_000,
+    });
+    let first_bundle = sign_peer_directory_bundle(PeerDirectoryBundleSigningInput {
+        issuer: "did:chio:relay-ops",
+        key_id: "relay-ops-2026",
+        version: 1,
+        previous_version_sha256: None,
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 60_000,
+        directory: &first,
+        keypair: &issuer,
+    })
+    .unwrap();
+    let trust = PeerDirectoryBundleTrust {
+        issuers: vec![TrustedPeerDirectoryIssuer {
+            issuer: "did:chio:relay-ops".to_string(),
+            key_id: "relay-ops-2026".to_string(),
+            public_key: issuer.public_key(),
+        }],
+        min_version: 1,
+        now_unix_ms: NOW,
+        profile: RelayProfile::Production,
+        limits: RelayProfileLimits::production_defaults(),
+    };
+    let mut state = PeerDirectoryStateDocument::new("did:chio:buyer-kernel", NOW);
+    promote_peer_directory_candidate(&mut state, first_bundle, &trust, NOW).unwrap();
+    let active_hash = state.active.as_ref().unwrap().bundle_sha256.clone();
+
+    let mut second = first.clone();
+    second
+        .peers
+        .retain(|peer| peer.kernel_id != "did:chio:removed-peer");
+    let second_bundle = sign_peer_directory_bundle(PeerDirectoryBundleSigningInput {
+        issuer: "did:chio:relay-ops",
+        key_id: "relay-ops-2026",
+        version: 2,
+        previous_version_sha256: Some(active_hash),
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 60_000,
+        directory: &second,
+        keypair: &issuer,
+    })
+    .unwrap();
+
+    let report = promote_peer_directory_candidate(&mut state, second_bundle, &trust, NOW).unwrap();
+    assert_eq!(report.removed_peer_ids, vec!["did:chio:removed-peer"]);
+    let active = state.active_directory(&trust).unwrap();
+    let removed = active.peer("did:chio:removed-peer").unwrap_err();
+    assert_eq!(removed.code(), "peer_removed");
 }
 
 #[test]

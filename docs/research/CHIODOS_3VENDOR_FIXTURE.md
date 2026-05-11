@@ -761,14 +761,16 @@ Resolved items are kept here for audit continuity.
   per-step fields, including `amount_minor <= 25000`, still need a
   range-proof or zkVM lane.
 
-- **G7. Hub-relayed pheromone gossip is locally specified and fixture-backed.**
+- **G7. Hub-relayed pheromone gossip has local runtime and relay evidence.**
   The fixture relays a LlamaWorks deposit through Buyer Corp to DataCo
   and PaySwift with relay-owned `transit_chain` metadata outside the
   signed deposit. Direct gossip still requires `frame.treaty_id` to be
   in `deposit.treaty_scope`; relayed gossip requires ingress treaty
   scope, hop adjacency, fresh ladder refs, accepted intersections,
-  bounded hops, and an accepted hub. Live daemon relay and catch-up
-  protocols remain deferred.
+  bounded hops, and an accepted hub. The relay now has signed HTTP/JSON
+  delivery, durable local state, bounded catch-up, production profile
+  linting, and static verifier-owned peer-directory state with removed
+  peer quarantine.
 
 - **G8. Workflow-intersection artifact is implemented and verifier-owned.**
   `chio.chiodos-workflow-intersection.v1` binds the workflow id, workflow
@@ -800,7 +802,7 @@ Items not yet owed in either spec's open-items list:
 
 1. **Hidden disclosure predicates.** Range proofs, VC Data Integrity BBS interop, and zkVM bindings remain deferred beyond reveal-set BBS.
 2. **BBS+ secondary signature placement on receipts.** Parallel field on the body, detached envelope (used in section 8), or sidecar artefact indexed by receipt id.
-3. **Live pheromone relay.** The local transit evidence format is defined; persistence adapters, catch-up, relay scheduling, and network transport remain open.
+3. **Relay observability dashboards.** The relay emits local reports and metrics, but operator dashboards and alert threshold packs are still future work.
 4. **Destructive-authorization receipt content.** Whether it mirrors `cross_org_visibility` and `partition_fallback.blast_radius_cap` so auditors can re-check the cap without re-walking the manifest.
 
 ---

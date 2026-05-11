@@ -4,7 +4,7 @@ This runbook covers the signed HTTP/JSON pheromone relay as a local service. It 
 
 ## Deployment Boundary
 
-Production relays use verifier-owned peer-directory bundles. The bundle issuer must be configured outside the peer directory, and the relay must reject unsigned, stale, rollback, unknown issuer, duplicate peer, duplicate endpoint, and unsafe endpoint inputs.
+Production relays use verifier-owned peer-directory state. The state stores a last-known-good active signed bundle plus rejected candidates. The bundle issuer must be configured outside the peer directory, and the relay must reject unsigned, stale, rollback, unknown issuer, duplicate peer, duplicate endpoint, removed peer, and unsafe endpoint inputs.
 
 Profiles:
 
@@ -17,21 +17,32 @@ Recommended deployment:
 2. Pin the relay upstream path to `/v1/chiodos/pheromone`.
 3. Disable redirects on egress.
 4. Keep Chio relay request signatures mandatory even when TLS is present.
-5. Rotate peer-directory bundles by increasing version and preserving the previous version hash.
+5. Rotate peer-directory bundles through `relay directory promote`, increasing version and preserving the previous version hash.
+6. Keep removed peers quarantined in active state until a future active directory explicitly reintroduces them under an operator-reviewed version.
 
 ## Operator Commands
 
 ```bash
 chio chiodos pheromone relay lint \
-  --peer-directory peer-directory-bundle.json \
+  --peer-directory-state peer-directory-state.json \
   --profile production \
   --trusted-issuers trusted-peer-directory-issuers.json \
   --report relay-lint.json
 
+chio chiodos pheromone relay directory promote \
+  --state peer-directory-state.json \
+  --candidate peer-directory-candidate.json \
+  --trusted-issuers trusted-peer-directory-issuers.json \
+  --profile production \
+  --now-unix-ms 1766000000500 \
+  --report peer-directory-rotation-report.json
+
 chio chiodos pheromone relay serve \
   --listen 127.0.0.1:8080 \
   --store relay.sqlite3 \
-  --peer-directory peer-directory-bundle.json \
+  --peer-directory-state peer-directory-state.json \
+  --profile production \
+  --trusted-issuers trusted-peer-directory-issuers.json \
   --transit-policy transit-policy.json \
   --proof-package buyer-auditor-proof-package.json \
   --trust-bundle verifier-trust-bundle.json \
@@ -40,11 +51,17 @@ chio chiodos pheromone relay serve \
 
 chio chiodos pheromone relay tick \
   --store relay.sqlite3 \
-  --peer-directory peer-directory-bundle.json \
+  --peer-directory-state peer-directory-state.json \
+  --profile production \
+  --trusted-issuers trusted-peer-directory-issuers.json \
   --now-unix-ms 1766000000500 \
   --max-batches 32 \
   --signing-key relay-signing-key.json \
   --report relay-tick.json
+
+chio chiodos pheromone relay supervisor lint \
+  --profile relay-supervisor-profile.json \
+  --report relay-drill-report.json
 ```
 
 Signing keys are local operator inputs. Do not place private signing seeds in peer-directory bundles, public profiles, or proof packages.
@@ -56,7 +73,7 @@ The service exposes local artifact endpoints:
 - `GET /v1/chiodos/pheromone/health`
 - `GET /v1/chiodos/pheromone/ready`
 
-The health report includes queue depth, oldest pending age, retry count, dead-letter count, inbox count, cursor count, stale lease count, and peer-directory version when the directory came from a signed bundle.
+The health report includes queue depth, oldest pending age, retry count, dead-letter count, inbox count, cursor count, stale lease count, and peer-directory version from the verified active state.
 
 Readiness should fail closed when the store is unreachable, stale leases remain unrecovered, or outbox pressure exceeds the bounded local threshold.
 
@@ -72,14 +89,29 @@ Readiness should fail closed when the store is unreachable, stale leases remain 
 ### Dead-Letter Triage
 
 1. Group dead letters by last error code.
-2. For `endpoint_denied`, lint the current peer-directory bundle against the active profile.
+2. For `endpoint_denied`, lint the current peer-directory state against the active profile.
 3. For `sender_mismatch`, confirm the local signing-key `kernelId` matches the outbox sender.
 4. For receiver rejections, inspect the receiver report and rerun the runtime gate with the same proof package, trust bundle, and context.
 5. Requeue only after the root cause is fixed and the replacement batch hashes are understood.
 
+### Directory Rotation
+
+1. Inspect the current state with `relay directory inspect`.
+2. Promote only candidates whose previous version hash chains to the active bundle.
+3. Reject stale, rollback, unsafe endpoint, duplicate peer, and unknown issuer candidates with `relay directory reject`.
+4. Confirm the last-known-good active state still verifies after a rejected candidate and after restart.
+5. Run production lint before using the active state for serve, tick, or catch-up.
+
+### Removed Peer Quarantine
+
+1. Confirm removed peer ids in the active state.
+2. Deny new inbound batches, outbound delivery, and catch-up for quarantined peers.
+3. Preserve old rejected and removal reports for audit.
+4. Reintroduce a peer only through a higher signed candidate with explicit operator review.
+
 ### Stale Directory
 
-1. Reject the stale bundle and keep the current accepted bundle active.
+1. Reject the stale bundle and keep the current accepted state active.
 2. Ask the directory issuer for a higher version with a valid issued and expiry window.
 3. Confirm the previous version hash chains to the last accepted bundle.
 4. Run production lint before replacing operator inputs.
