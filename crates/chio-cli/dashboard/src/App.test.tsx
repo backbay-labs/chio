@@ -127,6 +127,13 @@ describe('App operator paths', () => {
           }),
         })
       }
+      if (url.startsWith('/v1/chiodos/pheromone/observability')) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+        })
+      }
       return Promise.reject(new Error(`unexpected fetch: ${url}`))
     }))
 
@@ -234,6 +241,13 @@ describe('App operator paths', () => {
               exportQuery: {},
             },
           }),
+        })
+      }
+      if (url.startsWith('/v1/chiodos/pheromone/observability')) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
         })
       }
       return Promise.reject(new Error(`unexpected fetch: ${url}`))

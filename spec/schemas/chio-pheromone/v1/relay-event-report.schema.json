@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-event-report.schema.json",
+  "title": "Chiodos Pheromone Relay Event Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "detail",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "eventKind",
+    "stableFailureCode"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-event-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "minLength": 1 },
+    "detail": { "type": "string", "minLength": 1 },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "eventKind": {
+      "enum": ["batch_receive", "catchup", "outbound_delivery", "request_rejected"]
+    },
+    "stableFailureCode": {
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ]
+    }
+  }
+}

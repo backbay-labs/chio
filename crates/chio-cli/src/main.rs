@@ -358,6 +358,103 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn chiodos_pheromone_relay_observe_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "observe",
+            "--store",
+            "relay.sqlite3",
+            "--peer-directory-state",
+            "peer-directory-state.json",
+            "--profile",
+            "production",
+            "--trusted-issuers",
+            "trusted-issuers.json",
+            "--report-dir",
+            "relay-reports",
+            "--limit",
+            "25",
+            "--report",
+            "relay-observability.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Observe {
+                                        store,
+                                        peer_directory_state,
+                                        profile,
+                                        trusted_issuers,
+                                        report_dir,
+                                        limit,
+                                        report,
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(store, std::path::PathBuf::from("relay.sqlite3"));
+                assert_eq!(
+                    peer_directory_state,
+                    std::path::PathBuf::from("peer-directory-state.json")
+                );
+                assert!(matches!(profile, RelayProfileArg::Production));
+                assert_eq!(trusted_issuers, std::path::PathBuf::from("trusted-issuers.json"));
+                assert_eq!(report_dir, std::path::PathBuf::from("relay-reports"));
+                assert_eq!(limit, 25);
+                assert_eq!(report, std::path::PathBuf::from("relay-observability.json"));
+            }
+            _ => panic!("expected chiodos pheromone relay observe subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_pheromone_relay_metrics_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "metrics",
+            "--store",
+            "relay.sqlite3",
+            "--format",
+            "prometheus",
+            "--output",
+            "relay-metrics.prom",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Metrics {
+                                        store,
+                                        format,
+                                        output,
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(store, std::path::PathBuf::from("relay.sqlite3"));
+                assert!(matches!(format, RelayMetricsFormatArg::Prometheus));
+                assert_eq!(output, std::path::PathBuf::from("relay-metrics.prom"));
+            }
+            _ => panic!("expected chiodos pheromone relay metrics subcommand"),
+        }
+    }
+
+    #[test]
     fn chiodos_pheromone_relay_lint_subcommand_parses() {
         let cli = Cli::try_parse_from([
             "chio",
@@ -538,6 +635,47 @@ mod cli_entrypoint_tests {
             Err(error) => error,
         };
         assert_eq!(error.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn chiodos_pheromone_relay_tick_report_dir_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "tick",
+            "--store",
+            "relay.sqlite3",
+            "--peer-directory",
+            "peer-directory.json",
+            "--now-unix-ms",
+            "1766000000500",
+            "--max-batches",
+            "4",
+            "--signing-key",
+            "relay-signing-key.json",
+            "--report",
+            "tick-report.json",
+            "--report-dir",
+            "relay-events",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Tick {
+                                        report_dir, ..
+                                    },
+                            },
+                    },
+            } => assert_eq!(report_dir, Some(std::path::PathBuf::from("relay-events"))),
+            _ => panic!("expected chiodos pheromone relay tick subcommand"),
+        }
     }
 
     #[test]

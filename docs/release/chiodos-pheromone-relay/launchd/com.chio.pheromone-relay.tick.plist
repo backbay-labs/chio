@@ -27,6 +27,8 @@
     <string>/etc/chio/private/relay-signing-key.json</string>
     <string>--report</string>
     <string>/var/lib/chio-pheromone-relay/reports/tick.json</string>
+    <string>--report-dir</string>
+    <string>/var/lib/chio-pheromone-relay/reports</string>
   </array>
   <key>StartInterval</key>
   <integer>30</integer>

@@ -65,7 +65,7 @@ struct Cli {
     json: bool,
 
     /// Output format for command results and terminal error reporting.
-    #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Human)]
+    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     format: OutputFormat,
 
     /// Optional SQLite database path for durable receipt persistence.
@@ -925,6 +925,10 @@ enum ChiodosPheromoneRelayCommands {
         /// Directory for per-request relay reports.
         #[arg(long, value_name = "DIR")]
         report_dir: PathBuf,
+
+        /// Environment variable containing the operator token for observability endpoints.
+        #[arg(long, value_name = "ENV")]
+        operator_token_env: Option<String>,
     },
 
     /// Queue accepted local relay work for subscribed peers.
@@ -995,6 +999,10 @@ enum ChiodosPheromoneRelayCommands {
         /// Output path for tick report JSON.
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
+
+        /// Directory for bounded outbound delivery event reports.
+        #[arg(long, value_name = "DIR")]
+        report_dir: Option<PathBuf>,
     },
 
     /// Request bounded catch-up metadata from local relay state.
@@ -1049,6 +1057,57 @@ enum ChiodosPheromoneRelayCommands {
         /// Output path for status report JSON.
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
+    },
+
+    /// Write the relay observability report from durable local evidence.
+    Observe {
+        /// SQLite store path for relay state.
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        /// Verifier-owned active peer-directory state JSON.
+        #[arg(long, value_name = "PATH")]
+        peer_directory_state: PathBuf,
+
+        /// Relay operational profile.
+        #[arg(long, value_enum)]
+        profile: RelayProfileArg,
+
+        /// Trusted peer-directory issuer config for signed active state.
+        #[arg(long, value_name = "PATH")]
+        trusted_issuers: PathBuf,
+
+        /// Directory containing bounded relay event reports.
+        #[arg(long, value_name = "DIR")]
+        report_dir: PathBuf,
+
+        /// Maximum recent failure codes to include.
+        #[arg(long, default_value_t = 25)]
+        limit: usize,
+
+        /// Output path for observability report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Export relay metrics from durable local state.
+    Metrics {
+        /// SQLite store path for relay state.
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        /// Output encoding for relay metrics.
+        #[arg(
+            long = "format",
+            id = "relay_metrics_format",
+            value_enum,
+            default_value = "prometheus"
+        )]
+        format: RelayMetricsFormatArg,
+
+        /// Output path for relay metrics.
+        #[arg(long, value_name = "PATH")]
+        output: PathBuf,
     },
 
     /// Inspect, promote, or reject verifier-owned relay peer-directory state.
@@ -1153,6 +1212,21 @@ impl From<RelayProfileArg> for chio_pheromone_relay::RelayProfile {
         match value {
             RelayProfileArg::LocalDev => Self::LocalDev,
             RelayProfileArg::Production => Self::Production,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+enum RelayMetricsFormatArg {
+    Prometheus,
+    Json,
+}
+
+impl From<RelayMetricsFormatArg> for chio_pheromone_relay::RelayMetricsFormat {
+    fn from(value: RelayMetricsFormatArg) -> Self {
+        match value {
+            RelayMetricsFormatArg::Prometheus => Self::Prometheus,
+            RelayMetricsFormatArg::Json => Self::Json,
         }
     }
 }

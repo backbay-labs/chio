@@ -14,7 +14,8 @@ ExecStart=/usr/local/bin/chio chiodos pheromone relay tick \
   --now-unix-ms 1766000000500 \
   --max-batches 32 \
   --signing-key /etc/chio/private/relay-signing-key.json \
-  --report /var/lib/chio-pheromone-relay/reports/tick.json
+  --report /var/lib/chio-pheromone-relay/reports/tick.json \
+  --report-dir /var/lib/chio-pheromone-relay/reports
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

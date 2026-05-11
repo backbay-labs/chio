@@ -308,6 +308,24 @@
       "schemaFile": "spec/schemas/chio-pheromone/v1/relay-health-report.schema.json"
     },
     {
+      "schema": "chio.pheromone.relay-observability-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_observability_report",
+      "introducedBy": "chiodos-relay-observability/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-observability-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-metrics-snapshot.v1",
+      "artifactKind": "chiodos_pheromone_relay_metrics_snapshot",
+      "introducedBy": "chiodos-relay-observability/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-metrics-snapshot.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-event-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_event_report",
+      "introducedBy": "chiodos-relay-observability/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-event-report.schema.json"
+    },
+    {
       "schema": "chio.pheromone.catchup-request.v1",
       "artifactKind": "chiodos_pheromone_catchup_request",
       "introducedBy": "chiodos-live-pheromone-relay/v1",

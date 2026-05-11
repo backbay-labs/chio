@@ -11,6 +11,7 @@ import type {
   ReceiptAnalyticsFilters,
   ReceiptAnalyticsResponse,
   ReceiptQueryResponse,
+  RelayObservabilityReport,
 } from './types'
 
 const TOKEN_KEY = 'chio_token'
@@ -154,6 +155,21 @@ export async function fetchOperatorReport(filters: Filters): Promise<OperatorRep
   })
   const res = await apiFetch(`/v1/reports/operator${query}`)
   return res.json() as Promise<OperatorReport>
+}
+
+export async function fetchRelayObservabilityReport(): Promise<RelayObservabilityReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/observability', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay observability request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayObservabilityReport>
 }
 
 /**

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchAgentCostSeries,
   fetchOperatorReport,
+  fetchRelayObservabilityReport,
   fetchReputationComparison,
   fetchReceiptAnalytics,
   getToken,
@@ -221,6 +222,74 @@ describe('dashboard api helpers', () => {
           'Content-Type': 'application/json',
         }),
       }),
+    )
+  })
+
+  it('fetches relay observability with bearer auth', async () => {
+    sessionStorage.setItem('chio_token', 'bearer-token')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        schema: 'chio.pheromone.relay-observability-report.v1',
+        accepted: true,
+        code: 'accepted',
+        localKernelId: 'did:chio:buyer-kernel',
+        generatedAtUnixMs: 1_766_000_000_500,
+        directory: {
+          activeVersion: 2,
+          activeBundleSha256: 'a'.repeat(64),
+          directorySha256: 'b'.repeat(64),
+          issuer: 'did:chio:relay-ops',
+          expiresAtUnixMs: 1_766_000_060_500,
+          removedPeerCount: 0,
+          removedPeerIds: [],
+          rejectedCandidateCount: 0,
+          lastRejectionCode: null,
+          profile: 'production',
+        },
+        queue: {
+          pending: 0,
+          retry: 0,
+          leased: 0,
+          delivered: 0,
+          deadLetter: 0,
+          oldestPendingAgeMs: null,
+          staleLeaseCount: 0,
+          inboxCount: 0,
+          cursorCount: 0,
+          catchupEventCount: 0,
+        },
+        recentFailures: [],
+        recommendations: [],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchRelayObservabilityReport()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/chiodos/pheromone/observability',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer bearer-token',
+          'Content-Type': 'application/json',
+        }),
+      }),
+    )
+  })
+
+  it('surfaces relay observability fetch failures without consuming callers', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+      }),
+    )
+
+    await expect(fetchRelayObservabilityReport()).rejects.toThrow(
+      'Relay observability request failed: 503 Service Unavailable',
     )
   })
 

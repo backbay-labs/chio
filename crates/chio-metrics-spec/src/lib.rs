@@ -110,6 +110,7 @@ pub const CHIO_PHEROMONE_RELAY_NONCE_REPLAY_CONFLICTS_TOTAL: &str =
     "chio_pheromone_relay_nonce_replay_conflicts_total";
 pub const CHIO_PHEROMONE_RELAY_OLDEST_PENDING_AGE_SECONDS: &str =
     "chio_pheromone_relay_oldest_pending_age_seconds";
+pub const CHIO_PHEROMONE_RELAY_QUEUE_DEPTH: &str = "chio_pheromone_relay_queue_depth";
 pub const CHIO_PHEROMONE_RELAY_REJECTIONS_TOTAL: &str = "chio_pheromone_relay_rejections_total";
 pub const CHIO_PHEROMONE_RELAY_STALE_DIRECTORIES_TOTAL: &str =
     "chio_pheromone_relay_stale_directories_total";
@@ -370,6 +371,12 @@ pub const REGISTRY: &[MetricDescriptor] = &[
         help = "Oldest pending relay outbox age in seconds.",
         kind = Gauge,
         labels = []
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RELAY_QUEUE_DEPTH,
+        help = "Relay outbox depth by bounded status.",
+        kind = Gauge,
+        labels = ["status"]
     ),
     describe!(
         name = CHIO_PHEROMONE_RELAY_REJECTIONS_TOTAL,

@@ -33,6 +33,7 @@ chio_pheromone_relay_endpoint_denied_total|counter|profile,reason||Total relay e
 chio_pheromone_relay_latency_seconds|histogram|outcome|0.001,0.005,0.01,0.025,0.05,0.1,0.25,0.5,1.0|Live pheromone relay delivery latency in seconds.
 chio_pheromone_relay_nonce_replay_conflicts_total|counter|peer||Total relay nonce replay conflicts.
 chio_pheromone_relay_oldest_pending_age_seconds|gauge|||Oldest pending relay outbox age in seconds.
+chio_pheromone_relay_queue_depth|gauge|status||Relay outbox depth by bounded status.
 chio_pheromone_relay_rejections_total|counter|reason||Total live pheromone relay rejections by bounded reason.
 chio_pheromone_relay_stale_directories_total|counter|profile||Total stale peer-directory bundles or documents rejected.
 chio_pheromone_relay_stale_leases|gauge|||Relay scheduler leases past their expiry.

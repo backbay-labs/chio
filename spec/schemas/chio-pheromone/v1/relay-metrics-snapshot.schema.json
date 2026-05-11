@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-metrics-snapshot.schema.json",
+  "title": "Chiodos Pheromone Relay Metrics Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "localKernelId", "generatedAtUnixMs", "samples"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-metrics-snapshot.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "samples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "value", "labels"],
+        "properties": {
+          "name": {
+            "enum": [
+              "chio_pheromone_relay_queue_depth",
+              "chio_pheromone_relay_oldest_pending_age_seconds",
+              "chio_pheromone_relay_stale_leases",
+              "chio_pheromone_relay_dead_letters_total",
+              "chio_pheromone_relay_rejections_total"
+            ]
+          },
+          "value": { "type": "number", "minimum": 0 },
+          "labels": {
+            "type": "object",
+            "propertyNames": {
+              "enum": ["status", "reason"]
+            },
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^[a-z0-9_.-]+$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

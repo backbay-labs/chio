@@ -75,6 +75,26 @@
       "id": "bad-supervisor-profile",
       "target": "relay-supervisor-profile",
       "expectedFailureCode": "supervisor_profile_invalid"
+    },
+    {
+      "id": "stale-directory-observability",
+      "target": "relay-observability-report",
+      "expectedFailureCode": "directory_expiring"
+    },
+    {
+      "id": "dead-letter-observability",
+      "target": "relay-observability-report",
+      "expectedFailureCode": "dead_letters_present"
+    },
+    {
+      "id": "replay-conflict-event",
+      "target": "relay-event-report",
+      "expectedFailureCode": "relay_nonce_replay"
+    },
+    {
+      "id": "malformed-relay-observability-report",
+      "target": "relay-observability-report",
+      "expectedFailureCode": "schema_validation_failed"
     }
   ]
 }

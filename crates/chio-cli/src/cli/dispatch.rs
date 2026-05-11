@@ -2471,6 +2471,7 @@ fn main() {
                         trust_bundle,
                         context,
                         report_dir,
+                        operator_token_env,
                     } => cmd_chiodos_pheromone_relay_serve(
                         &listen,
                         &store,
@@ -2483,6 +2484,7 @@ fn main() {
                         &trust_bundle,
                         &context,
                         &report_dir,
+                        operator_token_env.as_deref(),
                     ),
                     ChiodosPheromoneRelayCommands::Enqueue {
                         store,
@@ -2511,6 +2513,7 @@ fn main() {
                         max_batches,
                         signing_key,
                         report,
+                        report_dir,
                     } => cmd_chiodos_pheromone_relay_tick(
                         &store,
                         peer_directory.as_deref(),
@@ -2521,6 +2524,7 @@ fn main() {
                         max_batches,
                         &signing_key,
                         &report,
+                        report_dir.as_deref(),
                     ),
                     ChiodosPheromoneRelayCommands::Catchup {
                         store,
@@ -2548,6 +2552,28 @@ fn main() {
                     ChiodosPheromoneRelayCommands::Status { store, report } => {
                         cmd_chiodos_pheromone_relay_status(&store, &report)
                     }
+                    ChiodosPheromoneRelayCommands::Observe {
+                        store,
+                        peer_directory_state,
+                        profile,
+                        trusted_issuers,
+                        report_dir,
+                        limit,
+                        report,
+                    } => cmd_chiodos_pheromone_relay_observe(
+                        &store,
+                        &peer_directory_state,
+                        profile.into(),
+                        &trusted_issuers,
+                        &report_dir,
+                        limit,
+                        &report,
+                    ),
+                    ChiodosPheromoneRelayCommands::Metrics {
+                        store,
+                        format,
+                        output,
+                    } => cmd_chiodos_pheromone_relay_metrics(&store, format.into(), &output),
                     ChiodosPheromoneRelayCommands::Directory { command } => match command {
                         ChiodosPheromoneRelayDirectoryCommands::Inspect { state, report } => {
                             cmd_chiodos_pheromone_relay_directory_inspect(&state, &report)
@@ -3202,6 +3228,7 @@ fn cmd_chiodos_pheromone_relay_serve(
     trust_bundle: &Path,
     context: &Path,
     report_dir: &Path,
+    operator_token_env: Option<&str>,
 ) -> Result<(), CliError> {
     let now = unix_now_ms();
     std::fs::create_dir_all(report_dir).map_err(|error| {
@@ -3210,6 +3237,22 @@ fn cmd_chiodos_pheromone_relay_serve(
             report_dir.display()
         ))
     })?;
+    let operator_token = if let Some(env_name) = operator_token_env {
+        Some(std::env::var(env_name).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos pheromone relay operator token env {env_name}: {error}"
+            ))
+        })?)
+    } else {
+        None
+    };
+    if matches!(profile, chio_pheromone_relay::RelayProfile::Production)
+        && operator_token.as_deref().map(str::is_empty).unwrap_or(true)
+    {
+        return Err(CliError::cli_other_error(
+            "Chiodos pheromone relay production serve requires --operator-token-env".to_string(),
+        ));
+    }
     let peer_directory = load_relay_peer_directory_from_paths(
         peer_directory,
         peer_directory_state,
@@ -3257,6 +3300,9 @@ fn cmd_chiodos_pheromone_relay_serve(
             now_unix_ms: now,
             freshness_window_ms: 60_000,
             max_body_bytes: 1_048_576,
+            use_system_clock: true,
+            operator_token,
+            report_dir: Some(report_dir.to_path_buf()),
         },
         peer_directory,
         receiver,
@@ -3318,6 +3364,7 @@ fn cmd_chiodos_pheromone_relay_tick(
     max_batches: usize,
     signing_key: &Path,
     report: &Path,
+    report_dir: Option<&Path>,
 ) -> Result<(), CliError> {
     let peer_directory = load_relay_peer_directory_from_paths(
         peer_directory,
@@ -3347,7 +3394,65 @@ fn cmd_chiodos_pheromone_relay_tick(
         .map_err(|error| CliError::cli_other_error(format!("Chiodos relay tick: {error}")))?;
     let json = serde_json::to_string_pretty(&tick_report)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos relay report: {error}")))?;
-    write_json_string(report, &format!("{json}\n"))
+    write_json_string(report, &format!("{json}\n"))?;
+    if let Some(report_dir) = report_dir {
+        write_relay_outbound_event_report(
+            report_dir,
+            &sender_kernel_id,
+            now_unix_ms,
+            &tick_report,
+        )?;
+    }
+    Ok(())
+}
+
+fn write_relay_outbound_event_report(
+    report_dir: &Path,
+    local_kernel_id: &str,
+    generated_at_unix_ms: u64,
+    tick_report: &chio_pheromone_relay::RelayTickReport,
+) -> Result<(), CliError> {
+    std::fs::create_dir_all(report_dir).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "Chiodos relay event report directory {}: {error}",
+            report_dir.display()
+        ))
+    })?;
+    let code = if tick_report.accepted {
+        "accepted".to_string()
+    } else {
+        tick_report
+            .failures
+            .first()
+            .and_then(|failure| failure.split_once(": "))
+            .map(|(_, code)| code.to_string())
+            .unwrap_or_else(|| "outbound_delivery_failed".to_string())
+    };
+    let detail = format!(
+        "delivered={} retried={} deadLettered={} duplicateIdempotent={}",
+        tick_report.delivered,
+        tick_report.retried,
+        tick_report.dead_lettered,
+        tick_report.duplicate_idempotent
+    );
+    let report = chio_pheromone_relay::RelayEventReport {
+        schema: chio_pheromone_relay::PHEROMONE_RELAY_EVENT_REPORT_SCHEMA.to_string(),
+        accepted: tick_report.accepted,
+        code: code.clone(),
+        detail,
+        local_kernel_id: local_kernel_id.to_string(),
+        generated_at_unix_ms,
+        event_kind: "outbound_delivery".to_string(),
+        stable_failure_code: if tick_report.accepted {
+            None
+        } else {
+            Some(code)
+        },
+    };
+    let json = serde_json::to_string_pretty(&report)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay event report: {error}")))?;
+    let path = report_dir.join(format!("{generated_at_unix_ms}-outbound-delivery.json"));
+    write_json_string(&path, &format!("{json}\n"))
 }
 
 fn cmd_chiodos_pheromone_relay_catchup(
@@ -3426,6 +3531,60 @@ fn cmd_chiodos_pheromone_relay_status(store: &Path, report: &Path) -> Result<(),
     let json = serde_json::to_string_pretty(&status)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos relay report: {error}")))?;
     write_json_string(report, &format!("{json}\n"))
+}
+
+fn cmd_chiodos_pheromone_relay_observe(
+    store: &Path,
+    peer_directory_state: &Path,
+    profile: chio_pheromone_relay::RelayProfile,
+    trusted_issuers: &Path,
+    report_dir: &Path,
+    limit: usize,
+    report: &Path,
+) -> Result<(), CliError> {
+    let now = unix_now_ms();
+    std::fs::create_dir_all(report_dir).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "failed to create Chiodos relay report directory {}: {error}",
+            report_dir.display()
+        ))
+    })?;
+    let state_json = read_utf8_json_file(peer_directory_state, "Chiodos peer-directory state")?;
+    let state = chio_pheromone_relay::peer_directory_state_from_json(&state_json)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos peer-directory state: {error}")))?;
+    let trust = build_peer_directory_bundle_trust(trusted_issuers, now, profile)?;
+    let directory = state
+        .active_directory(&trust)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos peer-directory state: {error}")))?;
+    let relay_store = chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos pheromone relay store: {error}")),
+    )?;
+    let report_document = relay_store
+        .relay_observability_report(chio_pheromone_relay::RelayObservabilityInput {
+            local_kernel_id: directory.local_kernel_id(),
+            generated_at_unix_ms: now,
+            peer_directory: Some(&directory),
+            peer_directory_state: Some(&state),
+            profile,
+            recent_failure_limit: limit,
+        })
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay observability: {error}")))?;
+    write_pretty_json(report, &report_document, "Chiodos relay observability")
+}
+
+fn cmd_chiodos_pheromone_relay_metrics(
+    store: &Path,
+    format: chio_pheromone_relay::RelayMetricsFormat,
+    output: &Path,
+) -> Result<(), CliError> {
+    let now = unix_now_ms();
+    let relay_store = chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos pheromone relay store: {error}")),
+    )?;
+    let snapshot = relay_store
+        .relay_metrics_snapshot("local", now)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay metrics: {error}")))?;
+    write_json_string(output, &snapshot.render(format))
 }
 
 fn cmd_chiodos_pheromone_relay_directory_inspect(

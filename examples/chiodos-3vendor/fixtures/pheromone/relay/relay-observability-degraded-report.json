@@ -1,0 +1,53 @@
+{
+  "schema": "chio.pheromone.relay-observability-report.v1",
+  "accepted": false,
+  "code": "degraded",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000000500,
+  "directory": {
+    "activeVersion": 2,
+    "activeBundleSha256": "ba11b3973fd724f84ab400a7798023dab3f9b3c1aedabd55f7f302bbeaa5a5dd",
+    "directorySha256": "eaf656fae8c7fa7e09482ce3161fd1d10938e259b98fabb526cf8641c3a4cade",
+    "issuer": "did:chio:relay-ops",
+    "expiresAtUnixMs": 1766000060500,
+    "removedPeerCount": 1,
+    "removedPeerIds": [
+      "did:chio:buyer-kernel"
+    ],
+    "rejectedCandidateCount": 1,
+    "lastRejectionCode": "peer_directory_rollback",
+    "profile": "production"
+  },
+  "queue": {
+    "pending": 2,
+    "retry": 1,
+    "leased": 0,
+    "delivered": 7,
+    "deadLetter": 1,
+    "oldestPendingAgeMs": 60000,
+    "staleLeaseCount": 1,
+    "inboxCount": 4,
+    "cursorCount": 2,
+    "catchupEventCount": 3
+  },
+  "recentFailures": [
+    {
+      "code": "relay_nonce_replay",
+      "count": 2
+    },
+    {
+      "code": "endpoint_denied",
+      "count": 1
+    }
+  ],
+  "recommendations": [
+    {
+      "code": "dead_letters_present",
+      "severity": "warning"
+    },
+    {
+      "code": "stale_leases_present",
+      "severity": "warning"
+    }
+  ]
+}

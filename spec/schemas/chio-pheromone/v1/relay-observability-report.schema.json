@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-observability-report.schema.json",
+  "title": "Chiodos Pheromone Relay Observability Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "directory",
+    "queue",
+    "recentFailures",
+    "recommendations"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-observability-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "minLength": 1 },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "directory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activeVersion",
+        "activeBundleSha256",
+        "directorySha256",
+        "issuer",
+        "expiresAtUnixMs",
+        "removedPeerCount",
+        "removedPeerIds",
+        "rejectedCandidateCount",
+        "lastRejectionCode",
+        "profile"
+      ],
+      "properties": {
+        "activeVersion": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "activeBundleSha256": {
+          "anyOf": [
+            { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            { "type": "null" }
+          ]
+        },
+        "directorySha256": {
+          "anyOf": [
+            { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            { "type": "null" }
+          ]
+        },
+        "issuer": {
+          "anyOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "null" }
+          ]
+        },
+        "expiresAtUnixMs": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "removedPeerCount": { "type": "integer", "minimum": 0 },
+        "removedPeerIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "rejectedCandidateCount": { "type": "integer", "minimum": 0 },
+        "lastRejectionCode": {
+          "anyOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "null" }
+          ]
+        },
+        "profile": { "enum": ["local-dev", "production"] }
+      }
+    },
+    "queue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pending",
+        "retry",
+        "leased",
+        "delivered",
+        "deadLetter",
+        "oldestPendingAgeMs",
+        "staleLeaseCount",
+        "inboxCount",
+        "cursorCount",
+        "catchupEventCount"
+      ],
+      "properties": {
+        "pending": { "type": "integer", "minimum": 0 },
+        "retry": { "type": "integer", "minimum": 0 },
+        "leased": { "type": "integer", "minimum": 0 },
+        "delivered": { "type": "integer", "minimum": 0 },
+        "deadLetter": { "type": "integer", "minimum": 0 },
+        "oldestPendingAgeMs": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "staleLeaseCount": { "type": "integer", "minimum": 0 },
+        "inboxCount": { "type": "integer", "minimum": 0 },
+        "cursorCount": { "type": "integer", "minimum": 0 },
+        "catchupEventCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "recentFailures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "count"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "severity"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["info", "warning", "critical"] }
+        }
+      }
+    }
+  }
+}

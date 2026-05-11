@@ -11,3 +11,5 @@ Production profiles require:
 - a single writer for the SQLite relay store
 
 The files in this directory are examples, not a packaged service manager. Operators should adjust paths and users while preserving the security properties above.
+
+See `OBSERVABILITY.md` for the canonical relay observability report, bounded metrics, and alert examples.

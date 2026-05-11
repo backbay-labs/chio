@@ -12,7 +12,7 @@ cut -d'|' -f1 crates/chio-metrics-spec/metrics.snapshot | sort -u > "${registry}
 # Scope includes the edge crates that consume the registry plus
 # `chio-wasm-guards`. The grep is anchored at `crates/<name>/src` to avoid
 # pulling matches out of `target/` artifacts.
-rg --no-filename -o 'chio_[a-z0-9_]*(seconds|total|depth|bytes|ready|size)' \
+rg -P --no-filename -o '(?<![A-Za-z0-9_])chio_[a-z0-9_]*(seconds|total|depth|bytes|ready|size)(?![A-Za-z0-9_])' \
   crates/chio-metrics-spec \
   crates/chio-kernel/src \
   crates/chio-mcp-edge/src \
@@ -21,6 +21,7 @@ rg --no-filename -o 'chio_[a-z0-9_]*(seconds|total|depth|bytes|ready|size)' \
   crates/chio-http-core/src \
   crates/chio-anchor/src \
   crates/chio-federation/src \
+  crates/chio-pheromone-relay/src \
   crates/chio-wasm-guards/src \
   crates/chio-siem \
   deploy/prometheus \

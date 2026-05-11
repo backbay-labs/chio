@@ -247,6 +247,54 @@ export interface OperatorReport {
   sharedEvidence: SharedEvidenceReferenceReport
 }
 
+export interface RelayDirectorySummary {
+  activeVersion?: number | null
+  activeBundleSha256?: string | null
+  directorySha256?: string | null
+  issuer?: string | null
+  expiresAtUnixMs?: number | null
+  removedPeerCount: number
+  removedPeerIds: string[]
+  rejectedCandidateCount: number
+  lastRejectionCode?: string | null
+  profile: string
+}
+
+export interface RelayQueueSummary {
+  pending: number
+  retry: number
+  leased: number
+  delivered: number
+  deadLetter: number
+  oldestPendingAgeMs?: number | null
+  staleLeaseCount: number
+  inboxCount: number
+  cursorCount: number
+  catchupEventCount: number
+}
+
+export interface RelayFailureSummary {
+  code: string
+  count: number
+}
+
+export interface RelayOperatorRecommendation {
+  code: string
+  severity: string
+}
+
+export interface RelayObservabilityReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  directory: RelayDirectorySummary
+  queue: RelayQueueSummary
+  recentFailures: RelayFailureSummary[]
+  recommendations: RelayOperatorRecommendation[]
+}
+
 export interface PassportVerification {
   subject: string
   issuer?: string | null

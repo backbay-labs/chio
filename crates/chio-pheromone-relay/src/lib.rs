@@ -3,13 +3,14 @@
 #![forbid(unsafe_code)]
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use axum::extract::{DefaultBodyLimit, State};
-use axum::http::StatusCode;
+use axum::http::{header, HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chio_core_types::canonical::canonical_json_bytes;
@@ -33,6 +34,11 @@ pub const PHEROMONE_RELAY_HTTP_REQUEST_SCHEMA: &str = "chio.pheromone.relay-http
 pub const PHEROMONE_RELAY_TICK_REPORT_SCHEMA: &str = "chio.pheromone.relay-tick-report.v1";
 pub const PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA: &str = "chio.pheromone.relay-operator-report.v1";
 pub const PHEROMONE_RELAY_HEALTH_REPORT_SCHEMA: &str = "chio.pheromone.relay-health-report.v1";
+pub const PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA: &str =
+    "chio.pheromone.relay-observability-report.v1";
+pub const PHEROMONE_RELAY_METRICS_SNAPSHOT_SCHEMA: &str =
+    "chio.pheromone.relay-metrics-snapshot.v1";
+pub const PHEROMONE_RELAY_EVENT_REPORT_SCHEMA: &str = "chio.pheromone.relay-event-report.v1";
 pub const PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA: &str =
     "chio.pheromone.relay-supervisor-profile.v1";
 pub const PHEROMONE_RELAY_DRILL_REPORT_SCHEMA: &str = "chio.pheromone.relay-drill-report.v1";
@@ -45,6 +51,8 @@ pub const PHEROMONE_BATCH_RELAY_PATH: &str = "/v1/chiodos/pheromone/batches";
 pub const PHEROMONE_CATCHUP_RELAY_PATH: &str = "/v1/chiodos/pheromone/catchup";
 pub const PHEROMONE_HEALTH_PATH: &str = "/v1/chiodos/pheromone/health";
 pub const PHEROMONE_READY_PATH: &str = "/v1/chiodos/pheromone/ready";
+pub const PHEROMONE_RELAY_OBSERVABILITY_PATH: &str = "/v1/chiodos/pheromone/observability";
+pub const PHEROMONE_RELAY_METRICS_PATH: &str = "/v1/chiodos/pheromone/metrics";
 
 #[derive(Debug, thiserror::Error)]
 pub enum PheromoneRelayError {
@@ -84,6 +92,8 @@ pub enum PheromoneRelayError {
     RelayNonceReplay(String),
     #[error("relay_request_stale: {0}")]
     RelayRequestStale(String),
+    #[error("operator_auth_required: {0}")]
+    OperatorAuthRequired(String),
     #[error("sender_mismatch: {0}")]
     SenderMismatch(String),
     #[error("recipient_mismatch: {0}")]
@@ -128,6 +138,7 @@ impl PheromoneRelayError {
             Self::SignatureInvalid => "signature_invalid",
             Self::RelayNonceReplay(_) => "relay_nonce_replay",
             Self::RelayRequestStale(_) => "relay_request_stale",
+            Self::OperatorAuthRequired(_) => "operator_auth_required",
             Self::SenderMismatch(_) => "sender_mismatch",
             Self::RecipientMismatch(_) => "recipient_mismatch",
             Self::MethodMismatch(_) => "method_mismatch",
@@ -1100,6 +1111,153 @@ pub struct RelayHealthReport {
     pub checks: Vec<RelayHealthCheck>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelayMetricsFormat {
+    Json,
+    Prometheus,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayQueueSummary {
+    pub pending: u64,
+    pub retry: u64,
+    pub leased: u64,
+    pub delivered: u64,
+    pub dead_letter: u64,
+    pub oldest_pending_age_ms: Option<u64>,
+    pub stale_lease_count: u64,
+    pub inbox_count: u64,
+    pub cursor_count: u64,
+    pub catchup_event_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayDirectorySummary {
+    pub active_version: Option<u64>,
+    pub active_bundle_sha256: Option<String>,
+    pub directory_sha256: Option<String>,
+    pub issuer: Option<String>,
+    pub expires_at_unix_ms: Option<u64>,
+    pub removed_peer_count: u64,
+    pub removed_peer_ids: Vec<String>,
+    pub rejected_candidate_count: u64,
+    pub last_rejection_code: Option<String>,
+    pub profile: RelayProfile,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayFailureSummary {
+    pub code: String,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayOperatorRecommendation {
+    pub code: String,
+    pub severity: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayObservabilityReport {
+    pub schema: String,
+    pub accepted: bool,
+    pub code: String,
+    pub local_kernel_id: String,
+    pub generated_at_unix_ms: u64,
+    pub directory: RelayDirectorySummary,
+    pub queue: RelayQueueSummary,
+    pub recent_failures: Vec<RelayFailureSummary>,
+    pub recommendations: Vec<RelayOperatorRecommendation>,
+}
+
+pub struct RelayObservabilityInput<'a> {
+    pub local_kernel_id: &'a str,
+    pub generated_at_unix_ms: u64,
+    pub peer_directory: Option<&'a PeerDirectory>,
+    pub peer_directory_state: Option<&'a PeerDirectoryStateDocument>,
+    pub profile: RelayProfile,
+    pub recent_failure_limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayMetricSample {
+    pub name: String,
+    pub value: f64,
+    pub labels: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayMetricsSnapshot {
+    pub schema: String,
+    pub local_kernel_id: String,
+    pub generated_at_unix_ms: u64,
+    pub samples: Vec<RelayMetricSample>,
+}
+
+impl RelayMetricsSnapshot {
+    #[must_use]
+    pub fn render(&self, format: RelayMetricsFormat) -> String {
+        match format {
+            RelayMetricsFormat::Json => match serde_json::to_string_pretty(self) {
+                Ok(json) => format!("{json}\n"),
+                Err(error) => format!("{{\"schema\":\"{PHEROMONE_RELAY_METRICS_SNAPSHOT_SCHEMA}\",\"error\":\"{error}\"}}\n"),
+            },
+            RelayMetricsFormat::Prometheus => self.render_prometheus(),
+        }
+    }
+
+    fn render_prometheus(&self) -> String {
+        let mut output = String::new();
+        let mut described = BTreeSet::new();
+        for sample in &self.samples {
+            if described.insert(sample.name.clone()) {
+                let help = prometheus_help(&sample.name);
+                let kind = prometheus_kind(&sample.name);
+                output.push_str(&format!("# HELP {} {help}\n", sample.name));
+                output.push_str(&format!("# TYPE {} {kind}\n", sample.name));
+            }
+            output.push_str(&sample.name);
+            if !sample.labels.is_empty() {
+                output.push('{');
+                for (index, (name, value)) in sample.labels.iter().enumerate() {
+                    if index > 0 {
+                        output.push(',');
+                    }
+                    output.push_str(name);
+                    output.push_str("=\"");
+                    output.push_str(&prometheus_label_value(value));
+                    output.push('"');
+                }
+                output.push('}');
+            }
+            output.push(' ');
+            output.push_str(&format_float(sample.value));
+            output.push('\n');
+        }
+        output
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayEventReport {
+    pub schema: String,
+    pub accepted: bool,
+    pub code: String,
+    pub detail: String,
+    pub local_kernel_id: String,
+    pub generated_at_unix_ms: u64,
+    pub event_kind: String,
+    pub stable_failure_code: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelaySupervisorProfileDocument {
@@ -1331,6 +1489,15 @@ impl SqlitePheromoneRelayStore {
                 treaty_id TEXT NOT NULL,
                 cursor TEXT NOT NULL,
                 PRIMARY KEY(peer_kernel_id, treaty_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS chio_pheromone_relay_events (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_kind TEXT NOT NULL,
+                accepted INTEGER NOT NULL,
+                code TEXT NOT NULL,
+                recorded_at_unix_ms INTEGER NOT NULL,
+                report_json TEXT NOT NULL
             );
             "#,
         )?;
@@ -1651,6 +1818,136 @@ impl SqlitePheromoneRelayStore {
         })
     }
 
+    pub fn relay_observability_report(
+        &self,
+        input: RelayObservabilityInput<'_>,
+    ) -> Result<RelayObservabilityReport, PheromoneRelayError> {
+        let conn = self.conn.lock()?;
+        let queue = relay_queue_summary(&conn, input.generated_at_unix_ms)?;
+        let directory = relay_directory_summary(
+            input.peer_directory,
+            input.peer_directory_state,
+            input.profile,
+        );
+        let recent_failures = recent_failure_summaries(&conn, input.recent_failure_limit)?;
+        let mut recommendations = Vec::new();
+        if directory.expires_at_unix_ms.is_none() {
+            recommendations.push(RelayOperatorRecommendation {
+                code: "directory_unknown".to_string(),
+                severity: "warning".to_string(),
+            });
+        }
+        if directory
+            .expires_at_unix_ms
+            .is_some_and(|expires| expires <= input.generated_at_unix_ms.saturating_add(300_000))
+        {
+            recommendations.push(RelayOperatorRecommendation {
+                code: "directory_expiring".to_string(),
+                severity: "warning".to_string(),
+            });
+        }
+        if queue.dead_letter > 0 {
+            recommendations.push(RelayOperatorRecommendation {
+                code: "dead_letters_present".to_string(),
+                severity: "warning".to_string(),
+            });
+        }
+        if queue.stale_lease_count > 0 {
+            recommendations.push(RelayOperatorRecommendation {
+                code: "stale_leases_present".to_string(),
+                severity: "warning".to_string(),
+            });
+        }
+        if queue.retry > 0 {
+            recommendations.push(RelayOperatorRecommendation {
+                code: "retries_pending".to_string(),
+                severity: "info".to_string(),
+            });
+        }
+        let accepted = recommendations.is_empty();
+        Ok(RelayObservabilityReport {
+            schema: PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA.to_string(),
+            accepted,
+            code: if accepted { "accepted" } else { "degraded" }.to_string(),
+            local_kernel_id: input.local_kernel_id.to_string(),
+            generated_at_unix_ms: input.generated_at_unix_ms,
+            directory,
+            queue,
+            recent_failures,
+            recommendations,
+        })
+    }
+
+    pub fn relay_metrics_snapshot(
+        &self,
+        local_kernel_id: &str,
+        generated_at_unix_ms: u64,
+    ) -> Result<RelayMetricsSnapshot, PheromoneRelayError> {
+        let conn = self.conn.lock()?;
+        let queue = relay_queue_summary(&conn, generated_at_unix_ms)?;
+        let failures = recent_failure_summaries(&conn, 32)?;
+        let mut samples = Vec::new();
+        push_queue_depth_sample(&mut samples, "pending", queue.pending);
+        push_queue_depth_sample(&mut samples, "retry", queue.retry);
+        push_queue_depth_sample(&mut samples, "leased", queue.leased);
+        push_queue_depth_sample(&mut samples, "delivered", queue.delivered);
+        push_queue_depth_sample(&mut samples, "dead_letter", queue.dead_letter);
+        samples.push(RelayMetricSample {
+            name: "chio_pheromone_relay_oldest_pending_age_seconds".to_string(),
+            value: queue.oldest_pending_age_ms.unwrap_or(0) as f64 / 1_000.0,
+            labels: BTreeMap::new(),
+        });
+        samples.push(RelayMetricSample {
+            name: "chio_pheromone_relay_stale_leases".to_string(),
+            value: queue.stale_lease_count as f64,
+            labels: BTreeMap::new(),
+        });
+        let mut dead_letter_labels = BTreeMap::new();
+        dead_letter_labels.insert("reason".to_string(), "observed".to_string());
+        samples.push(RelayMetricSample {
+            name: "chio_pheromone_relay_dead_letters_total".to_string(),
+            value: queue.dead_letter as f64,
+            labels: dead_letter_labels,
+        });
+        for failure in failures {
+            let mut labels = BTreeMap::new();
+            labels.insert("reason".to_string(), failure.code);
+            samples.push(RelayMetricSample {
+                name: "chio_pheromone_relay_rejections_total".to_string(),
+                value: failure.count as f64,
+                labels,
+            });
+        }
+        Ok(RelayMetricsSnapshot {
+            schema: PHEROMONE_RELAY_METRICS_SNAPSHOT_SCHEMA.to_string(),
+            local_kernel_id: local_kernel_id.to_string(),
+            generated_at_unix_ms,
+            samples,
+        })
+    }
+
+    pub fn record_event_report(
+        &self,
+        report: &RelayEventReport,
+    ) -> Result<(), PheromoneRelayError> {
+        let conn = self.conn.lock()?;
+        conn.execute(
+            r#"
+            INSERT INTO chio_pheromone_relay_events
+                (event_kind, accepted, code, recorded_at_unix_ms, report_json)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+            params![
+                &report.event_kind,
+                if report.accepted { 1 } else { 0 },
+                &report.code,
+                i64_from_u64(report.generated_at_unix_ms, "recorded_at_unix_ms")?,
+                serde_json::to_string(report)?,
+            ],
+        )?;
+        Ok(())
+    }
+
     pub fn record_inbox(
         &self,
         sender_kernel_id: &str,
@@ -1758,6 +2055,9 @@ pub struct PheromoneRelayConfig {
     pub now_unix_ms: u64,
     pub freshness_window_ms: u64,
     pub max_body_bytes: usize,
+    pub use_system_clock: bool,
+    pub operator_token: Option<String>,
+    pub report_dir: Option<PathBuf>,
 }
 
 #[async_trait]
@@ -1801,22 +2101,76 @@ impl PheromoneRelayService {
             .route(PHEROMONE_CATCHUP_RELAY_PATH, post(handle_catchup_relay))
             .route(PHEROMONE_HEALTH_PATH, get(handle_health))
             .route(PHEROMONE_READY_PATH, get(handle_ready))
+            .route(
+                PHEROMONE_RELAY_OBSERVABILITY_PATH,
+                get(handle_observability),
+            )
+            .route(PHEROMONE_RELAY_METRICS_PATH, get(handle_metrics))
             .layer(DefaultBodyLimit::max(max_body_bytes))
             .with_state(Arc::new(self));
         axum::serve(listener, router)
             .await
             .map_err(|error| PheromoneRelayError::Http(error.to_string()))
     }
+
+    fn request_now_unix_ms(&self) -> u64 {
+        if self.config.use_system_clock {
+            system_unix_ms().unwrap_or(self.config.now_unix_ms)
+        } else {
+            self.config.now_unix_ms
+        }
+    }
+
+    fn emit_event_report(
+        &self,
+        event_kind: &str,
+        accepted: bool,
+        code: &str,
+        detail: &str,
+        generated_at_unix_ms: u64,
+    ) -> Result<(), PheromoneRelayError> {
+        let report = RelayEventReport {
+            schema: PHEROMONE_RELAY_EVENT_REPORT_SCHEMA.to_string(),
+            accepted,
+            code: code.to_string(),
+            detail: detail.to_string(),
+            local_kernel_id: self.config.local_kernel_id.clone(),
+            generated_at_unix_ms,
+            event_kind: event_kind.to_string(),
+            stable_failure_code: if accepted {
+                None
+            } else {
+                Some(code.to_string())
+            },
+        };
+        self.store.record_event_report(&report)?;
+        if let Some(report_dir) = &self.config.report_dir {
+            std::fs::create_dir_all(report_dir)?;
+            let report_hash = canonical_sha256(&report)?;
+            let suffix = report_hash.chars().take(12).collect::<String>();
+            let filename = format!(
+                "{}-{}-{}.json",
+                generated_at_unix_ms,
+                sanitize_event_part(event_kind),
+                suffix
+            );
+            let path = report_dir.join(filename);
+            let json = serde_json::to_string_pretty(&report)?;
+            std::fs::write(path, format!("{json}\n"))?;
+        }
+        Ok(())
+    }
 }
 
 async fn handle_health(
     State(service): State<Arc<PheromoneRelayService>>,
 ) -> Result<Json<RelayHealthReport>, (StatusCode, Json<RelayOperatorReport>)> {
+    let now = service.request_now_unix_ms();
     service
         .store
         .health_report(
             &service.config.local_kernel_id,
-            service.config.now_unix_ms,
+            now,
             service.directory.version(),
         )
         .map(Json)
@@ -1826,11 +2180,12 @@ async fn handle_health(
 async fn handle_ready(
     State(service): State<Arc<PheromoneRelayService>>,
 ) -> Result<Json<RelayHealthReport>, (StatusCode, Json<RelayOperatorReport>)> {
+    let now = service.request_now_unix_ms();
     let report = service
         .store
         .health_report(
             &service.config.local_kernel_id,
-            service.config.now_unix_ms,
+            now,
             service.directory.version(),
         )
         .map_err(|error| relay_http_error(&service, error))?;
@@ -1851,15 +2206,53 @@ async fn handle_ready(
     }
 }
 
+async fn handle_observability(
+    State(service): State<Arc<PheromoneRelayService>>,
+    headers: HeaderMap,
+) -> Result<Json<RelayObservabilityReport>, (StatusCode, Json<RelayOperatorReport>)> {
+    authorize_operator(&service, &headers)?;
+    let now = service.request_now_unix_ms();
+    service
+        .store
+        .relay_observability_report(RelayObservabilityInput {
+            local_kernel_id: &service.config.local_kernel_id,
+            generated_at_unix_ms: now,
+            peer_directory: Some(&service.directory),
+            peer_directory_state: None,
+            profile: RelayProfile::LocalDev,
+            recent_failure_limit: 25,
+        })
+        .map(Json)
+        .map_err(|error| relay_http_error(&service, error))
+}
+
+async fn handle_metrics(
+    State(service): State<Arc<PheromoneRelayService>>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<RelayOperatorReport>)> {
+    authorize_operator(&service, &headers)?;
+    let now = service.request_now_unix_ms();
+    let snapshot = service
+        .store
+        .relay_metrics_snapshot(&service.config.local_kernel_id, now)
+        .map_err(|error| relay_http_error(&service, error))?;
+    Ok((
+        [(header::CONTENT_TYPE, "text/plain; version=0.0.4")],
+        snapshot.render(RelayMetricsFormat::Prometheus),
+    )
+        .into_response())
+}
+
 async fn handle_batch_relay(
     State(service): State<Arc<PheromoneRelayService>>,
     Json(request): Json<PheromoneRelayHttpRequest>,
 ) -> Result<Json<PheromoneReceiveReport>, (StatusCode, Json<RelayOperatorReport>)> {
+    let now = service.request_now_unix_ms();
     let context = RelayHttpVerificationContext {
         local_kernel_id: service.config.local_kernel_id.clone(),
         method: "POST".to_string(),
         path: PHEROMONE_BATCH_RELAY_PATH.to_string(),
-        now_unix_ms: service.config.now_unix_ms,
+        now_unix_ms: now,
         freshness_window_ms: service.config.freshness_window_ms,
     };
     let batch: PheromoneGossipBatch = request
@@ -1867,16 +2260,27 @@ async fn handle_batch_relay(
         .map_err(|error| relay_http_error(&service, error))?;
     let report = service
         .receiver
-        .receive_batch(
-            batch.clone(),
-            request.sender_kernel_id.clone(),
-            service.config.now_unix_ms,
-        )
+        .receive_batch(batch.clone(), request.sender_kernel_id.clone(), now)
         .await
         .map_err(|error| relay_http_error(&service, error))?;
     service
         .store
         .record_inbox(&request.sender_kernel_id, &request.nonce, &batch, &report)
+        .map_err(|error| relay_http_error(&service, error))?;
+    let report_code = report
+        .frames
+        .iter()
+        .find(|frame| !frame.accepted)
+        .map(|frame| frame.code.as_str())
+        .unwrap_or("accepted");
+    service
+        .emit_event_report(
+            "batch_receive",
+            report.accepted,
+            report_code,
+            "batch received",
+            now,
+        )
         .map_err(|error| relay_http_error(&service, error))?;
     Ok(Json(report))
 }
@@ -1885,11 +2289,12 @@ async fn handle_catchup_relay(
     State(service): State<Arc<PheromoneRelayService>>,
     Json(request): Json<PheromoneRelayHttpRequest>,
 ) -> Result<Json<CatchupResponse>, (StatusCode, Json<RelayOperatorReport>)> {
+    let now = service.request_now_unix_ms();
     let context = RelayHttpVerificationContext {
         local_kernel_id: service.config.local_kernel_id.clone(),
         method: "POST".to_string(),
         path: PHEROMONE_CATCHUP_RELAY_PATH.to_string(),
-        now_unix_ms: service.config.now_unix_ms,
+        now_unix_ms: now,
         freshness_window_ms: service.config.freshness_window_ms,
     };
     let catchup: CatchupRequest = request
@@ -1921,6 +2326,9 @@ async fn handle_catchup_relay(
         next_cursor,
         code: "accepted".to_string(),
     };
+    service
+        .emit_event_report("catchup", true, "accepted", "catch-up response served", now)
+        .map_err(|error| relay_http_error(&service, error))?;
     Ok(Json(response))
 }
 
@@ -1962,19 +2370,55 @@ fn validate_catchup_request(
     Ok(())
 }
 
+fn authorize_operator(
+    service: &PheromoneRelayService,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<RelayOperatorReport>)> {
+    let Some(token) = service.config.operator_token.as_deref() else {
+        return Ok(());
+    };
+    let authorized = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value == format!("Bearer {token}"));
+    if authorized {
+        Ok(())
+    } else {
+        Err(relay_http_status_error(
+            service,
+            PheromoneRelayError::OperatorAuthRequired(
+                "operator token is required for relay observability".to_string(),
+            ),
+            StatusCode::UNAUTHORIZED,
+        ))
+    }
+}
+
 fn relay_http_error(
     service: &PheromoneRelayService,
     error: PheromoneRelayError,
 ) -> (StatusCode, Json<RelayOperatorReport>) {
+    relay_http_status_error(service, error, StatusCode::BAD_REQUEST)
+}
+
+fn relay_http_status_error(
+    service: &PheromoneRelayService,
+    error: PheromoneRelayError,
+    status: StatusCode,
+) -> (StatusCode, Json<RelayOperatorReport>) {
+    let now = service.request_now_unix_ms();
+    let code = error.code().to_string();
+    let detail = error.to_string();
+    let _ = service.emit_event_report("request_rejected", false, &code, &detail, now);
     (
-        StatusCode::BAD_REQUEST,
+        status,
         Json(RelayOperatorReport {
             schema: PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA.to_string(),
             accepted: false,
-            code: error.code().to_string(),
-            detail: error.to_string(),
+            code,
+            detail,
             local_kernel_id: service.config.local_kernel_id.clone(),
-            generated_at_unix_ms: service.config.now_unix_ms,
+            generated_at_unix_ms: now,
         }),
     )
 }
@@ -2224,6 +2668,227 @@ fn validate_peer_directory_profile(
 
 fn is_loopback_host(url: &Url) -> bool {
     matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"))
+}
+
+fn relay_directory_summary(
+    directory: Option<&PeerDirectory>,
+    state: Option<&PeerDirectoryStateDocument>,
+    profile: RelayProfile,
+) -> RelayDirectorySummary {
+    let active = state.and_then(|document| document.active.as_ref());
+    let mut removed_peer_ids = active
+        .map(|entry| entry.removed_peer_ids.clone())
+        .unwrap_or_default();
+    removed_peer_ids.sort();
+    let last_rejection_code = state
+        .and_then(|document| document.rejected.last())
+        .map(|entry| entry.code.clone());
+    RelayDirectorySummary {
+        active_version: active
+            .map(|entry| entry.version)
+            .or_else(|| directory.and_then(PeerDirectory::version)),
+        active_bundle_sha256: active.map(|entry| entry.bundle_sha256.clone()),
+        directory_sha256: active.map(|entry| entry.directory_sha256.clone()),
+        issuer: active.map(|entry| entry.bundle.body.issuer.clone()),
+        expires_at_unix_ms: active
+            .map(|entry| entry.bundle.body.expires_at_unix_ms)
+            .or_else(|| {
+                directory.map(|peer_directory| peer_directory.document().expires_at_unix_ms)
+            }),
+        removed_peer_count: u64::try_from(removed_peer_ids.len()).unwrap_or(u64::MAX),
+        removed_peer_ids,
+        rejected_candidate_count: state
+            .map(|document| u64::try_from(document.rejected.len()).unwrap_or(u64::MAX))
+            .unwrap_or(0),
+        last_rejection_code,
+        profile,
+    }
+}
+
+fn relay_queue_summary(
+    conn: &Connection,
+    generated_at_unix_ms: u64,
+) -> Result<RelayQueueSummary, PheromoneRelayError> {
+    let pending = count_outbox_statuses(conn, &["pending"])?;
+    let retry = count_outbox_statuses(conn, &["retry"])?;
+    let leased = count_outbox_statuses(conn, &["leased"])?;
+    let delivered = count_outbox_statuses(conn, &["delivered"])?;
+    let dead_letter = count_outbox_statuses(conn, &["dead_letter"])?;
+    let oldest_pending = oldest_pending_queued_at(conn)?;
+    Ok(RelayQueueSummary {
+        pending,
+        retry,
+        leased,
+        delivered,
+        dead_letter,
+        oldest_pending_age_ms: oldest_pending
+            .map(|queued| generated_at_unix_ms.saturating_sub(queued)),
+        stale_lease_count: count_stale_leases(conn, generated_at_unix_ms)?,
+        inbox_count: count_rows(conn, "chio_pheromone_relay_inbox")?,
+        cursor_count: count_rows(conn, "chio_pheromone_relay_cursors")?,
+        catchup_event_count: count_catchup_events(conn)?,
+    })
+}
+
+fn recent_failure_summaries(
+    conn: &Connection,
+    limit: usize,
+) -> Result<Vec<RelayFailureSummary>, PheromoneRelayError> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+    let mut counts = BTreeMap::<String, u64>::new();
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT code, COUNT(*)
+        FROM chio_pheromone_relay_attempts
+        GROUP BY code
+        "#,
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    for row in rows {
+        let (code, count) = row?;
+        let count = u64_from_i64(count, "attempt count")?;
+        counts
+            .entry(code)
+            .and_modify(|value| *value = value.saturating_add(count))
+            .or_insert(count);
+    }
+    drop(stmt);
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT last_error_code, COUNT(*)
+        FROM chio_pheromone_relay_outbox
+        WHERE status = 'dead_letter' AND last_error_code IS NOT NULL
+        GROUP BY last_error_code
+        "#,
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    for row in rows {
+        let (code, count) = row?;
+        let count = u64_from_i64(count, "dead-letter count")?;
+        counts
+            .entry(code)
+            .and_modify(|value| *value = value.saturating_add(count))
+            .or_insert(count);
+    }
+    drop(stmt);
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT code, COUNT(*)
+        FROM chio_pheromone_relay_events
+        WHERE accepted = 0
+        GROUP BY code
+        "#,
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    for row in rows {
+        let (code, count) = row?;
+        let count = u64_from_i64(count, "event count")?;
+        counts
+            .entry(code)
+            .and_modify(|value| *value = value.saturating_add(count))
+            .or_insert(count);
+    }
+
+    let mut summaries = counts
+        .into_iter()
+        .map(|(code, count)| RelayFailureSummary { code, count })
+        .collect::<Vec<_>>();
+    summaries.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.code.cmp(&right.code))
+    });
+    summaries.truncate(limit);
+    Ok(summaries)
+}
+
+fn push_queue_depth_sample(samples: &mut Vec<RelayMetricSample>, status: &str, value: u64) {
+    let mut labels = BTreeMap::new();
+    labels.insert("status".to_string(), status.to_string());
+    samples.push(RelayMetricSample {
+        name: "chio_pheromone_relay_queue_depth".to_string(),
+        value: value as f64,
+        labels,
+    });
+}
+
+fn count_catchup_events(conn: &Connection) -> Result<u64, PheromoneRelayError> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM chio_pheromone_relay_events WHERE event_kind = 'catchup'",
+        [],
+        |row| row.get(0),
+    )?;
+    u64_from_i64(count, "catch-up event count")
+}
+
+fn prometheus_help(name: &str) -> &'static str {
+    match name {
+        "chio_pheromone_relay_queue_depth" => "Relay outbox depth by bounded status.",
+        "chio_pheromone_relay_oldest_pending_age_seconds" => {
+            "Oldest pending relay outbox age in seconds."
+        }
+        "chio_pheromone_relay_stale_leases" => "Relay scheduler leases past their expiry.",
+        "chio_pheromone_relay_dead_letters_total" => {
+            "Total relay outbox batches moved to dead letter."
+        }
+        "chio_pheromone_relay_rejections_total" => {
+            "Total live pheromone relay rejections by bounded reason."
+        }
+        _ => "Chio relay metric.",
+    }
+}
+
+fn prometheus_kind(name: &str) -> &'static str {
+    match name {
+        "chio_pheromone_relay_dead_letters_total" | "chio_pheromone_relay_rejections_total" => {
+            "counter"
+        }
+        _ => "gauge",
+    }
+}
+
+fn prometheus_label_value(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+}
+
+fn format_float(value: f64) -> String {
+    if value.fract() == 0.0 {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.6}")
+    }
+}
+
+fn system_unix_ms() -> Option<u64> {
+    let duration = SystemTime::now().duration_since(UNIX_EPOCH).ok()?;
+    u64::try_from(duration.as_millis()).ok()
+}
+
+fn sanitize_event_part(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 fn canonical_sha256<T: Serialize>(value: &T) -> Result<String, PheromoneRelayError> {

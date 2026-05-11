@@ -11,6 +11,7 @@ import type { Filters, Receipt } from '../types'
 import { decisionKind, formatMinorUnits, receiptSubjectKey } from '../types'
 import { OperatorSummary } from './OperatorSummary'
 import { PortableReputationPanel } from './PortableReputationPanel'
+import { RelayObservabilitySummary } from './RelayObservabilitySummary'
 
 const DelegationChain = lazy(async () => {
   const module = await import('./DelegationChain')
@@ -330,6 +331,7 @@ export function ReceiptTable({ filters }: ReceiptTableProps) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div className="receipt-table-container">
           <OperatorSummary filters={filters} />
+          <RelayObservabilitySummary />
           <PortableReputationPanel subjectKey={filters.agentSubject || undefined} />
           {receipts.length === 0 ? (
             <div className="state-empty">No receipts found</div>

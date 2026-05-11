@@ -13,12 +13,13 @@ Profiles:
 
 Recommended deployment:
 
-1. Terminate TLS at a reverse proxy owned by the same operator boundary as the relay.
-2. Pin the relay upstream path to `/v1/chiodos/pheromone`.
-3. Disable redirects on egress.
-4. Keep Chio relay request signatures mandatory even when TLS is present.
-5. Rotate peer-directory bundles through `relay directory promote`, increasing version and preserving the previous version hash.
-6. Keep removed peers quarantined in active state until a future active directory explicitly reintroduces them under an operator-reviewed version.
+1. Generate the relay observability report before inspecting raw store rows.
+2. Terminate TLS at a reverse proxy owned by the same operator boundary as the relay.
+3. Pin the relay upstream path to `/v1/chiodos/pheromone`.
+4. Disable redirects on egress.
+5. Keep Chio relay request signatures mandatory even when TLS is present.
+6. Rotate peer-directory bundles through `relay directory promote`, increasing version and preserving the previous version hash.
+7. Keep removed peers quarantined in active state until a future active directory explicitly reintroduces them under an operator-reviewed version.
 
 ## Operator Commands
 
@@ -47,7 +48,22 @@ chio chiodos pheromone relay serve \
   --proof-package buyer-auditor-proof-package.json \
   --trust-bundle verifier-trust-bundle.json \
   --context verification-context.json \
-  --report-dir reports
+  --report-dir reports \
+  --operator-token-env CHIO_RELAY_OPERATOR_TOKEN
+
+chio chiodos pheromone relay observe \
+  --store relay.sqlite3 \
+  --peer-directory-state peer-directory-state.json \
+  --profile production \
+  --trusted-issuers trusted-peer-directory-issuers.json \
+  --report-dir reports \
+  --limit 25 \
+  --report relay-observability-report.json
+
+chio chiodos pheromone relay metrics \
+  --store relay.sqlite3 \
+  --format prometheus \
+  --output relay-metrics.prom
 
 chio chiodos pheromone relay tick \
   --store relay.sqlite3 \
@@ -57,7 +73,8 @@ chio chiodos pheromone relay tick \
   --now-unix-ms 1766000000500 \
   --max-batches 32 \
   --signing-key relay-signing-key.json \
-  --report relay-tick.json
+  --report relay-tick.json \
+  --report-dir reports
 
 chio chiodos pheromone relay supervisor lint \
   --profile relay-supervisor-profile.json \
@@ -72,23 +89,35 @@ The service exposes local artifact endpoints:
 
 - `GET /v1/chiodos/pheromone/health`
 - `GET /v1/chiodos/pheromone/ready`
+- `GET /v1/chiodos/pheromone/observability`
+- `GET /v1/chiodos/pheromone/metrics`
 
 The health report includes queue depth, oldest pending age, retry count, dead-letter count, inbox count, cursor count, stale lease count, and peer-directory version from the verified active state.
 
 Readiness should fail closed when the store is unreachable, stale leases remain unrecovered, or outbox pressure exceeds the bounded local threshold.
 
+Production observability and metrics endpoints require `Authorization: Bearer <token>` sourced from `--operator-token-env`. Health and readiness remain lightweight probes.
+
+## Observability Workflow
+
+1. Run `relay observe` and read `relay-observability-report.v1`.
+2. If `accepted` is false, triage recommendation codes before opening raw SQLite.
+3. Use bounded event reports in `--report-dir` to inspect recent batch receive, catch-up, outbound delivery, and request rejection evidence.
+4. Export `relay metrics --format prometheus` for alerting. Labels are bounded to status or reason only.
+5. Use the receipt dashboard relay cards as a view over the canonical report. Missing relay reports render as `unknown` and do not block receipt workflows.
+
 ## Recovery Procedures
 
 ### Stuck Outbox
 
-1. Run `relay status` and inspect pending, retry, and dead-letter counts.
+1. Run `relay observe` and inspect pending, retry, dead-letter, and recommendation codes.
 2. Run `relay tick` with the correct sender signing key.
 3. If attempts keep increasing with transport failures, confirm the peer directory endpoint and reverse-proxy route.
 4. If stale leases are present, restart the relay and run one tick. Expired leases are recovered into retry state.
 
 ### Dead-Letter Triage
 
-1. Group dead letters by last error code.
+1. Read `relay-observability-report.v1` and group dead letters by recent bounded failure code.
 2. For `endpoint_denied`, lint the current peer-directory state against the active profile.
 3. For `sender_mismatch`, confirm the local signing-key `kernelId` matches the outbox sender.
 4. For receiver rejections, inspect the receiver report and rerun the runtime gate with the same proof package, trust bundle, and context.
@@ -118,7 +147,7 @@ Readiness should fail closed when the store is unreachable, stale leases remain 
 
 ### Replay Storm
 
-1. Treat repeated relay nonce failures as an authentication or retry-loop incident.
+1. Treat repeated relay nonce failures in the observability report as an authentication or retry-loop incident.
 2. Confirm whether duplicates are exact idempotent delivery or nonce replay conflict.
 3. Block the offending peer at the reverse proxy only after preserving the signed request and report evidence.
 4. Rotate the peer directory if a key is suspected compromised.

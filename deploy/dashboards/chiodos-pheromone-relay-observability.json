@@ -1,0 +1,43 @@
+{
+  "title": "Chiodos Pheromone Relay Observability",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Retry Queue",
+      "targets": [
+        {
+          "expr": "chio_pheromone_relay_queue_depth{status=\"retry\"}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Dead Letters",
+      "targets": [
+        {
+          "expr": "chio_pheromone_relay_queue_depth{status=\"dead_letter\"}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Stale Leases",
+      "targets": [
+        {
+          "expr": "chio_pheromone_relay_stale_leases"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Bounded Rejections",
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(chio_pheromone_relay_rejections_total[5m]))"
+        }
+      ]
+    }
+  ]
+}

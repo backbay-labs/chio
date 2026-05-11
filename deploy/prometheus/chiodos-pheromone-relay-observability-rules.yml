@@ -1,0 +1,42 @@
+groups:
+  - name: chiodos-pheromone-relay-observability
+    rules:
+      - alert: ChiodosPheromoneRelayDeadLetters
+        expr: chio_pheromone_relay_queue_depth{status="dead_letter"} > 0
+        for: 5m
+        labels:
+          severity: p2
+          service: chiodos-pheromone-relay
+        annotations:
+          summary: Chiodos pheromone relay has dead-lettered batches
+          runbook: docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md
+
+      - alert: ChiodosPheromoneRelayRetryPressure
+        expr: chio_pheromone_relay_queue_depth{status="retry"} > 100
+        for: 10m
+        labels:
+          severity: p2
+          service: chiodos-pheromone-relay
+        annotations:
+          summary: Chiodos pheromone relay retry queue is elevated
+          runbook: docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md
+
+      - alert: ChiodosPheromoneRelayStaleLeases
+        expr: chio_pheromone_relay_stale_leases > 0
+        for: 5m
+        labels:
+          severity: p2
+          service: chiodos-pheromone-relay
+        annotations:
+          summary: Chiodos pheromone relay has stale scheduler leases
+          runbook: docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md
+
+      - alert: ChiodosPheromoneRelayReplayStorm
+        expr: increase(chio_pheromone_relay_rejections_total{reason="relay_nonce_replay"}[5m]) > 10
+        for: 2m
+        labels:
+          severity: p1
+          service: chiodos-pheromone-relay
+        annotations:
+          summary: Chiodos pheromone relay is rejecting replayed relay nonces
+          runbook: docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md
