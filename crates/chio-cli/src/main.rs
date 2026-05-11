@@ -227,6 +227,8 @@ mod cli_entrypoint_tests {
             "verification-context.json",
             "--store",
             "pheromone.sqlite3",
+            "--now-unix-ms",
+            "1766000000500",
             "--report",
             "receive-report.json",
         ])
@@ -243,6 +245,7 @@ mod cli_entrypoint_tests {
                                 trust_bundle,
                                 context,
                                 store,
+                                now_unix_ms,
                                 report,
                             },
                     },
@@ -265,6 +268,7 @@ mod cli_entrypoint_tests {
                     std::path::PathBuf::from("verification-context.json")
                 );
                 assert_eq!(store, std::path::PathBuf::from("pheromone.sqlite3"));
+                assert_eq!(now_unix_ms, Some(1_766_000_000_500));
                 assert_eq!(report, std::path::PathBuf::from("receive-report.json"));
             }
             _ => panic!("expected chiodos pheromone receive subcommand"),
@@ -288,6 +292,8 @@ mod cli_entrypoint_tests {
             "42",
             "--peer-weights",
             "peer-weights.json",
+            "--now-unix-ms",
+            "1766000000500",
             "--report",
             "query-report.json",
         ])
@@ -303,6 +309,7 @@ mod cli_entrypoint_tests {
                                 namespace,
                                 reputation_epoch,
                                 peer_weights,
+                                now_unix_ms,
                                 report,
                             },
                     },
@@ -312,9 +319,41 @@ mod cli_entrypoint_tests {
                 assert_eq!(namespace, "dev.chio.support");
                 assert_eq!(reputation_epoch, 42);
                 assert_eq!(peer_weights, std::path::PathBuf::from("peer-weights.json"));
+                assert_eq!(now_unix_ms, Some(1_766_000_000_500));
                 assert_eq!(report, std::path::PathBuf::from("query-report.json"));
             }
             _ => panic!("expected chiodos pheromone query subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_pheromone_relay_status_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "status",
+            "--store",
+            "relay.sqlite3",
+            "--report",
+            "relay-status.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command: ChiodosPheromoneRelayCommands::Status { store, report },
+                            },
+                    },
+            } => {
+                assert_eq!(store, std::path::PathBuf::from("relay.sqlite3"));
+                assert_eq!(report, std::path::PathBuf::from("relay-status.json"));
+            }
+            _ => panic!("expected chiodos pheromone relay status subcommand"),
         }
     }
 

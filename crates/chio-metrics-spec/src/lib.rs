@@ -97,6 +97,9 @@ pub const CHIO_KERNEL_DECISION_LATENCY_SECONDS: &str = "chio_kernel_decision_lat
 pub const CHIO_OTEL_INGRESS_DROP_TOTAL: &str = "chio_otel_ingress_drop_total";
 pub const CHIO_OTEL_SINK_DROP_TOTAL: &str = "chio_otel_sink_drop_total";
 pub const CHIO_PHEROMONE_QUEUE_OVERFLOW_TOTAL: &str = "chio_pheromone_queue_overflow_total";
+pub const CHIO_PHEROMONE_RELAY_DELIVERY_TOTAL: &str = "chio_pheromone_relay_delivery_total";
+pub const CHIO_PHEROMONE_RELAY_LATENCY_SECONDS: &str = "chio_pheromone_relay_latency_seconds";
+pub const CHIO_PHEROMONE_RELAY_REJECTIONS_TOTAL: &str = "chio_pheromone_relay_rejections_total";
 pub const CHIO_PHEROMONE_RECEIVER_DEPOSITS_TOTAL: &str = "chio_pheromone_receiver_deposits_total";
 pub const CHIO_PHEROMONE_RECEIVER_LATENCY_SECONDS: &str = "chio_pheromone_receiver_latency_seconds";
 pub const CHIO_PHEROMONE_RECEIVER_REJECTIONS_TOTAL: &str =
@@ -302,6 +305,25 @@ pub const REGISTRY: &[MetricDescriptor] = &[
     describe!(
         name = CHIO_PHEROMONE_RECEIVER_REJECTIONS_TOTAL,
         help = "Total local pheromone receiver rejections by bounded reason.",
+        kind = Counter,
+        labels = ["reason"]
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RELAY_DELIVERY_TOTAL,
+        help = "Total live pheromone relay delivery outcomes.",
+        kind = Counter,
+        labels = ["recipient", "outcome"]
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RELAY_LATENCY_SECONDS,
+        help = "Live pheromone relay delivery latency in seconds.",
+        kind = Histogram,
+        labels = ["outcome"],
+        buckets = ["0.001", "0.005", "0.01", "0.025", "0.05", "0.1", "0.25", "0.5", "1.0"]
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RELAY_REJECTIONS_TOTAL,
+        help = "Total live pheromone relay rejections by bounded reason.",
         kind = Counter,
         labels = ["reason"]
     ),

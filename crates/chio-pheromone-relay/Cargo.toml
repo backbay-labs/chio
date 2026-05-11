@@ -1,0 +1,35 @@
+[package]
+name = "chio-pheromone-relay"
+description = "Live Chiodos pheromone relay service and durable relay store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_pheromone_relay"
+
+[dependencies]
+async-trait = { workspace = true }
+axum = "0.8"
+chio-core-types = { path = "../chio-core-types" }
+chio-federation = { path = "../chio-federation" }
+chio-pheromone = { path = "../chio-pheromone" }
+chio-pheromone-runtime = { path = "../chio-pheromone-runtime" }
+reqwest = { workspace = true, features = ["json", "rustls"] }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

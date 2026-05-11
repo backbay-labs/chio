@@ -1,0 +1,8 @@
+{
+  "schema": "chio.pheromone.relay-operator-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "detail": "pending=0; delivered=0; inbox=0",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000000500
+}

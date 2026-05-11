@@ -46,6 +46,7 @@ chio-attest-verify = { path = "../chio-attest-verify" }
 chio-weights = { path = "../chio-weights" }
 chio-conformance = { path = "../chio-conformance" }
 chio-pheromone = { path = "../chio-pheromone" }
+chio-pheromone-relay = { path = "../chio-pheromone-relay" }
 chio-pheromone-runtime = { path = "../chio-pheromone-runtime" }
 chio-replay-corpus = { path = "../chio-replay-corpus" }
 chio-reputation = { path = "../chio-reputation" }

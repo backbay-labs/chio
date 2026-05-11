@@ -2416,6 +2416,7 @@ fn main() {
                     trust_bundle,
                     context,
                     store,
+                    now_unix_ms,
                     report,
                 } => cmd_chiodos_pheromone_receive(
                     &batch,
@@ -2424,6 +2425,7 @@ fn main() {
                     &trust_bundle,
                     &context,
                     &store,
+                    now_unix_ms,
                     &report,
                 ),
                 ChiodosPheromoneCommands::Query {
@@ -2432,6 +2434,7 @@ fn main() {
                     namespace,
                     reputation_epoch,
                     peer_weights,
+                    now_unix_ms,
                     report,
                 } => cmd_chiodos_pheromone_query(
                     &store,
@@ -2439,8 +2442,72 @@ fn main() {
                     &namespace,
                     reputation_epoch,
                     &peer_weights,
+                    now_unix_ms,
                     &report,
                 ),
+                ChiodosPheromoneCommands::Relay { command } => match command {
+                    ChiodosPheromoneRelayCommands::Serve {
+                        listen,
+                        store,
+                        peer_directory,
+                        transit_policy,
+                        proof_package,
+                        trust_bundle,
+                        context,
+                        report_dir,
+                    } => cmd_chiodos_pheromone_relay_serve(
+                        &listen,
+                        &store,
+                        &peer_directory,
+                        &transit_policy,
+                        &proof_package,
+                        &trust_bundle,
+                        &context,
+                        &report_dir,
+                    ),
+                    ChiodosPheromoneRelayCommands::Enqueue {
+                        store,
+                        peer_directory,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chiodos_pheromone_relay_enqueue(
+                        &store,
+                        &peer_directory,
+                        now_unix_ms,
+                        &report,
+                    ),
+                    ChiodosPheromoneRelayCommands::Tick {
+                        store,
+                        peer_directory,
+                        now_unix_ms,
+                        max_batches,
+                        report,
+                    } => cmd_chiodos_pheromone_relay_tick(
+                        &store,
+                        &peer_directory,
+                        now_unix_ms,
+                        max_batches,
+                        &report,
+                    ),
+                    ChiodosPheromoneRelayCommands::Catchup {
+                        store,
+                        peer,
+                        treaty,
+                        after_cursor,
+                        limit,
+                        report,
+                    } => cmd_chiodos_pheromone_relay_catchup(
+                        &store,
+                        &peer,
+                        &treaty,
+                        &after_cursor,
+                        limit,
+                        &report,
+                    ),
+                    ChiodosPheromoneRelayCommands::Status { store, report } => {
+                        cmd_chiodos_pheromone_relay_status(&store, &report)
+                    }
+                },
             },
         },
         Commands::Replay(args) => cmd_replay(&args),
@@ -2829,17 +2896,20 @@ fn cmd_chiodos_pheromone_receive(
     trust_bundle: &Path,
     context: &Path,
     store: &Path,
+    now_unix_ms: Option<u64>,
     report: &Path,
 ) -> Result<(), CliError> {
     let batch_json = read_utf8_json_file(batch, "Chiodos pheromone gossip batch")?;
     let batch: chio_federation::PheromoneGossipBatch = serde_json::from_str(&batch_json)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos pheromone batch: {error}")))?;
     let policy_json = read_utf8_json_file(transit_policy, "Chiodos pheromone transit policy")?;
+    let now_unix_ms = now_unix_ms.unwrap_or(batch.flushed_at_unix_ms);
     let (transit_policy, receiver_config) =
-        chio_pheromone_runtime::runtime_policy_from_json(&policy_json, batch.flushed_at_unix_ms)
-            .map_err(|error| {
+        chio_pheromone_runtime::runtime_policy_from_json(&policy_json, now_unix_ms).map_err(
+            |error| {
                 CliError::cli_other_error(format!("Chiodos pheromone runtime policy: {error}"))
-            })?;
+            },
+        )?;
     let package_json = read_utf8_json_file(proof_package, "Chiodos proof package")?;
     let package = chio_chiodos::proof_package_from_json(&package_json)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos package parse: {error}")))?;
@@ -2893,6 +2963,7 @@ fn cmd_chiodos_pheromone_query(
     namespace: &str,
     reputation_epoch: u64,
     peer_weights: &Path,
+    now_unix_ms: Option<u64>,
     report: &Path,
 ) -> Result<(), CliError> {
     let store = chio_pheromone_runtime::SqlitePheromoneRuntimeStore::open(store)
@@ -2901,7 +2972,7 @@ fn cmd_chiodos_pheromone_query(
     let weights = chio_pheromone_runtime::peer_weights_from_json(&weights_json)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos peer weights: {error}")))?;
     let validation_context = chio_pheromone::PheromoneValidationContext {
-        now_unix_ms: unix_now_ms(),
+        now_unix_ms: now_unix_ms.unwrap_or_else(unix_now_ms),
         replay_window_ms: 0,
         active_peers_in_treaty: 0,
         known_reputation_epochs: vec![reputation_epoch],
@@ -2928,6 +2999,229 @@ fn cmd_chiodos_pheromone_query(
     let report_json = serde_json::to_string_pretty(&query_report)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos pheromone report: {error}")))?;
     write_json_string(report, &format!("{report_json}\n"))
+}
+
+#[derive(Clone)]
+struct CliRelayBatchReceiver {
+    store: std::path::PathBuf,
+    transit_policy: chio_federation::PheromoneTransitPolicy,
+    receiver_config: chio_pheromone_runtime::PheromoneReceiverConfig,
+    resolver: chio_pheromone_runtime::VerifiedChiodosWorkflowResolver,
+}
+
+#[async_trait::async_trait]
+impl chio_pheromone_relay::RelayBatchReceiver for CliRelayBatchReceiver {
+    async fn receive_batch(
+        &self,
+        batch: chio_federation::PheromoneGossipBatch,
+        authenticated_sender_kernel_id: String,
+        received_at_unix_ms: u64,
+    ) -> Result<chio_pheromone_runtime::PheromoneReceiveReport, chio_pheromone_relay::PheromoneRelayError>
+    {
+        let mut config = self.receiver_config.clone();
+        config.authenticated_sender_kernel_id = authenticated_sender_kernel_id;
+        config.validation_context.now_unix_ms = received_at_unix_ms;
+        let store = chio_pheromone_runtime::SqlitePheromoneRuntimeStore::open(&self.store)
+            .map_err(|error| chio_pheromone_relay::PheromoneRelayError::Json(error.to_string()))?;
+        let receiver =
+            chio_pheromone_runtime::PheromoneReceiver::new(store, self.resolver.clone(), config);
+        receiver
+            .receive_batch(&batch, &self.transit_policy)
+            .map_err(|error| chio_pheromone_relay::PheromoneRelayError::Json(error.to_string()))
+    }
+}
+
+fn cmd_chiodos_pheromone_relay_serve(
+    listen: &str,
+    store: &Path,
+    peer_directory: &Path,
+    transit_policy: &Path,
+    proof_package: &Path,
+    trust_bundle: &Path,
+    context: &Path,
+    report_dir: &Path,
+) -> Result<(), CliError> {
+    let now = unix_now_ms();
+    std::fs::create_dir_all(report_dir).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "failed to create Chiodos pheromone relay report directory {}: {error}",
+            report_dir.display()
+        ))
+    })?;
+    let peer_directory_json =
+        read_utf8_json_file(peer_directory, "Chiodos pheromone peer directory")?;
+    let peer_directory =
+        chio_pheromone_relay::peer_directory_from_json(&peer_directory_json, now).map_err(
+            |error| CliError::cli_other_error(format!("Chiodos peer directory: {error}")),
+        )?;
+    let policy_json = read_utf8_json_file(transit_policy, "Chiodos pheromone transit policy")?;
+    let (transit_policy, receiver_config) =
+        chio_pheromone_runtime::runtime_policy_from_json(&policy_json, now).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos pheromone runtime policy: {error}"))
+        })?;
+    let package_json = read_utf8_json_file(proof_package, "Chiodos proof package")?;
+    let package = chio_chiodos::proof_package_from_json(&package_json)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos package parse: {error}")))?;
+    let trust_bundle_json = read_utf8_json_file(trust_bundle, "Chiodos verifier trust bundle")?;
+    let trust_bundle = chio_chiodos::verifier_trust_bundle_from_json(&trust_bundle_json)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos trust bundle parse: {error}"))
+        })?;
+    let context_json = read_utf8_json_file(context, "Chiodos verification context")?;
+    let context = chio_chiodos::verification_context_from_json(&context_json)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos context parse: {error}")))?;
+    let resolver = chio_pheromone_runtime::VerifiedChiodosWorkflowResolver::from_verified_package(
+        &package,
+        &trust_bundle,
+        &context,
+    )
+    .map_err(|error| CliError::cli_other_error(format!("Chiodos workflow resolver: {error}")))?;
+    let relay_store = std::sync::Arc::new(
+        chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos pheromone relay store: {error}"))
+        })?,
+    );
+    let receiver = std::sync::Arc::new(CliRelayBatchReceiver {
+        store: store.to_path_buf(),
+        transit_policy,
+        receiver_config,
+        resolver,
+    });
+    let service = chio_pheromone_relay::PheromoneRelayService::new(
+        chio_pheromone_relay::PheromoneRelayConfig {
+            local_kernel_id: peer_directory.local_kernel_id().to_string(),
+            now_unix_ms: now,
+            freshness_window_ms: 60_000,
+            max_body_bytes: 1_048_576,
+        },
+        peer_directory,
+        receiver,
+        relay_store,
+    );
+    let address = listen.parse::<std::net::SocketAddr>().map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos pheromone relay listen address: {error}"))
+    })?;
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay runtime: {error}")))?;
+    runtime.block_on(async move {
+        let listener = tokio::net::TcpListener::bind(address).await.map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos pheromone relay bind: {error}"))
+        })?;
+        service
+            .serve(listener)
+            .await
+            .map_err(|error| CliError::cli_other_error(format!("Chiodos pheromone relay: {error}")))
+    })
+}
+
+fn cmd_chiodos_pheromone_relay_enqueue(
+    store: &Path,
+    peer_directory: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let peer_directory_json =
+        read_utf8_json_file(peer_directory, "Chiodos pheromone peer directory")?;
+    chio_pheromone_relay::peer_directory_from_json(&peer_directory_json, now_unix_ms).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos peer directory: {error}")),
+    )?;
+    let relay_store = chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos pheromone relay store: {error}")),
+    )?;
+    let status = relay_store
+        .operator_report("local", now_unix_ms)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay enqueue: {error}")))?;
+    let json = serde_json::to_string_pretty(&status)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay report: {error}")))?;
+    write_json_string(report, &format!("{json}\n"))
+}
+
+fn cmd_chiodos_pheromone_relay_tick(
+    store: &Path,
+    peer_directory: &Path,
+    now_unix_ms: u64,
+    max_batches: usize,
+    report: &Path,
+) -> Result<(), CliError> {
+    let peer_directory_json =
+        read_utf8_json_file(peer_directory, "Chiodos pheromone peer directory")?;
+    chio_pheromone_relay::peer_directory_from_json(&peer_directory_json, now_unix_ms).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos peer directory: {error}")),
+    )?;
+    let relay_store = chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos pheromone relay store: {error}")),
+    )?;
+    let due = relay_store
+        .lease_due_batches(now_unix_ms, max_batches)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay tick: {error}")))?;
+    for entry in &due {
+        relay_store
+            .mark_retry(
+                &entry.outbox_id,
+                "signing_key_unavailable",
+                now_unix_ms.saturating_add(60_000),
+            )
+            .map_err(|error| CliError::cli_other_error(format!("Chiodos relay retry: {error}")))?;
+    }
+    let tick_report = chio_pheromone_relay::RelayTickReport {
+        schema: chio_pheromone_relay::PHEROMONE_RELAY_TICK_REPORT_SCHEMA.to_string(),
+        accepted: due.is_empty(),
+        delivered: 0,
+        retried: due.len() as u64,
+        dead_lettered: 0,
+        duplicate_idempotent: 0,
+        failures: due
+            .iter()
+            .map(|entry| format!("{}: signing_key_unavailable", entry.outbox_id))
+            .collect(),
+    };
+    let json = serde_json::to_string_pretty(&tick_report)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay report: {error}")))?;
+    write_json_string(report, &format!("{json}\n"))
+}
+
+fn cmd_chiodos_pheromone_relay_catchup(
+    store: &Path,
+    peer: &str,
+    treaty: &str,
+    after_cursor: &str,
+    limit: usize,
+    report: &Path,
+) -> Result<(), CliError> {
+    let relay_store = chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos pheromone relay store: {error}"))
+    })?;
+    let (frames, next_cursor) = relay_store
+        .catchup_batches(peer, treaty, after_cursor, limit, usize::MAX)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos catch-up: {error}")))?;
+    let catchup = chio_pheromone_relay::CatchupResponse {
+        schema: chio_pheromone_relay::PHEROMONE_CATCHUP_RESPONSE_SCHEMA.to_string(),
+        accepted: true,
+        responder_kernel_id: "local".to_string(),
+        requester_kernel_id: peer.to_string(),
+        treaty_id: treaty.to_string(),
+        frames,
+        next_cursor,
+        code: format!("accepted_limit_{limit}"),
+    };
+    let json = serde_json::to_string_pretty(&catchup)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos catch-up report: {error}")))?;
+    write_json_string(report, &format!("{json}\n"))
+}
+
+fn cmd_chiodos_pheromone_relay_status(store: &Path, report: &Path) -> Result<(), CliError> {
+    let now = unix_now_ms();
+    let relay_store = chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos pheromone relay store: {error}")),
+    )?;
+    let status = relay_store
+        .operator_report("local", now)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay status: {error}")))?;
+    let json = serde_json::to_string_pretty(&status)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay report: {error}")))?;
+    write_json_string(report, &format!("{json}\n"))
 }
 
 fn unix_now_ms() -> u64 {

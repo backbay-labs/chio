@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-tick-report.schema.json",
+  "title": "Chiodos Pheromone Relay Tick Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "accepted", "delivered", "retried", "deadLettered", "duplicateIdempotent", "failures"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-tick-report.v1" },
+    "accepted": { "type": "boolean" },
+    "delivered": { "type": "integer", "minimum": 0 },
+    "retried": { "type": "integer", "minimum": 0 },
+    "deadLettered": { "type": "integer", "minimum": 0 },
+    "duplicateIdempotent": { "type": "integer", "minimum": 0 },
+    "failures": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
