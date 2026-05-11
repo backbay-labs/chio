@@ -1,0 +1,238 @@
+"""Hook-layer tests.
+
+`pre_tool_call`:
+* returns ``None`` for an allowed call
+* returns a block dict for a denied call (when policy raises)
+* ignores non-`chio_*` tools
+
+`post_tool_call`:
+* writes a receipt with the actual `result` and `duration_ms`
+* tolerates a JSONL writer failure (does not propagate exceptions)
+
+`on_session_start` / `on_session_end`:
+* clear / drain pending receipts
+
+NOTE: Hermes dispatches hook callbacks synchronously (no await). All
+hooks here are plain `def` and asserted to NEVER return a coroutine.
+The dedicated regression coverage for sync dispatch lives in
+`tests/test_hook_sync_dispatch.py`.
+"""
+
+from __future__ import annotations
+
+import inspect
+from pathlib import Path
+from typing import Any
+
+import pytest
+from chio_code_agent.errors import ChioCodeAgentDeniedError
+from chio_sdk.testing import MockChioClient
+
+from chio_hermes import receipts as receipts_mod
+from chio_hermes.hooks import (
+    make_on_session_end,
+    make_on_session_start,
+    make_post_tool_call,
+    make_pre_tool_call,
+)
+from chio_hermes.receipts import ReceiptBuffer
+from chio_hermes.runtime import RuntimeHandle
+from tests.conftest import make_configured_runtime
+
+
+def _runtime_with_buf(buf: ReceiptBuffer) -> RuntimeHandle:
+    """Build a RuntimeHandle around an explicit ReceiptBuffer."""
+    return RuntimeHandle(
+        chio_client=MockChioClient(),
+        capability_id="cap-test-12345678",
+        cwd=Path.cwd(),
+        receipts=buf,
+    )
+
+
+# ---------------------------------------------------------------------------
+# pre_tool_call
+# ---------------------------------------------------------------------------
+
+
+def test_pre_tool_call_returns_block_dict_for_denied_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_workspace: Path
+) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+
+    def _raise(*_args: Any, **_kwargs: Any) -> None:
+        raise ChioCodeAgentDeniedError(
+            "writing to .env is forbidden",
+            tool_name="write_file",
+            guard="ForbiddenPathGuard",
+            reason=".env matches forbidden_path_patterns",
+        )
+
+    monkeypatch.setattr(runtime.policy, "check_write", _raise)
+
+    hook = make_pre_tool_call(runtime)
+    result = hook(
+        tool_name="chio_file_write",
+        args={"path": ".env", "content": "x"},
+        task_id="task-1",
+    )
+    assert not inspect.iscoroutine(result), "pre hook must be sync (Hermes does not await)"
+
+    assert isinstance(result, dict)
+    assert result["action"] == "block"
+    assert result["guard"] == "ForbiddenPathGuard"
+    assert result["reason"] == ".env matches forbidden_path_patterns"
+    assert "writing to .env is forbidden" in result["message"]
+
+
+def test_pre_tool_call_returns_none_for_allowed_call(
+    tmp_workspace: Path,
+) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+    hook = make_pre_tool_call(runtime)
+    result = hook(
+        tool_name="chio_file_read",
+        args={"path": "README.md"},
+        task_id="task-1",
+    )
+    assert not inspect.iscoroutine(result)
+    assert result is None
+
+
+def test_pre_tool_call_ignores_non_chio_tool(
+    tmp_workspace: Path,
+) -> None:
+    """Non-chio_ tools must pass through untouched (other plugins own them)."""
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+    hook = make_pre_tool_call(runtime)
+    result = hook(
+        tool_name="read_file",  # a built-in Hermes tool, not ours
+        args={"path": ".env"},
+        task_id="task-1",
+    )
+    assert not inspect.iscoroutine(result)
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# post_tool_call
+# ---------------------------------------------------------------------------
+
+
+def test_post_tool_call_writes_receipt_with_result_and_duration(
+    tmp_workspace: Path,
+    tmp_hermes_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+
+    written: list[dict[str, Any]] = []
+
+    def _capture_jsonl(_path: Path, payload: dict[str, Any]) -> None:
+        written.append(dict(payload))
+
+    monkeypatch.setattr(receipts_mod, "append_jsonl", _capture_jsonl)
+
+    hook = make_post_tool_call(runtime)
+    result = hook(
+        tool_name="chio_file_read",
+        args={"path": "README.md"},
+        result='{"status": "allowed", "result": "hello"}',
+        task_id="task-post-1",
+        duration_ms=42,
+    )
+    assert not inspect.iscoroutine(result)
+    assert result is None
+    assert written, "post_tool_call must have appended a JSONL line"
+    payload = written[-1]
+    assert payload["task_id"] == "task-post-1"
+    assert payload["tool_name"] == "chio_file_read"
+    assert payload["duration_ms"] == 42.0
+    assert "result" in payload
+
+
+def test_post_tool_call_tolerates_writer_failure(
+    tmp_workspace: Path,
+    tmp_hermes_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the JSONL writer raises, the hook MUST swallow it.
+
+    Hermes treats any hook exception as a fatal error for the session,
+    which would convert a debug-only side effect into a session killer.
+    """
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+
+    def _boom(_path: Path, _payload: dict[str, Any]) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(receipts_mod, "append_jsonl", _boom)
+
+    hook = make_post_tool_call(runtime)
+    result = hook(
+        tool_name="chio_file_read",
+        args={"path": "README.md"},
+        result='{"status": "allowed"}',
+        task_id="task-fail-1",
+        duration_ms=7,
+    )
+    assert not inspect.iscoroutine(result)
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Receipt buffer push/pop_next FIFO across tasks
+# ---------------------------------------------------------------------------
+
+
+def test_buffer_push_pop_next_isolates_per_task() -> None:
+    buf = ReceiptBuffer()
+    buf.push("task-A", {"i": 0})
+    buf.push("task-B", {"i": 1})
+    buf.push("task-A", {"i": 2})
+    assert buf.pop_next("task-A") == {"i": 0}
+    assert buf.pop_next("task-A") == {"i": 2}
+    assert buf.pop_next("task-A") is None
+    assert buf.pop_next("task-B") == {"i": 1}
+
+
+# ---------------------------------------------------------------------------
+# Session lifecycle hooks
+# ---------------------------------------------------------------------------
+
+
+def test_on_session_start_clears_pending() -> None:
+    buf = ReceiptBuffer()
+    buf.push("task-A", {"k": "v"})
+    assert buf.pending_total() == 1
+    hook = make_on_session_start(_runtime_with_buf(buf))
+    result = hook(session_id="s-1")
+    assert not inspect.iscoroutine(result)
+    assert buf.pending_total() == 0
+
+
+def test_on_session_end_flushes_pending(
+    tmp_hermes_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    buf = ReceiptBuffer()
+    buf.push("task-A", {"tool_name": "chio_file_read", "args": {}})
+    buf.push("task-B", {"tool_name": "chio_file_write", "args": {}})
+    assert buf.pending_total() == 2
+
+    written: list[dict[str, Any]] = []
+
+    def _capture(_path: Path, payload: dict[str, Any]) -> None:
+        written.append(dict(payload))
+
+    monkeypatch.setattr(receipts_mod, "append_jsonl", _capture)
+
+    hook = make_on_session_end(_runtime_with_buf(buf))
+    result = hook(session_id="s-end")
+    assert not inspect.iscoroutine(result)
+
+    assert buf.pending_total() == 0
+    assert len(written) == 2
+    for entry in written:
+        assert entry["session_end_flush"] is True
+        assert "recorded_at" in entry
