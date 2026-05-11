@@ -148,3 +148,51 @@ fn concentration_query_rejects_bad_weights_and_unknown_epoch() {
         .unwrap_err();
     assert_eq!(bad_weight.code(), "weight_out_of_range");
 }
+
+#[test]
+fn concentration_query_uses_persisted_passport_history_after_restart() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("pheromone.sqlite3");
+    let (policy, config) = load_runtime_policy();
+    let mut query_context = config.validation_context.clone();
+    let expected_context = config.validation_context.clone();
+    let weights = StaticPeerWeightProvider::new(42, [("did:chio:llamaworks".to_string(), 1.0)]);
+    let expected_total = {
+        let store = SqlitePheromoneRuntimeStore::open(&path).unwrap();
+        let receiver = PheromoneReceiver::new(store, resolver(), config);
+        assert!(
+            receiver
+                .receive_batch(&load_batch(), &policy)
+                .unwrap()
+                .accepted
+        );
+        receiver
+            .store()
+            .query_concentration(
+                "support.prompt_injection",
+                "dev.chio.support",
+                expected_context.now_unix_ms,
+                42,
+                &expected_context,
+                &weights,
+            )
+            .unwrap()
+            .total_strength
+    };
+
+    query_context.passports.clear();
+    let reopened = SqlitePheromoneRuntimeStore::open(&path).unwrap();
+    let actual_total = reopened
+        .query_concentration(
+            "support.prompt_injection",
+            "dev.chio.support",
+            query_context.now_unix_ms,
+            42,
+            &query_context,
+            &weights,
+        )
+        .unwrap()
+        .total_strength;
+
+    assert!((actual_total - expected_total).abs() < f64::EPSILON);
+}

@@ -631,6 +631,13 @@ impl SqlitePheromoneRuntimeStore {
                 PRIMARY KEY (kernel_id, subject_class, passport_key_hash)
             );
 
+            CREATE TABLE IF NOT EXISTS chio_pheromone_passport_admissions (
+                kernel_id TEXT NOT NULL,
+                passport_key_hash TEXT NOT NULL,
+                json TEXT NOT NULL,
+                PRIMARY KEY (kernel_id, passport_key_hash)
+            );
+
             CREATE TABLE IF NOT EXISTS chio_pheromone_receive_reports (
                 report_sha256 TEXT PRIMARY KEY,
                 received_at_unix_ms INTEGER NOT NULL,
@@ -639,6 +646,35 @@ impl SqlitePheromoneRuntimeStore {
             "#,
         )?;
         Ok(())
+    }
+
+    fn stored_passports(&self) -> Result<Vec<PassportAdmission>, PheromoneRuntimeError> {
+        let conn = self.conn.lock()?;
+        let mut stmt =
+            conn.prepare("SELECT json FROM chio_pheromone_passport_admissions ORDER BY kernel_id, passport_key_hash")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        let mut passports = Vec::new();
+        for row in rows {
+            passports.push(serde_json::from_str(&row?)?);
+        }
+        Ok(passports)
+    }
+
+    fn query_context_with_stored_passports(
+        &self,
+        context: &PheromoneValidationContext,
+    ) -> Result<PheromoneValidationContext, PheromoneRuntimeError> {
+        let mut query_context = context.clone();
+        let mut seen = BTreeSet::new();
+        for passport in &query_context.passports {
+            seen.insert(passport_identity(passport));
+        }
+        for passport in self.stored_passports()? {
+            if seen.insert(passport_identity(&passport)) {
+                query_context.passports.push(passport);
+            }
+        }
+        Ok(query_context)
     }
 }
 
@@ -650,6 +686,7 @@ impl PheromoneRuntimeStore for SqlitePheromoneRuntimeStore {
     ) -> Result<(), PheromoneRuntimeError> {
         let validator = InMemoryPheromoneSubstrate::new();
         validator.deposit(deposit.clone(), context)?;
+        let passport = passport_for_deposit(&deposit, context)?.clone();
         let mut conn = self.conn.lock()?;
         let tx = conn.transaction()?;
         let now = i64_from_u64(context.now_unix_ms, "now_unix_ms")?;
@@ -749,6 +786,22 @@ impl PheromoneRuntimeStore for SqlitePheromoneRuntimeStore {
             ],
         )?;
 
+        let passport_json = serde_json::to_string(&passport)?;
+        tx.execute(
+            r#"
+            INSERT INTO chio_pheromone_passport_admissions
+                (kernel_id, passport_key_hash, json)
+            VALUES (?1, ?2, ?3)
+            ON CONFLICT(kernel_id, passport_key_hash)
+            DO UPDATE SET json = excluded.json
+            "#,
+            params![
+                passport.kernel_id,
+                agent_passport_key_hash(&passport.public_key),
+                passport_json,
+            ],
+        )?;
+
         let json = serde_json::to_string(&deposit)?;
         tx.execute(
             r#"
@@ -817,6 +870,7 @@ impl PheromoneRuntimeStore for SqlitePheromoneRuntimeStore {
                 PheromoneError::UnknownReputationEpoch(reputation_epoch),
             ));
         }
+        let query_context = self.query_context_with_stored_passports(context)?;
         let deposits = self.query_deposits(Some(subject_class), None)?;
         let mut total_strength = 0.0;
         let mut unweighted_total_strength = 0.0;
@@ -834,7 +888,7 @@ impl PheromoneRuntimeStore for SqlitePheromoneRuntimeStore {
                 }
             }
             let weight = peer_weight.weight(&deposit.body.kernel_id, reputation_epoch)?;
-            let discount = newcomer_discount(deposit, context, reputation_epoch);
+            let discount = newcomer_discount(deposit, &query_context, reputation_epoch);
             total_strength += strength * weight * discount;
             unweighted_total_strength += strength;
             if deposit.body.confidence > peak_confidence {
@@ -927,6 +981,32 @@ fn i64_from_u64(value: u64, field: &str) -> Result<i64, PheromoneRuntimeError> {
     i64::try_from(value).map_err(|_| {
         PheromoneRuntimeError::InvalidField(format!("{field} does not fit signed SQLite integer"))
     })
+}
+
+fn passport_for_deposit<'a>(
+    deposit: &PheromoneDeposit,
+    context: &'a PheromoneValidationContext,
+) -> Result<&'a PassportAdmission, PheromoneRuntimeError> {
+    context
+        .passports
+        .iter()
+        .find(|passport| {
+            passport.kernel_id == deposit.body.kernel_id
+                && agent_passport_key_hash(&passport.public_key)
+                    == deposit.body.agent_passport_key_hash
+        })
+        .ok_or_else(|| {
+            PheromoneRuntimeError::Pheromone(PheromoneError::UnknownOriginAgent(
+                deposit.body.kernel_id.clone(),
+            ))
+        })
+}
+
+fn passport_identity(passport: &PassportAdmission) -> (String, String) {
+    (
+        passport.kernel_id.clone(),
+        agent_passport_key_hash(&passport.public_key),
+    )
 }
 
 fn canonical_sha256<T: Serialize>(value: &T) -> Result<String, PheromoneRuntimeError> {
