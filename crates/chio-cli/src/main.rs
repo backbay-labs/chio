@@ -209,6 +209,116 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn chiodos_pheromone_receive_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "receive",
+            "--batch",
+            "gossip-batch.json",
+            "--transit-policy",
+            "transit-policy.json",
+            "--proof-package",
+            "buyer-auditor-proof-package.json",
+            "--trust-bundle",
+            "verifier-trust-bundle.json",
+            "--context",
+            "verification-context.json",
+            "--store",
+            "pheromone.sqlite3",
+            "--report",
+            "receive-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Receive {
+                                batch,
+                                transit_policy,
+                                proof_package,
+                                trust_bundle,
+                                context,
+                                store,
+                                report,
+                            },
+                    },
+            } => {
+                assert_eq!(batch, std::path::PathBuf::from("gossip-batch.json"));
+                assert_eq!(
+                    transit_policy,
+                    std::path::PathBuf::from("transit-policy.json")
+                );
+                assert_eq!(
+                    proof_package,
+                    std::path::PathBuf::from("buyer-auditor-proof-package.json")
+                );
+                assert_eq!(
+                    trust_bundle,
+                    std::path::PathBuf::from("verifier-trust-bundle.json")
+                );
+                assert_eq!(
+                    context,
+                    std::path::PathBuf::from("verification-context.json")
+                );
+                assert_eq!(store, std::path::PathBuf::from("pheromone.sqlite3"));
+                assert_eq!(report, std::path::PathBuf::from("receive-report.json"));
+            }
+            _ => panic!("expected chiodos pheromone receive subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_pheromone_query_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "query",
+            "--store",
+            "pheromone.sqlite3",
+            "--subject-class",
+            "support.prompt_injection",
+            "--namespace",
+            "dev.chio.support",
+            "--reputation-epoch",
+            "42",
+            "--peer-weights",
+            "peer-weights.json",
+            "--report",
+            "query-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Query {
+                                store,
+                                subject_class,
+                                namespace,
+                                reputation_epoch,
+                                peer_weights,
+                                report,
+                            },
+                    },
+            } => {
+                assert_eq!(store, std::path::PathBuf::from("pheromone.sqlite3"));
+                assert_eq!(subject_class, "support.prompt_injection");
+                assert_eq!(namespace, "dev.chio.support");
+                assert_eq!(reputation_epoch, 42);
+                assert_eq!(peer_weights, std::path::PathBuf::from("peer-weights.json"));
+                assert_eq!(report, std::path::PathBuf::from("query-report.json"));
+            }
+            _ => panic!("expected chiodos pheromone query subcommand"),
+        }
+    }
+
+    #[test]
     fn chiodos_verify_requires_trust_bundle() {
         let result = Cli::try_parse_from([
             "chio",

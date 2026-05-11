@@ -175,13 +175,15 @@ pub struct PheromoneConcentration {
     pub treaty_scopes: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CostCommitmentPolicy {
     NotRequired,
     Required,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SubjectClassPolicy {
     pub subject_class: String,
     pub subject_class_namespace: String,
@@ -190,7 +192,8 @@ pub struct SubjectClassPolicy {
     pub destructive: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PassportAdmission {
     pub kernel_id: String,
     pub public_key: PublicKey,

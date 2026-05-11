@@ -1,0 +1,30 @@
+[package]
+name = "chio-pheromone-runtime"
+description = "Local Chiodos pheromone receiver runtime and durable store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_pheromone_runtime"
+
+[dependencies]
+chio-chiodos = { path = "../chio-chiodos" }
+chio-core-types = { path = "../chio-core-types" }
+chio-federation = { path = "../chio-federation" }
+chio-pheromone = { path = "../chio-pheromone" }
+chio-store-sqlite = { path = "../chio-store-sqlite" }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

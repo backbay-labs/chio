@@ -31,10 +31,10 @@ pub use metrics::{
     HOP_RESULT_OK,
 };
 pub use pheromone_gossip::{
-    verify_pheromone_gossip_frame, PheromoneDepositGossip, PheromoneGossipBatch,
-    PheromoneGossipError, PheromoneGossipPushQueue, PheromoneTransitChain, PheromoneTransitHop,
-    PheromoneTransitPolicy, PHEROMONE_GOSSIP_BATCH_SCHEMA, PHEROMONE_GOSSIP_SCHEMA,
-    PHEROMONE_TRANSIT_POLICY_SCHEMA,
+    verify_pheromone_gossip_batch, verify_pheromone_gossip_frame, PheromoneDepositGossip,
+    PheromoneGossipBatch, PheromoneGossipBatchVerificationContext, PheromoneGossipError,
+    PheromoneGossipPushQueue, PheromoneTransitChain, PheromoneTransitHop, PheromoneTransitPolicy,
+    PHEROMONE_GOSSIP_BATCH_SCHEMA, PHEROMONE_GOSSIP_SCHEMA, PHEROMONE_TRANSIT_POLICY_SCHEMA,
 };
 
 pub use bilateral::{

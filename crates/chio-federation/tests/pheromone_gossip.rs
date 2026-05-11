@@ -2,9 +2,10 @@
 
 use chio_core_types::Keypair;
 use chio_federation::{
-    verify_pheromone_gossip_frame, PheromoneDepositGossip, PheromoneGossipPushQueue,
-    PheromoneTransitChain, PheromoneTransitHop, PheromoneTransitPolicy,
-    PHEROMONE_GOSSIP_BATCH_SCHEMA, PHEROMONE_GOSSIP_SCHEMA, PHEROMONE_TRANSIT_POLICY_SCHEMA,
+    verify_pheromone_gossip_batch, verify_pheromone_gossip_frame, PheromoneDepositGossip,
+    PheromoneGossipBatchVerificationContext, PheromoneGossipPushQueue, PheromoneTransitChain,
+    PheromoneTransitHop, PheromoneTransitPolicy, PHEROMONE_GOSSIP_BATCH_SCHEMA,
+    PHEROMONE_GOSSIP_SCHEMA, PHEROMONE_TRANSIT_POLICY_SCHEMA,
 };
 use chio_pheromone::{
     agent_passport_jwk_thumbprint, agent_passport_key_hash, sign_deposit, PheromoneDepositBody,
@@ -117,9 +118,12 @@ fn pheromone_relayed_gossip_accepts_bounded_transit_chain() {
 
 #[test]
 fn pheromone_push_queue_is_per_peer_per_treaty_fifo_without_coalescing() {
-    let queue = PheromoneGossipPushQueue::new(4).expect("queue");
+    let queue = PheromoneGossipPushQueue::new("did:chio:llamaworks", 4).expect("queue");
     queue
-        .subscribe("did:chio:dataco", "treaty:buyer-dataco:support-ops")
+        .subscribe(
+            "did:chio:buyer-kernel",
+            "treaty:buyer-llamaworks:support-ops",
+        )
         .expect("subscribe");
     queue.enqueue(deposit()).expect("enqueue first");
     let mut second = deposit();
@@ -129,7 +133,91 @@ fn pheromone_push_queue_is_per_peer_per_treaty_fifo_without_coalescing() {
     let batches = queue.flush_batches_at(1_700_000_000_500).expect("flush");
     assert_eq!(batches.len(), 1);
     assert_eq!(batches[0].schema, PHEROMONE_GOSSIP_BATCH_SCHEMA);
+    assert_eq!(batches[0].recipient_kernel_id, "did:chio:buyer-kernel");
     assert_eq!(batches[0].frames.len(), 2);
+    assert_eq!(
+        batches[0].frames[0].gossiping_peer_kernel_id,
+        "did:chio:llamaworks"
+    );
     assert_eq!(batches[0].frames[0].deposit.body.nonce, "nonce-001");
     assert_eq!(batches[0].frames[1].deposit, second);
+}
+
+#[test]
+fn pheromone_push_queue_only_routes_to_scoped_treaties() {
+    let queue = PheromoneGossipPushQueue::new("did:chio:llamaworks", 4).expect("queue");
+    queue
+        .subscribe(
+            "did:chio:buyer-kernel",
+            "treaty:buyer-llamaworks:support-ops",
+        )
+        .expect("subscribe scoped");
+    queue
+        .subscribe("did:chio:dataco", "treaty:buyer-dataco:support-ops")
+        .expect("subscribe unscoped");
+
+    let delivered = queue.enqueue(deposit()).expect("enqueue");
+    assert_eq!(delivered, 1);
+
+    let batches = queue.flush_batches_at(1_700_000_000_500).expect("flush");
+    assert_eq!(batches.len(), 1);
+    assert_eq!(batches[0].treaty_id, "treaty:buyer-llamaworks:support-ops");
+}
+
+#[test]
+fn pheromone_batch_verifier_accepts_scoped_direct_batch() {
+    let queue = PheromoneGossipPushQueue::new("did:chio:llamaworks", 4).expect("queue");
+    queue
+        .subscribe(
+            "did:chio:buyer-kernel",
+            "treaty:buyer-llamaworks:support-ops",
+        )
+        .expect("subscribe");
+    queue.enqueue(deposit()).expect("enqueue");
+    let batches = queue.flush_batches_at(1_700_000_000_500).expect("flush");
+    let batch = batches.first().expect("batch");
+
+    verify_pheromone_gossip_batch(
+        batch,
+        &policy(),
+        &PheromoneGossipBatchVerificationContext {
+            now_unix_ms: 1_700_000_000_500,
+            recipient_kernel_id: "did:chio:buyer-kernel".to_string(),
+            authenticated_sender_kernel_id: "did:chio:llamaworks".to_string(),
+        },
+    )
+    .expect("batch verifies");
+}
+
+#[test]
+fn pheromone_batch_verifier_rejects_wrong_direct_sender() {
+    let mut frame = PheromoneDepositGossip {
+        schema: PHEROMONE_GOSSIP_SCHEMA.to_string(),
+        deposit: deposit(),
+        origin_kernel_id: "did:chio:llamaworks".to_string(),
+        gossiping_peer_kernel_id: "did:chio:buyer-kernel".to_string(),
+        treaty_id: "treaty:buyer-llamaworks:support-ops".to_string(),
+        ts_unix_ms: 1_700_000_000_500,
+        transit_chain: None,
+    };
+    frame.deposit.body.treaty_scope = vec!["treaty:buyer-llamaworks:support-ops".to_string()];
+    let batch = chio_federation::PheromoneGossipBatch {
+        schema: PHEROMONE_GOSSIP_BATCH_SCHEMA.to_string(),
+        recipient_kernel_id: "did:chio:buyer-kernel".to_string(),
+        treaty_id: "treaty:buyer-llamaworks:support-ops".to_string(),
+        frames: vec![frame],
+        flushed_at_unix_ms: 1_700_000_000_500,
+    };
+
+    let err = verify_pheromone_gossip_batch(
+        &batch,
+        &policy(),
+        &PheromoneGossipBatchVerificationContext {
+            now_unix_ms: 1_700_000_000_500,
+            recipient_kernel_id: "did:chio:buyer-kernel".to_string(),
+            authenticated_sender_kernel_id: "did:chio:llamaworks".to_string(),
+        },
+    )
+    .expect_err("wrong direct sender fails");
+    assert_eq!(err.code(), "authenticated_sender_mismatch");
 }

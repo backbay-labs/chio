@@ -96,6 +96,11 @@ pub const CHIO_GUARD_VERDICT_TOTAL: &str = "chio_guard_verdict_total";
 pub const CHIO_KERNEL_DECISION_LATENCY_SECONDS: &str = "chio_kernel_decision_latency_seconds";
 pub const CHIO_OTEL_INGRESS_DROP_TOTAL: &str = "chio_otel_ingress_drop_total";
 pub const CHIO_OTEL_SINK_DROP_TOTAL: &str = "chio_otel_sink_drop_total";
+pub const CHIO_PHEROMONE_QUEUE_OVERFLOW_TOTAL: &str = "chio_pheromone_queue_overflow_total";
+pub const CHIO_PHEROMONE_RECEIVER_DEPOSITS_TOTAL: &str = "chio_pheromone_receiver_deposits_total";
+pub const CHIO_PHEROMONE_RECEIVER_LATENCY_SECONDS: &str = "chio_pheromone_receiver_latency_seconds";
+pub const CHIO_PHEROMONE_RECEIVER_REJECTIONS_TOTAL: &str =
+    "chio_pheromone_receiver_rejections_total";
 pub const CHIO_RECEIPT_WRITE_TOTAL: &str = "chio_receipt_write_total";
 pub const CHIO_RECEIPT_WRITE_LATENCY_SECONDS: &str = "chio_receipt_write_latency_seconds";
 pub const CHIO_SIDECAR_REQUESTS_TOTAL: &str = "chio_sidecar_requests_total";
@@ -121,6 +126,9 @@ pub const ANCHOR_ROUND_LATENCY_BUCKETS_SECONDS: &[&str] =
     &["0.1", "0.5", "1.0", "2.5", "5.0", "10.0"];
 pub const FEDERATION_HOP_LATENCY_BUCKETS_SECONDS: &[&str] =
     &["0.01", "0.025", "0.05", "0.1", "0.25", "0.5", "1.0"];
+pub const PHEROMONE_RECEIVER_LATENCY_BUCKETS_SECONDS: &[&str] = &[
+    "0.001", "0.005", "0.01", "0.025", "0.05", "0.1", "0.25", "0.5", "1.0",
+];
 
 pub const REGISTRY: &[MetricDescriptor] = &[
     describe!(
@@ -271,6 +279,31 @@ pub const REGISTRY: &[MetricDescriptor] = &[
         help = "Total OTEL receipt sink batches dropped before append.",
         kind = Counter,
         labels = []
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_QUEUE_OVERFLOW_TOTAL,
+        help = "Total local pheromone gossip queue overflows.",
+        kind = Counter,
+        labels = ["treaty", "recipient"]
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RECEIVER_DEPOSITS_TOTAL,
+        help = "Total local pheromone receiver deposit admission outcomes.",
+        kind = Counter,
+        labels = ["outcome"]
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RECEIVER_LATENCY_SECONDS,
+        help = "Local pheromone receiver batch verification latency in seconds.",
+        kind = Histogram,
+        labels = ["outcome"],
+        buckets = ["0.001", "0.005", "0.01", "0.025", "0.05", "0.1", "0.25", "0.5", "1.0"]
+    ),
+    describe!(
+        name = CHIO_PHEROMONE_RECEIVER_REJECTIONS_TOTAL,
+        help = "Total local pheromone receiver rejections by bounded reason.",
+        kind = Counter,
+        labels = ["reason"]
     ),
     describe!(
         name = CHIO_RECEIPT_WRITE_LATENCY_SECONDS,

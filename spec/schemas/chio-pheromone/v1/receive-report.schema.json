@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/receive-report.schema.json",
+  "title": "Chiodos Pheromone Receive Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "batchSha256",
+    "recipientKernelId",
+    "authenticatedSenderKernelId",
+    "receivedAtUnixMs",
+    "frames"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.receive-report.v1" },
+    "accepted": { "type": "boolean" },
+    "batchSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "recipientKernelId": { "type": "string", "minLength": 1 },
+    "authenticatedSenderKernelId": { "type": "string", "minLength": 1 },
+    "receivedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "frames": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/frame" }
+    }
+  },
+  "$defs": {
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frameIndex", "accepted", "code", "detail"],
+      "properties": {
+        "frameIndex": { "type": "integer", "minimum": 0 },
+        "accepted": { "type": "boolean" },
+        "code": { "type": "string", "minLength": 1 },
+        "detail": { "type": "string", "minLength": 1 },
+        "depositNonce": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

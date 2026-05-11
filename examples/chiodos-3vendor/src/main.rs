@@ -10,10 +10,14 @@ use chio_federation::{
 };
 use chio_pheromone::{
     agent_passport_jwk_thumbprint, agent_passport_key_hash, sign_deposit, CostCommitmentPolicy,
-    DepositQuery, InMemoryPheromoneSubstrate, PassportAdmission, PheromoneCostCommitment,
-    PheromoneDepositBody, PheromoneSubstrate, PheromoneValidationContext, PheromoneWorkflowContext,
-    Severity, SubjectClassPolicy, PHEROMONE_COST_COMMITMENT_SCHEMA, PHEROMONE_DEPOSIT_SCHEMA,
-    PHEROMONE_WORKFLOW_CONTEXT_SCHEMA,
+    PassportAdmission, PheromoneCostCommitment, PheromoneDepositBody, PheromoneValidationContext,
+    PheromoneWorkflowContext, Severity, SubjectClassPolicy, PHEROMONE_COST_COMMITMENT_SCHEMA,
+    PHEROMONE_DEPOSIT_SCHEMA, PHEROMONE_WORKFLOW_CONTEXT_SCHEMA,
+};
+use chio_pheromone_runtime::{
+    PeerWeightEntry, PeerWeightsDocument, PheromoneAdmissionPolicyDocument, PheromoneReceiver,
+    PheromoneReceiverConfig, PheromoneRuntimeStore, SqlitePheromoneRuntimeStore,
+    StaticPeerWeightProvider, VerifiedChiodosWorkflowResolver, PHEROMONE_PEER_WEIGHTS_SCHEMA,
 };
 use chiodos_three_vendor_example::{
     authority_issuance_request, authority_profile_document, authority_profile_json,
@@ -253,8 +257,7 @@ fn write_pheromone_fixtures(
         frames: vec![frame],
         flushed_at_unix_ms: package.generated_at_unix_ms.saturating_add(500),
     };
-    let substrate = InMemoryPheromoneSubstrate::new();
-    let context = PheromoneValidationContext {
+    let validation_context = PheromoneValidationContext {
         now_unix_ms: package.generated_at_unix_ms.saturating_add(500),
         replay_window_ms: 86_400_000,
         active_peers_in_treaty: 9,
@@ -277,17 +280,47 @@ fn write_pheromone_fixtures(
         }],
         max_deposits_per_pair: 8,
     };
-    substrate
-        .deposit(deposit.clone(), &context)
+    let policy_document = transit_policy_document(&policy, &validation_context)?;
+    let trust_bundle_document = verifier_trust_bundle_document_for_package(package)?;
+    let trust_bundle = ChiodosVerifierTrustBundle::from_document(trust_bundle_document)?;
+    let context = verification_context();
+    let resolver =
+        VerifiedChiodosWorkflowResolver::from_verified_package(package, &trust_bundle, &context)
+            .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    let store = SqlitePheromoneRuntimeStore::open_in_memory()
         .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
-    let concentration = substrate
+    let receiver = PheromoneReceiver::new(
+        store,
+        resolver,
+        PheromoneReceiverConfig {
+            recipient_kernel_id: "did:chio:dataco".to_string(),
+            authenticated_sender_kernel_id: "did:chio:buyer-kernel".to_string(),
+            validation_context: validation_context.clone(),
+        },
+    );
+    let receive_report = receiver
+        .receive_batch(&batch, &policy)
+        .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    let peer_weights = PeerWeightsDocument {
+        schema: PHEROMONE_PEER_WEIGHTS_SCHEMA.to_string(),
+        reputation_epoch: 42,
+        weights: vec![PeerWeightEntry {
+            kernel_id: "did:chio:llamaworks".to_string(),
+            weight: 0.75,
+        }],
+    };
+    let query_report = receiver
         .query_concentration(
             "support.prompt_injection",
             "dev.chio.support",
-            package.generated_at_unix_ms.saturating_add(1_000),
             42,
-            &context,
-            &|_, _| 0.75,
+            &StaticPeerWeightProvider::new(
+                peer_weights.reputation_epoch,
+                peer_weights
+                    .weights
+                    .iter()
+                    .map(|entry| (entry.kernel_id.clone(), entry.weight)),
+            ),
         )
         .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
     let negative_cases = serde_json::json!({
@@ -322,14 +355,18 @@ fn write_pheromone_fixtures(
 
     write_json(dir.join("deposit.json"), &deposit)?;
     write_json(dir.join("gossip-batch.json"), &batch)?;
-    write_json(dir.join("transit-policy.json"), &policy)?;
-    write_json(dir.join("concentration.json"), &concentration)?;
+    write_json(dir.join("transit-policy.json"), &policy_document)?;
+    write_json(dir.join("receive-report.json"), &receive_report)?;
+    write_json(dir.join("peer-weights.json"), &peer_weights)?;
+    write_json(dir.join("query-report.json"), &query_report)?;
+    write_json(dir.join("concentration.json"), &query_report.concentration)?;
     write_json(dir.join("negative-cases.json"), &negative_cases)?;
-    let queried = substrate
-        .query_deposits(&DepositQuery {
-            subject_class: Some("support.prompt_injection".to_string()),
-            treaty_id: Some("treaty:buyer-llamaworks:support-ops".to_string()),
-        })
+    let queried = receiver
+        .store()
+        .query_deposits(
+            Some("support.prompt_injection"),
+            Some("treaty:buyer-llamaworks:support-ops"),
+        )
         .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
     if queried.len() != 1 {
         return Err(ChiodosPackageError::Json(
@@ -337,6 +374,36 @@ fn write_pheromone_fixtures(
         ));
     }
     Ok(())
+}
+
+fn transit_policy_document(
+    policy: &PheromoneTransitPolicy,
+    context: &PheromoneValidationContext,
+) -> Result<serde_json::Value, ChiodosPackageError> {
+    let mut value = serde_json::to_value(policy)
+        .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+    let admission = PheromoneAdmissionPolicyDocument {
+        recipient_kernel_id: "did:chio:dataco".to_string(),
+        authenticated_sender_kernel_id: "did:chio:buyer-kernel".to_string(),
+        replay_window_ms: context.replay_window_ms,
+        active_peers_in_treaty: context.active_peers_in_treaty,
+        known_reputation_epochs: context.known_reputation_epochs.clone(),
+        passports: context.passports.clone(),
+        kernel_public_keys: context.kernel_public_keys.clone(),
+        subject_classes: context.subject_classes.clone(),
+        max_deposits_per_pair: context.max_deposits_per_pair,
+    };
+    let Some(object) = value.as_object_mut() else {
+        return Err(ChiodosPackageError::Json(
+            "transit policy did not serialize to an object".to_string(),
+        ));
+    };
+    object.insert(
+        "admission".to_string(),
+        serde_json::to_value(admission)
+            .map_err(|error| ChiodosPackageError::Json(error.to_string()))?,
+    );
+    Ok(value)
 }
 
 fn transit_hop(
