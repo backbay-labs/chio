@@ -93,20 +93,12 @@ async def test_chio_unknown_subcommand_lists_options(tmp_workspace: Path) -> Non
 async def test_chio_status_reports_actual_denial_count(
     tmp_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`/chio status` must report the live denial count, not zero.
-
-    Records 2 allows + 1 deny through the post-hook (so the envelope-
-    decode branch in `make_post_tool_call` runs end to end), then asks
-    the slash command for the status line and asserts "recent denials:
-    1" appears.
-    """
+    """End-to-end: post-hook envelope decode -> deny counter -> /chio status."""
     import chio_hermes.receipts as _receipts
     from chio_hermes.hooks import make_post_tool_call
 
     runtime = make_configured_runtime(cwd=tmp_workspace)
 
-    # Steer the JSONL writer at a tmp file so the hook does not touch
-    # the real ~/.hermes path.
     log = tmp_workspace / "chio-receipts.jsonl"
     monkeypatch.setattr(_receipts, "_resolve_log_path", lambda: log)
 
@@ -140,6 +132,4 @@ async def test_chio_status_reports_actual_denial_count(
     handle_slash = make_slash_handler(runtime)
     out = await handle_slash("status")
     assert out is not None
-    assert "recent denials: 1" in out, (
-        f"/chio status must reflect 1 denial; got:\n{out}"
-    )
+    assert "recent denials: 1" in out

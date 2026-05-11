@@ -63,19 +63,12 @@ def _canonical_dumps(record: dict[str, Any]) -> bytes:
 
 
 def append_jsonl(path: Path, record: dict[str, Any]) -> None:
-    """Append `record` as one canonical-JSON line to `path`.
+    """Append `record` as one canonical-JSON line. Raises `OSError`.
 
-    Raises `OSError` on disk failure. `ReceiptBuffer.record` wraps this
-    with suppression for the production path; direct callers can probe
-    the raising behaviour.
-
-    The serialised record (including the trailing newline) is built in
-    memory and emitted with a single ``fh.write`` call. POSIX
-    append-mode is atomic per-`write` up to ``PIPE_BUF`` (~4 KiB on
-    Linux), so a single write keeps the line whole even if the process
-    is killed mid-write; splitting the JSON body and the trailing
-    newline into two writes (the historical shape) leaves a partial
-    line on disk when the process dies between them.
+    The line (including the trailing newline) is emitted with a single
+    ``fh.write``. POSIX append-mode is atomic per `write` up to
+    `PIPE_BUF` (~4 KiB on Linux), so a single write keeps the line
+    whole even if the process is killed mid-write.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = _canonical_dumps(record) + b"\n"

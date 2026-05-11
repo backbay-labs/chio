@@ -1,22 +1,9 @@
-"""Hermes hook factories for the chio-hermes plugin.
+"""Hermes hook factories.
 
 Hermes's `PluginManager.invoke_hook` (`hermes_cli/plugins.py:1222`)
 runs callbacks as `ret = cb(**kwargs)` with NO await, so every hook
 here is a plain `def`. Returning a coroutine would silently drop the
 body and trigger a `RuntimeWarning` at GC time.
-
-* `make_pre_tool_call`   - policy precheck for `chio_*` tools; returns
-  `{"action": "block", "message": ...}` for a deny verdict, `None`
-  otherwise.
-* `make_post_tool_call`  - finalises the receipt record from the
-  kwargs Hermes hands the hook and appends it to JSONL.
-* `make_on_session_start` - drops any leftover pending entries from a
-  crashed prior session.
-* `make_on_session_end`   - drains pending entries through the JSONL
-  writer so they are not lost.
-
-Every factory tolerates `**kwargs` because the upstream hook signature
-is expected to evolve.
 """
 
 from __future__ import annotations
@@ -39,8 +26,6 @@ def _is_chio_tool(tool_name: str | None) -> bool:
 
 
 def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
-    """Return a sync pre-hook that pre-checks Chio tools against policy."""
-
     def pre_tool_call(
         tool_name: str | None = None,
         args: dict[str, Any] | None = None,
@@ -50,8 +35,7 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
         if not _is_chio_tool(tool_name):
             return None
         if not handle.is_configured() or handle.policy is None:
-            # Degraded mode: handler emits chio_not_configured; pre-hook
-            # stays silent so the canonical envelope wins.
+            # Degraded mode: handler emits chio_not_configured.
             return None
         params = dict(args or {})
 
@@ -93,16 +77,9 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
 
 
 def _envelope_status_fields(result: Any) -> tuple[str | None, str | None]:
-    """Best-effort decode of a handler's JSON envelope.
-
-    Handlers always return canonical-JSON strings shaped as either
-    ``{"status":"allowed", ...}`` or ``{"error":"denied", ...}`` /
-    ``{"error":"chio_<slug>", ...}``. The post-hook needs the top-level
-    `status` and `error` keys hoisted onto the receipt record so that
-    `ReceiptBuffer.denial_count` (which reads `receipt.get("status")`
-    and `receipt.get("error")`) sees the deny verdict. Anything that
-    is not a parseable JSON object yields ``(None, None)`` and the
-    counter stays unchanged.
+    """Hoist `status` / `error` from the handler's JSON envelope so
+    `ReceiptBuffer.denial_count` (which reads top-level keys) sees the
+    deny verdict. Returns ``(None, None)`` for non-JSON-object results.
     """
     if not isinstance(result, str):
         return None, None
@@ -121,12 +98,6 @@ def _envelope_status_fields(result: Any) -> tuple[str | None, str | None]:
 
 
 def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
-    """Return a sync post-hook that records the canonical receipt.
-
-    JSONL write failures are swallowed so a hook exception never kills
-    the Hermes session.
-    """
-
     def post_tool_call(
         tool_name: str | None = None,
         args: dict[str, Any] | None = None,
@@ -146,17 +117,13 @@ def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
             "recorded_at": time.time(),
             "result": result,
         }
-        # Surface envelope-level status / error at the top of the
-        # record so ReceiptBuffer.denial_count() (and any future
-        # /chio status counter) can inspect a single key without
-        # re-parsing the JSON `result` string.
         if status is not None:
             record["status"] = status
         if error is not None:
             record["error"] = error
         try:
             handle.receipts.record(record)
-        except Exception as exc:  # noqa: BLE001 - tolerate any IO failure
+        except Exception as exc:  # noqa: BLE001
             print(
                 f"[chio-hermes] post_tool_call record failed: {exc}",
                 file=sys.stderr,
@@ -166,8 +133,6 @@ def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
 
 
 def make_on_session_start(handle: RuntimeHandle) -> SessionHook:
-    """Return a sync session-start hook that clears stale pending entries."""
-
     def on_session_start(
         session_id: str | None = None, **_kwargs: Any
     ) -> None:
@@ -180,8 +145,6 @@ def make_on_session_start(handle: RuntimeHandle) -> SessionHook:
 
 
 def make_on_session_end(handle: RuntimeHandle) -> SessionHook:
-    """Return a sync session-end hook that flushes pending entries."""
-
     def on_session_end(
         session_id: str | None = None, **_kwargs: Any
     ) -> None:

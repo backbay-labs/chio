@@ -191,18 +191,13 @@ This mirrors Hermes's own `~/.hermes/.env` over `config.yaml` model.
 
 ## Caveats (upstream Hermes)
 
-A dogfood run against Hermes 0.13.0 surfaced four upstream UX gaps that
-affect entry-point plugins. None block functionality once you work
-around them, but the published "happy path" of
-`pip install chio-hermes && hermes plugins enable chio` is misleading
-until they are fixed upstream.
+Four Hermes 0.13.0 gaps affect entry-point plugins. None block
+functionality once worked around.
 
-- `hermes plugins list` does not enumerate entry-point plugins, so
-  `chio` is invisible in that table even when Hermes is loading it.
-  Workaround: trust `pip show chio-hermes` and the
-  `[plugins] DEBUG Loading plugin 'chio'` log line under
-  `HERMES_PLUGINS_DEBUG=1`.
-- `hermes plugins enable chio` rejects entry-point plugin names. Edit
+- `hermes plugins list` does not enumerate entry-point plugins. Trust
+  `pip show chio-hermes` and the `[plugins] DEBUG Loading plugin
+  'chio'` log line under `HERMES_PLUGINS_DEBUG=1`.
+- `hermes plugins enable chio` rejects entry-point names. Edit
   `~/.hermes/config.yaml` directly:
 
   ```yaml
@@ -210,14 +205,11 @@ until they are fixed upstream.
     enabled:
       - chio
   ```
-- `hermes setup` does not read the entry-point plugin's `plugin.yaml`
-  and therefore never prompts for `CHIO_SIDECAR_URL` or
-  `CHIO_CAPABILITY_ID`. Export both env vars (or write them to
-  `~/.hermes/.env` mode `0600`) before invoking `hermes`.
-- LLM-driven invocation (`hermes -z "..."`) was not exercised in the
-  dogfood (no API key on the test box). Static surface is verified end
-  to end (registration, hooks, slash commands, CLI subcommands); only
-  the model-driven path is unproven.
+- `hermes setup` does not read entry-point `plugin.yaml`, so it never
+  prompts for `CHIO_SIDECAR_URL` / `CHIO_CAPABILITY_ID`. Export them
+  (or write to `~/.hermes/.env` mode `0600`) before `hermes`.
+- LLM-driven invocation (`hermes -z "..."`) is unproven (no provider
+  key on the dogfood box). Static surface is verified end to end.
 
 See `docs/integrations/HERMES.md` "Known issues" for the file:line
 references in upstream `hermes_cli`.

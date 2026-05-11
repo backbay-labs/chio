@@ -1,12 +1,9 @@
-"""Regression tests for Hermes-faithful sync hook dispatch.
+"""Sync-dispatch regression for hooks.
 
 Hermes's `PluginManager.invoke_hook` (`hermes_cli/plugins.py:1218-1232`)
-calls every registered callback as `ret = cb(**kwargs)` with NO await.
-If our hook factories return coroutines, the coroutine ends up in the
-results list and gets garbage-collected (raising `RuntimeWarning:
-coroutine ... was never awaited`), and the hook's side effects never
-run. These tests exercise the registered hooks the way Hermes does,
-through `SyncFakePluginContext.invoke_hook_sync`.
+calls every registered callback as `ret = cb(**kwargs)` with NO await,
+so hooks must be plain `def`. These exercise that path via
+`SyncFakePluginContext.invoke_hook_sync`.
 """
 
 from __future__ import annotations
@@ -47,7 +44,6 @@ def test_pre_tool_call_sync_dispatch_returns_dict_not_coroutine(
     monkeypatch: pytest.MonkeyPatch,
     tmp_workspace: Path,
 ) -> None:
-    """The deny path returns a dict directly, not a coroutine."""
     runtime = make_configured_runtime(cwd=tmp_workspace)
 
     def _raise(*_args: Any, **_kwargs: Any) -> None:
@@ -87,7 +83,6 @@ def test_pre_tool_call_sync_dispatch_returns_none_for_allowed_call(
     sync_fake_plugin_context: SyncFakePluginContext,
     tmp_workspace: Path,
 ) -> None:
-    """Allowed calls return None directly; results list stays empty."""
     runtime = make_configured_runtime(cwd=tmp_workspace)
     sync_fake_plugin_context.register_hook(
         "pre_tool_call", make_pre_tool_call(runtime)
@@ -102,16 +97,13 @@ def test_pre_tool_call_sync_dispatch_returns_none_for_allowed_call(
             task_id="task-sync-2",
         )
 
-    assert results == [], (
-        "an allowed call returns None; invoke_hook_sync skips None results"
-    )
+    assert results == []
 
 
 def test_pre_tool_call_sync_dispatch_skips_non_chio_tool(
     sync_fake_plugin_context: SyncFakePluginContext,
     tmp_workspace: Path,
 ) -> None:
-    """Non-chio_ tools pass through (None), no coroutine, no warning."""
     runtime = make_configured_runtime(cwd=tmp_workspace)
     sync_fake_plugin_context.register_hook(
         "pre_tool_call", make_pre_tool_call(runtime)
@@ -134,10 +126,7 @@ def test_post_tool_call_sync_dispatch_writes_receipt_to_jsonl(
     tmp_workspace: Path,
     tmp_hermes_home: Path,
 ) -> None:
-    """The post hook writes the JSONL line synchronously.
-
-    If the body never ran (coroutine bug), the file would be empty.
-    """
+    """The body must run synchronously; an async hook would leave the file empty."""
     runtime = make_configured_runtime(cwd=tmp_workspace)
     sync_fake_plugin_context.register_hook(
         "post_tool_call", make_post_tool_call(runtime)
@@ -157,10 +146,8 @@ def test_post_tool_call_sync_dispatch_writes_receipt_to_jsonl(
             duration_ms=11,
         )
 
-    assert results == []  # post hook always returns None
-    assert log_path.exists(), (
-        "post_tool_call must have written the JSONL line synchronously"
-    )
+    assert results == []
+    assert log_path.exists()
     contents = log_path.read_bytes()
     assert b"chio_file_read" in contents
     assert b"task-sync-post" in contents
@@ -171,7 +158,6 @@ def test_post_tool_call_sync_dispatch_no_runtime_warning(
     tmp_workspace: Path,
     tmp_hermes_home: Path,
 ) -> None:
-    """RuntimeWarning -> error: a sync hook must not raise it."""
     runtime = make_configured_runtime(cwd=tmp_workspace)
     sync_fake_plugin_context.register_hook(
         "post_tool_call", make_post_tool_call(runtime)
@@ -207,9 +193,7 @@ def test_on_session_start_sync_dispatch_clears_pending_immediately(
         )
 
     assert results == []
-    assert buf.pending_total() == 0, (
-        "on_session_start must have run synchronously"
-    )
+    assert buf.pending_total() == 0
 
 
 def test_on_session_end_sync_dispatch_flushes_pending_immediately(
@@ -241,7 +225,7 @@ def test_on_session_end_sync_dispatch_flushes_pending_immediately(
 
     assert results == []
     assert buf.pending_total() == 0
-    assert len(written) == 2, "drain must have happened synchronously"
+    assert len(written) == 2
     for entry in written:
         assert entry["session_end_flush"] is True
 
@@ -252,7 +236,6 @@ def test_register_hooks_survive_sync_dispatch(
     tmp_workspace: Path,
     tmp_hermes_home: Path,
 ) -> None:
-    """End-to-end: register() into a sync ctx, invoke each hook the way Hermes does."""
     monkeypatch.setenv("CHIO_SIDECAR_URL", "http://127.0.0.1:9090")
     monkeypatch.setenv("CHIO_CAPABILITY_ID", "cap-sync-dispatch-test")
     monkeypatch.chdir(tmp_workspace)
@@ -276,7 +259,7 @@ def test_register_hooks_survive_sync_dispatch(
             args={"path": "README.md"},
             task_id="task-e2e",
         )
-        assert pre_results == []  # allowed, returns None
+        assert pre_results == []
 
         sync_fake_plugin_context.invoke_hook_sync(
             "post_tool_call",

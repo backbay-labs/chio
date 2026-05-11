@@ -1,12 +1,4 @@
-"""ReceiptBuffer + JSONL writer behaviour.
-
-Three contracts:
-
-1. FIFO order on `push` / `pop_next` for the same `task_id`.
-2. Canonical JSON (sorted keys, no whitespace, ASCII-safe) on disk.
-3. `record` swallows OSError so a transient disk problem cannot crash
-   Hermes; `append_jsonl` itself raises so direct callers can decide.
-"""
+"""ReceiptBuffer + JSONL writer behaviour."""
 
 from __future__ import annotations
 
@@ -92,9 +84,8 @@ def test_buffer_cap_uses_default() -> None:
 
 
 def test_append_jsonl_propagates_oserror(tmp_path: Path) -> None:
-    """Free function raises OSError so callers can decide."""
     bad_path = tmp_path / "chio-receipts.jsonl"
-    bad_path.mkdir()  # making it a dir guarantees open() raises
+    bad_path.mkdir()
     with pytest.raises(OSError):
         append_jsonl(bad_path, {"x": 1})
 
@@ -102,11 +93,8 @@ def test_append_jsonl_propagates_oserror(tmp_path: Path) -> None:
 def test_record_to_unwritable_path_swallows_oserror(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`ReceiptBuffer.record` must NOT raise when the JSONL writer fails.
-
-    Hermes treats any exception from a hook (which calls `record`) as a
-    fatal session error.
-    """
+    """`ReceiptBuffer.record` must not raise; Hermes treats any hook
+    exception as a fatal session error."""
     import chio_hermes.receipts as _receipts
 
     bad_path = tmp_path / "is_dir.jsonl"
@@ -114,13 +102,12 @@ def test_record_to_unwritable_path_swallows_oserror(
     monkeypatch.setattr(_receipts, "_resolve_log_path", lambda: bad_path)
 
     buf = ReceiptBuffer()
-    buf.record({"tool_name": "chio_file_read"})  # must not raise
+    buf.record({"tool_name": "chio_file_read"})
 
 
 def test_record_writes_under_lock_no_torn_lines(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """N parallel `record` calls produce N intact JSON lines."""
     import chio_hermes.receipts as _receipts
 
     log = tmp_path / "chio-receipts.jsonl"
@@ -152,12 +139,9 @@ def test_resolve_log_path_returns_path() -> None:
 def test_denial_count_increments_on_top_level_status_denied(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`ReceiptBuffer.record` reads `status` and `error` from the top
-    level of the receipt record. The post-hook (`hooks.py`) is
-    responsible for hoisting them out of the JSON envelope; this test
-    pins the buffer-side contract by feeding three records (2 allowed,
-    1 denied) and asserting the counter is 1.
-    """
+    """Buffer-side contract: `record` reads `status` / `error` from the
+    record top-level (the post-hook is responsible for hoisting them
+    from the JSON envelope)."""
     import chio_hermes.receipts as _receipts
 
     log = tmp_path / "chio-receipts.jsonl"
@@ -179,13 +163,10 @@ def test_denial_count_increments_on_top_level_status_denied(
 def test_append_jsonl_no_torn_line_on_partial_write_crash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A signal between the JSON body and the trailing newline must not
-    leave a torn line on disk. The historical implementation issued
-    two `write` calls; collapsing to one buffer makes the write atomic
-    up to PIPE_BUF (~4 KiB). Simulate the crash by patching the file
-    object's `write` to raise before any bytes hit disk: there must be
-    NO partial line after the failure.
-    """
+    """`append_jsonl` must issue exactly one `fh.write` call: POSIX
+    append-mode is atomic per write up to PIPE_BUF (~4 KiB), so a
+    single write keeps the line whole even if the process is killed
+    mid-write. Two writes (the historical shape) would tear."""
     log = tmp_path / "chio-receipts.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
 
@@ -210,8 +191,6 @@ def test_append_jsonl_no_torn_line_on_partial_write_crash(
     spies: list[_CrashOnWrite] = []
 
     def _spy_open(self: Path, *args: Any, **kwargs: Any) -> Any:
-        # Only spy on the JSONL append; leave other open() calls
-        # untouched so post-crash inspection still works.
         if self == log and "ab" in args:
             wrapper = _CrashOnWrite(real_open(self, *args, **kwargs))
             spies.append(wrapper)
@@ -223,12 +202,7 @@ def test_append_jsonl_no_torn_line_on_partial_write_crash(
     with pytest.raises(OSError):
         append_jsonl(log, {"id": "rcpt-crash"})
 
-    # Single write attempt; no partial bytes on disk.
-    assert spies and spies[0].calls == 1, (
-        "append_jsonl must issue exactly one fh.write call so a crash "
-        "between two writes cannot tear the line"
-    )
+    assert spies and spies[0].calls == 1
     monkeypatch.undo()
     if log.exists():
-        # File was created by the open(ab) but no bytes were committed.
         assert log.read_bytes() == b""
