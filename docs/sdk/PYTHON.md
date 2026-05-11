@@ -686,3 +686,54 @@ On denial or sidecar errors, ChioTool returns a JSON string with error details r
 ```json
 {"error": "denied", "guard": "velocity-guard", "reason": "rate limit exceeded"}
 ```
+
+---
+
+## 6. chio-hermes
+
+Hermes Agent plugin. Wires Chio's `CodeAgent` tool surface
+(file/shell/git) into the Hermes tool registry, enforces the bundled
+policy via a `pre_tool_call` hook, and writes per-session signed
+receipts to a JSONL log. Long-form integration guide lives at
+[`docs/integrations/HERMES.md`](../integrations/HERMES.md).
+
+### Installation
+
+Install Hermes itself first (curl-installer or
+`pip install --upgrade git+https://github.com/NousResearch/hermes-agent.git`),
+then into the same Python environment:
+
+```bash
+pip install chio-hermes
+```
+
+### Quickstart
+
+Enable the plugin in `~/.hermes/config.yaml`:
+
+```yaml
+plugins:
+  enabled:
+    - chio
+```
+
+Set the two required environment variables (`hermes setup` will prompt
+for them; the capability id is masked):
+
+```bash
+export CHIO_SIDECAR_URL="http://127.0.0.1:9090"
+export CHIO_CAPABILITY_ID="$(hermes chio issue --tool-server fs --tool-server shell --tool-server git --subject <hex-pubkey> --output json | jq -r .id)"
+```
+
+Twelve tools land under the single `chio` toolset
+(`chio_file_read`, `chio_file_write`, `chio_file_edit`, `chio_file_list`,
+`chio_file_search`, `chio_shell_run`, `chio_git_status`, `chio_git_diff`,
+`chio_git_log`, `chio_git_add`, `chio_git_commit`, `chio_git_run`).
+Receipts surface in-session via `/chio receipts` and are appended to
+`<get_hermes_home()>/logs/chio-receipts.jsonl`. The JSONL log is a
+session convenience; the canonical audit store is the sidecar's
+`--receipts-db`.
+
+See [`docs/integrations/HERMES.md`](../integrations/HERMES.md) for the
+full surface (Path A vs Path B, capability lifecycle, failure-mode
+table, custom policy, troubleshooting).
