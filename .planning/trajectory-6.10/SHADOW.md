@@ -1,13 +1,5 @@
-# Chiodos 6.10 Shadow
+# Chiodos 6.10 Shadow Closeout
 
-The next room is production relay operations beyond the local artifact lane.
+This shadow note has been promoted into the active 6.10 lane. The active scope is tracked in `README.md` and `TICKETS.md`.
 
-Candidate scope:
-
-- TLS deployment hardening with concrete reverse-proxy examples.
-- Long-running supervisor packaging and restart policy.
-- Static peer discovery hardening without dynamic trust.
-- Expanded relay observability dashboards and alert thresholds.
-- Operational drills for directory rotation, replay storms, and catch-up overload.
-
-Non-goals remain dynamic peer crawling, hidden predicates, pheromone-driven authority decisions, VC DI BBS, zkVM, FROST, settlement, and new transport protocols.
+The remaining next-room planning moved to `.planning/trajectory-6.11/SHADOW.md`.

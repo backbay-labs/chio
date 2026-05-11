@@ -860,8 +860,12 @@ enum ChiodosPheromoneRelayCommands {
     /// Lint a relay peer directory against an operational profile.
     Lint {
         /// Raw peer directory or signed peer-directory bundle JSON.
+        #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
+        peer_directory: Option<PathBuf>,
+
+        /// Verifier-owned active peer-directory state JSON.
         #[arg(long, value_name = "PATH")]
-        peer_directory: PathBuf,
+        peer_directory_state: Option<PathBuf>,
 
         /// Relay operational profile.
         #[arg(long, value_enum)]
@@ -887,8 +891,12 @@ enum ChiodosPheromoneRelayCommands {
         store: PathBuf,
 
         /// Verifier-owned peer directory JSON.
+        #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
+        peer_directory: Option<PathBuf>,
+
+        /// Verifier-owned active peer-directory state JSON.
         #[arg(long, value_name = "PATH")]
-        peer_directory: PathBuf,
+        peer_directory_state: Option<PathBuf>,
 
         /// Relay operational profile.
         #[arg(long, value_enum, default_value = "local-dev")]
@@ -926,8 +934,12 @@ enum ChiodosPheromoneRelayCommands {
         store: PathBuf,
 
         /// Verifier-owned peer directory JSON.
+        #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
+        peer_directory: Option<PathBuf>,
+
+        /// Verifier-owned active peer-directory state JSON.
         #[arg(long, value_name = "PATH")]
-        peer_directory: PathBuf,
+        peer_directory_state: Option<PathBuf>,
 
         /// Relay operational profile.
         #[arg(long, value_enum, default_value = "local-dev")]
@@ -953,8 +965,12 @@ enum ChiodosPheromoneRelayCommands {
         store: PathBuf,
 
         /// Verifier-owned peer directory JSON.
+        #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
+        peer_directory: Option<PathBuf>,
+
+        /// Verifier-owned active peer-directory state JSON.
         #[arg(long, value_name = "PATH")]
-        peer_directory: PathBuf,
+        peer_directory_state: Option<PathBuf>,
 
         /// Relay operational profile.
         #[arg(long, value_enum, default_value = "local-dev")]
@@ -991,6 +1007,22 @@ enum ChiodosPheromoneRelayCommands {
         #[arg(long, value_name = "ID")]
         peer: String,
 
+        /// Verifier-owned active peer-directory state JSON.
+        #[arg(long, value_name = "PATH")]
+        peer_directory_state: Option<PathBuf>,
+
+        /// Relay operational profile for state validation.
+        #[arg(long, value_enum, default_value = "local-dev")]
+        profile: RelayProfileArg,
+
+        /// Trusted peer-directory issuer config for signed active state.
+        #[arg(long, value_name = "PATH")]
+        trusted_issuers: Option<PathBuf>,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: Option<u64>,
+
         /// Treaty id for the catch-up window.
         #[arg(long, value_name = "ID")]
         treaty: String,
@@ -1015,6 +1047,96 @@ enum ChiodosPheromoneRelayCommands {
         store: PathBuf,
 
         /// Output path for status report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Inspect, promote, or reject verifier-owned relay peer-directory state.
+    Directory {
+        #[command(subcommand)]
+        command: ChiodosPheromoneRelayDirectoryCommands,
+    },
+
+    /// Validate local relay supervisor deployment profiles.
+    Supervisor {
+        #[command(subcommand)]
+        command: ChiodosPheromoneRelaySupervisorCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosPheromoneRelayDirectoryCommands {
+    /// Inspect active peer-directory state.
+    Inspect {
+        /// Peer-directory state JSON.
+        #[arg(long, value_name = "PATH")]
+        state: PathBuf,
+
+        /// Output path for inspection report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Promote a signed peer-directory candidate into active state.
+    Promote {
+        /// Peer-directory state JSON to update.
+        #[arg(long, value_name = "PATH")]
+        state: PathBuf,
+
+        /// Signed peer-directory bundle candidate JSON.
+        #[arg(long, value_name = "PATH")]
+        candidate: PathBuf,
+
+        /// Trusted peer-directory issuer config.
+        #[arg(long, value_name = "PATH")]
+        trusted_issuers: PathBuf,
+
+        /// Relay operational profile.
+        #[arg(long, value_enum)]
+        profile: RelayProfileArg,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: Option<u64>,
+
+        /// Output path for rotation report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Reject a signed peer-directory candidate without changing active state.
+    Reject {
+        /// Peer-directory state JSON to update.
+        #[arg(long, value_name = "PATH")]
+        state: PathBuf,
+
+        /// Signed peer-directory bundle candidate JSON.
+        #[arg(long, value_name = "PATH")]
+        candidate: PathBuf,
+
+        /// Stable rejection reason code.
+        #[arg(long, value_name = "CODE")]
+        reason: String,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: Option<u64>,
+
+        /// Output path for rotation report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosPheromoneRelaySupervisorCommands {
+    /// Lint a relay supervisor deployment profile.
+    Lint {
+        /// Relay supervisor profile JSON.
+        #[arg(long, value_name = "PATH")]
+        profile: PathBuf,
+
+        /// Output path for drill report JSON.
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },

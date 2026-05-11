@@ -1,0 +1,18 @@
+{
+  "schema": "chio.pheromone.relay-supervisor-profile.v1",
+  "profile": "production",
+  "serviceName": "chio-pheromone-relay-dataco",
+  "listen": "127.0.0.1:18080",
+  "storePath": "/var/lib/chio/pheromone-relay.sqlite3",
+  "peerDirectoryStatePath": "/etc/chio/peer-directory-state.json",
+  "signingKeyPath": "/etc/chio/private/relay-signing-key.json",
+  "healthPath": "/v1/chiodos/pheromone/health",
+  "readyPath": "/v1/chiodos/pheromone/ready",
+  "singleWriter": true,
+  "reverseProxy": {
+    "scheme": "https",
+    "pinnedPathPrefix": "/v1/chiodos/pheromone",
+    "maxBodyBytes": 256000,
+    "redirectsDisabled": true
+  }
+}

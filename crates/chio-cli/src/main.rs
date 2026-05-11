@@ -384,6 +384,7 @@ mod cli_entrypoint_tests {
                                 command:
                                     ChiodosPheromoneRelayCommands::Lint {
                                         peer_directory,
+                                        peer_directory_state,
                                         profile,
                                         trusted_issuers,
                                         report,
@@ -393,8 +394,9 @@ mod cli_entrypoint_tests {
             } => {
                 assert_eq!(
                     peer_directory,
-                    std::path::PathBuf::from("peer-directory-bundle.json")
+                    Some(std::path::PathBuf::from("peer-directory-bundle.json"))
                 );
+                assert_eq!(peer_directory_state, None);
                 assert!(matches!(profile, RelayProfileArg::Production));
                 assert_eq!(
                     trusted_issuers,
@@ -403,6 +405,112 @@ mod cli_entrypoint_tests {
                 assert_eq!(report, std::path::PathBuf::from("lint-report.json"));
             }
             _ => panic!("expected chiodos pheromone relay lint subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_pheromone_relay_directory_promote_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "directory",
+            "promote",
+            "--state",
+            "peer-directory-state.json",
+            "--candidate",
+            "peer-directory-bundle.json",
+            "--trusted-issuers",
+            "trusted-issuers.json",
+            "--profile",
+            "production",
+            "--now-unix-ms",
+            "1766000000500",
+            "--report",
+            "rotation-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Directory {
+                                        command:
+                                            ChiodosPheromoneRelayDirectoryCommands::Promote {
+                                                state,
+                                                candidate,
+                                                trusted_issuers,
+                                                profile,
+                                                now_unix_ms,
+                                                report,
+                                            },
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(
+                    state,
+                    std::path::PathBuf::from("peer-directory-state.json")
+                );
+                assert_eq!(
+                    candidate,
+                    std::path::PathBuf::from("peer-directory-bundle.json")
+                );
+                assert_eq!(
+                    trusted_issuers,
+                    std::path::PathBuf::from("trusted-issuers.json")
+                );
+                assert!(matches!(profile, RelayProfileArg::Production));
+                assert_eq!(now_unix_ms, Some(1_766_000_000_500));
+                assert_eq!(report, std::path::PathBuf::from("rotation-report.json"));
+            }
+            _ => panic!("expected chiodos pheromone relay directory promote subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_pheromone_relay_supervisor_lint_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "supervisor",
+            "lint",
+            "--profile",
+            "relay-supervisor-profile.json",
+            "--report",
+            "relay-drill-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Supervisor {
+                                        command:
+                                            ChiodosPheromoneRelaySupervisorCommands::Lint {
+                                                profile,
+                                                report,
+                                            },
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(
+                    profile,
+                    std::path::PathBuf::from("relay-supervisor-profile.json")
+                );
+                assert_eq!(report, std::path::PathBuf::from("relay-drill-report.json"));
+            }
+            _ => panic!("expected chiodos pheromone relay supervisor lint subcommand"),
         }
     }
 

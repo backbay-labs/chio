@@ -25,11 +25,17 @@ use url::Url;
 
 pub const PHEROMONE_PEER_DIRECTORY_SCHEMA: &str = "chio.pheromone.peer-directory.v1";
 pub const PHEROMONE_PEER_DIRECTORY_BUNDLE_SCHEMA: &str = "chio.pheromone.peer-directory-bundle.v1";
+pub const PHEROMONE_PEER_DIRECTORY_STATE_SCHEMA: &str = "chio.pheromone.peer-directory-state.v1";
+pub const PHEROMONE_PEER_DIRECTORY_ROTATION_REPORT_SCHEMA: &str =
+    "chio.pheromone.peer-directory-rotation-report.v1";
 pub const PHEROMONE_RELAY_CONFIG_SCHEMA: &str = "chio.pheromone.relay-config.v1";
 pub const PHEROMONE_RELAY_HTTP_REQUEST_SCHEMA: &str = "chio.pheromone.relay-http-request.v1";
 pub const PHEROMONE_RELAY_TICK_REPORT_SCHEMA: &str = "chio.pheromone.relay-tick-report.v1";
 pub const PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA: &str = "chio.pheromone.relay-operator-report.v1";
 pub const PHEROMONE_RELAY_HEALTH_REPORT_SCHEMA: &str = "chio.pheromone.relay-health-report.v1";
+pub const PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA: &str =
+    "chio.pheromone.relay-supervisor-profile.v1";
+pub const PHEROMONE_RELAY_DRILL_REPORT_SCHEMA: &str = "chio.pheromone.relay-drill-report.v1";
 pub const PHEROMONE_CATCHUP_REQUEST_SCHEMA: &str = "chio.pheromone.catchup-request.v1";
 pub const PHEROMONE_CATCHUP_RESPONSE_SCHEMA: &str = "chio.pheromone.catchup-response.v1";
 pub const PHEROMONE_RELAY_NEGATIVE_CORPUS_SCHEMA: &str =
@@ -54,6 +60,10 @@ pub enum PheromoneRelayError {
     UnknownPeerDirectoryIssuer(String),
     #[error("peer_directory_rollback: {0}")]
     PeerDirectoryRollback(String),
+    #[error("peer_directory_state_invalid: {0}")]
+    PeerDirectoryStateInvalid(String),
+    #[error("peer_removed: {0}")]
+    PeerRemoved(String),
     #[error("unknown_peer: {0}")]
     UnknownPeer(String),
     #[error("peer_directory_stale: {0}")]
@@ -62,6 +72,8 @@ pub enum PheromoneRelayError {
     EndpointDenied(String),
     #[error("relay_profile_denied: {0}")]
     RelayProfileDenied(String),
+    #[error("supervisor_profile_invalid: {0}")]
+    SupervisorProfileInvalid(String),
     #[error("catchup_denied: {0}")]
     CatchupDenied(String),
     #[error("body_hash_mismatch: {0}")]
@@ -104,10 +116,13 @@ impl PheromoneRelayError {
             Self::PeerDirectoryUnsigned(_) => "peer_directory_unsigned",
             Self::UnknownPeerDirectoryIssuer(_) => "unknown_peer_directory_issuer",
             Self::PeerDirectoryRollback(_) => "peer_directory_rollback",
+            Self::PeerDirectoryStateInvalid(_) => "peer_directory_state_invalid",
+            Self::PeerRemoved(_) => "peer_removed",
             Self::UnknownPeer(_) => "unknown_peer",
             Self::PeerDirectoryStale(_) => "peer_directory_stale",
             Self::EndpointDenied(_) => "endpoint_denied",
             Self::RelayProfileDenied(_) => "relay_profile_denied",
+            Self::SupervisorProfileInvalid(_) => "supervisor_profile_invalid",
             Self::CatchupDenied(_) => "catchup_denied",
             Self::BodyHashMismatch(_) => "body_hash_mismatch",
             Self::SignatureInvalid => "signature_invalid",
@@ -276,6 +291,7 @@ pub struct PeerDirectory {
     document: PeerDirectoryDocument,
     peers: BTreeMap<String, PeerDirectoryEntry>,
     version: Option<u64>,
+    removed_peer_ids: BTreeSet<String>,
 }
 
 impl PeerDirectory {
@@ -283,7 +299,7 @@ impl PeerDirectory {
         document: PeerDirectoryDocument,
         now_unix_ms: u64,
     ) -> Result<Self, PheromoneRelayError> {
-        Self::from_document_internal(document, now_unix_ms, None)
+        Self::from_document_internal(document, now_unix_ms, None, BTreeSet::new())
     }
 
     pub fn from_document_with_profile(
@@ -293,13 +309,14 @@ impl PeerDirectory {
         limits: &RelayProfileLimits,
     ) -> Result<Self, PheromoneRelayError> {
         validate_peer_directory_profile(&document, profile, limits)?;
-        Self::from_document_internal(document, now_unix_ms, None)
+        Self::from_document_internal(document, now_unix_ms, None, BTreeSet::new())
     }
 
     fn from_document_internal(
         document: PeerDirectoryDocument,
         now_unix_ms: u64,
         version: Option<u64>,
+        removed_peer_ids: BTreeSet<String>,
     ) -> Result<Self, PheromoneRelayError> {
         if document.schema != PHEROMONE_PEER_DIRECTORY_SCHEMA {
             return Err(PheromoneRelayError::UnsupportedSchema(document.schema));
@@ -342,6 +359,7 @@ impl PeerDirectory {
             document,
             peers,
             version,
+            removed_peer_ids,
         })
     }
 
@@ -361,6 +379,9 @@ impl PeerDirectory {
     }
 
     pub fn peer(&self, kernel_id: &str) -> Result<&PeerDirectoryEntry, PheromoneRelayError> {
+        if self.removed_peer_ids.contains(kernel_id) {
+            return Err(PheromoneRelayError::PeerRemoved(kernel_id.to_string()));
+        }
         self.peers
             .get(kernel_id)
             .ok_or_else(|| PheromoneRelayError::UnknownPeer(kernel_id.to_string()))
@@ -473,8 +494,288 @@ impl PeerDirectoryBundleDocument {
             self.directory.clone(),
             trust.now_unix_ms,
             Some(self.body.version),
+            BTreeSet::new(),
         )
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerDirectoryStateEntry {
+    pub bundle: PeerDirectoryBundleDocument,
+    pub bundle_sha256: String,
+    pub directory_sha256: String,
+    pub version: u64,
+    pub promoted_at_unix_ms: u64,
+    pub removed_peer_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerDirectoryRejectedEntry {
+    pub bundle_sha256: Option<String>,
+    pub version: Option<u64>,
+    pub rejected_at_unix_ms: u64,
+    pub code: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerDirectoryStateDocument {
+    pub schema: String,
+    pub local_kernel_id: String,
+    pub generated_at_unix_ms: u64,
+    pub version_floor: u64,
+    pub active: Option<PeerDirectoryStateEntry>,
+    pub candidate: Option<PeerDirectoryStateEntry>,
+    pub rejected: Vec<PeerDirectoryRejectedEntry>,
+}
+
+impl PeerDirectoryStateDocument {
+    #[must_use]
+    pub fn new(local_kernel_id: &str, generated_at_unix_ms: u64) -> Self {
+        Self {
+            schema: PHEROMONE_PEER_DIRECTORY_STATE_SCHEMA.to_string(),
+            local_kernel_id: local_kernel_id.to_string(),
+            generated_at_unix_ms,
+            version_floor: 0,
+            active: None,
+            candidate: None,
+            rejected: Vec::new(),
+        }
+    }
+
+    pub fn active_directory(
+        &self,
+        trust: &PeerDirectoryBundleTrust,
+    ) -> Result<PeerDirectory, PheromoneRelayError> {
+        if self.schema != PHEROMONE_PEER_DIRECTORY_STATE_SCHEMA {
+            return Err(PheromoneRelayError::UnsupportedSchema(self.schema.clone()));
+        }
+        let active = self.active.as_ref().ok_or_else(|| {
+            PheromoneRelayError::PeerDirectoryStateInvalid(
+                "peer directory state has no active bundle".to_string(),
+            )
+        })?;
+        let actual_bundle_sha256 = canonical_sha256(&active.bundle)?;
+        if actual_bundle_sha256 != active.bundle_sha256 {
+            return Err(PheromoneRelayError::BodyHashMismatch(format!(
+                "active bundle hash {actual_bundle_sha256} does not match state hash {}",
+                active.bundle_sha256
+            )));
+        }
+        let actual_directory_sha256 = canonical_sha256(&active.bundle.directory)?;
+        if actual_directory_sha256 != active.directory_sha256 {
+            return Err(PheromoneRelayError::BodyHashMismatch(format!(
+                "active directory hash {actual_directory_sha256} does not match state hash {}",
+                active.directory_sha256
+            )));
+        }
+        if active.bundle.directory.local_kernel_id != self.local_kernel_id {
+            return Err(PheromoneRelayError::PeerDirectoryStateInvalid(format!(
+                "active directory local kernel {} does not match state {}",
+                active.bundle.directory.local_kernel_id, self.local_kernel_id
+            )));
+        }
+        let mut effective_trust = trust.clone();
+        effective_trust.min_version = effective_trust.min_version.max(self.version_floor);
+        let mut directory = active.bundle.verify(&effective_trust)?;
+        directory.removed_peer_ids = active.removed_peer_ids.iter().cloned().collect();
+        Ok(directory)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerDirectoryRotationReport {
+    pub schema: String,
+    pub accepted: bool,
+    pub code: String,
+    pub detail: String,
+    pub local_kernel_id: String,
+    pub generated_at_unix_ms: u64,
+    pub previous_version: Option<u64>,
+    pub promoted_version: Option<u64>,
+    pub active_bundle_sha256: Option<String>,
+    pub candidate_bundle_sha256: Option<String>,
+    pub removed_peer_ids: Vec<String>,
+}
+
+pub fn promote_peer_directory_candidate(
+    state: &mut PeerDirectoryStateDocument,
+    candidate: PeerDirectoryBundleDocument,
+    trust: &PeerDirectoryBundleTrust,
+    now_unix_ms: u64,
+) -> Result<PeerDirectoryRotationReport, PheromoneRelayError> {
+    if state.schema != PHEROMONE_PEER_DIRECTORY_STATE_SCHEMA {
+        let error = PheromoneRelayError::UnsupportedSchema(state.schema.clone());
+        record_rejected_candidate(state, Some(&candidate), now_unix_ms, &error);
+        return Err(error);
+    }
+    if state.local_kernel_id != candidate.directory.local_kernel_id {
+        let error = PheromoneRelayError::PeerDirectoryStateInvalid(format!(
+            "candidate local kernel {} does not match state {}",
+            candidate.directory.local_kernel_id, state.local_kernel_id
+        ));
+        record_rejected_candidate(state, Some(&candidate), now_unix_ms, &error);
+        return Err(error);
+    }
+    let previous = state.active.clone();
+    if let Some(active) = &previous {
+        if candidate.body.version <= active.version {
+            let error = PheromoneRelayError::PeerDirectoryRollback(format!(
+                "candidate version {} is not higher than active version {}",
+                candidate.body.version, active.version
+            ));
+            record_rejected_candidate(state, Some(&candidate), now_unix_ms, &error);
+            return Err(error);
+        }
+        if candidate.body.previous_version_sha256.as_deref() != Some(active.bundle_sha256.as_str())
+        {
+            let error = PheromoneRelayError::PeerDirectoryRollback(
+                "candidate previous version hash does not match active bundle".to_string(),
+            );
+            record_rejected_candidate(state, Some(&candidate), now_unix_ms, &error);
+            return Err(error);
+        }
+    } else if candidate.body.previous_version_sha256.is_some() {
+        let error = PheromoneRelayError::PeerDirectoryRollback(
+            "initial candidate must not point at a previous bundle".to_string(),
+        );
+        record_rejected_candidate(state, Some(&candidate), now_unix_ms, &error);
+        return Err(error);
+    }
+
+    let mut effective_trust = trust.clone();
+    effective_trust.min_version = effective_trust.min_version.max(state.version_floor);
+    if let Err(error) = candidate.verify(&effective_trust) {
+        record_rejected_candidate(state, Some(&candidate), now_unix_ms, &error);
+        return Err(error);
+    }
+
+    let bundle_sha256 = canonical_sha256(&candidate)?;
+    let directory_sha256 = canonical_sha256(&candidate.directory)?;
+    let removed_peer_ids = removed_peer_ids(previous.as_ref(), &candidate);
+    let promoted_version = candidate.body.version;
+    let entry = PeerDirectoryStateEntry {
+        bundle: candidate,
+        bundle_sha256: bundle_sha256.clone(),
+        directory_sha256,
+        version: promoted_version,
+        promoted_at_unix_ms: now_unix_ms,
+        removed_peer_ids: removed_peer_ids.clone(),
+    };
+    state.version_floor = state.version_floor.max(promoted_version);
+    state.generated_at_unix_ms = now_unix_ms;
+    state.active = Some(entry);
+    state.candidate = None;
+
+    Ok(PeerDirectoryRotationReport {
+        schema: PHEROMONE_PEER_DIRECTORY_ROTATION_REPORT_SCHEMA.to_string(),
+        accepted: true,
+        code: "accepted".to_string(),
+        detail: "peer directory candidate promoted".to_string(),
+        local_kernel_id: state.local_kernel_id.clone(),
+        generated_at_unix_ms: now_unix_ms,
+        previous_version: previous.as_ref().map(|active| active.version),
+        promoted_version: Some(promoted_version),
+        active_bundle_sha256: Some(bundle_sha256.clone()),
+        candidate_bundle_sha256: Some(bundle_sha256),
+        removed_peer_ids,
+    })
+}
+
+pub fn reject_peer_directory_candidate(
+    state: &mut PeerDirectoryStateDocument,
+    candidate: PeerDirectoryBundleDocument,
+    reason: &str,
+    now_unix_ms: u64,
+) -> Result<PeerDirectoryRotationReport, PheromoneRelayError> {
+    let bundle_sha256 = canonical_sha256(&candidate)?;
+    let version = candidate.body.version;
+    let error = PheromoneRelayError::PeerDirectoryStateInvalid(reason.to_string());
+    state.rejected.push(PeerDirectoryRejectedEntry {
+        bundle_sha256: Some(bundle_sha256.clone()),
+        version: Some(version),
+        rejected_at_unix_ms: now_unix_ms,
+        code: error.code().to_string(),
+        detail: reason.to_string(),
+    });
+    state.candidate = None;
+    state.generated_at_unix_ms = now_unix_ms;
+    Ok(PeerDirectoryRotationReport {
+        schema: PHEROMONE_PEER_DIRECTORY_ROTATION_REPORT_SCHEMA.to_string(),
+        accepted: false,
+        code: error.code().to_string(),
+        detail: reason.to_string(),
+        local_kernel_id: state.local_kernel_id.clone(),
+        generated_at_unix_ms: now_unix_ms,
+        previous_version: state.active.as_ref().map(|active| active.version),
+        promoted_version: None,
+        active_bundle_sha256: state
+            .active
+            .as_ref()
+            .map(|active| active.bundle_sha256.clone()),
+        candidate_bundle_sha256: Some(bundle_sha256),
+        removed_peer_ids: Vec::new(),
+    })
+}
+
+pub fn peer_directory_state_from_json(
+    json: &str,
+) -> Result<PeerDirectoryStateDocument, PheromoneRelayError> {
+    let state: PeerDirectoryStateDocument = serde_json::from_str(json)?;
+    if state.schema != PHEROMONE_PEER_DIRECTORY_STATE_SCHEMA {
+        return Err(PheromoneRelayError::UnsupportedSchema(state.schema));
+    }
+    Ok(state)
+}
+
+fn record_rejected_candidate(
+    state: &mut PeerDirectoryStateDocument,
+    candidate: Option<&PeerDirectoryBundleDocument>,
+    rejected_at_unix_ms: u64,
+    error: &PheromoneRelayError,
+) {
+    let (bundle_sha256, version) = candidate
+        .and_then(|candidate| {
+            canonical_sha256(candidate)
+                .ok()
+                .map(|sha| (Some(sha), Some(candidate.body.version)))
+        })
+        .unwrap_or((None, None));
+    state.rejected.push(PeerDirectoryRejectedEntry {
+        bundle_sha256,
+        version,
+        rejected_at_unix_ms,
+        code: error.code().to_string(),
+        detail: error.to_string(),
+    });
+    state.generated_at_unix_ms = rejected_at_unix_ms;
+}
+
+fn removed_peer_ids(
+    previous: Option<&PeerDirectoryStateEntry>,
+    candidate: &PeerDirectoryBundleDocument,
+) -> Vec<String> {
+    let Some(previous) = previous else {
+        return Vec::new();
+    };
+    let next_ids = candidate
+        .directory
+        .peers
+        .iter()
+        .map(|peer| peer.kernel_id.as_str())
+        .collect::<BTreeSet<_>>();
+    previous
+        .bundle
+        .directory
+        .peers
+        .iter()
+        .filter(|peer| !next_ids.contains(peer.kernel_id.as_str()))
+        .map(|peer| peer.kernel_id.clone())
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -789,6 +1090,147 @@ pub struct RelayHealthReport {
     pub cursor_count: u64,
     pub stale_lease_count: u64,
     pub checks: Vec<RelayHealthCheck>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelaySupervisorProfileDocument {
+    pub schema: String,
+    pub profile: RelayProfile,
+    pub service_name: String,
+    pub listen: String,
+    pub store_path: String,
+    pub peer_directory_state_path: String,
+    pub signing_key_path: String,
+    pub health_path: String,
+    pub ready_path: String,
+    pub single_writer: bool,
+    pub reverse_proxy: RelayReverseProxyProfile,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayReverseProxyProfile {
+    pub scheme: String,
+    pub pinned_path_prefix: String,
+    pub max_body_bytes: usize,
+    pub redirects_disabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayDrillCheck {
+    pub code: String,
+    pub accepted: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayDrillReport {
+    pub schema: String,
+    pub accepted: bool,
+    pub code: String,
+    pub detail: String,
+    pub generated_at_unix_ms: u64,
+    pub checks: Vec<RelayDrillCheck>,
+}
+
+pub fn relay_supervisor_profile_from_json(
+    json: &str,
+) -> Result<RelaySupervisorProfileDocument, PheromoneRelayError> {
+    let profile: RelaySupervisorProfileDocument = serde_json::from_str(json)?;
+    if profile.schema != PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA {
+        return Err(PheromoneRelayError::UnsupportedSchema(profile.schema));
+    }
+    Ok(profile)
+}
+
+pub fn lint_relay_supervisor_profile(
+    profile: &RelaySupervisorProfileDocument,
+    now_unix_ms: u64,
+) -> RelayDrillReport {
+    let mut checks = Vec::new();
+    push_drill_check(
+        &mut checks,
+        profile.schema == PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA,
+        "supervisor_schema",
+        "supervisor profile declares the current schema",
+    );
+    push_drill_check(
+        &mut checks,
+        profile.health_path == PHEROMONE_HEALTH_PATH,
+        "health_path",
+        "health endpoint path is pinned",
+    );
+    push_drill_check(
+        &mut checks,
+        profile.ready_path == PHEROMONE_READY_PATH,
+        "ready_path",
+        "readiness endpoint path is pinned",
+    );
+    push_drill_check(
+        &mut checks,
+        profile.single_writer,
+        "single_writer",
+        "profile declares a single relay writer boundary",
+    );
+    push_drill_check(
+        &mut checks,
+        profile.reverse_proxy.pinned_path_prefix == "/v1/chiodos/pheromone",
+        "pinned_path_prefix",
+        "reverse proxy pins the Chiodos pheromone path prefix",
+    );
+    push_drill_check(
+        &mut checks,
+        profile.reverse_proxy.redirects_disabled,
+        "redirects_disabled",
+        "reverse proxy disables upstream redirects",
+    );
+    push_drill_check(
+        &mut checks,
+        profile.reverse_proxy.max_body_bytes
+            <= RelayProfileLimits::production_defaults().max_body_bytes,
+        "max_body_bytes",
+        "reverse proxy body limit stays within production relay bounds",
+    );
+    let scheme_ok = match profile.profile {
+        RelayProfile::LocalDev => {
+            profile.reverse_proxy.scheme == "http" || profile.reverse_proxy.scheme == "https"
+        }
+        RelayProfile::Production => profile.reverse_proxy.scheme == "https",
+    };
+    push_drill_check(
+        &mut checks,
+        scheme_ok,
+        "endpoint_scheme",
+        "profile endpoint scheme is allowed for the selected relay profile",
+    );
+    let accepted = checks.iter().all(|check| check.accepted);
+    RelayDrillReport {
+        schema: PHEROMONE_RELAY_DRILL_REPORT_SCHEMA.to_string(),
+        accepted,
+        code: if accepted {
+            "accepted".to_string()
+        } else {
+            "supervisor_profile_invalid".to_string()
+        },
+        detail: if accepted {
+            "relay supervisor profile accepted".to_string()
+        } else {
+            "relay supervisor profile rejected".to_string()
+        },
+        generated_at_unix_ms: now_unix_ms,
+        checks,
+    }
+}
+
+fn push_drill_check(checks: &mut Vec<RelayDrillCheck>, accepted: bool, code: &str, detail: &str) {
+    checks.push(RelayDrillCheck {
+        code: code.to_string(),
+        accepted,
+        detail: detail.to_string(),
+    });
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
