@@ -492,14 +492,28 @@ async fn submit_approval_handler(
     };
     let approval_id = format!("ap-{}", uuid::Uuid::now_v7());
     let approver_pubkey = state.signer_keypair.public_key();
+    // When the caller does not supply a parseable subject pubkey we
+    // synthesize the binding using the sidecar's own pubkey so the
+    // operator-respond shortcut can sign a token whose subject still
+    // matches the request. Production agents should always pass their
+    // own hex-encoded Ed25519 pubkey via `requested_by`.
+    let parsed_subject = PublicKey::from_hex(&body.requested_by).ok();
+    let stored_subject_id = if parsed_subject.is_some() {
+        body.requested_by.clone()
+    } else {
+        approver_pubkey.to_hex()
+    };
+    let stored_subject_pubkey = parsed_subject
+        .clone()
+        .or_else(|| Some(approver_pubkey.clone()));
     let approval = ApprovalRequest {
         approval_id: approval_id.clone(),
         policy_id: body
             .policy_id
             .unwrap_or_else(|| "policy-hermes-hitl".to_string()),
-        subject_id: body.requested_by.clone(),
+        subject_id: stored_subject_id,
         capability_id: body.capability_id.clone(),
-        subject_public_key: PublicKey::from_hex(&body.requested_by).ok(),
+        subject_public_key: stored_subject_pubkey,
         tool_server: body.tool_server.clone(),
         tool_name: body.tool_name.clone(),
         action: body.action.unwrap_or_else(|| "invoke".to_string()),
@@ -571,20 +585,19 @@ async fn operator_respond_approval_handler(
         ));
     }
 
-    // Subject pubkey: prefer the explicit binding on the request, else
-    // try to parse it back out of subject_id.
-    let subject_pubkey = match pending
+    // Subject pubkey: prefer the explicit binding on the request,
+    // then try to parse subject_id as hex, and finally fall back to
+    // the sidecar's own pubkey. The fallback keeps the operator path
+    // useful for callers (chio-hermes v0.2) that submit holds without
+    // a per-agent Ed25519 keypair; the resulting token is still bound
+    // to the request_id and parameter_hash, so the audit trail records
+    // exactly which call was approved even when the subject identity
+    // is synthetic.
+    let subject_pubkey = pending
         .subject_public_key
         .clone()
         .or_else(|| PublicKey::from_hex(&pending.subject_id).ok())
-    {
-        Some(pk) => pk,
-        None => {
-            return approval_error_response(ApprovalHandlerError::BadRequest(
-                "approval request is missing a parseable subject public key".into(),
-            ));
-        }
-    };
+        .unwrap_or_else(|| approver_pubkey.clone());
 
     let now = chrono::Utc::now().timestamp() as u64;
     let decision = match body.outcome {
@@ -2769,6 +2782,74 @@ paths:
             .get_pending(&approval_id)
             .test_unwrap()
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn submit_then_operator_respond_works_without_subject_pubkey() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+
+        // requested_by left blank: the sidecar must fall back to its
+        // own pubkey for both subject_id and subject_public_key so the
+        // operator-respond shortcut can sign a binding token.
+        let submit_payload = serde_json::json!({
+            "capability_id": "cap-no-sub",
+            "tool_server": "shell",
+            "tool_name": "run_command",
+            "parameter_hash": "c".repeat(64),
+            "requested_by": "",
+            "ttl_seconds": 300,
+        });
+        let submit_request = with_loopback_peer(
+            Request::builder()
+                .method("POST")
+                .uri("/approvals/submit")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&submit_payload).test_unwrap(),
+                ))
+                .test_unwrap(),
+        );
+        let submit_response = build_app(Arc::clone(&state))
+            .oneshot(submit_request)
+            .await
+            .test_unwrap();
+        assert_eq!(submit_response.status(), StatusCode::CREATED);
+        let submit_body = to_bytes(submit_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let submit_json: serde_json::Value = serde_json::from_slice(&submit_body).test_unwrap();
+        let approval_id = submit_json["approval_id"]
+            .as_str()
+            .test_unwrap()
+            .to_string();
+
+        let stored = state
+            .approval_admin
+            .store()
+            .get_pending(&approval_id)
+            .test_unwrap()
+            .test_unwrap();
+        assert_eq!(
+            stored.subject_id,
+            state.signer_keypair.public_key().to_hex()
+        );
+
+        let respond_payload = serde_json::json!({"outcome": "approved"});
+        let respond_request = with_loopback_peer(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/approvals/{approval_id}/operator-respond"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&respond_payload).test_unwrap(),
+                ))
+                .test_unwrap(),
+        );
+        let respond_response = build_app(Arc::clone(&state))
+            .oneshot(respond_request)
+            .await
+            .test_unwrap();
+        assert_eq!(respond_response.status(), StatusCode::OK);
     }
 
     #[tokio::test]
