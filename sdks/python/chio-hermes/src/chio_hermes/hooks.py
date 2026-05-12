@@ -77,10 +77,8 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
 
 
 def _envelope_status_fields(result: Any) -> tuple[str | None, str | None]:
-    """Hoist `status` / `error` from the handler's JSON envelope so
-    `ReceiptBuffer.denial_count` (which reads top-level keys) sees the
-    deny verdict. Returns ``(None, None)`` for non-JSON-object results.
-    """
+    # Hoist status/error from the handler's JSON envelope so
+    # ReceiptBuffer.denial_count (which reads top-level keys) sees deny.
     if not isinstance(result, str):
         return None, None
     try:
@@ -99,12 +97,9 @@ def _envelope_status_fields(result: Any) -> tuple[str | None, str | None]:
 
 RECEIPT_RESULT_MAX_BYTES = 256
 
-# Tools whose `result` payload is mostly raw content (file bodies,
-# command stdout, diff text). Persisting the full payload to the
-# receipt log multiplies disk usage and bakes secrets / large blobs
-# into the audit trail. Truncate to the first
-# `RECEIPT_RESULT_MAX_BYTES` so the audit record still references the
-# call without storing the content.
+# Tools whose result is mostly raw content (file bodies, stdout, diff
+# text). Persisting the full payload bakes secrets and large blobs into
+# the audit trail; truncate to RECEIPT_RESULT_MAX_BYTES.
 _CONTENT_HEAVY_TOOLS = frozenset(
     {
         "chio_file_read",
@@ -121,12 +116,6 @@ _CONTENT_HEAVY_TOOLS = frozenset(
 def _truncate_receipt_result(
     tool_name: str | None, result: Any
 ) -> tuple[Any, bool]:
-    """Truncate `result` for content-heavy tools.
-
-    Returns `(payload, truncated)`. The payload is either the original
-    `result` or its UTF-8 prefix; `truncated=True` flags that the
-    receipt no longer contains the full output.
-    """
     if tool_name not in _CONTENT_HEAVY_TOOLS:
         return result, False
     if not isinstance(result, str):
@@ -136,6 +125,41 @@ def _truncate_receipt_result(
         return result, False
     head = encoded[:RECEIPT_RESULT_MAX_BYTES].decode("utf-8", errors="replace")
     return head, True
+
+
+# Tools whose `args` carry the raw file body the model is about to
+# write. Persisting that body to the receipt log bakes any embedded
+# secret into the audit trail. Replace the body field with a stub
+# describing the byte count; the path / message is preserved.
+_BODY_REDACT_FIELDS: dict[str, tuple[str, ...]] = {
+    "chio_file_write": ("content",),
+    "chio_file_edit": ("patch",),
+}
+
+
+def _redact_args(
+    tool_name: str | None, args: dict[str, Any]
+) -> dict[str, Any]:
+    """Return a copy of `args` with body-bearing fields stubbed out."""
+    fields = _BODY_REDACT_FIELDS.get(tool_name or "")
+    if not fields:
+        return dict(args)
+    redacted: dict[str, Any] = dict(args)
+    for field in fields:
+        if field not in redacted:
+            continue
+        body = redacted[field]
+        if isinstance(body, str):
+            byte_count = len(body.encode("utf-8", errors="replace"))
+        elif isinstance(body, (bytes, bytearray)):
+            byte_count = len(body)
+        else:
+            try:
+                byte_count = len(str(body).encode("utf-8", errors="replace"))
+            except Exception:  # noqa: BLE001
+                byte_count = -1
+        redacted[field] = {"omitted": True, "byte_count": byte_count}
+    return redacted
 
 
 def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
@@ -155,7 +179,7 @@ def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
         )
         record: dict[str, Any] = {
             "tool_name": tool_name,
-            "args": dict(args or {}),
+            "args": _redact_args(tool_name, dict(args or {})),
             "task_id": task_id,
             "duration_ms": float(duration_ms) if duration_ms is not None else None,
             "recorded_at": time.time(),
@@ -185,7 +209,19 @@ def make_on_session_start(handle: RuntimeHandle) -> SessionHook:
         _ = session_id
         if handle.receipts is None:
             return
-        handle.receipts.clear_pending()
+        # F14 (deferred-from-interval-2): if Hermes fires on_session_start
+        # per turn (its precise dispatch contract is undocumented),
+        # `clear_pending` would silently drop any receipts queued in the
+        # previous turn. Flush them into the recorded buffer instead so
+        # the audit trail still reflects the calls. The buffer cap
+        # (`CHIO_RECEIPT_BUFFER_MAX`, default 1000) handles overflow.
+        for entry in list(handle.receipts.drain_pending()):
+            entry["recorded_at"] = time.time()
+            entry["session_start_flush"] = True
+            try:
+                handle.receipts.record(entry)
+            except Exception:  # noqa: BLE001
+                pass
 
     return on_session_start
 
@@ -213,6 +249,7 @@ __all__ = [
     "PostHook",
     "PreHook",
     "SessionHook",
+    "_redact_args",
     "make_on_session_end",
     "make_on_session_start",
     "make_post_tool_call",

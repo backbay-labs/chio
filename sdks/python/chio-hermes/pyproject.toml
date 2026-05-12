@@ -43,11 +43,11 @@ dev = [
     "ruff>=0.5",
     "types-PyYAML>=6",
 ]
-# Convenience extra for developers who want Hermes pulled into the same
-# venv as the plugin. Production users install Hermes separately.
-hermes = [
-    "hermes-agent @ git+https://github.com/NousResearch/hermes-agent.git@v2026.5.7",
-]
+# NOTE: Hermes itself is NOT declared as an extra here. PyPI rejects
+# distributions that carry direct URL `Requires-Dist` markers (which a
+# `git+...` extra would emit), so packaging this convenience would
+# block `pip install chio-hermes` at upload time. Install Hermes
+# separately per the README / HERMES.md install steps.
 
 [project.entry-points."hermes_agent.plugins"]
 chio = "chio_hermes"
@@ -55,9 +55,6 @@ chio = "chio_hermes"
 [tool.uv.sources]
 chio-sdk-python = { path = "../chio-sdk-python" }
 chio-code-agent = { path = "../chio-code-agent" }
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/chio_hermes"]

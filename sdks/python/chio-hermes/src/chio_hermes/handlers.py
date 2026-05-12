@@ -352,11 +352,57 @@ def _factory_file_search(handle: RuntimeHandle) -> ToolHandler:
         # so reject queries that try the obvious escape. The wrapper
         # converts the raised denial into the canonical envelope.
         _reject_path_escape(query, label="query")
-        return await _agent(handle).files.search_files(
+        invocation = await _agent(handle).files.search_files(
             query, path=path, executor=_exec.search_files_executor
         )
+        # `Path.rglob("*.pem")` happily enumerates secret files even
+        # though `chio_file_read` would deny them. Re-check each match
+        # against `policy.check_read` so the listing cannot be used to
+        # confirm secret-file existence.
+        return _filter_search_matches(handle, invocation)
 
     return _wrap_envelope(handle, "chio_file_search", inner)
+
+
+def _filter_search_matches(handle: RuntimeHandle, invocation: Any) -> Any:
+    """Drop forbidden paths from a `search_files` result.
+
+    Walks `result["matches"]` (list of repo-relative path strings) and
+    removes any entry whose resolved child path would fail
+    `policy.check_read`. Adds `entries_filtered: True` when at least
+    one entry was dropped, mirroring the directory-listing pattern.
+    """
+    inner_result = getattr(invocation, "result", None)
+    target = inner_result if inner_result is not None else invocation
+    filtered = _filter_matches(handle, target)
+    if inner_result is not None and filtered is not target:
+        try:
+            invocation.result = filtered
+            return invocation
+        except Exception:  # noqa: BLE001 - frozen dataclass etc.
+            return filtered
+    return filtered if filtered is not target else invocation
+
+
+def _filter_matches(handle: RuntimeHandle, result: Any) -> Any:
+    if not isinstance(result, dict):
+        return result
+    matches = result.get("matches")
+    if not isinstance(matches, list):
+        return result
+    kept: list[Any] = []
+    dropped = 0
+    for match in matches:
+        if isinstance(match, str) and _is_read_forbidden(handle, match):
+            dropped += 1
+            continue
+        kept.append(match)
+    if dropped == 0:
+        return result
+    filtered = dict(result)
+    filtered["matches"] = kept
+    filtered["entries_filtered"] = True
+    return filtered
 
 
 def _reject_path_escape(value: str, *, label: str) -> None:
@@ -450,11 +496,76 @@ def _reject_shell_argv_escape(command: str, *, root: Any) -> None:
 
 def _factory_git_status(handle: RuntimeHandle) -> ToolHandler:
     async def inner(_args: dict[str, Any]) -> Any:
-        return await _agent(handle).git.status(
+        invocation = await _agent(handle).git.status(
             executor=partial(_exec.git_status_executor, cwd=handle.cwd)
         )
+        # `git status --porcelain` happily lists `.env`, `.ssh/config`,
+        # and `*.pem` even when `chio_file_read` would deny them. Drop
+        # those rows so the model cannot confirm secret-file existence
+        # via a status listing.
+        return _filter_invocation_status(handle, invocation)
 
     return _wrap_envelope(handle, "chio_git_status", inner)
+
+
+def _filter_invocation_status(handle: RuntimeHandle, invocation: Any) -> Any:
+    inner_result = getattr(invocation, "result", None)
+    target = inner_result if inner_result is not None else invocation
+    filtered = _filter_status_output(handle, target)
+    if inner_result is not None and filtered is not target:
+        try:
+            invocation.result = filtered
+            return invocation
+        except Exception:  # noqa: BLE001
+            return filtered
+    return filtered if filtered is not target else invocation
+
+
+def _filter_status_output(handle: RuntimeHandle, result: Any) -> Any:
+    """Strip porcelain rows whose paths fail `policy.check_read`.
+
+    Each non-rename porcelain row is `XY <path>`; renames are
+    `XY <old> -> <new>`. Drop the row when EITHER side resolves to a
+    path the policy bans from reads. Adds `forbidden_paths_filtered`
+    when at least one row was dropped.
+    """
+    if not isinstance(result, dict):
+        return result
+    stdout = result.get("stdout")
+    if not isinstance(stdout, str) or not stdout:
+        return result
+    kept_lines: list[str] = []
+    dropped: list[str] = []
+    for raw_line in stdout.splitlines():
+        if len(raw_line) < 4:
+            kept_lines.append(raw_line)
+            continue
+        # Porcelain v1 layout: two-char status, space, then path(s).
+        body = raw_line[3:]
+        if " -> " in body:
+            old, new = body.split(" -> ", 1)
+            paths = [_strip_quotes(old), _strip_quotes(new)]
+        else:
+            paths = [_strip_quotes(body)]
+        forbidden = [p for p in paths if _is_read_forbidden(handle, p)]
+        if forbidden:
+            dropped.extend(forbidden)
+            continue
+        kept_lines.append(raw_line)
+    if not dropped:
+        return result
+    filtered = dict(result)
+    filtered["stdout"] = "\n".join(kept_lines) + ("\n" if kept_lines else "")
+    filtered["forbidden_paths_filtered"] = sorted(set(dropped))
+    return filtered
+
+
+def _strip_quotes(path: str) -> str:
+    """Porcelain quotes paths that contain unusual characters; strip them."""
+    text = path.strip()
+    if len(text) >= 2 and text[0] == '"' and text[-1] == '"':
+        return text[1:-1]
+    return text
 
 
 def _factory_git_diff(handle: RuntimeHandle) -> ToolHandler:

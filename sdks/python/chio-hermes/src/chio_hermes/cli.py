@@ -18,6 +18,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -59,10 +60,53 @@ def _load_cache() -> list[dict[str, Any]]:
 
 
 def _save_cache(entries: list[dict[str, Any]]) -> None:
+    """Atomically write the capability cache with mode `0600`.
+
+    The cache holds capability ids that are bearer credentials for the
+    sidecar; default umask would leave the file world-readable on many
+    systems. Write to a tempfile in the same directory, `chmod 0600`,
+    then `os.replace` so a concurrent `hermes chio issue` (race F15)
+    cannot leave a torn file. Parent directory is forced to `0700`
+    on creation for the same reason.
+    """
     path = _cache_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    serialised = json.dumps(entries, sort_keys=True, indent=2)
-    path.write_text(serialised + "\n", encoding="utf-8")
+    parent = path.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(parent, 0o700)
+    except OSError:
+        # Parent may live on a filesystem that does not honour POSIX
+        # mode bits (Windows, FAT). Best-effort; the file mode below
+        # is the load-bearing protection.
+        pass
+    serialised = json.dumps(entries, sort_keys=True, indent=2) + "\n"
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=".chio-cap-",
+        suffix=".tmp",
+        dir=str(parent),
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(serialised)
+        try:
+            os.chmod(tmp_path, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp_path, path)
+    except Exception:
+        # Roll the tempfile back so a failed write does not leave debris.
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+        raise
+    # Belt-and-braces: re-chmod the destination in case `os.replace`
+    # crossed a filesystem and the mode did not survive.
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
 
 
 def setup(parser: argparse.ArgumentParser) -> None:
@@ -247,8 +291,37 @@ def _do_list(args: argparse.Namespace) -> int:
 
 
 def _do_revoke(args: argparse.Namespace) -> int:
+    # `chio trust revoke` requires either `--control-url <url>` (talks
+    # to a running control plane) or `--revocation-db <path>` (writes
+    # straight to the local sqlite store). Without one of them the
+    # subprocess errors with a usage message that is opaque from the
+    # Hermes CLI surface, so resolve the backend up front from env vars
+    # and refuse early when neither is configured.
+    control_url = os.environ.get("CHIO_CONTROL_URL")
+    revocation_db = os.environ.get("CHIO_REVOCATION_DB")
+    backend_args: list[str]
+    if control_url:
+        backend_args = ["--control-url", control_url]
+    elif revocation_db:
+        backend_args = ["--revocation-db", revocation_db]
+    else:
+        print(
+            "error: chio_revocation_backend_unconfigured: set "
+            "CHIO_CONTROL_URL or CHIO_REVOCATION_DB before "
+            "`hermes chio revoke`",
+            file=sys.stderr,
+        )
+        return 2
+
     proc = subprocess.run(  # noqa: S603 - argv list, no shell
-        ["chio", "trust", "revoke", "--capability-id", args.capability_id],
+        [
+            "chio",
+            "trust",
+            "revoke",
+            "--capability-id",
+            args.capability_id,
+            *backend_args,
+        ],
         capture_output=True,
         text=True,
         check=False,

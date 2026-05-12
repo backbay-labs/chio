@@ -178,6 +178,9 @@ stack both, or every tool call will be policy-checked twice.
 | `CHIO_CAPABILITY_ID` | yes | (none) | Capability id from `hermes chio issue`. Without this the handlers return `chio_not_configured`. Stored in `~/.hermes/.env` with mode `0600` is recommended. |
 | `CHIO_POLICY_FILE` | no | (bundled `DEFAULT_POLICY`) | Path to a YAML policy. |
 | `CHIO_RECEIPT_BUFFER_MAX` | no | `1000` | In-memory recorded-receipt buffer cap (cap on the global FIFO deque exposed via `/chio receipts`, NOT a per-task limit). |
+| `CHIO_SUBPROCESS_MAX_BYTES` | no | `1048576` (1 MiB) | Per-stream byte cap for `chio_shell_run` / `chio_git_*` subprocess output. Output past the cap is truncated and the result envelope carries `output_truncated: true`. |
+| `CHIO_CONTROL_URL` | no | (none) | Read by `hermes chio revoke` to forward `--control-url` to `chio trust revoke`. Either this or `CHIO_REVOCATION_DB` must be set; otherwise `revoke` exits with `chio_revocation_backend_unconfigured`. |
+| `CHIO_REVOCATION_DB` | no | (none) | Read by `hermes chio revoke` to forward `--revocation-db` to `chio trust revoke` when no `CHIO_CONTROL_URL` is configured. |
 
 ## Configuration precedence
 

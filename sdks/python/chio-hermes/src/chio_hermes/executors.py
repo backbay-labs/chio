@@ -23,6 +23,90 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_SHELL_TIMEOUT = 60
+DEFAULT_SUBPROCESS_MAX_BYTES = 1 << 20  # 1 MiB
+
+# Environment variables stripped from every child process the executors
+# spawn. The denylist is intentionally generous: any token matching a
+# substring/suffix here is dropped before the executor inherits it.
+# Documented in HERMES.md "Security model".
+_ENV_DENY_PREFIXES: tuple[str, ...] = (
+    "CHIO_",
+    "HERMES_",
+    "AWS_",
+    "GOOGLE_",
+    "GCP_",
+    "AZURE_",
+    "OPENAI_",
+    "ANTHROPIC_",
+    "GEMINI_",
+    "GH_",
+    "GITHUB_",
+    "GIT_AUTH_",
+    "VAULT_",
+    "DATABRICKS_",
+    "HF_",
+    "HUGGINGFACE_",
+)
+_ENV_DENY_SUFFIXES: tuple[str, ...] = (
+    "_API_KEY",
+    "_TOKEN",
+    "_SECRET",
+    "_PASSWORD",
+    "_PASSWD",
+    "_PRIVATE_KEY",
+    "_CREDENTIALS",
+    "_CREDS",
+)
+# Specific names that are not caught by the prefix/suffix scan but are
+# well-known credential carriers.
+_ENV_DENY_EXACT: frozenset[str] = frozenset(
+    {
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "NPM_TOKEN",
+        "PYPI_TOKEN",
+        "CARGO_REGISTRY_TOKEN",
+        "DOCKER_PASSWORD",
+        "SLACK_TOKEN",
+        "DATABASE_URL",
+    }
+)
+
+
+def _is_denied_env(name: str) -> bool:
+    """Return True if env var `name` should be stripped from child env."""
+    if name in _ENV_DENY_EXACT:
+        return True
+    upper = name.upper()
+    if any(upper.startswith(prefix) for prefix in _ENV_DENY_PREFIXES):
+        return True
+    if any(upper.endswith(suffix) for suffix in _ENV_DENY_SUFFIXES):
+        return True
+    return False
+
+
+def _sanitised_env() -> dict[str, str]:
+    """Return a copy of `os.environ` with credential-carrying vars dropped.
+
+    Keeps benign locale / shell vars (`PATH`, `HOME`, `LANG`, `LC_*`,
+    `TERM`, `TZ`, `USER`, `SHELL`) so commands the model runs still
+    behave normally. See `_is_denied_env` for the deny rules and
+    HERMES.md "Security model" for the prose contract.
+    """
+    return {k: v for k, v in os.environ.items() if not _is_denied_env(k)}
+
+
+def subprocess_max_bytes() -> int:
+    raw = os.environ.get("CHIO_SUBPROCESS_MAX_BYTES")
+    if not raw:
+        return DEFAULT_SUBPROCESS_MAX_BYTES
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_SUBPROCESS_MAX_BYTES
+    return value if value > 0 else DEFAULT_SUBPROCESS_MAX_BYTES
 
 
 def workspace_root() -> Path:
@@ -71,6 +155,39 @@ def _resolve_within(path: str, root: Path) -> Path:
     return resolved
 
 
+def _drain_stream_to_cap(
+    stream: Any, cap: int
+) -> tuple[bytearray, bool]:
+    """Drain `stream` into a `bytearray`, capped at `cap` bytes.
+
+    Reads in 8 KiB chunks. Returns ``(buf, truncated)``. After the cap
+    is hit the function continues to drain (and discard) the rest of
+    the stream so the producer does not block on a full pipe; without
+    that drain, the child can never exit and the surrounding `wait()`
+    times out even when the cap was meant to be the bound.
+    """
+    buf = bytearray()
+    truncated = False
+    if stream is None:
+        return buf, False
+    while True:
+        chunk = stream.read(8192)
+        if not chunk:
+            break
+        if len(buf) >= cap:
+            truncated = True
+            # Discard once the cap is hit, but keep reading so the
+            # producer is unblocked.
+            continue
+        room = cap - len(buf)
+        if len(chunk) <= room:
+            buf.extend(chunk)
+        else:
+            buf.extend(chunk[:room])
+            truncated = True
+    return buf, truncated
+
+
 def _run_subprocess(
     argv: list[str],
     *,
@@ -78,21 +195,89 @@ def _run_subprocess(
     timeout: int,
     stdin: str | None = None,
 ) -> dict[str, Any]:
-    completed = subprocess.run(  # noqa: S603 - argv is a list, never shell=True
+    """Run `argv` with a bounded output buffer and a sanitised env.
+
+    `subprocess.run(..., capture_output=True)` buffers ALL of stdout
+    and stderr in memory until exit; a tool that streams large output
+    (`yes`, `git diff` against a big tree, a runaway shell loop) can
+    exhaust Hermes's RAM before the timeout fires. Spawn via `Popen`
+    and drain each pipe in a thread with a per-stream cap
+    (`CHIO_SUBPROCESS_MAX_BYTES`, default 1 MiB).
+
+    Also drop credential-carrying env vars (`CHIO_*`, `_API_KEY`,
+    `OPENAI_API_KEY`, ...) so the child the model is about to run
+    cannot exfiltrate them via `env` / `os.environ`.
+    """
+    import threading
+
+    env = _sanitised_env()
+    cap = subprocess_max_bytes()
+    proc = subprocess.Popen(  # noqa: S603 - argv is a list, never shell=True
         argv,
         cwd=str(cwd),
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        input=stdin,
-        check=False,
+        stdin=subprocess.PIPE if stdin is not None else None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
     )
-    return {
-        "argv": list(argv),
-        "returncode": completed.returncode,
-        "stdout": completed.stdout,
-        "stderr": completed.stderr,
+    drained: dict[str, tuple[bytearray, bool]] = {
+        "stdout": (bytearray(), False),
+        "stderr": (bytearray(), False),
     }
+
+    def _reader(name: str, stream: Any) -> None:
+        drained[name] = _drain_stream_to_cap(stream, cap)
+
+    stdout_thread = threading.Thread(
+        target=_reader, args=("stdout", proc.stdout), daemon=True
+    )
+    stderr_thread = threading.Thread(
+        target=_reader, args=("stderr", proc.stderr), daemon=True
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+
+    timed_out = False
+    try:
+        if stdin is not None and proc.stdin is not None:
+            try:
+                proc.stdin.write(stdin.encode("utf-8"))
+            finally:
+                proc.stdin.close()
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            proc.kill()
+            proc.wait()
+    finally:
+        # Wait for the readers so the buffers are flushed even on
+        # timeout / kill.
+        stdout_thread.join(timeout=5)
+        stderr_thread.join(timeout=5)
+        for stream in (proc.stdout, proc.stderr, proc.stdin):
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:  # noqa: BLE001 - best-effort cleanup
+                    pass
+
+    if timed_out:
+        # Mirror `subprocess.run`'s contract so the caller still sees a
+        # `TimeoutExpired` rather than a silent `returncode=-9`.
+        raise subprocess.TimeoutExpired(cmd=argv, timeout=timeout)
+
+    stdout_buf, stdout_truncated = drained["stdout"]
+    stderr_buf, stderr_truncated = drained["stderr"]
+    out: dict[str, Any] = {
+        "argv": list(argv),
+        "returncode": proc.returncode,
+        "stdout": stdout_buf.decode("utf-8", errors="replace"),
+        "stderr": stderr_buf.decode("utf-8", errors="replace"),
+    }
+    if stdout_truncated or stderr_truncated:
+        out["output_truncated"] = True
+    return out
 
 
 def _resolve_cwd(cwd: Path | None) -> Path:
@@ -231,9 +416,20 @@ async def git_add_executor(
 async def git_commit_executor(
     *, message: str, cwd: Path | None = None
 ) -> dict[str, Any]:
+    """Run `git commit -m <message> --no-verify`.
+
+    `--no-verify` is mandatory: `pre-commit`, `commit-msg`, and
+    `prepare-commit-msg` hooks execute repo-local scripts in the
+    commit's working tree. Those scripts run with the executor's
+    privileges and (sanitised) env, which would let an attacker who
+    controls the repo escalate from "model can call git_commit" to
+    arbitrary code execution on the host. Users who genuinely want a
+    hook to run can dispatch it themselves through `chio_shell_run`,
+    which is gated by the policy's shell deny list.
+    """
     if not message:
         raise ValueError("git_commit requires a non-empty message")
-    return await _git("commit", "-m", message, cwd=cwd)
+    return await _git("commit", "--no-verify", "-m", message, cwd=cwd)
 
 
 async def git_run_executor(
@@ -252,6 +448,7 @@ async def git_run_executor(
 
 __all__ = [
     "DEFAULT_SHELL_TIMEOUT",
+    "DEFAULT_SUBPROCESS_MAX_BYTES",
     "edit_file_executor",
     "git_add_executor",
     "git_commit_executor",
@@ -263,5 +460,6 @@ __all__ = [
     "search_files_executor",
     "shell_run_executor",
     "shell_timeout",
+    "subprocess_max_bytes",
     "workspace_root",
 ]

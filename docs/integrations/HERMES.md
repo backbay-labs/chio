@@ -225,7 +225,60 @@ Point `CHIO_POLICY_FILE` at a YAML file in the same shape as
 The plugin reloads the policy on every `register(ctx)`, which Hermes
 calls on `hermes plugins reload`.
 
-### 2.8 Known issues (upstream Hermes)
+### 2.8 Security model
+
+The plugin runs every Chio tool call through the sidecar's policy
+gate, but the executors that fulfil the call live inside the Hermes
+process. The following hardenings prevent the model from using a
+permitted tool to escalate beyond its intended surface.
+
+* **Subprocess env is sanitised.** Before spawning any child process
+  (`chio_shell_run`, `chio_git_*`, `chio_file_edit`'s `patch(1)`), the
+  executor strips credential-carrying env vars from the inherited
+  environment. The denylist matches name prefixes (`CHIO_*`, `HERMES_*`,
+  `AWS_*`, `GOOGLE_*`, `GCP_*`, `AZURE_*`, `OPENAI_*`, `ANTHROPIC_*`,
+  `GEMINI_*`, `GH_*`, `GITHUB_*`, `GIT_AUTH_*`, `VAULT_*`,
+  `DATABRICKS_*`, `HF_*`, `HUGGINGFACE_*`), suffixes (`_API_KEY`,
+  `_TOKEN`, `_SECRET`, `_PASSWORD`, `_PASSWD`, `_PRIVATE_KEY`,
+  `_CREDENTIALS`, `_CREDS`), and an exact list (`OPENAI_API_KEY`,
+  `ANTHROPIC_API_KEY`, `GH_TOKEN`, `GITHUB_TOKEN`, `NPM_TOKEN`,
+  `PYPI_TOKEN`, `CARGO_REGISTRY_TOKEN`, `DOCKER_PASSWORD`,
+  `SLACK_TOKEN`, `DATABASE_URL`). Benign locale and shell variables
+  (`PATH`, `HOME`, `LANG`, `LC_*`, `TERM`, `TZ`, `USER`, `SHELL`)
+  are preserved.
+* **Subprocess output is bounded.** Each pipe is read with a per-stream
+  byte cap (`CHIO_SUBPROCESS_MAX_BYTES`, default 1 MiB). When the cap
+  is hit the child is killed and the result envelope carries
+  `output_truncated: true`. Without this cap, `yes` or a large
+  `git diff` would buffer until OOM.
+* **`git commit` runs with `--no-verify`.** Pre-commit, commit-msg,
+  and prepare-commit-msg hooks execute repo-local scripts in the
+  commit's working tree; treating them as inert would let an attacker
+  who controls the repo escalate from "model can call git_commit" to
+  arbitrary code execution. Users who want the hooks to run must
+  dispatch them themselves through `chio_shell_run`, which is gated
+  by the policy's shell deny list.
+* **Capability cache is mode `0600`.** The CLI writes
+  `~/.hermes/profiles/<active>/chio-capabilities.json` with a
+  tempfile-and-rename so the file is never world-readable mid-write.
+  The directory is forced to mode `0700` on creation.
+* **Receipt args are redacted for body-bearing tools.** The
+  `post_tool_call` hook replaces `chio_file_write.content` and
+  `chio_file_edit.patch` with `{"omitted": true, "byte_count": N}`
+  before recording. The path field is preserved so the audit trail
+  still says which file was touched.
+* **Listings are post-filtered against `policy.check_read`.** Results
+  from `chio_file_list`, `chio_file_search`, `chio_git_status`, and
+  `chio_git_diff` drop entries (and diff hunks) whose paths the
+  policy bans from reads, so the model cannot use a listing surface
+  to confirm secret-file existence.
+* **`chio trust revoke` requires an explicit backend.** `hermes chio
+  revoke` reads `CHIO_CONTROL_URL` or `CHIO_REVOCATION_DB` and
+  forwards the corresponding flag; without one of them the CLI
+  exits with `chio_revocation_backend_unconfigured` rather than
+  invoking `chio` blind.
+
+### 2.9 Known issues (upstream Hermes)
 
 Four `hermes-agent` 0.13.0 gaps affect entry-point plugins; fixes
 belong in upstream `hermes_cli`.

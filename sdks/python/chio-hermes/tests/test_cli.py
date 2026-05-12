@@ -167,6 +167,12 @@ def test_revoke_invokes_chio_trust_revoke_subprocess(
         encoding="utf-8",
     )
 
+    # The revoke handler refuses to shell out without a backend
+    # configured (P2-1 / comment 3222802721); set a control URL so the
+    # happy-path argv is observable.
+    monkeypatch.setenv("CHIO_CONTROL_URL", "http://127.0.0.1:9091")
+    monkeypatch.delenv("CHIO_REVOCATION_DB", raising=False)
+
     captured: dict[str, Any] = {}
 
     class _FakeCompleted:
@@ -200,4 +206,74 @@ def test_revoke_invokes_chio_trust_revoke_subprocess(
         "revoke",
         "--capability-id",
         "cap-aaaa",
+        "--control-url",
+        "http://127.0.0.1:9091",
     ]
+
+
+def test_revoke_refuses_without_backend_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`hermes chio revoke` exits with `chio_revocation_backend_unconfigured`
+    when neither CHIO_CONTROL_URL nor CHIO_REVOCATION_DB is set (P2-1)."""
+    _fake_cache_dir(tmp_path, monkeypatch)
+    monkeypatch.delenv("CHIO_CONTROL_URL", raising=False)
+    monkeypatch.delenv("CHIO_REVOCATION_DB", raising=False)
+
+    called = False
+
+    def fake_run(*_a: Any, **_kw: Any) -> Any:
+        nonlocal called
+        called = True
+        raise AssertionError("subprocess.run must NOT be invoked")
+
+    monkeypatch.setattr(_subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    args = argparse.Namespace(
+        subcommand="revoke",
+        capability_id="cap-aaaa",
+        reason="",
+        json=False,
+        sidecar_url=None,
+        timeout=5.0,
+    )
+    rc = cli.handle(args)
+    assert rc == 2
+    assert called is False
+
+
+def test_revoke_uses_revocation_db_when_no_control_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CHIO_REVOCATION_DB falls back when CHIO_CONTROL_URL is unset (P2-1)."""
+    _fake_cache_dir(tmp_path, monkeypatch)
+    monkeypatch.delenv("CHIO_CONTROL_URL", raising=False)
+    db_path = tmp_path / "revocations.sqlite"
+    monkeypatch.setenv("CHIO_REVOCATION_DB", str(db_path))
+
+    captured: dict[str, Any] = {}
+
+    class _FakeCompleted:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(argv: Any, **_kw: Any) -> _FakeCompleted:
+        captured["argv"] = list(argv)
+        return _FakeCompleted()
+
+    monkeypatch.setattr(_subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    args = argparse.Namespace(
+        subcommand="revoke",
+        capability_id="cap-bbbb",
+        reason="",
+        json=False,
+        sidecar_url=None,
+        timeout=5.0,
+    )
+    cli.handle(args)
+    assert "--revocation-db" in captured["argv"]
+    assert str(db_path) in captured["argv"]
