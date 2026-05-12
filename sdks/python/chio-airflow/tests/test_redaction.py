@@ -420,6 +420,63 @@ class TestForwardingWrapperRedaction:
         assert forwarded["kwargs"] == {"k": "v"}
 
 
+class TestForwarderMergeConflict:
+    """Regression: ``def fn(*args, **kwargs)`` with positional + same-named kwarg.
+
+    A caller writing ``body("PROD_SECRET", content="ALSO_SECRET")`` against
+    a pure-forwarder wrapper for ``chio_file_write`` lands the positional
+    value in ``args[1]`` (via the chio default positional table:
+    ``("path", "content")``) and the kwarg in ``kwargs["content"]``. Both
+    occupy the protected ``content`` slot; both must be redacted
+    independently. No raw ``PROD_SECRET`` / ``ALSO_SECRET`` should leak in
+    the recorded parameters.
+    """
+
+    def test_pure_forwarder_redacts_positional_and_kwarg_content(self) -> None:
+        chio = allow_all()
+
+        @chio_task(
+            capability_id="cap-1",
+            tool_server="fs",
+            tool_name="chio_file_write",
+            chio_client=chio,
+        )
+        def write_file(*args: Any, **kwargs: Any) -> str:
+            return "ok"
+
+        ti = _RecordingTI(task_id="write_file")
+        body = _wrapped_function(write_file)
+
+        with _install_context(ti):
+            try:
+                # Duplicate ``content`` raises TypeError when fn actually
+                # runs with ``*args, **kwargs`` and a kwarg-pinned name; we
+                # only assert redactor behaviour, not Python's binding.
+                body("/tmp/x", "PROD_SECRET", content="ALSO_SECRET")
+            except TypeError:
+                pass
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        assert len(evaluate_calls) == 1
+        forwarded = evaluate_calls[0].parameters
+        import json
+
+        serialised = json.dumps(forwarded)
+        assert "PROD_SECRET" not in serialised
+        assert "ALSO_SECRET" not in serialised
+        # Wire shape preserved: positional content stays positional;
+        # kwarg content stays in kwargs; both are stubbed.
+        assert forwarded["args"][0] == "/tmp/x"
+        assert forwarded["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET"),
+        }
+        assert forwarded["kwargs"]["content"] == {
+            "omitted": True,
+            "byte_count": len(b"ALSO_SECRET"),
+        }
+
+
 class TestVarPositionalExtrasStayPositional:
     """Regression: extras past fixed positional slots must remain in args.
 
