@@ -18,20 +18,32 @@ extraction plan and ``README.md`` for the migration story.
 
 from __future__ import annotations
 
-from chio_adapter_base.filters import forbidden_path_filter
+from chio_adapter_base.filters import (
+    filter_diff_output,
+    filter_directory_entries,
+    filter_status_output,
+    forbidden_path_filter,
+)
 from chio_adapter_base.receipts import (
     DEFAULT_RECEIPT_BUFFER_MAX,
     ReceiptBuffer,
     append_jsonl,
+    canonical_dumps,
 )
-from chio_adapter_base.redact import RedactionPolicy, redact_args
+from chio_adapter_base.redact import (
+    RedactArgs,
+    RedactionPolicy,
+    redact_args,
+)
 from chio_adapter_base.security import (
     DEFAULT_SHELL_TIMEOUT,
     DEFAULT_SUBPROCESS_MAX_BYTES,
     BoundedSubprocess,
     BoundedSubprocessResult,
+    ChioPathEscapeError,
     harden_git_argv,
     reject_shell_argv_escape,
+    resolve_within,
     sanitised_env,
 )
 
@@ -43,13 +55,20 @@ __all__ = [
     "DEFAULT_SUBPROCESS_MAX_BYTES",
     "BoundedSubprocess",
     "BoundedSubprocessResult",
+    "ChioPathEscapeError",
     "ReceiptBuffer",
+    "RedactArgs",
     "RedactionPolicy",
     "__version__",
     "append_jsonl",
+    "canonical_dumps",
+    "filter_diff_output",
+    "filter_directory_entries",
+    "filter_status_output",
     "forbidden_path_filter",
     "harden_git_argv",
     "redact_args",
     "reject_shell_argv_escape",
+    "resolve_within",
     "sanitised_env",
 ]
