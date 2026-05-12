@@ -246,6 +246,21 @@ impl ProtectProxy {
 
     /// Start the proxy server. This blocks until the server shuts down.
     pub async fn run(self) -> Result<(), ProtectError> {
+        self.run_with_observer(|_| {}).await
+    }
+
+    /// Start the proxy server, invoking `observer` once the listener is
+    /// bound (with the resolved local `SocketAddr`).
+    ///
+    /// Used by `chio start` so the friendly banner can report the actual
+    /// bound port when the operator passes `--listen 127.0.0.1:0`. The
+    /// observer fires before `axum::serve` enters its accept loop, so
+    /// callers can forward the address to stdout, write a sentinel file,
+    /// or signal readiness over an out-of-band channel.
+    pub async fn run_with_observer<F>(self, observer: F) -> Result<(), ProtectError>
+    where
+        F: FnOnce(SocketAddr),
+    {
         let spec_content = self.load_spec_content().await?;
         let routes = Self::build_routes(&spec_content)?;
         let route_count = routes.len();
@@ -317,10 +332,16 @@ impl ProtectProxy {
                 ProtectError::Config(format!("cannot bind {}: {e}", self.config.listen_addr))
             })?;
 
+        let local_addr = listener.local_addr().map_err(|error| {
+            ProtectError::Config(format!("cannot resolve bound address: {error}"))
+        })?;
+
         info!(
             "chio api protect: proxying {} routes to {} on {}",
-            route_count, self.config.upstream, self.config.listen_addr
+            route_count, self.config.upstream, local_addr
         );
+
+        observer(local_addr);
 
         axum::serve(
             listener,
