@@ -132,7 +132,11 @@ Three reasons. First, the code is already there and has tests (`crates/chio-cli/
 For the **consumer + step-up** path:
 
 - Promote OAuth fields into `CallerIdentity` in `chio-http-core` (add `oauth: Option<OAuthCaller>` with issuer, scopes, authorization_details, cnf, actor chain).
-- Add an OAuth-shaped challenge response builder in `chio-policy` that emits `WWW-Authenticate: Bearer error="insufficient_authorization_details", authorization_details=...` per RFC 9470 (Step-up Authentication Challenge Protocol).
+- Add an OAuth-shaped challenge response builder in `chio-policy` that emits an
+  RFC 9470 step-up challenge using `error="insufficient_user_authentication"`
+  with authentication-strength parameters such as `acr_values` and `max_age`.
+  If Chio also needs RAR context, carry `authorization_details` as a Chio/MCP
+  extension, not as an RFC 9470 challenge parameter.
 - Implement RFC 9449 JWT DPoP at the HTTP edge per the end-state-A plan in `docs/review/06-authentication-dpop-remediation.md:237-242`. Keep `chio.dpop_proof.v1` as the internal invocation proof.
 - Add a durable replay store for both proof families (`docs/review/06-authentication-dpop-remediation.md:244-275`).
 - Track and validate actor-chain claims per `draft-oauth-ai-agents-on-behalf-of-user`. Surface the chain in receipts.

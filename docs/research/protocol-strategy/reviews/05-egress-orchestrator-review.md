@@ -4,9 +4,7 @@ Cluster: docs `01-pubsub-coverage-audit.md`, `05-workflow-orchestrator-mediation
 `06-below-l7-mediation.md`, `11-n8n-threat-mapping.md`. Cross-checked against
 `09-event-action-schema.md`, `00-overview.md`, `00-overview-v2.md`.
 
-Codebase pinned at
-`/Users/connor/backbay/arc/.claude/worktrees/silly-wu-c32126/` on
-2026-05-11.
+Codebase pinned to a local checkout on 2026-05-11.
 
 ## TL;DR
 
@@ -317,4 +315,4 @@ mis-attribute to "n8n is hot, therefore priority-1 blocked".
    (prompt-injection webhook exfil); overview v2 already calls this
    out but the cluster has not been backported.
 3. **Output:**
-   `/Users/connor/backbay/arc/.claude/worktrees/protocol-research-2026/docs/research/protocol-strategy/reviews/05-egress-orchestrator-review.md`
+   this file.

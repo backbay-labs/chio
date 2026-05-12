@@ -3,7 +3,7 @@
 > **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
 >
 > Wave A, item R3 from `00-overview.md`. Builds on `01-pubsub-coverage-audit.md`.
-> Code paths cited as repo-relative against `/Users/connor/backbay/arc/.claude/worktrees/silly-wu-c32126/`.
+> Code paths are cited repo-relative.
 
 ## TL;DR
 
@@ -242,4 +242,4 @@ Total scope is one engineer-sprint for the Rust side and one for the SDK shift. 
 
 - **Schema shape:** single unified `EventDestination` / `EventSource` with `BrokerKind` enum + optional fields, not per-broker variants. Cheaper to add brokers, lets policy authors write one rule across brokers, matches the existing Python SDK convergence.
 - **Manifest bump required:** `chio.manifest.v1` to `chio.manifest.v2`, additive only, fail-closed after new manifest-ceiling negotiation is added. No flag-day.
-- **Output file:** `/Users/connor/backbay/arc/.claude/worktrees/protocol-research-2026/docs/research/protocol-strategy/09-event-action-schema.md`
+- **Output file:** this file.

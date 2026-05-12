@@ -345,4 +345,4 @@ bench-stub PR ordering. None repeat wave-1.
    the `chio-acp-*` namespace already belongs to Zed ACP in
    `crates/chio-acp-edge`.
 3. Path:
-   `/Users/connor/backbay/arc/.claude/worktrees/protocol-research-2026/docs/research/protocol-strategy/reviews/06-vision-non-goals-review.md`
+   this file.

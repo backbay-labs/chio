@@ -16,29 +16,29 @@ Audit revealed more existing coverage than the prior memo assumed. Five surprise
 
 ## What we already have (audit surprises)
 
-1. **Python `chio-streaming` SDK** (~5000 LOC) already covers consumer-side mediation for Kafka, NATS, Pulsar, EventBridge, GCP Pub/Sub, Redis Streams, and Flink. The Rust kernel does *not* sit as a generic broker subscriber (zero NATS/Kafka/AMQP refs in any crate) and `HttpEgressContract` at [`chio-egress-contract/src/lib.rs:14`](crates/chio-egress-contract/src/lib.rs:14) is HTTP-only. The two sides don't speak the same policy vocabulary. ([01](01-pubsub-coverage-audit.md))
+1. **Python `chio-streaming` SDK** (~5000 LOC) already covers consumer-side mediation for Kafka, NATS, Pulsar, EventBridge, GCP Pub/Sub, Redis Streams, and Flink. The Rust kernel does *not* sit as a generic broker subscriber (zero NATS/Kafka/AMQP refs in any crate) and `HttpEgressContract` at [`chio-egress-contract/src/lib.rs:14`](../../../crates/chio-egress-contract/src/lib.rs#L14) is HTTP-only. The two sides don't speak the same policy vocabulary. ([01](01-pubsub-coverage-audit.md))
 
-2. **Real OAuth 2.1 authorization server** inside the hosted MCP edge at [`chio-mcp-remote/src/remote_mcp/oauth.rs:22`](crates/chio-mcp-remote/src/remote_mcp/oauth.rs:22): PKCE-S256, RFC 8693 token exchange, RFC 9396 RAR under a bounded `chio-governed-rar-v1` profile, RFC 8414 AS metadata, RFC 9728 protected-resource metadata, JWKS, sender-constrained tokens via `cnf` (chio-native DPoP, mTLS, attestation). No DCR/refresh/SCIM/MFA. ([03](03-oauth-oidc-issuer.md))
+2. **Real OAuth 2.1 authorization server** inside the hosted MCP edge at [`chio-mcp-remote/src/remote_mcp/oauth.rs:22`](../../../crates/chio-mcp-remote/src/remote_mcp/oauth.rs#L22): PKCE-S256, RFC 8693 token exchange, RFC 9396 RAR under a bounded `chio-governed-rar-v1` profile, RFC 8414 AS metadata, RFC 9728 protected-resource metadata, JWKS, sender-constrained tokens via `cnf` (chio-native DPoP, mTLS, attestation). No DCR/refresh/SCIM/MFA. ([03](03-oauth-oidc-issuer.md))
 
 3. **`chio-temporal` and `chio-airflow` SDKs** already provide activity-level mediation for Temporal and Airflow. The realistic agent threat surface for these orchestrators is already covered in-platform. ([05](05-workflow-orchestrator-mediation.md))
 
 4. **`chio-envoy-ext-authz`** transparently covers QUIC and gRPC. No separate bridge needed for those. ([06](06-below-l7-mediation.md))
 
-5. **`ExternalGuard` + `AsyncGuardAdapter` machinery** at [`chio-guards/src/external/mod.rs:119`](crates/chio-guards/src/external/mod.rs:119) already has circuit breaker, token bucket, TTL cache, retry, and fail-closed defaults. Any new policy-engine integration can blanket-adapt onto this existing plumbing instead of building parallel infrastructure. ([04](04-policy-engine-collaborators.md))
+5. **`ExternalGuard` + `AsyncGuardAdapter` machinery** at [`chio-guards/src/external/mod.rs:119`](../../../crates/chio-guards/src/external/mod.rs#L119) already has circuit breaker, token bucket, TTL cache, retry, and fail-closed defaults. Any new policy-engine integration can blanket-adapt onto this existing plumbing instead of building parallel infrastructure. ([04](04-policy-engine-collaborators.md))
 
 ## Recommended build queue
 
 ### Wave A: close gaps in what we already have
 
-- **Add `EventPublish` / `EventConsume` variants** to `ToolAction` ([`chio-guards/src/action.rs:16`](crates/chio-guards/src/action.rs:16)) and add manifest constraints for topics/subjects/ARNs in `chio-manifest`. This makes Rust kernel policy speak the same vocabulary as the Python `chio-streaming` SDK. Without this, the SDK enforces but the kernel can't replay or audit. ([01](01-pubsub-coverage-audit.md))
-- **Consolidate OAuth consumer/verifier posture**: extend `CallerIdentity` ([`chio-http-core/src/identity.rs:44`](crates/chio-http-core/src/identity.rs:44)) with OAuth shape, add RFC 9449 JWT DPoP at the HTTP boundary, add actor-chain validation per the IETF agent-OBO draft, emit RFC 9470 step-up challenges from policy guards. ([03](03-oauth-oidc-issuer.md))
+- **Add `EventPublish` / `EventConsume` variants** to `ToolAction` ([`chio-guards/src/action.rs:16`](../../../crates/chio-guards/src/action.rs#L16)) and add manifest constraints for topics/subjects/ARNs in `chio-manifest`. This makes Rust kernel policy speak the same vocabulary as the Python `chio-streaming` SDK. Without this, the SDK enforces but the kernel can't replay or audit. ([01](01-pubsub-coverage-audit.md))
+- **Consolidate OAuth consumer/verifier posture**: extend `CallerIdentity` ([`chio-http-core/src/identity.rs:44`](../../../crates/chio-http-core/src/identity.rs#L44)) with OAuth shape, add RFC 9449 JWT DPoP at the HTTP boundary, add actor-chain validation per the IETF agent-OBO draft, emit RFC 9470 step-up challenges from policy guards. ([03](03-oauth-oidc-issuer.md))
 - **Rename and scope-clamp the existing AS** to "Chio Governed Authorization Bridge": mint tokens for the Chio MCP edge only when no upstream AS understands governed RAR. Do not compete with WorkOS / Stytch / Scalekit / Aembit as an enterprise IdP. ([03](03-oauth-oidc-issuer.md))
 
 ### Wave B: high-ROI new bridges
 
 - **n8n orchestrator-egress mediation (Chain C only)**. The 686% Talos abuse spike is Chain D (ingress webhook abuse, NOT blocked by Chio: below our layer). The actually-blocked chain is Chain C (prompt-injection agent-to-webhook exfiltration), where workflow-ID allowlist + typed input constraints + `HttpEgressContract` authority pinning + loopback/link-local/ULA denial give end-to-end coverage; receipts add chain-of-custody. ([05](05-workflow-orchestrator-mediation.md), [11](11-n8n-threat-mapping.md))
 - **Zapier + Make.com paired adapter** (priority 2). Identical webhook wire shape, one adapter, highest agent-webhook volume. ([05](05-workflow-orchestrator-mediation.md))
-- **Cedar `PolicyEngineProvider`**: new trait in `chio-external-guards` (`engine() -> &'static str`, `policy_digest() -> String` hex, `evaluate() -> EngineDecision`), blanket-adapted as `ExternalGuard`. Engine ID + policy digest feed into `ChioReceiptBody.policy_hash` and `GuardEvidence` ([`chio-core-types/src/receipt.rs:159`](crates/chio-core-types/src/receipt.rs:159)) for replay. Cedar first because Rust-native, formally analyzable, no sidecar, matches the fail-closed stance from CLAUDE.md. ([04](04-policy-engine-collaborators.md))
+- **Cedar `PolicyEngineProvider`**: new trait in `chio-external-guards` (`engine() -> &'static str`, `policy_digest() -> String` hex, `evaluate() -> EngineDecision`), blanket-adapted as `ExternalGuard`. Engine ID + policy digest feed into `ChioReceiptBody.policy_hash` and `GuardEvidence` ([`chio-core-types/src/receipt.rs:159`](../../../crates/chio-core-types/src/receipt.rs#L159)) for replay. Cedar first because Rust-native, formally analyzable, no sidecar, matches the fail-closed stance from CLAUDE.md. ([04](04-policy-engine-collaborators.md))
 
 ### Wave C: strategic expansions
 
@@ -73,7 +73,7 @@ Three patterns surfaced across the docs that are worth promoting to architecture
 
 Three protocols are named "ACP":
 
-1. **Zed's Agent Client Protocol / Anthropic Compute Protocol**: covered today by [`chio-acp-edge`](crates/chio-acp-edge/).
+1. **Zed's Agent Client Protocol / Anthropic Compute Protocol**: covered today by [`chio-acp-edge`](../../../crates/chio-acp-edge/).
 2. **IBM Agent Communication Protocol**: converging with A2A; no Chio bridge today.
 3. **AGNTCY Agent Connect Protocol**: archived 2026-04-11; absorbed into A2A. No Chio bridge planned.
 

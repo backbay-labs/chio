@@ -2,7 +2,7 @@
 
 Reviewer task: 6-agent swarm cluster #2 (bridges/adapters). Scope: docs 02, 08,
 12, 13, 14, plus both overviews (00, 00-overview-v2) for naming and cross-doc
-claims. Grounding workspace: `protocol-research-2026/`. Branch:
+claims. Grounded against the branch checkout for
 `research/protocol-strategy-2026`.
 
 ## TL;DR
@@ -333,4 +333,4 @@ similarly, or supersede with v2.
    giving `superseded AGNTCY ACP adapter name`, alongside `chio-bedrock-agents-adapter`,
    `chio-openai-responses-adapter`, and `chio-directory`.
 3. Output written to
-   `/Users/connor/backbay/arc/.claude/worktrees/protocol-research-2026/docs/research/protocol-strategy/reviews/02-bridges-consistency-review.md`.
+   this file.

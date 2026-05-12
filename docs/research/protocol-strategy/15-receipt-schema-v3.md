@@ -2,7 +2,7 @@
 
 > **Erratum (wave 3) - canonical types for v3 core fields:**
 >
-> - **`policy_hash` / `policy_digest`** is a hex `String` (matches existing [`crates/chio-core-types/src/receipt.rs:159`](crates/chio-core-types/src/receipt.rs:159); RFC 8785 canonical-JSON friendly). NOT `[u8; 32]`. Earlier references in this doc to `[u8; 32]` should be read as the hex-encoded form.
+> - **`policy_hash` / `policy_digest`** is a hex `String` (matches existing [`crates/chio-core-types/src/receipt.rs:159`](../../../crates/chio-core-types/src/receipt.rs#L159); RFC 8785 canonical-JSON friendly). NOT `[u8; 32]`. Earlier references in this doc to `[u8; 32]` should be read as the hex-encoded form.
 > - **`tool_origin`** records execution locus, not redaction policy. ADR-0010 keeps `tool_origin` and `redaction_mode` as separate signed v3 fields. Planning default: `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`.
 > - **`human_principal`** is the typed `HumanPrincipal` enum defined on `CallerIdentity` in [doc 14](14-voice-agent-bridges.md). This doc's `VoiceExtension` references it by canonical encoding, not as a duplicate `Option<String>` definition.
 > - **`ActorRef`** (the actor-chain element type) needs a concrete definition stub. Proposed shape:
@@ -473,7 +473,7 @@ pub struct VoiceExtension {
     pub call_id: String,
     pub participant_id: String,
     pub audio_timestamp_estimate: u64,        // unix millis
-    pub human_principal: Option<String>,      // e164 or sub
+    // Human principal is encoded once on CallerIdentity.human_principal.
     pub platform: VoicePlatform,              // Twilio | Vonage | LiveKit | ...
 }
 
@@ -559,4 +559,4 @@ so bridges can evolve their shape without touching `ChioReceiptV3Body`.
 2. **Yes**, a v3 bump is needed, but as a backward-compatible additive
    schema per `PROTOCOL.md:7-8`; `chio.receipt.v2` remains the universal
    floor and a documented transition window keeps v2 verifiers working.
-3. File: `/Users/connor/backbay/arc/.claude/worktrees/silly-wu-c32126/docs/research/protocol-strategy/15-receipt-schema-v3.md`.
+3. File: this file.

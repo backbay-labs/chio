@@ -1,7 +1,7 @@
 # 01 - Pub/Sub and Event-Stream Coverage Audit
 
-> Audited against `/Users/connor/backbay/arc/.claude/worktrees/silly-wu-c32126/`
-> as of 2026-05-11. Citations use repo-relative paths.
+> Audited against a local checkout as of 2026-05-11. Citations use
+> repo-relative paths.
 
 ## TL;DR
 

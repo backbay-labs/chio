@@ -122,8 +122,9 @@ with a normative "out-of-band auth floor" recommendation.
   ```
 
   Field lives on `CallerIdentity` (doc 14 line 204).
-- Doc 15 line 450 declares `pub human_principal: Option<String>` inside
-  `VoiceExtension`, with comment `// e164 or sub`.
+- Before the errata pass, doc 15 line 450 declared an untyped
+  `human_principal` string inside `VoiceExtension`, with comment
+  `// e164 or sub`.
 - Net: same name, two homes (`CallerIdentity` vs `extensions[voice]`), two
   types (rich enum vs untyped string), two verification stories (typed
   `verified: bool` vs nothing). Doc 14 anticipates the conflict at lines
@@ -292,7 +293,7 @@ with a normative "out-of-band auth floor" recommendation.
 | 14 | line 116 | Footnote: "ML-DSA-65 primitive only; full hybrid kernel receipt is ~350-600 us per doc 16." |
 | 14 | line 204-214 | Confirm `HumanPrincipal` lives on `CallerIdentity` (typed enum); coordinate with doc 15. |
 | 15 | line 105, 209, 301, 418 | Define `ActorRef` explicitly. Minimum: `{ did, actor_token_jti?, is_human, scope_constraints, attested_by? }`. |
-| 15 | line 450 | Remove `human_principal: Option<String>` from `VoiceExtension`; reference `CallerIdentity.human_principal`. |
+| 15 | line 450 | Remove the old untyped `human_principal` string from `VoiceExtension`; reference `CallerIdentity.human_principal`. |
 | 15 | line 106, 420 | Define `DpopConfirmation` or rename to `chio_sender_cnf` per `spec/PROTOCOL.md:1422-1430`. |
 | 15 | line 110 | Define `StepUpChallenge` (RFC 9470 acr_values/max_age) and align name with doc 03 rename. |
 | 02 | line 113-116 | Add pointer to the new `spec/PROTOCOL.md` out-of-band gate floor section. |
@@ -311,4 +312,4 @@ with a normative "out-of-band auth floor" recommendation.
    `VoiceExtension` in doc 15; (b) `actor_chain: Vec<ActorRef>` is promoted
    to v3 core body with `ActorRef` undefined anywhere.
 3. Output:
-   `/Users/connor/backbay/arc/.claude/worktrees/protocol-research-2026/docs/research/protocol-strategy/reviews/01-identity-credentials-review.md`
+   this file.

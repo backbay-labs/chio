@@ -495,4 +495,4 @@ Items needing `cargo` against `cedar-policy` 4.x to settle:
 2. Recommendation: **Option A' (Cedar greenfield + two flagship ports:
    `McpToolGuard` and `EgressAllowlistGuard`).** Full migration is not
    justified by the policy-density distribution.
-3. File: `/Users/connor/backbay/arc/.claude/worktrees/protocol-research-2026/docs/research/protocol-strategy/10-cedar-first-guard.md`.
+3. File: this file.

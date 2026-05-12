@@ -1,6 +1,6 @@
 # 04 - Policy Engine Collaborators: OPA, Cedar, OpenFGA, Tetragon
 
-> **Erratum (wave 3):** Per the wave-3 policy/guards review, [`ChioReceiptBody.policy_hash`](crates/chio-core-types/src/receipt.rs:159) is a hex `String`, not `[u8; 32]`. The "fold `policy_digest: [u8; 32]` into `policy_hash`" wording below needs an explicit hex-encoding step. Canonical form across docs 04, 10, 15: **hex `String`** (RFC 8785 canonical JSON friendly). See [reviews/03-policy-guards-review.md](reviews/03-policy-guards-review.md).
+> **Erratum (wave 3):** Per the wave-3 policy/guards review, [`ChioReceiptBody.policy_hash`](../../../crates/chio-core-types/src/receipt.rs#L159) is a hex `String`, not `[u8; 32]`. The "fold `policy_digest: [u8; 32]` into `policy_hash`" wording below needs an explicit hex-encoding step. Canonical form across docs 04, 10, 15: **hex `String`** (RFC 8785 canonical JSON friendly). See [reviews/03-policy-guards-review.md](reviews/03-policy-guards-review.md).
 
 ## TL;DR
 

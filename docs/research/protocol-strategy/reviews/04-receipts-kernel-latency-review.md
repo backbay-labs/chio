@@ -3,8 +3,7 @@
 > Reviewer scope: consistency review and codebase grounding for docs 09
 > (event-action schema), 15 (receipt schema v3), 16 (latency budget audit),
 > with cross-references into 00-overview-v2, 12, 13, 14. All citations
-> verified against the working tree at
-> `/Users/connor/backbay/arc/.claude/worktrees/silly-wu-c32126/`.
+> verified against a local checkout.
 
 ## TL;DR
 
@@ -334,4 +333,4 @@ points are semantic:
    - that file does not exist; the function lives at
    `crates/chio-kernel/src/kernel/responses.rs:1459-1517`.
 3. Path:
-   `/Users/connor/backbay/arc/.claude/worktrees/protocol-research-2026/docs/research/protocol-strategy/reviews/04-receipts-kernel-latency-review.md`.
+   this file.

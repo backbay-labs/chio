@@ -1,14 +1,13 @@
 # 16 - Chio Hot-Path Latency Budget Audit
 
 > Task X2. Coordinates with E3 (voice agents, sub-200ms budget) and R4 (Cedar
-> first-guard, engine overhead). Code paths cited as repo-relative against
-> `/Users/connor/backbay/arc/.claude/worktrees/silly-wu-c32126/`. Numbers
+> first-guard, engine overhead). Code paths are cited repo-relative. Numbers
 > labeled (measured) come from existing benches; the rest are engineering
 > estimates from primitive costs and code structure.
 
 > **Erratum (wave 3):**
-> - **Bench-stub coverage is broader than reported below.** Wave 3 verification ([reviews/04-receipts-kernel-latency-review.md](reviews/04-receipts-kernel-latency-review.md)) confirmed **11+ stubs**, not 4: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny` are all `b.iter(|| black_box(0_u64))`. Only `dispatch_allow` and the hybrid family (`hybrid_receipt_sign`, `canonical_bytes_hybrid`, `pq_key_load_after_self_quote`, `compliance_certificate_hybrid`) do real work. CI runs every bench from Cargo.toml without `required-features` gating, so PR regression checks compare stub-vs-stub for 10+ primitives.
-> - **`build_and_sign_receipt` path was wrong.** Below this doc cites `crates/chio-http-core/src/responses.rs:1506-1507`; the actual location is [`crates/chio-kernel/src/kernel/responses.rs:1459-1517`](crates/chio-kernel/src/kernel/responses.rs:1459). Several other `responses.rs` references in this doc omit the `chio-kernel/src/kernel/` crate qualifier.
+> - **Bench-stub coverage is broader than reported below.** Wave 3 verification ([reviews/04-receipts-kernel-latency-review.md](reviews/04-receipts-kernel-latency-review.md)) confirmed **11+ stubs**, not 4: `single_guard`, `cap_verify_ed25519`, `receipt_sign`, `guard_pipeline_5`, `scope_match`, `time_bound`, `revocation_lookup`, `budget_decrement`, `receipt_append`, `session_lookup`, `dispatch_deny` are all `b.iter(|| black_box(0_u64))`. The hybrid family (`hybrid_receipt_sign`, `canonical_bytes_hybrid`, `pq_key_load_after_self_quote`, `compliance_certificate_hybrid`) is currently wired as tests, not live Criterion benches; do not cite those names as benchmark evidence until they are added to the bench target set. CI runs every bench from Cargo.toml without `required-features` gating, so PR regression checks compare stub-vs-stub for 10+ primitives.
+> - **`build_and_sign_receipt` path was wrong.** Below this doc cites `crates/chio-http-core/src/responses.rs:1506-1507`; the actual location is [`crates/chio-kernel/src/kernel/responses.rs:1459-1517`](../../../crates/chio-kernel/src/kernel/responses.rs#L1459). Several other `responses.rs` references in this doc omit the `chio-kernel/src/kernel/` crate qualifier.
 
 ## TL;DR
 
