@@ -127,7 +127,7 @@ def test_bind_and_redact_fixed_signature_mixed_args_kwargs() -> None:
 
 
 def test_bind_and_redact_var_positional_extras_unredacted() -> None:
-    """Extras into ``*args`` have no name; they stay positional and raw."""
+    """Extras into ``*args`` past every table slot stay positional and raw."""
 
     def chio_file_write(path: str, content: str, *extras: object) -> None:
         del path, content, extras
@@ -140,8 +140,57 @@ def test_bind_and_redact_var_positional_extras_unredacted() -> None:
     )
     assert args[0] == "src/main.py"
     assert args[1] == {"omitted": True, "byte_count": 7}
+    # Both table slots ("path", "content") are filled by fixed bindings,
+    # so the trailing VAR_POSITIONAL extras have no free slot to bind to
+    # and surface raw.
     assert args[2:] == ["extra1", "extra2"]
     assert kwargs == {}
+
+
+def test_var_positional_extras_redacted_via_positional_table() -> None:
+    """``def fn(path, *rest)`` -- rest[0] binds to the next free table slot.
+
+    For ``chio_file_write`` the table is ``("path", "content")``; the
+    fixed positional fills slot 0 (``path``), so ``rest[0]`` matches the
+    next free slot ``content`` and is redacted. Mirrors the prefect
+    local-helper fix (cba84f66c) for the chio-adapter-base helper that
+    chio-ray and other sibling adapters consume.
+    """
+
+    def chio_file_write(path: str, *rest: object) -> None:
+        del path, rest
+
+    args, kwargs = bind_and_redact(
+        chio_file_write,
+        ("/tmp/x", "PROD_SECRET"),
+        {},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == "/tmp/x"
+    assert args[1] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    assert kwargs == {}
+
+
+def test_var_positional_with_kwarg_consuming_first_table_slot() -> None:
+    """``def fn(*content, path)`` -- content[0] binds via the table.
+
+    Calling ``fn("PROD_SECRET", path="/tmp/x")`` binds the ``path``
+    kwarg to table slot 0, so the lone VAR_POSITIONAL value finds the
+    next free table slot ``content`` and is redacted. This is the
+    direct counterpart of the prefect leak path closed in cba84f66c.
+    """
+
+    def write_file(*content: object, path: str) -> None:
+        del content, path
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("PROD_SECRET",),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    assert kwargs == {"path": "/tmp/x"}
 
 
 def test_bind_and_redact_var_keyword_spillover_redacted() -> None:
