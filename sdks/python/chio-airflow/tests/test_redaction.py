@@ -70,6 +70,8 @@ class TestDefaultPolicyRedacts:
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
         forwarded = evaluate_calls[0].parameters
+        # Keyword-only call: positional bucket stays empty; keyword
+        # values stay under kwargs.
         assert forwarded["args"] == []
         assert forwarded["kwargs"]["path"] == "/tmp/x"
         assert forwarded["kwargs"]["content"] == {
@@ -145,11 +147,14 @@ class TestPositionalArgsAreBoundAndRedacted:
 
         serialised = json.dumps(forwarded)
         assert "PROD_SECRET" not in serialised
-        assert forwarded["kwargs"]["path"] == "/tmp/x"
-        assert forwarded["kwargs"]["content"] == {
+        # Wire shape preserved: positional values stay positional after
+        # redaction; the path goes into args[0], content stub into args[1].
+        assert forwarded["args"][0] == "/tmp/x"
+        assert forwarded["args"][1] == {
             "omitted": True,
             "byte_count": len(b"PROD_SECRET=abc123"),
         }
+        assert forwarded["kwargs"] == {}
 
     def test_chio_file_edit_positional_patch_is_redacted(self) -> None:
         chio = allow_all()
@@ -175,7 +180,9 @@ class TestPositionalArgsAreBoundAndRedacted:
         import json
 
         assert "API_TOKEN" not in json.dumps(forwarded)
-        assert forwarded["kwargs"]["patch"] == {
+        # Wire shape: positional path stays in args[0], patch stub in args[1].
+        assert forwarded["args"][0] == "/etc/cfg"
+        assert forwarded["args"][1] == {
             "omitted": True,
             "byte_count": len(diff.encode("utf-8")),
         }
@@ -338,6 +345,124 @@ class TestVarKeywordSignatureRedacts:
             import json
 
             assert "PROD_SECRET" not in json.dumps(evaluate_calls[0].parameters)
+
+
+class TestForwardingWrapperRedaction:
+    """Regression: ``def fn(*args, **kwargs)`` forwarding wrappers.
+
+    The pure-VAR_KEYWORD branch only redacts ``kwargs``; positional
+    arguments hit the wrapper as ``args`` with no parameter names to
+    bind against. The fix consults a per-tool positional-name table so
+    chio-default tools still get their bodies redacted, while preserving
+    the original wire shape (positional values stay in ``args``).
+    """
+
+    def test_pure_forwarding_wrapper_redacts_positional_via_tool_table(
+        self,
+    ) -> None:
+        chio = allow_all()
+
+        @chio_task(
+            capability_id="cap-1",
+            tool_server="fs",
+            tool_name="chio_file_write",
+            chio_client=chio,
+        )
+        def write_file(*args: Any, **kwargs: Any) -> str:
+            return "ok"
+
+        ti = _RecordingTI(task_id="write_file")
+        body = _wrapped_function(write_file)
+
+        with _install_context(ti):
+            body("/tmp/x", "PROD_SECRET=abc123")
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        assert len(evaluate_calls) == 1
+        forwarded = evaluate_calls[0].parameters
+        import json
+
+        assert "PROD_SECRET" not in json.dumps(forwarded)
+        # Wire shape preserved: both values stay positional, but the
+        # body gets stubbed via the chio_file_write tool table.
+        assert forwarded["args"][0] == "/tmp/x"
+        assert forwarded["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert forwarded["kwargs"] == {}
+
+    def test_pure_forwarding_wrapper_with_unknown_tool_passes_positional_through(
+        self,
+    ) -> None:
+        chio = allow_all()
+
+        @chio_task(
+            capability_id="cap-1",
+            tool_server="srv",
+            tool_name="some_other_tool",
+            chio_client=chio,
+        )
+        def forward(*args: Any, **kwargs: Any) -> str:
+            return "ok"
+
+        ti = _RecordingTI(task_id="forward")
+        body = _wrapped_function(forward)
+
+        with _install_context(ti):
+            body("payload-1", "payload-2", k="v")
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        forwarded = evaluate_calls[0].parameters
+        # Unknown tool: nothing to redact, wire shape is preserved
+        # exactly as the caller passed it.
+        assert forwarded["args"] == ["payload-1", "payload-2"]
+        assert forwarded["kwargs"] == {"k": "v"}
+
+
+class TestVarPositionalExtrasStayPositional:
+    """Regression: extras past fixed positional slots must remain in args.
+
+    A function like ``def fn(a, b, *rest)`` called with three positional
+    arguments binds ``a`` and ``b`` by name; the third value lands in
+    ``*rest``. The third value has no parameter name to redact against,
+    so it must remain in ``parameters["args"]`` rather than vanishing
+    or being shoved into ``parameters["kwargs"]``.
+    """
+
+    def test_var_positional_extras_remain_in_args(self) -> None:
+        chio = allow_all()
+
+        @chio_task(
+            capability_id="cap-1",
+            tool_server="fs",
+            tool_name="chio_file_write",
+            chio_client=chio,
+        )
+        def write_file(path: str, content: str, *extras: Any) -> str:
+            return "ok"
+
+        ti = _RecordingTI(task_id="write_file")
+        body = _wrapped_function(write_file)
+
+        with _install_context(ti):
+            body("/tmp/x", "PROD_SECRET=abc123", "trailing-1", "trailing-2")
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        forwarded = evaluate_calls[0].parameters
+        import json
+
+        assert "PROD_SECRET" not in json.dumps(forwarded)
+        # Fixed names redact correctly and stay positional; var-positional
+        # extras remain as-is in args (no name to bind to).
+        assert forwarded["args"][0] == "/tmp/x"
+        assert forwarded["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert forwarded["args"][2] == "trailing-1"
+        assert forwarded["args"][3] == "trailing-2"
+        assert forwarded["kwargs"] == {}
 
 
 class TestCustomPolicyAppliesAdapterFields:

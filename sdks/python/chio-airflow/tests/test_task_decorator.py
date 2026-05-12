@@ -113,9 +113,11 @@ class TestAllowPath:
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
         assert evaluate_calls[0].tool_name == "double"
-        # Positional args are now bound to parameter names before
-        # forwarding so the redactor sees them as named fields.
-        assert evaluate_calls[0].parameters == {"args": [], "kwargs": {"x": 21}}
+        # Wire shape preserved: positional values stay positional. The
+        # redactor still sees them as named fields internally (via
+        # bind_partial) so protected bodies get scrubbed, but the call
+        # bucket on the wire matches what the caller passed.
+        assert evaluate_calls[0].parameters == {"args": [21], "kwargs": {}}
 
         pushed = dict(ti.pushed)
         assert pushed[XCOM_RECEIPT_ID_KEY].startswith("mock-r-")
@@ -143,11 +145,11 @@ class TestAllowPath:
         assert result == "fetched:/tmp/data"
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
-        # Positional args are now bound to parameter names; see the
-        # sync companion test for rationale.
+        # Wire shape preserved: positional values stay positional. See
+        # the sync companion test for rationale.
         assert evaluate_calls[0].parameters == {
-            "args": [],
-            "kwargs": {"path": "/tmp/data"},
+            "args": ["/tmp/data"],
+            "kwargs": {},
         }
 
 

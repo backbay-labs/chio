@@ -258,6 +258,17 @@ def _push_receipt(
         pass
 
 
+# Tool-arity table for forwarding wrappers that have no fixed-signature
+# parameter names to bind positional args against. When a chio-default
+# tool name matches, positional values are redacted by mapping them to
+# these declared positional names before scrubbing. Tools not in this
+# table cannot have their positional payloads redacted by this helper.
+_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES: dict[str, tuple[str, ...]] = {
+    "chio_file_write": ("path", "content"),
+    "chio_file_edit": ("path", "patch"),
+}
+
+
 def _build_redacted_parameters(
     *,
     tool_name: str,
@@ -266,28 +277,41 @@ def _build_redacted_parameters(
     policy: RedactionPolicy,
     fn: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
-    """Build sidecar payload with positional args bound to parameter names.
+    """Build the sidecar payload, redacting protected fields without rewriting wire shape.
 
-    ``redact_args`` keys on parameter names. Positional callers
-    (``write_file("/tmp/x", "PROD_SECRET")``) would otherwise bypass
-    redaction because the body field would land in ``parameters["args"]``
-    untouched. We bind positional args to their declared names via
-    :func:`inspect.signature` before redaction, then surface the result
-    under ``kwargs`` so the sidecar / receipt both see the redacted form.
+    ``redact_args`` keys on parameter names, so a positional caller
+    (``write_file("/tmp/x", "PROD_SECRET")``) would otherwise leave the
+    body field in ``parameters["args"]`` unredacted. We bind positional
+    args to their declared names via :func:`inspect.signature` before
+    redaction. Crucially, the WIRE SHAPE is preserved: positional values
+    re-emit under ``parameters["args"]`` (redacted) and keyword values
+    stay under ``parameters["kwargs"]``. We do not move values between
+    the two buckets.
 
     ``inspect.Signature.bind_partial`` does NOT raise for functions that
-    accept ``**kwargs`` or ``*args``; it absorbs extras into the variadic
-    parameter (e.g. ``def f(**kw)`` called with ``content="SECRET"``
-    binds to ``{"kw": {"content": "SECRET"}}``). That would leave the
-    protected field nested one level deep where ``redact_args`` cannot
-    find it. We therefore inspect the signature for VAR_KEYWORD /
-    VAR_POSITIONAL parameters up-front and pick the redaction shape that
-    keeps protected fields at the top level of the dict ``redact_args``
-    inspects.
+    accept ``**kwargs`` or ``*args``; it absorbs extras into the
+    variadic parameter (e.g. ``def f(**kw)`` called with
+    ``content="SECRET"`` binds to ``{"kw": {"content": "SECRET"}}``).
+    That would leave the protected field nested one level deep where
+    ``redact_args`` cannot find it. We therefore branch on the signature
+    shape up front:
+
+    * Pure forwarding wrappers (only ``*args``/``**kwargs``, no fixed
+      named params): rely on the ``_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES``
+      table to map positional values onto declared field names so they
+      can be redacted, then split the redacted dict back into the
+      caller's positional / keyword buckets. Tools absent from the table
+      fall back to kwargs-only redaction (positional values pass
+      through raw).
+    * Fixed-signature functions: redact named values, but keep
+      positional values positional and keyword values keyword.
+      ``VAR_POSITIONAL`` extras (positional values past the fixed
+      positional slots) remain in ``args`` because there is no parameter
+      name to bind them to. ``VAR_KEYWORD`` spillover gets re-redacted
+      on the dict so kwargs-style protected fields are still scrubbed.
 
     Falls back to kwargs-only redaction when ``fn`` is ``None`` or when
-    introspection raises (positional bodies remain raw, matching the
-    pre-bind behaviour).
+    introspection raises.
     """
     if fn is None:
         return {
@@ -306,7 +330,19 @@ def _build_redacted_parameters(
     has_var_keyword = any(
         p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
     )
-    has_named_param = any(
+    has_var_positional = any(
+        p.kind == inspect.Parameter.VAR_POSITIONAL for p in params.values()
+    )
+    fixed_positional_names = [
+        p.name
+        for p in params.values()
+        if p.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+    ]
+    has_fixed_named = any(
         p.kind
         in (
             inspect.Parameter.POSITIONAL_ONLY,
@@ -316,31 +352,49 @@ def _build_redacted_parameters(
         for p in params.values()
     )
 
-    # Pure ``**kwargs`` (and optionally ``*args``) function: bind_partial
-    # would nest user kwargs under the variadic name. Redact the merged
-    # kwargs dict directly; positional bodies (if any) cannot be named.
-    if has_var_keyword and not has_named_param:
-        return {
-            "args": list(args),
-            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
+    # Pure forwarding wrapper: ``def fn(*args, **kwargs)`` style. No
+    # fixed parameter names to bind positional values against; consult
+    # the tool-arity table so chio-default tools still get their
+    # positional bodies redacted.
+    if not has_fixed_named:
+        positional_names = _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name)
+        if positional_names is None or not args:
+            return {
+                "args": list(args),
+                "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
+            }
+        named_positional = {
+            n: a for n, a in zip(positional_names, args, strict=False)
         }
+        merged = {**named_positional, **kwargs}
+        redacted_merged = redact_args(tool_name, merged, policy=policy)
+        bound_count = min(len(args), len(positional_names))
+        new_args: list[Any] = [
+            redacted_merged[positional_names[i]] for i in range(bound_count)
+        ]
+        # Extras past the table are unredactable; preserve as-is.
+        if len(args) > bound_count:
+            new_args.extend(args[bound_count:])
+        bound_names = set(positional_names[:bound_count])
+        new_kwargs = {
+            k: v for k, v in redacted_merged.items() if k not in bound_names
+        }
+        return {"args": new_args, "kwargs": new_kwargs}
 
     try:
         bound = sig.bind_partial(*args, **kwargs).arguments
     except TypeError:
-        # Duplicate keyword, unexpected arg, missing required-positional,
-        # etc. Do NOT forward raw positional args; they may carry the
-        # very secret we're trying to redact and the call is about to
-        # blow up at fn() anyway.
+        # Duplicate keyword / unexpected arg. Do NOT forward raw
+        # positional args; they may carry the very secret we are
+        # trying to redact.
         return {
             "args": [],
             "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
         }
 
-    # Drop VAR_KEYWORD / VAR_POSITIONAL placeholders before policy lookup
-    # (they hold a dict/tuple, not a target-field value), then re-redact
-    # the VAR_KEYWORD spillover so kwargs-style calls with protected
-    # fields also get scrubbed.
+    # Drop VAR_KEYWORD / VAR_POSITIONAL placeholders (they hold a
+    # dict/tuple, not a redactable field), redact the named values,
+    # then re-redact the VAR_KEYWORD spillover.
     var_keys = {
         name
         for name, p in params.items()
@@ -348,16 +402,38 @@ def _build_redacted_parameters(
         in (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
     }
     flat = {k: v for k, v in bound.items() if k not in var_keys}
-    redacted = redact_args(tool_name, flat, policy=policy)
-    for vk in var_keys:
-        v = bound.get(vk)
-        if isinstance(v, dict):
-            for kk, vv in redact_args(tool_name, dict(v), policy=policy).items():
-                redacted[kk] = vv
-    return {
-        "args": [],
-        "kwargs": redacted,
+    redacted_flat = redact_args(tool_name, flat, policy=policy)
+    if has_var_keyword:
+        for vk in var_keys:
+            v = bound.get(vk)
+            if isinstance(v, dict):
+                for kk, vv in redact_args(
+                    tool_name, dict(v), policy=policy
+                ).items():
+                    redacted_flat[kk] = vv
+
+    # Rebuild original wire shape: positional values stay positional,
+    # keyword values stay keyword. The first ``bound_positional_count``
+    # fixed names were supplied positionally, so they re-emit as args.
+    bound_positional_count = min(len(args), len(fixed_positional_names))
+    new_args = []
+    for i in range(bound_positional_count):
+        n = fixed_positional_names[i]
+        if n in redacted_flat:
+            new_args.append(redacted_flat[n])
+        else:
+            new_args.append(args[i])
+    # VAR_POSITIONAL extras (positional values past the fixed slots)
+    # have no name to bind to; surface them in args so the wire shape
+    # matches what the caller passed.
+    if has_var_positional and len(args) > bound_positional_count:
+        new_args.extend(args[bound_positional_count:])
+    new_kwargs = {
+        k: v
+        for k, v in redacted_flat.items()
+        if k not in fixed_positional_names[:bound_positional_count]
     }
+    return {"args": new_args, "kwargs": new_kwargs}
 
 
 def _resolve_airflow_runtime() -> tuple[Any | None, str | None, str | None]:
