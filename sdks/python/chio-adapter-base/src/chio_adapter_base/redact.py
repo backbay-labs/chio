@@ -272,9 +272,14 @@ def bind_and_redact(
     - Fixed signature: positional values are bound to their parameter
       names, redaction runs against the named view, and the result is
       rebuilt with positional values back in their slots.
-    - ``VAR_POSITIONAL`` extras: extras have no name to redact against,
-      so they stay positional and unredacted (documented limitation;
-      protected fields should not flow through ``*args``).
+    - ``VAR_POSITIONAL`` extras: extras have no fixed parameter name,
+      but the per-tool ``positional_table`` (the chio default or a
+      caller-supplied override) still declares names for each wire-level
+      slot. Each extra is matched against the next free table slot (one
+      not already filled by a bound fixed positional or kwarg) and
+      redacted under that slot's name. Values stay positional in the
+      rebuilt ``args`` so the function's call site is unchanged; only
+      the redacted *values* differ.
     - ``VAR_KEYWORD`` spillover: the spillover dict is re-redacted so
       kwargs-style protected fields are still covered when they land in
       ``**kwargs`` instead of a named parameter.
@@ -391,13 +396,49 @@ def bind_and_redact(
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
         )
     ]
+    # VAR_POSITIONAL extras have no fixed parameter name, but the
+    # per-tool positional_table still declares wire-level slot names.
+    # Match each extra against the next free table slot (one not
+    # already filled by a bound fixed positional or kwarg) so a call
+    # like ``fn("/tmp/x", "SECRET")`` against ``def fn(path, *rest)``
+    # redacts ``rest[0]`` as ``content`` for chio_file_write.
+    table_slots: tuple[str, ...] = table.get(tool_name, ())
+    filled_slot_names: set[str] = set()
+    for idx in range(min(len(positional_param_names), len(bind_args))):
+        if idx < len(table_slots):
+            filled_slot_names.add(table_slots[idx])
+    for kwarg_name in kwargs:
+        if kwarg_name in table_slots:
+            filled_slot_names.add(kwarg_name)
+    free_slot_iter = iter(
+        slot for slot in table_slots if slot not in filled_slot_names
+    )
+    var_positional_extras: dict[int, Any] = {}
+    if var_positional_param is not None and table_slots:
+        fixed_positional_cardinality = len(positional_param_names)
+        for idx, value in enumerate(bind_args):
+            if idx < fixed_positional_cardinality:
+                continue
+            slot_name = next(free_slot_iter, None)
+            if slot_name is None:
+                break
+            redacted_extra = _redact_named(
+                {slot_name: value},
+                tool_name=tool_name,
+                policy=effective_policy,
+            )
+            var_positional_extras[idx] = redacted_extra[slot_name]
+
     for idx, value in enumerate(bind_args):
         if idx < len(positional_param_names):
             name = positional_param_names[idx]
             if name in redacted_fixed:
                 rebuilt_args.append(redacted_fixed[name])
                 continue
-        # Extras (VAR_POSITIONAL) have no name, so they stay raw.
+        elif idx in var_positional_extras:
+            rebuilt_args.append(var_positional_extras[idx])
+            continue
+        # Extras with no matching free table slot stay raw.
         rebuilt_args.append(value)
 
     rebuilt_kwargs: dict[str, Any] = {}
