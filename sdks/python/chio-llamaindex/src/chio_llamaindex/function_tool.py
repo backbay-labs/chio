@@ -26,6 +26,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
@@ -81,6 +82,13 @@ class ChioFunctionTool(FunctionTool):
         :class:`ChioToolError`. When ``False`` the wrapper returns a
         :class:`ToolOutput` whose ``content`` announces the denial, which
         some LlamaIndex planners prefer to feed back to the LLM.
+    redaction_policy:
+        Per-tool argument redaction policy applied right before parameters
+        are forwarded to the sidecar so secret-bearing fields never land
+        in the receipt log. Defaults to
+        :meth:`RedactionPolicy.chio_default`; pass a custom
+        :class:`RedactionPolicy` to extend with adapter or workspace
+        specific tool names.
     """
 
     def __init__(
@@ -98,6 +106,7 @@ class ChioFunctionTool(FunctionTool):
         chio_client: ChioClientLike | None = None,
         scope: ChioScope | None = None,
         raise_on_deny: bool = True,
+        redaction_policy: RedactionPolicy | None = None,
     ) -> None:
         if fn is None and async_fn is None:
             raise ValueError("ChioFunctionTool requires 'fn' or 'async_fn'")
@@ -121,6 +130,11 @@ class ChioFunctionTool(FunctionTool):
         self._chio_client = chio_client
         self._scope = scope
         self._raise_on_deny = bool(raise_on_deny)
+        self._redaction_policy = (
+            redaction_policy
+            if redaction_policy is not None
+            else RedactionPolicy.chio_default()
+        )
         self._last_receipt: ChioReceipt | None = None
 
     # ------------------------------------------------------------------
@@ -199,11 +213,20 @@ class ChioFunctionTool(FunctionTool):
         callbacks, and :class:`ToolOutput` construction match upstream.
         """
         parameters = _materialise_parameters(args, kwargs)
-        receipt = await self._evaluate(parameters)
+        # Redact body fields (e.g. chio_file_write.content) before they
+        # cross into the sidecar so the receipt log never carries the raw
+        # secret bytes. The underlying function still receives the real
+        # args via ``super().acall(*args, **kwargs)`` below.
+        recorded_parameters = redact_args(
+            self.metadata.name,
+            parameters,
+            policy=self._redaction_policy,
+        )
+        receipt = await self._evaluate(recorded_parameters)
         self._last_receipt = receipt
 
         if receipt.is_denied:
-            return self._on_deny(receipt, parameters)
+            return self._on_deny(receipt, recorded_parameters)
 
         return await super().acall(*args, **kwargs)
 
