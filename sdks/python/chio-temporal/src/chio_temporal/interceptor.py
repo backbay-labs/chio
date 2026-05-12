@@ -108,17 +108,10 @@ class ChioActivityInterceptor(Interceptor):
         :meth:`WorkflowReceipt.to_envelope`). Fire-and-forget; exceptions
         are logged and swallowed so sink failures do not fail workflows.
     redaction_policy:
-        Per-tool argument redaction policy applied right before activity
-        parameters are forwarded to the sidecar (and recorded into the
-        :class:`WorkflowReceipt`). Defaults to
-        :meth:`RedactionPolicy.chio_default`, which redacts the
-        ``content`` field of ``chio_file_write`` and the ``patch`` field
-        of ``chio_file_edit`` activities. Pass a custom
-        :class:`RedactionPolicy` to extend with workspace-specific
-        activity types. Redaction runs in the activity layer (the
-        interceptor), never inside a workflow definition, so Temporal
-        determinism rules are unaffected; the underlying activity
-        function still receives its original, unredacted arguments.
+        Optional :class:`RedactionPolicy` applied to activity
+        parameters before sidecar evaluation. Defaults to
+        :meth:`RedactionPolicy.chio_default`. Runs in the activity
+        layer so workflow determinism is unaffected.
     """
 
     def __init__(
@@ -409,14 +402,7 @@ class _ChioInboundInterceptor(ActivityInboundInterceptor):
         self._parent = parent
 
     async def execute_activity(self, input: ExecuteActivityInput) -> Any:
-        """Evaluate via Chio, then delegate to the wrapped interceptor.
-
-        Redact body fields (e.g. ``chio_file_write.content``) from the
-        forwarded parameters before crossing into the sidecar so the
-        per-step :class:`WorkflowReceipt` never carries the raw secret
-        bytes. The underlying activity function still receives the
-        original (unredacted) ``input.args`` via ``self.next``.
-        """
+        """Evaluate via Chio, then delegate to the wrapped interceptor."""
         info = activity.info()
         grant = self._parent._resolve_grant(info)
         tool_server = self._parent._tool_server_for(info, grant)
@@ -499,17 +485,11 @@ def _activity_parameters(
 ) -> dict[str, Any]:
     """Extract a parameter dict to send to the Chio sidecar.
 
-    Temporal delivers activities with positional ``args``; the Chio
-    sidecar evaluates on a dict. We wrap the positional args under a
-    stable ``args`` key so the parameter hash remains deterministic.
-
-    When ``policy`` is supplied and the activity is invoked with a
-    single dict-shaped argument (the common Temporal ``run(payload)``
-    convention), :func:`chio_adapter_base.redact.redact_args` is applied
-    to that dict so body fields like ``chio_file_write.content`` are
-    replaced with a byte-count stub before crossing into the sidecar /
-    receipt store. Activities called with non-dict positional args are
-    forwarded unchanged.
+    Wraps positional args under a stable ``args`` key so the parameter
+    hash stays deterministic. When ``policy`` is supplied and the
+    activity is invoked with a single dict-shaped argument (the common
+    Temporal ``run(payload)`` convention), redaction is applied to that
+    dict; non-dict positional args are forwarded unchanged.
     """
     args_list = list(input.args)
     if policy is not None and len(args_list) == 1 and isinstance(args_list[0], dict):

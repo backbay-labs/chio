@@ -1,16 +1,4 @@
-"""Tests for ChioActivityInterceptor argument redaction.
-
-These tests assert that ``ChioActivityInterceptor`` redacts secret-bearing
-fields from its activity arguments BEFORE forwarding them to the Chio
-sidecar's ``evaluate_tool_call`` endpoint, so the per-step
-:class:`WorkflowReceipt` never carries the raw secret bytes.
-
-Source of truth: ``chio_adapter_base.redact.redact_args``.
-
-Placement: redaction is applied in the activity-layer interceptor
-(``_ChioInboundInterceptor.execute_activity``), not inside any workflow
-definition, so Temporal's workflow determinism rules are unaffected.
-"""
+"""Tests for ChioActivityInterceptor argument redaction."""
 
 from __future__ import annotations
 
@@ -30,10 +18,6 @@ from temporalio import activity
 
 from chio_temporal import ChioActivityInterceptor, WorkflowGrant
 from chio_temporal.interceptor import _ChioInboundInterceptor
-
-# ---------------------------------------------------------------------------
-# Test doubles / helpers (mirrors test_interceptor.py for consistency)
-# ---------------------------------------------------------------------------
 
 
 def _scope_for_tools(*tool_names: str, server_id: str = "srv") -> ChioScope:
@@ -97,9 +81,6 @@ class _NextInterceptor:
 
     async def execute_activity(self, input: Any) -> Any:
         self.called = True
-        # Snapshot the args the underlying activity actually receives so
-        # the test can assert that the executor still gets the original
-        # (unredacted) payload.
         self.received_args = list(input.args)
         return self.result
 
@@ -170,7 +151,6 @@ class TestDefaultPolicyRedacts:
             with _patched_activity_info(info):
                 await inbound.execute_activity(_make_input(payload))
 
-        # The sidecar should have received the REDACTED parameters.
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
         forwarded_args = evaluate_calls[0].parameters["args"]
@@ -182,11 +162,9 @@ class TestDefaultPolicyRedacts:
             "byte_count": len(b"PROD_SECRET=abc123"),
         }
 
-        # Underlying activity still receives the ORIGINAL (unredacted) args.
         assert next_i.received_args == [payload]
         assert payload["content"] == "PROD_SECRET=abc123"
 
-        # And the per-step receipt parameters mirror the redacted payload.
         receipt = interceptor.workflow_receipt("wf-1", "run-1")
         assert receipt is not None
         step = receipt.steps[0]
@@ -227,7 +205,6 @@ class TestDefaultPolicyRedacts:
             "omitted": True,
             "byte_count": len(b"--- a\n+++ b\n@@ secret @@"),
         }
-        # Other fields preserved.
         assert "content" not in forwarded
 
     async def test_unrelated_activity_passes_args_through(self) -> None:
@@ -253,8 +230,6 @@ class TestDefaultPolicyRedacts:
 
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         forwarded = evaluate_calls[0].parameters["args"][0]
-        # The default policy only matches chio_file_write / chio_file_edit;
-        # unrelated activities see their args unmodified.
         assert forwarded == {
             "to": "alice@example.com",
             "content": "not redacted",
@@ -278,9 +253,6 @@ class TestDefaultPolicyRedacts:
             inbound = _ChioInboundInterceptor(_NextInterceptor(), interceptor)
             info = _default_info(activity_type="chio_file_write")
             with _patched_activity_info(info):
-                # Two positional args (path, content) -- redaction only
-                # fires for the single-dict-arg convention, so these
-                # propagate unchanged.
                 await inbound.execute_activity(
                     _make_input("/tmp/x", "PROD_SECRET=abc123")
                 )
@@ -288,11 +260,6 @@ class TestDefaultPolicyRedacts:
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         forwarded = evaluate_calls[0].parameters["args"]
         assert forwarded == ["/tmp/x", "PROD_SECRET=abc123"]
-
-
-# ---------------------------------------------------------------------------
-# Custom policy: only my_activity.body is redacted
-# ---------------------------------------------------------------------------
 
 
 class TestCustomPolicy:
@@ -330,9 +297,6 @@ class TestCustomPolicy:
         }
 
     async def test_custom_policy_does_not_redact_default_fields(self) -> None:
-        """A custom policy fully replaces the default; chio_file_write
-        is no longer redacted under it.
-        """
         async with allow_all() as chio:
             token = await _mint_token(
                 chio,
@@ -362,14 +326,8 @@ class TestCustomPolicy:
         assert forwarded["content"] == "not-redacted-now"
 
 
-# ---------------------------------------------------------------------------
-# Default ctor uses chio-default policy
-# ---------------------------------------------------------------------------
-
-
 class TestInterceptorDefaultPolicy:
     def test_default_policy_is_chio_default(self) -> None:
         interceptor = ChioActivityInterceptor()
-        # Default policy is the chio-default mapping.
         assert "chio_file_write" in interceptor._redaction_policy.body_fields
         assert "chio_file_edit" in interceptor._redaction_policy.body_fields
