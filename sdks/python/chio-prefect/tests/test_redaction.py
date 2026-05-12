@@ -127,15 +127,7 @@ class TestDefaultPolicyRedacts:
         }
 
     def test_positional_args_are_bound_and_redacted(self) -> None:
-        """Positional invocations must NOT bypass the redactor.
-
-        Regression for the previous "positional args bypass redaction"
-        leak. Positional args are bound to declared parameter names via
-        ``inspect.signature.bind_partial`` so the same body fields are
-        scrubbed regardless of how the caller passes them. The wire
-        shape is preserved: positional values stay in
-        ``parameters["args"]`` after redaction.
-        """
+        """Regression: positional invocations must not bypass the redactor."""
         chio = allow_all()
 
         @chio_task(
@@ -164,8 +156,6 @@ class TestDefaultPolicyRedacts:
         import json
 
         assert "RAW_SECRET" not in json.dumps(forwarded)
-        # Wire shape preserved: positional values stay positional after
-        # redaction.
         assert forwarded["args"][0] == "/tmp/x"
         assert forwarded["args"][1] == {
             "omitted": True,
@@ -391,10 +381,8 @@ class TestVarKeywordSignatureRedacts:
             0
         ].parameters
         assert "PROD_SECRET" not in json.dumps(forwarded)
-        # Wire shape preserved: prefect normalises ``path=`` into the
-        # positional bucket because it matches a declared positional
-        # parameter; the VAR_KEYWORD spillover (``content``) stays in
-        # kwargs and gets scrubbed by the redactor.
+        # path normalises into the positional bucket; content lands in
+        # the VAR_KEYWORD spillover and is scrubbed there.
         path_in_args = (
             forwarded["args"] and forwarded["args"][0] == "/tmp/x"
         )
@@ -439,11 +427,8 @@ class TestVarKeywordSignatureRedacts:
     def test_pure_forwarding_wrapper_redacts_positional_via_tool_table(
         self,
     ) -> None:
-        # Forwarding wrappers ``def fn(*args, **kwargs)`` have no fixed
-        # parameter names to bind positional values against. The
-        # tool-arity table covers chio-default tools so their bodies
-        # still get scrubbed when supplied positionally, while the wire
-        # shape (positional values in args) is preserved.
+        # Forwarding wrappers fall back to the tool-arity table for
+        # chio-default tools so positional bodies still get scrubbed.
         from typing import Any
 
         chio = allow_all()
@@ -483,9 +468,6 @@ class TestVarKeywordSignatureRedacts:
         assert forwarded["kwargs"] == {}
 
     def test_var_positional_extras_remain_in_args(self) -> None:
-        # ``*extras`` past the fixed positional slots have no parameter
-        # name to bind to, so they remain in args (not migrated to
-        # kwargs and not dropped).
         from typing import Any
 
         chio = allow_all()
@@ -532,9 +514,8 @@ class TestVarKeywordSignatureRedacts:
         assert forwarded["kwargs"] == {}
 
     def test_bind_partial_failure_does_not_leak_positional_args(self) -> None:
-        # Duplicate keyword: bind_partial raises TypeError before fn() is
-        # called. The redactor must not forward the raw positional value
-        # into the receipt.
+        # bind_partial raises TypeError on the duplicate keyword;
+        # the raw positional value must not leak into the receipt.
         chio = allow_all()
 
         @chio_task(
@@ -580,18 +561,13 @@ class TestForwardingTablePassthroughHelper:
     """
 
     def test_c_extension_fallback_redacts_via_tool_arity_table(self) -> None:
-        # ``inspect.signature(dict.update)`` raises ValueError because
-        # the C-implemented method has no introspectable parameter list
-        # (verified against Python 3.13). The fallback must not forward
-        # positional bodies raw; it should consult the tool arity table
-        # for chio-default tools.
+        # dict.update is non-introspectable on Python 3.13; covers the
+        # C-extension fallback path through the tool arity table.
         import inspect
 
         from chio_prefect.decorators import _task_parameters
 
-        # Sanity guard: if a future Python release exposes a signature
-        # for ``dict.update`` we want this test to fail loudly so we can
-        # pick a different non-introspectable stand-in.
+        # If a future Python exposes dict.update's signature, fail loudly.
         try:
             inspect.signature(dict.update)
         except (TypeError, ValueError):
@@ -622,9 +598,7 @@ class TestForwardingTablePassthroughHelper:
         assert params["kwargs"] == {}
 
     def test_c_extension_fallback_kwargs_only_for_unknown_tool(self) -> None:
-        # Tools absent from the arity table fall back to kwargs-only
-        # redaction; positional values pass through unredacted because
-        # we have no name to bind them against. Documented limitation.
+        # Unknown-tool fallback: kwargs-only redaction (documented limitation).
         from chio_prefect.decorators import _task_parameters
 
         policy = RedactionPolicy.chio_default()
@@ -641,11 +615,8 @@ class TestForwardingTablePassthroughHelper:
     def test_pure_var_positional_signature_redacts_via_tool_table(
         self,
     ) -> None:
-        # ``def write(*args)`` has no fixed-named params and no
-        # **kwargs; previously it routed through a path that filtered
-        # VAR_POSITIONAL out of the bound dict before redaction, leaving
-        # the body field unredacted. The forwarding-table helper must
-        # bind positional values by name and scrub them.
+        # Regression: pure *args wrappers previously bypassed the
+        # forwarding-table helper and leaked the body field.
         from typing import Any
 
         from chio_prefect.decorators import _task_parameters
@@ -674,9 +645,7 @@ class TestForwardingTablePassthroughHelper:
     def test_pure_var_positional_with_extras_keeps_extras_unredacted(
         self,
     ) -> None:
-        # Extras past the tool-arity table cardinality have no name to
-        # bind to and stay positional / unredacted (documented
-        # limitation of forwarding-table redaction).
+        # Extras past the tool-arity table stay positional and raw.
         from typing import Any
 
         from chio_prefect.decorators import _task_parameters
@@ -708,10 +677,8 @@ class TestForwardingTablePassthroughHelper:
     def test_forwarding_wrapper_kwarg_does_not_overwrite_positional(
         self,
     ) -> None:
-        # Pathological caller passes both a positional AND a keyword
-        # for the same field. Both must be redacted independently so
-        # the kwarg-side payload cannot leak by overwriting the
-        # positional value before the redactor sees it.
+        # Both positional and kwarg for the same field; both must be
+        # redacted independently.
         from typing import Any
 
         from chio_prefect.decorators import _task_parameters
@@ -752,12 +719,9 @@ class TestFixedPositionalWithVarPositional:
     def test_var_positional_secret_is_redacted_via_tool_arity_table(
         self,
     ) -> None:
-        # ``def write_file(path, *args)`` called as
-        # ``write_file("/tmp/x", "PROD_SECRET")`` puts the secret in the
-        # VAR_POSITIONAL bucket; the chio default tool-arity table
-        # (chio_file_write -> ("path", "content")) must still bind it to
-        # `content` so it gets redacted, otherwise the secret would
-        # re-emit unredacted in `args`.
+        # def f(path, *args) called positionally puts the secret in
+        # VAR_POSITIONAL; the tool-arity table must still bind it to
+        # "content" via slot index, otherwise the secret leaks raw.
         from typing import Any
 
         from chio_prefect.decorators import _task_parameters
@@ -788,10 +752,8 @@ class TestFixedPositionalWithVarPositional:
     def test_var_positional_extras_past_table_pass_through_unredacted(
         self,
     ) -> None:
-        # ``def write_file(path, *args)`` called with two trailing extras
-        # past the chio_file_write table cardinality (path, content).
-        # Extras beyond index 1 have no declared name to bind to and
-        # remain in args unchanged.
+        # Extras beyond the table cardinality (path, content) stay
+        # positional and unredacted.
         from typing import Any
 
         from chio_prefect.decorators import _task_parameters
@@ -828,13 +790,10 @@ class TestPositionalOnlyVarKeywordSpillover:
     def test_positional_only_with_same_named_var_keyword_spillover(
         self,
     ) -> None:
-        # Python permits a positional-only param and a same-named entry
-        # inside **kwargs to coexist: ``def write(path, /, **kw)`` called
-        # as ``write("/etc", path="/tmp")`` binds to
-        # ``{"path": "/etc", "kw": {"path": "/tmp"}}``. Both values are
-        # real and must be redacted independently rather than collapsed:
-        # the positional value's redacted form must NOT be overwritten
-        # by the spillover entry.
+        # Positional-only params can coexist with a same-named entry in
+        # **kwargs: ``def write(path, /, **kw)`` called ``write("/etc",
+        # path="/tmp")`` binds {"path": "/etc", "kw": {"path": "/tmp"}}.
+        # Both must be redacted independently rather than collapsed.
         from typing import Any
 
         from chio_prefect.decorators import _task_parameters
@@ -851,14 +810,9 @@ class TestPositionalOnlyVarKeywordSpillover:
             fn=write,
         )
 
-        # Both raw values must be absent from the wire payload because
-        # neither is a redacted body field, but the assertion below is
-        # the strong one: both values survive in different buckets so
-        # neither is silently dropped.
+        # Both values survive in different buckets; neither silently dropped.
         assert params["args"][0] == "/etc/POSITIONAL"
-        # Spillover entry surfaces under the synthetic key so it cannot
-        # silently collapse with the fixed name; the wrapped fn already
-        # accepted the call shape, so the underlying invocation runs.
+        # Spillover surfaces under the synthetic key to avoid collapse.
         spillover_key = "path__var_kw_spillover__"
         assert spillover_key in params["kwargs"]
         assert params["kwargs"][spillover_key] == "/tmp/SPILLOVER"
@@ -866,9 +820,8 @@ class TestPositionalOnlyVarKeywordSpillover:
     def test_positional_only_spillover_redacted_when_name_is_body_field(
         self,
     ) -> None:
-        # Same shape but the spilled-over name IS a redacted body field
-        # (chio_file_write -> ("content",)). Both the positional and the
-        # spillover values must be redacted independently.
+        # Same shape but the spilled-over name IS a body field; both sides
+        # must be redacted independently.
         from typing import Any
 
         from chio_prefect.decorators import _task_parameters

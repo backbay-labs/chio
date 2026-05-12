@@ -428,18 +428,11 @@ async def _invoke_task(
 
 
 # Tool-arity table for forwarding wrappers that have no fixed-signature
-# parameter names to bind positional values against. Sourced from
-# :data:`chio_adapter_base.redact.DEFAULT_TOOL_POSITIONAL_NAMES`
-# (centralised in chio-adapter-base 0.1.1) so the chio-default registry
-# stays in one place across the adapter family. The local _task_parameters
-# helper retains its bespoke behaviour because it implements two prefect-
-# specific contracts that bind_and_redact does not currently express:
-# (1) VAR_POSITIONAL extras are redacted against the table when the slot
-# index has a declared name (covers ``def fn(path, *args)`` shapes), and
-# (2) VAR_KEYWORD spillover entries that collide with a fixed name are
-# routed to a synthetic ``<name>__var_kw_spillover__`` key so neither
-# value is silently dropped. See ``test_redaction.py`` for the regression
-# coverage on both edges.
+# parameter names. Aliased from chio-adapter-base so the chio-default
+# registry stays in one place across the adapter family; _task_parameters
+# below keeps its bespoke walker for prefect-specific edge contracts
+# (see test_redaction.py: VAR_POSITIONAL extras with fixed prefix,
+# VAR_KEYWORD spillover collision routing).
 _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES = DEFAULT_TOOL_POSITIONAL_NAMES
 
 
