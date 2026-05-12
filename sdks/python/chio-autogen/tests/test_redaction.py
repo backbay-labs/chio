@@ -1,13 +1,4 @@
-"""Tests for ChioFunctionRegistry argument redaction (chio-adapter-base wiring).
-
-These tests assert that ``ChioFunctionRegistry`` redacts secret-bearing
-fields from its tool arguments BEFORE forwarding them to the sidecar's
-``evaluate_tool_call`` endpoint, so the receipt log never carries the
-raw secret bytes. The underlying registered function still sees the
-original kwargs.
-
-Source of truth: ``chio_adapter_base.redact.redact_args``.
-"""
+"""Tests for ChioFunctionRegistry argument redaction."""
 
 from __future__ import annotations
 
@@ -20,24 +11,13 @@ from chio_sdk.testing import allow_all
 from chio_autogen import ChioFunctionRegistry
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _make_agent(name: str) -> ConversableAgent:
-    """Build a ConversableAgent safe to use in offline unit tests."""
     return ConversableAgent(
         name=name,
         llm_config=False,
         human_input_mode="NEVER",
         code_execution_config=False,
     )
-
-
-# ---------------------------------------------------------------------------
-# Default policy: chio_file_write.content / chio_file_edit.patch
-# ---------------------------------------------------------------------------
 
 
 class TestDefaultPolicyRedacts:
@@ -71,7 +51,6 @@ class TestDefaultPolicyRedacts:
             "omitted": True,
             "byte_count": len(b"PROD_SECRET=abc123"),
         }
-        # The underlying executor still saw the real content.
         assert captured_kwargs == [
             {"path": "/tmp/x", "content": "PROD_SECRET=abc123"}
         ]
@@ -116,8 +95,6 @@ class TestDefaultPolicyRedacts:
 
         eval_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         recorded = eval_calls[0]
-        # Default policy only matches chio_file_write / chio_file_edit;
-        # unrelated tools see their args unmodified.
         assert recorded.parameters == {
             "q": "quantum",
             "content": "not redacted here",
@@ -150,15 +127,9 @@ class TestDefaultPolicyRedacts:
             "omitted": True,
             "byte_count": len(b"ASYNC_SECRET=zzz"),
         }
-        # The async executor still saw the real content.
         assert captured_kwargs == [
             {"path": "/tmp/y", "content": "ASYNC_SECRET=zzz"}
         ]
-
-
-# ---------------------------------------------------------------------------
-# Custom policy: only my_tool.body is redacted
-# ---------------------------------------------------------------------------
 
 
 class TestCustomPolicy:
@@ -188,9 +159,6 @@ class TestCustomPolicy:
         }
 
     async def test_custom_policy_does_not_redact_default_fields(self) -> None:
-        """A custom policy fully replaces the default; chio_file_write
-        is no longer redacted under it.
-        """
         custom = RedactionPolicy(body_fields={"my_tool": ("body",)})
 
         async with allow_all() as chio:

@@ -71,12 +71,9 @@ class ChioFunctionRegistry:
         :class:`chio_autogen.ChioGroupChatManager` when enforcing
         per-role scopes.
     redaction_policy:
-        Per-registry argument redaction policy applied right before
-        parameters are forwarded to the sidecar so secret-bearing fields
-        never land in the receipt log. Defaults to
-        :meth:`RedactionPolicy.chio_default`; pass a custom
-        :class:`RedactionPolicy` to extend with adapter or workspace
-        specific tool names.
+        Argument redaction policy applied before parameters are
+        forwarded to the sidecar. Defaults to
+        :meth:`RedactionPolicy.chio_default`.
 
     Example
     -------
@@ -304,10 +301,6 @@ class ChioFunctionRegistry:
         if inspect.iscoroutinefunction(func):
 
             async def async_wrapper(**kwargs: Any) -> Any:
-                # Redact body fields (e.g. chio_file_write.content) before
-                # they cross into the sidecar so the receipt log never
-                # carries the raw secret bytes. The underlying function
-                # still receives the original kwargs below.
                 recorded_kwargs = redact_args(
                     name, kwargs, policy=self._redaction_policy
                 )
