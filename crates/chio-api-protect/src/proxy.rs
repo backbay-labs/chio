@@ -24,6 +24,7 @@ use chio_core_types::capability::{
     ToolGrant,
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
+use chio_core_types::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
 use chio_http_core::{
     client_builder_with_contract, handle_batch_respond, handle_get_approval, handle_list_pending,
     handle_respond, http_status_metadata_decision, http_status_metadata_final, send_with_contract,
@@ -357,8 +358,41 @@ fn build_app(state: Arc<ProxyState>) -> Router {
         .route("/chio/health", get(sidecar_health_handler))
         .merge(approval_routes)
         .route("/v1/capabilities/mint", post(sidecar_mint_handler))
+        // Path alias for `chio-sdk-python`'s `ChioClient.create_capability`,
+        // which posts to `/v1/capabilities`. Accepts both the canonical
+        // mint body shape (`scopes: [strings]`, `job_uid`) and the SDK's
+        // shape (`scope: ChioScope`-object) so the SDK works without a
+        // concurrent release.
+        .route("/v1/capabilities", post(sidecar_capabilities_alias_handler))
         .route("/v1/capabilities/release", post(sidecar_release_handler))
+        // Phase B: capability validation and attenuation routes the SDK
+        // already calls. Validate verifies the embedded Ed25519 signature
+        // and checks the local revocation set and `expires_at`.
+        // Attenuate is a structured `not_yet_implemented` 501 stub
+        // because the kernel's `delegate` primitive needs the agent's
+        // private key, which the sidecar does not hold.
+        .route(
+            "/v1/capabilities/validate",
+            post(sidecar_validate_capability_handler),
+        )
+        .route(
+            "/v1/capabilities/attenuate",
+            post(sidecar_attenuate_capability_handler),
+        )
         .route("/v1/receipts", post(sidecar_submit_receipt_handler))
+        // Phase B: verify a `ChioReceipt` signature against the embedded
+        // kernel public key.
+        .route("/v1/receipts/verify", post(sidecar_verify_receipt_handler))
+        // Phase A: tool-call evaluation alias. The SDK posts a
+        // `{capability_id, tool_server, tool_name, parameters,
+        // parameter_hash}` body and expects a signed `ChioReceipt`.
+        // Today the sidecar issues a best-effort signed receipt: allow
+        // when the capability is not in the local revocation set, deny
+        // otherwise. The kernel-driven evaluation that `/chio/evaluate`
+        // performs for HTTP requests is not yet wired for tool-call
+        // bodies; the receipt's `policy_hash` records this so callers
+        // can audit the limitation.
+        .route("/v1/evaluate", post(sidecar_evaluate_tool_call_handler))
         .route("/{*path}", any(proxy_handler))
         .route("/", any(proxy_handler))
         .with_state(state)
@@ -1060,6 +1094,645 @@ async fn sidecar_submit_receipt_handler(
         }),
     )
         .into_response()
+}
+
+// ---------------------------------------------------------------------------
+// SDK-shape capability mint alias
+// ---------------------------------------------------------------------------
+
+/// Body shape posted by `chio-sdk-python`'s `ChioClient.create_capability`.
+///
+/// Differs from [`SidecarMintRequest`] in two ways:
+/// 1. The scope arrives as a structured `ChioScope` object instead of the
+///    flat `scopes: Vec<String>` shorthand.
+/// 2. There is no `job_uid`; the alias derives one deterministically.
+///
+/// The alias accepts both shapes via `serde(untagged)` so existing callers
+/// of `/v1/capabilities/mint` keep working when they happen to call the
+/// alias path.
+#[derive(Debug, Deserialize)]
+struct SdkMintRequest {
+    subject: String,
+    scope: ChioScope,
+    #[serde(default)]
+    ttl_seconds: Option<u64>,
+    #[serde(default)]
+    ttl_nanos: Option<u64>,
+    #[serde(default)]
+    ttl: Option<u64>,
+    #[serde(default)]
+    job_uid: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum SidecarCapabilitiesAliasRequest {
+    /// SDK-shape body: `scope` is a structured `ChioScope` object.
+    Sdk(SdkMintRequest),
+    /// Canonical mint body: `scopes` is a flat `Vec<String>` shorthand.
+    Canonical(SidecarMintRequest),
+}
+
+async fn sidecar_capabilities_alias_handler(
+    State(state): State<Arc<ProxyState>>,
+    request: Request<Body>,
+) -> Response {
+    if let Err(response) =
+        require_sidecar_control_request(&request, state.sidecar_control_token.as_deref())
+    {
+        return response;
+    }
+    let (_parts, body) = request.into_parts();
+    let body_bytes = match axum::body::to_bytes(body, 1024 * 1024).await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            warn!("failed to read capability mint body: {error}");
+            return sidecar_bad_request("failed to read capability mint body").into_response();
+        }
+    };
+
+    let alias_request: SidecarCapabilitiesAliasRequest = match serde_json::from_slice(&body_bytes) {
+        Ok(request) => request,
+        Err(error) => {
+            warn!("failed to decode capability alias mint request: {error}");
+            return sidecar_bad_request(&format!("invalid capability mint payload: {error}"))
+                .into_response();
+        }
+    };
+
+    let (subject, scope, job_uid, ttl_seconds_wire, ttl_nanos_wire, ttl_legacy_wire) =
+        match alias_request {
+            SidecarCapabilitiesAliasRequest::Sdk(sdk) => {
+                if sdk.subject.trim().is_empty() {
+                    return sidecar_bad_request("subject must not be empty").into_response();
+                }
+                let job_uid = sdk.job_uid.unwrap_or_default();
+                (
+                    sdk.subject,
+                    sdk.scope,
+                    job_uid,
+                    sdk.ttl_seconds,
+                    sdk.ttl_nanos,
+                    sdk.ttl,
+                )
+            }
+            SidecarCapabilitiesAliasRequest::Canonical(mint_request) => {
+                if mint_request.subject.trim().is_empty() {
+                    return sidecar_bad_request("subject must not be empty").into_response();
+                }
+                let scope = match build_sidecar_scope(&mint_request.scopes) {
+                    Ok(scope) => scope,
+                    Err(error) => return sidecar_bad_request(&error).into_response(),
+                };
+                (
+                    mint_request.subject,
+                    scope,
+                    mint_request.job_uid,
+                    mint_request.ttl_seconds,
+                    mint_request.ttl_nanos,
+                    mint_request.ttl,
+                )
+            }
+        };
+
+    let issued_at = chrono::Utc::now().timestamp() as u64;
+    let ttl_seconds = ttl_seconds_from_wire(ttl_seconds_wire, ttl_nanos_wire, ttl_legacy_wire);
+    let expires_at = issued_at.saturating_add(ttl_seconds);
+    let subject_key = derive_sidecar_subject_key(&subject, &job_uid);
+    let capability_id = match derive_sidecar_capability_id(&subject, &job_uid, ttl_seconds, &scope)
+    {
+        Ok(capability_id) => capability_id,
+        Err(error) => {
+            warn!("failed to derive deterministic capability id: {error}");
+            return internal_json_error_response(
+                "chio_capability_mint_failed",
+                "failed to derive deterministic capability id",
+            );
+        }
+    };
+
+    let capability = match CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: capability_id,
+            issuer: state.signer_keypair.public_key(),
+            subject: subject_key,
+            scope,
+            issued_at,
+            expires_at,
+            delegation_chain: Vec::new(),
+        },
+        &state.signer_keypair,
+    ) {
+        Ok(capability) => capability,
+        Err(error) => {
+            warn!("failed to sign capability token from alias mint: {error}");
+            return internal_json_error_response("chio_capability_mint_failed", &error.to_string());
+        }
+    };
+
+    // The SDK expects the `CapabilityToken` itself as the response body,
+    // not a `{capability: ...}` envelope. Returning the token directly
+    // matches `chio-sdk-python`'s `CapabilityToken.model_validate(data)`
+    // call site at `client.py:141`.
+    (StatusCode::OK, axum::Json(capability)).into_response()
+}
+
+// ---------------------------------------------------------------------------
+// Capability validation
+// ---------------------------------------------------------------------------
+
+/// `POST /v1/capabilities/validate` request shape.
+///
+/// The SDK posts the full `CapabilityToken` JSON; the optional
+/// `expected_subject` and `expected_scope` fields are accepted for forward
+/// compatibility but not enforced today (the route reports them in the
+/// response so callers can audit if they were ignored).
+#[derive(Debug, Deserialize)]
+struct SidecarValidateCapabilityRequest {
+    #[serde(flatten)]
+    token: CapabilityToken,
+    #[serde(default)]
+    expected_subject: Option<String>,
+    #[serde(default)]
+    expected_scope: Option<ChioScope>,
+}
+
+#[derive(Debug, Serialize)]
+struct SidecarValidateCapabilityResponse {
+    valid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_at: Option<u64>,
+    capability_id: String,
+}
+
+async fn sidecar_validate_capability_handler(
+    State(state): State<Arc<ProxyState>>,
+    request: Request<Body>,
+) -> Response {
+    if let Err(response) =
+        require_sidecar_control_request(&request, state.sidecar_control_token.as_deref())
+    {
+        return response;
+    }
+    let (_parts, body) = request.into_parts();
+    let body_bytes = match axum::body::to_bytes(body, 1024 * 1024).await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            warn!("failed to read capability validate body: {error}");
+            return sidecar_bad_request("failed to read capability validate body").into_response();
+        }
+    };
+
+    let validate_request: SidecarValidateCapabilityRequest =
+        match serde_json::from_slice(&body_bytes) {
+            Ok(request) => request,
+            Err(error) => {
+                warn!("failed to decode capability validate request: {error}");
+                return sidecar_bad_request(&format!(
+                    "invalid capability validate payload: {error}"
+                ))
+                .into_response();
+            }
+        };
+
+    let token = validate_request.token;
+    let capability_id = token.id.clone();
+    let expires_at = Some(token.expires_at);
+
+    // Fail-closed: revoked capabilities are invalid even if the signature
+    // verifies and `expires_at` is in the future.
+    let revoked = state
+        .revoked_capability_ids
+        .lock()
+        .await
+        .contains(&capability_id);
+    if revoked {
+        return (
+            StatusCode::OK,
+            axum::Json(SidecarValidateCapabilityResponse {
+                valid: false,
+                reason: Some("capability has been revoked".to_string()),
+                expires_at,
+                capability_id,
+            }),
+        )
+            .into_response();
+    }
+
+    let signature_valid = token.verify_signature().unwrap_or(false);
+    if !signature_valid {
+        return (
+            StatusCode::OK,
+            axum::Json(SidecarValidateCapabilityResponse {
+                valid: false,
+                reason: Some("capability signature did not verify".to_string()),
+                expires_at,
+                capability_id,
+            }),
+        )
+            .into_response();
+    }
+
+    let now = chrono::Utc::now().timestamp() as u64;
+    if token.expires_at <= now {
+        return (
+            StatusCode::OK,
+            axum::Json(SidecarValidateCapabilityResponse {
+                valid: false,
+                reason: Some("capability has expired".to_string()),
+                expires_at,
+                capability_id,
+            }),
+        )
+            .into_response();
+    }
+
+    if let Some(expected_subject) = validate_request.expected_subject.as_deref() {
+        let expected = expected_subject.trim();
+        if !expected.is_empty() && token.subject.to_hex() != expected {
+            return (
+                StatusCode::OK,
+                axum::Json(SidecarValidateCapabilityResponse {
+                    valid: false,
+                    reason: Some("capability subject does not match expected_subject".to_string()),
+                    expires_at,
+                    capability_id,
+                }),
+            )
+                .into_response();
+        }
+    }
+
+    if let Some(expected_scope) = validate_request.expected_scope.as_ref() {
+        if !is_scope_subset(expected_scope, &token.scope) {
+            return (
+                StatusCode::OK,
+                axum::Json(SidecarValidateCapabilityResponse {
+                    valid: false,
+                    reason: Some("expected_scope is not a subset of capability scope".to_string()),
+                    expires_at,
+                    capability_id,
+                }),
+            )
+                .into_response();
+        }
+    }
+
+    (
+        StatusCode::OK,
+        axum::Json(SidecarValidateCapabilityResponse {
+            valid: true,
+            reason: None,
+            expires_at,
+            capability_id,
+        }),
+    )
+        .into_response()
+}
+
+// ---------------------------------------------------------------------------
+// Capability attenuation (501 not_yet_implemented stub)
+// ---------------------------------------------------------------------------
+
+async fn sidecar_attenuate_capability_handler(
+    State(state): State<Arc<ProxyState>>,
+    request: Request<Body>,
+) -> Response {
+    if let Err(response) =
+        require_sidecar_control_request(&request, state.sidecar_control_token.as_deref())
+    {
+        return response;
+    }
+    // Drain the body so the client sees a clean response even on large
+    // payloads; the body itself is not used because attenuation is not
+    // implemented over HTTP yet.
+    let _ = axum::body::to_bytes(request.into_body(), 1024 * 1024).await;
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        axum::Json(serde_json::json!({
+            "error": "chio_attenuate_not_implemented",
+            "message": "capability attenuation over HTTP is not yet wired; the kernel's `delegate` primitive requires the parent capability subject's private key, which the sidecar does not hold. Use `chio-sdk-python`'s local attenuation helpers, or call the kernel directly until this route lands.",
+            "rfc": "see crates/chio-core-types/src/capability.rs::delegate (feature `delegation_v2`)",
+        })),
+    )
+        .into_response()
+}
+
+// ---------------------------------------------------------------------------
+// Receipt verification (`ChioReceipt`-shaped, distinct from `/chio/verify`
+// which is `HttpReceipt`-shaped)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct SidecarVerifyReceiptRequest {
+    #[serde(flatten)]
+    receipt: ChioReceipt,
+    #[serde(default)]
+    expected_decision: Option<String>,
+    #[serde(default)]
+    expected_capability_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SidecarVerifyReceiptResponse {
+    valid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    decision: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signed_at: Option<u64>,
+    receipt_id: String,
+}
+
+async fn sidecar_verify_receipt_handler(
+    State(_state): State<Arc<ProxyState>>,
+    request: Request<Body>,
+) -> Response {
+    let (_parts, body) = request.into_parts();
+    let body_bytes = match axum::body::to_bytes(body, 1024 * 1024).await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            warn!("failed to read receipt verify body: {error}");
+            return sidecar_bad_request("failed to read receipt verify body").into_response();
+        }
+    };
+
+    let verify_request: SidecarVerifyReceiptRequest = match serde_json::from_slice(&body_bytes) {
+        Ok(request) => request,
+        Err(error) => {
+            warn!("failed to decode ChioReceipt verify request: {error}");
+            return sidecar_bad_request(&format!("invalid receipt verify payload: {error}"))
+                .into_response();
+        }
+    };
+
+    let receipt = verify_request.receipt;
+    let receipt_id = receipt.id.clone();
+    let signed_at = Some(receipt.timestamp);
+    let decision_label = decision_label(&receipt.decision);
+
+    let signature_valid = receipt.verify_signature().unwrap_or(false);
+    if !signature_valid {
+        return (
+            StatusCode::OK,
+            axum::Json(SidecarVerifyReceiptResponse {
+                valid: false,
+                reason: Some("receipt signature did not verify".to_string()),
+                decision: Some(decision_label.clone()),
+                signed_at,
+                receipt_id,
+            }),
+        )
+            .into_response();
+    }
+
+    if let Some(expected_decision) = verify_request.expected_decision.as_deref() {
+        let expected = expected_decision.trim();
+        if !expected.is_empty() && expected != decision_label {
+            return (
+                StatusCode::OK,
+                axum::Json(SidecarVerifyReceiptResponse {
+                    valid: false,
+                    reason: Some(format!(
+                        "decision {decision_label} does not match expected {expected}"
+                    )),
+                    decision: Some(decision_label),
+                    signed_at,
+                    receipt_id,
+                }),
+            )
+                .into_response();
+        }
+    }
+
+    if let Some(expected_capability_id) = verify_request.expected_capability_id.as_deref() {
+        let expected = expected_capability_id.trim();
+        if !expected.is_empty() && expected != receipt.capability_id {
+            return (
+                StatusCode::OK,
+                axum::Json(SidecarVerifyReceiptResponse {
+                    valid: false,
+                    reason: Some(
+                        "receipt capability_id does not match expected_capability_id".to_string(),
+                    ),
+                    decision: Some(decision_label),
+                    signed_at,
+                    receipt_id,
+                }),
+            )
+                .into_response();
+        }
+    }
+
+    (
+        StatusCode::OK,
+        axum::Json(SidecarVerifyReceiptResponse {
+            valid: true,
+            reason: None,
+            decision: Some(decision_label),
+            signed_at,
+            receipt_id,
+        }),
+    )
+        .into_response()
+}
+
+fn decision_label(decision: &Decision) -> String {
+    match decision {
+        Decision::Allow => "allow".to_string(),
+        Decision::Deny { .. } => "deny".to_string(),
+        Decision::Cancelled { .. } => "cancelled".to_string(),
+        Decision::Incomplete { .. } => "incomplete".to_string(),
+    }
+}
+
+fn is_scope_subset(child: &ChioScope, parent: &ChioScope) -> bool {
+    let grants_ok = child.grants.iter().all(|child_grant| {
+        parent
+            .grants
+            .iter()
+            .any(|p| tool_grant_subset(child_grant, p))
+    });
+    let resources_ok = child.resource_grants.iter().all(|child_grant| {
+        parent
+            .resource_grants
+            .iter()
+            .any(|p| resource_grant_subset(child_grant, p))
+    });
+    let prompts_ok = child.prompt_grants.iter().all(|child_grant| {
+        parent
+            .prompt_grants
+            .iter()
+            .any(|p| prompt_grant_subset(child_grant, p))
+    });
+    grants_ok && resources_ok && prompts_ok
+}
+
+fn tool_grant_subset(child: &ToolGrant, parent: &ToolGrant) -> bool {
+    if parent.server_id != "*" && parent.server_id != child.server_id {
+        return false;
+    }
+    if parent.tool_name != "*" && parent.tool_name != child.tool_name {
+        return false;
+    }
+    child
+        .operations
+        .iter()
+        .all(|op| parent.operations.contains(op))
+}
+
+fn resource_grant_subset(child: &ResourceGrant, parent: &ResourceGrant) -> bool {
+    if parent.uri_pattern != "*" && parent.uri_pattern != child.uri_pattern {
+        return false;
+    }
+    child
+        .operations
+        .iter()
+        .all(|op| parent.operations.contains(op))
+}
+
+fn prompt_grant_subset(child: &PromptGrant, parent: &PromptGrant) -> bool {
+    if parent.prompt_name != "*" && parent.prompt_name != child.prompt_name {
+        return false;
+    }
+    child
+        .operations
+        .iter()
+        .all(|op| parent.operations.contains(op))
+}
+
+// ---------------------------------------------------------------------------
+// Tool-call evaluation (SDK alias for `evaluate_tool_call`)
+// ---------------------------------------------------------------------------
+
+/// `POST /v1/evaluate` body shape posted by `chio-sdk-python`'s
+/// `ChioClient.evaluate_tool_call`. Distinct from `/chio/evaluate`'s
+/// `ChioHttpRequest` shape because the SDK does not synthesize an HTTP
+/// substrate request for direct tool calls.
+#[derive(Debug, Deserialize)]
+struct SidecarEvaluateToolCallRequest {
+    capability_id: String,
+    tool_server: String,
+    tool_name: String,
+    #[serde(default)]
+    parameters: serde_json::Value,
+    #[serde(default)]
+    parameter_hash: Option<String>,
+}
+
+async fn sidecar_evaluate_tool_call_handler(
+    State(state): State<Arc<ProxyState>>,
+    request: Request<Body>,
+) -> Response {
+    let (_parts, body) = request.into_parts();
+    let body_bytes = match axum::body::to_bytes(body, 1024 * 1024).await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            warn!("failed to read evaluate body: {error}");
+            return sidecar_bad_request("failed to read evaluate body").into_response();
+        }
+    };
+
+    let evaluate_request: SidecarEvaluateToolCallRequest = match serde_json::from_slice(&body_bytes)
+    {
+        Ok(request) => request,
+        Err(error) => {
+            warn!("failed to decode evaluate tool-call request: {error}");
+            return sidecar_bad_request(&format!("invalid evaluate payload: {error}"))
+                .into_response();
+        }
+    };
+
+    if evaluate_request.capability_id.trim().is_empty() {
+        return sidecar_bad_request("capability_id must not be empty").into_response();
+    }
+    if evaluate_request.tool_server.trim().is_empty() {
+        return sidecar_bad_request("tool_server must not be empty").into_response();
+    }
+    if evaluate_request.tool_name.trim().is_empty() {
+        return sidecar_bad_request("tool_name must not be empty").into_response();
+    }
+
+    // Recompute the parameter hash deterministically; if the client
+    // supplied one, treat a mismatch as a denied receipt rather than a
+    // 400 so the audit log captures the discrepancy.
+    let parameter_hash = match chio_core_types::canonical_json_bytes(&evaluate_request.parameters) {
+        Ok(canonical) => chio_core_types::sha256_hex(&canonical),
+        Err(error) => {
+            warn!("failed to canonicalise tool-call parameters: {error}");
+            return internal_json_error_response("chio_receipt_sign_failed", &error.to_string());
+        }
+    };
+
+    let claimed_hash = evaluate_request
+        .parameter_hash
+        .as_ref()
+        .map(|hash| hash.trim().to_ascii_lowercase());
+
+    let revoked = state
+        .revoked_capability_ids
+        .lock()
+        .await
+        .contains(&evaluate_request.capability_id);
+
+    let decision = if revoked {
+        Decision::Deny {
+            reason: "capability has been revoked".to_string(),
+            guard: "CapabilityRevocation".to_string(),
+        }
+    } else if let Some(claimed) = claimed_hash.as_ref() {
+        if !claimed.is_empty() && *claimed != parameter_hash {
+            Decision::Deny {
+                reason: "parameter_hash does not match canonical hash of parameters".to_string(),
+                guard: "ParameterHashMismatch".to_string(),
+            }
+        } else {
+            Decision::Allow
+        }
+    } else {
+        Decision::Allow
+    };
+
+    let action = ToolCallAction {
+        parameters: evaluate_request.parameters,
+        parameter_hash,
+    };
+
+    let receipt = match ChioReceipt::sign(
+        ChioReceiptBody {
+            id: uuid::Uuid::now_v7().to_string(),
+            timestamp: chrono::Utc::now().timestamp() as u64,
+            capability_id: evaluate_request.capability_id,
+            tool_server: evaluate_request.tool_server,
+            tool_name: evaluate_request.tool_name,
+            action,
+            decision,
+            content_hash: chio_core_types::sha256_hex(&body_bytes),
+            policy_hash: manual_receipt_policy_hash(
+                "chio_api_protect_sidecar_tool_call_evaluation_v1",
+            ),
+            evidence: Vec::new(),
+            metadata: Some(serde_json::json!({
+                "evaluation_kind": "sidecar_tool_call_alias",
+                "limitation": "kernel-driven tool-call evaluation is not yet wired through the sidecar; this receipt records cap-revocation and parameter-hash checks only",
+            })),
+            trust_level: chio_core_types::receipt::TrustLevel::default(),
+            tenant_id: None,
+            kernel_key: state.signer_keypair.public_key(),
+        },
+        &state.signer_keypair,
+    ) {
+        Ok(receipt) => receipt,
+        Err(error) => {
+            warn!("failed to sign tool-call evaluation receipt: {error}");
+            return internal_json_error_response("chio_receipt_sign_failed", &error.to_string());
+        }
+    };
+
+    (StatusCode::OK, axum::Json(receipt)).into_response()
 }
 
 fn parse_query_params(raw_query: Option<&str>) -> HashMap<String, String> {
@@ -3646,5 +4319,397 @@ paths:
         assert_eq!(log.receipts.len(), 2);
 
         let _ = std::fs::remove_file(receipt_db);
+    }
+
+    // -------------------------------------------------------------
+    // Phase A / B: SDK-shape body tests for the new routes.
+    // -------------------------------------------------------------
+
+    fn loopback_post(uri: &str, body: serde_json::Value) -> Request<Body> {
+        with_loopback_peer(
+            Request::builder()
+                .method("POST")
+                .uri(uri)
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).test_unwrap()))
+                .test_unwrap(),
+        )
+    }
+
+    #[tokio::test]
+    async fn sidecar_capabilities_alias_accepts_sdk_body_shape() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+        let subject = Keypair::generate();
+
+        let body = serde_json::json!({
+            "subject": subject.public_key().to_hex(),
+            "scope": {
+                "grants": [],
+                "resource_grants": [],
+                "prompt_grants": [],
+            },
+            "ttl_seconds": 600,
+        });
+
+        let response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities", body))
+            .await
+            .test_unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let bytes = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let token: CapabilityToken = serde_json::from_slice(&bytes).test_unwrap();
+        assert!(!token.id.is_empty());
+        assert!(token.verify_signature().test_unwrap());
+    }
+
+    #[tokio::test]
+    async fn sidecar_capabilities_alias_accepts_canonical_body_shape() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+
+        let body = serde_json::json!({
+            "subject": "agent-via-canonical",
+            "scopes": ["filesystem:read"],
+            "ttl_seconds": 600,
+            "job_uid": "job-canonical-1",
+        });
+
+        let response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities", body))
+            .await
+            .test_unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let bytes = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let token: CapabilityToken = serde_json::from_slice(&bytes).test_unwrap();
+        assert!(token.verify_signature().test_unwrap());
+    }
+
+    #[tokio::test]
+    async fn sidecar_capabilities_alias_rejects_blank_subject() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+        let body = serde_json::json!({
+            "subject": "   ",
+            "scope": { "grants": [], "resource_grants": [], "prompt_grants": [] },
+            "ttl_seconds": 60,
+        });
+        let response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities", body))
+            .await
+            .test_unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn sidecar_validate_capability_returns_valid_for_freshly_minted_token() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+        let mint_body = serde_json::json!({
+            "subject": Keypair::generate().public_key().to_hex(),
+            "scope": { "grants": [], "resource_grants": [], "prompt_grants": [] },
+            "ttl_seconds": 600,
+        });
+        let mint_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities", mint_body))
+            .await
+            .test_unwrap();
+        let mint_bytes = to_bytes(mint_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let token: CapabilityToken = serde_json::from_slice(&mint_bytes).test_unwrap();
+
+        let validate_body = serde_json::to_value(&token).test_unwrap();
+        let validate_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities/validate", validate_body))
+            .await
+            .test_unwrap();
+        assert_eq!(validate_response.status(), StatusCode::OK);
+
+        let bytes = to_bytes(validate_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).test_unwrap();
+        assert_eq!(json["valid"], true);
+        assert_eq!(json["capability_id"], token.id);
+        assert!(json.get("reason").is_none() || json["reason"].is_null());
+    }
+
+    #[tokio::test]
+    async fn sidecar_validate_capability_reports_revoked_capability() {
+        let receipt_db = temp_receipt_db_path();
+        let state = test_state_with_receipt_db(
+            Vec::new(),
+            "http://127.0.0.1:1".to_string(),
+            Some(&receipt_db),
+        );
+
+        let mint_body = serde_json::json!({
+            "subject": Keypair::generate().public_key().to_hex(),
+            "scope": { "grants": [], "resource_grants": [], "prompt_grants": [] },
+            "ttl_seconds": 600,
+        });
+        let mint_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities", mint_body))
+            .await
+            .test_unwrap();
+        let token: CapabilityToken = serde_json::from_slice(
+            &to_bytes(mint_response.into_body(), 1024 * 1024)
+                .await
+                .test_unwrap(),
+        )
+        .test_unwrap();
+
+        // Revoke the capability via the existing release route, then
+        // validate.
+        let release_body = serde_json::json!({
+            "capability_id": token.id,
+            "reason": "test",
+        });
+        let release_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities/release", release_body))
+            .await
+            .test_unwrap();
+        assert_eq!(release_response.status(), StatusCode::OK);
+
+        let validate_body = serde_json::to_value(&token).test_unwrap();
+        let validate_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities/validate", validate_body))
+            .await
+            .test_unwrap();
+        let bytes = to_bytes(validate_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).test_unwrap();
+        assert_eq!(json["valid"], false);
+        assert!(json["reason"].as_str().test_unwrap().contains("revoked"));
+
+        let _ = std::fs::remove_file(receipt_db);
+    }
+
+    #[tokio::test]
+    async fn sidecar_attenuate_capability_returns_not_implemented() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+        let body = serde_json::json!({
+            "parent_capability_id": "anything",
+            "attenuated_scope": {},
+        });
+
+        let response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities/attenuate", body))
+            .await
+            .test_unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+
+        let bytes = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).test_unwrap();
+        assert_eq!(json["error"], "chio_attenuate_not_implemented");
+    }
+
+    #[tokio::test]
+    async fn sidecar_verify_receipt_round_trips_a_signed_chio_receipt() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+
+        // First, mint a tool-call receipt via the new evaluate alias so
+        // we get a sidecar-signed `ChioReceipt` to round-trip.
+        let mint_body = serde_json::json!({
+            "subject": Keypair::generate().public_key().to_hex(),
+            "scope": { "grants": [], "resource_grants": [], "prompt_grants": [] },
+            "ttl_seconds": 600,
+        });
+        let mint_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities", mint_body))
+            .await
+            .test_unwrap();
+        let token: CapabilityToken = serde_json::from_slice(
+            &to_bytes(mint_response.into_body(), 1024 * 1024)
+                .await
+                .test_unwrap(),
+        )
+        .test_unwrap();
+
+        let evaluate_body = serde_json::json!({
+            "capability_id": token.id,
+            "tool_server": "fs",
+            "tool_name": "read",
+            "parameters": {"path": "/etc/hostname"},
+        });
+        let evaluate_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/evaluate", evaluate_body))
+            .await
+            .test_unwrap();
+        assert_eq!(evaluate_response.status(), StatusCode::OK);
+        let receipt_bytes = to_bytes(evaluate_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let receipt: ChioReceipt = serde_json::from_slice(&receipt_bytes).test_unwrap();
+        assert!(receipt.verify_signature().test_unwrap());
+        assert_eq!(receipt.capability_id, token.id);
+        assert!(matches!(receipt.decision, Decision::Allow));
+
+        // Now feed it back through `/v1/receipts/verify`.
+        let verify_body = serde_json::to_value(&receipt).test_unwrap();
+        let verify_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/receipts/verify", verify_body))
+            .await
+            .test_unwrap();
+        assert_eq!(verify_response.status(), StatusCode::OK);
+        let verify_json: serde_json::Value = serde_json::from_slice(
+            &to_bytes(verify_response.into_body(), 1024 * 1024)
+                .await
+                .test_unwrap(),
+        )
+        .test_unwrap();
+        assert_eq!(verify_json["valid"], true);
+        assert_eq!(verify_json["decision"], "allow");
+        assert_eq!(verify_json["receipt_id"], receipt.id);
+    }
+
+    #[tokio::test]
+    async fn sidecar_verify_receipt_rejects_expected_decision_mismatch() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+
+        let mint_body = serde_json::json!({
+            "subject": Keypair::generate().public_key().to_hex(),
+            "scope": { "grants": [], "resource_grants": [], "prompt_grants": [] },
+            "ttl_seconds": 600,
+        });
+        let mint_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities", mint_body))
+            .await
+            .test_unwrap();
+        let token: CapabilityToken = serde_json::from_slice(
+            &to_bytes(mint_response.into_body(), 1024 * 1024)
+                .await
+                .test_unwrap(),
+        )
+        .test_unwrap();
+
+        let evaluate_body = serde_json::json!({
+            "capability_id": token.id,
+            "tool_server": "fs",
+            "tool_name": "read",
+            "parameters": {"path": "/etc/hostname"},
+        });
+        let evaluate_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/evaluate", evaluate_body))
+            .await
+            .test_unwrap();
+        let receipt: ChioReceipt = serde_json::from_slice(
+            &to_bytes(evaluate_response.into_body(), 1024 * 1024)
+                .await
+                .test_unwrap(),
+        )
+        .test_unwrap();
+
+        let mut verify_body = serde_json::to_value(&receipt).test_unwrap();
+        verify_body
+            .as_object_mut()
+            .test_unwrap()
+            .insert("expected_decision".to_string(), serde_json::json!("deny"));
+
+        let verify_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/receipts/verify", verify_body))
+            .await
+            .test_unwrap();
+        let verify_json: serde_json::Value = serde_json::from_slice(
+            &to_bytes(verify_response.into_body(), 1024 * 1024)
+                .await
+                .test_unwrap(),
+        )
+        .test_unwrap();
+        assert_eq!(verify_json["valid"], false);
+        assert!(verify_json["reason"]
+            .as_str()
+            .test_unwrap()
+            .contains("does not match"));
+    }
+
+    #[tokio::test]
+    async fn sidecar_evaluate_tool_call_denies_revoked_capability() {
+        let receipt_db = temp_receipt_db_path();
+        let state = test_state_with_receipt_db(
+            Vec::new(),
+            "http://127.0.0.1:1".to_string(),
+            Some(&receipt_db),
+        );
+
+        let mint_body = serde_json::json!({
+            "subject": Keypair::generate().public_key().to_hex(),
+            "scope": { "grants": [], "resource_grants": [], "prompt_grants": [] },
+            "ttl_seconds": 600,
+        });
+        let mint_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities", mint_body))
+            .await
+            .test_unwrap();
+        let token: CapabilityToken = serde_json::from_slice(
+            &to_bytes(mint_response.into_body(), 1024 * 1024)
+                .await
+                .test_unwrap(),
+        )
+        .test_unwrap();
+
+        let release_body = serde_json::json!({"capability_id": token.id});
+        let release_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/capabilities/release", release_body))
+            .await
+            .test_unwrap();
+        assert_eq!(release_response.status(), StatusCode::OK);
+
+        let evaluate_body = serde_json::json!({
+            "capability_id": token.id,
+            "tool_server": "fs",
+            "tool_name": "read",
+            "parameters": {},
+        });
+        let evaluate_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/evaluate", evaluate_body))
+            .await
+            .test_unwrap();
+        assert_eq!(evaluate_response.status(), StatusCode::OK);
+        let receipt: ChioReceipt = serde_json::from_slice(
+            &to_bytes(evaluate_response.into_body(), 1024 * 1024)
+                .await
+                .test_unwrap(),
+        )
+        .test_unwrap();
+        assert!(receipt.is_denied());
+        assert!(receipt.verify_signature().test_unwrap());
+
+        let _ = std::fs::remove_file(receipt_db);
+    }
+
+    #[tokio::test]
+    async fn sidecar_evaluate_tool_call_denies_parameter_hash_mismatch() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+
+        let evaluate_body = serde_json::json!({
+            "capability_id": "cap-test",
+            "tool_server": "fs",
+            "tool_name": "read",
+            "parameters": {"path": "/etc/hostname"},
+            "parameter_hash": "deadbeef".to_string(),
+        });
+        let evaluate_response = build_app(Arc::clone(&state))
+            .oneshot(loopback_post("/v1/evaluate", evaluate_body))
+            .await
+            .test_unwrap();
+        assert_eq!(evaluate_response.status(), StatusCode::OK);
+        let receipt: ChioReceipt = serde_json::from_slice(
+            &to_bytes(evaluate_response.into_body(), 1024 * 1024)
+                .await
+                .test_unwrap(),
+        )
+        .test_unwrap();
+        assert!(receipt.is_denied());
+        match &receipt.decision {
+            Decision::Deny { guard, .. } => assert_eq!(guard, "ParameterHashMismatch"),
+            other => panic!("expected ParameterHashMismatch, got {other:?}"),
+        }
     }
 }
