@@ -644,36 +644,73 @@ def _task_parameters(
         else:
             new_args.append(args[i])
     # VAR_POSITIONAL extras: positional values past the fixed slots have
-    # no fixed parameter name, but the chio default tool-arity table may
-    # still declare a name we can bind them to (e.g. ``def write_file(path,
-    # *args)`` called as ``write_file("/tmp/x", "PROD_SECRET")`` puts the
-    # secret in args[1]; chio_file_write -> ("path", "content") tells us
-    # to redact that slot as `content`). Without this, the secret would
-    # be re-emitted unredacted.
+    # no fixed parameter name, but two name sources can still bind them:
+    #
+    #  1. The variadic parameter's own declared name (e.g.
+    #     ``def write_file(*content, path)``). Python lets the user pick
+    #     a meaningful variadic name; if that name is itself one of the
+    #     body fields the policy redacts for this tool, the user's
+    #     intent is unambiguous and we redact every extra under that
+    #     name. This case is the priority because it reflects the
+    #     wrapped fn's own contract.
+    #  2. The chio default tool-arity table (e.g. ``def write_file(path,
+    #     *args)`` called as ``write_file("/tmp/x", "PROD_SECRET")``
+    #     puts the secret in args[1]; chio_file_write -> ("path",
+    #     "content") tells us to redact that slot as ``content``).
+    #
+    # Without this, the secret would be re-emitted unredacted.
     if has_var_positional and len(args) > bound_positional_count:
-        positional_table = _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name)
         extras = list(args[bound_positional_count:])
-        if positional_table is not None:
-            for i, value in enumerate(extras):
-                table_index = bound_positional_count + i
-                if table_index >= len(positional_table):
-                    # Past the table cardinality: no name to bind against;
-                    # surface the extra unchanged.
-                    new_args.append(value)
-                    continue
-                slot_name = positional_table[table_index]
-                if slot_name in {n for n in fixed_positional_names}:
-                    # The table name collides with a fixed parameter name;
-                    # the fixed slot already got its redacted value above,
-                    # so just surface the extra unchanged here.
-                    new_args.append(value)
-                    continue
+        # Prefer the variadic parameter's own name when the policy
+        # would redact a field of that name for this tool. This handles
+        # ``def write_file(*content, path)`` where the user named the
+        # variadic ``content`` to signal the wire intent.
+        var_positional_name = next(
+            (
+                p.name
+                for p in params.values()
+                if p.kind is inspect.Parameter.VAR_POSITIONAL
+            ),
+            None,
+        )
+        body_fields = policy.body_fields.get(tool_name, ())
+        if (
+            var_positional_name is not None
+            and var_positional_name in body_fields
+        ):
+            for value in extras:
                 redacted_extra = redact_args(
-                    tool_name, {slot_name: value}, policy=policy
+                    tool_name,
+                    {var_positional_name: value},
+                    policy=policy,
                 )
-                new_args.append(redacted_extra[slot_name])
+                new_args.append(redacted_extra[var_positional_name])
         else:
-            new_args.extend(extras)
+            positional_table = _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES.get(
+                tool_name
+            )
+            if positional_table is not None:
+                for i, value in enumerate(extras):
+                    table_index = bound_positional_count + i
+                    if table_index >= len(positional_table):
+                        # Past the table cardinality: no name to bind
+                        # against; surface the extra unchanged.
+                        new_args.append(value)
+                        continue
+                    slot_name = positional_table[table_index]
+                    if slot_name in {n for n in fixed_positional_names}:
+                        # The table name collides with a fixed parameter
+                        # name; the fixed slot already got its redacted
+                        # value above, so just surface the extra
+                        # unchanged here.
+                        new_args.append(value)
+                        continue
+                    redacted_extra = redact_args(
+                        tool_name, {slot_name: value}, policy=policy
+                    )
+                    new_args.append(redacted_extra[slot_name])
+            else:
+                new_args.extend(extras)
     new_kwargs = {
         k: v
         for k, v in redacted_flat.items()

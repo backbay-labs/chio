@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1]
+
+- feat: add `bind_and_redact` helper plus `DEFAULT_TOOL_POSITIONAL_NAMES`
+  table that consolidates the bind-positional-args + redact-named-fields
+  pattern that nine sibling adapters re-derived. Handles VAR_KEYWORD/
+  VAR_POSITIONAL, drop_self=True for non-self receivers, merge-conflict
+  resolution, and C-extension fallback. Sibling adapters can replace their
+  inline `_build_redacted_parameters` / `_redact_method_call` equivalents
+  with `from chio_adapter_base.redact import bind_and_redact`.
+- docs: README section "Where to redact: pre-evaluation vs post-tool-call"
+  documenting the chio-hermes precedent reconciliation. The 9 sibling
+  adapters redact pre-evaluation (defense-in-depth, sidecar-as-untrusted);
+  chio-hermes redacts post-tool-call (lets policy see real content).
+  Both are valid; pick based on sidecar deployment topology.
+
 ### Added
 - Phase 2: ported the seven primitives from chio-hermes into the new
   package. `sanitised_env`, `harden_git_argv`, `reject_shell_argv_escape`,

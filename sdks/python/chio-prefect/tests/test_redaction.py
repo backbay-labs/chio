@@ -903,3 +903,78 @@ class TestPositionalOnlyVarKeywordSpillover:
             "omitted": True,
             "byte_count": len(b"SPILLOVER_BODY"),
         }
+
+
+class TestVarPositionalNamedAfterBodyField:
+    """Regression for #672 comment 3228939863.
+
+    ``def write_file(*content, path)`` puts the positional secret in the
+    VAR_POSITIONAL bucket whose declared name is ``content`` (one of the
+    chio_file_write body fields). The chio default tool-arity table
+    (``("path", "content")``) maps ``args[0]`` to ``path`` instead, which
+    silently leaks the positional secret because ``path`` is not in the
+    redaction policy. The fix prefers the variadic parameter's own name
+    when it matches a redacted body field for this tool.
+    """
+
+    def test_positional_secret_redacted_when_var_positional_named_content(
+        self,
+    ) -> None:
+        from typing import Any
+
+        from chio_prefect.decorators import _task_parameters
+
+        def write_file(*content: Any, path: str) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("PROD_SECRET",),
+            {"path": "/tmp/x"},
+            "chio_file_write",
+            policy,
+            fn=write_file,
+        )
+
+        import json
+
+        serialised = json.dumps(params)
+        assert "PROD_SECRET" not in serialised
+        # Positional content stub re-emits in args[0]; the kwarg path
+        # stays unredacted because ``path`` is not a body field.
+        assert params["args"][0] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET"),
+        }
+        assert params["kwargs"]["path"] == "/tmp/x"
+
+    def test_multiple_var_positional_secrets_all_redacted(self) -> None:
+        from typing import Any
+
+        from chio_prefect.decorators import _task_parameters
+
+        def write_file(*content: Any, path: str) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("SECRET_1", "SECRET_2"),
+            {"path": "/tmp/x"},
+            "chio_file_write",
+            policy,
+            fn=write_file,
+        )
+
+        import json
+
+        serialised = json.dumps(params)
+        assert "SECRET_1" not in serialised
+        assert "SECRET_2" not in serialised
+        assert params["args"][0] == {
+            "omitted": True,
+            "byte_count": len(b"SECRET_1"),
+        }
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"SECRET_2"),
+        }
