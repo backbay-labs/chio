@@ -1,0 +1,60 @@
+{
+  "schema": "chio.pheromone.relay-alert-handoff-profile.v1",
+  "localKernelId": "did:chio:dataco",
+  "issuedAtUnixMs": 1766000000000,
+  "expiresAtUnixMs": 1766003600000,
+  "maxAlertReportAgeMs": 300000,
+  "maxTrendReportAgeMs": 900000,
+  "receivers": [
+    {
+      "receiverId": "alertmanager-pagerduty-primary",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:pagerduty-primary",
+      "notificationRoute": "pagerduty-primary",
+      "opsgenie": "relay-oncall",
+      "severityFloor": "critical",
+      "escalationRef": "relay-critical-page",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
+    },
+    {
+      "receiverId": "alertmanager-slack-digest",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:slack-ops-digest",
+      "notificationRoute": "slack-ops-digest",
+      "opsgenie": "relay-oncall",
+      "severityFloor": "info",
+      "escalationRef": "relay-digest",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox"
+    },
+    {
+      "receiverId": "alertmanager-auth-watch",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:relay-auth-watch",
+      "notificationRoute": "opsgenie-auth-watch",
+      "opsgenie": "relay-security",
+      "severityFloor": "warning",
+      "escalationRef": "relay-auth-watch",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#replay-storm"
+    }
+  ],
+  "escalations": [
+    {
+      "escalationRef": "relay-critical-page",
+      "severity": "critical",
+      "maxDelayMs": 300000,
+      "recommendationCode": "page-primary"
+    },
+    {
+      "escalationRef": "relay-digest",
+      "severity": "info",
+      "maxDelayMs": 3600000,
+      "recommendationCode": "ops-digest"
+    },
+    {
+      "escalationRef": "relay-auth-watch",
+      "severity": "warning",
+      "maxDelayMs": 600000,
+      "recommendationCode": "auth-watch"
+    }
+  ]
+}

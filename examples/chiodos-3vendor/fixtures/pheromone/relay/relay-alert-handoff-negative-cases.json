@@ -1,0 +1,75 @@
+{
+  "schema": "chio.pheromone.relay-alert-handoff-negative-fixture-corpus.v1",
+  "cases": [
+    {
+      "id": "inline-token",
+      "description": "handoff receiver target carries credential-looking material",
+      "expectedCode": "alert_handoff_invalid"
+    },
+    {
+      "id": "dynamic-url",
+      "description": "handoff receiver target is a dynamic endpoint",
+      "expectedCode": "alert_handoff_invalid"
+    },
+    {
+      "id": "credential-target-ref",
+      "description": "handoff receiver target ref resembles credential material",
+      "expectedCode": "alert_handoff_invalid"
+    },
+    {
+      "id": "unbounded-label",
+      "description": "alert report carries an unbounded routing label",
+      "expectedCode": "alert_source_invalid"
+    },
+    {
+      "id": "unknown-sink-kind",
+      "description": "handoff profile names an unsupported downstream sink kind",
+      "expectedCode": "alert_handoff_invalid"
+    },
+    {
+      "id": "duplicate-route",
+      "description": "handoff profile repeats receiver route coverage",
+      "expectedCode": "alert_handoff_invalid"
+    },
+    {
+      "id": "route-collision",
+      "description": "routing profile collides notification routes",
+      "expectedCode": "alert_routing_invalid"
+    },
+    {
+      "id": "stale-alert-report",
+      "description": "alert report is older than the handoff profile allows",
+      "expectedCode": "alert_source_invalid"
+    },
+    {
+      "id": "stale-trend-report",
+      "description": "trend report window is older than the handoff profile allows",
+      "expectedCode": "alert_source_invalid"
+    },
+    {
+      "id": "source-hash-mismatch",
+      "description": "alert carries a source hash that does not match the report",
+      "expectedCode": "alert_source_invalid"
+    },
+    {
+      "id": "missing-runbook",
+      "description": "handoff receiver omits the local runbook reference",
+      "expectedCode": "alert_handoff_invalid"
+    },
+    {
+      "id": "critical-hidden-by-suppression",
+      "description": "critical firing visibility is not routeable downstream",
+      "expectedCode": "alert_handoff_invalid"
+    },
+    {
+      "id": "missing-event-evidence",
+      "description": "severe alert source lacks required bounded evidence",
+      "expectedCode": "alert_source_invalid"
+    },
+    {
+      "id": "downstream-route-missing",
+      "description": "routing profile route has no handoff receiver",
+      "expectedCode": "alert_handoff_invalid"
+    }
+  ]
+}

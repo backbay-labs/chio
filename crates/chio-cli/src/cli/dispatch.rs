@@ -2590,6 +2590,21 @@ fn main() {
                             now_unix_ms,
                             &report,
                         ),
+                        ChiodosPheromoneRelayAlertCommands::Handoff {
+                            alert_report,
+                            trend_report,
+                            routing_profile,
+                            handoff_profile,
+                            now_unix_ms,
+                            report,
+                        } => cmd_chiodos_pheromone_relay_alert_handoff(
+                            &alert_report,
+                            &trend_report,
+                            &routing_profile,
+                            &handoff_profile,
+                            now_unix_ms,
+                            &report,
+                        ),
                     },
                     ChiodosPheromoneRelayCommands::Trend {
                         reports_dir,
@@ -3661,6 +3676,53 @@ fn cmd_chiodos_pheromone_relay_alert_evaluate(
         })
         .map_err(|error| CliError::cli_other_error(format!("Chiodos relay alert evaluate: {error}")))?;
     write_pretty_json(report, &alert_report, "Chiodos relay alert report")
+}
+
+fn cmd_chiodos_pheromone_relay_alert_handoff(
+    alert_report: &Path,
+    trend_report: &Path,
+    routing_profile: &Path,
+    handoff_profile: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let alert_report: chio_pheromone_relay::RelayAlertReport = serde_json::from_str(
+        &read_utf8_json_file(alert_report, "Chiodos relay alert report")?,
+    )
+    .map_err(|error| CliError::cli_other_error(format!("Chiodos relay alert report: {error}")))?;
+    let trend_report: chio_pheromone_relay::RelayTrendReport = serde_json::from_str(
+        &read_utf8_json_file(trend_report, "Chiodos relay trend report")?,
+    )
+    .map_err(|error| CliError::cli_other_error(format!("Chiodos relay trend report: {error}")))?;
+    let routing_profile = chio_pheromone_relay::relay_alert_routing_profile_from_json(
+        &read_utf8_json_file(routing_profile, "Chiodos relay alert routing profile")?,
+        now_unix_ms,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert routing profile: {error}"))
+    })?;
+    let handoff_profile = chio_pheromone_relay::relay_alert_handoff_profile_from_json(
+        &read_utf8_json_file(handoff_profile, "Chiodos relay alert handoff profile")?,
+        now_unix_ms,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert handoff profile: {error}"))
+    })?;
+    let handoff_report = chio_pheromone_relay::evaluate_relay_alert_handoff(
+        chio_pheromone_relay::RelayAlertHandoffInput {
+            alert_report: &alert_report,
+            trend_report: &trend_report,
+            routing_profile: &routing_profile,
+            handoff_profile: &handoff_profile,
+            now_unix_ms,
+        },
+    )
+    .map_err(|error| CliError::cli_other_error(format!("Chiodos relay alert handoff: {error}")))?;
+    write_pretty_json(
+        report,
+        &handoff_report,
+        "Chiodos relay alert handoff report",
+    )
 }
 
 fn cmd_chiodos_pheromone_relay_trend(

@@ -877,6 +877,76 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn chiodos_pheromone_relay_alert_handoff_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "alert",
+            "handoff",
+            "--alert-report",
+            "relay-alert-report.json",
+            "--trend-report",
+            "relay-trend-report.json",
+            "--routing-profile",
+            "relay-alert-routing-profile.json",
+            "--handoff-profile",
+            "relay-alert-handoff-profile.json",
+            "--now-unix-ms",
+            "1766000060000",
+            "--report",
+            "relay-alert-handoff-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Alert {
+                                        command:
+                                            ChiodosPheromoneRelayAlertCommands::Handoff {
+                                                alert_report,
+                                                trend_report,
+                                                routing_profile,
+                                                handoff_profile,
+                                                now_unix_ms,
+                                                report,
+                                            },
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(
+                    alert_report,
+                    std::path::PathBuf::from("relay-alert-report.json")
+                );
+                assert_eq!(
+                    trend_report,
+                    std::path::PathBuf::from("relay-trend-report.json")
+                );
+                assert_eq!(
+                    routing_profile,
+                    std::path::PathBuf::from("relay-alert-routing-profile.json")
+                );
+                assert_eq!(
+                    handoff_profile,
+                    std::path::PathBuf::from("relay-alert-handoff-profile.json")
+                );
+                assert_eq!(now_unix_ms, 1_766_000_060_000);
+                assert_eq!(
+                    report,
+                    std::path::PathBuf::from("relay-alert-handoff-report.json")
+                );
+            }
+            _ => panic!("expected chiodos pheromone relay alert handoff subcommand"),
+        }
+    }
+
+    #[test]
     fn mcp_wrap_emit_config_flag_parses() {
         let cli = Cli::try_parse_from([
             "chio",

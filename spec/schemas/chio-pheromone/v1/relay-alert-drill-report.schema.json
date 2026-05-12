@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-drill-report.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Drill Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "drills"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-drill-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "drills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["drillId", "scenario", "expectedCode", "accepted"],
+        "properties": {
+          "drillId": { "type": "string", "pattern": "^[a-z0-9_.:-]{1,128}$" },
+          "scenario": { "type": "string", "pattern": "^[a-z0-9_.:-]{1,128}$" },
+          "expectedCode": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+          "accepted": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

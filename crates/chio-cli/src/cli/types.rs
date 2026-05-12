@@ -1184,6 +1184,33 @@ enum ChiodosPheromoneRelayAlertCommands {
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },
+
+    /// Dry-run downstream relay alert handoff readiness.
+    Handoff {
+        /// Relay alert report JSON.
+        #[arg(long, value_name = "PATH")]
+        alert_report: PathBuf,
+
+        /// Relay trend report JSON.
+        #[arg(long, value_name = "PATH")]
+        trend_report: PathBuf,
+
+        /// Relay alert routing profile JSON.
+        #[arg(long, value_name = "PATH")]
+        routing_profile: PathBuf,
+
+        /// Relay alert handoff profile JSON.
+        #[arg(long, value_name = "PATH")]
+        handoff_profile: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for relay alert handoff report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]

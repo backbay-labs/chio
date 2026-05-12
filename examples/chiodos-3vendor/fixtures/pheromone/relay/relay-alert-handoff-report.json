@@ -1,0 +1,42 @@
+{
+  "schema": "chio.pheromone.relay-alert-handoff-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000060000,
+  "sourceAlertReportSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "sourceTrendReportSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+  "firingAlertCount": 2,
+  "suppressedAlertCount": 1,
+  "criticalFiringCount": 2,
+  "routes": [
+    {
+      "receiverId": "alertmanager-pagerduty-primary",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:pagerduty-primary",
+      "notificationRoute": "pagerduty-primary",
+      "opsgenie": "relay-oncall",
+      "highestSeverity": "critical",
+      "alertCodes": ["dead_letters_present", "endpoint_denied"],
+      "escalationRef": "relay-critical-page",
+      "ready": true
+    }
+  ],
+  "checks": [
+    {
+      "code": "alert_report",
+      "accepted": true,
+      "detail": "alert report is fresh and schema-bound"
+    },
+    {
+      "code": "trend_report",
+      "accepted": true,
+      "detail": "trend report is fresh and schema-bound"
+    },
+    {
+      "code": "handoff_dry_run",
+      "accepted": true,
+      "detail": "all firing alerts are routeable without sending notifications"
+    }
+  ]
+}

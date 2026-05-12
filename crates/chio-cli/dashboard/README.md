@@ -20,6 +20,10 @@ npm run build
   reconstructing totals client-side from paged receipt subsets.
 - Delegation inspection comes from `/v1/lineage/:capabilityId` and
   `/v1/lineage/:capabilityId/chain`.
+- Relay alert cards read canonical alert and trend reports independently. A
+  missing trend report renders `none` and must not hide a firing alert.
+- The relay primary route is selected from the highest-severity firing alert,
+  not from report array order.
 
 ## Production notes
 

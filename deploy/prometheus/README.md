@@ -11,6 +11,9 @@ This directory contains the T1.5 SRE rule pack.
 - `chiodos-pheromone-relay-observability-rules.yml` defines relay operator
   alerts using bounded `status`, `reason`, `notification_route`, `opsgenie`,
   `service`, and `severity` labels only.
+- Relay alert handoff readiness is expressed by
+  `relay-alert-handoff-report.v1`; Prometheus and Alertmanager consume the
+  bounded labels and route aliases, while Chio does not perform live delivery.
 
 The metric names in these files are registered in `chio-metrics-spec`; CI runs
 the registry grep gate before workspace tests.

@@ -18,6 +18,23 @@ function topTrend(report: RelayTrendReport | null): string {
   return `${point.code} (${point.count})`
 }
 
+function severityRank(alert: RelayAlert): number {
+  if (alert.severity === 'critical') return 3
+  if (alert.severity === 'warning') return 2
+  return 1
+}
+
+function primaryFiringAlert(alerts: RelayAlert[]): RelayAlert | undefined {
+  let primary: RelayAlert | undefined
+  for (const alert of alerts) {
+    if (alert.state !== 'firing') continue
+    if (!primary || severityRank(alert) > severityRank(primary)) {
+      primary = alert
+    }
+  }
+  return primary ?? alerts[0]
+}
+
 export function RelayAlertRoutingSummary() {
   const [state, setState] = useState<RelayAlertRoutingState>({
     alertReport: null,
@@ -31,10 +48,13 @@ export function RelayAlertRoutingSummary() {
     setLoading(true)
     setUnavailable(false)
 
-    Promise.all([fetchRelayAlertReport(), fetchRelayTrendReport()])
-      .then(([alertReport, trendReport]) => {
+    Promise.allSettled([fetchRelayAlertReport(), fetchRelayTrendReport()])
+      .then(([alertResult, trendResult]) => {
         if (!cancelled) {
+          const alertReport = alertResult.status === 'fulfilled' ? alertResult.value : null
+          const trendReport = trendResult.status === 'fulfilled' ? trendResult.value : null
           setState({ alertReport, trendReport })
+          setUnavailable(alertReport === null)
           setLoading(false)
         }
       })
@@ -66,6 +86,7 @@ export function RelayAlertRoutingSummary() {
   const firing = countAlerts(state.alertReport.alerts, 'firing')
   const suppressed = countAlerts(state.alertReport.alerts, 'suppressed')
   const critical = state.alertReport.alerts.filter((alert) => alert.severity === 'critical').length
+  const primary = primaryFiringAlert(state.alertReport.alerts)
 
   return (
     <section className="operator-summary relay-alert-routing" aria-label="Relay alert routing">
@@ -93,10 +114,10 @@ export function RelayAlertRoutingSummary() {
         <article className="operator-card">
           <span className="operator-card-label">Primary Route</span>
           <strong className="operator-card-value">
-            {state.alertReport.alerts[0]?.notificationRoute ?? 'none'}
+            {primary?.notificationRoute ?? 'none'}
           </strong>
           <div className="operator-card-metrics">
-            <span>{state.alertReport.alerts[0]?.opsgenie ?? 'no ops route'}</span>
+            <span>{primary?.opsgenie ?? 'no ops route'}</span>
             <span>{state.alertReport.accepted ? 'accepted' : 'attention needed'}</span>
           </div>
         </article>

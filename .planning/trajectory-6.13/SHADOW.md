@@ -1,15 +1,15 @@
-# Chiodos 6.13 Shadow
+# Chiodos 6.13 Promotion Note
 
-Candidate focus: relay alert delivery hardening, only if 6.12 routing artifacts prove useful.
+The 6.13 shadow target is now active as relay alert handoff readiness.
 
-Possible scope:
+Promoted scope:
 
 - handoff contract examples for existing Alertmanager, PagerDuty, OpsGenie, Slack, email, and webhook consumers
-- delivery dry-run reports that prove secrets stay outside Chio artifacts
-- alert retry and escalation evidence over bounded reports
-- operator drills for stale suppression state, duplicate routes, alert floods, and downstream outage
+- dry-run reports that prove secrets stay outside Chio artifacts
+- alert route, escalation, and runbook evidence over bounded reports
+- operator drills for stale reports, duplicate routes, alert floods, and downstream route gaps
 
-Out of scope until explicitly promoted:
+Still out of scope:
 
 - credentialed live notification dispatch from Chio
 - dynamic sink URLs or inline secrets

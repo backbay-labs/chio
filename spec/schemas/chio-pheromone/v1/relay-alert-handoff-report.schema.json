@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-handoff-report.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Handoff Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "sourceAlertReportSha256",
+    "sourceTrendReportSha256",
+    "firingAlertCount",
+    "suppressedAlertCount",
+    "criticalFiringCount",
+    "routes",
+    "checks"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-handoff-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "sourceAlertReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceTrendReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "firingAlertCount": { "type": "integer", "minimum": 0 },
+    "suppressedAlertCount": { "type": "integer", "minimum": 0 },
+    "criticalFiringCount": { "type": "integer", "minimum": 0 },
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "receiverId",
+          "kind",
+          "targetRef",
+          "notificationRoute",
+          "opsgenie",
+          "highestSeverity",
+          "alertCodes",
+          "escalationRef",
+          "ready"
+        ],
+        "properties": {
+          "receiverId": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "kind": {
+            "enum": ["alertmanager", "pagerduty", "opsgenie", "slack", "email", "webhook"]
+          },
+          "targetRef": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "notificationRoute": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "opsgenie": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "highestSeverity": { "enum": ["info", "warning", "critical"] },
+          "alertCodes": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" }
+          },
+          "escalationRef": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "ready": { "type": "boolean" }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "accepted", "detail"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "accepted": { "type": "boolean" },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

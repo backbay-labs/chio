@@ -1,0 +1,21 @@
+{
+  "schema": "chio.pheromone.relay-alert-drill-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000060000,
+  "drills": [
+    {
+      "drillId": "handoff-critical-route",
+      "scenario": "critical-alert-routeable",
+      "expectedCode": "accepted",
+      "accepted": true
+    },
+    {
+      "drillId": "handoff-no-dispatch",
+      "scenario": "dry-run-only",
+      "expectedCode": "accepted",
+      "accepted": true
+    }
+  ]
+}

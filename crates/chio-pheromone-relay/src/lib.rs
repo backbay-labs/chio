@@ -47,6 +47,14 @@ pub const PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA: &str =
 pub const PHEROMONE_RELAY_TREND_REPORT_SCHEMA: &str = "chio.pheromone.relay-trend-report.v1";
 pub const PHEROMONE_RELAY_ALERT_NEGATIVE_CORPUS_SCHEMA: &str =
     "chio.pheromone.relay-alert-negative-fixture-corpus.v1";
+pub const PHEROMONE_RELAY_ALERT_HANDOFF_PROFILE_SCHEMA: &str =
+    "chio.pheromone.relay-alert-handoff-profile.v1";
+pub const PHEROMONE_RELAY_ALERT_HANDOFF_REPORT_SCHEMA: &str =
+    "chio.pheromone.relay-alert-handoff-report.v1";
+pub const PHEROMONE_RELAY_ALERT_DRILL_REPORT_SCHEMA: &str =
+    "chio.pheromone.relay-alert-drill-report.v1";
+pub const PHEROMONE_RELAY_ALERT_HANDOFF_NEGATIVE_CORPUS_SCHEMA: &str =
+    "chio.pheromone.relay-alert-handoff-negative-fixture-corpus.v1";
 pub const PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA: &str =
     "chio.pheromone.relay-supervisor-profile.v1";
 pub const PHEROMONE_RELAY_DRILL_REPORT_SCHEMA: &str = "chio.pheromone.relay-drill-report.v1";
@@ -106,6 +114,8 @@ pub enum PheromoneRelayError {
     AlertRoutingInvalid(String),
     #[error("alert_source_invalid: {0}")]
     AlertSourceInvalid(String),
+    #[error("alert_handoff_invalid: {0}")]
+    AlertHandoffInvalid(String),
     #[error("sender_mismatch: {0}")]
     SenderMismatch(String),
     #[error("recipient_mismatch: {0}")]
@@ -153,6 +163,7 @@ impl PheromoneRelayError {
             Self::OperatorAuthRequired(_) => "operator_auth_required",
             Self::AlertRoutingInvalid(_) => "alert_routing_invalid",
             Self::AlertSourceInvalid(_) => "alert_source_invalid",
+            Self::AlertHandoffInvalid(_) => "alert_handoff_invalid",
             Self::SenderMismatch(_) => "sender_mismatch",
             Self::RecipientMismatch(_) => "recipient_mismatch",
             Self::MethodMismatch(_) => "method_mismatch",
@@ -1438,6 +1449,118 @@ pub struct RelayTrendInput<'a> {
     pub until_unix_ms: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RelayAlertHandoffSinkKind {
+    #[serde(rename = "alertmanager")]
+    Alertmanager,
+    #[serde(rename = "pagerduty")]
+    PagerDuty,
+    #[serde(rename = "opsgenie")]
+    OpsGenie,
+    #[serde(rename = "slack")]
+    Slack,
+    #[serde(rename = "email")]
+    Email,
+    #[serde(rename = "webhook")]
+    Webhook,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertHandoffReceiver {
+    pub receiver_id: String,
+    pub kind: RelayAlertHandoffSinkKind,
+    pub target_ref: String,
+    pub notification_route: String,
+    pub opsgenie: String,
+    pub severity_floor: RelayAlertSeverity,
+    pub escalation_ref: String,
+    pub runbook: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertHandoffEscalation {
+    pub escalation_ref: String,
+    pub severity: RelayAlertSeverity,
+    pub max_delay_ms: u64,
+    pub recommendation_code: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertHandoffProfileDocument {
+    pub schema: String,
+    pub local_kernel_id: String,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+    pub max_alert_report_age_ms: u64,
+    pub max_trend_report_age_ms: u64,
+    pub receivers: Vec<RelayAlertHandoffReceiver>,
+    pub escalations: Vec<RelayAlertHandoffEscalation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertHandoffRouteReadiness {
+    pub receiver_id: String,
+    pub kind: RelayAlertHandoffSinkKind,
+    pub target_ref: String,
+    pub notification_route: String,
+    pub opsgenie: String,
+    pub highest_severity: RelayAlertSeverity,
+    pub alert_codes: Vec<String>,
+    pub escalation_ref: String,
+    pub ready: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertHandoffReport {
+    pub schema: String,
+    pub accepted: bool,
+    pub code: String,
+    pub local_kernel_id: String,
+    pub generated_at_unix_ms: u64,
+    pub source_alert_report_sha256: String,
+    pub source_trend_report_sha256: String,
+    pub firing_alert_count: u64,
+    pub suppressed_alert_count: u64,
+    pub critical_firing_count: u64,
+    pub routes: Vec<RelayAlertHandoffRouteReadiness>,
+    pub checks: Vec<RelayAlertCheck>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertDrill {
+    pub drill_id: String,
+    pub scenario: String,
+    pub expected_code: String,
+    pub accepted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertDrillReport {
+    pub schema: String,
+    pub accepted: bool,
+    pub code: String,
+    pub local_kernel_id: String,
+    pub generated_at_unix_ms: u64,
+    pub drills: Vec<RelayAlertDrill>,
+}
+
+pub struct RelayAlertHandoffInput<'a> {
+    pub alert_report: &'a RelayAlertReport,
+    pub trend_report: &'a RelayTrendReport,
+    pub routing_profile: &'a RelayAlertRoutingProfileDocument,
+    pub handoff_profile: &'a RelayAlertHandoffProfileDocument,
+    pub now_unix_ms: u64,
+}
+
 pub fn relay_alert_routing_profile_from_json(
     json: &str,
     now_unix_ms: u64,
@@ -1454,6 +1577,15 @@ pub fn relay_alert_suppression_state_from_json(
     let state: RelayAlertSuppressionStateDocument = serde_json::from_str(json)?;
     validate_suppression_state(&state, profile)?;
     Ok(state)
+}
+
+pub fn relay_alert_handoff_profile_from_json(
+    json: &str,
+    now_unix_ms: u64,
+) -> Result<RelayAlertHandoffProfileDocument, PheromoneRelayError> {
+    let profile: RelayAlertHandoffProfileDocument = serde_json::from_str(json)?;
+    validate_handoff_profile(&profile, now_unix_ms)?;
+    Ok(profile)
 }
 
 pub fn evaluate_relay_alerts(
@@ -1572,6 +1704,139 @@ pub fn evaluate_relay_alerts(
     })
 }
 
+pub fn evaluate_relay_alert_handoff(
+    input: RelayAlertHandoffInput<'_>,
+) -> Result<RelayAlertHandoffReport, PheromoneRelayError> {
+    validate_alert_profile(input.routing_profile, input.now_unix_ms)?;
+    validate_handoff_profile(input.handoff_profile, input.now_unix_ms)?;
+    validate_handoff_sources(&input)?;
+    let source_alert_report_sha256 = canonical_sha256(input.alert_report)?;
+    let source_trend_report_sha256 = canonical_sha256(input.trend_report)?;
+    let route_map = alert_route_map(input.routing_profile)?;
+    let receiver_by_route = handoff_receiver_route_map(input.handoff_profile)?;
+    for route in route_map.values() {
+        let receiver = receiver_by_route
+            .get(&(route.notification_route.clone(), route.opsgenie.clone()))
+            .ok_or_else(|| {
+                PheromoneRelayError::AlertHandoffInvalid(format!(
+                    "route {} has no downstream handoff receiver",
+                    route.route_id
+                ))
+            })?;
+        if receiver.target_ref != route.target_ref || receiver.runbook != route.runbook {
+            return Err(PheromoneRelayError::AlertHandoffInvalid(format!(
+                "route {} handoff target does not match routing profile",
+                route.route_id
+            )));
+        }
+    }
+
+    let mut checks = vec![
+        RelayAlertCheck {
+            code: "alert_report".to_string(),
+            accepted: true,
+            detail: "alert report is fresh and schema-bound".to_string(),
+        },
+        RelayAlertCheck {
+            code: "trend_report".to_string(),
+            accepted: true,
+            detail: "trend report is fresh and schema-bound".to_string(),
+        },
+        RelayAlertCheck {
+            code: "route_coverage".to_string(),
+            accepted: true,
+            detail: "every routing profile route has a downstream handoff receiver".to_string(),
+        },
+    ];
+    let mut route_readiness = BTreeMap::<String, RelayAlertHandoffRouteReadiness>::new();
+    let mut firing_alert_count = 0u64;
+    let mut suppressed_alert_count = 0u64;
+    let mut critical_firing_count = 0u64;
+
+    for alert in &input.alert_report.alerts {
+        if alert.state == "suppressed" {
+            suppressed_alert_count = suppressed_alert_count.saturating_add(1);
+            continue;
+        }
+        if alert.state != "firing" {
+            return Err(PheromoneRelayError::AlertSourceInvalid(format!(
+                "alert {} has unsupported state {}",
+                alert.code, alert.state
+            )));
+        }
+        firing_alert_count = firing_alert_count.saturating_add(1);
+        let severity = relay_alert_severity_from_str(&alert.severity)?;
+        if severity == RelayAlertSeverity::Critical {
+            critical_firing_count = critical_firing_count.saturating_add(1);
+        }
+        let route = route_map
+            .values()
+            .find(|route| {
+                route.notification_route == alert.notification_route
+                    && route.opsgenie == alert.opsgenie
+            })
+            .ok_or_else(|| {
+                PheromoneRelayError::AlertHandoffInvalid(format!(
+                    "alert {} does not match a routing profile route",
+                    alert.code
+                ))
+            })?;
+        let receiver = receiver_by_route
+            .get(&(route.notification_route.clone(), route.opsgenie.clone()))
+            .ok_or_else(|| {
+                PheromoneRelayError::AlertHandoffInvalid(format!(
+                    "alert {} has no downstream handoff receiver",
+                    alert.code
+                ))
+            })?;
+        if severity < receiver.severity_floor {
+            return Err(PheromoneRelayError::AlertHandoffInvalid(format!(
+                "alert {} severity is below receiver floor",
+                alert.code
+            )));
+        }
+        let readiness = route_readiness
+            .entry(receiver.target_ref.clone())
+            .or_insert_with(|| RelayAlertHandoffRouteReadiness {
+                receiver_id: receiver.receiver_id.clone(),
+                kind: receiver.kind,
+                target_ref: receiver.target_ref.clone(),
+                notification_route: receiver.notification_route.clone(),
+                opsgenie: receiver.opsgenie.clone(),
+                highest_severity: severity,
+                alert_codes: Vec::new(),
+                escalation_ref: receiver.escalation_ref.clone(),
+                ready: true,
+            });
+        if severity > readiness.highest_severity {
+            readiness.highest_severity = severity;
+        }
+        if !readiness.alert_codes.contains(&alert.code) {
+            readiness.alert_codes.push(alert.code.clone());
+        }
+    }
+
+    checks.push(RelayAlertCheck {
+        code: "handoff_dry_run".to_string(),
+        accepted: true,
+        detail: "all firing alerts are routeable without sending notifications".to_string(),
+    });
+    Ok(RelayAlertHandoffReport {
+        schema: PHEROMONE_RELAY_ALERT_HANDOFF_REPORT_SCHEMA.to_string(),
+        accepted: true,
+        code: "accepted".to_string(),
+        local_kernel_id: input.alert_report.local_kernel_id.clone(),
+        generated_at_unix_ms: input.now_unix_ms,
+        source_alert_report_sha256,
+        source_trend_report_sha256,
+        firing_alert_count,
+        suppressed_alert_count,
+        critical_firing_count,
+        routes: route_readiness.into_values().collect(),
+        checks,
+    })
+}
+
 pub fn generate_relay_trend_report(
     input: RelayTrendInput<'_>,
 ) -> Result<RelayTrendReport, PheromoneRelayError> {
@@ -1685,6 +1950,7 @@ fn validate_alert_profile(
         }
     }
     let mut route_ids = BTreeSet::new();
+    let mut route_targets = BTreeSet::new();
     for route in &profile.routes {
         validate_alert_route(route)?;
         if !route_ids.insert(route.route_id.as_str()) {
@@ -1692,6 +1958,16 @@ fn validate_alert_profile(
                 "duplicate alert route {}",
                 route.route_id
             )));
+        }
+        let target = (
+            route.notification_route.as_str(),
+            route.opsgenie.as_str(),
+            route.target_ref.as_str(),
+        );
+        if !route_targets.insert(target) {
+            return Err(PheromoneRelayError::AlertRoutingInvalid(
+                "duplicate alert route target".to_string(),
+            ));
         }
     }
     if route_ids.is_empty() {
@@ -1754,6 +2030,146 @@ fn validate_alert_route(route: &RelayAlertRoute) -> Result<(), PheromoneRelayErr
         return Err(PheromoneRelayError::AlertRoutingInvalid(
             "alert route runbook must be a local non-secret reference".to_string(),
         ));
+    }
+    Ok(())
+}
+
+fn validate_handoff_profile(
+    profile: &RelayAlertHandoffProfileDocument,
+    now_unix_ms: u64,
+) -> Result<(), PheromoneRelayError> {
+    if profile.schema != PHEROMONE_RELAY_ALERT_HANDOFF_PROFILE_SCHEMA {
+        return Err(PheromoneRelayError::UnsupportedSchema(
+            profile.schema.clone(),
+        ));
+    }
+    if profile.local_kernel_id.trim().is_empty() {
+        return Err(PheromoneRelayError::AlertHandoffInvalid(
+            "handoff profile local kernel id is empty".to_string(),
+        ));
+    }
+    if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
+        return Err(PheromoneRelayError::AlertHandoffInvalid(
+            "handoff profile is outside its validity window".to_string(),
+        ));
+    }
+    if profile.max_alert_report_age_ms == 0 || profile.max_trend_report_age_ms == 0 {
+        return Err(PheromoneRelayError::AlertHandoffInvalid(
+            "handoff profile age limits must be positive".to_string(),
+        ));
+    }
+    if profile.receivers.is_empty() {
+        return Err(PheromoneRelayError::AlertHandoffInvalid(
+            "handoff profile has no downstream receivers".to_string(),
+        ));
+    }
+    if profile.escalations.is_empty() {
+        return Err(PheromoneRelayError::AlertHandoffInvalid(
+            "handoff profile has no escalation mappings".to_string(),
+        ));
+    }
+    let mut escalation_refs = BTreeSet::new();
+    for escalation in &profile.escalations {
+        validate_handoff_token("escalation_ref", &escalation.escalation_ref)?;
+        if !escalation_refs.insert(escalation.escalation_ref.as_str()) {
+            return Err(PheromoneRelayError::AlertHandoffInvalid(format!(
+                "duplicate escalation {}",
+                escalation.escalation_ref
+            )));
+        }
+        if escalation.max_delay_ms == 0 || !is_bounded_code(&escalation.recommendation_code) {
+            return Err(PheromoneRelayError::AlertHandoffInvalid(
+                "handoff escalation has invalid bounds".to_string(),
+            ));
+        }
+    }
+    let mut receiver_ids = BTreeSet::new();
+    let mut target_refs = BTreeSet::new();
+    let mut route_keys = BTreeSet::new();
+    for receiver in &profile.receivers {
+        validate_handoff_receiver(receiver)?;
+        if !receiver_ids.insert(receiver.receiver_id.as_str()) {
+            return Err(PheromoneRelayError::AlertHandoffInvalid(format!(
+                "duplicate receiver {}",
+                receiver.receiver_id
+            )));
+        }
+        if !target_refs.insert(receiver.target_ref.as_str()) {
+            return Err(PheromoneRelayError::AlertHandoffInvalid(format!(
+                "duplicate receiver target {}",
+                receiver.target_ref
+            )));
+        }
+        let route_key = (
+            receiver.notification_route.as_str(),
+            receiver.opsgenie.as_str(),
+        );
+        if !route_keys.insert(route_key) {
+            return Err(PheromoneRelayError::AlertHandoffInvalid(
+                "duplicate handoff route coverage".to_string(),
+            ));
+        }
+        if !escalation_refs.contains(receiver.escalation_ref.as_str()) {
+            return Err(PheromoneRelayError::AlertHandoffInvalid(format!(
+                "receiver {} references unknown escalation {}",
+                receiver.receiver_id, receiver.escalation_ref
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_handoff_receiver(
+    receiver: &RelayAlertHandoffReceiver,
+) -> Result<(), PheromoneRelayError> {
+    if receiver.kind == RelayAlertHandoffSinkKind::Unknown {
+        return Err(PheromoneRelayError::AlertHandoffInvalid(
+            "handoff receiver sink kind is unknown".to_string(),
+        ));
+    }
+    for (field, value) in [
+        ("receiver_id", receiver.receiver_id.as_str()),
+        ("target_ref", receiver.target_ref.as_str()),
+        ("notification_route", receiver.notification_route.as_str()),
+        ("opsgenie", receiver.opsgenie.as_str()),
+        ("escalation_ref", receiver.escalation_ref.as_str()),
+    ] {
+        validate_handoff_token(field, value)?;
+    }
+    if receiver.target_ref.contains("://") {
+        return Err(PheromoneRelayError::AlertHandoffInvalid(
+            "handoff target ref must not be a dynamic URL".to_string(),
+        ));
+    }
+    if receiver.runbook.trim().is_empty()
+        || receiver.runbook.contains("://")
+        || receiver.runbook.to_ascii_lowercase().contains("token")
+    {
+        return Err(PheromoneRelayError::AlertHandoffInvalid(
+            "handoff runbook must be a local non-secret reference".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_handoff_token(field: &str, value: &str) -> Result<(), PheromoneRelayError> {
+    if !is_bounded_route_token(value) {
+        return Err(PheromoneRelayError::AlertHandoffInvalid(format!(
+            "handoff field {field} is not bounded"
+        )));
+    }
+    reject_handoff_secret_marker(field, value)
+}
+
+fn reject_handoff_secret_marker(field: &str, value: &str) -> Result<(), PheromoneRelayError> {
+    let lower = value.to_ascii_lowercase();
+    if ["secret", "token", "password", "apikey", "api_key"]
+        .iter()
+        .any(|marker| lower.contains(marker))
+    {
+        return Err(PheromoneRelayError::AlertHandoffInvalid(format!(
+            "handoff field {field} appears to contain secret material"
+        )));
     }
     Ok(())
 }
@@ -1903,6 +2319,103 @@ fn validate_observability_source(
     Ok(())
 }
 
+fn validate_handoff_sources(input: &RelayAlertHandoffInput<'_>) -> Result<(), PheromoneRelayError> {
+    if input.alert_report.schema != PHEROMONE_RELAY_ALERT_REPORT_SCHEMA {
+        return Err(PheromoneRelayError::UnsupportedSchema(
+            input.alert_report.schema.clone(),
+        ));
+    }
+    if input.trend_report.schema != PHEROMONE_RELAY_TREND_REPORT_SCHEMA {
+        return Err(PheromoneRelayError::UnsupportedSchema(
+            input.trend_report.schema.clone(),
+        ));
+    }
+    let local_kernel_id = input.routing_profile.local_kernel_id.as_str();
+    if input.handoff_profile.local_kernel_id != local_kernel_id
+        || input.alert_report.local_kernel_id != local_kernel_id
+        || input.trend_report.local_kernel_id != local_kernel_id
+    {
+        return Err(PheromoneRelayError::AlertSourceInvalid(
+            "handoff input local kernel id mismatch".to_string(),
+        ));
+    }
+    if input.alert_report.generated_at_unix_ms > input.now_unix_ms
+        || input.trend_report.until_unix_ms > input.now_unix_ms
+    {
+        return Err(PheromoneRelayError::AlertSourceInvalid(
+            "handoff source timestamp is in the future".to_string(),
+        ));
+    }
+    if input
+        .now_unix_ms
+        .saturating_sub(input.alert_report.generated_at_unix_ms)
+        > input.handoff_profile.max_alert_report_age_ms
+    {
+        return Err(PheromoneRelayError::AlertSourceInvalid(
+            "alert report is stale for handoff".to_string(),
+        ));
+    }
+    if input
+        .now_unix_ms
+        .saturating_sub(input.trend_report.until_unix_ms)
+        > input.handoff_profile.max_trend_report_age_ms
+    {
+        return Err(PheromoneRelayError::AlertSourceInvalid(
+            "trend report is stale for handoff".to_string(),
+        ));
+    }
+    if input.trend_report.since_unix_ms > input.trend_report.until_unix_ms {
+        return Err(PheromoneRelayError::AlertSourceInvalid(
+            "trend report window is invalid".to_string(),
+        ));
+    }
+    for alert in &input.alert_report.alerts {
+        if !is_bounded_code(&alert.code) {
+            return Err(PheromoneRelayError::AlertSourceInvalid(format!(
+                "alert code {} is not bounded",
+                alert.code
+            )));
+        }
+        if alert.source_report_sha256 != input.alert_report.source_report_sha256 {
+            return Err(PheromoneRelayError::AlertSourceInvalid(format!(
+                "alert {} source hash does not match alert report",
+                alert.code
+            )));
+        }
+        relay_alert_severity_from_str(&alert.severity)?;
+        for (name, value) in &alert.labels {
+            if !matches!(
+                name.as_str(),
+                "notification_route" | "opsgenie" | "service" | "severity"
+            ) || !is_bounded_route_token(value)
+            {
+                return Err(PheromoneRelayError::AlertSourceInvalid(format!(
+                    "alert {} contains an unbounded label",
+                    alert.code
+                )));
+            }
+        }
+        if alert.labels.get("notification_route") != Some(&alert.notification_route)
+            || alert.labels.get("opsgenie") != Some(&alert.opsgenie)
+            || alert.labels.get("severity") != Some(&alert.severity)
+        {
+            return Err(PheromoneRelayError::AlertSourceInvalid(format!(
+                "alert {} labels do not match alert routing fields",
+                alert.code
+            )));
+        }
+    }
+    for point in &input.trend_report.points {
+        if !is_bounded_code(&point.code) || relay_alert_severity_from_str(&point.severity).is_err()
+        {
+            return Err(PheromoneRelayError::AlertSourceInvalid(
+                "trend report contains unbounded point data".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn require_alert_recommendation(
     required: bool,
     recommendation_codes: &BTreeSet<&str>,
@@ -1914,6 +2427,24 @@ fn require_alert_recommendation(
         )));
     }
     Ok(())
+}
+
+fn handoff_receiver_route_map(
+    profile: &RelayAlertHandoffProfileDocument,
+) -> Result<BTreeMap<(String, String), RelayAlertHandoffReceiver>, PheromoneRelayError> {
+    let mut receivers = BTreeMap::new();
+    for receiver in &profile.receivers {
+        let key = (
+            receiver.notification_route.clone(),
+            receiver.opsgenie.clone(),
+        );
+        if receivers.insert(key, receiver.clone()).is_some() {
+            return Err(PheromoneRelayError::AlertHandoffInvalid(
+                "duplicate handoff route coverage".to_string(),
+            ));
+        }
+    }
+    Ok(receivers)
 }
 
 fn alert_route_map(
@@ -2050,6 +2581,17 @@ fn bump_trend_point(
             severity: severity.to_string(),
         });
     Ok(())
+}
+
+fn relay_alert_severity_from_str(value: &str) -> Result<RelayAlertSeverity, PheromoneRelayError> {
+    match value {
+        "info" => Ok(RelayAlertSeverity::Info),
+        "warning" => Ok(RelayAlertSeverity::Warning),
+        "critical" => Ok(RelayAlertSeverity::Critical),
+        _ => Err(PheromoneRelayError::AlertSourceInvalid(format!(
+            "alert severity {value} is not supported"
+        ))),
+    }
 }
 
 fn is_bounded_code(value: &str) -> bool {

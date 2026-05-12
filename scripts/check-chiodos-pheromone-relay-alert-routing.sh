@@ -29,6 +29,15 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
 SCHEMA_DIR="$ROOT/spec/schemas/chio-pheromone/v1"
 SCHEMA_REGISTRY="$ROOT/spec/schemas/registry.json"
 FIXTURE_DIR="$ROOT/examples/chiodos-3vendor/fixtures/pheromone/relay"
+NOW_UNIX_MS=1766000060000
+SINCE_UNIX_MS=1765999900000
+TMP_DIRS=()
+cleanup() {
+  if [[ ${#TMP_DIRS[@]} -gt 0 ]]; then
+    rm -rf "${TMP_DIRS[@]}"
+  fi
+}
+trap cleanup EXIT
 
 python3 - "$SCHEMA_DIR" "$SCHEMA_REGISTRY" "$FIXTURE_DIR" <<'PY'
 import json
@@ -133,6 +142,44 @@ validate_schema "$SCHEMA_DIR/relay-event-report.schema.json" "$FIXTURE_DIR/relay
 if [[ "$MODE" == "schema-only" ]]; then
   exit 0
 fi
+
+GENERATED_DIR="$(mktemp -d)"
+TMP_DIRS+=("$GENERATED_DIR")
+
+cargo run -p chio-cli -- chiodos pheromone relay alert evaluate \
+  --observability-report "$FIXTURE_DIR/relay-observability-degraded-report.json" \
+  --event-dir "$FIXTURE_DIR" \
+  --routing-profile "$FIXTURE_DIR/relay-alert-routing-profile.json" \
+  --suppression-state "$FIXTURE_DIR/relay-alert-suppression-state.json" \
+  --now-unix-ms "$NOW_UNIX_MS" \
+  --report "$GENERATED_DIR/relay-alert-report.json"
+validate_schema "$SCHEMA_DIR/relay-alert-report.schema.json" "$GENERATED_DIR/relay-alert-report.json"
+
+cargo run -p chio-cli -- chiodos pheromone relay trend \
+  --reports-dir "$FIXTURE_DIR" \
+  --event-dir "$FIXTURE_DIR" \
+  --routing-profile "$FIXTURE_DIR/relay-alert-routing-profile.json" \
+  --since-unix-ms "$SINCE_UNIX_MS" \
+  --until-unix-ms "$NOW_UNIX_MS" \
+  --report "$GENERATED_DIR/relay-trend-report.json"
+validate_schema "$SCHEMA_DIR/relay-trend-report.schema.json" "$GENERATED_DIR/relay-trend-report.json"
+
+python3 - "$GENERATED_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+generated_dir = pathlib.Path(sys.argv[1])
+alert_report = json.loads((generated_dir / "relay-alert-report.json").read_text(encoding="utf-8"))
+trend_report = json.loads((generated_dir / "relay-trend-report.json").read_text(encoding="utf-8"))
+if alert_report.get("code") != "alerts_firing":
+    raise SystemExit("generated alert report must preserve firing relay alerts")
+if not any(alert.get("code") == "dead_letters_present" for alert in alert_report.get("alerts", [])):
+    raise SystemExit("generated alert report omitted dead-letter alert")
+if trend_report.get("sourceReportCount", 0) < 1:
+    raise SystemExit("generated trend report did not aggregate report evidence")
+print("OK generated relay alert and trend reports")
+PY
 
 cargo test -p chio-pheromone-relay alert
 cargo test -p chio-cli --bin chio chiodos_pheromone_relay

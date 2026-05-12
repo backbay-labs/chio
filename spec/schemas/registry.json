@@ -356,6 +356,30 @@
       "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-negative-fixture-corpus.schema.json"
     },
     {
+      "schema": "chio.pheromone.relay-alert-handoff-profile.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_handoff_profile",
+      "introducedBy": "chiodos-relay-alert-handoff/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-handoff-profile.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-handoff-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_handoff_report",
+      "introducedBy": "chiodos-relay-alert-handoff/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-handoff-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-drill-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_drill_report",
+      "introducedBy": "chiodos-relay-alert-handoff/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-drill-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-handoff-negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_handoff_negative_fixture_corpus",
+      "introducedBy": "chiodos-relay-alert-handoff/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-handoff-negative-fixture-corpus.schema.json"
+    },
+    {
       "schema": "chio.pheromone.catchup-request.v1",
       "artifactKind": "chiodos_pheromone_catchup_request",
       "introducedBy": "chiodos-live-pheromone-relay/v1",
