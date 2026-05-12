@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1]
 
+- refactor: the local `_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES` literal is
+  removed; the module now binds the alias to
+  `chio_adapter_base.redact.DEFAULT_TOOL_POSITIONAL_NAMES` (added in
+  chio-adapter-base 0.1.1, PR #675) so the chio-default registry stays
+  in one place across the adapter family. The body of `_task_parameters`
+  retains its bespoke signature-walking implementation because it
+  encodes two prefect-specific contracts that
+  `chio_adapter_base.redact.bind_and_redact` does not currently
+  express: VAR_POSITIONAL extras are redacted via the table when the
+  slot index has a declared name (covers `def fn(path, *args)` shapes,
+  see `TestFixedPositionalWithVarPositional`), and VAR_KEYWORD
+  spillover entries that collide with a fixed name are routed to a
+  synthetic `<name>__var_kw_spillover__` key (see
+  `TestPositionalOnlyVarKeywordSpillover`). Dependency bumped to
+  `chio-adapter-base>=0.1.1,<0.2`.
 - feat: redact tool argument bodies via
   `chio_adapter_base.redact.redact_args` before forwarding to the Chio
   sidecar. Default policy covers `chio_file_write.content` and

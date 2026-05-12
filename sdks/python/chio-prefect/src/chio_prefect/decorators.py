@@ -19,7 +19,11 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, TypeVar, cast, overload
 
-from chio_adapter_base.redact import RedactionPolicy, redact_args
+from chio_adapter_base.redact import (
+    DEFAULT_TOOL_POSITIONAL_NAMES,
+    RedactionPolicy,
+    redact_args,
+)
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
@@ -424,13 +428,19 @@ async def _invoke_task(
 
 
 # Tool-arity table for forwarding wrappers that have no fixed-signature
-# parameter names to bind positional values against. Tools listed here
-# get their positional bodies redacted via these declared names; tools
-# absent from the table fall back to kwargs-only redaction.
-_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES: dict[str, tuple[str, ...]] = {
-    "chio_file_write": ("path", "content"),
-    "chio_file_edit": ("path", "patch"),
-}
+# parameter names to bind positional values against. Sourced from
+# :data:`chio_adapter_base.redact.DEFAULT_TOOL_POSITIONAL_NAMES`
+# (centralised in chio-adapter-base 0.1.1) so the chio-default registry
+# stays in one place across the adapter family. The local _task_parameters
+# helper retains its bespoke behaviour because it implements two prefect-
+# specific contracts that bind_and_redact does not currently express:
+# (1) VAR_POSITIONAL extras are redacted against the table when the slot
+# index has a declared name (covers ``def fn(path, *args)`` shapes), and
+# (2) VAR_KEYWORD spillover entries that collide with a fixed name are
+# routed to a synthetic ``<name>__var_kw_spillover__`` key so neither
+# value is silently dropped. See ``test_redaction.py`` for the regression
+# coverage on both edges.
+_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES = DEFAULT_TOOL_POSITIONAL_NAMES
 
 
 def _forwarding_table_or_passthrough(
