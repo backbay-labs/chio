@@ -568,3 +568,179 @@ class TestVarKeywordSignatureRedacts:
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         if evaluate_calls:
             assert "PROD_SECRET" not in json.dumps(evaluate_calls[0].parameters)
+
+
+class TestForwardingTablePassthroughHelper:
+    """Direct unit coverage for ``_forwarding_table_or_passthrough``.
+
+    Targets the C-extension fallback path and the merge-conflict edge
+    case in pure-forwarding wrappers; both are awkward to express via a
+    full ``@chio_task`` decorator round-trip because Prefect requires a
+    pure-Python callable.
+    """
+
+    def test_c_extension_fallback_redacts_via_tool_arity_table(self) -> None:
+        # ``inspect.signature(dict.update)`` raises ValueError because
+        # the C-implemented method has no introspectable parameter list
+        # (verified against Python 3.13). The fallback must not forward
+        # positional bodies raw; it should consult the tool arity table
+        # for chio-default tools.
+        import inspect
+
+        from chio_prefect.decorators import _task_parameters
+
+        # Sanity guard: if a future Python release exposes a signature
+        # for ``dict.update`` we want this test to fail loudly so we can
+        # pick a different non-introspectable stand-in.
+        try:
+            inspect.signature(dict.update)
+        except (TypeError, ValueError):
+            pass
+        else:  # pragma: no cover - guard against silent test rot
+            raise AssertionError(
+                "dict.update is no longer non-introspectable; pick a "
+                "different C-extension stand-in for this test."
+            )
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/tmp/x", "PROD_SECRET=abc123"),
+            {},
+            "chio_file_write",
+            policy,
+            fn=dict.update,  # builtin: inspect.signature raises
+        )
+
+        import json
+
+        assert "PROD_SECRET" not in json.dumps(params)
+        assert params["args"][0] == "/tmp/x"
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert params["kwargs"] == {}
+
+    def test_c_extension_fallback_kwargs_only_for_unknown_tool(self) -> None:
+        # Tools absent from the arity table fall back to kwargs-only
+        # redaction; positional values pass through unredacted because
+        # we have no name to bind them against. Documented limitation.
+        from chio_prefect.decorators import _task_parameters
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("payload",),
+            {"unrelated": "value"},
+            "search",  # not in the arity table
+            policy,
+            fn=dict.update,
+        )
+        assert params["args"] == ["payload"]
+        assert params["kwargs"] == {"unrelated": "value"}
+
+    def test_pure_var_positional_signature_redacts_via_tool_table(
+        self,
+    ) -> None:
+        # ``def write(*args)`` has no fixed-named params and no
+        # **kwargs; previously it routed through a path that filtered
+        # VAR_POSITIONAL out of the bound dict before redaction, leaving
+        # the body field unredacted. The forwarding-table helper must
+        # bind positional values by name and scrub them.
+        from typing import Any
+
+        from chio_prefect.decorators import _task_parameters
+
+        def write(*args: Any) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/tmp/x", "PROD_SECRET=abc123"),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        import json
+
+        assert "PROD_SECRET" not in json.dumps(params)
+        assert params["args"][0] == "/tmp/x"
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+
+    def test_pure_var_positional_with_extras_keeps_extras_unredacted(
+        self,
+    ) -> None:
+        # Extras past the tool-arity table cardinality have no name to
+        # bind to and stay positional / unredacted (documented
+        # limitation of forwarding-table redaction).
+        from typing import Any
+
+        from chio_prefect.decorators import _task_parameters
+
+        def write(*args: Any, **kwargs: Any) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/tmp/x", "PROD_SECRET=abc123", "trailing-1", "trailing-2"),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        import json
+
+        assert "PROD_SECRET" not in json.dumps(params)
+        assert params["args"][0] == "/tmp/x"
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert params["args"][2] == "trailing-1"
+        assert params["args"][3] == "trailing-2"
+        assert params["kwargs"] == {}
+
+    def test_forwarding_wrapper_kwarg_does_not_overwrite_positional(
+        self,
+    ) -> None:
+        # Pathological caller passes both a positional AND a keyword
+        # for the same field. Both must be redacted independently so
+        # the kwarg-side payload cannot leak by overwriting the
+        # positional value before the redactor sees it.
+        from typing import Any
+
+        from chio_prefect.decorators import _task_parameters
+
+        def write(*args: Any, **kwargs: Any) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/tmp/x", "POSITIONAL_BODY"),
+            {"path": "/etc/passwd", "content": "KW_BODY"},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        import json
+
+        forwarded = json.dumps(params)
+        assert "POSITIONAL_BODY" not in forwarded
+        assert "KW_BODY" not in forwarded
+        # ``path`` is not a redacted body field; the kwarg value is preserved.
+        assert params["kwargs"]["path"] == "/etc/passwd"
+        assert params["kwargs"]["content"] == {
+            "omitted": True,
+            "byte_count": len(b"KW_BODY"),
+        }
+        assert params["args"][0] == "/tmp/x"
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"POSITIONAL_BODY"),
+        }

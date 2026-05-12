@@ -433,6 +433,53 @@ _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES: dict[str, tuple[str, ...]] = {
 }
 
 
+def _forwarding_table_or_passthrough(
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    tool_name: str,
+    policy: RedactionPolicy,
+) -> dict[str, Any]:
+    """Redact a forwarding-style call via :data:`_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES`.
+
+    Used by the pure-forwarding wrapper branch and by the
+    non-introspectable fallback (C-extension callables and
+    ``inspect.signature``-failing builtins). Tools listed in the
+    arity table get their first N positional values bound to declared
+    names and redacted; positional extras past the table cardinality
+    stay positional and pass through unredacted (no parameter name to
+    bind them to). Tools absent from the table fall back to
+    kwargs-only redaction.
+
+    The positional and keyword buckets are redacted INDEPENDENTLY: a
+    pathological caller passing both a positional AND a keyword for
+    the same field (``write('/tmp/x', path='/etc/passwd')``) would
+    otherwise let the kwarg overwrite the positional value before
+    redaction, leaking the kwarg-side payload. The wrapped function
+    will raise ``TypeError`` for the duplicate parameter; we do not
+    try to repair caller error.
+    """
+    positional_names = _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name)
+    if positional_names is None or not args:
+        return {
+            "args": list(args),
+            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
+        }
+    named_positional = {
+        n: a for n, a in zip(positional_names, args, strict=False)
+    }
+    redacted_named = redact_args(tool_name, named_positional, policy=policy)
+    redacted_kwargs = redact_args(tool_name, dict(kwargs), policy=policy)
+    bound_count = min(len(args), len(positional_names))
+    new_args: list[Any] = [
+        redacted_named[positional_names[i]] for i in range(bound_count)
+    ]
+    if len(args) > bound_count:
+        # Extras past the tool-arity table have no declared name to bind
+        # against; they stay positional and pass through unredacted.
+        new_args.extend(args[bound_count:])
+    return {"args": new_args, "kwargs": redacted_kwargs}
+
+
 def _task_parameters(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
@@ -476,17 +523,24 @@ def _task_parameters(
     cannot leak the secret we are trying to scrub.
     """
     if fn is None:
-        return {
-            "args": list(args),
-            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
-        }
+        return _forwarding_table_or_passthrough(
+            args, kwargs, tool_name, policy
+        )
     try:
         sig = inspect.signature(fn)
     except (TypeError, ValueError):
-        return {
-            "args": list(args),
-            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
-        }
+        # Non-introspectable callables (C extensions, builtins,
+        # functools.partial wrapping a C builtin, etc.) cannot expose a
+        # parameter list. Fall back to the forwarding-wrapper path so
+        # chio-default tools listed in
+        # ``_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES`` still get their
+        # positional bodies redacted via the tool-arity table. Tools
+        # absent from that table still pass positional values through
+        # raw because we have no name to bind them against; this is the
+        # documented limitation of fallback-path redaction.
+        return _forwarding_table_or_passthrough(
+            args, kwargs, tool_name, policy
+        )
 
     params = sig.parameters
     has_var_keyword = any(
@@ -518,28 +572,9 @@ def _task_parameters(
     # fixed parameter names; consult the tool-arity table so chio
     # default tools still get positional bodies scrubbed.
     if not has_fixed_named:
-        positional_names = _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name)
-        if positional_names is None or not args:
-            return {
-                "args": list(args),
-                "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
-            }
-        named_positional = {
-            n: a for n, a in zip(positional_names, args, strict=False)
-        }
-        merged = {**named_positional, **kwargs}
-        redacted_merged = redact_args(tool_name, merged, policy=policy)
-        bound_count = min(len(args), len(positional_names))
-        new_args: list[Any] = [
-            redacted_merged[positional_names[i]] for i in range(bound_count)
-        ]
-        if len(args) > bound_count:
-            new_args.extend(args[bound_count:])
-        bound_names = set(positional_names[:bound_count])
-        new_kwargs = {
-            k: v for k, v in redacted_merged.items() if k not in bound_names
-        }
-        return {"args": new_args, "kwargs": new_kwargs}
+        return _forwarding_table_or_passthrough(
+            args, kwargs, tool_name, policy
+        )
 
     try:
         bound = sig.bind_partial(*args, **kwargs).arguments
