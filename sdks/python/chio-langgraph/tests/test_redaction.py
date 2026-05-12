@@ -211,6 +211,38 @@ class TestChioNodeCustomPolicy:
         forwarded = _last_eval(chio).parameters
         assert forwarded["content"] == "not-redacted-now"
 
+    async def test_chio_node_custom_policy_does_not_redact_default_fields(
+        self,
+    ) -> None:
+        # Replace-semantic check on the chio_node path: a custom policy that
+        # only names "my_node_tool" must NOT carry the default chio policy's
+        # chio_file_write -> ("content",) entry forward when applied to a
+        # node tool literally named "chio_file_write".
+        custom = RedactionPolicy(body_fields={"my_node_tool": ("body",)})
+
+        def write_body(_state: State) -> dict[str, Any]:
+            return {}
+
+        chio = allow_all()
+        cfg = await _build_config(
+            chio, node_name="chio_file_write", scope=_scope("chio_file_write")
+        )
+        wrapped = chio_node(
+            write_body,
+            scope=_scope("chio_file_write"),
+            config=cfg,
+            name="chio_file_write",
+            redaction_policy=custom,
+        )
+
+        await wrapped({"path": "/tmp/x", "content": "secret"})
+
+        forwarded = _last_eval(chio).parameters
+        # Replace-not-extend: chio_file_write is absent from the custom
+        # policy, so content survives unredacted.
+        assert forwarded["content"] == "secret"
+        assert forwarded["path"] == "/tmp/x"
+
 
 class TestChioApprovalNodeRedacts:
     async def test_approval_payload_carries_redacted_parameter_hash(
@@ -262,9 +294,13 @@ class TestChioApprovalNodeRedacts:
         assert "PROD_SECRET=abc123" not in repr(payload)
 
     async def test_approval_node_custom_policy_replaces_default(self) -> None:
+        # Replace-not-extend on the approval-node path. The default policy
+        # would redact chio_file_write.content; the custom policy only names
+        # "my_tool", so when the call dispatches as "chio_file_write" the
+        # default's content rule must NOT silently merge in.
         custom = RedactionPolicy(body_fields={"my_tool": ("body",)})
 
-        def my_body(_state: dict[str, Any]) -> dict[str, Any]:
+        def write_body(_state: State) -> dict[str, Any]:
             return {}
 
         async def policy(_state: Any, _rc: Any) -> bool:
@@ -276,22 +312,22 @@ class TestChioApprovalNodeRedacts:
 
         chio = allow_all()
         cfg = await _build_config(
-            chio, node_name="my_tool", scope=_scope("my_tool")
+            chio, node_name="chio_file_write", scope=_scope("chio_file_write")
         )
         wrapped = chio_approval_node(
-            my_body,
-            scope=_scope("my_tool"),
+            write_body,
+            scope=_scope("chio_file_write"),
             config=cfg,
-            name="my_tool",
+            name="chio_file_write",
             approval_policy=policy,
             interrupt_fn=fake_interrupt,
             redaction_policy=custom,
         )
 
-        await wrapped({"label": "hello", "body": "SECRET_TOKEN=xyz"})
+        await wrapped({"path": "/tmp/x", "content": "not-redacted-now"})
 
         forwarded = _last_eval(chio).parameters
-        assert forwarded["body"] == {
-            "omitted": True,
-            "byte_count": len(b"SECRET_TOKEN=xyz"),
-        }
+        # Custom policy fully replaces the default; chio_file_write is absent
+        # from custom, so content survives unredacted in the sidecar payload.
+        assert forwarded["content"] == "not-redacted-now"
+        assert forwarded["path"] == "/tmp/x"
