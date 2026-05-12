@@ -1,6 +1,10 @@
 # 12. OpenAI Responses API Adapter (E1)
 
-> **Erratum (wave 3):** Canonical `tool_origin` enum across the corpus is 4 variants: `CallerExecuted | HostExecutedAttested | HostExecutedUnmediated | HostExecutedRedacted`. The `HostExecutedRedacted` variant was added in doc 13 (Bedrock Lambda trace redaction) and is now part of the v3 core schema in [15-receipt-schema-v3.md](15-receipt-schema-v3.md). References below that show only 3 variants should be read as referring to the canonical 4-variant enum.
+> **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
+>
+> **Erratum (wave 3 + PR 652 review):** `tool_origin` records execution locus, not redaction policy. ADR-0010 keeps `tool_origin` and `redaction_mode` as separate signed v3 fields. The planning default is `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`. References below that imply redaction as an origin variant should be read as historical.
+>
+> **API refresh note (PR 652 review):** Before implementation, refresh against the current official OpenAI tools docs. `function` tools remain the clean MVP seam because the caller executes them. Current tool docs also describe `computer` as a caller-harness action surface and remote MCP / connectors as approval-mediated but externally executed surfaces, so this document's older "all built-ins are host-executed" shorthand must not drive adapter code.
 
 Status: research, not yet implemented.
 Branch: `research/protocol-strategy-2026`.
@@ -11,17 +15,20 @@ Output of swarm task E1. Coordinates with X1 (receipt schema v3) on the
 
 OpenAI's `v1/responses` endpoint is the post-Assistants, post-`chat/completions`
 path forward for OpenAI fleets. It introduces an agentic loop with internal
-iteration, a per-item output stream, and a family of built-in tools that
-execute inside OpenAI's infrastructure (`web_search`, `code_interpreter`,
-`file_search`, `image_generation`, `computer_use`, remote `mcp`). Chio cannot
-constrain those tools at runtime, so the adapter must distinguish three
-provenance categories on every tool record: caller-executed, host-executed
-attested, and host-executed unmediated. This adds one normative field to the
+iteration, a per-item output stream, and a family of tool surfaces whose
+execution locus varies by tool (`function`, hosted tools, remote MCP /
+connectors, and caller-harness `computer` actions). Chio cannot treat those as
+one boundary, so the adapter must distinguish three
+provenance categories on every tool record: caller-executed,
+host-executed-provider-reported, and host-executed unmediated. This adds one
+normative field to the
 receipt schema (`tool_origin`) and a "trace receipt" sub-type that carries no
-verdict because there is nothing to mediate. The proposed crate is
+verdict because there is nothing to mediate. Read that historical shorthand as
+ADR-0010's `trace_observation` or `advisory_evaluation` receipt kind, not as a
+mediated decision receipt. The proposed crate is
 `chio-openai-responses-adapter` and its MVP gates only caller-executed
 `function` tools over streaming SSE; reasoning and built-in tools follow in a
-second release.
+second release only after the boundary ADR.
 
 ## Wire shape
 
@@ -40,9 +47,9 @@ than the `messages` envelope of `chat/completions`
 - `tools` - array of typed tool entries:
   - `function` (caller-executed, schema like Chat Completions but
     internally tagged and strict by default).
-  - `web_search`, `file_search`, `code_interpreter`,
-    `computer_use_preview`, `image_generation` (host-executed inside
-    OpenAI).
+  - Hosted tools such as `web_search`, `file_search`, `code_interpreter`,
+    and `image_generation`, plus newer tool families documented by OpenAI.
+  - `computer` (caller-harness action surface, not the older preview shape).
   - `mcp` (remote MCP server invoked by OpenAI - host-executed but the
     remote MCP server itself is third-party).
 - `reasoning` - `{ effort: "minimal" | "low" | "medium" | "high",
@@ -67,7 +74,7 @@ The response wraps an `output[]` array of typed items rather than the
 - `reasoning` - reasoning step or summary (the full reasoning is
   opaque unless `include: ["reasoning.encrypted_content"]`).
 - `web_search_call`, `file_search_call`, `code_interpreter_call`,
-  `computer_use_call`, `image_generation_call`, `mcp_call`,
+  `computer_call`, `image_generation_call`, `mcp_call`,
   `mcp_list_tools` - host-executed tool records with status and
   truncated result data.
 
@@ -100,7 +107,7 @@ The SSE protocol emits a typed event per state transition
   `response.file_search_call.*`, `response.code_interpreter_call.*`
   (plus `.code.delta` / `.code.done`),
   `response.image_generation_call.*` (including
-  `partial_image`), `response.computer_use_call.*`.
+  `partial_image`), `response.computer_call.*`.
 - MCP: `response.mcp_call_arguments.delta` / `.done`,
   `response.mcp_call.in_progress` / `.completed` / `.failed`,
   `response.mcp_list_tools.in_progress` / `.completed` / `.failed`.
@@ -120,11 +127,11 @@ house rules).
 | Tool | Executes where | Chio sees | Tool origin |
 |------|----------------|-----------|-------------|
 | `function` | Caller | Full args + result | `caller-executed` |
-| `web_search` | OpenAI infra | Query text in args; result truncated | `host-executed-attested` |
-| `file_search` | OpenAI infra | Query + retrieved file ids | `host-executed-attested` |
-| `code_interpreter` | OpenAI sandbox VM | Generated Python source via `.code.delta`, container id | `host-executed-attested` |
-| `image_generation` | OpenAI infra | Prompt + image bytes (large) | `host-executed-attested` |
-| `computer_use_preview` | Caller-owned VM, OpenAI-orchestrated | Mouse/keyboard actions surfaced to caller for execution | `caller-executed` (actions) plus `host-executed-attested` (planning) |
+| `web_search` | OpenAI infra | Query text in args; result truncated | `host-executed-provider-reported` |
+| `file_search` | OpenAI infra | Query + retrieved file ids | `host-executed-provider-reported` |
+| `code_interpreter` | OpenAI sandbox VM | Generated Python source via `.code.delta`, container id | `host-executed-provider-reported` |
+| `image_generation` | OpenAI infra | Prompt + image bytes (large) | `host-executed-provider-reported` |
+| `computer` | Caller harness, model-orchestrated | Batched actions surfaced to caller for execution | `caller-executed` (actions) plus provider-reported planning trace |
 | `mcp` (remote) | OpenAI fetches from third-party MCP | Tool name + args + results | `host-executed-unmediated` (the third-party MCP is fully outside Chio's policy domain) |
 
 Caller-executed means the kernel can run the standard
@@ -132,14 +139,12 @@ Caller-executed means the kernel can run the standard
 same shape as Anthropic's tool-use blocks today, see
 `crates/chio-anthropic-tools-adapter/src/adapter.rs:38-99`).
 
-`host-executed-attested` means Chio records that the request was made
-and that OpenAI claims to have executed it, but cannot constrain the
-inputs (already gone) or the outputs (truncated, often binary). The
-receipt for these calls carries `tool_origin =
-"host-executed-attested"` and an OpenAI-issued attestation derived from
-`response.id` + `system_fingerprint` + the
-`response.<tool>_call.completed` payload. The verdict slot is `Trace`,
-not `Allow`/`Deny`.
+`host-executed-provider-reported` means Chio records that the request was made
+and that OpenAI reported execution, but cannot constrain inputs that are
+already gone or outputs that are truncated or binary. If the provider supplies a
+verifiable signature in the future, a later ADR can add that as a distinct
+origin. Current records use trace/advisory receipt semantics and must not reuse
+`Allow`/`Deny`.
 
 `host-executed-unmediated` is the strongest disclaimer: Chio neither
 mediated nor received a meaningful attestation of execution semantics
@@ -153,7 +158,7 @@ Coordinate with X1 on the exact enum:
 #[serde(rename_all = "kebab-case")]
 pub enum ToolOrigin {
     CallerExecuted,
-    HostExecutedAttested { provider_attestation: String },
+    HostExecutedProviderReported { provider_report_ref: String },
     HostExecutedUnmediated,
 }
 ```
@@ -200,17 +205,16 @@ evaluation:
   adapter buffers the `output_item.added` and arguments-delta frames
   until `.done`, then evaluates; deny fails closed before any frame
   for that item is released downstream.
-- Every host-executed-attested completion event (e.g.
-  `response.web_search_call.completed`) emits a **trace receipt**: a
-  receipt record with `verdict = Trace`, the OpenAI attestation,
-  and no allow/deny gate. The original frames are forwarded
-  unconditionally because Chio cannot block them retroactively.
-- Every `response.mcp_*` event emits a trace receipt with
+- Every host-executed-provider-reported completion event (e.g.
+  `response.web_search_call.completed`) emits a trace/advisory observation
+  using ADR-0010 receipt-kind semantics. It must not be modeled as `Allow`,
+  because Chio cannot block it retroactively.
+- Every `response.mcp_*` event emits a trace observation with
   `tool_origin: host-executed-unmediated` and a flag the downstream
   control-plane can route to a stricter policy lane.
 - The terminal `response.completed` event flushes a final aggregate
-  receipt that links all per-event receipts under a single
-  `response_id`.
+  record that links all per-event records under a single `response_id` while
+  preserving each linked record's `receipt_kind` and `boundary_class`.
 
 The adapter exposes a single `Stream<Item = AdapterEvent>` to the
 kernel rather than the per-tool-call coroutine shape. Each event
@@ -336,7 +340,7 @@ Per-call (non-streaming) and per-stream-segment receipt extras:
 | `safety_identifier` | request | Echoed. |
 | `prompt_cache_key` | request | Echoed; affects replay correlation. |
 | `input_hash` | computed | SHA-256 of canonical-JSON of `input` + `instructions`. |
-| `tool_results_hash` | computed | SHA-256 of canonical-JSON of the ordered list of all `function_call_output` items consumed plus host-executed-attested completion payloads. Hash anchors replay. |
+| `tool_results_hash` | computed | SHA-256 of canonical-JSON of the ordered list of all `function_call_output` items consumed plus host-executed-provider-reported completion payloads. Hash anchors replay. |
 
 `input_hash` and `tool_results_hash` are the replay-binding fields and
 must be canonicalized via `chio_core::canonical::canonical_json_bytes`
@@ -355,16 +359,16 @@ must be canonicalized via `chio_core::canonical::canonical_json_bytes`
   must surface the truncation to the agent so it does not act on
   partial context.
 - **Refusals (`response.refusal.*`)**: the model declined to produce
-  content. Verdict is `Allow` (the model self-gated), but the receipt
-  records `refused = true` and the refusal text is captured (subject
-  to redaction policy).
+  content. This is not a Chio-mediated `Allow`; the aggregate record uses a
+  non-authorizing refusal outcome, records `refused = true`, and captures the
+  refusal text subject to redaction policy.
 - **Content-filter triggers**: OpenAI emits
   `response.failed` with `error.type = "content_filter"`. The adapter
-  surfaces this as a `ProviderError::ContentFilter` and the verdict
-  becomes `Deny { reason: ContentFilter }` for the aggregate receipt.
+  surfaces this as a `ProviderError::ContentFilter` and records a
+  non-authorizing provider-content-filter outcome for the aggregate record.
   Any host-executed tool calls that already completed retain their
-  trace receipts.
-- **MCP failures (`response.mcp_call.failed`)**: emit a trace receipt
+  trace observations.
+- **MCP failures (`response.mcp_call.failed`)**: emit a trace observation
   with `tool_origin = HostExecutedUnmediated` and
   `outcome = Failed`. SIEM rules can key off this combination.
 - **`response.queued`**: long queue depth - record as a latency
@@ -386,9 +390,9 @@ First release ships only:
   `usage`, `input_hash`, `tool_results_hash`, `tool_origin`,
   `previous_response_id`.
 
-Follow-on releases add: built-in-tool trace receipts, reasoning models
+Follow-on releases add: built-in-tool trace observations, reasoning models
 with summary-redaction, remote MCP, fleet-key rotation,
-non-streaming path, computer_use surface (which has its own threat
+non-streaming path, computer action surface (which has its own threat
 model and probably wants its own adapter sub-module).
 
 ---
@@ -400,7 +404,7 @@ model and probably wants its own adapter sub-module).
    non-reasoning models, refusing any request with built-in tools or
    reasoning configured.
 2. The novel receipt field is `tool_origin` (enum:
-   `caller-executed` | `host-executed-attested` | `host-executed-unmediated`),
+   `caller-executed` | `host-executed-provider-reported` | `host-executed-unmediated`),
    required on every tool record so host-executed calls cannot
    silently masquerade as mediated.
 3. File path: `docs/research/protocol-strategy/12-openai-responses-adapter.md`.

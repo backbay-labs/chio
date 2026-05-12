@@ -41,7 +41,7 @@ returns. Specifically:
   trace receipts because Chio cannot retroactively block them. The
   adapter buffers, gates, and lowers.
 - Doc 13 line 22-28: `RETURN_CONTROL` is mediated; `LAMBDA` is receipt-only,
-  with `mediation_scope = "agent_decision_only"` stamped on the receipt
+  with `mediation_scope = "trace_only"` stamped on the receipt
   so audit cannot be deceived. Honest disclosure of where the discipline
   cannot reach.
 - Doc 14 line 82-99: voice bridge sits between LLM tool-call event and
@@ -234,12 +234,12 @@ naming surface is not silently colonized by later docs.
   `black_box(0_u64)`."
 - **`tool_origin` core vs extension**: **NOT consistent**. v2 overview
   line 14, 35, 53 says core v3 field with FOUR variants
-  (`caller-executed`, `host-executed-attested`, `host-executed-unmediated`,
+  (`caller-executed`, `host-executed-provider-reported`, `host-executed-unmediated`,
   `host-executed-redacted`). Doc 12 line 150-157 enumerates THREE
   variants (no `redacted` form). Doc 15 line 425-432, 502-509 puts
   `tool_origin` inside `OpenaiResponsesExtension` and explicitly
   recommends keeping it on the extension, not promoting to core. Doc 13
-  uses `mediation_scope` (binary `agent_decision_only` /
+  uses `mediation_scope` (binary `trace_only` /
   `full_runtime`) instead of `tool_origin`
   (`13-bedrock-agents-bridge.md:25, 97`). Doc 14 mentions neither. Pick
   one (the v2 overview is the right place to land the call) and have

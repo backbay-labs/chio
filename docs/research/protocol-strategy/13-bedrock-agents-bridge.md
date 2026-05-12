@@ -1,10 +1,12 @@
 # Chio bridge for AWS Bedrock Agents (`InvokeAgent`)
 
-> **Erratum (wave 3):** Canonical `tool_origin` enum is `CallerExecuted | HostExecutedAttested | HostExecutedUnmediated | HostExecutedRedacted` per [15-receipt-schema-v3.md](15-receipt-schema-v3.md). The Lambda action-group + trace-redaction case from this doc maps to `HostExecutedRedacted`. The "tool_origin" mentions in this doc should be read as references to the canonical 4-variant enum.
+> **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
+>
+> **Erratum (wave 3 + PR 652 review):** `tool_origin` records execution locus, not redaction policy. Lambda action groups remain host-executed and outside Chio's mediation boundary; trace redaction should be captured by a separate signed `trace_redaction_mode` field unless the receipt-v3 ADR proves otherwise.
 
 ## TL;DR
 
-Add a `chio-bedrock-agents-adapter` crate (sibling, not extension, of `chio-bedrock-converse-adapter` at [`crates/chio-bedrock-converse-adapter/src/lib.rs:1`](crates/chio-bedrock-converse-adapter/src/lib.rs:1)). MVP: full `ToolServerConnection::invoke` mediation for `RETURN_CONTROL` action groups; receipt-only logging for `LAMBDA` action groups (AWS trust boundary); default-on trace redaction (free-form reasoning replaced by salted hashes; opt-in verbatim retention under stricter bounds); reuse the converse adapter's signed `IamPrincipalsConfig` for caller identity. KB citation gating and multi-agent collaboration deferred. Region: us-east-1 + us-west-2 at MVP, full thirteen-region list as a follow-on. The decision boundary is sharp: Chio mediates the agent's *decision to dispatch* in both modes, but only mediates the *runtime parameters* for `RETURN_CONTROL`, because that is the only mode where the caller (and therefore Chio) executes the action.
+Add a `chio-bedrock-agents-adapter` crate (sibling, not extension, of `chio-bedrock-converse-adapter` at [`crates/chio-bedrock-converse-adapter/src/lib.rs:1`](crates/chio-bedrock-converse-adapter/src/lib.rs:1)). MVP: full `ToolServerConnection::invoke` mediation for `RETURN_CONTROL` action groups; trace-only logging for `LAMBDA` action groups (`boundary_class = detect_only`, AWS trust boundary); default-on trace redaction (free-form reasoning replaced by salted hashes; opt-in verbatim retention under stricter bounds); reuse the converse adapter's signed `IamPrincipalsConfig` for caller identity. KB citation gating and multi-agent collaboration deferred. Region: us-east-1 + us-west-2 at MVP, full thirteen-region list as a follow-on. The decision boundary is sharp: Chio mediates runtime parameters only for `RETURN_CONTROL`, because that is the only mode where the caller (and therefore Chio) executes the action.
 
 ## API shape
 
@@ -14,7 +16,7 @@ The response is an event stream multiplexing:
 
 - `chunk` ([`PayloadPart`](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_PayloadPart.html)): `bytes` blob and optional `attribution.citations[]` (S3, Confluence/SharePoint/Salesforce, web, Kendra, custom IDs).
 - `trace` ([`TracePart`](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_TracePart.html)): the agent's step-by-step reasoning record.
-- `returnControl` ([`ReturnControlPayload`](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_ReturnControlPayload.html)): `invocationId` + `invocationInputs[]`, each `apiInvocationInput` (OpenAPI schema: `actionGroup`, `apiPath`, `httpMethod`, `parameters[]`, `requestBody`) or `functionInvocationInput` (function-detail schema: `actionGroup`, `function`, `parameters[]`).
+- `returnControl` ([`ReturnControlPayload`](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_ReturnControlPayload.html)): `invocationId` + up to five `invocationInputs[]`, each `apiInvocationInput` (OpenAPI schema: `actionGroup`, `apiPath`, `httpMethod`, `parameters[]`, `requestBody`, `actionInvocationType`) or `functionInvocationInput` (function-detail schema: `actionGroup`, `function`, `parameters[]`, `actionInvocationType`). `actionInvocationType` can be `RESULT`, `USER_CONFIRMATION`, or `USER_CONFIRMATION_AND_RESULT` and must be settled before implementation.
 - `files` ([`FilePart`](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_FilePart.html)): `bytes`, `name`, `type` for code-interpreter artifacts.
 - Error envelopes: `accessDeniedException` (403), `badGatewayException` (502), `conflictException` (409), `dependencyFailedException` (424), `internalServerException` (500), `modelNotReadyException` (424), `resourceNotFoundException` (404), `serviceQuotaExceededException` (400), `throttlingException` (429), `validationException` (400).
 
@@ -24,7 +26,7 @@ The continuation handshake matters: when an agent emits `returnControl`, the cal
 
 `RETURN_CONTROL` is the mode where AWS deliberately hands tool parameters back to the caller for execution. Every `actionGroupInvocationInput` is labeled `executionType: LAMBDA | RETURN_CONTROL`. Two mediation profiles:
 
-- `executionType == "LAMBDA"`: fulfillment is wired to a Lambda declared at agent-build time, executing *inside* AWS's trust boundary. Chio cannot interpose; it sees only the trace observation summarizing the Lambda's output. Receipt records: `action_group_kind = lambda`, `action_group_id`, `function` or `apiPath`, `parameter_hash` (SHA-256 over canonical-JSON `parameters[]` from the trace event), and `mediation_scope = "agent_decision_only"`. The receipt body literally says "agent dispatched action group X via Lambda; Chio did not constrain runtime." Honest and audit-portable.
+- `executionType == "LAMBDA"`: fulfillment is wired to a Lambda declared at agent-build time, executing *inside* AWS's trust boundary. Chio cannot interpose; it sees only the trace observation summarizing the Lambda's output. Receipt records: `action_group_kind = lambda`, `action_group_id`, `function` or `apiPath`, `parameter_hash` (SHA-256 over canonical-JSON `parameters[]` from the trace event), `boundary_class = detect_only`, and `mediation_scope = "trace_only"`. The receipt body must say "AWS reported Lambda action group X; Chio did not constrain runtime." Honest and audit-portable.
 - `executionType == "RETURN_CONTROL"`: the agent stops and waits for `returnControlInvocationResults`. The caller is the policy-enforcement seam. Chio runs full `ToolServerConnection::invoke` evaluation (manifest validation, data guards, policy-hash check) on the parameters *before* the caller dispatches. On deny: either (a) synthesize `functionResult.responseBody.TEXT.body = "<denied by chio policy>"` and post it back as `returnControlInvocationResults`, ending the loop gracefully, or (b) cancel the session with `endSession: true` and emit a deny receipt. Recommendation: (a) default, (b) for hard-deny categories (data-exfiltration class).
 
 Mediation scope is on every receipt regardless of mode. The "did Chio actually constrain this action?" question gets a binary answer with cryptographic backing.
@@ -60,7 +62,13 @@ Redaction is implemented as a `chio-data-guards`-registered redactor (sibling of
 
 ## Streaming response handling
 
-Bedrock Agents responses are *always* event streams; non-streaming is opt-in via `streamingConfigurations.streamFinalResponse = false` and even then the wire shape is event-stream-framed. The adapter implements `ToolServerConnection::invoke_stream` ([`crates/chio-kernel/src/runtime.rs:292`](crates/chio-kernel/src/runtime.rs:292)) and returns `ToolServerStreamResult` ([`crates/chio-kernel/src/runtime.rs:136`](crates/chio-kernel/src/runtime.rs:136)).
+Bedrock Agents `InvokeAgent` responses use event-stream framing. The
+`streamingConfigurations.streamFinalResponse` setting controls final-response
+streaming and must be set intentionally; the adapter implements
+`ToolServerConnection::invoke_stream`
+([`crates/chio-kernel/src/runtime.rs:292`](crates/chio-kernel/src/runtime.rs:292))
+and returns `ToolServerStreamResult`
+([`crates/chio-kernel/src/runtime.rs:136`](crates/chio-kernel/src/runtime.rs:136)).
 
 Event mapping:
 
@@ -96,7 +104,7 @@ Add the following to the receipt body emitted by this adapter (slotted into the 
 - `trace_redaction_salt_id: String` (salt key ID, *not* salt value; for replay of summary hashes when the operator possesses the salt).
 - `knowledge_base_citations: Vec<HashedCitation>` where `HashedCitation { kb_id: String, location_hash: [u8; 32], excerpt_hash: [u8; 32], confidence: Option<f32> }`. Hashes-of-S3-URIs / hashes-of-Confluence-URLs avoid leaking source paths into receipts; raw locations are recoverable under stricter retention bounds via the trace itself when in `full` mode.
 - `caller_chain: Vec<String>` (the `callerChain[].agentAliasArn` list from `TracePart`; in multi-agent collaboration this captures the supervisor path).
-- `mediation_scope: enum { agent_decision_only, full_runtime }` (binary: `agent_decision_only` for Lambda, `full_runtime` for RETURN_CONTROL).
+- `mediation_scope: enum { trace_only, full_runtime }` (`trace_only` for Lambda, `full_runtime` for RETURN_CONTROL).
 
 The `policy_hash` and `evidence` fields on `ChioReceiptBody` ([`crates/chio-core-types/src/receipt.rs:168`](crates/chio-core-types/src/receipt.rs:168)) are unchanged. The Bedrock Agents-specific block sits alongside, addressable by `body_hash`.
 
@@ -126,7 +134,7 @@ In scope:
 
 Out of scope for MVP:
 
-- Lambda-resident action groups beyond passive receipt logging. Chio cannot mediate the action's runtime; pretending otherwise would be dishonest. Receipts will record what AWS reports in trace observations, but the receipt explicitly notes `mediation_scope = agent_decision_only`.
+- Lambda-resident action groups beyond passive receipt logging. Chio cannot mediate the action's runtime; pretending otherwise would be dishonest. Receipts will record what AWS reports in trace observations, but the receipt explicitly notes `boundary_class = detect_only` and `mediation_scope = trace_only`.
 - Knowledge-base citation gating (deciding whether a KB excerpt is allowed to appear in the final response). This belongs in `chio-data-guards` as a `KnowledgeBaseCitationGuard`, and the same guard can be reused by the converse adapter when it eventually surfaces RAG content. Track as a follow-on.
 - Multi-agent collaboration (`callerChain` length > 1, `collaboratorName` populated, `AGENT_COLLABORATOR` invocation type). The adapter should *record* the `callerChain` on every receipt but should not yet attempt to gate collaborator-agent invocations as if they were tools. Multi-agent collaboration deserves its own design pass; it is structurally a federated-agent problem and rhymes with `DirectoryProvider` from doc 02.
 - Code-interpreter file egress beyond hash recording. File bytes are surfaced to the kernel by hash only; full egress goes through `chio-egress-contract`.

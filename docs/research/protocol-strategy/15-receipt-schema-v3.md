@@ -3,7 +3,7 @@
 > **Erratum (wave 3) - canonical types for v3 core fields:**
 >
 > - **`policy_hash` / `policy_digest`** is a hex `String` (matches existing [`crates/chio-core-types/src/receipt.rs:159`](crates/chio-core-types/src/receipt.rs:159); RFC 8785 canonical-JSON friendly). NOT `[u8; 32]`. Earlier references in this doc to `[u8; 32]` should be read as the hex-encoded form.
-> - **`tool_origin`** has the canonical 4-variant enum `CallerExecuted | HostExecutedAttested | HostExecutedUnmediated | HostExecutedRedacted`. (`HostExecutedRedacted` covers the Bedrock Lambda trace-redaction case from doc 13.)
+> - **`tool_origin`** records execution locus, not redaction policy. ADR-0010 keeps `tool_origin` and `redaction_mode` as separate signed v3 fields. Planning default: `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`.
 > - **`human_principal`** is the typed `HumanPrincipal` enum defined on `CallerIdentity` in [doc 14](14-voice-agent-bridges.md). This doc's `VoiceExtension` references it by canonical encoding, not as a duplicate `Option<String>` definition.
 > - **`ActorRef`** (the actor-chain element type) needs a concrete definition stub. Proposed shape:
 >
@@ -26,24 +26,24 @@
 >   ```
 >
 >   This stub should land in `chio-core-types` alongside the v3 ReceiptBody promotion. Refine in a follow-on against the IETF draft as it stabilizes.
+>
+> **Post-review status:** This document is a stress test, not the implementation spec. [18-decision-packet.md](18-decision-packet.md) is the decision packet to settle before tickets are written. It supersedes historical sketches or review notes that show `policy_digest: [u8; 32]`, redaction as a `tool_origin` variant, feature-bit-only v3 negotiation, or a decided `extensions_hash` strategy.
 
 ## TL;DR
 
 The current `ChioReceiptBody` is too flat and too unstructured to absorb the
 ten field-pile-ups proposed across docs 01-06 and the parallel agents R2-R4
 and E1-E3 without becoming a 40+ field god-struct. Recommend **Option D
-(hybrid)**: promote a small set of universally relevant fields (`schema`,
+(hybrid candidate)**: promote a small set of universally relevant fields (`schema`,
 `actor_chain`, `engine_id`, `policy_digest`, `decision_id`) into the core
 v3 body, and route every bridge-, surface-, or provider-specific payload
 through a typed `extensions: BTreeMap<ExtensionNamespace, ExtensionPayload>`
 map keyed by stable namespace strings. Adding a core field bumps the schema
-version (`chio.receipt.v3`); adding an extension does not. Federation peers
-negotiate supported extension namespaces via the existing
-`chio.capabilities.v1` bitset extended with `accepts_receipt_v3` and a
-per-namespace `accepts_ext.<namespace>` advertisement. A `must_understand`
-flag per extension lets bridges mark namespace-specific payloads as
-verification-mandatory, mirroring the v1/v2 ceiling enforcement at
-`PROTOCOL.md:305-329`.
+version (`chio.receipt.v3`); adding an extension does not. ADR-0010 chooses
+explicit `maxReceiptSchema` plus extension support over the historical
+feature-bit sketch below. A
+`must_understand` flag per extension lets bridges mark namespace-specific
+payloads as verification-mandatory.
 
 ---
 
@@ -122,7 +122,7 @@ pub struct GuardEvidence {
 ### Policy-engine bucket (doc 04, R4)
 
 - `engine_id: &'static str` (Cedar / OPA / OpenFGA / hand-rolled)
-- `policy_digest: [u8; 32]`
+- `policy_digest: String` (hex-encoded digest at the receipt boundary)
 - `decision_id: String` (engine-issued, non-deterministic)
 - `obligations: serde_json::Value`
 - `diagnostics: Option<String>`
@@ -145,7 +145,7 @@ pub struct GuardEvidence {
 ### Provider-specific buckets (E1, E2, E3, R2, doc 05)
 
 - OpenAI Responses (E1): `tool_origin: ToolOrigin {
-  HostExecutedUnmediated | HostExecutedAttested | CallerExecuted }`,
+  HostExecutedUnmediated | HostExecutedProviderReported | CallerExecuted }`,
   `response_id`, `model_version`, `system_fingerprint`.
 - Bedrock Agents (E2): `agent_id`, `agent_alias_id`, `session_id`,
   `invocation_id`, `action_group_id`, `action_group_kind`,
@@ -153,8 +153,9 @@ pub struct GuardEvidence {
   `knowledge_base_citations`.
 - Voice (E3): `call_id`, `participant_id`,
   `audio_timestamp_estimate`, `human_principal`, `platform`.
-- AGNTCY (R2): `acp_peer_id`, `acp_message_id`,
-  `directory_entry_hash`, `directory_provider_id`.
+- Directory / AGNTCY identity (R2): `directory_entry_hash`,
+  `directory_provider_id`, optional identity issuer metadata. ACP message
+  fields are historical only and must not imply an AGNTCY ACP bridge.
 - Orchestrator egress (doc 05): `provider_run_id`,
   `provider_run_url`, `validated_egress_target` (the
   `ValidatedHttpEgressTarget` shape from `chio-egress-contract`).
@@ -236,9 +237,9 @@ replay):
 - `actor_chain: Vec<ActorRef>` (every governed-agent receipt has one)
 - `engine_id: String` (every policy-engine-mediated receipt; default
   `"native"` when the kernel ran no external engine)
-- `policy_digest: [u8; 32]` (already folded into `policy_hash` per
-  doc 04; promoting it as a typed field lets verifiers replay without
-  parsing the aggregation rule)
+- `policy_digest: String` (hex-encoded digest at the receipt boundary;
+  promoting it as a typed field lets verifiers replay without parsing the
+  aggregation rule)
 - `decision_id: String` (per-receipt opaque correlation handle;
   optional, but high enough frequency it earns a top-level slot)
 
@@ -258,31 +259,24 @@ Justification:
    core fields plus an extensions map that v2 verifiers cannot
    misinterpret (they will refuse to parse `chio.receipt.v3` per
    schema-registry rules at `PROTOCOL.md:331-337` and stay on v2).
-2. **Federation negotiation reuses the existing bitset.** Add
-   `accepts_receipt_v3` and `accepts_ext.<namespace>` features to
-   `chio.capabilities.v1`. A v2 verifier negotiated with a v3 producer
-   gets v2 receipts; producers downgrade gracefully. A v3 verifier
-   negotiated with a v3 producer receives v3 receipts with only the
-   negotiated-intersection extension namespaces. Extensions are
-   unknown-tolerant unless `must_understand = true`: the verifier can
-   sign-check and core-replay a v3 receipt even if it does not know
-   what `bedrock_agents` means, but it MUST reject when an extension is
-   marked must-understand and the verifier did not advertise it.
+2. **Federation negotiation needs an ADR decision.** The older sketch used
+   `accepts_receipt_v3` and `accepts_ext.<namespace>` feature bits. PR 652
+   review recommends deciding an explicit `maxReceiptSchema` ceiling instead
+   of relying only on feature bits, because older verifier behavior and
+   downgrade semantics are security-relevant. In either shape, a v2 verifier
+   negotiated with a v3 producer gets v2 receipts; producers downgrade
+   gracefully.
 3. **Signing canonicalization stays cheap and deterministic.** Two
    knobs:
    - The extensions map uses `BTreeMap<String, ExtensionPayload>`;
      RFC 8785 already sorts object keys by UTF-16 code units
      (`canonical.rs:8-9, 123`), so the BTreeMap insertion order is
      irrelevant on the wire.
-   - Each `ExtensionPayload` is canonicalized once, hashed, and the
-     receipt body carries `extensions_hash: [u8; 32]` instead of the
-     full payloads in the signing input. The full extension blob ships
-     alongside the receipt for verifiers that want to inspect it.
-     This keeps the hot signing path bounded by the core body size
-     (constant) regardless of how many extension namespaces are
-     attached. Coordinate with X2 (hot-path latency) on whether this
-     hash-then-sign indirection is worth the read-side replay cost; it
-     is the lever, not a foregone conclusion.
+   - One candidate is to canonicalize each `ExtensionPayload`, hash the
+     extension map, and put a hex `extensions_hash` in the signed body.
+     Another is to sign the full inline body. Coordinate with X2
+     (hot-path latency) and the receipt-v3 ADR before treating
+     `extensions_hash` as decided.
 
 ### Migration
 
@@ -293,9 +287,9 @@ Justification:
   the v1 -> v2 precedent at `PROTOCOL.md:322-324`).
 - v3 production behind a kernel flag; flip the default after a
   transition window during which v3 is opt-in.
-- Audit/replay tooling supports both schemas indefinitely; the
-  receipt-store schema column already carries the schema string for
-  v2 receipts (`receipt.rs:30, 384-386`).
+- Audit/replay tooling supports both schemas indefinitely. Current SQLite
+  receipt storage keeps `raw_json` rather than a separate schema column, so
+  any store-level schema index is future work.
 
 ---
 
@@ -320,7 +314,7 @@ pub struct ChioReceiptV3Body {
     pub decision: Decision,
     pub content_hash: String,
     pub policy_hash: String,
-    pub policy_digest: [u8; 32],
+    pub policy_digest: String,             // hex digest
     pub engine_id: String,                 // "native" if no engine
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision_id: Option<String>,
@@ -332,7 +326,7 @@ pub struct ChioReceiptV3Body {
     pub trust_level: TrustLevel,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<String>,
-    pub extensions_hash: [u8; 32],         // H(canonical_jcs(extensions))
+    pub extensions_hash: Option<String>,   // candidate: hex H(canonical_jcs(extensions))
     pub kernel_key: PublicKey,
 }
 
@@ -384,17 +378,21 @@ pub enum ExtensionPayload {
 1. Compute `extensions_canonical := canonical_json_bytes(extensions)`
    (RFC 8785; BTreeMap ensures stable iteration, UTF-16 key sort
    re-confirms order).
-2. Compute `extensions_hash := sha256(extensions_canonical)`.
-3. Fill `body.extensions_hash` with that hash.
-4. Compute `signing_input := canonical_json_bytes(body)`.
+2. If the ADR chooses hash indirection, compute `extensions_hash :=
+   sha256(extensions_canonical)` and hex-encode it into
+   `body.extensions_hash`.
+3. If the ADR chooses inline signing, leave `body.extensions_hash` absent and
+   include the extensions in the signing input.
+4. Compute `signing_input` according to the ADR-selected strategy.
 5. `signature := sign(signing_input)`.
 6. Wire: send `body`, `extensions`, `signature`.
 
 Verifier:
 
 1. Validate `body.schema == chio.receipt.v3`.
-2. Recompute `extensions_hash` from `extensions`; reject on mismatch.
-3. Verify signature over canonical `body`.
+2. If `extensions_hash` is present, recompute it from `extensions`; reject on
+   mismatch.
+3. Verify signature over the ADR-selected canonical input.
 4. For each extension whose namespace is on the locally supported
    list, decode payload. For each extension marked
    `must_understand = true` whose namespace is NOT supported,
@@ -402,11 +400,12 @@ Verifier:
 
 ### Federation negotiation
 
-Extend `chio.capabilities.v1` with:
+The receipt-v3 ADR must choose either explicit ceilings or feature bits:
 
-- `accepts_receipt_v3` (boolean feature)
-- `accepts_ext.<namespace>` (one feature per extension namespace the
-  peer can interpret)
+- Preferred candidate: `maxReceiptSchema` plus extension support advertised
+  separately.
+- Historical candidate: `accepts_receipt_v3` and `accepts_ext.<namespace>`
+  features in `chio.capabilities.v1`.
 - Producers MUST NOT emit `must_understand = true` extensions for any
   namespace the negotiated peer has not advertised.
 - Federation handshake remains fail-closed: malformed feature names
@@ -427,7 +426,7 @@ extension marked must-understand outside its set.
 pub struct CedarExtension {
     pub engine_version: String,
     pub policy_set_id: String,
-    pub policy_digest: [u8; 32],
+    pub policy_digest: String,
     pub decision_id: String,
     pub obligations: serde_json::Value,
     pub diagnostics: Option<String>,
@@ -454,7 +453,7 @@ pub struct OpenaiResponsesExtension {
     pub model_version: String,
     pub system_fingerprint: String,
     pub tool_origin: ToolOrigin,              // HostExecutedUnmediated |
-                                              // HostExecutedAttested |
+                                              // HostExecutedProviderReported |
                                               // CallerExecuted
 }
 

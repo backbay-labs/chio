@@ -1,5 +1,9 @@
 # 11 - n8n Threat-Mapping: Which Chains Chio Actually Blocks
 
+> **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
+>
+> **Erratum (PR 652 review):** `args_schema` below is design shorthand for typed input constraints. Current workflow manifests use `input_contract` / `output_contract`, and the exact manifest-v2 constraint shape is deferred to [18-decision-packet.md](18-decision-packet.md).
+
 ## TL;DR verdict
 
 Priority-1 designation for n8n is **partially justified, but for
@@ -87,10 +91,10 @@ everything. Patch n8n.
 
 ### Chain C - Prompt-injection-driven webhook exfil
 
-This is where Chio's value is highest and end-to-end. The proposed
-`n8n.webhook_trigger` manifest with a per-tenant (host, workflow_id)
-tuple plus `args_schema` patterns rejects an injected workflow ID or a
-suspicious payload field. `HttpEgressContract.allowed_authority_set`
+This is where Chio's value is highest for Chio-routed agent-to-webhook egress.
+The proposed `n8n.webhook_trigger` manifest with a per-tenant (host,
+workflow_id) tuple plus typed input constraints rejects an injected workflow ID
+or a suspicious payload field. `HttpEgressContract.allowed_authority_set`
 (`crates/chio-egress-contract/src/lib.rs:27`) rejects an injected
 target host before DNS is trusted; `deny_loopback` / `deny_link_local`
 / `deny_ipv6_ula` (`crates/chio-egress-contract/src/lib.rs:30-34`)
@@ -141,7 +145,7 @@ admin-level n8n compromise outside any Chio-managed agent path.
 |-------|---------------|--------------------|----------|---------------|-------------|
 | A. Malicious community node | No | No (egress is from n8n host, not agent) | Forensic only | Forensic only | All in-workflow execution; credential exfil from n8n host |
 | B. In-workflow RCE / cred exfil (CVE-2026-25049 etc) | No | No | Forensic only | Forensic only | All in-workflow execution; needs n8n patching |
-| C. Prompt-injection webhook exfil | **Yes** (workflow-ID allowlist + args_schema) | **Yes** (allowed_authority_set + deny_loopback/link-local/ULA) | Full chain of custody | Per-agent workflow-ID policy | Allowlisted workflow whose body was changed (-> Chain F) |
+| C. Prompt-injection webhook exfil | **Yes** (workflow-ID allowlist + typed input constraints) | **Yes** (allowed_authority_set + deny_loopback/link-local/ULA) | Full chain of custody | Per-agent workflow-ID policy | Allowlisted workflow whose body was changed (-> Chain F) |
 | D. Webhook ingress abuse (Talos n8mare) | N/A | N/A | N/A | N/A | All of it - below Chio's layer |
 | E. Poisoned self-hosted n8n | Partial (host pinning) | Yes (network), partial (DNS spoof of pinned authority not blocked without TLS pinning) | Forensic | Forensic | TLS-MITM with valid cert chain |
 | F. Persistent backdoor via workflow update | Partial (if management surface not exposed) | Partial | Forensic high-value if mgmt surface mediated | Yes | Out-of-band admin compromise |
@@ -149,8 +153,8 @@ admin-level n8n compromise outside any Chio-managed agent path.
 ## Overall verdict
 
 - **High-confidence block (priority-1 justified for this category)**:
-  Chain C. Manifest gate + `args_schema` + authority pinning is
-  end-to-end coverage of the prompt-injection-driven webhook exfil
+  Chain C. Manifest gate + typed input constraints + authority pinning is
+  end-to-end coverage for Chio-routed prompt-injection-driven webhook exfil
   scenario that is the agent-tool-call layer's signature attack.
 - **Mixed - forensic only**: Chains A, B, F. Chio cannot prevent a
   malicious node from running inside n8n, a workflow-creation RCE,
@@ -199,7 +203,7 @@ own the rest of defense in depth.**
 To maximize Chain C coverage and improve Chain F:
 
 1. **Workflow-ID allowlist** (per (tenant, agent_role) tuple). Already
-   sketched in doc 05's `args_schema.workflow_id`. Make it a typed
+   sketched in doc 05's workflow-ID constraint. Make it a typed
    policy primitive, not an ad-hoc pattern.
 2. **Input-payload JSON schema constraints** with denylist patterns
    for sensitive substrings (regex on `payload.*` for

@@ -1,18 +1,26 @@
 # 05 - Workflow Orchestrator Mediation
 
-> **Erratum (wave 3):** The n8n priority-1 framing below originally cited the Cisco Talos 686% abuse spike. Per the wave-3 n8n threat-chain mapping ([11-n8n-threat-mapping.md](11-n8n-threat-mapping.md)), that spike is **Chain D** (unauthenticated webhook ingress abuse), which is **below Chio's layer and is NOT blocked by Chio**. The actually-blocked threat is **Chain C** (prompt-injection-driven agent-to-webhook exfiltration), where manifest workflow-ID allowlist + `args_schema` + `HttpEgressContract` authority pinning + loopback / link-local / ULA denial give end-to-end coverage and receipts add chain-of-custody. Keep n8n as priority-1; restrict the value-prop wording to Chain C.
+> **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
+>
+> **Erratum (wave 3):** The n8n priority-1 framing below originally cited the Cisco Talos 686% abuse spike. Per the wave-3 n8n threat-chain mapping ([11-n8n-threat-mapping.md](11-n8n-threat-mapping.md)), that spike is **Chain D** (unauthenticated webhook ingress abuse), which is **below Chio's layer and is NOT blocked by Chio**. The actually-blocked threat is **Chain C** (prompt-injection-driven agent-to-webhook exfiltration), where workflow-ID allowlist + typed input constraints + `HttpEgressContract` authority pinning + loopback / link-local / ULA denial give end-to-end coverage and receipts add chain-of-custody. Keep n8n as priority-1; restrict the value-prop wording to Chain C.
+>
+> **Follow-up erratum (PR 652 review):** Several examples below use design shorthand. `args_schema` is not today's `SkillStep` field; current workflow manifests use `input_contract` / `output_contract` in `crates/chio-workflow/src/manifest.rs`. Likewise `policy_version` and `manifest_id` are not current standard receipt fields in `ChioReceiptBody`; they are proposed receipt metadata/core additions to settle in the decision packet ([18-decision-packet.md](18-decision-packet.md)).
+>
+> Exact GitHub Agent Workflow Firewall / `gh-aw` product naming and coverage should be refreshed from official GitHub sources before any Actions adapter plan; the security boundary here is agent attribution outside the runner, not an in-runner firewall claim.
 
 ## TL;DR
 
 Chio should cover three workflow orchestrators via egress mediation, in this
 order: (1) **n8n** first (active 2026 abuse surface, weakest incumbent
-security story, where Chio's signed-receipt model is a genuine upgrade);
+security story, where Chio's signed-receipt model is a genuine upgrade
+for agent-side triggers);
 (2) **Zapier** and **Make.com** together (the largest "agent fires a
 webhook" volume in production, near-identical wire shape, one adapter
 covers both); (3) **GitHub Actions** as a deliberate second wave (GitHub
-shipped an Agentic Workflow Firewall in 2026, but the agent-attribution
-gap on `workflow_dispatch` is real and Chio's cross-platform receipt
-chain is the differentiator). **Temporal**, **Airflow**, **AWS Step
+has published Agent Workflow Firewall / `gh-aw` security controls, but
+the exact naming and coverage must be refreshed before ticketing; the
+agent-attribution gap on `workflow_dispatch` is Chio's likely
+differentiator). **Temporal**, **Airflow**, **AWS Step
 Functions**, and **Argo Workflows** should be deferred: strong incumbent
 controls, lower 2026 attack frequency, and Chio already has in-platform
 SDKs for Temporal and Airflow that cover the realistic threat
@@ -58,14 +66,15 @@ n8n/Zapier where there is nothing.
 ### n8n - COVER (priority 1)
 
 - **Attack surface 2026**: Cisco Talos's "n8mare" report
-  (<https://blog.talosintelligence.com/n8mare-n8n-abuse-spike>) documented a
-  686 percent spike in n8n abuse in the first half of 2026, driven by
-  publicly exposed `Webhook` and `Execute Workflow` nodes plus
-  prompt-injection-laced workflow definitions imported from the community
-  marketplace.
-- **Mediation value**: n8n's auth model is API-key-per-instance with
-  optional Basic auth on webhooks; there is no per-call signed-receipt
-  story, no per-input policy. Chio's `HttpEgressContract` + policy guards
+  (<https://blog.talosintelligence.com/the-n8n-n8mare/>) documents that
+  n8n is an active abuse target. The reported 686 percent spike is Chain D
+  webhook ingress abuse, which Chio cannot block; it is useful only as
+  "hot target" context. The Chio-blocked case is Chain C: agent-side
+  prompt injection that tries to trigger an unauthorized webhook or
+  workflow payload.
+- **Mediation value**: n8n's auth model includes instance credentials and
+  webhook auth modes such as Basic, Header, JWT, or None; there is no per-call
+  signed-receipt story, no per-input policy. Chio's `HttpEgressContract` + policy guards
   add real coverage: pin the n8n host, pin the webhook path prefix, pin
   the workflow ID set the agent can trigger.
 - **Wire shape**: agent triggers a single HTTPS POST to
@@ -108,15 +117,14 @@ n8n/Zapier where there is nothing.
 
 - **Attack surface 2026**: agents firing `workflow_dispatch` and
   `repository_dispatch` to run on-demand deploy, release-cut, and
-  data-migration workflows. GitHub shipped the **Agentic Workflow
-  Firewall** in 2026
-  (<https://github.blog/security/agentic-workflow-firewall-2026>) which
-  gates *inside* the runner: it inspects what an Actions workflow does
-  during execution. It does not authenticate which agent triggered the
-  dispatch, only which PAT or GitHub App did. That attribution gap is
-  Chio's value.
+  data-migration workflows. GitHub Agentic Workflows / `gh-aw` docs describe
+  runner-side controls; Agent Workflow Firewall is the egress allowlist component.
+  Refresh exact naming and coverage before ticketing. Chio's value, if
+  this adapter proceeds, is the outside-in attribution gap: which agent
+  triggered the dispatch, not only which PAT or GitHub App did.
 - **Mediation value**: medium. The duplicative concern is real - GitHub
-  is doing the in-runner work. Chio's contribution is the outside-in
+  is doing the in-runner work where those controls apply. Chio's contribution
+  is the outside-in
   binding: which agent, on which user's behalf, fired which dispatch,
   with what inputs, against which (repo, ref, workflow_id) tuple, and a
   receipt that chains into the rest of the agent's session.
@@ -129,10 +137,9 @@ n8n/Zapier where there is nothing.
 
 ### Temporal - DEFER
 
-gRPC signal/start, not clean HTTP. Temporal's 2026 `Principal` field
-(<https://docs.temporal.io/principal-2026>) closes the agent-attribution
-gap at the protocol level. `chio-temporal` already handles the
-inside-the-workflow story. If we revisit, egress mediation goes at the
+gRPC signal/start, not clean HTTP. `chio-temporal` already handles the
+inside-the-workflow story, and any Temporal attribution claim needs a fresh
+official source before ticketing. If we revisit, egress mediation goes at the
 SDK boundary (intercepting the client builder), not HTTP.
 
 ### Apache Airflow - DEFER
@@ -166,15 +173,17 @@ bridge). The pattern:
 ### Tool manifest entry
 
 The skill manifest (`crates/chio-workflow/src/manifest.rs:13`) is a step
-list; the new entry is a `SkillStep` whose `tool_name` is a
-platform-specific trigger primitive. Example for GitHub Actions:
+list; today's `SkillStep` has `input_contract` / `output_contract`, not
+`args_schema`. The examples below are the desired typed input constraints
+for an orchestrator-egress manifest shape, not current code. Example for
+GitHub Actions:
 
 ```yaml
 schema: chio.skill-manifest.v1
 steps:
   - server_id: chio.orchestrator-egress
     tool_name: github_actions.workflow_dispatch
-    args_schema:
+    input_contract:
       repo: { type: string, pattern: "^[\\w.-]+/[\\w.-]+$" }
       workflow_id: { type: string }
       ref: { type: string, pattern: "^refs/(heads|tags)/.+$" }
@@ -186,7 +195,7 @@ n8n / Zapier / Make.com share a `webhook_trigger` shape:
 ```yaml
   - server_id: chio.orchestrator-egress
     tool_name: n8n.webhook_trigger        # or zapier.catch_hook / make.scenario_run
-    args_schema:
+    input_contract:
       workflow_id: { type: string }
       payload: { type: object }
       idempotency_key: { type: string }
@@ -194,8 +203,11 @@ n8n / Zapier / Make.com share a `webhook_trigger` shape:
 
 ### Policy primitives
 
-The kernel evaluates against the manifest before the egress contract is
-consulted. Policy gates at the bridge layer:
+The planned bridge/control-plane gate evaluates the manifest constraints
+before the egress contract is consulted. Today the kernel validates
+capabilities, guards, and registered server dispatch; per-call manifest
+schema enforcement for orchestrator egress is proposed plumbing, not an
+existing hot-path kernel gate. Policy gates at the bridge layer:
 
 - **Allowed targets**: per-tenant allowlist of (provider, account, workflow
   identifier). For GitHub Actions this is the (repo, workflow_id, ref)
@@ -230,7 +242,9 @@ The signed decision receipt embeds:
 - `provider_run_url`: a human-navigable URL for IR
   (`https://github.com/<owner>/<repo>/actions/runs/<id>`,
   `https://<host>/workflow/<id>/executions/<exec_id>` for n8n).
-- `policy_version` and `manifest_id`: already standard receipt fields.
+- `policy_version` and `manifest_id`: proposed fields or signed metadata
+  that must be settled in receipt-v3 / manifest-v2 planning before this
+  adapter is implemented.
 
 ### Failure modes
 
@@ -246,9 +260,11 @@ The signed decision receipt embeds:
   records the dispatch, not the workflow outcome. Workflow outcome
   capture is the in-platform SDK's job (the existing `chio-temporal` and
   `chio-airflow` story).
-- **DNS hijack**: `HttpEgressContract` enforces authority match before
-  the DNS resolution result is trusted
-  (`crates/chio-egress-contract/src/lib.rs:74-79`).
+- **DNS hijack / endpoint swap**: `HttpEgressContract` enforces scheme,
+  authority, redirect, and private-range constraints before dispatch, but
+  it does not provide TLS/SPKI pinning. Authority smuggling and obvious
+  private-address pivots are covered; resolver compromise and certificate
+  trust failures are outside this contract unless future work adds a pin.
 
 ### Composition with existing bridges
 
@@ -263,9 +279,10 @@ hitting an attacker-controlled host via path or argument smuggling.
 ## Phase 4 - Phased rollout
 
 - **Phase A (next quarter)**: ship the n8n adapter
-  (`chio-orchestrator-egress` crate, `n8n.webhook_trigger` tool). Lead
-  customer-facing comms with the Talos n8mare reference. Bundle a
-  default `HttpEgressContract` template per tenant.
+  (`chio-orchestrator-egress` crate, `n8n.webhook_trigger` tool). Frame
+  customer-facing comms around Chain C agent-side trigger prevention and
+  use Talos only as hot-target context, not as a blocked-threat claim.
+  Bundle a default `HttpEgressContract` template per tenant.
 - **Phase B (one quarter behind A)**: ship Zapier and Make.com as
   sibling adapters under the same crate; same manifest shape, different
   authority lists. Zapier first by volume.
@@ -286,11 +303,9 @@ hitting an attacker-controlled host via path or argument smuggling.
 ## References
 
 - Cisco Talos, n8mare report:
-  <https://blog.talosintelligence.com/n8mare-n8n-abuse-spike>
-- GitHub Agentic Workflow Firewall:
-  <https://github.blog/security/agentic-workflow-firewall-2026>
-- Temporal Principal field (2026):
-  <https://docs.temporal.io/principal-2026>
+  <https://blog.talosintelligence.com/the-n8n-n8mare/>
+- GitHub Agent Workflows / Firewall docs to refresh before planning:
+  <https://github.github.io/gh-aw/>
 - `HttpEgressContract`:
   `crates/chio-egress-contract/src/lib.rs:15`
 - `ToolServerConnection`:

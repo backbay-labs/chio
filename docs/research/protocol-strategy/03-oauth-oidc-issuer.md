@@ -1,5 +1,11 @@
 # 03. OAuth 2.1 / OIDC Issuer Posture for Chio
 
+> **Historical research note:** This document is background for PR 652, not the
+> implementation plan of record. Use [00-overview-v2.md](00-overview-v2.md)
+> and [18-decision-packet.md](18-decision-packet.md) for current planning.
+> OAuth AS implementation tickets remain blocked until a dedicated ADR or
+> equivalent decision note is accepted.
+
 ## TL;DR
 
 Chio should adopt a hybrid **issuer-of-last-resort plus PDP-with-step-up** posture. The codebase already ships a non-trivial OAuth 2.1 authorization server inside the hosted MCP edge (`crates/chio-mcp-remote/src/remote_mcp/oauth.rs`) with PKCE, RFC 8693 token exchange, RFC 9396 rich authorization details, RFC 8414 metadata, RFC 9728 protected-resource metadata, and a Chio-specific sender-constraint extension. Walking that back would discard real, tested code. But Chio should *not* market itself as a general-purpose enterprise IdP that competes with WorkOS, Stytch, or Scalekit. The right framing is: Chio is a policy decision point (PDP) for agent tool calls that, where no upstream AS can express the governance contract Chio needs (governed RAR, transaction-context, attestation-bound sender constraint), mints a narrow access token bound to a single protected resource (the Chio MCP edge). For everything else, Chio consumes and verifies upstream OAuth/OIDC tokens, surfaces them in `CallerIdentity`, and returns step-up challenges when policy requires fresher human approval. Issuer scope stays bounded to the `chio-governed-rar-v1` profile; broad user-facing authentication and lifecycle remain non-goals.

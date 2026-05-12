@@ -1,5 +1,9 @@
 # 10 - Cedar First Guard: Porting `McpToolGuard` and Sizing the Migration
 
+> **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
+>
+> **Erratum (PR 652 review):** References below to `policy_digest: [u8; 32]` are digest-source sketches, not final receipt wire shape. Receipt-facing `policy_hash` / `policy_digest` should use the hex `String` encoding called out in [15-receipt-schema-v3.md](15-receipt-schema-v3.md) and [18-decision-packet.md](18-decision-packet.md), unless the receipt-v3 ADR explicitly chooses another form.
+
 ## TL;DR
 
 The cleanest candidate for the `PolicyEngineProvider` proof-of-concept from
@@ -234,7 +238,7 @@ pub struct CedarPolicyGuard {
     policy_set: cedar_policy::PolicySet,
     schema: cedar_policy::Schema,
     entities: cedar_policy::Entities,
-    policy_digest: [u8; 32],
+    policy_digest_bytes: [u8; 32],
 }
 
 impl CedarPolicyGuard {
@@ -338,12 +342,14 @@ and public Cedar benchmarks.
 | Eval overhead | ~50-500 ns (HashSet lookups + JSON byte count) | ~10-50 us (Cedar typical) | Cedar is 100-1000x slower per call, mitigated by `AsyncGuardAdapter`'s TTL cache |
 | Memory footprint | ~1 KB per guard (two HashSets) | ~50-200 KB per guard (parsed PolicySet + Schema + Authorizer) | Per-process, not per-call |
 
-Eval-overhead jump is acceptable for `McpToolGuard` because (a) the kernel
-already does a sync-to-async hop via `ScopedAsyncGuard::block_on`
+Eval-overhead jump is likely acceptable for `McpToolGuard` because (a) the
+kernel already does a sync-to-async hop via `ScopedAsyncGuard::block_on`
 (`crates/chio-external-guards/src/lib.rs:66-94`) for HTTP cloud guardrails,
-(b) `AsyncGuardAdapter::TtlCache` keyed on `(tool, agent, args_hash)`
-collapses repeats (~95% hit rate after warmup), and (c) Cedar is in-process
-with policy/schema loaded once at startup. For raw single-digit-us guards
+(b) `AsyncGuardAdapter::TtlCache` keyed on `(tool, agent, args_hash)` can
+collapse repeated decisions when workloads actually repeat, and (c) Cedar is
+in-process with policy/schema loaded once at startup. The cache hit rate must
+be measured with the real bench bodies from the PR 652 decision packet before
+this becomes a latency claim. For raw single-digit-us guards
 (`ForbiddenPathGuard` on hot path), the overhead would dominate; do not
 migrate those.
 
@@ -377,8 +383,9 @@ multi-engine config.
 ## 6. Receipt embedding
 
 Per doc 04: every engine decision contributes `engine_id: "cedar"`,
-`policy_digest: [u8; 32]`, `decision_id: String`. Matched policy IDs come
-from `response.diagnostics().reason()` as `Vec<PolicyId>`.
+`policy_digest: String` (hex-encoded from the internal digest bytes), and
+`decision_id: String`. Matched policy IDs come from
+`response.diagnostics().reason()` as `Vec<PolicyId>`.
 
 Coordinate with X1 (receipt schema v3): X1's `extensions` is a typed
 namespace map. Reserve `policy.cedar`:

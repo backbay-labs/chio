@@ -102,7 +102,7 @@ introduces it explicitly (doc-08:432) and rejects the alternatives
 justification is wrong on the facts: there is no existing `chio-bridge-*`
 convention. The convention is `-edge` / `-adapter` / `-proxy`.
 
-**Recommendation:** rename to `chio-agntcy-acp-adapter`. Rationale:
+**Recommendation:** rename to `superseded AGNTCY ACP adapter name`. Rationale:
 
 - Functional flow matches `-adapter`: AGNTCY ACP servers are consumed as
   Chio tool servers via `impl ToolServerConnection`. Doc 08 itself models
@@ -114,7 +114,7 @@ convention. The convention is `-edge` / `-adapter` / `-proxy`.
   `chio-openai-responses-adapter` (doc 12) already match the `-adapter`
   convention. Aligning AGNTCY with them produces a coherent five-crate set.
 - Doc 02's `chio-bridge-acp` (lines 132, 187, 243, 268) and
-  `chio-bridge-agora` (lines 187, 268) become `chio-agntcy-acp-adapter`
+  `chio-bridge-agora` (lines 187, 268) become `superseded AGNTCY ACP adapter name`
   and `chio-agora-adapter` for consistency.
 - `chio-livekit-py` (doc 14) is a Python middleware package, not a Rust
   crate; leave as-is. Pipecat and Vapi+Retell follow the same shape
@@ -209,19 +209,19 @@ doc 13 should mark them as optional/follow-on.
    `chio-bridge-acp`. Doc 00-v2 lines 23, 43, 65 use `chio-bridge-agntcy`.
    **Fix:** rewrite doc 02 sections 2.6, 5.1, 5.4 to use the agreed name.
    See naming-convention recommendation above for the further switch to
-   `chio-agntcy-acp-adapter`.
+   `superseded AGNTCY ACP adapter name`.
 
 2. **`tool_origin` variant set.** Three different versions across the
    cluster:
-   - Doc 12:151-156: `CallerExecuted | HostExecutedAttested {
-     provider_attestation } | HostExecutedUnmediated` (struct variant).
+   - Doc 12:151-156: `CallerExecuted | HostExecutedProviderReported {
+     provider_report_ref } | HostExecutedUnmediated` (struct variant).
    - Doc 15:429-431: `ToolOrigin { HostExecutedUnmediated |
-     HostExecutedAttested | CallerExecuted }` (plain enum, no attestation
+     HostExecutedProviderReported | CallerExecuted }` (plain enum, no attestation
      payload).
    - Doc 00-v2:35: adds a fourth, `host-executed-redacted`, that appears
      nowhere else.
    **Fix:** pick one. Recommend doc 12's three-variant struct shape with
-   `HostExecutedAttested { provider_attestation: String }` and drop
+   `HostExecutedProviderReported { provider_report_ref: String }` and drop
    `host-executed-redacted` from doc 00-v2 unless docs 12/13/15 are updated
    to define it. A redaction state is a separate orthogonal flag, not a
    tool-origin variant.
@@ -292,7 +292,7 @@ Doc 00 (v1) lines 69-75 names all three ACPs and warns against
 
 **Action:** rewrite doc 02 to remove all `chio-bridge-acp` / `chio-acp-*`
 references. Replace with whichever crate name the reviewer body picks (my
-recommendation: `chio-agntcy-acp-adapter`). Update doc 00 (v1) line 41
+recommendation: `superseded AGNTCY ACP adapter name`). Update doc 00 (v1) line 41
 similarly, or supersede with v2.
 
 ## Recommended edits per doc
@@ -330,7 +330,7 @@ similarly, or supersede with v2.
    `ExtensionNamespace` in doc 15.
 2. Naming recommendation: drop the new `chio-bridge-*` prefix; use the
    workspace's existing `chio-<vendor>-<protocol>-adapter` convention,
-   giving `chio-agntcy-acp-adapter`, alongside `chio-bedrock-agents-adapter`,
+   giving `superseded AGNTCY ACP adapter name`, alongside `chio-bedrock-agents-adapter`,
    `chio-openai-responses-adapter`, and `chio-directory`.
 3. Output written to
    `/Users/connor/backbay/arc/.claude/worktrees/protocol-research-2026/docs/research/protocol-strategy/reviews/02-bridges-consistency-review.md`.

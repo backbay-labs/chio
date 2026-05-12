@@ -315,4 +315,3 @@ mcp_tool, path_allowlist, internal_network, and arguably code_execution.
   `ChioReceiptBody` struct start, not the `policy_hash` field
   (line 168). Cosmetic but worth fixing to keep the cluster's
   citations exact.
-

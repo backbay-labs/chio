@@ -1,12 +1,14 @@
 # 09 - Event Action Schema for ToolAction and chio-manifest
 
+> **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
+>
 > Wave A, item R3 from `00-overview.md`. Builds on `01-pubsub-coverage-audit.md`.
 > Code paths cited as repo-relative against `/Users/connor/backbay/arc/.claude/worktrees/silly-wu-c32126/`.
 
 ## TL;DR
 
 - The Rust kernel cannot today name "publish to Kafka topic X" or "consume NATS subject Y" in its `ToolAction` enum (`crates/chio-guards/src/action.rs:16-46`), so any policy that the Python `chio-streaming` SDK enforces is unverifiable on replay - the kernel sees a generic `ExternalApiCall` or `McpTool` at best. The minimum viable fix is two new variants (`EventPublish`, `EventConsume`) plus a unified `EventDestination` / `EventSource` shape that absorbs Kafka, NATS, Pulsar, EventBridge, Pub/Sub, SNS, SQS, and Redis Streams under a single schema with optional broker-specific fields.
-- Adoption requires a `chio-manifest` schema bump from `chio.manifest.v1` (`crates/chio-manifest/src/lib.rs:20`) to `chio.manifest.v2`. Ceiling negotiation per `spec/PROTOCOL.md:305-329` already handles mixed-version peers fail-closed.
+- Adoption requires a `chio-manifest` schema bump from `chio.manifest.v1` (`crates/chio-manifest/src/lib.rs:20`) to `chio.manifest.v2`. PR 652 review corrected an overclaim here: current negotiation covers capability schema ceilings, not manifest schema ceilings. Manifest v2 needs new `maxManifestSchema` or equivalent feature-bit plumbing before mixed-version peers can fail closed intentionally.
 - Receipt body extension piggybacks on the planned X1 receipt schema v3, adding an `event_decision` block under `ChioReceiptBody.metadata` for v2 and promoting it to a typed field in v3. The path forward is unified schema + manifest v2 + receipt v3 piggyback. The Python SDK can upgrade without breaking existing customers because the current `parameters` dict carries the same logical fields just untyped.
 
 ## Current state of `ToolAction`
@@ -28,7 +30,7 @@
 - `RequiredPermissions` (line 165) has `read_paths`, `write_paths`, `network_hosts`, `environment_variables`. **There is no `event_subjects` or `broker_targets` field.** This is the most direct gap. Compare with `HttpEgressContract` (`crates/chio-egress-contract/src/lib.rs:14-39`) which has `tenant_egress_namespace`, `allowed_schemes`, `allowed_authority_set` - typed and constrained. Brokers have no analogue.
 - The pattern for adding constraints is therefore split across two crates: a typed contract in a sibling crate (egress-contract style), referenced indirectly from manifest input/output schemas. Wave A wants to bring broker constraints up to the same first-class level by adding them under `RequiredPermissions` plus a new sibling crate `chio-broker-contract` (parallel to `chio-egress-contract`).
 
-Schema versioning: `spec/PROTOCOL.md:305-329` describes ceiling negotiation. `FederationTrustExchange.negotiated_with(...)` derives the per-peer ceiling, `verify_capability_with_negotiated_floor` rejects tokens whose schema exceeds the peer ceiling. The lattice rule is: a v1-only peer can still send a v1 manifest to a v2 peer (universal floor); a v2-only manifest fails on a v1 peer with `SchemaExceedsNegotiatedCeiling`. The same machinery applies to manifest schema once we bump.
+Schema versioning: `spec/PROTOCOL.md:305-329` describes capability ceiling negotiation. `FederationTrustExchange.negotiated_with(...)` derives the per-peer capability ceiling, and `verify_capability_with_negotiated_floor` rejects tokens whose schema exceeds that peer ceiling. Manifest schema negotiation is not implemented today. The desired lattice rule is: a v1-only peer can still send a v1 manifest to a v2 peer (universal floor); a v2-only manifest fails on a v1 peer with `UnsupportedSchema("chio.manifest.v2")` or a manifest-ceiling error. Implementing that rule requires new manifest-ceiling state, not just reuse of the capability ceiling.
 
 ## EventPublish variant design
 
@@ -174,7 +176,7 @@ The receipt body (`crates/chio-core-types/src/receipt.rs:158-181`) currently hol
 
 Hashing `broker_id`, `partition_key`, and `consumer_group` keeps receipts portable across customers without leaking infra names; reviewers verify by recomputing.
 
-**Long-term (receipt v3, coordinated with X1):** promote `event_decision` to a typed sibling of `action` in `ChioReceiptBody`. The X1 thread leaves room by gating new fields behind a `receipt_schema: SemVer` field. The minimum coordination point with X1 is: **reserve `event_decision` as a v3 field name** so X1 does not collide on it.
+**Long-term (receipt v3, coordinated with X1):** promote `event_decision` to a typed sibling of `action` in `ChioReceiptBody`. PR 652 review corrected the schema wording: current receipts do not have a `receipt_schema: SemVer` field, and ADR-0010 chooses explicit `schema_version` plus `maxReceiptSchema` negotiation. The minimum coordination point with X1 is: **reserve `event_decision` as a v3 field name** so X1 does not collide on it.
 
 Backward compat: every v2 receipt parses successfully on a v3-aware verifier (metadata is `Option<Value>`); a v3 receipt fails parse on a v2-only verifier *unless* X1 lands `event_decision` inside metadata first and only promotes it later. Recommend the latter path.
 
@@ -203,9 +205,9 @@ pub struct EventEndpointConstraint {
 }
 ```
 
-`deny_unknown_fields` on `ToolManifest` (line 24) means v1 verifiers reject v2 manifests at load time. That is the fail-closed default and matches the negotiation lattice in `spec/PROTOCOL.md:305-329`: a v1 peer can serve v1 manifests to v2 callers (universal floor), but a v2 manifest sent to a v1 verifier rejects with `UnsupportedSchema("chio.manifest.v2")` (line 237-239). This is the correct posture - a v1-only kernel **must not** silently accept event-publish permissions it cannot enforce.
+`deny_unknown_fields` on `ToolManifest` (line 24) plus exact schema validation means v1 verifiers reject v2 manifests at load time. That is the fail-closed default. The negotiated version of that behavior still needs new manifest-ceiling plumbing: a v1 peer can serve v1 manifests to v2 callers (universal floor), but a v2 manifest sent to a v1 verifier rejects with `UnsupportedSchema("chio.manifest.v2")` (line 237-239) or, after the new handshake lands, with a manifest-ceiling error. This is the correct posture - a v1-only kernel **must not** silently accept event-publish permissions it cannot enforce.
 
-Ceiling negotiation glue: `FederationPeer.capabilities.max_manifest_schema` (new field) advertised at handshake. Verifier checks `manifest.schema <= peer.max_manifest_schema`. Symmetric to the capability ceiling already in place.
+Ceiling negotiation glue to design: `FederationPeer.capabilities.max_manifest_schema` (new field) or an equivalent `accepts_manifest_v2` feature advertised at handshake. Verifier checks `manifest.schema <= peer.max_manifest_schema` if the explicit ceiling path is chosen. PR 652 review recommends an explicit ceiling because current `CapabilityNegotiation` only validates `max_capability_schema`.
 
 ## Python SDK integration
 
@@ -239,5 +241,5 @@ Total scope is one engineer-sprint for the Rust side and one for the SDK shift. 
 ## Three-line summary
 
 - **Schema shape:** single unified `EventDestination` / `EventSource` with `BrokerKind` enum + optional fields, not per-broker variants. Cheaper to add brokers, lets policy authors write one rule across brokers, matches the existing Python SDK convergence.
-- **Manifest bump required:** `chio.manifest.v1` to `chio.manifest.v2`, additive only, fail-closed under existing ceiling negotiation per `spec/PROTOCOL.md:305-329`. No flag-day.
+- **Manifest bump required:** `chio.manifest.v1` to `chio.manifest.v2`, additive only, fail-closed after new manifest-ceiling negotiation is added. No flag-day.
 - **Output file:** `/Users/connor/backbay/arc/.claude/worktrees/protocol-research-2026/docs/research/protocol-strategy/09-event-action-schema.md`

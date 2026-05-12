@@ -1,5 +1,11 @@
 # 07. OAuth Authorization Server: Usage Audit
 
+> **Historical research note:** This document is background for PR 652, not the
+> implementation plan of record. Use [00-overview-v2.md](00-overview-v2.md)
+> and [18-decision-packet.md](18-decision-packet.md) for current planning.
+> OAuth AS implementation tickets remain blocked until a dedicated ADR or
+> equivalent decision note is accepted.
+
 ## TL;DR
 
 The OAuth 2.1 authorization server at `crates/chio-mcp-remote/src/remote_mcp/oauth.rs` is **live, opt-in scaffolding** - not dead code, not on-by-default, but fully wired, tested, documented as a public capability, and exercised by the conformance runner. The AS is gated by exactly one CLI flag, `--auth-server-seed-file` (see `crates/chio-cli/src/cli/types.rs:1675-1677`). When that flag is absent the AS module compiles in but no routes activate and the AS-only endpoints return 404. When present, six routes mount on the same axum router as the MCP edge and the AS issues Ed25519 JWTs bound to the local resource. Five integration tests in `crates/chio-cli/tests/mcp_auth_server.rs` hit it end-to-end against a real spawned `chio mcp serve-http` process, and the qualification doc lists those tests as ship-gating evidence. There is no evidence of an external customer running it in production, but the static-audit verdict is clear: this is a real product surface, not stale scaffolding.

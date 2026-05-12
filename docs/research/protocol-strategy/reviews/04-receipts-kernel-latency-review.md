@@ -159,7 +159,7 @@ points are semantic:
 
 | Concept | Doc 12 (OpenAI) | Doc 13 (Bedrock) | Doc 14 (Voice) | Doc 15 (v3) | Doc 00 v2 |
 |---|---|---|---|---|---|
-| `tool_origin` enum variants | `HostExecutedAttested {...}`, `HostExecutedUnmediated`, `CallerExecuted` (doc 12 line 152-155); also `"host-executed-unmediated"` string form (doc 12 line 145) | not used by name; "Lambda action group" stand-in | not used | `HostExecutedUnmediated | HostExecutedAttested | CallerExecuted` (line 121, 429-431) | core v3 field; "caller-executed", "host-executed-attested", "host-executed-unmediated", **`host-executed-redacted`** (overview v2 line 35) |
+| `tool_origin` enum variants | `HostExecutedProviderReported {...}`, `HostExecutedUnmediated`, `CallerExecuted` (doc 12 line 152-155); also `"host-executed-unmediated"` string form (doc 12 line 145) | not used by name; "Lambda action group" stand-in | not used | `HostExecutedUnmediated | HostExecutedProviderReported | CallerExecuted` (line 121, 429-431) | core v3 field; "caller-executed", "host-executed-provider-reported", "host-executed-unmediated", **`host-executed-redacted`** (overview v2 line 35) |
 | `engine_id` | n/a | n/a | n/a | core v3 field, `String` | core v3 field |
 | `policy_digest` | n/a | n/a | n/a | `[u8; 32]`, core v3 + on `CedarExtension` | per doc 04 / doc 10 - `[u8; 32]` on a per-engine `EngineDecision` |
 | `actor_chain` | n/a | n/a | n/a | core v3 (`Vec<ActorRef>`) | core v3 |
