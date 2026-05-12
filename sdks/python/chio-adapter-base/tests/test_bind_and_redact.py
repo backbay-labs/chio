@@ -585,3 +585,85 @@ def test_signature_param_order_overrides_default_table_for_renamed_protected_fie
     assert args[0] == {"omitted": True, "byte_count": 11}
     assert args[1] == "/tmp/x"
     assert kwargs == {}
+
+
+def test_keyword_only_alias_for_protected_field_redacts_via_canonical() -> None:
+    """PR #666 P1 (3229853017): a TaskFlow wrapper with a keyword-only
+    alias for the protected body must still redact via the canonical
+    slot name. ``def write_file(path, *, body)`` registered as
+    ``chio_file_write`` (table ``("path", "content")``) was previously
+    omitted from the alias map because the kwonly param is not in the
+    fixed-positional collection.
+    """
+
+    def write_file(path: str, *, body: str) -> None:
+        del path, body
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("/tmp/x",),
+        {"body": "PROD_SECRET"},
+        tool_name="chio_file_write",
+    )
+    assert args == ["/tmp/x"]
+    assert kwargs == {
+        "body": {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    }
+
+    # Wrapper that uses the canonical name as the kwonly param: redact
+    # by name as-is, no aliasing needed.
+    def write_canonical(path: str, *, content: str) -> None:
+        del path, content
+
+    args, kwargs = bind_and_redact(
+        write_canonical,
+        ("/tmp/x",),
+        {"content": "PROD_SECRET"},
+        tool_name="chio_file_write",
+    )
+    assert args == ["/tmp/x"]
+    assert kwargs == {
+        "content": {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    }
+
+
+def test_pure_forwarder_redacts_both_positional_and_kwarg_for_same_slot() -> None:
+    """PR #666 P1 (3229853019): a pure-forwarding wrapper that receives
+    the protected slot both positionally and as a kwarg must redact both
+    independently. ``proxy("/tmp/x", "POS_SECRET", content="KW_SECRET")``
+    for ``chio_file_write`` previously dropped the positional
+    ``POS_SECRET`` to raw because the ``content`` slot had been removed
+    from the free-slot sequence by the kwarg.
+    """
+
+    def proxy(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    args, kwargs = bind_and_redact(
+        proxy,
+        ("/tmp/x", "POS_SECRET"),
+        {"content": "KW_SECRET"},
+        tool_name="chio_file_write",
+    )
+    assert args == [
+        "/tmp/x",
+        {"omitted": True, "byte_count": len(b"POS_SECRET")},
+    ]
+    assert kwargs == {
+        "content": {"omitted": True, "byte_count": len(b"KW_SECRET")}
+    }
+
+    # Same shape via fn=None (the other table-fallback entry).
+    args, kwargs = bind_and_redact(
+        None,
+        ("/tmp/x", "POS_SECRET"),
+        {"content": "KW_SECRET"},
+        tool_name="chio_file_write",
+    )
+    assert args == [
+        "/tmp/x",
+        {"omitted": True, "byte_count": len(b"POS_SECRET")},
+    ]
+    assert kwargs == {
+        "content": {"omitted": True, "byte_count": len(b"KW_SECRET")}
+    }
