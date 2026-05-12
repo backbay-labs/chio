@@ -234,48 +234,13 @@ async def _enforce_actor_method(
     redaction_policy: RedactionPolicy = getattr(
         actor, "_chio_redaction_policy", RedactionPolicy.chio_default()
     )
-    # Bind positional args to parameter names so the field-name-keyed
-    # redactor sees them. Fallback to raw args/kwargs when the method
-    # has *args/**kwargs and binding cannot disambiguate.
-    bound_args: list[Any] = list(args)
-    bound_kwargs: dict[str, Any] = dict(kwargs)
-    try:
-        sig = inspect.signature(method)
-        # Drop the implicit `self` so positional args align.
-        params = list(sig.parameters.values())
-        if params and params[0].name == "self":
-            sig = sig.replace(parameters=params[1:])
-        bound = sig.bind_partial(*args, **kwargs)
-        named = dict(bound.arguments)
-        redacted_named = redact_args(
-            tool_name_override, named, policy=redaction_policy
-        )
-        # Rebuild positional + keyword in original order.
-        positional_names = [
-            p.name
-            for p in sig.parameters.values()
-            if p.kind
-            in (
-                inspect.Parameter.POSITIONAL_ONLY,
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            )
-        ]
-        bound_args = [
-            redacted_named[n] if n in redacted_named else None
-            for n in positional_names[: len(args)]
-        ]
-        bound_kwargs = {
-            k: v
-            for k, v in redacted_named.items()
-            if k not in positional_names[: len(args)]
-        }
-    except TypeError:
-        # *args/**kwargs methods cannot be bound; fall back to redacting
-        # kwargs only. Tools with secret positional bodies should declare
-        # named parameters to opt in.
-        bound_kwargs = redact_args(
-            tool_name_override, dict(kwargs), policy=redaction_policy
-        )
+    bound_args, bound_kwargs = _redact_method_call(
+        method=method,
+        args=args,
+        kwargs=kwargs,
+        tool_name=tool_name_override,
+        policy=redaction_policy,
+    )
 
     receipt = await _evaluate_allow_or_raise(
         chio_client=chio_client,
@@ -288,6 +253,108 @@ async def _enforce_actor_method(
         method_name=method_name,
     )
     actor._chio_receipts.append(receipt)
+
+
+def _redact_method_call(
+    *,
+    method: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    tool_name: str,
+    policy: RedactionPolicy,
+) -> tuple[list[Any], dict[str, Any]]:
+    """Bind positional args to parameter names and redact protected fields.
+
+    ``redact_args`` keys on parameter names, so positional callers
+    (``actor.write("/tmp/x", "SECRET")``) would otherwise leave the body
+    in ``parameters["args"][1]`` unredacted.
+
+    ``inspect.Signature.bind_partial`` does NOT raise for methods that
+    accept ``**kwargs`` or ``*args``; it absorbs extras into the
+    variadic parameter. A pure-``**kwargs`` method bound with
+    ``content="SECRET"`` produces ``{"kw": {"content": "SECRET"}}``,
+    which ``redact_args`` (looking for ``content`` at the top level)
+    cannot scrub. We inspect the signature for VAR_KEYWORD /
+    VAR_POSITIONAL first and pick a shape that keeps protected fields
+    at the top level of the dict the redactor inspects.
+
+    Returns ``(redacted_positional_list, redacted_keyword_dict)`` for
+    embedding under ``parameters = {"args": ..., "kwargs": ...}``.
+    """
+    try:
+        sig = inspect.signature(method)
+    except (TypeError, ValueError):
+        return list(args), redact_args(tool_name, dict(kwargs), policy=policy)
+
+    # Drop the implicit `self` so positional args align.
+    params_list = list(sig.parameters.values())
+    if params_list and params_list[0].name == "self":
+        sig = sig.replace(parameters=params_list[1:])
+    params = sig.parameters
+
+    has_var_keyword = any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+    )
+    has_named_param = any(
+        p.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+        for p in params.values()
+    )
+
+    # Pure ``**kwargs`` (and optionally ``*args``): the redactor needs a
+    # flat dict, so scrub kwargs directly. Positional bodies stay as-is
+    # because the method has no named parameter to bind them to.
+    if has_var_keyword and not has_named_param:
+        return list(args), redact_args(tool_name, dict(kwargs), policy=policy)
+
+    try:
+        bound = sig.bind_partial(*args, **kwargs).arguments
+    except TypeError:
+        # Duplicate keyword / unexpected arg. Do NOT forward raw
+        # positional args; they may carry the very secret we are
+        # redacting and the call is about to raise anyway.
+        return [], redact_args(tool_name, dict(kwargs), policy=policy)
+
+    var_keys = {
+        name
+        for name, p in params.items()
+        if p.kind
+        in (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
+    }
+    flat = {k: v for k, v in bound.items() if k not in var_keys}
+    redacted = redact_args(tool_name, flat, policy=policy)
+    # Re-redact the **kwargs spillover so protected fields passed by
+    # keyword to a method that also declares them positionally still
+    # get scrubbed.
+    for vk in var_keys:
+        v = bound.get(vk)
+        if isinstance(v, dict):
+            for kk, vv in redact_args(tool_name, dict(v), policy=policy).items():
+                redacted[kk] = vv
+
+    positional_names = [
+        p.name
+        for p in params.values()
+        if p.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+    ]
+    bound_args = [
+        redacted[n] if n in redacted else None
+        for n in positional_names[: len(args)]
+    ]
+    bound_kwargs = {
+        k: v
+        for k, v in redacted.items()
+        if k not in positional_names[: len(args)]
+    }
+    return bound_args, bound_kwargs
 
 
 def _resolve_standing_grant(

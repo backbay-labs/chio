@@ -244,6 +244,114 @@ class TestChioActorRedaction:
             "content": "not redacted here",
         }
 
+    def test_var_keyword_method_redacts_content(self) -> None:
+        # Regression: bind_partial does NOT raise for **kwargs; absorbing
+        # `content="SECRET"` into `{"kw": {...}}` previously bypassed the
+        # redactor entirely.
+        chio = allow_all()
+        scope = _scope_for_tools("chio_file_write", server_id="srv")
+        token = _local_token(scope)
+        grant = StandingGrant(
+            token=token, tool_server="srv", actor_class="tests.WriterKW"
+        )
+
+        @ray.remote
+        class WriterKW(ChioActor):
+            def __init__(self) -> None:
+                super().__init__(standing_grant=grant, chio_client=chio)
+
+            @ChioActor.requires(
+                "tools:chio_file_write", tool_name="chio_file_write"
+            )
+            def chio_file_write(self, **kwargs: Any) -> str:
+                return str(kwargs.get("path", ""))
+
+        handle = WriterKW.remote()
+        result = ray.get(
+            handle.chio_file_write.remote(
+                path="/tmp/x", content="PROD_SECRET=abc123"
+            )
+        )
+        assert result == "/tmp/x"
+
+        import json
+
+        params = _eval_calls(chio)[0].parameters
+        assert "PROD_SECRET" not in json.dumps(params)
+        assert params["kwargs"]["content"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+
+    def test_named_plus_var_keyword_method_redacts_spillover(self) -> None:
+        chio = allow_all()
+        scope = _scope_for_tools("chio_file_write", server_id="srv")
+        token = _local_token(scope)
+        grant = StandingGrant(
+            token=token, tool_server="srv", actor_class="tests.WriterMixed"
+        )
+
+        @ray.remote
+        class WriterMixed(ChioActor):
+            def __init__(self) -> None:
+                super().__init__(standing_grant=grant, chio_client=chio)
+
+            @ChioActor.requires(
+                "tools:chio_file_write", tool_name="chio_file_write"
+            )
+            def chio_file_write(self, path: str, **extras: Any) -> str:
+                return path
+
+        handle = WriterMixed.remote()
+        result = ray.get(
+            handle.chio_file_write.remote(
+                path="/tmp/x", content="PROD_SECRET=abc123"
+            )
+        )
+        assert result == "/tmp/x"
+
+        import json
+
+        params = _eval_calls(chio)[0].parameters
+        assert "PROD_SECRET" not in json.dumps(params)
+        assert params["kwargs"]["path"] == "/tmp/x"
+        assert params["kwargs"]["content"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+
+    def test_positional_method_args_still_redacted(self) -> None:
+        # Confirm the existing positional-args binding path still works
+        # after the VAR_KEYWORD refactor.
+        chio = allow_all()
+        scope = _scope_for_tools("chio_file_write", server_id="srv")
+        token = _local_token(scope)
+        grant = StandingGrant(
+            token=token, tool_server="srv", actor_class="tests.WriterPos"
+        )
+
+        @ray.remote
+        class WriterPos(ChioActor):
+            def __init__(self) -> None:
+                super().__init__(standing_grant=grant, chio_client=chio)
+
+            @ChioActor.requires(
+                "tools:chio_file_write", tool_name="chio_file_write"
+            )
+            def chio_file_write(self, path: str, content: str) -> str:
+                return path
+
+        handle = WriterPos.remote()
+        result = ray.get(
+            handle.chio_file_write.remote("/tmp/x", "PROD_SECRET=abc123")
+        )
+        assert result == "/tmp/x"
+
+        import json
+
+        params = _eval_calls(chio)[0].parameters
+        assert "PROD_SECRET" not in json.dumps(params)
+
     def test_custom_policy_via_actor_ctor(self) -> None:
         chio = allow_all()
         scope = _scope_for_tools("my_tool", server_id="srv")
