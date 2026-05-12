@@ -55,7 +55,7 @@ mcp_servers:
       - --preset
       - code-agent
       - --server-id
-      - filesystem
+      - fs
       - --
       - npx
       - -y
@@ -63,10 +63,14 @@ mcp_servers:
       - /workspace
 ```
 
+The `--server-id` MUST match an identifier the bundled `code-agent`
+preset grants capabilities to (`fs`, `shell`, or `git`). Using any
+other id (e.g. `filesystem`) fails closed because no grant matches.
+
 Chio gates each `tools/call` through the `code-agent` policy preset
 (byte-identical to the policy used by `chio-code-agent` and this
 plugin). See `docs/integrations/HERMES.md` for the full Path A
-walkthrough.
+walkthrough including shell and git server entries.
 
 ## Path B quickstart
 
