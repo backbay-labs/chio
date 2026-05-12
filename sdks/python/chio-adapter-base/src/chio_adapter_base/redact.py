@@ -328,16 +328,38 @@ def bind_and_redact(
     use_table_fallback = sig is None or _is_pure_forwarder(sig)
 
     # bind_partial may raise TypeError (e.g. duplicate name across
-    # positional + kwargs). When that happens we redact what we can via
-    # the positional-name table so positional secrets are still covered;
-    # the caller's TypeError will surface naturally when they invoke fn.
+    # positional + kwargs for a fixed-signature custom tool). When that
+    # happens we still want to redact positional secrets, but the
+    # caller-supplied / chio-default ``positional_table`` may not list
+    # the custom tool. Derive a positional-name table from the
+    # signature itself so the merge-conflict fallback covers
+    # custom-tool fixed signatures too. (See bot comment 3229135384.)
     bound: inspect.BoundArguments | None = None
+    fallback_table: Mapping[str, tuple[str, ...]] = table
     if not use_table_fallback:
         assert sig is not None
         try:
             bound = sig.bind_partial(*bind_args, **kwargs)
         except TypeError:
             use_table_fallback = True
+            sig_positional_names = tuple(
+                p.name
+                for p in sig.parameters.values()
+                if p.kind
+                in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                )
+            )
+            if sig_positional_names:
+                # Layer signature-derived names over the configured
+                # table so the protected slots from the policy still
+                # match their positional indices. Caller-supplied
+                # entries (if any) for this tool win on conflict.
+                fallback_table = {
+                    **{tool_name: sig_positional_names},
+                    **table,
+                }
 
     if use_table_fallback:
         fb_args, fb_kwargs = _table_fallback_redact(
@@ -345,7 +367,7 @@ def bind_and_redact(
             kwargs,
             tool_name=tool_name,
             policy=effective_policy,
-            table=table,
+            table=fallback_table,
         )
         if has_receiver:
             fb_args.insert(0, receiver_value)
@@ -373,13 +395,40 @@ def bind_and_redact(
     redacted_fixed = _redact_named(
         fixed_named, tool_name=tool_name, policy=effective_policy
     )
+    # If the VAR_POSITIONAL parameter's NAME matches a protected field
+    # in the policy table for this tool, treat every value in the
+    # tuple as that protected slot and redact each independently.
+    # This covers wrappers like ``def write_file(*content, path)``
+    # where ``*content`` is itself the protected field name. (See
+    # bot comments 3229375712 and 3229301707/3229301713.)
+    protected_fields_for_tool: tuple[str, ...] = (
+        effective_policy.body_fields.get(tool_name) or ()
+    )
+    redacted_var_positional_by_name: tuple[Any, ...] | None = None
+    if (
+        var_positional_param is not None
+        and var_positional_param in protected_fields_for_tool
+        and var_positional_param in bound.arguments
+    ):
+        spilled_var_positional = bound.arguments[var_positional_param]
+        if isinstance(spilled_var_positional, tuple):
+            redacted_var_positional_by_name = tuple(
+                _redact_named(
+                    {var_positional_param: value},
+                    tool_name=tool_name,
+                    policy=effective_policy,
+                )[var_positional_param]
+                for value in spilled_var_positional
+            )
     # Redact VAR_KEYWORD spillover separately; protected fields that
     # arrived via **kwargs spillover are still covered because the
     # spillover dict shares the same redaction policy.
     redacted_spillover: dict[str, Any] = {}
+    spillover_keys: set[str] = set()
     if var_keyword_param is not None and var_keyword_param in bound.arguments:
         spilled_in = bound.arguments[var_keyword_param]
         if isinstance(spilled_in, Mapping):
+            spillover_keys = set(spilled_in.keys())
             redacted_spillover = _redact_named(
                 spilled_in, tool_name=tool_name, policy=effective_policy
             )
@@ -429,21 +478,50 @@ def bind_and_redact(
             )
             var_positional_extras[idx] = redacted_extra[slot_name]
 
+    # Track how many VAR_POSITIONAL values we have already consumed
+    # from ``redacted_var_positional_by_name``; the same tuple is used
+    # for every position past the fixed-positional cardinality.
+    var_pos_named_idx = 0
     for idx, value in enumerate(bind_args):
         if idx < len(positional_param_names):
             name = positional_param_names[idx]
             if name in redacted_fixed:
                 rebuilt_args.append(redacted_fixed[name])
                 continue
-        elif idx in var_positional_extras:
-            rebuilt_args.append(var_positional_extras[idx])
-            continue
+        else:
+            # Past the fixed positional cardinality: this is a
+            # VAR_POSITIONAL extra. Prefer the named-variadic
+            # redaction (when ``*name`` is itself a protected field)
+            # over the table-derived slot mapping.
+            if (
+                redacted_var_positional_by_name is not None
+                and var_pos_named_idx
+                < len(redacted_var_positional_by_name)
+            ):
+                rebuilt_args.append(
+                    redacted_var_positional_by_name[var_pos_named_idx]
+                )
+                var_pos_named_idx += 1
+                continue
+            if idx in var_positional_extras:
+                rebuilt_args.append(var_positional_extras[idx])
+                continue
         # Extras with no matching free table slot stay raw.
         rebuilt_args.append(value)
 
     rebuilt_kwargs: dict[str, Any] = {}
     for name, value in kwargs.items():
-        if name in redacted_fixed:
+        # When a kwarg landed in VAR_KEYWORD spillover (because the
+        # same name is consumed by a positional-only fixed param),
+        # the spillover redaction is the correct value for the
+        # rebuilt kwargs slot. Without this guard, the
+        # ``redacted_fixed`` check below would substitute the
+        # positional-only value into the kwarg position and the
+        # caller's original spillover value would be silently
+        # dropped. (See bot comments 3229301699 / 3229411436.)
+        if name in spillover_keys and name in redacted_spillover:
+            rebuilt_kwargs[name] = redacted_spillover[name]
+        elif name in redacted_fixed:
             rebuilt_kwargs[name] = redacted_fixed[name]
         elif name in redacted_spillover:
             rebuilt_kwargs[name] = redacted_spillover[name]

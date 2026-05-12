@@ -276,6 +276,54 @@ class TestDefaultPolicyRedacts:
             }
         ]
 
+    async def test_chio_file_write_positional_args_with_extras_redact_known_prefix(
+        self,
+    ) -> None:
+        """``chio_file_write(path, content, overwrite)``: redact the known prefix.
+
+        Regression for bot comment 3229196956: the exact-length check
+        previously fell through to raw pass-through when extras were
+        appended after the documented (path, content) shape. With the
+        fix, the table-named prefix is bound + redacted and any
+        trailing positional extras are preserved alongside.
+        """
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("chio_file_write"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+            )
+            interceptor = ChioActivityInterceptor(chio_client=chio)
+            interceptor.register_workflow_grant(grant)
+
+            inbound = _ChioInboundInterceptor(_NextInterceptor(), interceptor)
+            info = _default_info(activity_type="chio_file_write")
+            with _patched_activity_info(info):
+                await inbound.execute_activity(
+                    _make_input("/tmp/x", "PROD_SECRET=abc123", True)
+                )
+
+        import json
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        forwarded = evaluate_calls[0].parameters
+        assert "PROD_SECRET" not in json.dumps(forwarded)
+        assert forwarded["args"] == [
+            {
+                "path": "/tmp/x",
+                "content": {
+                    "omitted": True,
+                    "byte_count": len(b"PROD_SECRET=abc123"),
+                },
+            },
+            True,
+        ]
+
     async def test_chio_file_edit_positional_args_are_redacted(self) -> None:
         async with allow_all() as chio:
             token = await _mint_token(

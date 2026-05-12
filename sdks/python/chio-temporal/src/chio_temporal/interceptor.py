@@ -384,15 +384,23 @@ def _activity_parameters(
         args_list[0] = redact_args(tool_name, args_list[0], policy=policy)
         return {"args": args_list}
 
-    # Shape 2: known chio-default tool with positional args.
+    # Shape 2: known chio-default tool with positional args. Activities
+    # declared as ``chio_file_write(path, content)`` are the documented
+    # shape, but a plausible extension such as
+    # ``chio_file_write(path, content, overwrite)`` still carries the
+    # protected ``content`` slot in position 1; redact the known prefix
+    # and forward any trailing extras raw. (See bot comment 3229196956.)
     positional_names = DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name or "")
     if (
         positional_names is not None
-        and len(args_list) == len(positional_names)
+        and len(args_list) >= len(positional_names)
         and tool_name in policy.body_fields
     ):
-        bound = dict(zip(positional_names, args_list, strict=True))
-        return {"args": [redact_args(tool_name, bound, policy=policy)]}
+        prefix_count = len(positional_names)
+        bound = dict(zip(positional_names, args_list[:prefix_count], strict=True))
+        redacted_prefix = redact_args(tool_name, bound, policy=policy)
+        extras = args_list[prefix_count:]
+        return {"args": [redacted_prefix, *extras]}
 
     # Shape 3: pass-through.
     return {"args": args_list}
