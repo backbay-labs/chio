@@ -7,13 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1]
 
-- chore: bump `chio-adapter-base` dependency to `>=0.1.1,<0.2` so the
-  centralised `bind_and_redact` helper and
-  `DEFAULT_TOOL_POSITIONAL_NAMES` registry (added in chio-adapter-base
-  0.1.1, PR #675) are available downstream. No source change is needed
-  here because `chio-iac` builds the redacted parameters dict in the
-  CLI / SDK wrappers (`terraform.py`, `pulumi.py`) without any
-  positional-binding helper to consolidate.
+- note: `chio-adapter-base` 0.1.1 ships `bind_and_redact` and the
+  `DEFAULT_TOOL_POSITIONAL_NAMES` registry, but `chio-iac` does not use
+  them today (the CLI / SDK wrappers in `terraform.py` and `pulumi.py`
+  build the redacted parameters dict directly). The dependency floor
+  stays at `chio-adapter-base>=0.1.0` until a concrete consumer needs
+  the helper.
 - feat: redact tool argument bodies via `chio_adapter_base.redact.redact_args`
   before forwarding them to the sidecar. Override via the new
   `redaction_policy` keyword arg on `run_terraform` and `chio_pulumi`.
