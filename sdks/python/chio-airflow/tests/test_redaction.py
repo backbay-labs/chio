@@ -132,6 +132,38 @@ class TestUntargetedToolPreserved:
         assert forwarded["kwargs"] == {"query": "kw", "content": "not-a-secret"}
 
 
+class TestCustomPolicyReplacesDefault:
+    def test_custom_policy_does_not_redact_default_fields(self) -> None:
+        chio = allow_all()
+        custom = RedactionPolicy(body_fields={"my_tool": ("body",)})
+
+        @chio_task(
+            capability_id="cap-1",
+            tool_server="fs",
+            tool_name="chio_file_write",
+            chio_client=chio,
+            redaction_policy=custom,
+        )
+        def write_file(path: str, content: str) -> str:
+            return f"wrote {len(content)} bytes to {path}"
+
+        ti = _RecordingTI(task_id="write_file")
+        body = _wrapped_function(write_file)
+
+        with _install_context(ti):
+            assert body(path="/tmp/x", content="not-redacted-now") == (
+                "wrote 16 bytes to /tmp/x"
+            )
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        assert len(evaluate_calls) == 1
+        forwarded = evaluate_calls[0].parameters
+        # Default chio_file_write.content redaction does NOT apply when a
+        # custom policy is supplied; the custom policy fully replaces the
+        # chio default.
+        assert forwarded["kwargs"]["content"] == "not-redacted-now"
+
+
 class TestCustomPolicyAppliesAdapterFields:
     def test_custom_policy_redacts_extra_tool_field(self) -> None:
         chio = allow_all()
