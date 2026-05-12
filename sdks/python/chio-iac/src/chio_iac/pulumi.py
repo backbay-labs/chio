@@ -164,14 +164,7 @@ async def _evaluate_sidecar(
     parameters: dict[str, Any],
     redaction_policy: RedactionPolicy,
 ) -> ChioReceipt:
-    """Evaluate the sidecar and translate denies into :class:`ChioIACError`.
-
-    The ``parameters`` dict is run through
-    :func:`chio_adapter_base.redact.redact_args` keyed on ``tool_name``
-    before being forwarded to the sidecar, so any body-bearing fields
-    listed in ``redaction_policy`` are replaced with a byte-count stub
-    and never land in the receipt log.
-    """
+    """Evaluate the sidecar and translate denies into :class:`ChioIACError`."""
     redacted_parameters = redact_args(
         tool_name, parameters, policy=redaction_policy
     )
@@ -278,12 +271,9 @@ def chio_pulumi(
     chio_client / sidecar_url:
         Injection points for tests and custom transports.
     redaction_policy:
-        Optional :class:`chio_adapter_base.redact.RedactionPolicy` used
-        to redact body-bearing fields from the parameters dict before
-        it is forwarded to the sidecar (and, transitively, the receipt
-        log). Defaults to :meth:`RedactionPolicy.chio_default`. Pass a
-        custom policy to redact pulumi-specific fields, e.g.
-        ``RedactionPolicy({"pulumi:up": ("program",)})``.
+        Optional :class:`RedactionPolicy` applied to the parameters
+        dict before it is forwarded to the sidecar. Defaults to
+        :meth:`RedactionPolicy.chio_default`.
 
     Examples
     --------

@@ -1,20 +1,4 @@
-"""Tests for chio-iac argument redaction (chio-adapter-base wiring).
-
-These tests assert that ``run_terraform`` and ``chio_pulumi`` redact
-secret-bearing fields from the parameters dict BEFORE forwarding them
-to the sidecar's ``evaluate_tool_call`` endpoint, so the receipt log
-never carries the raw secret bytes.
-
-The chio-default policy (``{"chio_file_write": ("content",),
-"chio_file_edit": ("patch",)}``) does not match terraform / pulumi
-tool names, so terraform-typical parameters pass through unchanged
-under the default. Custom :class:`RedactionPolicy` callers that name
-``terraform:apply`` (etc.) get per-field redaction applied to the
-parameters dict (e.g. the ``args`` list when an operator passes
-``-var=password=...``).
-
-Source of truth: ``chio_adapter_base.redact.redact_args``.
-"""
+"""Tests for chio-iac argument redaction."""
 
 from __future__ import annotations
 
@@ -35,17 +19,9 @@ from chio_iac import (
 )
 from chio_iac import terraform as terraform_module
 
-# ---------------------------------------------------------------------------
-# Subprocess + binary fixtures (mirror tests/test_terraform.py)
-# ---------------------------------------------------------------------------
-
 
 class _Recorder:
-    """Replacement for :func:`chio_iac.terraform._run_subprocess`.
-
-    Records every invocation and drives deterministic completed-process
-    results without shelling out to real Terraform.
-    """
+    """Replacement for :func:`chio_iac.terraform._run_subprocess`."""
 
     def __init__(self, *, show_json: dict | None = None) -> None:
         self.calls: list[dict[str, Any]] = []
@@ -111,12 +87,6 @@ def _tf_plan(*changes: tuple[str, list[str], str]) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# (a) Default policy: terraform tool names do not match chio-default,
-#     so the parameters dict is forwarded unchanged.
-# ---------------------------------------------------------------------------
-
-
 class TestDefaultPolicyOnTerraform:
     async def test_terraform_plan_default_policy_passes_args_through(
         self,
@@ -140,16 +110,8 @@ class TestDefaultPolicyOnTerraform:
         calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(calls) == 1
         params = calls[0].parameters
-        # Default chio-default policy keys on chio_file_write /
-        # chio_file_edit; terraform:plan is not in the table, so the
-        # args list is forwarded verbatim.
         assert params["args"] == ["-var=password=PROD_SECRET"]
         assert params["subcommand"] == "plan"
-
-
-# ---------------------------------------------------------------------------
-# (b) Custom policy: terraform:apply.args is redacted to a byte-count stub
-# ---------------------------------------------------------------------------
 
 
 class TestCustomPolicyOnTerraform:
@@ -191,7 +153,6 @@ class TestCustomPolicyOnTerraform:
             "omitted": True,
             "byte_count": expected_byte_count,
         }
-        # Path / scope fields are NOT redacted -- they pass through.
         assert params["subcommand"] == "apply"
         assert params["scope_label"] == "infra:apply"
         assert params["resource_types"] == ["aws_db_instance"]
@@ -225,13 +186,7 @@ class TestCustomPolicyOnTerraform:
         assert isinstance(params["args"], dict)
         assert params["args"]["omitted"] is True
         assert params["args"]["byte_count"] > 0
-        # working_dir / plan_path stay intact -- they are not in the policy.
         assert "tfplan" in params["plan_path"]
-
-
-# ---------------------------------------------------------------------------
-# (c) Pulumi: custom policy redacts ``program`` field for pulumi:up.
-# ---------------------------------------------------------------------------
 
 
 class TestCustomPolicyOnPulumi:
@@ -262,7 +217,6 @@ class TestCustomPolicyOnPulumi:
             "omitted": True,
             "byte_count": len(b"my_program"),
         }
-        # Other fields unchanged.
         assert params["phase"] == "apply"
         assert params["scope_label"] == "infra:apply"
         assert params["resource_types"] == ["aws:rds/instance:Instance"]
@@ -283,6 +237,4 @@ class TestCustomPolicyOnPulumi:
         calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(calls) == 1
         params = calls[0].parameters
-        # pulumi:preview is not in the chio-default policy; program name
-        # is forwarded verbatim.
         assert params["program"] == "my_program"

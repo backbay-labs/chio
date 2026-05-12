@@ -220,13 +220,6 @@ async def _evaluate_sidecar(
     Raises :class:`ChioIACError` on deny (both receipt-path and HTTP-403
     paths). Transport / kernel errors propagate as :class:`ChioError` so
     callers can retry without conflating them with policy denials.
-
-    The ``parameters`` dict is run through
-    :func:`chio_adapter_base.redact.redact_args` keyed on ``tool_name``
-    before being forwarded to the sidecar, so any body-bearing fields
-    listed in ``redaction_policy`` (e.g. terraform ``args`` carrying
-    ``-var=password=...``) are replaced with a byte-count stub and
-    never land in the receipt log.
     """
     redacted_parameters = redact_args(
         tool_name, parameters, policy=redaction_policy
@@ -357,13 +350,9 @@ async def run_terraform(
         When False, the streams are forwarded to the parent terminal --
         useful for interactive plans.
     redaction_policy:
-        Optional :class:`chio_adapter_base.redact.RedactionPolicy` used to
-        redact body-bearing fields from the parameters dict before it is
-        forwarded to the sidecar (and, transitively, the receipt log).
-        Defaults to :meth:`RedactionPolicy.chio_default`. Pass a custom
-        policy to redact terraform-specific fields, e.g.
-        ``RedactionPolicy({"terraform:apply": ("args",)})`` so a
-        ``-var=password=...`` flag is replaced with a byte-count stub.
+        Optional :class:`RedactionPolicy` applied to the parameters
+        dict before it is forwarded to the sidecar. Defaults to
+        :meth:`RedactionPolicy.chio_default`.
     """
     if subcommand not in _SUBCOMMAND_SCOPE:
         raise ChioIACConfigError(
