@@ -292,6 +292,84 @@ def test_bind_and_redact_custom_positional_table_overrides_default() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_drop_self_strips_receiver_when_signature_unavailable() -> None:
+    """``drop_self=True`` must strip the receiver even with no signature.
+
+    Without this, an actor method's receiver slides into the
+    positional-name table's first slot (``"path"``) and the real path
+    falls into the redacted slot (``"content"``), so the secret stays
+    raw. Cover both ``fn=None`` and the C-extension fallback.
+    """
+    receiver = object()
+
+    args, kwargs = bind_and_redact(
+        None,
+        (receiver, "src/main.py", "SECRET=topsecret\n"),
+        {},
+        tool_name="chio_file_write",
+        drop_self=True,
+    )
+    assert args[0] is receiver
+    assert args[1] == "src/main.py"
+    assert args[2] == {"omitted": True, "byte_count": 17}
+    assert kwargs == {}
+
+    # C-extension callable path (non-introspectable) should behave the
+    # same; reuse ``dict.update`` if it remains non-introspectable.
+    try:
+        inspect.signature(dict.update)
+        c_ext_introspectable = True
+    except (TypeError, ValueError):
+        c_ext_introspectable = False
+    if not c_ext_introspectable:
+        args, kwargs = bind_and_redact(
+            dict.update,
+            (receiver, "src/main.py", "SECRET=topsecret\n"),
+            {},
+            tool_name="chio_file_write",
+            drop_self=True,
+        )
+        assert args[0] is receiver
+        assert args[1] == "src/main.py"
+        assert args[2] == {"omitted": True, "byte_count": 17}
+
+
+def test_pure_var_positional_treated_as_forwarder() -> None:
+    """``def fn(*args)`` (no fixed params) must use the table fallback.
+
+    Previously the helper required both VAR_POSITIONAL and VAR_KEYWORD
+    to recognise a forwarder, so ``def write_file(*args)`` fell through
+    to the fixed-signature path with an empty named view and the
+    positional secret leaked unredacted.
+    """
+
+    def writer(*args: object) -> None:
+        del args
+
+    args, kwargs = bind_and_redact(
+        writer,
+        ("src/main.py", "SECRET=topsecret\n"),
+        {},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == "src/main.py"
+    assert args[1] == {"omitted": True, "byte_count": 17}
+    assert kwargs == {}
+
+    def kwargs_only(**kwargs: object) -> None:
+        del kwargs
+
+    args, kwargs = bind_and_redact(
+        kwargs_only,
+        (),
+        {"path": "src/main.py", "content": "SECRET\n"},
+        tool_name="chio_file_write",
+    )
+    assert args == []
+    assert kwargs["path"] == "src/main.py"
+    assert kwargs["content"] == {"omitted": True, "byte_count": 7}
+
+
 def test_default_tool_positional_names_covers_chio_default_tools() -> None:
     """The default table must mirror the chio_default redaction policy."""
 

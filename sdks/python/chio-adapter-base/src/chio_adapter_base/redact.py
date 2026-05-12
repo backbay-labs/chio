@@ -197,19 +197,23 @@ def _signature_or_none(fn: Callable[..., Any] | None) -> inspect.Signature | Non
 
 
 def _is_pure_forwarder(sig: inspect.Signature) -> bool:
-    """``True`` iff the signature is exactly ``(*args, **kwargs)``.
+    """``True`` iff the signature has no fixed (named) parameters.
 
-    A pure forwarder offers no information about positional names, so
-    binding is no better than the positional-name table fallback.
+    Covers ``(*args, **kwargs)``, ``(*args)``-only, ``(**kwargs)``-only,
+    and the empty signature ``()``. Any of these carries no positional
+    name information, so binding is no better than the positional-name
+    table fallback. Even an empty signature is treated as a forwarder so
+    we surface the table mapping rather than silently dropping the
+    parameters on a duplicate-name TypeError.
     """
-    params = list(sig.parameters.values())
-    if len(params) != 2:
-        return False
-    kinds = {p.kind for p in params}
-    return kinds == {
-        inspect.Parameter.VAR_POSITIONAL,
-        inspect.Parameter.VAR_KEYWORD,
-    }
+    for param in sig.parameters.values():
+        if param.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        ):
+            return False
+    return True
 
 
 def _drop_first_positional(sig: inspect.Signature) -> inspect.Signature:
@@ -301,15 +305,20 @@ def bind_and_redact(
     # When drop_self is set we also strip the first positional value from
     # the caller's args before binding; the receiver is restored at the
     # head of the rebuilt positional list so the wire shape is unchanged.
+    # The same stripping happens on the signature-unavailable / pure
+    # forwarder path: without it, an actor method's receiver would slot
+    # into ``positional[0]`` and shift every named-positional binding by
+    # one (e.g. the receiver becomes ``"path"`` and the real path becomes
+    # the unredacted ``"content"``).
     receiver_value: Any = None
     has_receiver = False
     bind_args: tuple[Any, ...] = tuple(args)
-    if sig is not None and drop_self:
-        sig = _drop_first_positional(sig)
-        if bind_args:
-            receiver_value = bind_args[0]
-            has_receiver = True
-            bind_args = bind_args[1:]
+    if drop_self and bind_args:
+        if sig is not None:
+            sig = _drop_first_positional(sig)
+        receiver_value = bind_args[0]
+        has_receiver = True
+        bind_args = bind_args[1:]
 
     use_table_fallback = sig is None or _is_pure_forwarder(sig)
 
