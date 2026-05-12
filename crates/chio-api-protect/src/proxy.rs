@@ -20,7 +20,8 @@ use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use chio_core_types::capability::{
-    CapabilityToken, CapabilityTokenBody, ChioScope, Operation, PromptGrant, ResourceGrant,
+    CapabilityToken, CapabilityTokenBody, ChioScope, GovernedApprovalDecision,
+    GovernedApprovalToken, GovernedApprovalTokenBody, Operation, PromptGrant, ResourceGrant,
     ToolGrant,
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
@@ -31,7 +32,7 @@ use chio_http_core::{
     ChioHttpRequest, EvaluateResponse, HealthResponse, HttpEgressContract, HttpMethod, HttpReceipt,
     HttpReceiptBody, PendingQuery, RespondRequest, SidecarStatus, Verdict, VerifyReceiptResponse,
 };
-use chio_kernel::{ApprovalStore, InMemoryApprovalStore};
+use chio_kernel::{ApprovalOutcome, ApprovalRequest, ApprovalStore, InMemoryApprovalStore};
 use chio_openapi::{ChioExtensions, DefaultPolicy};
 use chio_store_sqlite::SqliteApprovalStore;
 
@@ -340,9 +341,14 @@ impl ProtectProxy {
 fn build_app(state: Arc<ProxyState>) -> Router {
     let approval_routes = Router::new()
         .route("/approvals/pending", get(list_pending_approvals_handler))
+        .route("/approvals/submit", post(submit_approval_handler))
         .route(
             "/approvals/batch/respond",
             post(batch_respond_approvals_handler),
+        )
+        .route(
+            "/approvals/{id}/operator-respond",
+            post(operator_respond_approval_handler),
         )
         .route("/approvals/{id}/respond", post(respond_approval_handler))
         .route("/approvals/{id}", get(get_approval_handler))
@@ -420,6 +426,199 @@ async fn batch_respond_approvals_handler(
 
     let now = chrono::Utc::now().timestamp() as u64;
     match handle_batch_respond(&state.approval_admin, body, now) {
+        Ok(response) => approval_json(StatusCode::OK, response),
+        Err(error) => approval_error_response(error),
+    }
+}
+
+/// Body for `POST /approvals/submit`. Operator-friendly shape: the
+/// caller hands the sidecar enough context to record a pending request
+/// and the sidecar materializes the full `ApprovalRequest`, signing on
+/// behalf of itself as the trusted approver. v0.2 manual-flow only:
+/// no auto-resume of the held call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SubmitApprovalRequest {
+    capability_id: String,
+    tool_server: String,
+    tool_name: String,
+    /// Hex SHA-256 of canonical-JSON tool args. The operator-respond
+    /// shortcut binds the synthesized token to this hash.
+    parameter_hash: String,
+    /// Hex Ed25519 public key of the agent that initiated the held call.
+    requested_by: String,
+    /// Optional human-readable summary surfaced in dashboards.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    summary: Option<String>,
+    /// Optional policy id; defaults to "policy-hermes-hitl".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    policy_id: Option<String>,
+    /// TTL in seconds; clamped to MAX_APPROVAL_TTL_SECS (3600) downstream.
+    #[serde(default)]
+    ttl_seconds: u64,
+    /// Free-form short verb for human summaries.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    action: Option<String>,
+    /// Reason the call was held (e.g. "shell.requires_approval").
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    triggered_by: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SubmitApprovalResponse {
+    approval_id: String,
+    expires_at: u64,
+    created_at: u64,
+    trusted_approvers: Vec<String>,
+}
+
+async fn submit_approval_handler(
+    State(state): State<Arc<ProxyState>>,
+    body: Result<Json<SubmitApprovalRequest>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let Json(body) = match body {
+        Ok(body) => body,
+        Err(error) => {
+            return approval_error_response(ApprovalHandlerError::BadRequest(format!(
+                "invalid approval submit payload: {error}"
+            )));
+        }
+    };
+
+    let now = chrono::Utc::now().timestamp() as u64;
+    let ttl = if body.ttl_seconds == 0 {
+        3600
+    } else {
+        body.ttl_seconds.min(3600)
+    };
+    let approval_id = format!("ap-{}", uuid::Uuid::now_v7());
+    let approver_pubkey = state.signer_keypair.public_key();
+    let approval = ApprovalRequest {
+        approval_id: approval_id.clone(),
+        policy_id: body
+            .policy_id
+            .unwrap_or_else(|| "policy-hermes-hitl".to_string()),
+        subject_id: body.requested_by.clone(),
+        capability_id: body.capability_id.clone(),
+        subject_public_key: PublicKey::from_hex(&body.requested_by).ok(),
+        tool_server: body.tool_server.clone(),
+        tool_name: body.tool_name.clone(),
+        action: body.action.unwrap_or_else(|| "invoke".to_string()),
+        parameter_hash: body.parameter_hash.clone(),
+        expires_at: now.saturating_add(ttl),
+        callback_hint: None,
+        created_at: now,
+        summary: body
+            .summary
+            .unwrap_or_else(|| format!("{}/{}", body.tool_server, body.tool_name)),
+        governed_intent: None,
+        trusted_approvers: vec![approver_pubkey.clone()],
+        triggered_by: body.triggered_by,
+    };
+
+    if let Err(error) = state.approval_admin.store().store_pending(&approval) {
+        let handler_err: ApprovalHandlerError = error.into();
+        return approval_error_response(handler_err);
+    }
+
+    let response = SubmitApprovalResponse {
+        approval_id,
+        expires_at: approval.expires_at,
+        created_at: approval.created_at,
+        trusted_approvers: vec![approver_pubkey.to_hex()],
+    };
+    approval_json(StatusCode::CREATED, response)
+}
+
+/// Body for `POST /approvals/{id}/operator-respond`. The sidecar signs
+/// the GovernedApprovalToken using its own keypair, which must already
+/// be registered as a trusted approver on the request (the case for
+/// approvals created via `/approvals/submit`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OperatorRespondRequest {
+    outcome: ApprovalOutcome,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+async fn operator_respond_approval_handler(
+    State(state): State<Arc<ProxyState>>,
+    Path(approval_id): Path<String>,
+    body: Result<Json<OperatorRespondRequest>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let Json(body) = match body {
+        Ok(body) => body,
+        Err(error) => {
+            return approval_error_response(ApprovalHandlerError::BadRequest(format!(
+                "invalid operator approval payload: {error}"
+            )));
+        }
+    };
+
+    let pending = match state.approval_admin.store().get_pending(&approval_id) {
+        Ok(Some(request)) => request,
+        Ok(None) => {
+            return approval_error_response(ApprovalHandlerError::NotFound(approval_id));
+        }
+        Err(error) => {
+            return approval_error_response(error.into());
+        }
+    };
+
+    let approver_pubkey = state.signer_keypair.public_key();
+    if !pending.trusted_approvers.contains(&approver_pubkey) {
+        return approval_error_response(ApprovalHandlerError::Rejected(
+            "sidecar signer is not a trusted approver for this request".into(),
+        ));
+    }
+
+    // Subject pubkey: prefer the explicit binding on the request, else
+    // try to parse it back out of subject_id.
+    let subject_pubkey = match pending
+        .subject_public_key
+        .clone()
+        .or_else(|| PublicKey::from_hex(&pending.subject_id).ok())
+    {
+        Some(pk) => pk,
+        None => {
+            return approval_error_response(ApprovalHandlerError::BadRequest(
+                "approval request is missing a parseable subject public key".into(),
+            ));
+        }
+    };
+
+    let now = chrono::Utc::now().timestamp() as u64;
+    let decision = match body.outcome {
+        ApprovalOutcome::Approved => GovernedApprovalDecision::Approved,
+        ApprovalOutcome::Denied => GovernedApprovalDecision::Denied,
+    };
+    let token_body = GovernedApprovalTokenBody {
+        id: format!("op-tok-{}", uuid::Uuid::now_v7()),
+        approver: approver_pubkey.clone(),
+        subject: subject_pubkey,
+        governed_intent_hash: pending.parameter_hash.clone(),
+        request_id: approval_id.clone(),
+        issued_at: now,
+        expires_at: now.saturating_add(600),
+        decision,
+    };
+    let token = match GovernedApprovalToken::sign(token_body, &state.signer_keypair) {
+        Ok(token) => token,
+        Err(error) => {
+            return internal_json_error_response(
+                "operator_respond_sign_failed",
+                &format!("failed to sign operator approval token: {error}"),
+            );
+        }
+    };
+
+    let respond_body = RespondRequest {
+        outcome: body.outcome.clone(),
+        reason: body.reason,
+        approver: approver_pubkey,
+        token,
+    };
+
+    match handle_respond(&state.approval_admin, &approval_id, respond_body, now) {
         Ok(response) => approval_json(StatusCode::OK, response),
         Err(error) => approval_error_response(error),
     }
@@ -2441,6 +2640,154 @@ paths:
             .get_pending("ap-route-1")
             .test_unwrap()
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn submit_approval_creates_pending_record_signed_by_sidecar() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+        let subject = Keypair::generate();
+        let payload = serde_json::json!({
+            "capability_id": "cap-submit-1",
+            "tool_server": "shell",
+            "tool_name": "run_command",
+            "parameter_hash": "a".repeat(64),
+            "requested_by": subject.public_key().to_hex(),
+            "summary": "rm -rf old_build/",
+            "ttl_seconds": 300,
+            "triggered_by": ["shell.requires_approval"],
+        });
+        let request = with_loopback_peer(
+            Request::builder()
+                .method("POST")
+                .uri("/approvals/submit")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&payload).test_unwrap()))
+                .test_unwrap(),
+        );
+
+        let response = build_app(Arc::clone(&state))
+            .oneshot(request)
+            .await
+            .test_unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).test_unwrap();
+        let approval_id = json["approval_id"].as_str().test_unwrap().to_string();
+        assert!(approval_id.starts_with("ap-"));
+        assert_eq!(
+            json["trusted_approvers"][0],
+            state.signer_keypair.public_key().to_hex()
+        );
+
+        let stored = state
+            .approval_admin
+            .store()
+            .get_pending(&approval_id)
+            .test_unwrap()
+            .test_unwrap();
+        assert_eq!(stored.tool_server, "shell");
+        assert_eq!(stored.tool_name, "run_command");
+        assert_eq!(stored.subject_id, subject.public_key().to_hex());
+        assert!(stored
+            .trusted_approvers
+            .contains(&state.signer_keypair.public_key()));
+    }
+
+    #[tokio::test]
+    async fn operator_respond_resolves_pending_via_sidecar_signature() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+        let subject = Keypair::generate();
+
+        // Submit a pending approval first.
+        let submit_payload = serde_json::json!({
+            "capability_id": "cap-op-1",
+            "tool_server": "shell",
+            "tool_name": "run_command",
+            "parameter_hash": "b".repeat(64),
+            "requested_by": subject.public_key().to_hex(),
+            "ttl_seconds": 300,
+        });
+        let submit_request = with_loopback_peer(
+            Request::builder()
+                .method("POST")
+                .uri("/approvals/submit")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&submit_payload).test_unwrap(),
+                ))
+                .test_unwrap(),
+        );
+        let submit_response = build_app(Arc::clone(&state))
+            .oneshot(submit_request)
+            .await
+            .test_unwrap();
+        assert_eq!(submit_response.status(), StatusCode::CREATED);
+        let submit_body = to_bytes(submit_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let submit_json: serde_json::Value = serde_json::from_slice(&submit_body).test_unwrap();
+        let approval_id = submit_json["approval_id"]
+            .as_str()
+            .test_unwrap()
+            .to_string();
+
+        // Operator-respond approves with sidecar-signed token.
+        let respond_payload = serde_json::json!({
+            "outcome": "approved",
+            "reason": "ok via slash command",
+        });
+        let respond_request = with_loopback_peer(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/approvals/{approval_id}/operator-respond"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&respond_payload).test_unwrap(),
+                ))
+                .test_unwrap(),
+        );
+        let respond_response = build_app(Arc::clone(&state))
+            .oneshot(respond_request)
+            .await
+            .test_unwrap();
+        assert_eq!(respond_response.status(), StatusCode::OK);
+
+        let respond_body = to_bytes(respond_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap();
+        let resolved: RespondResponse = serde_json::from_slice(&respond_body).test_unwrap();
+        assert_eq!(resolved.approval_id, approval_id);
+        assert_eq!(resolved.outcome, ApprovalOutcome::Approved);
+
+        // Pending must be cleared.
+        assert!(state
+            .approval_admin
+            .store()
+            .get_pending(&approval_id)
+            .test_unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn operator_respond_rejects_unknown_approval() {
+        let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+        let payload = serde_json::json!({"outcome": "approved"});
+        let request = with_loopback_peer(
+            Request::builder()
+                .method("POST")
+                .uri("/approvals/ap-missing/operator-respond")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&payload).test_unwrap()))
+                .test_unwrap(),
+        );
+        let response = build_app(Arc::clone(&state))
+            .oneshot(request)
+            .await
+            .test_unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
