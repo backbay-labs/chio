@@ -45,6 +45,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, TypeVar, cast, overload
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
@@ -76,6 +77,11 @@ class _FlowContext:
     chio_client: ChioClientLike | None
     sidecar_url: str
     flow_run_id: str | None
+    # Per-flow argument redaction policy, propagated to enclosed
+    # :func:`chio_task` invocations whose own ``redaction_policy`` is
+    # unset. ``None`` means "use the chio-default policy at the task
+    # boundary" (resolved in :func:`_invoke_task`).
+    redaction_policy: RedactionPolicy | None = None
 
 
 _current_flow: ContextVar[_FlowContext | None] = ContextVar(
@@ -350,6 +356,7 @@ def chio_task(
     tool_name: str | None = None,
     chio_client: ChioClientLike | None = None,
     sidecar_url: str | None = None,
+    redaction_policy: RedactionPolicy | None = None,
     **task_options: Any,
 ) -> Callable[[F], F]: ...
 
@@ -363,6 +370,7 @@ def chio_task(
     tool_name: str | None = None,
     chio_client: ChioClientLike | None = None,
     sidecar_url: str | None = None,
+    redaction_policy: RedactionPolicy | None = None,
     **task_options: Any,
 ) -> Any:
     """Decorator that wraps a function as an Chio-governed Prefect task.
@@ -392,6 +400,14 @@ def chio_task(
         Base URL of the Chio sidecar when the decorator has to mint its
         own client. Defaults to the flow context's url or
         ``http://127.0.0.1:9090``.
+    redaction_policy:
+        Per-task argument redaction policy. Applied to the task kwargs
+        right before they are forwarded to the Chio sidecar so secret-
+        bearing fields (e.g. the ``content`` of ``chio_file_write``)
+        never land in the receipt log. Defaults to the policy of the
+        enclosing :func:`chio_flow` (when set) and otherwise to
+        :meth:`RedactionPolicy.chio_default`. The wrapped function body
+        always sees the original, unredacted arguments.
     task_options:
         Forwarded verbatim to :func:`prefect.task` (e.g. ``retries``,
         ``retry_delay_seconds``, ``tags``, ``timeout_seconds``,
@@ -424,6 +440,7 @@ def chio_task(
                     tool_name_override=resolved_tool_name,
                     chio_client_override=chio_client,
                     sidecar_url_override=sidecar_url,
+                    redaction_policy_override=redaction_policy,
                     is_async=True,
                 )
 
@@ -447,6 +464,7 @@ def chio_task(
                     tool_name_override=resolved_tool_name,
                     chio_client_override=chio_client,
                     sidecar_url_override=sidecar_url,
+                    redaction_policy_override=redaction_policy,
                     is_async=False,
                 )
             )
@@ -470,6 +488,7 @@ async def _invoke_task(
     tool_name_override: str,
     chio_client_override: ChioClientLike | None,
     sidecar_url_override: str | None,
+    redaction_policy_override: RedactionPolicy | None,
     is_async: bool,
 ) -> Any:
     """Shared task-body implementation for sync and async variants.
@@ -496,6 +515,19 @@ async def _invoke_task(
         or ChioClient.DEFAULT_BASE_URL
     )
 
+    # Resolution order for the redaction policy:
+    #   1. Per-task override (explicit ``redaction_policy=`` on @chio_task).
+    #   2. Enclosing flow's policy (when running inside @chio_flow).
+    #   3. The chio-default policy (covers chio_file_write.content,
+    #      chio_file_edit.patch).
+    # We always apply *some* policy; defaulting to chio_default keeps
+    # adoption a no-op for callers that do not explicitly configure one.
+    resolved_policy = redaction_policy_override
+    if resolved_policy is None and flow_ctx is not None:
+        resolved_policy = flow_ctx.redaction_policy
+    if resolved_policy is None:
+        resolved_policy = RedactionPolicy.chio_default()
+
     flow_run_id = _current_flow_run_id()
     task_run_id = _current_task_run_id()
     resolved_task_name = _current_task_name(tool_name_override)
@@ -507,7 +539,9 @@ async def _invoke_task(
             capability_id=cap_id,
             tool_server=server,
             tool_name=tool_name_override,
-            parameters=_task_parameters(args, kwargs),
+            parameters=_task_parameters(
+                args, kwargs, tool_name_override, resolved_policy
+            ),
             flow_run_id=flow_run_id,
             task_run_id=task_run_id,
         )
@@ -525,7 +559,10 @@ async def _invoke_task(
 
 
 def _task_parameters(
-    args: tuple[Any, ...], kwargs: dict[str, Any]
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    tool_name: str,
+    policy: RedactionPolicy,
 ) -> dict[str, Any]:
     """Canonicalise task call arguments for the sidecar payload.
 
@@ -533,8 +570,19 @@ def _task_parameters(
     the Chio sidecar evaluates on a dict. We wrap positional args under a
     stable ``args`` key and forward kwargs as-is so the parameter hash
     remains deterministic across runs with identical inputs.
+
+    The ``kwargs`` dict is run through :func:`redact_args` so secret-
+    bearing fields named by ``policy`` (e.g. ``content`` for
+    ``chio_file_write``) are replaced with a byte-count stub before they
+    reach the sidecar (and therefore the receipt log). Positional
+    ``args`` are not redacted because the wrapper does not know the
+    callable's parameter names; tools that carry secret bodies should
+    accept them as keyword-only arguments to opt in to redaction.
     """
-    return {"args": list(args), "kwargs": dict(kwargs)}
+    return {
+        "args": list(args),
+        "kwargs": redact_args(tool_name, kwargs, policy=policy),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -556,6 +604,7 @@ def chio_flow(
     tool_server: str = "",
     chio_client: ChioClientLike | None = None,
     sidecar_url: str | None = None,
+    redaction_policy: RedactionPolicy | None = None,
     **flow_options: Any,
 ) -> Callable[[F], F]: ...
 
@@ -568,6 +617,7 @@ def chio_flow(
     tool_server: str = "",
     chio_client: ChioClientLike | None = None,
     sidecar_url: str | None = None,
+    redaction_policy: RedactionPolicy | None = None,
     **flow_options: Any,
 ) -> Any:
     """Decorator that wraps a function as an Chio-governed Prefect flow.
@@ -593,6 +643,12 @@ def chio_flow(
         call via a single mock.
     sidecar_url:
         Fallback sidecar URL. Default ``http://127.0.0.1:9090``.
+    redaction_policy:
+        Default argument-redaction policy for every enclosed
+        :func:`chio_task` whose own ``redaction_policy`` is unset. When
+        ``None``, the chio-default policy is applied at the task
+        boundary (covers ``chio_file_write.content`` and
+        ``chio_file_edit.patch``).
     flow_options:
         Forwarded verbatim to :func:`prefect.flow` (``name``,
         ``retries``, ``timeout_seconds``, ``task_runner``, ``tags``,
@@ -620,6 +676,7 @@ def chio_flow(
                     tool_server=tool_server,
                     chio_client=chio_client,
                     sidecar_url=sidecar_url,
+                    redaction_policy=redaction_policy,
                 )
                 try:
                     return await cast(
@@ -638,6 +695,7 @@ def chio_flow(
                 tool_server=tool_server,
                 chio_client=chio_client,
                 sidecar_url=sidecar_url,
+                redaction_policy=redaction_policy,
             )
             try:
                 return fn(*args, **kwargs)
@@ -658,6 +716,7 @@ def _enter_flow_context(
     tool_server: str,
     chio_client: ChioClientLike | None,
     sidecar_url: str | None,
+    redaction_policy: RedactionPolicy | None = None,
 ) -> Any:
     """Push a :class:`_FlowContext` onto the ContextVar stack for this flow run."""
     flow_run_id = _current_flow_run_id() or f"adhoc-{uuid.uuid4().hex[:8]}"
@@ -668,6 +727,7 @@ def _enter_flow_context(
         chio_client=chio_client,
         sidecar_url=sidecar_url or ChioClient.DEFAULT_BASE_URL,
         flow_run_id=flow_run_id,
+        redaction_policy=redaction_policy,
     )
     return _current_flow.set(ctx)
 
