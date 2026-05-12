@@ -54,9 +54,21 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
                 command = params.get("command", "")
                 handle.policy.check_shell(command)
             elif tool_name == "chio_git_run":
+                # `command` is a git subcommand argv ("push --force"), not a
+                # shell line ("git push --force"). Policy patterns in
+                # `git_deny_patterns` and `shell_forbidden_patterns` anchor on
+                # `git\s+...` because they are written to match what a human
+                # types at a shell. Prefix `git ` here so the model cannot
+                # bypass `push --force`, `reset --hard origin`, etc by leaving
+                # the `git` token off (which `git_run_executor` strips anyway
+                # before exec). Defense in depth: the executor would also have
+                # rejected via `tool_access` because `git/run` is not in the
+                # default allow list, but make the hook block at the policy
+                # patterns the docs advertise.
                 command = params.get("command", "")
-                handle.policy.check_git(command)
-                handle.policy.check_shell(command)
+                shell_form = command if command.startswith("git ") else f"git {command}"
+                handle.policy.check_git(shell_form)
+                handle.policy.check_shell(shell_form)
             elif tool_name == "chio_git_add":
                 for path in params.get("paths", []) or []:
                     handle.policy.check_write(path, cwd=handle.cwd)

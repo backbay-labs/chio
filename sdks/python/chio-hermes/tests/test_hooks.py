@@ -95,6 +95,57 @@ def test_pre_tool_call_ignores_non_chio_tool(
     assert result is None
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "push --force origin main",
+        "push -f",
+        "push --force-with-lease origin main",
+        "reset --hard origin/main",
+        # Already-prefixed forms should still trip (no double prefix).
+        "git push --force origin main",
+        "git reset --hard origin/main",
+    ],
+)
+def test_pre_tool_call_blocks_chio_git_run_force_push(
+    tmp_workspace: Path, command: str
+) -> None:
+    """Regression: chio_git_run must block git_deny patterns even though the
+    model passes a subcommand argv ('push --force') without the leading
+    `git ` token. The hook prefixes `git ` before pattern-matching so the
+    default policy's `git\\s+push\\s+.*--force` regex matches.
+    """
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+    hook = make_pre_tool_call(runtime)
+    result = hook(
+        tool_name="chio_git_run",
+        args={"command": command},
+        task_id="task-git-deny",
+    )
+    assert isinstance(result, dict), (
+        f"chio_git_run('{command}') was NOT blocked by pre_tool_call hook; "
+        f"got {result!r}. The default policy's git_deny / shell_forbidden "
+        f"patterns are anchored on `git\\s+...` and need a `git ` prefix."
+    )
+    assert result.get("action") == "block"
+
+
+def test_pre_tool_call_allows_chio_git_run_safe_subcommand(
+    tmp_workspace: Path,
+) -> None:
+    """Sanity: a benign git subcommand still passes the pre-hook (the
+    deny-only check). Allow-listing happens at the executor / SDK layer.
+    """
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+    hook = make_pre_tool_call(runtime)
+    result = hook(
+        tool_name="chio_git_run",
+        args={"command": "status"},
+        task_id="task-git-safe",
+    )
+    assert result is None
+
+
 def test_post_tool_call_writes_receipt_with_result_and_duration(
     tmp_workspace: Path,
     tmp_hermes_home: Path,
