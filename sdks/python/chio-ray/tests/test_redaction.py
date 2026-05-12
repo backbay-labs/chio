@@ -1,23 +1,4 @@
-"""Tests for chio-ray argument redaction (chio-adapter-base wiring).
-
-These tests assert that both ``@chio_remote`` (Ray task wrapper) and
-``ChioActor.requires`` (Ray actor method gate) redact secret-bearing
-fields from their kwargs BEFORE forwarding them to the sidecar's
-``evaluate_tool_call`` endpoint, so the receipt log never carries the
-raw secret bytes.
-
-The default policy is :meth:`RedactionPolicy.chio_default` -- it
-redacts ``chio_file_write.content`` and ``chio_file_edit.patch``;
-unrelated tool names see their args unmodified. A custom policy can
-be passed via the ``redaction_policy`` keyword on either entry point.
-
-Source of truth: ``chio_adapter_base.redact.redact_args``.
-
-Note on Ray's object store: Ray pickles task / actor-method arguments
-*before* they reach this wrapper, so the original (unredacted) values
-may still live in the Ray object store. The redaction guarantee here
-applies only to the parameters embedded in the Chio receipt log.
-"""
+"""Tests for chio-ray argument redaction."""
 
 from __future__ import annotations
 
@@ -30,10 +11,6 @@ from chio_sdk.models import CapabilityToken, ChioScope, Operation, ToolGrant
 from chio_sdk.testing import allow_all
 
 from chio_ray import ChioActor, StandingGrant, chio_remote
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _scope_for_tools(*tool_names: str, server_id: str = "srv") -> ChioScope:
@@ -63,11 +40,6 @@ def _local_token(scope: ChioScope, *, token_id: str = "tok-1") -> CapabilityToke
 
 def _eval_calls(chio: Any) -> list[Any]:
     return [c for c in chio.calls if c.method == "evaluate_tool_call"]
-
-
-# ---------------------------------------------------------------------------
-# (a) chio_remote -- task-level redaction
-# ---------------------------------------------------------------------------
 
 
 class TestChioRemoteRedaction:
@@ -138,8 +110,6 @@ class TestChioRemoteRedaction:
         assert ray.get(ref) == "quantum"
 
         forwarded = _eval_calls(chio)[0].parameters["kwargs"]
-        # The default policy only matches chio_file_write / chio_file_edit;
-        # unrelated tool names see their kwargs unmodified.
         assert forwarded == {"query": "quantum", "content": "not redacted here"}
 
     def test_custom_policy_redacts_only_named_fields(self) -> None:
@@ -168,9 +138,6 @@ class TestChioRemoteRedaction:
         }
 
     def test_custom_policy_does_not_redact_default_fields(self) -> None:
-        """A custom policy fully replaces the default; chio_file_write
-        is no longer redacted under it.
-        """
         chio = allow_all()
         custom = RedactionPolicy(body_fields={"my_tool": ("body",)})
 
@@ -192,9 +159,7 @@ class TestChioRemoteRedaction:
         assert forwarded["content"] == "not-redacted-now"
 
     def test_positional_args_are_forwarded_unchanged(self) -> None:
-        """Positional args bypass redaction by design (the policy keys
-        on field name; positional ordering is opaque).
-        """
+        # Positional args bypass redaction: policy keys on field name.
         chio = allow_all()
 
         @chio_remote(
@@ -213,11 +178,6 @@ class TestChioRemoteRedaction:
         params = _eval_calls(chio)[0].parameters
         assert params["args"] == ["/tmp/x", "POSITIONAL_SECRET"]
         assert params["kwargs"] == {}
-
-
-# ---------------------------------------------------------------------------
-# (b) ChioActor -- per-method redaction
-# ---------------------------------------------------------------------------
 
 
 class TestChioActorRedaction:

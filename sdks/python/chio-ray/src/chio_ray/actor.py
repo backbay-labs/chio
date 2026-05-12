@@ -99,14 +99,10 @@ class ChioActor:
         Base URL of the node-local Chio sidecar. Defaults to
         ``http://127.0.0.1:9090``.
     redaction_policy:
-        Optional :class:`chio_adapter_base.redact.RedactionPolicy` used
-        to scrub secret-bearing arg fields (e.g. the ``content`` of
-        ``chio_file_write``) from the kwargs forwarded to the sidecar.
-        Defaults to :meth:`RedactionPolicy.chio_default` when omitted.
-        Note that Ray pickles actor method arguments before they reach
-        the wrapper; the original (unredacted) values may still live
-        in the Ray object store. This policy only governs what the
-        Chio sidecar records on the receipt.
+        Optional :class:`RedactionPolicy` applied to kwargs before
+        the sidecar evaluation. Defaults to
+        :meth:`RedactionPolicy.chio_default`. Only governs receipt-log
+        parameters; Ray's object store still holds the pickled originals.
     """
 
     # ------------------------------------------------------------------
@@ -369,12 +365,8 @@ async def _enforce_actor_method(
     chio_client: ChioClientLike | None = getattr(actor, "_chio_client", None)
     sidecar_url: str = getattr(actor, "_chio_sidecar_url", "http://127.0.0.1:9090")
 
-    # Redact secret-bearing fields (e.g. chio_file_write.content) from
-    # the kwargs before they cross into the sidecar so the receipt log
-    # never carries the raw bytes. Positional args are forwarded as-is;
-    # callers that pass secrets positionally bypass redaction by
-    # definition - adapters that care about positional secrets should
-    # surface them as named kwargs so the policy can match.
+    # Positional args bypass redaction: the policy targets fields by
+    # kwarg name, so adapters must surface secrets as named kwargs.
     redaction_policy: RedactionPolicy = getattr(
         actor, "_chio_redaction_policy", RedactionPolicy.chio_default()
     )

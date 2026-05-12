@@ -217,15 +217,10 @@ def chio_remote(
         Base URL of the Chio sidecar running on the Ray worker node.
         Defaults to ``http://127.0.0.1:9090`` (the node-local sidecar).
     redaction_policy:
-        Optional :class:`chio_adapter_base.redact.RedactionPolicy` used
-        to scrub secret-bearing arg fields (e.g. the ``content`` of
-        ``chio_file_write``) from the parameters embedded in the
-        receipt log. Defaults to
-        :meth:`RedactionPolicy.chio_default` when omitted. Note that
-        Ray pickles task arguments before they reach this wrapper, so
-        the original (unredacted) values may still live in the Ray
-        object store; this policy only governs what the Chio sidecar
-        records on the receipt.
+        Optional :class:`RedactionPolicy` applied to kwargs before
+        the sidecar evaluation. Defaults to
+        :meth:`RedactionPolicy.chio_default`. Only governs receipt-log
+        parameters; Ray's object store still holds the pickled originals.
     ray_options:
         Forwarded verbatim to :func:`ray.remote` (``num_cpus``,
         ``num_gpus``, ``resources``, ``runtime_env``, ``max_calls``,
@@ -362,17 +357,9 @@ def _task_parameters(
 ) -> dict[str, Any]:
     """Canonicalise task call arguments for the sidecar payload.
 
-    The sidecar evaluates on a dict; we wrap positional args under a
-    stable ``args`` key so the parameter hash remains deterministic
-    across runs with identical inputs.
-
-    Per-tool secret-bearing fields are redacted from the keyword args
-    before they cross into the sidecar so the receipt log never carries
-    the raw bytes (e.g. the ``content`` of ``chio_file_write``).
-    Positional args are forwarded as-is; callers that pass secret
-    bytes positionally bypass redaction by definition. Adapters that
-    care about positional secrets should expose them as named kwargs
-    so the policy can match.
+    Wraps positional args under a stable ``args`` key so the parameter
+    hash stays deterministic. Positional args bypass redaction since
+    the policy targets fields by kwarg name.
     """
     redacted_kwargs = redact_args(tool_name, kwargs, policy=policy)
     return {"args": list(args), "kwargs": redacted_kwargs}
