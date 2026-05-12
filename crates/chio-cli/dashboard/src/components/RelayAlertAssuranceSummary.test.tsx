@@ -106,11 +106,73 @@ function retentionReport(overrides = {}) {
   }
 }
 
+function archiveReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-archive-report.v1',
+    accepted: true,
+    code: 'accepted',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    bundleCount: 1,
+    archiveReadyCount: 1,
+    archiveBlockedCount: 0,
+    quarantineCount: 0,
+    legalHoldCount: 1,
+    eligibleForDeleteCount: 0,
+    reviews: [
+      {
+        bundleId: 'relay-alert-assurance-export',
+        bundlePath: 'export-bundle',
+        manifestSha256: '6'.repeat(64),
+        sourcePackageSha256: '4'.repeat(64),
+        artifactCount: 13,
+        state: 'archive_ready',
+        code: 'accepted',
+        detail: 'ready',
+        trustedExporterVerified: true,
+        replayMatched: true,
+        recoveryDrillAccepted: true,
+        routeReviewPresent: true,
+        retainedCount: 12,
+        expiringSoonCount: 0,
+        eligibleForDeleteCount: 0,
+        legalHoldCount: 1,
+        missingCount: 0,
+        quarantineCount: 0,
+        checks: [],
+      },
+    ],
+    checks: [],
+    ...overrides,
+  }
+}
+
+function closeoutReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-closeout-report.v1',
+    accepted: false,
+    code: 'closeout_blocked',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    bundleCount: 1,
+    closeoutReadyCount: 0,
+    closeoutBlockedCount: 1,
+    quarantineCount: 0,
+    legalHoldCount: 1,
+    eligibleForDeleteCount: 0,
+    reviews: [],
+    checks: [],
+    ...overrides,
+  }
+}
+
 function mockAssuranceFetch(overrides: {
   packageReport?: Record<string, unknown>
   exportReport?: Record<string, unknown>
   replayReport?: Record<string, unknown>
   retentionReport?: Record<string, unknown>
+  archiveReport?: Record<string, unknown>
+  closeoutReport?: Record<string, unknown>
 } = {}) {
   vi.stubGlobal(
     'fetch',
@@ -125,6 +187,15 @@ function mockAssuranceFetch(overrides: {
         return Promise.resolve({
           ok: true,
           json: async () => retentionReport(overrides.retentionReport),
+        })
+      }
+      if (url.endsWith('/archive')) {
+        return Promise.resolve({ ok: true, json: async () => archiveReport(overrides.archiveReport) })
+      }
+      if (url.endsWith('/closeout')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => closeoutReport(overrides.closeoutReport),
         })
       }
       return Promise.resolve({
@@ -147,6 +218,8 @@ describe('RelayAlertAssuranceSummary', () => {
     expect(container.textContent).toContain('active_alerts_present')
     expect(container.textContent).toContain('Export Lifecycle')
     expect(container.textContent).toContain('retention 1 blocked')
+    expect(container.textContent).toContain('Archive Closeout')
+    expect(container.textContent).toContain('1 legal hold')
   })
 
   it('renders unknown when the assurance report is missing', async () => {

@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchAgentCostSeries,
   fetchOperatorReport,
+  fetchRelayAlertAssuranceArchiveReport,
+  fetchRelayAlertAssuranceCloseoutReport,
   fetchRelayAlertAssuranceExportReport,
   fetchRelayAlertAssurancePackage,
   fetchRelayAlertAssuranceReplayReport,
@@ -488,6 +490,8 @@ describe('dashboard api helpers', () => {
     await fetchRelayAlertAssuranceExportReport()
     await fetchRelayAlertAssuranceReplayReport()
     await fetchRelayAlertAssuranceRetentionReport()
+    await fetchRelayAlertAssuranceArchiveReport()
+    await fetchRelayAlertAssuranceCloseoutReport()
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -507,6 +511,16 @@ describe('dashboard api helpers', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       '/v1/chiodos/pheromone/alert-assurance/retention',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      '/v1/chiodos/pheromone/alert-assurance/archive',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      '/v1/chiodos/pheromone/alert-assurance/closeout',
       expect.anything(),
     )
   })

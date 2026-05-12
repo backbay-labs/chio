@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
 
 import {
+  fetchRelayAlertAssuranceArchiveReport,
+  fetchRelayAlertAssuranceCloseoutReport,
   fetchRelayAlertAssuranceExportReport,
   fetchRelayAlertAssurancePackage,
   fetchRelayAlertAssuranceReplayReport,
   fetchRelayAlertAssuranceRetentionReport,
 } from '../api'
 import type {
+  RelayAlertAssuranceArchiveReport,
+  RelayAlertAssuranceCloseoutReport,
   RelayAlertAssuranceExportReport,
   RelayAlertAssurancePackage,
   RelayAlertAssuranceReplayReport,
@@ -29,11 +33,15 @@ export function RelayAlertAssuranceSummary() {
     exportReport: RelayAlertAssuranceExportReport | null
     replayReport: RelayAlertAssuranceReplayReport | null
     retentionReport: RelayAlertAssuranceRetentionReport | null
+    archiveReport: RelayAlertAssuranceArchiveReport | null
+    closeoutReport: RelayAlertAssuranceCloseoutReport | null
   }>({
     packageReport: null,
     exportReport: null,
     replayReport: null,
     retentionReport: null,
+    archiveReport: null,
+    closeoutReport: null,
   })
   const [loading, setLoading] = useState(true)
 
@@ -45,14 +53,18 @@ export function RelayAlertAssuranceSummary() {
       fetchRelayAlertAssuranceExportReport(),
       fetchRelayAlertAssuranceReplayReport(),
       fetchRelayAlertAssuranceRetentionReport(),
+      fetchRelayAlertAssuranceArchiveReport(),
+      fetchRelayAlertAssuranceCloseoutReport(),
     ])
-      .then(([packageResult, exportResult, replayResult, retentionResult]) => {
+      .then(([packageResult, exportResult, replayResult, retentionResult, archiveResult, closeoutResult]) => {
         if (!cancelled) {
           setState({
             packageReport: packageResult.status === 'fulfilled' ? packageResult.value : null,
             exportReport: exportResult.status === 'fulfilled' ? exportResult.value : null,
             replayReport: replayResult.status === 'fulfilled' ? replayResult.value : null,
             retentionReport: retentionResult.status === 'fulfilled' ? retentionResult.value : null,
+            archiveReport: archiveResult.status === 'fulfilled' ? archiveResult.value : null,
+            closeoutReport: closeoutResult.status === 'fulfilled' ? closeoutResult.value : null,
           })
           setLoading(false)
         }
@@ -64,6 +76,8 @@ export function RelayAlertAssuranceSummary() {
             exportReport: null,
             replayReport: null,
             retentionReport: null,
+            archiveReport: null,
+            closeoutReport: null,
           })
           setLoading(false)
         }
@@ -92,6 +106,14 @@ export function RelayAlertAssuranceSummary() {
   const retentionStatus = state.retentionReport
     ? `${state.retentionReport.blockedCount} blocked`
     : 'unknown'
+  const archiveStatus = state.archiveReport
+    ? `${state.archiveReport.archiveReadyCount} ready`
+    : 'unknown'
+  const closeoutStatus = state.closeoutReport
+    ? `${state.closeoutReport.closeoutBlockedCount} blocked`
+    : 'unknown'
+  const firstArchiveReview = state.archiveReport?.reviews[0]
+  const bundleLabel = firstArchiveReview?.bundleId ?? 'unknown'
 
   return (
     <section className="operator-summary relay-alert-assurance" aria-label="Relay alert assurance">
@@ -139,6 +161,20 @@ export function RelayAlertAssuranceSummary() {
           <div className="operator-card-metrics">
             <span>replay {replayStatus}</span>
             <span>retention {retentionStatus}</span>
+          </div>
+        </article>
+
+        <article className="operator-card">
+          <span className="operator-card-label">Archive Closeout</span>
+          <strong className="operator-card-value">{closeoutStatus}</strong>
+          <div className="operator-card-metrics">
+            <span>archive {archiveStatus}</span>
+            <span>bundle {bundleLabel}</span>
+          </div>
+          <div className="operator-card-metrics">
+            <span>{state.archiveReport?.quarantineCount ?? 0} quarantine</span>
+            <span>{state.closeoutReport?.legalHoldCount ?? 0} legal hold</span>
+            <span>{state.closeoutReport?.eligibleForDeleteCount ?? 0} eligible</span>
           </div>
         </article>
       </div>

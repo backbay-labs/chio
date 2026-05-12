@@ -494,6 +494,80 @@ export interface RelayAlertAssuranceRetentionReport {
   checks: RelayAlertCheck[]
 }
 
+export interface RelayAlertAssuranceArchiveReview {
+  bundleId: string
+  bundlePath: string
+  manifestSha256: string | null
+  sourcePackageSha256: string | null
+  artifactCount: number
+  state: 'archive_ready' | 'archive_blocked' | 'quarantine'
+  code: string
+  detail: string
+  trustedExporterVerified: boolean
+  replayMatched: boolean
+  recoveryDrillAccepted: boolean
+  routeReviewPresent: boolean
+  retainedCount: number
+  expiringSoonCount: number
+  eligibleForDeleteCount: number
+  legalHoldCount: number
+  missingCount: number
+  quarantineCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceArchiveReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  bundleCount: number
+  archiveReadyCount: number
+  archiveBlockedCount: number
+  quarantineCount: number
+  legalHoldCount: number
+  eligibleForDeleteCount: number
+  reviews: RelayAlertAssuranceArchiveReview[]
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceCloseoutReview {
+  bundleId: string
+  bundlePath: string
+  manifestSha256: string | null
+  artifactCount: number
+  state: 'closeout_ready' | 'closeout_blocked' | 'quarantine'
+  code: string
+  detail: string
+  verifiedBundle: boolean
+  replayMatched: boolean
+  retentionSafe: boolean
+  recoveryDrillAccepted: boolean
+  routeReviewPresent: boolean
+  legalHoldCount: number
+  eligibleForDeleteCount: number
+  missingCount: number
+  quarantineCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceCloseoutReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  bundleCount: number
+  closeoutReadyCount: number
+  closeoutBlockedCount: number
+  quarantineCount: number
+  legalHoldCount: number
+  eligibleForDeleteCount: number
+  reviews: RelayAlertAssuranceCloseoutReview[]
+  checks: RelayAlertCheck[]
+}
+
 export interface PassportVerification {
   subject: string
   issuer?: string | null

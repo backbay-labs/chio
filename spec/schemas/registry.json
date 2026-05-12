@@ -506,6 +506,36 @@
       "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-export-negative-fixture-corpus.schema.json"
     },
     {
+      "schema": "chio.pheromone.relay-alert-assurance-archive-profile.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_archive_profile",
+      "introducedBy": "chiodos-relay-alert-assurance-archive/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-archive-profile.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-archive-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_archive_report",
+      "introducedBy": "chiodos-relay-alert-assurance-archive/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-archive-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-closeout-profile.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_closeout_profile",
+      "introducedBy": "chiodos-relay-alert-assurance-archive/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-closeout-profile.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-closeout-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_closeout_report",
+      "introducedBy": "chiodos-relay-alert-assurance-archive/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-closeout-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-archive-negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_archive_negative_fixture_corpus",
+      "introducedBy": "chiodos-relay-alert-assurance-archive/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-archive-negative-fixture-corpus.schema.json"
+    },
+    {
       "schema": "chio.pheromone.catchup-request.v1",
       "artifactKind": "chiodos_pheromone_catchup_request",
       "introducedBy": "chiodos-live-pheromone-relay/v1",

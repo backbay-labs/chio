@@ -14,11 +14,11 @@ The canonical relay observability report is the first operator view for the pher
 8. Run `chio chiodos pheromone relay alert delivery drift-window` across handoff and delivery report directories.
 9. Run `chio chiodos pheromone relay alert review` against handoff, delivery, acknowledgement, drift-window, and route-owner inputs.
 10. Run `chio chiodos pheromone relay alert assurance package` to bind the full operator evidence chain.
-11. Run `chio chiodos pheromone relay alert assurance export`, `verify`, `replay`, `retention plan`, and `recovery-drill` to close the local incident bundle.
-12. Check `relay-alert-report.v1`, `relay-trend-report.v1`, `relay-alert-handoff-report.v1`, `relay-alert-normalization-report.v1`, `relay-alert-delivery-report.v1`, `relay-alert-acknowledgement-report.v1`, `relay-alert-delivery-drift-report.v2`, `relay-alert-route-review-packet.v1`, `relay-alert-assurance-package.v1`, `relay-alert-assurance-export-manifest.v1`, `relay-alert-assurance-export-report.v1`, `relay-alert-assurance-replay-report.v1`, `relay-alert-assurance-retention-report.v1`, and `relay-alert-assurance-recovery-drill-report.v1` before opening raw store rows.
+11. Run `chio chiodos pheromone relay alert assurance export`, `verify`, `replay`, `retention plan`, `recovery-drill`, `archive plan`, and `closeout review` to close the local incident bundle.
+12. Check `relay-alert-report.v1`, `relay-trend-report.v1`, `relay-alert-handoff-report.v1`, `relay-alert-normalization-report.v1`, `relay-alert-delivery-report.v1`, `relay-alert-acknowledgement-report.v1`, `relay-alert-delivery-drift-report.v2`, `relay-alert-route-review-packet.v1`, `relay-alert-assurance-package.v1`, `relay-alert-assurance-export-manifest.v1`, `relay-alert-assurance-export-report.v1`, `relay-alert-assurance-replay-report.v1`, `relay-alert-assurance-retention-report.v1`, `relay-alert-assurance-recovery-drill-report.v1`, `relay-alert-assurance-archive-report.v1`, and `relay-alert-assurance-closeout-report.v1` before opening raw store rows.
 13. Inspect bounded event reports from `--report-dir` only when an alert requires evidence.
 14. Export `chio chiodos pheromone relay metrics --format prometheus` for downstream alerting.
-15. Use raw SQLite inspection only after alert, trend, handoff, normalization, delivery, acknowledgement, drift-window, route review, assurance, export, replay, retention, recovery drill, observability, and bounded event files have narrowed the incident.
+15. Use raw SQLite inspection only after alert, trend, handoff, normalization, delivery, acknowledgement, drift-window, route review, assurance, export, verify, replay, retention, recovery drill, archive plan, closeout review, observability, and bounded event files have narrowed the incident.
 
 ## Bounded Metrics
 
