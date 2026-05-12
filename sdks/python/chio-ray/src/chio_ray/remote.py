@@ -28,6 +28,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar, cast
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
@@ -180,6 +181,7 @@ def chio_remote(
     tool_name: str | None = None,
     chio_client: ChioClientLike | None = None,
     sidecar_url: str = "http://127.0.0.1:9090",
+    redaction_policy: RedactionPolicy | None = None,
     **ray_options: Any,
 ) -> Any:
     """Decorator that wraps a function as an Chio-governed Ray remote task.
@@ -214,6 +216,16 @@ def chio_remote(
     sidecar_url:
         Base URL of the Chio sidecar running on the Ray worker node.
         Defaults to ``http://127.0.0.1:9090`` (the node-local sidecar).
+    redaction_policy:
+        Optional :class:`chio_adapter_base.redact.RedactionPolicy` used
+        to scrub secret-bearing arg fields (e.g. the ``content`` of
+        ``chio_file_write``) from the parameters embedded in the
+        receipt log. Defaults to
+        :meth:`RedactionPolicy.chio_default` when omitted. Note that
+        Ray pickles task arguments before they reach this wrapper, so
+        the original (unredacted) values may still live in the Ray
+        object store; this policy only governs what the Chio sidecar
+        records on the receipt.
     ray_options:
         Forwarded verbatim to :func:`ray.remote` (``num_cpus``,
         ``num_gpus``, ``resources``, ``runtime_env``, ``max_calls``,
@@ -252,6 +264,11 @@ def chio_remote(
         bound_tool_server = tool_server
         bound_sidecar_url = sidecar_url
         bound_chio_client = chio_client
+        bound_redaction_policy = (
+            redaction_policy
+            if redaction_policy is not None
+            else RedactionPolicy.chio_default()
+        )
 
         if is_coro:
 
@@ -263,7 +280,12 @@ def chio_remote(
                     capability_id=bound_capability_id,
                     tool_server=bound_tool_server,
                     tool_name=resolved_tool_name,
-                    parameters=_task_parameters(args, kwargs),
+                    parameters=_task_parameters(
+                        resolved_tool_name,
+                        args,
+                        kwargs,
+                        policy=bound_redaction_policy,
+                    ),
                 )
                 return await cast(Callable[..., Awaitable[Any]], fn)(
                     *args, **kwargs
@@ -281,7 +303,12 @@ def chio_remote(
                         capability_id=bound_capability_id,
                         tool_server=bound_tool_server,
                         tool_name=resolved_tool_name,
-                        parameters=_task_parameters(args, kwargs),
+                        parameters=_task_parameters(
+                            resolved_tool_name,
+                            args,
+                            kwargs,
+                            policy=bound_redaction_policy,
+                        ),
                     )
                 )
                 return fn(*args, **kwargs)
@@ -326,14 +353,29 @@ def chio_remote(
     return decorator
 
 
-def _task_parameters(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+def _task_parameters(
+    tool_name: str,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    *,
+    policy: RedactionPolicy,
+) -> dict[str, Any]:
     """Canonicalise task call arguments for the sidecar payload.
 
     The sidecar evaluates on a dict; we wrap positional args under a
     stable ``args`` key so the parameter hash remains deterministic
     across runs with identical inputs.
+
+    Per-tool secret-bearing fields are redacted from the keyword args
+    before they cross into the sidecar so the receipt log never carries
+    the raw bytes (e.g. the ``content`` of ``chio_file_write``).
+    Positional args are forwarded as-is; callers that pass secret
+    bytes positionally bypass redaction by definition. Adapters that
+    care about positional secrets should expose them as named kwargs
+    so the policy can match.
     """
-    return {"args": list(args), "kwargs": dict(kwargs)}
+    redacted_kwargs = redact_args(tool_name, kwargs, policy=policy)
+    return {"args": list(args), "kwargs": redacted_kwargs}
 
 
 __all__ = [

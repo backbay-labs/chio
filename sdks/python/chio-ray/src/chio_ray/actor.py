@@ -44,7 +44,8 @@ import inspect
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any, TypeVar, cast
 
-from chio_sdk.models import ChioScope, CapabilityToken, Operation, ToolGrant
+from chio_adapter_base.redact import RedactionPolicy, redact_args
+from chio_sdk.models import CapabilityToken, ChioScope, Operation, ToolGrant
 
 from chio_ray.errors import ChioRayConfigError, ChioRayError
 from chio_ray.grants import ChioClientLike, StandingGrant, scope_from_spec
@@ -97,6 +98,15 @@ class ChioActor:
     sidecar_url:
         Base URL of the node-local Chio sidecar. Defaults to
         ``http://127.0.0.1:9090``.
+    redaction_policy:
+        Optional :class:`chio_adapter_base.redact.RedactionPolicy` used
+        to scrub secret-bearing arg fields (e.g. the ``content`` of
+        ``chio_file_write``) from the kwargs forwarded to the sidecar.
+        Defaults to :meth:`RedactionPolicy.chio_default` when omitted.
+        Note that Ray pickles actor method arguments before they reach
+        the wrapper; the original (unredacted) values may still live
+        in the Ray object store. This policy only governs what the
+        Chio sidecar records on the receipt.
     """
 
     # ------------------------------------------------------------------
@@ -113,6 +123,7 @@ class ChioActor:
         tool_server: str = "",
         chio_client: ChioClientLike | None = None,
         sidecar_url: str = "http://127.0.0.1:9090",
+        redaction_policy: RedactionPolicy | None = None,
     ) -> None:
         grant = _resolve_standing_grant(
             standing_grant=standing_grant,
@@ -125,6 +136,11 @@ class ChioActor:
         self._chio_grant: StandingGrant = grant
         self._chio_client: ChioClientLike | None = chio_client
         self._chio_sidecar_url: str = sidecar_url
+        self._chio_redaction_policy: RedactionPolicy = (
+            redaction_policy
+            if redaction_policy is not None
+            else RedactionPolicy.chio_default()
+        )
         # Tracks every successful evaluation so subclasses / tests can
         # inspect the receipt trail for the actor's lifetime.
         self._chio_receipts: list[Any] = []
@@ -353,13 +369,26 @@ async def _enforce_actor_method(
     chio_client: ChioClientLike | None = getattr(actor, "_chio_client", None)
     sidecar_url: str = getattr(actor, "_chio_sidecar_url", "http://127.0.0.1:9090")
 
+    # Redact secret-bearing fields (e.g. chio_file_write.content) from
+    # the kwargs before they cross into the sidecar so the receipt log
+    # never carries the raw bytes. Positional args are forwarded as-is;
+    # callers that pass secrets positionally bypass redaction by
+    # definition - adapters that care about positional secrets should
+    # surface them as named kwargs so the policy can match.
+    redaction_policy: RedactionPolicy = getattr(
+        actor, "_chio_redaction_policy", RedactionPolicy.chio_default()
+    )
+    redacted_kwargs = redact_args(
+        tool_name_override, dict(kwargs), policy=redaction_policy
+    )
+
     receipt = await _evaluate_allow_or_raise(
         chio_client=chio_client,
         sidecar_url=sidecar_url,
         capability_id=grant.capability_id,
         tool_server=tool_server,
         tool_name=tool_name_override,
-        parameters={"args": list(args), "kwargs": dict(kwargs)},
+        parameters={"args": list(args), "kwargs": redacted_kwargs},
         actor_class=grant.actor_class,
         method_name=method_name,
     )

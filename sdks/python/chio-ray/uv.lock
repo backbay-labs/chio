@@ -343,10 +343,30 @@ wheels = [
 ]
 
 [[package]]
-name = "chio-ray"
+name = "chio-adapter-base"
 version = "0.1.0"
+source = { directory = "../chio-adapter-base" }
+dependencies = [
+    { name = "chio-sdk-python" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "chio-sdk-python", directory = "../chio-sdk-python" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<9" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23,<1" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5,<6" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
+]
+provides-extras = ["dev"]
+
+[[package]]
+name = "chio-ray"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
+    { name = "chio-adapter-base" },
     { name = "chio-sdk-python" },
     { name = "pydantic" },
     { name = "ray", extra = ["default"] },
@@ -362,6 +382,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "chio-adapter-base", directory = "../chio-adapter-base" },
     { name = "chio-sdk-python", directory = "../chio-sdk-python" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "pydantic", specifier = ">=2.5,<3" },
