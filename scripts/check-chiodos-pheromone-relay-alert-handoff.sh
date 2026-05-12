@@ -99,6 +99,7 @@ required = {
     "inline-token",
     "dynamic-url",
     "credential-target-ref",
+    "bearer-target-ref",
     "unbounded-label",
     "unknown-sink-kind",
     "duplicate-route",
@@ -106,9 +107,14 @@ required = {
     "stale-alert-report",
     "stale-trend-report",
     "source-hash-mismatch",
+    "bad-source-hash-shape",
     "missing-runbook",
+    "alert-runbook-mismatch",
     "critical-hidden-by-suppression",
     "missing-event-evidence",
+    "weak-escalation-mapping",
+    "unknown-alert-code",
+    "trend-code-missing",
     "downstream-route-missing",
 }
 missing = sorted(required - case_ids)

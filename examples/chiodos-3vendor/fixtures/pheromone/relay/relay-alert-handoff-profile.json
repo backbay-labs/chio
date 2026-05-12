@@ -32,7 +32,7 @@
       "targetRef": "alertmanager:relay-auth-watch",
       "notificationRoute": "opsgenie-auth-watch",
       "opsgenie": "relay-security",
-      "severityFloor": "warning",
+      "severityFloor": "critical",
       "escalationRef": "relay-auth-watch",
       "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#replay-storm"
     }
@@ -52,7 +52,7 @@
     },
     {
       "escalationRef": "relay-auth-watch",
-      "severity": "warning",
+      "severity": "critical",
       "maxDelayMs": 600000,
       "recommendationCode": "auth-watch"
     }

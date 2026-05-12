@@ -1074,6 +1074,15 @@ fn relay_alert_handoff_rejects_secret_dynamic_and_uncovered_targets() {
             .unwrap_err();
     assert_eq!(err.code(), "alert_handoff_invalid");
 
+    let mut bearer_profile = handoff_profile();
+    bearer_profile.receivers[0].target_ref = "alertmanager:bearer-prod".to_string();
+    let err = relay_alert_handoff_profile_from_json(
+        &serde_json::to_string(&bearer_profile).unwrap(),
+        NOW,
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_handoff_invalid");
+
     let profile = relay_alert_routing_profile_from_json(
         &serde_json::to_string(&alert_profile()).unwrap(),
         NOW,
@@ -1159,6 +1168,84 @@ fn relay_alert_handoff_rejects_secret_dynamic_and_uncovered_targets() {
     .unwrap_err();
     assert_eq!(err.code(), "alert_source_invalid");
 
+    let mut invalid_source_hash = alert_report.clone();
+    invalid_source_hash.source_report_sha256 = "not-a-hash".to_string();
+    for alert in &mut invalid_source_hash.alerts {
+        alert.source_report_sha256 = "not-a-hash".to_string();
+    }
+    let err = evaluate_relay_alert_handoff(RelayAlertHandoffInput {
+        alert_report: &invalid_source_hash,
+        trend_report: &trend_report,
+        routing_profile: &profile,
+        handoff_profile: &handoff,
+        now_unix_ms: NOW + 60_000,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_source_invalid");
+
+    let mut hidden_critical = alert_report.clone();
+    hidden_critical.alerts[0].state = "suppressed".to_string();
+    hidden_critical.alerts[0].suppressed_until_unix_ms = Some(NOW + 120_000);
+    let err = evaluate_relay_alert_handoff(RelayAlertHandoffInput {
+        alert_report: &hidden_critical,
+        trend_report: &trend_report,
+        routing_profile: &profile,
+        handoff_profile: &handoff,
+        now_unix_ms: NOW + 60_000,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_handoff_invalid");
+
+    let mut missing_event = alert_report.clone();
+    missing_event.alerts[0].event_evidence_sha256.clear();
+    let err = evaluate_relay_alert_handoff(RelayAlertHandoffInput {
+        alert_report: &missing_event,
+        trend_report: &trend_report,
+        routing_profile: &profile,
+        handoff_profile: &handoff,
+        now_unix_ms: NOW + 60_000,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_source_invalid");
+
+    let mut bad_runbook = alert_report.clone();
+    bad_runbook.alerts[0].runbook = "docs/release/other-runbook.md".to_string();
+    let err = evaluate_relay_alert_handoff(RelayAlertHandoffInput {
+        alert_report: &bad_runbook,
+        trend_report: &trend_report,
+        routing_profile: &profile,
+        handoff_profile: &handoff,
+        now_unix_ms: NOW + 60_000,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_source_invalid");
+
+    let mut unknown_alert_code = alert_report.clone();
+    unknown_alert_code.alerts[0].code = "bounded_unknown".to_string();
+    let err = evaluate_relay_alert_handoff(RelayAlertHandoffInput {
+        alert_report: &unknown_alert_code,
+        trend_report: &trend_report,
+        routing_profile: &profile,
+        handoff_profile: &handoff,
+        now_unix_ms: NOW + 60_000,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_source_invalid");
+
+    let mut missing_trend_code = trend_report.clone();
+    missing_trend_code
+        .points
+        .retain(|point| point.code != alert_report.alerts[0].code);
+    let err = evaluate_relay_alert_handoff(RelayAlertHandoffInput {
+        alert_report: &alert_report,
+        trend_report: &missing_trend_code,
+        routing_profile: &profile,
+        handoff_profile: &handoff,
+        now_unix_ms: NOW + 60_000,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_source_invalid");
+
     let mut unbounded_label = alert_report.clone();
     unbounded_label.alerts[0]
         .labels
@@ -1178,6 +1265,15 @@ fn relay_alert_handoff_rejects_secret_dynamic_and_uncovered_targets() {
     let err =
         relay_alert_handoff_profile_from_json(&serde_json::to_string(&unknown_sink).unwrap(), NOW)
             .unwrap_err();
+    assert_eq!(err.code(), "alert_handoff_invalid");
+
+    let mut weak_escalation = handoff_profile();
+    weak_escalation.receivers[0].escalation_ref = "relay-digest".to_string();
+    let err = relay_alert_handoff_profile_from_json(
+        &serde_json::to_string(&weak_escalation).unwrap(),
+        NOW,
+    )
+    .unwrap_err();
     assert_eq!(err.code(), "alert_handoff_invalid");
 
     let mut duplicate_route = handoff_profile();

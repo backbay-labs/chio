@@ -32,7 +32,7 @@ function primaryFiringAlert(alerts: RelayAlert[]): RelayAlert | undefined {
       primary = alert
     }
   }
-  return primary ?? alerts[0]
+  return primary
 }
 
 export function RelayAlertRoutingSummary() {

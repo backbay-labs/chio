@@ -17,6 +17,11 @@
       "expectedCode": "alert_handoff_invalid"
     },
     {
+      "id": "bearer-target-ref",
+      "description": "handoff receiver target ref uses bearer credential wording",
+      "expectedCode": "alert_handoff_invalid"
+    },
+    {
       "id": "unbounded-label",
       "description": "alert report carries an unbounded routing label",
       "expectedCode": "alert_source_invalid"
@@ -52,9 +57,19 @@
       "expectedCode": "alert_source_invalid"
     },
     {
+      "id": "bad-source-hash-shape",
+      "description": "alert report source hash is not canonical lowercase hex",
+      "expectedCode": "alert_source_invalid"
+    },
+    {
       "id": "missing-runbook",
       "description": "handoff receiver omits the local runbook reference",
       "expectedCode": "alert_handoff_invalid"
+    },
+    {
+      "id": "alert-runbook-mismatch",
+      "description": "alert report runbook does not match the routing profile route",
+      "expectedCode": "alert_source_invalid"
     },
     {
       "id": "critical-hidden-by-suppression",
@@ -64,6 +79,21 @@
     {
       "id": "missing-event-evidence",
       "description": "severe alert source lacks required bounded evidence",
+      "expectedCode": "alert_source_invalid"
+    },
+    {
+      "id": "weak-escalation-mapping",
+      "description": "critical receiver maps to a lower-severity escalation",
+      "expectedCode": "alert_handoff_invalid"
+    },
+    {
+      "id": "unknown-alert-code",
+      "description": "alert report carries a bounded alert code absent from routing rules",
+      "expectedCode": "alert_source_invalid"
+    },
+    {
+      "id": "trend-code-missing",
+      "description": "trend report omits a firing alert code",
       "expectedCode": "alert_source_invalid"
     },
     {

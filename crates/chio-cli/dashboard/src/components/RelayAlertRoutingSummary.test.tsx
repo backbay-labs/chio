@@ -255,4 +255,32 @@ describe('RelayAlertRoutingSummary', () => {
     expect(container.textContent).toContain('pagerduty-primary')
     expect(container.textContent).not.toContain('no ops route')
   })
+
+  it('does not promote suppressed alerts into the primary route', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () =>
+            alertReport([
+              relayAlert({
+                state: 'suppressed',
+                suppressedUntilUnixMs: 1_766_000_300_000,
+              }),
+            ]),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => trendReport(),
+        }),
+    )
+
+    const container = await renderIntoDocument(<RelayAlertRoutingSummary />)
+
+    await waitForText(container, 'Relay Alerts')
+    expect(container.textContent).toContain('0 firing')
+    expect(container.textContent).toContain('none')
+    expect(container.textContent).toContain('no ops route')
+  })
 })
