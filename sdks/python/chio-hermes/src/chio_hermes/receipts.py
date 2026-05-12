@@ -146,8 +146,14 @@ class ReceiptBuffer:
                 )
 
     def recent(self, n: int = 5) -> list[dict[str, Any]]:
+        # `n <= 0` means "give me nothing"; the historical
+        # `[-max(0, n):]` evaluated `[0:]` and returned the entire
+        # buffer (the opposite of what the caller asked for).
+        count = int(n)
+        if count <= 0:
+            return []
         with self._lock:
-            return list(self._buffer)[-max(0, int(n)) :]
+            return list(self._buffer)[-count:]
 
     def denial_count(self) -> int:
         with self._lock:

@@ -85,16 +85,32 @@ def test_each_tool_schema_is_a_valid_json_schema_dict(
     fake_plugin_context: FakePluginContext,
     configured_env: None,
 ) -> None:
+    """Hermes's `tools/registry.py:get_definitions` reads
+    `schema.get("parameters")` for argument coercion. The JSON Schema
+    body MUST live under `parameters`, with `name` and `description`
+    sitting alongside it (OpenAI function-tool shape).
+    """
     register(fake_plugin_context)
     tool = fake_plugin_context.tools[tool_name]
     schema = tool.kwargs.get("schema")
     assert isinstance(schema, dict), f"{tool_name} schema must be a dict"
-    assert schema.get("type") == "object", (
-        f"{tool_name} schema must be a JSON Schema object"
+    assert schema.get("name") == tool_name, (
+        f"{tool_name} schema must declare its own name (Hermes registry shape)"
+    )
+    assert isinstance(schema.get("description"), str), (
+        f"{tool_name} schema must include a top-level description"
+    )
+    parameters = schema.get("parameters")
+    assert isinstance(parameters, dict), (
+        f"{tool_name} schema must wrap the JSON Schema body in `parameters`; "
+        "Hermes's registry calls schema.get('parameters') for arg coercion"
+    )
+    assert parameters.get("type") == "object", (
+        f"{tool_name} parameters must be a JSON Schema object"
     )
     # additionalProperties: false rejects unexpected keys at parse time.
-    assert schema.get("additionalProperties") is False, (
-        f"{tool_name} schema must set `additionalProperties: false`"
+    assert parameters.get("additionalProperties") is False, (
+        f"{tool_name} parameters must set `additionalProperties: false`"
     )
 
 
@@ -108,6 +124,24 @@ def test_each_tool_handler_is_callable(
     tool = fake_plugin_context.tools[tool_name]
     handler = tool.kwargs.get("handler")
     assert callable(handler)
+
+
+def test_schemas_match_hermes_registry_function_shape() -> None:
+    """Hermes builds OpenAI-style entries via
+    `{"type": "function", "function": entry.schema}`. Each schema must
+    therefore look like a `function` block: top-level `name` + optional
+    `description` + a `parameters` JSON Schema object."""
+    from chio_hermes.schemas import SCHEMAS
+
+    for tool_name, schema in SCHEMAS.items():
+        wrapped = {"type": "function", "function": schema}
+        fn = wrapped["function"]
+        assert fn["name"] == tool_name
+        params = fn.get("parameters")
+        assert isinstance(params, dict)
+        # Argument coercion path Hermes actually uses; if this returns
+        # None the registry skips coercion entirely.
+        assert params.get("type") == "object"
 
 
 def test_check_fn_returns_false_when_env_missing(

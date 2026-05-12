@@ -32,13 +32,20 @@ mcp_servers:
       - --preset
       - code-agent
       - --server-id
-      - filesystem
+      - fs
       - --
       # Wrapped MCP server argv. Replace with whichever MCP server you
       # want Chio to gate. The reference example wraps the upstream
       # filesystem MCP server (npm install -g
       # @modelcontextprotocol/server-filesystem) restricted to the
       # current directory.
+      #
+      # `--server-id` MUST match the server identifier the bundled
+      # `code-agent` policy grants (`fs`, `shell`, `git`); using
+      # `filesystem` or any other id will fail-closed because the
+      # capability grants in `crates/chio-cli/src/policies/code_agent.yaml`
+      # only mention `fs`/`shell`/`git`. Run a separate `chio mcp serve`
+      # entry per server-id to wrap shell or git MCP servers.
       - npx
       - "-y"
       - "@modelcontextprotocol/server-filesystem"
@@ -162,6 +169,15 @@ Two side-effect surfaces hold receipts:
    line per receipt. Profile-aware: `hermes profile switch work`
    redirects the log path automatically.
 
+> Receipt records for content-heavy tools (`chio_file_read`,
+> `chio_file_search`, `chio_shell_run`, `chio_git_diff`,
+> `chio_git_log`, `chio_git_status`, `chio_git_run`) truncate the
+> `result` payload to the first 256 bytes and add `result_truncated: true`.
+> The audit record still references the call (tool, args, task,
+> verdict) but does not bake the full file body / stdout / diff into
+> the JSONL log. The canonical kernel-signed copy in the sidecar
+> receipts database is unaffected.
+>
 > The JSONL log is a user-side convenience for the Hermes session,
 > NOT the canonical audit store. The kernel-signed copy lives in the
 > sidecar's receipts database (`chio` started with

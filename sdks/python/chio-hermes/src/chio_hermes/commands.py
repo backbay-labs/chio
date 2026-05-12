@@ -87,7 +87,10 @@ def make_slash_handler(handle: RuntimeHandle) -> SlashHandler:
     """Return an async `/chio` handler bound to `handle`."""
 
     async def handle_slash(raw_args: str) -> str | None:
-        tokens = shlex.split(raw_args or "")
+        try:
+            tokens = shlex.split(raw_args or "")
+        except ValueError as exc:
+            return f"could not parse /chio arguments: {exc}"
         sub = tokens[0] if tokens else "status"
         rest = tokens[1:]
         if sub in {"", "status"}:

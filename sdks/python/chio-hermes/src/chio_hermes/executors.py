@@ -176,10 +176,24 @@ async def shell_run_executor(
 async def _git(
     *args: str, cwd: Path | None = None, stdin: str | None = None
 ) -> dict[str, Any]:
+    """Run `git` anchored to `cwd` so the repo discovery cannot walk up.
+
+    Passes `-C <root>` (and `--git-dir=<root>/.git` when present) so a
+    workspace that lives inside a larger worktree does not silently
+    pick up the parent's git config / .gitignore. If `<root>/.git` is
+    not a directory, git still discovers the repo via the working
+    directory; document workspace-must-be-git-root in the integration
+    docs for that case.
+    """
     root = _resolve_cwd(cwd)
+    git_argv: list[str] = ["git", "-C", str(root)]
+    git_dir = root / ".git"
+    if git_dir.is_dir():
+        git_argv.extend(["--git-dir", str(git_dir), "--work-tree", str(root)])
+    git_argv.extend(args)
     return await asyncio.to_thread(
         _run_subprocess,
-        ["git", *args],
+        git_argv,
         cwd=root,
         timeout=shell_timeout(),
         stdin=stdin,

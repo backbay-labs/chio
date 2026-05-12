@@ -722,7 +722,7 @@ for them; the capability id is masked):
 
 ```bash
 export CHIO_SIDECAR_URL="http://127.0.0.1:9090"
-export CHIO_CAPABILITY_ID="$(hermes chio issue --tool-server fs --tool-server shell --tool-server git --subject <hex-pubkey> --output json | jq -r .id)"
+export CHIO_CAPABILITY_ID="$(hermes chio --json issue --tool-server fs --tool-server shell --tool-server git --subject <hex-pubkey> | jq -r .capability_id)"
 ```
 
 Twelve tools land under the single `chio` toolset

@@ -61,11 +61,27 @@ class RuntimeHandle:
         return cap[-8:] if len(cap) > 8 else cap
 
 
-def _load_policy() -> Any | None:
-    """Compile the configured policy (or fall back to DEFAULT_POLICY).
+@dataclass
+class _PolicyLoad:
+    """Outcome of `_load_policy`.
 
-    Returns `None` only when `chio_code_agent` itself is unimportable;
-    callers must treat that as a degraded mode trigger.
+    `policy` is the compiled policy on success, `None` on failure.
+    `error` carries a human-readable reason on failure so the caller
+    can surface `chio_not_configured` instead of silently falling back.
+    """
+
+    policy: Any | None
+    error: str | None = None
+
+
+def _load_policy() -> _PolicyLoad:
+    """Compile the configured policy.
+
+    Returns the bundled `DEFAULT_POLICY` only when `CHIO_POLICY_FILE`
+    is unset. If the env var IS set but the file is missing or the YAML
+    fails to compile, return a degraded `_PolicyLoad` so the caller can
+    fail closed (the user explicitly opted into a custom policy; falling
+    back to DEFAULT_POLICY would silently widen the trust surface).
     """
     try:
         from chio_code_agent.policy import (
@@ -77,20 +93,25 @@ def _load_policy() -> Any | None:
             f"[chio-hermes] chio_code_agent unavailable: {exc}",
             file=sys.stderr,
         )
-        return None
+        return _PolicyLoad(policy=None, error=f"chio_code_agent unavailable: {exc}")
 
     policy_path = os.environ.get("CHIO_POLICY_FILE")
     if not policy_path:
-        return DEFAULT_POLICY
+        return _PolicyLoad(policy=DEFAULT_POLICY)
     try:
         text = Path(policy_path).read_text(encoding="utf-8")
-        return compile_policy(text)
+        return _PolicyLoad(policy=compile_policy(text))
     except Exception as exc:  # noqa: BLE001
+        # Explicit user opt-in via CHIO_POLICY_FILE: fail closed rather
+        # than silently fall back to DEFAULT_POLICY.
         print(
             f"[chio-hermes] failed to load CHIO_POLICY_FILE={policy_path!r}: {exc}",
             file=sys.stderr,
         )
-        return DEFAULT_POLICY
+        return _PolicyLoad(
+            policy=None,
+            error=f"policy_load_failed: {policy_path}: {exc}",
+        )
 
 
 def build_runtime_handle() -> RuntimeHandle:
@@ -114,11 +135,13 @@ def build_runtime_handle() -> RuntimeHandle:
         receipts=ReceiptBuffer(),
     )
 
-    policy = _load_policy()
-    if policy is None:
-        handle.init_error = "chio_code_agent is not importable"
+    load = _load_policy()
+    if load.policy is None:
+        handle.init_error = (
+            load.error or "chio_code_agent is not importable"
+        )
         return handle
-    handle.policy = policy
+    handle.policy = load.policy
 
     try:
         from chio_sdk.client import ChioClient
@@ -131,6 +154,10 @@ def build_runtime_handle() -> RuntimeHandle:
     except Exception as exc:  # noqa: BLE001
         handle.init_error = f"failed to construct ChioClient: {exc}"
         return handle
+    # Wrap evaluate_tool_call so the most recent allow-receipt id is
+    # available to the envelope wrapper if the executor later raises.
+    # See `chio_hermes.handlers._wrap_envelope` for the consumer side.
+    _install_receipt_id_capture(client)
     handle.chio_client = client
 
     if not capability_id:
@@ -145,7 +172,7 @@ def build_runtime_handle() -> RuntimeHandle:
         handle.code_agent = CodeAgent(
             chio_client=client,
             capability_id=capability_id,
-            policy=policy,
+            policy=load.policy,
             cwd=workspace_root,
         )
     except Exception as exc:  # noqa: BLE001
@@ -153,6 +180,34 @@ def build_runtime_handle() -> RuntimeHandle:
         return handle
 
     return handle
+
+
+def _install_receipt_id_capture(client: Any) -> None:
+    """Patch `client.evaluate_tool_call` to publish the receipt id.
+
+    The wrapper sets `chio_hermes.handlers._LAST_RECEIPT_ID` on every
+    successful evaluate so a later executor exception can surface the
+    receipt id from the prior allow verdict in
+    `chio_executor_error` envelopes.
+    """
+    original = getattr(client, "evaluate_tool_call", None)
+    if original is None or getattr(original, "__chio_hermes_wrapped__", False):
+        return
+
+    from chio_hermes.handlers import _LAST_RECEIPT_ID
+
+    async def wrapped(*args: Any, **kwargs: Any) -> Any:
+        receipt = await original(*args, **kwargs)
+        receipt_id = getattr(receipt, "id", None)
+        if isinstance(receipt_id, str):
+            _LAST_RECEIPT_ID.set(receipt_id)
+        return receipt
+
+    wrapped.__chio_hermes_wrapped__ = True  # type: ignore[attr-defined]
+    try:
+        client.evaluate_tool_call = wrapped
+    except Exception:  # noqa: BLE001 - read-only client implementations
+        pass
 
 
 __all__ = [

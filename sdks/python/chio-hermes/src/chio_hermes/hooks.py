@@ -97,6 +97,47 @@ def _envelope_status_fields(result: Any) -> tuple[str | None, str | None]:
     )
 
 
+RECEIPT_RESULT_MAX_BYTES = 256
+
+# Tools whose `result` payload is mostly raw content (file bodies,
+# command stdout, diff text). Persisting the full payload to the
+# receipt log multiplies disk usage and bakes secrets / large blobs
+# into the audit trail. Truncate to the first
+# `RECEIPT_RESULT_MAX_BYTES` so the audit record still references the
+# call without storing the content.
+_CONTENT_HEAVY_TOOLS = frozenset(
+    {
+        "chio_file_read",
+        "chio_file_search",
+        "chio_shell_run",
+        "chio_git_diff",
+        "chio_git_log",
+        "chio_git_status",
+        "chio_git_run",
+    }
+)
+
+
+def _truncate_receipt_result(
+    tool_name: str | None, result: Any
+) -> tuple[Any, bool]:
+    """Truncate `result` for content-heavy tools.
+
+    Returns `(payload, truncated)`. The payload is either the original
+    `result` or its UTF-8 prefix; `truncated=True` flags that the
+    receipt no longer contains the full output.
+    """
+    if tool_name not in _CONTENT_HEAVY_TOOLS:
+        return result, False
+    if not isinstance(result, str):
+        return result, False
+    encoded = result.encode("utf-8", errors="replace")
+    if len(encoded) <= RECEIPT_RESULT_MAX_BYTES:
+        return result, False
+    head = encoded[:RECEIPT_RESULT_MAX_BYTES].decode("utf-8", errors="replace")
+    return head, True
+
+
 def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
     def post_tool_call(
         tool_name: str | None = None,
@@ -109,14 +150,19 @@ def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
         if not _is_chio_tool(tool_name) or handle.receipts is None:
             return
         status, error = _envelope_status_fields(result)
+        truncated_result, was_truncated = _truncate_receipt_result(
+            tool_name, result
+        )
         record: dict[str, Any] = {
             "tool_name": tool_name,
             "args": dict(args or {}),
             "task_id": task_id,
             "duration_ms": float(duration_ms) if duration_ms is not None else None,
             "recorded_at": time.time(),
-            "result": result,
+            "result": truncated_result,
         }
+        if was_truncated:
+            record["result_truncated"] = True
         if status is not None:
             record["status"] = status
         if error is not None:
@@ -163,6 +209,7 @@ def make_on_session_end(handle: RuntimeHandle) -> SessionHook:
 
 
 __all__ = [
+    "RECEIPT_RESULT_MAX_BYTES",
     "PostHook",
     "PreHook",
     "SessionHook",
