@@ -166,7 +166,7 @@ wheels = [
 
 [[package]]
 name = "chio-adapter-base"
-version = "0.1.1"
+version = "0.1.0"
 source = { directory = "../chio-adapter-base" }
 dependencies = [
     { name = "chio-sdk-python" },
