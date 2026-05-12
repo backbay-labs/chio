@@ -362,13 +362,15 @@ def bind_and_redact(
                 )
             )
             if sig_positional_names:
-                # Layer signature-derived names over the configured
-                # table so the protected slots from the policy still
-                # match their positional indices. Caller-supplied
-                # entries (if any) for this tool win on conflict.
+                # Signature-derived names take precedence so wrappers that
+                # rename a protected field (e.g. `def write(content, path)`
+                # vs the chio-default `("path", "content")`) redact at the
+                # right slot. Caller-supplied table entries for OTHER tools
+                # still pass through; only the chio-default entry for this
+                # tool gets shadowed by the wrapper's actual param order.
                 fallback_table = {
-                    **{tool_name: sig_positional_names},
                     **table,
+                    tool_name: sig_positional_names,
                 }
 
     if use_table_fallback:
