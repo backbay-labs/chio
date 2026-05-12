@@ -102,13 +102,9 @@ def chio_task(
         Optional :class:`chio_sdk.client.ChioClient` or
         :class:`chio_sdk.testing.MockChioClient`.
     redaction_policy:
-        Optional :class:`chio_adapter_base.redact.RedactionPolicy` used
-        to scrub body-bearing argument fields (e.g. ``content`` for
-        ``chio_file_write``) before they are forwarded to the sidecar
-        and recorded in the receipt log. Defaults to
-        :meth:`RedactionPolicy.chio_default`. The user function still
-        receives the original (unredacted) arguments; only the
-        parameters that cross into the sidecar are redacted.
+        Optional :class:`RedactionPolicy` applied to kwargs before
+        they are forwarded to the sidecar. Defaults to
+        :meth:`RedactionPolicy.chio_default`.
     **task_kwargs:
         Forwarded verbatim to :func:`airflow.sdk.task` (e.g.
         ``retries``, ``retry_delay``, ``task_id``, ``queue``). Airflow
@@ -351,18 +347,10 @@ def _build_redacted_parameters(
     kwargs: dict[str, Any],
     policy: RedactionPolicy,
 ) -> dict[str, Any]:
-    """Build the sidecar-bound parameters payload with redacted body fields.
+    """Build the sidecar-bound parameters payload with redacted kwargs.
 
-    The TaskFlow decorator forwards a ``{"args": [...], "kwargs": {...}}``
-    payload to the sidecar so the kernel can hash the inputs into the
-    receipt. Body-bearing kwargs (e.g. ``content`` for
-    ``chio_file_write``) are scrubbed via
-    :func:`chio_adapter_base.redact.redact_args` before they cross the
-    boundary, preventing raw secret bytes from landing in the receipt
-    log. Positional args are not touched: kwarg names are how the
-    redaction policy targets fields, and the user function still
-    receives the original ``args`` / ``kwargs`` so behaviour is
-    unchanged.
+    Positional args bypass redaction since the policy targets fields by
+    kwarg name; the user function still receives the original args/kwargs.
     """
     return {
         "args": list(args),

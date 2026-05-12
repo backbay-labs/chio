@@ -1,19 +1,4 @@
-"""Tests for `@chio_task` argument redaction (chio-adapter-base wiring).
-
-These tests assert that the TaskFlow `@chio_task` decorator scrubs
-secret-bearing kwarg fields BEFORE forwarding them to the Chio
-sidecar's ``evaluate_tool_call`` endpoint, so the receipt log never
-carries the raw secret bytes. The user function continues to receive
-the original (unredacted) arguments.
-
-Source of truth: ``chio_adapter_base.redact.redact_args``.
-
-Why only the TaskFlow path is exercised here: ``ChioOperator`` records
-Airflow context fields (``dag_id``, ``run_id``, ``execution_date``,
-``logical_date``) for the sidecar parameters payload rather than
-per-tool arguments, so it has no body-bearing fields for the default
-policy to redact.
-"""
+"""Tests for `@chio_task` argument redaction."""
 
 from __future__ import annotations
 
@@ -58,11 +43,6 @@ def _wrapped_function(decorator_output: Any) -> Any:
     return fn
 
 
-# ---------------------------------------------------------------------------
-# (a) Default policy: chio_file_write.content is replaced by a stub
-# ---------------------------------------------------------------------------
-
-
 class TestDefaultPolicyRedacts:
     def test_chio_file_write_content_is_redacted_in_recorded_parameters(
         self,
@@ -76,8 +56,6 @@ class TestDefaultPolicyRedacts:
             chio_client=chio,
         )
         def write_file(path: str, content: str) -> str:
-            # The user function still receives the original (unredacted)
-            # bytes so the actual write succeeds.
             assert content == "PROD_SECRET=abc123"
             return f"wrote {len(content)} bytes to {path}"
 
@@ -94,8 +72,6 @@ class TestDefaultPolicyRedacts:
         forwarded = evaluate_calls[0].parameters
         assert forwarded["args"] == []
         assert forwarded["kwargs"]["path"] == "/tmp/x"
-        # Sidecar (and therefore the receipt log) sees a stub instead of
-        # the raw secret bytes.
         assert forwarded["kwargs"]["content"] == {
             "omitted": True,
             "byte_count": len(b"PROD_SECRET=abc123"),
@@ -131,11 +107,6 @@ class TestDefaultPolicyRedacts:
         }
 
 
-# ---------------------------------------------------------------------------
-# (b) Non-targeted tool names pass through unchanged
-# ---------------------------------------------------------------------------
-
-
 class TestUntargetedToolPreserved:
     def test_unknown_tool_name_keeps_kwargs_intact(self) -> None:
         chio = allow_all()
@@ -158,14 +129,7 @@ class TestUntargetedToolPreserved:
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
         forwarded = evaluate_calls[0].parameters
-        # ``search`` is not in the chio-default policy, so even a
-        # ``content`` kwarg passes through unchanged.
         assert forwarded["kwargs"] == {"query": "kw", "content": "not-a-secret"}
-
-
-# ---------------------------------------------------------------------------
-# (c) Custom RedactionPolicy lets adapters extend the field set
-# ---------------------------------------------------------------------------
 
 
 class TestCustomPolicyAppliesAdapterFields:
