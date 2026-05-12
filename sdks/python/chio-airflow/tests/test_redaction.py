@@ -238,6 +238,108 @@ class TestCustomPolicyReplacesDefault:
         assert forwarded["kwargs"]["content"] == "not-redacted-now"
 
 
+class TestVarKeywordSignatureRedacts:
+    """Regression: `inspect.Signature.bind_partial` does NOT raise for `**kwargs`.
+
+    A pure-``**kwargs`` callable bound with ``bind_partial(content="SECRET")``
+    returns ``{"kw": {"content": "SECRET"}}``; ``redact_args`` keyed on
+    ``content`` would then miss it. The fix detects VAR_KEYWORD first and
+    redacts directly on the kwargs dict.
+    """
+
+    def test_var_keyword_only_function_redacts_content(self) -> None:
+        chio = allow_all()
+
+        @chio_task(
+            capability_id="cap-1",
+            tool_server="fs",
+            tool_name="chio_file_write",
+            chio_client=chio,
+        )
+        def write_file(**kwargs: Any) -> str:
+            return "ok"
+
+        ti = _RecordingTI(task_id="write_file")
+        body = _wrapped_function(write_file)
+
+        with _install_context(ti):
+            body(path="/tmp/x", content="PROD_SECRET=abc123")
+
+        forwarded = [
+            c for c in chio.calls if c.method == "evaluate_tool_call"
+        ][0].parameters
+        import json
+
+        assert "PROD_SECRET" not in json.dumps(forwarded)
+        assert forwarded["kwargs"]["content"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+
+    def test_named_plus_var_keyword_function_redacts_spillover(self) -> None:
+        chio = allow_all()
+
+        @chio_task(
+            capability_id="cap-1",
+            tool_server="fs",
+            tool_name="chio_file_write",
+            chio_client=chio,
+        )
+        def write_file(path: str, **extras: Any) -> str:
+            return "ok"
+
+        ti = _RecordingTI(task_id="write_file")
+        body = _wrapped_function(write_file)
+
+        with _install_context(ti):
+            body(path="/tmp/x", content="PROD_SECRET=abc123")
+
+        forwarded = [
+            c for c in chio.calls if c.method == "evaluate_tool_call"
+        ][0].parameters
+        import json
+
+        assert "PROD_SECRET" not in json.dumps(forwarded)
+        assert forwarded["kwargs"]["path"] == "/tmp/x"
+        assert forwarded["kwargs"]["content"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+
+    def test_bind_partial_failure_does_not_leak_positional_args(self) -> None:
+        # Duplicate keyword: `bind_partial` raises TypeError; we MUST NOT
+        # forward the raw positional value into the receipt.
+        chio = allow_all()
+
+        @chio_task(
+            capability_id="cap-1",
+            tool_server="fs",
+            tool_name="chio_file_write",
+            chio_client=chio,
+        )
+        def write_file(path: str, content: str) -> str:
+            return "ok"
+
+        ti = _RecordingTI(task_id="write_file")
+        body = _wrapped_function(write_file)
+
+        with _install_context(ti):
+            # The actual call will raise downstream, but the redactor
+            # runs first; we just need to confirm the recorded payload
+            # never contained the raw secret. Catch the TypeError so the
+            # test asserts redactor behaviour, not Python's binding.
+            try:
+                body("/tmp/x", "PROD_SECRET=abc123", path="/tmp/dup")
+            except TypeError:
+                pass
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        if evaluate_calls:
+            import json
+
+            assert "PROD_SECRET" not in json.dumps(evaluate_calls[0].parameters)
+
+
 class TestCustomPolicyAppliesAdapterFields:
     def test_custom_policy_redacts_extra_tool_field(self) -> None:
         chio = allow_all()

@@ -275,29 +275,88 @@ def _build_redacted_parameters(
     :func:`inspect.signature` before redaction, then surface the result
     under ``kwargs`` so the sidecar / receipt both see the redacted form.
 
-    Falls back to the prior ``args`` / ``kwargs`` shape when the wrapped
-    function uses ``*args`` / ``**kwargs`` (no fixed parameter names to
-    bind against), or when binding fails for any reason. In the fallback
-    path positional args remain unredacted but kwargs are still scrubbed,
-    matching the previous behaviour rather than failing closed and
-    breaking working DAGs.
+    ``inspect.Signature.bind_partial`` does NOT raise for functions that
+    accept ``**kwargs`` or ``*args``; it absorbs extras into the variadic
+    parameter (e.g. ``def f(**kw)`` called with ``content="SECRET"``
+    binds to ``{"kw": {"content": "SECRET"}}``). That would leave the
+    protected field nested one level deep where ``redact_args`` cannot
+    find it. We therefore inspect the signature for VAR_KEYWORD /
+    VAR_POSITIONAL parameters up-front and pick the redaction shape that
+    keeps protected fields at the top level of the dict ``redact_args``
+    inspects.
+
+    Falls back to kwargs-only redaction when ``fn`` is ``None`` or when
+    introspection raises (positional bodies remain raw, matching the
+    pre-bind behaviour).
     """
     if fn is None:
         return {
             "args": list(args),
-            "kwargs": redact_args(tool_name, kwargs, policy=policy),
+            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
         }
     try:
         sig = inspect.signature(fn)
-        bound = sig.bind_partial(*args, **kwargs).arguments
-    except TypeError:
+    except (TypeError, ValueError):
         return {
             "args": list(args),
-            "kwargs": redact_args(tool_name, kwargs, policy=policy),
+            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
         }
+
+    params = sig.parameters
+    has_var_keyword = any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+    )
+    has_named_param = any(
+        p.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+        for p in params.values()
+    )
+
+    # Pure ``**kwargs`` (and optionally ``*args``) function: bind_partial
+    # would nest user kwargs under the variadic name. Redact the merged
+    # kwargs dict directly; positional bodies (if any) cannot be named.
+    if has_var_keyword and not has_named_param:
+        return {
+            "args": list(args),
+            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
+        }
+
+    try:
+        bound = sig.bind_partial(*args, **kwargs).arguments
+    except TypeError:
+        # Duplicate keyword, unexpected arg, missing required-positional,
+        # etc. Do NOT forward raw positional args; they may carry the
+        # very secret we're trying to redact and the call is about to
+        # blow up at fn() anyway.
+        return {
+            "args": [],
+            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
+        }
+
+    # Drop VAR_KEYWORD / VAR_POSITIONAL placeholders before policy lookup
+    # (they hold a dict/tuple, not a target-field value), then re-redact
+    # the VAR_KEYWORD spillover so kwargs-style calls with protected
+    # fields also get scrubbed.
+    var_keys = {
+        name
+        for name, p in params.items()
+        if p.kind
+        in (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
+    }
+    flat = {k: v for k, v in bound.items() if k not in var_keys}
+    redacted = redact_args(tool_name, flat, policy=policy)
+    for vk in var_keys:
+        v = bound.get(vk)
+        if isinstance(v, dict):
+            for kk, vv in redact_args(tool_name, dict(v), policy=policy).items():
+                redacted[kk] = vv
     return {
         "args": [],
-        "kwargs": redact_args(tool_name, dict(bound), policy=policy),
+        "kwargs": redacted,
     }
 
 
