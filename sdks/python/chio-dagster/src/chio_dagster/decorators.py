@@ -41,6 +41,7 @@ import inspect
 from collections.abc import Callable
 from typing import Any, TypeVar, cast, overload
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
@@ -177,6 +178,7 @@ def _compute_parameters(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
     tool_name: str,
+    redaction_policy: RedactionPolicy,
 ) -> dict[str, Any]:
     """Canonicalise the compute-fn arguments + partition into a sidecar payload.
 
@@ -186,11 +188,29 @@ def _compute_parameters(
     to make a routing decision. Callers that need to pass specific
     scalar arguments to guards can forward them via ``tool_name`` or via
     a custom ``parameters`` dict resolved outside this helper.
+
+    Two complementary kwargs passes run before the payload is emitted:
+
+    1. :func:`chio_adapter_base.redact.redact_args` runs FIRST as the
+       credential-redaction pass. It replaces secret-bearing fields
+       (``chio_file_write.content``, ``chio_file_edit.patch``, plus any
+       extras the caller registered on ``redaction_policy``) with a
+       ``{"omitted": True, "byte_count": N}`` stub so raw secret bytes
+       never reach the receipt log.
+    2. :func:`_sanitise_kwargs` runs SECOND as the JSON-safety pass. It
+       strips the Dagster ``context`` argument and replaces any value
+       that is not JSON-serialisable with a ``{"__chio_type__": ...}``
+       marker so the sidecar's canonicalisation step does not blow up
+       on DataFrames, numpy arrays, and other rich Python objects.
+
+    The two passes solve different problems (security vs serialisability)
+    and both apply on every call.
     """
     partition = extract_partition_info(context) if context is not None else {}
+    redacted = redact_args(tool_name, kwargs, policy=redaction_policy)
     payload: dict[str, Any] = {
         "asset": tool_name,
-        "kwargs": _sanitise_kwargs(kwargs),
+        "kwargs": _sanitise_kwargs(redacted),
     }
     if partition:
         # ``partition`` is the structured dict (key + optional range).
@@ -204,13 +224,24 @@ def _compute_parameters(
 
 
 def _sanitise_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Strip values that are not trivially JSON-able from ``kwargs``.
+    """JSON-safety pass: strip non-serialisable values from ``kwargs``.
 
-    The sidecar canonicalises whatever we send to JSON for the parameter
-    hash, so we drop anything that would break the serialisation. A
+    Runs AFTER :func:`chio_adapter_base.redact.redact_args` so any
+    secret-bearing fields have already been replaced with omission
+    stubs. This pass exists for a different reason: the sidecar
+    canonicalises whatever we send to JSON for the parameter hash, so
+    we drop anything that would break the serialisation. A
     caller-supplied upstream asset (``pd.DataFrame``, ``np.ndarray``,
     ...) is represented by its type name so guards can still reason
     about "an input of type X was present".
+
+    Together with :func:`redact_args` this forms a two-pass pipeline:
+
+    * :func:`redact_args` -- credential redaction (security).
+    * :func:`_sanitise_kwargs` -- non-JSON value substitution
+      (serialisability).
+
+    The passes are complementary, not duplicate.
     """
     result: dict[str, Any] = {}
     for key, value in kwargs.items():
@@ -410,6 +441,7 @@ async def _run_with_guard(
     tool_server: str | None,
     chio_client: ChioClientLike | None,
     sidecar_url: str | None,
+    redaction_policy: RedactionPolicy,
     is_async: bool,
 ) -> Any:
     """Shared evaluate-then-invoke path for :func:`chio_asset` / :func:`chio_op`.
@@ -429,7 +461,11 @@ async def _run_with_guard(
     run_id = _context_run_id(context) if context is not None else None
 
     parameters = _compute_parameters(
-        context=context, args=args, kwargs=kwargs, tool_name=tool_name
+        context=context,
+        args=args,
+        kwargs=kwargs,
+        tool_name=tool_name,
+        redaction_policy=redaction_policy,
     )
 
     resolved_sidecar = sidecar_url or ChioClient.DEFAULT_BASE_URL
@@ -543,6 +579,7 @@ def chio_asset(
     tool_name: str | None = None,
     chio_client: ChioClientLike | None = None,
     sidecar_url: str | None = None,
+    redaction_policy: RedactionPolicy | None = None,
     **asset_options: Any,
 ) -> Callable[[F], F]: ...
 
@@ -556,6 +593,7 @@ def chio_asset(
     tool_name: str | None = None,
     chio_client: ChioClientLike | None = None,
     sidecar_url: str | None = None,
+    redaction_policy: RedactionPolicy | None = None,
     **asset_options: Any,
 ) -> Any:
     """Decorator that wraps a compute function as an Chio-governed Dagster asset.
@@ -584,6 +622,14 @@ def chio_asset(
     sidecar_url:
         Base URL of the Chio sidecar when the decorator has to mint its
         own client. Defaults to ``http://127.0.0.1:9090``.
+    redaction_policy:
+        Per-tool credential-redaction policy applied to ``kwargs`` BEFORE
+        the JSON-safety pass so secret-bearing fields (``content``,
+        ``patch``, ...) are never written to the receipt log. Defaults
+        to :meth:`RedactionPolicy.chio_default`. The redaction pass and
+        the existing :func:`_sanitise_kwargs` JSON-safety pass are
+        complementary -- redaction handles secrets, sanitisation handles
+        non-serialisable objects -- and both apply on every call.
     asset_options:
         Forwarded verbatim to :func:`dagster.asset` (e.g.
         ``partitions_def``, ``ins``, ``deps``, ``io_manager_key``,
@@ -593,6 +639,12 @@ def chio_asset(
         event loop when Dagster invokes them synchronously.
     """
     from dagster import asset as dagster_asset
+
+    resolved_policy = (
+        redaction_policy
+        if redaction_policy is not None
+        else RedactionPolicy.chio_default()
+    )
 
     def decorator(fn: F) -> F:
         resolved_tool_name = tool_name or fn.__name__
@@ -617,6 +669,7 @@ def chio_asset(
                         tool_server=tool_server,
                         chio_client=chio_client,
                         sidecar_url=sidecar_url,
+                        redaction_policy=resolved_policy,
                         is_async=True,
                     )
                 )
@@ -637,6 +690,7 @@ def chio_asset(
                     tool_server=tool_server,
                     chio_client=chio_client,
                     sidecar_url=sidecar_url,
+                    redaction_policy=resolved_policy,
                     is_async=False,
                 )
             )
@@ -668,6 +722,7 @@ def chio_op(
     tool_name: str | None = None,
     chio_client: ChioClientLike | None = None,
     sidecar_url: str | None = None,
+    redaction_policy: RedactionPolicy | None = None,
     **op_options: Any,
 ) -> Callable[[F], F]: ...
 
@@ -681,6 +736,7 @@ def chio_op(
     tool_name: str | None = None,
     chio_client: ChioClientLike | None = None,
     sidecar_url: str | None = None,
+    redaction_policy: RedactionPolicy | None = None,
     **op_options: Any,
 ) -> Any:
     """Decorator that wraps a compute function as an Chio-governed Dagster op.
@@ -690,10 +746,20 @@ def chio_op(
     receipt to the op's output metadata, deny verdicts raise
     :class:`PermissionError` so Dagster records a ``FAILURE`` state.
 
+    ``redaction_policy`` mirrors :func:`chio_asset` and runs as the
+    credential-redaction pass before :func:`_sanitise_kwargs` runs the
+    JSON-safety pass.
+
     ``op_options`` forward to :func:`dagster.op` verbatim (e.g. ``ins``,
     ``out``, ``config_schema``, ``retry_policy``, ``tags``).
     """
     from dagster import op as dagster_op
+
+    resolved_policy = (
+        redaction_policy
+        if redaction_policy is not None
+        else RedactionPolicy.chio_default()
+    )
 
     def decorator(fn: F) -> F:
         resolved_tool_name = tool_name or fn.__name__
@@ -718,6 +784,7 @@ def chio_op(
                         tool_server=tool_server,
                         chio_client=chio_client,
                         sidecar_url=sidecar_url,
+                        redaction_policy=resolved_policy,
                         is_async=True,
                     )
                 )
@@ -738,6 +805,7 @@ def chio_op(
                     tool_server=tool_server,
                     chio_client=chio_client,
                     sidecar_url=sidecar_url,
+                    redaction_policy=resolved_policy,
                     is_async=False,
                 )
             )
