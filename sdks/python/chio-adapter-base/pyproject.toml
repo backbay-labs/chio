@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chio-adapter-base"
+version = "0.1.0"
+description = "Shared security and receipt primitives for Chio Python adapters (chio-hermes, chio-langchain, chio-llamaindex, chio-crewai, chio-airflow, chio-iac, ...)"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Backbay Industries" },
+]
+keywords = [
+    "chio",
+    "adapter",
+    "security",
+    "subprocess",
+    "redaction",
+    "receipts",
+    "capability",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+
+# Intentional minimal surface: the only external dep is
+# chio-sdk-python so we can reference ChioReceipt in type hints. We
+# explicitly do NOT depend on chio-hermes (that would be circular: the
+# point of this package is to host primitives chio-hermes will import).
+dependencies = [
+    "chio-sdk-python>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<9",
+    "pytest-asyncio>=0.23,<1",
+    "pytest-cov>=5,<6",
+    "mypy>=1.10",
+    "ruff>=0.5",
+]
+
+[tool.uv.sources]
+chio-sdk-python = { path = "../chio-sdk-python" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chio_adapter_base"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_unused_ignores = true
+warn_return_any = false
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]
