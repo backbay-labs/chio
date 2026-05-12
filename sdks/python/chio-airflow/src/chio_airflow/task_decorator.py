@@ -26,6 +26,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar, cast, overload
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.client import ChioClient
 from chio_sdk.models import ChioScope
 
@@ -58,6 +59,7 @@ def chio_task(
     tool_name: str | None = None,
     sidecar_url: str | None = None,
     chio_client: ChioClientLike | None = None,
+    redaction_policy: RedactionPolicy | None = None,
     **task_kwargs: Any,
 ) -> Callable[[F], F]: ...
 
@@ -71,6 +73,7 @@ def chio_task(
     tool_name: str | None = None,
     sidecar_url: str | None = None,
     chio_client: ChioClientLike | None = None,
+    redaction_policy: RedactionPolicy | None = None,
     **task_kwargs: Any,
 ) -> Any:
     """Decorator for Chio-governed Airflow TaskFlow tasks.
@@ -98,6 +101,14 @@ def chio_task(
     chio_client:
         Optional :class:`chio_sdk.client.ChioClient` or
         :class:`chio_sdk.testing.MockChioClient`.
+    redaction_policy:
+        Optional :class:`chio_adapter_base.redact.RedactionPolicy` used
+        to scrub body-bearing argument fields (e.g. ``content`` for
+        ``chio_file_write``) before they are forwarded to the sidecar
+        and recorded in the receipt log. Defaults to
+        :meth:`RedactionPolicy.chio_default`. The user function still
+        receives the original (unredacted) arguments; only the
+        parameters that cross into the sidecar are redacted.
     **task_kwargs:
         Forwarded verbatim to :func:`airflow.sdk.task` (e.g.
         ``retries``, ``retry_delay``, ``task_id``, ``queue``). Airflow
@@ -141,6 +152,11 @@ def chio_task(
 
         resolved_tool_name = tool_name or fn.__name__
         resolved_sidecar = sidecar_url or ChioClient.DEFAULT_BASE_URL
+        resolved_policy = (
+            redaction_policy
+            if redaction_policy is not None
+            else RedactionPolicy.chio_default()
+        )
         is_coro = inspect.iscoroutinefunction(fn)
 
         if is_coro:
@@ -156,6 +172,7 @@ def chio_task(
                     scope=scope,
                     sidecar_url=resolved_sidecar,
                     chio_client=chio_client,
+                    redaction_policy=resolved_policy,
                 )
                 return await cast(Callable[..., Awaitable[Any]], fn)(
                     *args, **kwargs
@@ -175,6 +192,7 @@ def chio_task(
                     scope=scope,
                     sidecar_url=resolved_sidecar,
                     chio_client=chio_client,
+                    redaction_policy=resolved_policy,
                 )
                 return fn(*args, **kwargs)
 
@@ -204,6 +222,7 @@ def _evaluate_and_push(
     scope: ChioScope | None,
     sidecar_url: str,
     chio_client: ChioClientLike | None,
+    redaction_policy: RedactionPolicy,
 ) -> None:
     """Sync evaluation helper used by ``def`` TaskFlow bodies.
 
@@ -216,7 +235,12 @@ def _evaluate_and_push(
     from airflow.exceptions import AirflowException
 
     ti, dag_id, run_id = _resolve_airflow_runtime()
-    parameters = {"args": list(args), "kwargs": dict(kwargs)}
+    parameters = _build_redacted_parameters(
+        tool_name=tool_name,
+        args=args,
+        kwargs=kwargs,
+        policy=redaction_policy,
+    )
     try:
         receipt = evaluate_sync(
             chio_client=chio_client,
@@ -250,6 +274,7 @@ async def _evaluate_and_push_async(
     scope: ChioScope | None,
     sidecar_url: str,
     chio_client: ChioClientLike | None,
+    redaction_policy: RedactionPolicy,
 ) -> None:
     """Async evaluation helper used by ``async def`` TaskFlow bodies.
 
@@ -262,7 +287,12 @@ async def _evaluate_and_push_async(
     from airflow.exceptions import AirflowException
 
     ti, dag_id, run_id = _resolve_airflow_runtime()
-    parameters = {"args": list(args), "kwargs": dict(kwargs)}
+    parameters = _build_redacted_parameters(
+        tool_name=tool_name,
+        args=args,
+        kwargs=kwargs,
+        policy=redaction_policy,
+    )
     owner = _ChioClientOwner(client=chio_client, sidecar_url=sidecar_url)
     try:
         try:
@@ -312,6 +342,32 @@ def _push_receipt(
         ti.xcom_push(key=XCOM_CAPABILITY_KEY, value=capability_id)
     except Exception:  # noqa: BLE001 -- XCom push must not fail the task
         pass
+
+
+def _build_redacted_parameters(
+    *,
+    tool_name: str,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    policy: RedactionPolicy,
+) -> dict[str, Any]:
+    """Build the sidecar-bound parameters payload with redacted body fields.
+
+    The TaskFlow decorator forwards a ``{"args": [...], "kwargs": {...}}``
+    payload to the sidecar so the kernel can hash the inputs into the
+    receipt. Body-bearing kwargs (e.g. ``content`` for
+    ``chio_file_write``) are scrubbed via
+    :func:`chio_adapter_base.redact.redact_args` before they cross the
+    boundary, preventing raw secret bytes from landing in the receipt
+    log. Positional args are not touched: kwarg names are how the
+    redaction policy targets fields, and the user function still
+    receives the original ``args`` / ``kwargs`` so behaviour is
+    unchanged.
+    """
+    return {
+        "args": list(args),
+        "kwargs": redact_args(tool_name, kwargs, policy=policy),
+    }
 
 
 def _resolve_airflow_runtime() -> tuple[Any | None, str | None, str | None]:
