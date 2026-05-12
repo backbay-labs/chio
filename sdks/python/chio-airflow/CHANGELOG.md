@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1]
 
+- refactor: `_build_redacted_parameters` now delegates to
+  `chio_adapter_base.redact.bind_and_redact` (added in
+  chio-adapter-base 0.1.1). Wire shape, fallback paths, and behaviour
+  are unchanged; the local positional-name table and signature-walking
+  code are deleted in favour of the centralised helper. Dependency
+  bumped to `chio-adapter-base>=0.1.1,<0.2`.
 - feat: `@chio_task` redacts kwarg bodies via
   `chio_adapter_base.redact.redact_args` before forwarding to the
   sidecar. Override via the new `redaction_policy` arg.
