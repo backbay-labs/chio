@@ -212,11 +212,12 @@ async def test_chio_file_search_rejects_dotdot_query(
 
 
 @pytest.mark.asyncio
-async def test_chio_git_run_denies_when_check_shell_requires_approval(
+async def test_chio_git_run_routes_to_hitl_when_check_shell_requires_approval(
     tmp_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Custom policy: check_shell returning True (approval required)
-    # must deny rather than silently allow.
+    # now holds the call in the sidecar's HITL channel rather than
+    # denying outright.
     import copy
 
     from chio_code_agent.policy import DEFAULT_POLICY, AllowedTool
@@ -237,8 +238,11 @@ async def test_chio_git_run_denies_when_check_shell_requires_approval(
     payload = json.loads(
         await handler({"command": "status"}, task_id="t-git-run-approve")
     )
-    assert payload["error"] == "denied"
-    assert payload["reason"] == "requires_approval"
+    assert payload["error"] == "chio_requires_approval"
+    assert payload["status"] == "requires_approval"
+    assert payload["approval_id"].startswith("mock-ap-")
+    assert payload["tool_server"] == "git"
+    assert payload["command"] == "status"
 
 
 @pytest.mark.asyncio

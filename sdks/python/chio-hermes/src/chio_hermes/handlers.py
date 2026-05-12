@@ -107,6 +107,122 @@ _LAST_RECEIPT_ID: ContextVar[str | None] = ContextVar(
 )
 
 
+class _RequiresApprovalSignal(Exception):
+    """Internal signal raised when a tool call needs HITL sign-off.
+
+    The `_wrap_envelope` wrapper catches this and emits the
+    `chio_requires_approval` envelope. Carries the metadata needed to
+    write the canonical envelope without re-querying the sidecar.
+    """
+
+    def __init__(
+        self,
+        *,
+        approval_id: str,
+        tool_name: str,
+        tool_server: str,
+        command: str,
+        expires_at: int | None = None,
+    ) -> None:
+        super().__init__(f"approval required: {approval_id}")
+        self.approval_id = approval_id
+        self.tool_name = tool_name
+        self.tool_server = tool_server
+        self.command = command
+        self.expires_at = expires_at
+
+
+def _shell_requires_approval(handle: RuntimeHandle, command: str) -> bool:
+    policy = handle.policy
+    if policy is None:
+        return False
+    try:
+        return bool(policy.check_shell(command))
+    except Exception:  # noqa: BLE001
+        # Conservative: when the policy raises, treat as not requiring
+        # approval and let the downstream call surface the real error.
+        return False
+
+
+async def _maybe_submit_for_approval(
+    handle: RuntimeHandle,
+    *,
+    tool_name: str,
+    tool_server: str,
+    command: str,
+    tool_args: dict[str, Any],
+    policy_check: str = "shell",
+) -> None:
+    """Submit `command` to the sidecar's HITL channel if the policy
+    flags it as approval-required, then raise `_RequiresApprovalSignal`.
+
+    `policy_check` selects between `policy.check_shell` (shell tools)
+    and the same callable for git tools, since both use
+    `check_shell` to evaluate the raw command string.
+    """
+    del policy_check  # both shell and git_run currently route through check_shell.
+    if not _shell_requires_approval(handle, command):
+        return
+
+    client = handle.chio_client
+    cap_id = handle.capability_id
+    if client is None or not cap_id:
+        # No client / capability means we cannot hold the call; fall
+        # through to the legacy deny so the model still gets a typed
+        # rejection.
+        return
+
+    summary = command if len(command) <= 200 else command[:200] + "..."
+    triggered_by = [
+        "shell.requires_approval"
+        if tool_server == "shell"
+        else "git.requires_approval"
+    ]
+    try:
+        approval_id = await client.submit_for_approval(
+            capability_id=cap_id,
+            tool_name=tool_name,
+            tool_args=tool_args,
+            tool_server=tool_server,
+            ttl_seconds=3600,
+            summary=summary,
+            triggered_by=triggered_by,
+        )
+    except Exception:
+        # Any sidecar error (unreachable, validation, store): bubble up
+        # so the envelope wrapper turns it into chio_sidecar_unreachable
+        # / chio_error rather than masking it as a deny.
+        raise
+
+    raise _RequiresApprovalSignal(
+        approval_id=approval_id,
+        tool_name=tool_name,
+        tool_server=tool_server,
+        command=command,
+    )
+
+
+def _requires_approval_envelope(signal: _RequiresApprovalSignal) -> str:
+    payload: dict[str, Any] = {
+        "status": "requires_approval",
+        "error": "chio_requires_approval",
+        "approval_id": signal.approval_id,
+        "command": signal.command,
+        "tool_name": signal.tool_name,
+        "tool_server": signal.tool_server,
+        "hint": (
+            f"Use `/chio approve {signal.approval_id}` in this session "
+            "or `hermes chio approvals respond "
+            f"{signal.approval_id} --approve` from another shell. "
+            "After approval, retry the original tool call (auto-resume "
+            "is v0.3 work)."
+        ),
+    }
+    if signal.expires_at is not None:
+        payload["expires_at"] = signal.expires_at
+    return _dumps(payload)
+
+
 def _wrap_envelope(
     handle: RuntimeHandle,
     tool_name: str,
@@ -143,6 +259,9 @@ def _wrap_envelope(
         token = _LAST_RECEIPT_ID.set(None)
         try:
             invocation = await inner(params)
+        except _RequiresApprovalSignal as signal:
+            _LAST_RECEIPT_ID.reset(token)
+            return _requires_approval_envelope(signal)
         except ChioCodeAgentDeniedError as exc:
             _LAST_RECEIPT_ID.reset(token)
             return _denied(
@@ -392,10 +511,21 @@ def _factory_shell_run(handle: RuntimeHandle) -> ToolHandler:
         # Syntactic guardrail (not a sandbox): rejects `..` and
         # out-of-workspace absolute paths.
         _reject_shell_argv_escape(command, root=handle.cwd)
-        # `approved=False` hard-coded: there is no trusted human-in-the-
-        # loop channel and `approved` is not in the public JSON schema.
-        # Approval-required commands fall through to chio_code_agent's
-        # deny path.
+        # Approval-required commands now route through the sidecar's
+        # HITL channel instead of denying outright. The wrapper raises
+        # `_RequiresApprovalSignal` which the envelope wrapper turns
+        # into a `chio_requires_approval` JSON envelope.
+        await _maybe_submit_for_approval(
+            handle,
+            tool_name="chio_shell_run",
+            tool_server="shell",
+            command=command,
+            tool_args={"command": command},
+        )
+        # `approved=False` hard-coded: with the sidecar holding the
+        # call instead, the legacy `approved=True` path is dead code
+        # and would still be rejected because `approved` is not in the
+        # public JSON schema.
         return await _agent(handle).shell.run_command(
             command,
             approved=False,
@@ -705,9 +835,16 @@ def _factory_git_commit(handle: RuntimeHandle) -> ToolHandler:
 def _factory_git_run(handle: RuntimeHandle) -> ToolHandler:
     async def inner(args: dict[str, Any]) -> Any:
         command = _require(args, "command")
-        # Custom policy enabling git/run must not accept a model-
-        # supplied approval channel; treat requires_approval as deny.
-        _require_git_run_approval_or_deny(handle, command)
+        # Approval-required git commands route through the sidecar's
+        # HITL channel (raises `_RequiresApprovalSignal`).
+        await _maybe_submit_for_approval(
+            handle,
+            tool_name="chio_git_run",
+            tool_server="git",
+            command=command,
+            tool_args={"command": command},
+            policy_check="git",
+        )
         # Reject flags that retarget git at a different worktree.
         _reject_git_run_flag_escape(command)
         return await _agent(handle).git.run(
@@ -715,23 +852,6 @@ def _factory_git_run(handle: RuntimeHandle) -> ToolHandler:
         )
 
     return _wrap_envelope(handle, "chio_git_run", inner)
-
-
-def _require_git_run_approval_or_deny(handle: RuntimeHandle, command: str) -> None:
-    # `policy.check_shell` returns True when approval is required; with
-    # no trusted approval channel, deny.
-    policy = handle.policy
-    if policy is None:
-        return
-    from chio_code_agent.errors import ChioCodeAgentDeniedError
-
-    if bool(policy.check_shell(command)):
-        raise ChioCodeAgentDeniedError(
-            f"git command {command!r} requires approval; no approval channel is configured",
-            tool_name="git_run",
-            reason="requires_approval",
-            guard="shell_command",
-        )
 
 
 def _reject_git_run_flag_escape(command: str) -> None:
