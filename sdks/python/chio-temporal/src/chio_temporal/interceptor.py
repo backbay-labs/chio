@@ -19,7 +19,11 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from chio_adapter_base.redact import RedactionPolicy, redact_args
+from chio_adapter_base.redact import (
+    DEFAULT_TOOL_POSITIONAL_NAMES,
+    RedactionPolicy,
+    redact_args,
+)
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, Decision, ToolCallAction
@@ -352,21 +356,25 @@ class _ChioInboundInterceptor(ActivityInboundInterceptor):
             ) from exc
 
 
-#: Positional-arg parameter names for chio-default tools, used to bind
-#: tuple-shaped activity args to names before name-keyed redaction.
-_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES: dict[str, tuple[str, ...]] = {
-    "chio_file_write": ("path", "content"),
-    "chio_file_edit": ("path", "patch"),
-}
-
-
 def _activity_parameters(
     input: ExecuteActivityInput,
     *,
     tool_name: str | None = None,
     policy: RedactionPolicy | None = None,
 ) -> dict[str, Any]:
-    """Build the sidecar payload, redacting body fields where possible."""
+    """Build the sidecar payload, redacting body fields where possible.
+
+    The positional-name table consulted in shape 2 is
+    :data:`chio_adapter_base.redact.DEFAULT_TOOL_POSITIONAL_NAMES`
+    (centralised in chio-adapter-base 0.1.1). We do not delegate to
+    :func:`chio_adapter_base.redact.bind_and_redact` here because
+    temporal's wire shape lifts positional values into a single bound
+    dict (``parameters["args"] == [{"path": ..., "content": ...}]``)
+    while ``bind_and_redact`` preserves positional-as-positional. The
+    interceptor also has no direct access to the activity callable's
+    ``fn``, so signature-aware binding is unavailable on this path
+    regardless.
+    """
     args_list = list(input.args)
     if policy is None:
         return {"args": args_list}
@@ -377,7 +385,7 @@ def _activity_parameters(
         return {"args": args_list}
 
     # Shape 2: known chio-default tool with positional args.
-    positional_names = _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name or "")
+    positional_names = DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name or "")
     if (
         positional_names is not None
         and len(args_list) == len(positional_names)

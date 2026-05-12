@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1]
 
+- refactor: the local `_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES` table is
+  removed; the interceptor now consults
+  `chio_adapter_base.redact.DEFAULT_TOOL_POSITIONAL_NAMES` (added in
+  chio-adapter-base 0.1.1, PR #675) so the chio-default positional
+  shape registry stays in one place across the adapter family. The
+  rest of `_activity_parameters` is unchanged because temporal's wire
+  shape lifts positional values into a single bound dict
+  (`parameters["args"] == [{...}]`) which differs from
+  `bind_and_redact`'s positional-as-positional contract; the
+  interceptor also has no direct access to the activity callable's
+  `fn` for signature-aware binding. Dependency bumped to
+  `chio-adapter-base>=0.1.1,<0.2`.
 - feat: redact activity arg bodies via
   `chio_adapter_base.redact.redact_args` before forwarding to the
   sidecar. Override via the new `redaction_policy` ctor arg on
