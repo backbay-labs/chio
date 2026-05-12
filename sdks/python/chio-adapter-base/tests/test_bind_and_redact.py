@@ -332,6 +332,134 @@ def test_pure_var_positional_treated_as_forwarder() -> None:
     assert kwargs["content"] == {"omitted": True, "byte_count": 7}
 
 
+def test_fixed_signature_redacts_both_positional_and_kwarg_for_protected_slot() -> None:
+    """Custom-tool merge conflict: redact both positional + kwarg without a custom table.
+
+    Regression for bot comment 3229135384: a fixed-signature custom
+    tool (``def my_tool(path, body)``) called with a duplicate
+    protected name (``my_tool("p", "SECRET", body="KW")``) caused
+    ``bind_partial`` to raise. The fallback used the chio-default
+    positional table, which has no entry for ``my_tool``, so the
+    positional ``body`` value was returned raw. The fix derives the
+    fallback positional names from the signature itself when the
+    caller has not supplied a ``positional_table=`` for the tool.
+    """
+
+    def my_tool(path: str, body: str) -> None:
+        del path, body
+
+    custom_policy = RedactionPolicy(body_fields={"my_tool": ("body",)})
+
+    args, kwargs = bind_and_redact(
+        my_tool,
+        ("p", "POS-SECRET"),
+        {"body": "KW-SECRET"},
+        tool_name="my_tool",
+        policy=custom_policy,
+    )
+    assert args[0] == "p"
+    assert args[1] == {"omitted": True, "byte_count": 10}
+    assert kwargs == {"body": {"omitted": True, "byte_count": 9}}
+
+
+def test_var_positional_named_after_protected_chio_default() -> None:
+    """``def fn(*content, path)`` for chio_file_write: each ``*content`` value redacts.
+
+    Regression for bot comments 3229375712 and 3229301707: the
+    wrapper's varargs parameter is itself the protected field name
+    (``content``). Previously, the rebuild loop ignored the declared
+    ``*content`` name and bound extras only via the positional
+    table. Because ``path`` already filled the table's ``path`` slot
+    via kwargs, the first content chunk was treated as ``path`` and
+    returned raw.
+    """
+
+    def write_file(*content: object, path: str) -> None:
+        del content, path
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("PROD_SECRET_A", "PROD_SECRET_B"),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET_A"),
+    }
+    assert args[1] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET_B"),
+    }
+    assert kwargs == {"path": "/tmp/x"}
+
+
+def test_var_positional_named_after_protected_custom_tool() -> None:
+    """Same wrapper shape with a custom tool/policy: every chunk redacts."""
+
+    def upload(*payload: object, dest: str) -> None:
+        del payload, dest
+
+    custom_policy = RedactionPolicy(body_fields={"my_upload": ("payload",)})
+
+    args, kwargs = bind_and_redact(
+        upload,
+        ("CHUNK_A", "CHUNK_B"),
+        {"dest": "remote://x"},
+        tool_name="my_upload",
+        policy=custom_policy,
+    )
+    assert args[0] == {"omitted": True, "byte_count": 7}
+    assert args[1] == {"omitted": True, "byte_count": 7}
+    assert kwargs == {"dest": "remote://x"}
+
+
+def test_positional_only_with_same_named_kwarg_preserves_spillover() -> None:
+    """``def write(path, /, **kw)`` called as ``write("/etc", path="/tmp/x")``.
+
+    Regression for bot comments 3229301699 and 3229411436:
+    Python permits both a positional-only ``path`` and a
+    same-named entry in ``**kw``. ``bind_partial`` keeps the
+    kwarg in the VAR_KEYWORD spillover, but the rebuild loop
+    previously matched ``redacted_fixed`` first and replaced the
+    spillover value with the positional value. Each redacted
+    independently; the original wire shape preserves both.
+    """
+
+    def write(path: str, /, **kw: object) -> None:
+        del path, kw
+
+    args, kwargs = bind_and_redact(
+        write,
+        ("/etc",),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    # Positional ``path`` is not a protected field so it is not
+    # redacted; the value must remain ``/etc`` (the positional).
+    assert args == ["/etc"]
+    # The spillover kwarg is also not a protected field, but it
+    # must remain ``/tmp/x`` (the kwarg) and NOT be silently
+    # replaced by the positional value.
+    assert kwargs == {"path": "/tmp/x"}
+
+
+def test_positional_only_with_same_named_protected_kwarg_redacts_both() -> None:
+    """``def write(content, /, **kw)`` with both protected: each redacts independently."""
+
+    def write(content: str, /, **kw: object) -> None:
+        del content, kw
+
+    args, kwargs = bind_and_redact(
+        write,
+        ("POS-SECRET",),
+        {"content": "KW-SECRET"},
+        tool_name="chio_file_write",
+    )
+    assert args == [{"omitted": True, "byte_count": 10}]
+    assert kwargs == {"content": {"omitted": True, "byte_count": 9}}
+
+
 def test_default_tool_positional_names_covers_chio_default_tools() -> None:
     """The default table must mirror the chio_default redaction policy."""
 
