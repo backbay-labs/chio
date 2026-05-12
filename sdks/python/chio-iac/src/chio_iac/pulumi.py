@@ -188,6 +188,23 @@ def chio_pulumi(
     ``allowlist`` / ``denylist`` / ``allow_destroy`` mirror
     :func:`chio_iac.terraform.run_terraform`; they are ignored on
     ``plan``.
+
+    ``redaction_policy`` defaults to :meth:`RedactionPolicy.chio_default`;
+    pass a custom policy to redact additional fields before the sidecar
+    sees them. For example, to redact the program identifier on apply::
+
+        from chio_adapter_base.redact import RedactionPolicy
+
+        @chio_pulumi(
+            capability_id="cap-pulumi",
+            phase="apply",
+            redaction_policy=RedactionPolicy({"pulumi:up": ("program",)}),
+        )
+        async def my_program() -> None:
+            ...
+
+    Note that a custom policy fully replaces (does not merge with) the
+    chio default.
     """
 
     def decorator(fn: F) -> F:

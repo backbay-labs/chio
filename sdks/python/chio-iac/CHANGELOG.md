@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - feat: redact tool argument bodies via `chio_adapter_base.redact.redact_args`
   before forwarding them to the sidecar. Override via the new
   `redaction_policy` keyword arg on `run_terraform` and `chio_pulumi`.
+- design note: redact_args runs BEFORE evaluate_tool_call as defense-in-depth;
+  sidecar receives only metadata for redacted fields. Tradeoff: parameter_hash
+  for chio_file_write/chio_file_edit is uniform across calls. Underlying tool
+  execution still receives original args.
+- v0.2 follow-up (deferred primitives): `chio-adapter-base` is also missing
+  `sanitised_env`, `bounded_subprocess`, and `shell_argv_escape_check` per the
+  cross-adapter audit. Once those land, `run_terraform`'s subprocess invocation
+  and the Pulumi shim should adopt them.
 
 ## [0.1.0]
 
