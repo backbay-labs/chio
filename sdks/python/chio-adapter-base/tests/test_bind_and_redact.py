@@ -1,20 +1,4 @@
-"""Behavioural tests for :func:`chio_adapter_base.redact.bind_and_redact`.
-
-Covers the eight branches the helper has to handle so sibling adapters
-can replace their inline ``_build_redacted_parameters`` /
-``_redact_method_call`` / ``_task_parameters`` equivalents:
-
-1. ``fn=None`` fallback to the positional-name table.
-2. C-extension callable (non-introspectable) fallback.
-3. Pure forwarding wrapper (``def f(*args, **kwargs)``) fallback.
-4. Fixed signature: positional preservation.
-5. ``VAR_POSITIONAL`` extras stay positional and unredacted (documented
-   limitation; protected fields should not flow through ``*args``).
-6. ``VAR_KEYWORD`` spillover redaction.
-7. ``drop_self=True`` with a non-self receiver name.
-8. Merge conflict (positional and kwarg with the same name) and custom
-   ``positional_table`` overrides.
-"""
+"""Behavioural tests for :func:`chio_adapter_base.redact.bind_and_redact`."""
 
 from __future__ import annotations
 
@@ -27,10 +11,6 @@ from chio_adapter_base.redact import (
     RedactionPolicy,
     bind_and_redact,
 )
-
-# ---------------------------------------------------------------------------
-# Fallback paths (no introspectable signature)
-# ---------------------------------------------------------------------------
 
 
 def test_bind_and_redact_fn_none_uses_positional_table() -> None:
@@ -47,13 +27,7 @@ def test_bind_and_redact_fn_none_uses_positional_table() -> None:
 
 
 def test_bind_and_redact_c_extension_callable_fallback() -> None:
-    """Non-introspectable callables (e.g. builtins) fall back to the table.
-
-    ``dict.update`` is a stand-in: it raises ``ValueError`` from
-    :func:`inspect.signature` on the Python versions this package
-    supports. Guard the assumption so a future Python that introspects
-    every builtin does not silently pass this test.
-    """
+    """Non-introspectable callables (e.g. builtins) fall back to the table."""
     try:
         inspect.signature(dict.update)
         pytest.skip("builtin is now introspectable on this Python")
@@ -94,15 +68,8 @@ def test_bind_and_redact_fallback_unknown_tool_forwards_args_raw() -> None:
         {"content": "kwarg-secret"},
         tool_name="chio_file_write",
     )
-    # No signature/table mapping for the positional value -> stays raw.
     assert args == ["positional-secret"]
-    # kwargs path still resolves the chio_file_write -> ("content",) policy.
     assert kwargs["content"] == {"omitted": True, "byte_count": 12}
-
-
-# ---------------------------------------------------------------------------
-# Fixed signature paths
-# ---------------------------------------------------------------------------
 
 
 def test_bind_and_redact_fixed_signature_positional_preserved() -> None:
@@ -159,18 +126,8 @@ def test_bind_and_redact_fixed_signature_mixed_args_kwargs() -> None:
     assert kwargs == {"content": {"omitted": True, "byte_count": 7}}
 
 
-# ---------------------------------------------------------------------------
-# VAR_POSITIONAL / VAR_KEYWORD edge cases
-# ---------------------------------------------------------------------------
-
-
 def test_bind_and_redact_var_positional_extras_unredacted() -> None:
-    """Extras into ``*args`` have no name; they stay positional and raw.
-
-    This is a documented limitation: the wire shape for protected fields
-    must not flow through ``*args``. We assert the unredacted-passthrough
-    behaviour so a future change to the contract trips this test.
-    """
+    """Extras into ``*args`` past every table slot stay positional and raw."""
 
     def chio_file_write(path: str, content: str, *extras: object) -> None:
         del path, content, extras
@@ -183,8 +140,57 @@ def test_bind_and_redact_var_positional_extras_unredacted() -> None:
     )
     assert args[0] == "src/main.py"
     assert args[1] == {"omitted": True, "byte_count": 7}
+    # Both table slots ("path", "content") are filled by fixed bindings,
+    # so the trailing VAR_POSITIONAL extras have no free slot to bind to
+    # and surface raw.
     assert args[2:] == ["extra1", "extra2"]
     assert kwargs == {}
+
+
+def test_var_positional_extras_redacted_via_positional_table() -> None:
+    """``def fn(path, *rest)`` -- rest[0] binds to the next free table slot.
+
+    For ``chio_file_write`` the table is ``("path", "content")``; the
+    fixed positional fills slot 0 (``path``), so ``rest[0]`` matches the
+    next free slot ``content`` and is redacted. Mirrors the prefect
+    local-helper fix (cba84f66c) for the chio-adapter-base helper that
+    chio-ray and other sibling adapters consume.
+    """
+
+    def chio_file_write(path: str, *rest: object) -> None:
+        del path, rest
+
+    args, kwargs = bind_and_redact(
+        chio_file_write,
+        ("/tmp/x", "PROD_SECRET"),
+        {},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == "/tmp/x"
+    assert args[1] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    assert kwargs == {}
+
+
+def test_var_positional_with_kwarg_consuming_first_table_slot() -> None:
+    """``def fn(*content, path)`` -- content[0] binds via the table.
+
+    Calling ``fn("PROD_SECRET", path="/tmp/x")`` binds the ``path``
+    kwarg to table slot 0, so the lone VAR_POSITIONAL value finds the
+    next free table slot ``content`` and is redacted. This is the
+    direct counterpart of the prefect leak path closed in cba84f66c.
+    """
+
+    def write_file(*content: object, path: str) -> None:
+        del content, path
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("PROD_SECRET",),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    assert kwargs == {"path": "/tmp/x"}
 
 
 def test_bind_and_redact_var_keyword_spillover_redacted() -> None:
@@ -193,8 +199,6 @@ def test_bind_and_redact_var_keyword_spillover_redacted() -> None:
     def some_wrapper(path: str, **rest: object) -> None:
         del path, rest
 
-    # ``content`` is not a declared param; it spills into rest. The
-    # spillover is re-redacted so the protected field is still covered.
     args, kwargs = bind_and_redact(
         some_wrapper,
         ("src/main.py",),
@@ -206,18 +210,8 @@ def test_bind_and_redact_var_keyword_spillover_redacted() -> None:
     assert kwargs["other"] == "ok"
 
 
-# ---------------------------------------------------------------------------
-# drop_self
-# ---------------------------------------------------------------------------
-
-
 def test_bind_and_redact_drop_self_with_non_self_receiver() -> None:
-    """``drop_self=True`` skips the first positional regardless of its name.
-
-    The receiver here is named ``this``, not ``self``; ``drop_self``
-    still removes it so the remaining positional can be bound to
-    ``content`` for redaction.
-    """
+    """``drop_self=True`` skips the first positional regardless of its name."""
 
     def method(this: object, path: str, content: str) -> None:
         del this, path, content
@@ -230,26 +224,15 @@ def test_bind_and_redact_drop_self_with_non_self_receiver() -> None:
         tool_name="chio_file_write",
         drop_self=True,
     )
-    # Receiver stays at position 0 in the wire shape (we only adjust the
-    # signature for binding; we don't reshape the caller's positional
-    # list).
+    # Receiver is restored at position 0; we only adjust the signature
+    # for binding, not the caller's positional list.
     assert args[0] is receiver
     assert args[1] == "src/main.py"
     assert args[2] == {"omitted": True, "byte_count": 7}
 
 
-# ---------------------------------------------------------------------------
-# Merge conflict + custom table
-# ---------------------------------------------------------------------------
-
-
 def test_bind_and_redact_merge_conflict_redacts_both_positions() -> None:
-    """Same name in positional and kwargs: redact both; let TypeError surface.
-
-    The wire shape preserves both occurrences; the helper does not
-    re-validate Python's arity rules. Callers that care about the
-    duplicate get the natural TypeError when they actually invoke ``fn``.
-    """
+    """Same name in positional and kwargs: redact both; let TypeError surface."""
 
     def chio_file_write(path: str, content: str) -> None:
         del path, content
@@ -257,14 +240,11 @@ def test_bind_and_redact_merge_conflict_redacts_both_positions() -> None:
     args, kwargs = bind_and_redact(
         chio_file_write,
         ("src/main.py", "POSITIONAL-SECRET"),
-        # Duplicate ``content`` as a kwarg.
         {"content": "KWARG-SECRET"},
         tool_name="chio_file_write",
     )
-    # Positional content is redacted in-place.
     assert args[0] == "src/main.py"
     assert args[1] == {"omitted": True, "byte_count": 17}
-    # Kwarg content is still present and also redacted.
     assert kwargs == {"content": {"omitted": True, "byte_count": 12}}
 
 
@@ -287,19 +267,8 @@ def test_bind_and_redact_custom_positional_table_overrides_default() -> None:
     assert kwargs == {}
 
 
-# ---------------------------------------------------------------------------
-# Sanity checks on the public table
-# ---------------------------------------------------------------------------
-
-
 def test_drop_self_strips_receiver_when_signature_unavailable() -> None:
-    """``drop_self=True`` must strip the receiver even with no signature.
-
-    Without this, an actor method's receiver slides into the
-    positional-name table's first slot (``"path"``) and the real path
-    falls into the redacted slot (``"content"``), so the secret stays
-    raw. Cover both ``fn=None`` and the C-extension fallback.
-    """
+    """``drop_self=True`` must strip the receiver even with no signature."""
     receiver = object()
 
     args, kwargs = bind_and_redact(
@@ -314,8 +283,7 @@ def test_drop_self_strips_receiver_when_signature_unavailable() -> None:
     assert args[2] == {"omitted": True, "byte_count": 17}
     assert kwargs == {}
 
-    # C-extension callable path (non-introspectable) should behave the
-    # same; reuse ``dict.update`` if it remains non-introspectable.
+    # C-extension callable path (non-introspectable); reuse dict.update.
     try:
         inspect.signature(dict.update)
         c_ext_introspectable = True
@@ -335,13 +303,7 @@ def test_drop_self_strips_receiver_when_signature_unavailable() -> None:
 
 
 def test_pure_var_positional_treated_as_forwarder() -> None:
-    """``def fn(*args)`` (no fixed params) must use the table fallback.
-
-    Previously the helper required both VAR_POSITIONAL and VAR_KEYWORD
-    to recognise a forwarder, so ``def write_file(*args)`` fell through
-    to the fixed-signature path with an empty named view and the
-    positional secret leaked unredacted.
-    """
+    """``def fn(*args)`` (no fixed params) must use the table fallback."""
 
     def writer(*args: object) -> None:
         del args
