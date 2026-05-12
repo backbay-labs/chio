@@ -224,6 +224,62 @@ class TestChioRemoteRedaction:
         }
         assert params["kwargs"] == {}
 
+    def test_pure_forwarding_wrapper_preserves_kwarg_conflict(self) -> None:
+        # Pathological caller supplies both a positional AND a keyword
+        # for the same field (``write('/tmp/x', path='/etc/passwd')``).
+        # Both must be redacted independently so the kwarg-side payload
+        # cannot leak by overwriting the positional value before the
+        # redactor runs. The wrapped function itself will raise
+        # ``TypeError`` for the duplicate parameter; we do not try to
+        # repair caller error.
+        chio = allow_all()
+
+        @chio_remote(
+            scope="tools:chio_file_write",
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+            tool_name="chio_file_write",
+        )
+        def write(*args: Any, **kwargs: Any) -> str:
+            return str(args[0]) if args else ""
+
+        # Call directly (bypass Ray's actual dispatch) to inspect the
+        # sidecar parameters before the wrapped function raises.
+        try:
+            ref = write.remote(
+                "/tmp/x",
+                "POSITIONAL_BODY",
+                path="/etc/passwd",
+                content="KW_BODY",
+            )
+            ray.get(ref)
+        except Exception:
+            # The wrapped function raises TypeError for the duplicate
+            # ``path`` keyword. That is correct; we only care that the
+            # sidecar saw both values redacted.
+            pass
+
+        import json
+
+        params = _eval_calls(chio)[0].parameters
+        forwarded_blob = json.dumps(params)
+        # Neither side leaks: the positional body and the keyword body
+        # are both replaced by the omission stub.
+        assert "POSITIONAL_BODY" not in forwarded_blob
+        assert "KW_BODY" not in forwarded_blob
+        assert "/etc/passwd" in forwarded_blob  # path is not a body field
+        assert params["args"][0] == "/tmp/x"
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"POSITIONAL_BODY"),
+        }
+        assert params["kwargs"]["path"] == "/etc/passwd"
+        assert params["kwargs"]["content"] == {
+            "omitted": True,
+            "byte_count": len(b"KW_BODY"),
+        }
+
     def test_var_positional_extras_remain_in_args(self) -> None:
         # ``*extras`` past the fixed positional slots have no parameter
         # name to bind to, so they remain in args (not migrated to
@@ -432,6 +488,55 @@ class TestChioActorRedaction:
         params = _eval_calls(chio)[0].parameters
         assert "PROD_SECRET" not in json.dumps(params)
         # Wire shape preserved: positional values stay positional.
+        assert params["args"][0] == "/tmp/x"
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert params["kwargs"] == {}
+
+    def test_method_receiver_not_named_self_still_drops_implicit_arg(
+        self,
+    ) -> None:
+        # When the receiver parameter is not literally called ``self``,
+        # the redaction helper must still drop the implicit receiver
+        # from the signature. Otherwise the bind step shifts every
+        # subsequent positional value one slot to the left and the body
+        # field is bound to ``path``, leaving ``content`` unredacted.
+        chio = allow_all()
+        scope = _scope_for_tools("chio_file_write", server_id="srv")
+        token = _local_token(scope)
+        grant = StandingGrant(
+            token=token,
+            tool_server="srv",
+            actor_class="tests.WriterAlt",
+        )
+
+        @ray.remote
+        class WriterAlt(ChioActor):
+            def __init__(self) -> None:
+                super().__init__(standing_grant=grant, chio_client=chio)
+
+            @ChioActor.requires(
+                "tools:chio_file_write", tool_name="chio_file_write"
+            )
+            def chio_file_write(this, path: str, content: str) -> str:  # noqa: N805
+                # Receiver named ``this`` rather than ``self`` (legal
+                # Python; PEP 8 only convention).
+                return path
+
+        handle = WriterAlt.remote()
+        result = ray.get(
+            handle.chio_file_write.remote("/tmp/x", "PROD_SECRET=abc123")
+        )
+        assert result == "/tmp/x"
+
+        import json
+
+        params = _eval_calls(chio)[0].parameters
+        forwarded_blob = json.dumps(params)
+        assert "PROD_SECRET" not in forwarded_blob
+        # Wire shape preserved and the body field is correctly redacted.
         assert params["args"][0] == "/tmp/x"
         assert params["args"][1] == {
             "omitted": True,

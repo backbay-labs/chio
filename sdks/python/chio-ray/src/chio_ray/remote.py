@@ -323,7 +323,16 @@ def _build_redacted_call(
 
     if drop_self:
         params_list = list(sig.parameters.values())
-        if params_list and params_list[0].name == "self":
+        # Drop the implicit receiver regardless of its declared name.
+        # Methods bound via @ChioActor.requires may name the receiver
+        # something other than ``self`` (e.g. ``cls``, ``this``); the
+        # caller's ``args`` already excludes the receiver, so the
+        # signature must shed that first positional parameter to stay
+        # in sync.
+        if params_list and params_list[0].kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
             sig = sig.replace(parameters=params_list[1:])
 
     params = sig.parameters
@@ -362,22 +371,29 @@ def _build_redacted_call(
             return list(args), redact_args(
                 tool_name, dict(kwargs), policy=policy
             )
+        # Redact the positional-mapped fields and the keyword fields
+        # SEPARATELY. A pathological caller may supply both a positional
+        # AND a keyword for the same field (``write('/tmp/x',
+        # path='/etc/passwd')``); merging would let the kwarg overwrite
+        # the positional value before redaction, so the kwarg-side leak
+        # would slip through. Keeping the buckets independent ensures
+        # neither value is forwarded raw, and the wrapped function
+        # itself raises ``TypeError`` for the duplicate parameter (the
+        # correct Python behaviour we should not try to repair here).
         named_positional = {
             n: a for n, a in zip(positional_names, args, strict=False)
         }
-        merged = {**named_positional, **kwargs}
-        redacted_merged = redact_args(tool_name, merged, policy=policy)
+        redacted_named = redact_args(
+            tool_name, named_positional, policy=policy
+        )
+        redacted_kwargs = redact_args(tool_name, dict(kwargs), policy=policy)
         bound_count = min(len(args), len(positional_names))
         new_args: list[Any] = [
-            redacted_merged[positional_names[i]] for i in range(bound_count)
+            redacted_named[positional_names[i]] for i in range(bound_count)
         ]
         if len(args) > bound_count:
             new_args.extend(args[bound_count:])
-        bound_names = set(positional_names[:bound_count])
-        new_kwargs = {
-            k: v for k, v in redacted_merged.items() if k not in bound_names
-        }
-        return new_args, new_kwargs
+        return new_args, redacted_kwargs
 
     try:
         bound = sig.bind_partial(*args, **kwargs).arguments
