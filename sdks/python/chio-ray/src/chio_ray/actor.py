@@ -117,6 +117,7 @@ class ChioActor:
                 async def async_wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
                     await _enforce_actor_method(
                         actor=self,
+                        method=method,
                         scope_spec=scope_spec,
                         explicit_scope=explicit_scope,
                         method_name=method.__name__,
@@ -137,6 +138,7 @@ class ChioActor:
                     asyncio.run(
                         _enforce_actor_method(
                             actor=self,
+                            method=method,
                             scope_spec=scope_spec,
                             explicit_scope=explicit_scope,
                             method_name=method.__name__,
@@ -167,6 +169,7 @@ class ChioActor:
 async def _enforce_actor_method(
     *,
     actor: Any,
+    method: Callable[..., Any],
     scope_spec: str | None,
     explicit_scope: ChioScope | None,
     method_name: str,
@@ -228,13 +231,51 @@ async def _enforce_actor_method(
     chio_client: ChioClientLike | None = getattr(actor, "_chio_client", None)
     sidecar_url: str = getattr(actor, "_chio_sidecar_url", "http://127.0.0.1:9090")
 
-    # Positional args bypass redaction: policy targets kwarg names.
     redaction_policy: RedactionPolicy = getattr(
         actor, "_chio_redaction_policy", RedactionPolicy.chio_default()
     )
-    redacted_kwargs = redact_args(
-        tool_name_override, dict(kwargs), policy=redaction_policy
-    )
+    # Bind positional args to parameter names so the field-name-keyed
+    # redactor sees them. Fallback to raw args/kwargs when the method
+    # has *args/**kwargs and binding cannot disambiguate.
+    bound_args: list[Any] = list(args)
+    bound_kwargs: dict[str, Any] = dict(kwargs)
+    try:
+        sig = inspect.signature(method)
+        # Drop the implicit `self` so positional args align.
+        params = list(sig.parameters.values())
+        if params and params[0].name == "self":
+            sig = sig.replace(parameters=params[1:])
+        bound = sig.bind_partial(*args, **kwargs)
+        named = dict(bound.arguments)
+        redacted_named = redact_args(
+            tool_name_override, named, policy=redaction_policy
+        )
+        # Rebuild positional + keyword in original order.
+        positional_names = [
+            p.name
+            for p in sig.parameters.values()
+            if p.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+        ]
+        bound_args = [
+            redacted_named[n] if n in redacted_named else None
+            for n in positional_names[: len(args)]
+        ]
+        bound_kwargs = {
+            k: v
+            for k, v in redacted_named.items()
+            if k not in positional_names[: len(args)]
+        }
+    except TypeError:
+        # *args/**kwargs methods cannot be bound; fall back to redacting
+        # kwargs only. Tools with secret positional bodies should declare
+        # named parameters to opt in.
+        bound_kwargs = redact_args(
+            tool_name_override, dict(kwargs), policy=redaction_policy
+        )
 
     receipt = await _evaluate_allow_or_raise(
         chio_client=chio_client,
@@ -242,7 +283,7 @@ async def _enforce_actor_method(
         capability_id=grant.capability_id,
         tool_server=tool_server,
         tool_name=tool_name_override,
-        parameters={"args": list(args), "kwargs": redacted_kwargs},
+        parameters={"args": bound_args, "kwargs": bound_kwargs},
         actor_class=grant.actor_class,
         method_name=method_name,
     )
