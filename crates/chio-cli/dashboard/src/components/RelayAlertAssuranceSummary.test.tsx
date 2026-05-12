@@ -166,6 +166,77 @@ function closeoutReport(overrides = {}) {
   }
 }
 
+function archivePackageReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-archive-package-report.v1',
+    accepted: true,
+    code: 'accepted',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    packageId: 'relay-alert-assurance-archive-package-001',
+    packageManifestSha256: '7'.repeat(64),
+    sourceArchiveReportSha256: '8'.repeat(64),
+    sourceCloseoutReportSha256: '9'.repeat(64),
+    packageMemberCount: 13,
+    packageTotalByteCount: 4096,
+    bundleCount: 1,
+    trustedPackagerVerified: true,
+    nestedExporterVerified: true,
+    extractable: true,
+    checks: [],
+    ...overrides,
+  }
+}
+
+function extractionReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-archive-extraction-report.v1',
+    accepted: true,
+    code: 'accepted',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    packageId: 'relay-alert-assurance-archive-package-001',
+    packageManifestSha256: '7'.repeat(64),
+    plannedMemberCount: 13,
+    extractedMemberCount: 13,
+    checks: [],
+    ...overrides,
+  }
+}
+
+function physicalArchiveReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-physical-archive-drill-report.v1',
+    accepted: true,
+    code: 'accepted',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    evidenceId: 'physical-archive-evidence-001',
+    packageId: 'relay-alert-assurance-archive-package-001',
+    packageReportSha256: 'a'.repeat(64),
+    sampledMemberCount: 3,
+    checks: [],
+    ...overrides,
+  }
+}
+
+function retentionHandoffReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-retention-handoff-report.v1',
+    accepted: true,
+    code: 'accepted',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    evidenceId: 'retention-handoff-evidence-001',
+    packageId: 'relay-alert-assurance-archive-package-001',
+    packageReportSha256: 'a'.repeat(64),
+    targetSystemAlias: 'records_vault',
+    readyForOperatorHandoff: true,
+    checks: [],
+    ...overrides,
+  }
+}
+
 function mockAssuranceFetch(overrides: {
   packageReport?: Record<string, unknown>
   exportReport?: Record<string, unknown>
@@ -173,6 +244,10 @@ function mockAssuranceFetch(overrides: {
   retentionReport?: Record<string, unknown>
   archiveReport?: Record<string, unknown>
   closeoutReport?: Record<string, unknown>
+  archivePackageReport?: Record<string, unknown>
+  extractionReport?: Record<string, unknown>
+  physicalArchiveReport?: Record<string, unknown>
+  retentionHandoffReport?: Record<string, unknown>
 } = {}) {
   vi.stubGlobal(
     'fetch',
@@ -198,6 +273,30 @@ function mockAssuranceFetch(overrides: {
           json: async () => closeoutReport(overrides.closeoutReport),
         })
       }
+      if (url.endsWith('/archive-package')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => archivePackageReport(overrides.archivePackageReport),
+        })
+      }
+      if (url.endsWith('/archive-extraction')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => extractionReport(overrides.extractionReport),
+        })
+      }
+      if (url.endsWith('/physical-archive')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => physicalArchiveReport(overrides.physicalArchiveReport),
+        })
+      }
+      if (url.endsWith('/retention-handoff')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => retentionHandoffReport(overrides.retentionHandoffReport),
+        })
+      }
       return Promise.resolve({
         ok: true,
         json: async () => assurancePackage(overrides.packageReport),
@@ -220,6 +319,9 @@ describe('RelayAlertAssuranceSummary', () => {
     expect(container.textContent).toContain('retention 1 blocked')
     expect(container.textContent).toContain('Archive Closeout')
     expect(container.textContent).toContain('1 legal hold')
+    expect(container.textContent).toContain('Archive Package')
+    expect(container.textContent).toContain('extraction safe')
+    expect(container.textContent).toContain('handoff ready')
   })
 
   it('renders unknown when the assurance report is missing', async () => {

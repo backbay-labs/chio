@@ -1,19 +1,27 @@
 import { useEffect, useState } from 'react'
 
 import {
+  fetchRelayAlertAssuranceArchiveExtractionReport,
+  fetchRelayAlertAssuranceArchivePackageReport,
   fetchRelayAlertAssuranceArchiveReport,
   fetchRelayAlertAssuranceCloseoutReport,
   fetchRelayAlertAssuranceExportReport,
   fetchRelayAlertAssurancePackage,
+  fetchRelayAlertAssurancePhysicalArchiveDrillReport,
   fetchRelayAlertAssuranceReplayReport,
   fetchRelayAlertAssuranceRetentionReport,
+  fetchRelayAlertAssuranceRetentionHandoffReport,
 } from '../api'
 import type {
+  RelayAlertAssuranceArchiveExtractionReport,
+  RelayAlertAssuranceArchivePackageReport,
   RelayAlertAssuranceArchiveReport,
   RelayAlertAssuranceCloseoutReport,
   RelayAlertAssuranceExportReport,
   RelayAlertAssurancePackage,
+  RelayAlertAssurancePhysicalArchiveDrillReport,
   RelayAlertAssuranceReplayReport,
+  RelayAlertAssuranceRetentionHandoffReport,
   RelayAlertAssuranceRetentionReport,
 } from '../types'
 
@@ -35,6 +43,10 @@ export function RelayAlertAssuranceSummary() {
     retentionReport: RelayAlertAssuranceRetentionReport | null
     archiveReport: RelayAlertAssuranceArchiveReport | null
     closeoutReport: RelayAlertAssuranceCloseoutReport | null
+    archivePackageReport: RelayAlertAssuranceArchivePackageReport | null
+    extractionReport: RelayAlertAssuranceArchiveExtractionReport | null
+    physicalArchiveReport: RelayAlertAssurancePhysicalArchiveDrillReport | null
+    retentionHandoffReport: RelayAlertAssuranceRetentionHandoffReport | null
   }>({
     packageReport: null,
     exportReport: null,
@@ -42,6 +54,10 @@ export function RelayAlertAssuranceSummary() {
     retentionReport: null,
     archiveReport: null,
     closeoutReport: null,
+    archivePackageReport: null,
+    extractionReport: null,
+    physicalArchiveReport: null,
+    retentionHandoffReport: null,
   })
   const [loading, setLoading] = useState(true)
 
@@ -55,8 +71,23 @@ export function RelayAlertAssuranceSummary() {
       fetchRelayAlertAssuranceRetentionReport(),
       fetchRelayAlertAssuranceArchiveReport(),
       fetchRelayAlertAssuranceCloseoutReport(),
+      fetchRelayAlertAssuranceArchivePackageReport(),
+      fetchRelayAlertAssuranceArchiveExtractionReport(),
+      fetchRelayAlertAssurancePhysicalArchiveDrillReport(),
+      fetchRelayAlertAssuranceRetentionHandoffReport(),
     ])
-      .then(([packageResult, exportResult, replayResult, retentionResult, archiveResult, closeoutResult]) => {
+      .then(([
+        packageResult,
+        exportResult,
+        replayResult,
+        retentionResult,
+        archiveResult,
+        closeoutResult,
+        archivePackageResult,
+        extractionResult,
+        physicalArchiveResult,
+        retentionHandoffResult,
+      ]) => {
         if (!cancelled) {
           setState({
             packageReport: packageResult.status === 'fulfilled' ? packageResult.value : null,
@@ -65,6 +96,10 @@ export function RelayAlertAssuranceSummary() {
             retentionReport: retentionResult.status === 'fulfilled' ? retentionResult.value : null,
             archiveReport: archiveResult.status === 'fulfilled' ? archiveResult.value : null,
             closeoutReport: closeoutResult.status === 'fulfilled' ? closeoutResult.value : null,
+            archivePackageReport: archivePackageResult.status === 'fulfilled' ? archivePackageResult.value : null,
+            extractionReport: extractionResult.status === 'fulfilled' ? extractionResult.value : null,
+            physicalArchiveReport: physicalArchiveResult.status === 'fulfilled' ? physicalArchiveResult.value : null,
+            retentionHandoffReport: retentionHandoffResult.status === 'fulfilled' ? retentionHandoffResult.value : null,
           })
           setLoading(false)
         }
@@ -78,6 +113,10 @@ export function RelayAlertAssuranceSummary() {
             retentionReport: null,
             archiveReport: null,
             closeoutReport: null,
+            archivePackageReport: null,
+            extractionReport: null,
+            physicalArchiveReport: null,
+            retentionHandoffReport: null,
           })
           setLoading(false)
         }
@@ -114,6 +153,18 @@ export function RelayAlertAssuranceSummary() {
     : 'unknown'
   const firstArchiveReview = state.archiveReport?.reviews[0]
   const bundleLabel = firstArchiveReview?.bundleId ?? 'unknown'
+  const archivePackageStatus = state.archivePackageReport?.accepted
+    ? 'verified'
+    : (state.archivePackageReport?.code ?? 'unknown')
+  const extractionStatus = state.extractionReport?.accepted
+    ? 'safe'
+    : (state.extractionReport?.code ?? 'unknown')
+  const physicalStatus = state.physicalArchiveReport?.accepted
+    ? 'readback'
+    : (state.physicalArchiveReport?.code ?? 'unknown')
+  const handoffStatus = state.retentionHandoffReport?.accepted
+    ? 'ready'
+    : (state.retentionHandoffReport?.code ?? 'unknown')
 
   return (
     <section className="operator-summary relay-alert-assurance" aria-label="Relay alert assurance">
@@ -175,6 +226,19 @@ export function RelayAlertAssuranceSummary() {
             <span>{state.archiveReport?.quarantineCount ?? 0} quarantine</span>
             <span>{state.closeoutReport?.legalHoldCount ?? 0} legal hold</span>
             <span>{state.closeoutReport?.eligibleForDeleteCount ?? 0} eligible</span>
+          </div>
+        </article>
+
+        <article className="operator-card">
+          <span className="operator-card-label">Archive Package</span>
+          <strong className="operator-card-value">{archivePackageStatus}</strong>
+          <div className="operator-card-metrics">
+            <span>extraction {extractionStatus}</span>
+            <span>{state.archivePackageReport?.packageMemberCount ?? 0} members</span>
+          </div>
+          <div className="operator-card-metrics">
+            <span>readback {physicalStatus}</span>
+            <span>handoff {handoffStatus}</span>
           </div>
         </article>
       </div>

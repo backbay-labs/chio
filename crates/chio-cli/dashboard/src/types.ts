@@ -568,6 +568,65 @@ export interface RelayAlertAssuranceCloseoutReport {
   checks: RelayAlertCheck[]
 }
 
+export interface RelayAlertAssuranceArchivePackageReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  packageId: string
+  packageManifestSha256: string
+  sourceArchiveReportSha256: string
+  sourceCloseoutReportSha256: string
+  packageMemberCount: number
+  packageTotalByteCount: number
+  bundleCount: number
+  trustedPackagerVerified: boolean
+  nestedExporterVerified: boolean
+  extractable: boolean
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceArchiveExtractionReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  packageId: string
+  packageManifestSha256: string
+  plannedMemberCount: number
+  extractedMemberCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssurancePhysicalArchiveDrillReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  evidenceId: string
+  packageId: string
+  packageReportSha256: string
+  sampledMemberCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceRetentionHandoffReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  evidenceId: string
+  packageId: string
+  packageReportSha256: string
+  targetSystemAlias: string
+  readyForOperatorHandoff: boolean
+  checks: RelayAlertCheck[]
+}
+
 export interface PassportVerification {
   subject: string
   issuer?: string | null

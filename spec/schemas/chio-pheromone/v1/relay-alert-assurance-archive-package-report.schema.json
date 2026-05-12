@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-archive-package-report.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Assurance Archive Package Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "accepted", "code", "localKernelId", "generatedAtUnixMs", "packageId", "packageManifestSha256", "sourceArchiveReportSha256", "sourceCloseoutReportSha256", "packageMemberCount", "packageTotalByteCount", "bundleCount", "trustedPackagerVerified", "nestedExporterVerified", "extractable", "checks"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-assurance-archive-package-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "$ref": "#/$defs/token" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "packageId": { "$ref": "#/$defs/token" },
+    "packageManifestSha256": { "$ref": "#/$defs/sha256" },
+    "sourceArchiveReportSha256": { "$ref": "#/$defs/sha256" },
+    "sourceCloseoutReportSha256": { "$ref": "#/$defs/sha256" },
+    "packageMemberCount": { "type": "integer", "minimum": 0 },
+    "packageTotalByteCount": { "type": "integer", "minimum": 0 },
+    "bundleCount": { "type": "integer", "minimum": 0 },
+    "trustedPackagerVerified": { "type": "boolean" },
+    "nestedExporterVerified": { "type": "boolean" },
+    "extractable": { "type": "boolean" },
+    "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+  },
+  "$defs": {
+    "token": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "accepted", "detail"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "accepted": { "type": "boolean" },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

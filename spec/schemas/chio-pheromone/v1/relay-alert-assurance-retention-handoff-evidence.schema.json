@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-retention-handoff-evidence.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Assurance Retention Handoff Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "localKernelId", "evidenceId", "packageId", "packageReportSha256", "targetSystemAlias", "observedAtUnixMs", "claims"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-assurance-retention-handoff-evidence.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "evidenceId": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" },
+    "packageId": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" },
+    "packageReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "targetSystemAlias": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" },
+    "observedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "claims": { "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" } }
+  }
+}

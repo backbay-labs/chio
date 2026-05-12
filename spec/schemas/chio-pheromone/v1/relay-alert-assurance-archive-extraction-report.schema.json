@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-archive-extraction-report.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Assurance Archive Extraction Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "accepted", "code", "localKernelId", "generatedAtUnixMs", "packageId", "packageManifestSha256", "plannedMemberCount", "extractedMemberCount", "checks"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-assurance-archive-extraction-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "packageId": { "type": "string", "minLength": 1 },
+    "packageManifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "plannedMemberCount": { "type": "integer", "minimum": 0 },
+    "extractedMemberCount": { "type": "integer", "minimum": 0 },
+    "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "accepted", "detail"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "accepted": { "type": "boolean" },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

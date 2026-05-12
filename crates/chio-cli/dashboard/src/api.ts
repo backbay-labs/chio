@@ -12,6 +12,8 @@ import type {
   ReceiptAnalyticsResponse,
   ReceiptQueryResponse,
   RelayAlertAssuranceArchiveReport,
+  RelayAlertAssuranceArchiveExtractionReport,
+  RelayAlertAssuranceArchivePackageReport,
   RelayAlertAssuranceCloseoutReport,
   RelayAlertReport,
   RelayAlertDeliveryReport,
@@ -20,6 +22,8 @@ import type {
   RelayAlertAssurancePackage,
   RelayAlertAssuranceReplayReport,
   RelayAlertAssuranceRetentionReport,
+  RelayAlertAssurancePhysicalArchiveDrillReport,
+  RelayAlertAssuranceRetentionHandoffReport,
   RelayObservabilityReport,
   RelayTrendReport,
 } from './types'
@@ -330,6 +334,66 @@ export async function fetchRelayAlertAssuranceCloseoutReport(): Promise<RelayAle
     throw new Error(`Relay alert assurance closeout request failed: ${res.status} ${res.statusText}`)
   }
   return res.json() as Promise<RelayAlertAssuranceCloseoutReport>
+}
+
+export async function fetchRelayAlertAssuranceArchivePackageReport(): Promise<RelayAlertAssuranceArchivePackageReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/archive-package', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance archive package request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssuranceArchivePackageReport>
+}
+
+export async function fetchRelayAlertAssuranceArchiveExtractionReport(): Promise<RelayAlertAssuranceArchiveExtractionReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/archive-extraction', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance archive extraction request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssuranceArchiveExtractionReport>
+}
+
+export async function fetchRelayAlertAssurancePhysicalArchiveDrillReport(): Promise<RelayAlertAssurancePhysicalArchiveDrillReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/physical-archive', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance physical archive request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssurancePhysicalArchiveDrillReport>
+}
+
+export async function fetchRelayAlertAssuranceRetentionHandoffReport(): Promise<RelayAlertAssuranceRetentionHandoffReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/retention-handoff', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance retention handoff request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssuranceRetentionHandoffReport>
 }
 
 /**

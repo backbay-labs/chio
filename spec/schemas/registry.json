@@ -536,6 +536,66 @@
       "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-archive-negative-fixture-corpus.schema.json"
     },
     {
+      "schema": "chio.pheromone.relay-alert-assurance-archive-package-manifest.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_archive_package_manifest",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-package/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-archive-package-manifest.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-archive-package-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_archive_package_report",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-package/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-archive-package-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-trusted-archive-packagers.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_trusted_archive_packagers",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-package/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-trusted-archive-packagers.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-archive-extraction-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_archive_extraction_report",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-package/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-archive-extraction-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-physical-archive-evidence.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_physical_archive_evidence",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-package/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-physical-archive-evidence.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-physical-archive-drill-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_physical_archive_drill_report",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-package/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-physical-archive-drill-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-retention-handoff-profile.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_retention_handoff_profile",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-package/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-retention-handoff-profile.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-retention-handoff-evidence.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_retention_handoff_evidence",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-package/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-retention-handoff-evidence.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-retention-handoff-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_retention_handoff_report",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-package/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-retention-handoff-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-archive-package-negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_archive_package_negative_fixture_corpus",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-package/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-archive-package-negative-fixture-corpus.schema.json"
+    },
+    {
       "schema": "chio.pheromone.catchup-request.v1",
       "artifactKind": "chiodos_pheromone_catchup_request",
       "introducedBy": "chiodos-live-pheromone-relay/v1",

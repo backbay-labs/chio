@@ -13,4 +13,4 @@ Production profiles require:
 
 The files in this directory are examples, not a packaged service manager. Operators should adjust paths and users while preserving the security properties above.
 
-See `OBSERVABILITY.md` for the canonical relay observability report, alert routing artifacts, trend reports, dry-run handoff reports, downstream normalization, delivery evidence import, acknowledgement, source-bound drift, route review, alert assurance packages, signed local exports, replay, retention planning, recovery drills, archive planning, closeout review, bounded metrics, and alert examples.
+See `OBSERVABILITY.md` for the canonical relay observability report, alert routing artifacts, trend reports, dry-run handoff reports, downstream normalization, delivery evidence import, acknowledgement, source-bound drift, route review, alert assurance packages, signed local exports, replay, retention planning, recovery drills, archive planning, closeout review, signed local archive packages, safe extraction reports, physical readback drills, retention handoff readiness, bounded metrics, and alert examples.
