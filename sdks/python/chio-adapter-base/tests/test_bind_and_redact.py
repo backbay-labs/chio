@@ -565,3 +565,23 @@ def test_default_tool_positional_names_covers_chio_default_tools() -> None:
                 f"{tool_name}.{field} is redacted by policy but not "
                 "reachable via the positional-name fallback table."
             )
+
+
+def test_signature_param_order_overrides_default_table_for_renamed_protected_field() -> None:
+    """E1 regression: when wrapper renames protected fields (e.g. content/path
+    swapped), the signature-derived names take precedence over the default
+    table so the protected slot is redacted at the right index.
+    """
+
+    def write(content: str, path: str) -> None:
+        del content, path
+
+    args, kwargs = bind_and_redact(
+        write,
+        ("PROD_SECRET", "/tmp/x"),
+        {},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == {"omitted": True, "byte_count": 11}
+    assert args[1] == "/tmp/x"
+    assert kwargs == {}
