@@ -439,6 +439,59 @@ def bind_and_redact(
         else:
             sig_to_canonical[sig_name] = sig_name
 
+    # Also walk KEYWORD_ONLY params: TaskFlow / decorator wrappers shaped
+    # like ``def write_file(path, *, body)`` keep the protected body in a
+    # keyword-only slot. Without this, a kwarg call such as
+    # ``write_file('/tmp/x', body='PROD_SECRET')`` would never map ``body``
+    # to the canonical ``content`` slot and the raw secret would be
+    # forwarded under ``parameters['kwargs']['body']``. Match each
+    # keyword-only param against the protected fields for this tool: if
+    # the param's name is already canonical we leave it; otherwise we
+    # alias it to the first protected field that has not yet been claimed
+    # by a fixed positional or another keyword-only param.
+    protected_fields_for_alias: tuple[str, ...] = (
+        effective_policy.body_fields.get(tool_name) or ()
+    )
+    # The kwonly aliasing pass is intentionally narrow. A VAR_POSITIONAL
+    # parameter can itself be the body (e.g. ``def writer(*content, path)``
+    # for chio_file_write), so when the signature has a VAR_POSITIONAL we
+    # leave kwonly params alone - the wrapper's body is positional, not
+    # the kwonly slot. Only when the wrapper has no VAR_POSITIONAL do we
+    # try to alias an unclaimed kwonly to an unclaimed protected slot.
+    has_var_positional = any(
+        p.kind is inspect.Parameter.VAR_POSITIONAL
+        for p in sig.parameters.values()
+    )
+    if protected_fields_for_alias and not has_var_positional:
+        already_canonical_protected: set[str] = {
+            canonical
+            for canonical in sig_to_canonical.values()
+            if canonical in protected_fields_for_alias
+        }
+        for param in sig.parameters.values():
+            if param.kind is not inspect.Parameter.KEYWORD_ONLY:
+                continue
+            kw_name = param.name
+            if kw_name in table_slots_for_tool:
+                # Wrapper used a canonical slot name as the kwonly param;
+                # redact by name as-is (whether or not the slot is itself
+                # protected). Aliasing here would redirect a canonical
+                # non-protected slot like ``path`` onto a protected slot
+                # and silently redact a non-secret value.
+                sig_to_canonical[kw_name] = kw_name
+                if kw_name in protected_fields_for_alias:
+                    already_canonical_protected.add(kw_name)
+                continue
+            # Wrapper used a non-canonical kwonly alias for a protected
+            # field. Bind it to the first protected field that has not
+            # yet been claimed by a fixed positional.
+            for canonical in protected_fields_for_alias:
+                if canonical in already_canonical_protected:
+                    continue
+                sig_to_canonical[kw_name] = canonical
+                already_canonical_protected.add(canonical)
+                break
+
     # Redact named (fixed) params first. Build the dict using canonical
     # names so the policy lookup matches the wire-level contract even
     # when the wrapper renamed the param (closes PR #666 P1
@@ -647,24 +700,83 @@ def _table_fallback_redact(
         ]
     else:
         slot_sequence = list(positional_names)
+        filled_by_kwarg = set()
 
     named_from_positional: dict[str, Any] = {}
     positional_to_slot: list[str | None] = []
+    # When skip_kwarg_filled_slots is set, positional args that overflow
+    # the free-slot sequence may still belong to a protected canonical
+    # slot the kwarg already named. Pure-forwarder duplicate-slot calls
+    # such as ``proxy('/tmp/x', 'POS_SECRET', content='KW_SECRET')`` for
+    # ``chio_file_write`` need the second positional ``POS_SECRET``
+    # redacted under the canonical ``content`` slot, not forwarded raw.
+    # Mirror the fixed-signature merge-conflict semantics: redact both
+    # the positional value and the kwarg value independently. (Closes PR
+    # #666 P1 3229853019.)
+    overflow_pos_idx = 0
+    overflow_slots = (
+        [slot for slot in positional_names if slot in filled_by_kwarg]
+        if skip_kwarg_filled_slots
+        else []
+    )
     for idx, value in enumerate(args):
         if idx < len(slot_sequence):
             slot = slot_sequence[idx]
             named_from_positional[slot] = value
             positional_to_slot.append(slot)
+            continue
+        if overflow_pos_idx < len(overflow_slots):
+            slot = overflow_slots[overflow_pos_idx]
+            overflow_pos_idx += 1
+            # Redact this positional under the duplicate canonical slot
+            # name independently of the kwarg redaction below. We feed it
+            # through a private key so it does not collide with the
+            # kwarg's own value in ``named_from_positional``.
+            sentinel_key = f"__overflow_{idx}__{slot}"
+            named_from_positional[sentinel_key] = value
+            # The redaction policy is keyed by canonical name, not by
+            # this private sentinel, so do the redact under the real slot
+            # name and stash via the sentinel for the rebuild step.
+            positional_to_slot.append(sentinel_key)
+            continue
+        positional_to_slot.append(None)
+    # Build a name-keyed view for redaction. For the overflow sentinels
+    # we substitute the real slot name during the redact pass so the
+    # policy lookup matches; the rebuild step then uses the sentinel to
+    # locate the redacted value back in the dict.
+    redact_view: dict[str, Any] = {}
+    sentinel_to_slot: dict[str, str] = {}
+    for key, value in named_from_positional.items():
+        if key.startswith("__overflow_"):
+            slot = key.rsplit("__", 1)[-1]
+            sentinel_to_slot[key] = slot
+            # Redact each overflow value independently by giving it its
+            # own keyed entry under the canonical slot name; we run the
+            # redact pass per overflow so values do not overwrite each
+            # other in the dict view.
+            single_redacted = _redact_named(
+                {slot: value}, tool_name=tool_name, policy=policy
+            )
+            redact_view[key] = single_redacted[slot]
         else:
-            positional_to_slot.append(None)
+            redact_view[key] = value
+    # Redact the non-overflow named slots in one pass (preserves the
+    # existing semantics for the no-overflow case).
+    non_overflow_view = {
+        k: v for k, v in redact_view.items() if k not in sentinel_to_slot
+    }
     redacted_named = _redact_named(
-        named_from_positional, tool_name=tool_name, policy=policy
+        non_overflow_view, tool_name=tool_name, policy=policy
     )
+    # Re-inject the per-overflow redacted values; they were redacted
+    # individually above so the policy already applied.
+    for sentinel_key in sentinel_to_slot:
+        redacted_named[sentinel_key] = redact_view[sentinel_key]
     rebuilt_args: list[Any] = []
     for idx, value in enumerate(args):
-        slot = positional_to_slot[idx]
-        if slot is not None:
-            rebuilt_args.append(redacted_named[slot])
+        slot_or_sentinel: str | None = positional_to_slot[idx]
+        if slot_or_sentinel is not None:
+            rebuilt_args.append(redacted_named[slot_or_sentinel])
         else:
             # Extras beyond the table entry stay positional and raw.
             rebuilt_args.append(value)
