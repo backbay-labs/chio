@@ -7,13 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1]
 
-- chore: bump `chio-adapter-base` dependency to `>=0.1.1,<0.2` so the
-  centralised `bind_and_redact` helper and
-  `DEFAULT_TOOL_POSITIONAL_NAMES` registry (added in chio-adapter-base
-  0.1.1, PR #675) are available downstream. No source change is needed
-  here because LangGraph state is already a dict; `chio_node` and
-  `chio_approval_node` redact via `redact_args` directly without any
-  positional-binding helper to consolidate.
+- note: `chio-adapter-base` 0.1.1 ships `bind_and_redact` and the
+  `DEFAULT_TOOL_POSITIONAL_NAMES` registry, but `chio-langgraph` does
+  not use them today (LangGraph state is already a dict, so `chio_node`
+  and `chio_approval_node` redact via `redact_args` directly). The
+  dependency floor stays at `chio-adapter-base>=0.1.0` until a concrete
+  consumer needs the helper.
 - feat: redact node-dispatch parameters via
   `chio_adapter_base.redact.redact_args` before forwarding to the
   sidecar (and any HITL approval payload). Override via the new
