@@ -311,3 +311,157 @@ class TestFlowPolicyInheritance:
             "byte_count": len(b"SECRET"),
         }
         assert forwarded["kwargs"]["flowbody"] == "NOT-A-SECRET-HERE"
+
+
+class TestVarKeywordSignatureRedacts:
+    """Regression: bind_partial does NOT raise for `**kwargs` callables.
+
+    A pure-``**kwargs`` task bound with ``bind_partial(content="SECRET")``
+    returns ``{"kw": {"content": "SECRET"}}``. ``redact_args`` keys on
+    ``content`` and would miss the nested value. Detect VAR_KEYWORD
+    first and redact directly on the kwargs dict.
+    """
+
+    def test_var_keyword_only_task_redacts_content(self) -> None:
+        from typing import Any
+
+        chio = allow_all()
+
+        @chio_task(
+            scope=_scope_for_tools("chio_file_write"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+            tool_name="chio_file_write",
+        )
+        def write_file(**kwargs: Any) -> str:
+            return "ok"
+
+        @chio_flow(
+            scope=_scope_for_tools("chio_file_write"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+        )
+        def myflow() -> str:
+            return write_file(path="/tmp/x", content="PROD_SECRET=abc123")
+
+        assert myflow() == "ok"
+
+        import json
+
+        forwarded = [c for c in chio.calls if c.method == "evaluate_tool_call"][
+            0
+        ].parameters
+        assert "PROD_SECRET" not in json.dumps(forwarded)
+        assert forwarded["kwargs"]["content"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+
+    def test_named_plus_var_keyword_task_redacts_spillover(self) -> None:
+        from typing import Any
+
+        chio = allow_all()
+
+        @chio_task(
+            scope=_scope_for_tools("chio_file_write"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+            tool_name="chio_file_write",
+        )
+        def write_file(path: str, **extras: Any) -> str:
+            return "ok"
+
+        @chio_flow(
+            scope=_scope_for_tools("chio_file_write"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+        )
+        def myflow() -> str:
+            return write_file(path="/tmp/x", content="PROD_SECRET=abc123")
+
+        assert myflow() == "ok"
+
+        import json
+
+        forwarded = [c for c in chio.calls if c.method == "evaluate_tool_call"][
+            0
+        ].parameters
+        assert "PROD_SECRET" not in json.dumps(forwarded)
+        assert forwarded["kwargs"]["path"] == "/tmp/x"
+        assert forwarded["kwargs"]["content"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+
+    def test_existing_positional_path_still_redacts(self) -> None:
+        chio = allow_all()
+
+        @chio_task(
+            scope=_scope_for_tools("chio_file_write"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+            tool_name="chio_file_write",
+        )
+        def write_file(path: str, content: str) -> str:
+            return "ok"
+
+        @chio_flow(
+            scope=_scope_for_tools("chio_file_write"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+        )
+        def myflow() -> str:
+            return write_file("/tmp/x", "PROD_SECRET=abc123")
+
+        assert myflow() == "ok"
+
+        import json
+
+        forwarded = [c for c in chio.calls if c.method == "evaluate_tool_call"][
+            0
+        ].parameters
+        assert "PROD_SECRET" not in json.dumps(forwarded)
+
+    def test_bind_partial_failure_does_not_leak_positional_args(self) -> None:
+        # Duplicate keyword: bind_partial raises TypeError before fn() is
+        # called. The redactor must not forward the raw positional value
+        # into the receipt.
+        chio = allow_all()
+
+        @chio_task(
+            scope=_scope_for_tools("chio_file_write"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+            tool_name="chio_file_write",
+        )
+        def write_file(path: str, content: str) -> str:
+            return "ok"
+
+        @chio_flow(
+            scope=_scope_for_tools("chio_file_write"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+        )
+        def myflow() -> object:
+            try:
+                return write_file(
+                    "/tmp/x", "PROD_SECRET=abc123", path="/tmp/dup"
+                )
+            except TypeError as exc:
+                return exc
+
+        myflow()
+
+        import json
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        if evaluate_calls:
+            assert "PROD_SECRET" not in json.dumps(evaluate_calls[0].parameters)

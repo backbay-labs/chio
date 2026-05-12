@@ -440,32 +440,89 @@ def _task_parameters(
     the bound dict under ``kwargs`` so the sidecar and receipt both see
     the redacted form.
 
-    When ``fn`` is ``None`` or its signature uses ``*args`` /
-    ``**kwargs`` (no fixed names to bind against), fall back to the
-    prior shape: kwargs are scrubbed, positional args remain raw, and
-    we do not break working flows.
+    ``inspect.Signature.bind_partial`` does NOT raise for functions
+    that accept ``**kwargs`` or ``*args``; it absorbs extras into the
+    variadic parameter (e.g. ``def f(**kw)`` called with
+    ``content="SECRET"`` binds to ``{"kw": {"content": "SECRET"}}``).
+    That would leave the protected field nested one level deeper than
+    ``redact_args`` looks. We therefore inspect the signature for
+    VAR_KEYWORD / VAR_POSITIONAL parameters first and pick the shape
+    that keeps protected fields at the top level of the dict the
+    redactor inspects.
 
-    This supersedes the earlier "kwargs-only redaction" decision; that
-    path leaked positional bodies into receipts for the standard
-    ``chio_file_write(path, content)`` / ``chio_file_edit(path, patch)``
-    Prefect task signatures.
+    When ``fn`` is ``None`` or its signature cannot be introspected,
+    fall back to kwargs-only redaction. When ``bind_partial`` raises
+    (duplicate keyword, unexpected arg) we drop positional args so a
+    failing call cannot leak the very secret we are trying to scrub.
     """
     if fn is None:
         return {
             "args": list(args),
-            "kwargs": redact_args(tool_name, kwargs, policy=policy),
+            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
         }
     try:
         sig = inspect.signature(fn)
-        bound = sig.bind_partial(*args, **kwargs).arguments
-    except TypeError:
+    except (TypeError, ValueError):
         return {
             "args": list(args),
-            "kwargs": redact_args(tool_name, kwargs, policy=policy),
+            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
         }
+
+    params = sig.parameters
+    has_var_keyword = any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+    )
+    has_named_param = any(
+        p.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+        for p in params.values()
+    )
+
+    # Pure ``**kwargs`` (and optionally ``*args``): bind_partial would
+    # nest the user-supplied kwargs under the variadic parameter name,
+    # putting protected fields out of redact_args' reach. Scrub the
+    # kwargs dict directly. Positional bodies (if any) remain raw
+    # because no named parameter exists to bind them to.
+    if has_var_keyword and not has_named_param:
+        return {
+            "args": list(args),
+            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
+        }
+
+    try:
+        bound = sig.bind_partial(*args, **kwargs).arguments
+    except TypeError:
+        # Duplicate keyword, unexpected arg, etc. The downstream fn()
+        # call will raise; do NOT forward raw positional args because
+        # they may carry the secret we are trying to redact.
+        return {
+            "args": [],
+            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
+        }
+
+    var_keys = {
+        name
+        for name, p in params.items()
+        if p.kind
+        in (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
+    }
+    flat = {k: v for k, v in bound.items() if k not in var_keys}
+    redacted = redact_args(tool_name, flat, policy=policy)
+    # Re-redact any **kwargs spillover so protected fields passed by
+    # keyword to a function that also declares them positionally still
+    # get scrubbed.
+    for vk in var_keys:
+        v = bound.get(vk)
+        if isinstance(v, dict):
+            for kk, vv in redact_args(tool_name, dict(v), policy=policy).items():
+                redacted[kk] = vv
     return {
         "args": [],
-        "kwargs": redact_args(tool_name, dict(bound), policy=policy),
+        "kwargs": redacted,
     }
 
 
