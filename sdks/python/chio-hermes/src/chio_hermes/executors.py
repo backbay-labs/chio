@@ -10,89 +10,75 @@ from __future__ import annotations
 import asyncio
 import os
 import shlex
-import subprocess
+import warnings
 from pathlib import Path
 from typing import Any
 
-DEFAULT_SHELL_TIMEOUT = 60
-DEFAULT_SUBPROCESS_MAX_BYTES = 1 << 20  # 1 MiB
+from chio_adapter_base.security import (
+    _ENV_DENY_EXACT as _ADAPTER_BASE_ENV_DENY_EXACT,
+)
+from chio_adapter_base.security import (
+    _ENV_DENY_PREFIXES as _ADAPTER_BASE_ENV_DENY_PREFIXES,
+)
+from chio_adapter_base.security import (
+    _ENV_DENY_SUFFIXES as _ADAPTER_BASE_ENV_DENY_SUFFIXES,
+)
 
-# Credential-carrying env vars stripped from child processes. See
-# HERMES.md "Security model" for the contract.
-_ENV_DENY_PREFIXES: tuple[str, ...] = (
-    "CHIO_",
-    "HERMES_",
-    "AWS_",
-    "GOOGLE_",
-    "GCP_",
-    "AZURE_",
-    "OPENAI_",
-    "ANTHROPIC_",
-    "GEMINI_",
-    "GH_",
-    "GITHUB_",
-    "GIT_AUTH_",
-    # GIT_CONFIG_* (GIT_CONFIG_COUNT/KEY_n/VALUE_n,
-    # GIT_CONFIG_SYSTEM/GLOBAL/NOSYSTEM, GIT_CONFIG_PARAMETERS) lets a
-    # parent process inject `core.hooksPath`, `include.path`, etc. into
-    # every git invocation, defeating the `--no-verify` hardening.
-    "GIT_CONFIG_",
-    "VAULT_",
-    "DATABRICKS_",
-    "HF_",
-    "HUGGINGFACE_",
+# The seven security primitives below are now sourced from
+# :mod:`chio_adapter_base.security`. The chio-hermes module-level
+# names are kept as backwards-compat shims (deprecated; see PR #656)
+# so external consumers that imported
+# ``chio_hermes.executors._sanitised_env`` etc. keep working for one
+# release. Internal call sites here use the canonical imports.
+from chio_adapter_base.security import (
+    DEFAULT_SHELL_TIMEOUT as _ADAPTER_BASE_DEFAULT_SHELL_TIMEOUT,
 )
-_ENV_DENY_SUFFIXES: tuple[str, ...] = (
-    "_API_KEY",
-    "_TOKEN",
-    "_SECRET",
-    "_PASSWORD",
-    "_PASSWD",
-    "_PRIVATE_KEY",
-    "_CREDENTIALS",
-    "_CREDS",
+from chio_adapter_base.security import (
+    DEFAULT_SUBPROCESS_MAX_BYTES as _ADAPTER_BASE_DEFAULT_SUBPROCESS_MAX_BYTES,
 )
-_ENV_DENY_EXACT: frozenset[str] = frozenset(
-    {
-        "OPENAI_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "GH_TOKEN",
-        "GITHUB_TOKEN",
-        "NPM_TOKEN",
-        "PYPI_TOKEN",
-        "CARGO_REGISTRY_TOKEN",
-        "DOCKER_PASSWORD",
-        "SLACK_TOKEN",
-        "DATABASE_URL",
-        # Git environment overrides that defeat workspace anchoring or
-        # hook execution hardening (`--no-verify`). The CLI flags
-        # (`--git-dir`, `--work-tree`, `-C`) win over the env when both
-        # are present, but bare `_git()` calls in `git_run_executor`
-        # only pass user-supplied subcommands; unsanitised env vars
-        # apply to every git child.
-        "GIT_HOOKS_PATH",
-        "GIT_DIR",
-        "GIT_WORK_TREE",
-        "GIT_INDEX_FILE",
-        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-        "GIT_OBJECT_DIRECTORY",
-    }
+from chio_adapter_base.security import BoundedSubprocess as _BoundedSubprocess
+from chio_adapter_base.security import _is_denied_env as _adapter_base_is_denied_env
+from chio_adapter_base.security import (
+    harden_git_argv as _adapter_base_harden_git_argv,
 )
+from chio_adapter_base.security import resolve_within as _adapter_base_resolve_within
+from chio_adapter_base.security import sanitised_env as _adapter_base_sanitised_env
+
+# Re-exported aliases (no warnings; constants are routinely read by
+# external callers and cannot wrap as descriptors). The values stay
+# byte-identical with the chio-adapter-base canonicals.
+DEFAULT_SHELL_TIMEOUT = _ADAPTER_BASE_DEFAULT_SHELL_TIMEOUT
+DEFAULT_SUBPROCESS_MAX_BYTES = _ADAPTER_BASE_DEFAULT_SUBPROCESS_MAX_BYTES
+_ENV_DENY_PREFIXES: tuple[str, ...] = _ADAPTER_BASE_ENV_DENY_PREFIXES
+_ENV_DENY_SUFFIXES: tuple[str, ...] = _ADAPTER_BASE_ENV_DENY_SUFFIXES
+_ENV_DENY_EXACT: frozenset[str] = _ADAPTER_BASE_ENV_DENY_EXACT
+
+
+def _exec_deprecation_warn(symbol: str, replacement: str) -> None:
+    warnings.warn(
+        (
+            f"chio_hermes.executors.{symbol} is deprecated; "
+            f"use {replacement}. Will be removed in chio-hermes 0.2.0."
+        ),
+        DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 def _is_denied_env(name: str) -> bool:
-    if name in _ENV_DENY_EXACT:
-        return True
-    upper = name.upper()
-    if any(upper.startswith(prefix) for prefix in _ENV_DENY_PREFIXES):
-        return True
-    if any(upper.endswith(suffix) for suffix in _ENV_DENY_SUFFIXES):
-        return True
-    return False
+    """Deprecated. Use ``chio_adapter_base.security.sanitised_env`` instead."""
+    _exec_deprecation_warn(
+        "_is_denied_env", "chio_adapter_base.security.sanitised_env"
+    )
+    return _adapter_base_is_denied_env(name)
 
 
 def _sanitised_env() -> dict[str, str]:
-    return {k: v for k, v in os.environ.items() if not _is_denied_env(k)}
+    """Deprecated. Use ``chio_adapter_base.security.sanitised_env`` instead."""
+    _exec_deprecation_warn(
+        "_sanitised_env", "chio_adapter_base.security.sanitised_env"
+    )
+    return _adapter_base_sanitised_env()
 
 
 def subprocess_max_bytes() -> int:
@@ -126,49 +112,34 @@ def shell_timeout() -> int:
 
 
 def _resolve_within(path: str, root: Path) -> Path:
-    """Resolve `path` and confirm it lives inside `root`."""
-    candidate = Path(path)
-    if not candidate.is_absolute():
-        candidate = root / candidate
-    try:
-        resolved = candidate.resolve()
-    except OSError:
-        # Target may not exist yet (chio_file_write); lexical resolve
-        # still handles `..`.
-        resolved = Path(os.path.normpath(str(candidate)))
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
-        raise PermissionError(
-            f"path {path!r} resolves outside the workspace root"
-        ) from exc
-    return resolved
+    """Deprecated. Use ``chio_adapter_base.security.resolve_within`` instead."""
+    _exec_deprecation_warn(
+        "_resolve_within", "chio_adapter_base.security.resolve_within"
+    )
+    return _resolve_within_impl(path, root)
+
+
+def _resolve_within_impl(path: str, root: Path) -> Path:
+    """Internal: resolve ``path`` under ``root`` without the deprecation warning.
+
+    Internal call sites in this module use this helper so the migration
+    does not flood the receipt log with warnings on every shell/git
+    dispatch. The public ``_resolve_within`` warns and delegates here.
+    """
+    return _adapter_base_resolve_within(path, root)
 
 
 def _drain_stream_to_cap(
     stream: Any, cap: int
 ) -> tuple[bytearray, bool]:
-    # Continue draining past the cap so the producer does not block on
-    # a full pipe (which would cause the surrounding wait() to time out
-    # even when the cap was meant to be the bound).
-    buf = bytearray()
-    truncated = False
-    if stream is None:
-        return buf, False
-    while True:
-        chunk = stream.read(8192)
-        if not chunk:
-            break
-        if len(buf) >= cap:
-            truncated = True
-            continue
-        room = cap - len(buf)
-        if len(chunk) <= room:
-            buf.extend(chunk)
-        else:
-            buf.extend(chunk[:room])
-            truncated = True
-    return buf, truncated
+    """Deprecated. ``chio_adapter_base.security.BoundedSubprocess`` owns this loop."""
+    _exec_deprecation_warn(
+        "_drain_stream_to_cap",
+        "chio_adapter_base.security.BoundedSubprocess",
+    )
+    from chio_adapter_base.security import _drain_stream_to_cap as _impl
+
+    return _impl(stream, cap)
 
 
 def _run_subprocess(
@@ -178,76 +149,45 @@ def _run_subprocess(
     timeout: int,
     stdin: str | None = None,
 ) -> dict[str, Any]:
-    # `subprocess.run(..., capture_output=True)` buffers all output in
-    # memory until exit; a tool that streams large output (yes, big
-    # `git diff`) can OOM Hermes before the timeout fires. Spawn via
-    # Popen and drain each pipe in a thread with a per-stream cap.
-    import threading
+    """Deprecated. Use ``chio_adapter_base.security.BoundedSubprocess.run`` instead.
 
-    env = _sanitised_env()
-    cap = subprocess_max_bytes()
-    proc = subprocess.Popen(  # noqa: S603 - argv is a list, never shell=True
-        argv,
-        cwd=str(cwd),
-        stdin=subprocess.PIPE if stdin is not None else None,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
+    Returns the legacy chio-hermes dict shape (``{"argv", "returncode",
+    "stdout", "stderr", "output_truncated"?}``); the new
+    :class:`BoundedSubprocessResult` dataclass exposes the same fields,
+    but external callers that pattern-match on the dict keep working.
+    """
+    _exec_deprecation_warn(
+        "_run_subprocess", "chio_adapter_base.security.BoundedSubprocess"
     )
-    drained: dict[str, tuple[bytearray, bool]] = {
-        "stdout": (bytearray(), False),
-        "stderr": (bytearray(), False),
-    }
+    return _run_subprocess_impl(argv, cwd=cwd, timeout=timeout, stdin=stdin)
 
-    def _reader(name: str, stream: Any) -> None:
-        drained[name] = _drain_stream_to_cap(stream, cap)
 
-    stdout_thread = threading.Thread(
-        target=_reader, args=("stdout", proc.stdout), daemon=True
+def _run_subprocess_impl(
+    argv: list[str],
+    *,
+    cwd: Path,
+    timeout: int,
+    stdin: str | None = None,
+) -> dict[str, Any]:
+    """Internal: bounded subprocess run returning the legacy dict shape.
+
+    Wraps :class:`BoundedSubprocess` and adapts the
+    :class:`BoundedSubprocessResult` dataclass back to the historical
+    chio-hermes dict so the executor / handler code that calls into
+    this module sees the same shape as before the migration.
+    """
+    runner = _BoundedSubprocess(
+        max_bytes=subprocess_max_bytes(),
+        timeout_seconds=timeout,
     )
-    stderr_thread = threading.Thread(
-        target=_reader, args=("stderr", proc.stderr), daemon=True
-    )
-    stdout_thread.start()
-    stderr_thread.start()
-
-    timed_out = False
-    try:
-        if stdin is not None and proc.stdin is not None:
-            try:
-                proc.stdin.write(stdin.encode("utf-8"))
-            finally:
-                proc.stdin.close()
-        try:
-            proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            proc.kill()
-            proc.wait()
-    finally:
-        stdout_thread.join(timeout=5)
-        stderr_thread.join(timeout=5)
-        for stream in (proc.stdout, proc.stderr, proc.stdin):
-            if stream is not None:
-                try:
-                    stream.close()
-                except Exception:  # noqa: BLE001 - best-effort cleanup
-                    pass
-
-    if timed_out:
-        # Mirror subprocess.run so the caller sees TimeoutExpired rather
-        # than a silent returncode=-9.
-        raise subprocess.TimeoutExpired(cmd=argv, timeout=timeout)
-
-    stdout_buf, stdout_truncated = drained["stdout"]
-    stderr_buf, stderr_truncated = drained["stderr"]
+    result = runner.run(argv, cwd=cwd, stdin=stdin)
     out: dict[str, Any] = {
-        "argv": list(argv),
-        "returncode": proc.returncode,
-        "stdout": stdout_buf.decode("utf-8", errors="replace"),
-        "stderr": stderr_buf.decode("utf-8", errors="replace"),
+        "argv": result.argv,
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
     }
-    if stdout_truncated or stderr_truncated:
+    if result.output_truncated:
         out["output_truncated"] = True
     return out
 
@@ -263,9 +203,9 @@ async def edit_file_executor(
 ) -> dict[str, Any]:
     # Use `patch(1)` to avoid an extra `unidiff` dependency.
     root = _resolve_cwd(cwd)
-    target = _resolve_within(path, root)
+    target = _resolve_within_impl(path, root)
     result = await asyncio.to_thread(
-        _run_subprocess,
+        _run_subprocess_impl,
         ["patch", "-p0", str(target)],
         cwd=root,
         timeout=shell_timeout(),
@@ -282,7 +222,7 @@ async def list_directory_executor(
     *, path: str, cwd: Path | None = None
 ) -> dict[str, Any]:
     root = _resolve_cwd(cwd)
-    target = _resolve_within(path, root)
+    target = _resolve_within_impl(path, root)
     if not target.exists():
         raise FileNotFoundError(f"directory {path!r} does not exist")
     if not target.is_dir():
@@ -295,7 +235,7 @@ async def search_files_executor(
     *, query: str, path: str = ".", cwd: Path | None = None
 ) -> dict[str, Any]:
     root = _resolve_cwd(cwd)
-    target = _resolve_within(path, root)
+    target = _resolve_within_impl(path, root)
     if not target.exists() or not target.is_dir():
         raise FileNotFoundError(f"search root {path!r} is not a directory")
     matches: list[str] = []
@@ -318,7 +258,7 @@ async def shell_run_executor(
     if not argv:
         raise ValueError("command must contain at least one token")
     return await asyncio.to_thread(
-        _run_subprocess, argv, cwd=root, timeout=shell_timeout()
+        _run_subprocess_impl, argv, cwd=root, timeout=shell_timeout()
     )
 
 
@@ -335,7 +275,7 @@ async def _git(
         git_argv.extend(["--git-dir", str(git_dir), "--work-tree", str(root)])
     git_argv.extend(args)
     return await asyncio.to_thread(
-        _run_subprocess,
+        _run_subprocess_impl,
         git_argv,
         cwd=root,
         timeout=shell_timeout(),
@@ -394,34 +334,21 @@ async def git_run_executor(
         argv = argv[1:]
     if not argv:
         raise ValueError("git_run command must include a git subcommand")
-    argv = _harden_git_run_argv(argv)
+    argv = _adapter_base_harden_git_argv(argv)
     return await _git(*argv, cwd=cwd)
 
 
 def _harden_git_run_argv(argv: list[str]) -> list[str]:
-    """Defense-in-depth: mirror `git_commit_executor`'s `--no-verify`.
+    """Deprecated. Use ``chio_adapter_base.security.harden_git_argv`` instead.
 
-    `git_commit_executor` injects `--no-verify` to block hook RCE. If a
-    custom policy enables `git/run`, a model can call
-    `chio_git_run command="commit -m foo"` and bypass the hardening.
-    Locate the `commit` subcommand (which may follow leading global
-    options like `-c name=value`) and inject `--no-verify` right after
-    it. Reject explicit `--verify` (the model trying to override). Skip
-    if `--no-verify` is already there (no double-inject).
+    The canonical implementation returns a NEW list (never mutates the
+    input). The chio-hermes shim preserved the same contract; callers
+    that captured the result keep working unchanged.
     """
-    try:
-        subcommand_idx = argv.index("commit")
-    except ValueError:
-        return argv
-    tail = argv[subcommand_idx + 1 :]
-    if "--verify" in tail:
-        raise PermissionError(
-            "git_run: explicit --verify is forbidden; "
-            "commit hooks must stay disabled (use chio_shell_run for hooks)"
-        )
-    if "--no-verify" in tail:
-        return argv
-    return [*argv[: subcommand_idx + 1], "--no-verify", *tail]
+    _exec_deprecation_warn(
+        "_harden_git_run_argv", "chio_adapter_base.security.harden_git_argv"
+    )
+    return _adapter_base_harden_git_argv(argv)
 
 
 __all__ = [

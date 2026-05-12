@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1]
+
+### Changed
+
+- chore: migrate seven security primitives (`redact_args`,
+  `sanitised_env`, `harden_git_argv`, `BoundedSubprocess`,
+  `ReceiptBuffer`, `forbidden_path` filters,
+  `reject_shell_argv_escape`) to `chio-adapter-base`. The chio-hermes
+  inline copies are now thin deprecation re-exports; consumers should
+  import from `chio_adapter_base` directly. The inline copies will be
+  removed in 0.2.0.
+- (no behavior change; all 165 existing tests continue to pass)
+
 ### Security
 
 - `chio_shell_run` no longer exposes a model-supplied `approved`

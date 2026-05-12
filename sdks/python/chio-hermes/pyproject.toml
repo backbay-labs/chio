@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chio-hermes"
-version = "0.1.0"
+version = "0.1.1"
 description = "Hermes Agent plugin for the Chio protocol - capability-scoped file/shell/git tools, signed receipts, policy enforcement via pre_tool_call hook"
 license = "MIT"
 requires-python = ">=3.11"
@@ -28,6 +28,7 @@ classifiers = [
 # The plugin only uses the `ctx` object passed into `register(ctx)` and
 # never imports `hermes_agent` at module load.
 dependencies = [
+    "chio-adapter-base>=0.1.0,<0.2",
     "chio-sdk-python>=0.1.0",
     "chio-code-agent>=0.1.0",
     "pyyaml>=6,<7",
@@ -53,6 +54,7 @@ dev = [
 chio = "chio_hermes"
 
 [tool.uv.sources]
+chio-adapter-base = { path = "../chio-adapter-base" }
 chio-sdk-python = { path = "../chio-sdk-python" }
 chio-code-agent = { path = "../chio-code-agent" }
 
