@@ -130,10 +130,11 @@ class TestDefaultPolicyRedacts:
         """Positional invocations must NOT bypass the redactor.
 
         Regression for the previous "positional args bypass redaction"
-        leak. Positional args are now bound to declared parameter names
-        via ``inspect.signature.bind_partial`` before redaction so the
-        same body fields are scrubbed regardless of how the caller
-        passes them.
+        leak. Positional args are bound to declared parameter names via
+        ``inspect.signature.bind_partial`` so the same body fields are
+        scrubbed regardless of how the caller passes them. The wire
+        shape is preserved: positional values stay in
+        ``parameters["args"]`` after redaction.
         """
         chio = allow_all()
 
@@ -160,18 +161,17 @@ class TestDefaultPolicyRedacts:
 
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         forwarded = evaluate_calls[0].parameters
-        # Bound shape: positional args lifted to kwargs under their
-        # declared parameter names, content scrubbed by the default
-        # chio_file_write policy.
         import json
 
         assert "RAW_SECRET" not in json.dumps(forwarded)
-        assert forwarded["args"] == []
-        assert forwarded["kwargs"]["path"] == "/tmp/x"
-        assert forwarded["kwargs"]["content"] == {
+        # Wire shape preserved: positional values stay positional after
+        # redaction.
+        assert forwarded["args"][0] == "/tmp/x"
+        assert forwarded["args"][1] == {
             "omitted": True,
             "byte_count": len(b"RAW_SECRET=xyz"),
         }
+        assert forwarded["kwargs"] == {}
 
 
 class TestCustomPolicy:
@@ -391,7 +391,15 @@ class TestVarKeywordSignatureRedacts:
             0
         ].parameters
         assert "PROD_SECRET" not in json.dumps(forwarded)
-        assert forwarded["kwargs"]["path"] == "/tmp/x"
+        # Wire shape preserved: prefect normalises ``path=`` into the
+        # positional bucket because it matches a declared positional
+        # parameter; the VAR_KEYWORD spillover (``content``) stays in
+        # kwargs and gets scrubbed by the redactor.
+        path_in_args = (
+            forwarded["args"] and forwarded["args"][0] == "/tmp/x"
+        )
+        path_in_kwargs = forwarded.get("kwargs", {}).get("path") == "/tmp/x"
+        assert path_in_args or path_in_kwargs
         assert forwarded["kwargs"]["content"] == {
             "omitted": True,
             "byte_count": len(b"PROD_SECRET=abc123"),
@@ -427,6 +435,101 @@ class TestVarKeywordSignatureRedacts:
             0
         ].parameters
         assert "PROD_SECRET" not in json.dumps(forwarded)
+
+    def test_pure_forwarding_wrapper_redacts_positional_via_tool_table(
+        self,
+    ) -> None:
+        # Forwarding wrappers ``def fn(*args, **kwargs)`` have no fixed
+        # parameter names to bind positional values against. The
+        # tool-arity table covers chio-default tools so their bodies
+        # still get scrubbed when supplied positionally, while the wire
+        # shape (positional values in args) is preserved.
+        from typing import Any
+
+        chio = allow_all()
+
+        @chio_task(
+            scope=_scope_for_tools("chio_file_write"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+            tool_name="chio_file_write",
+        )
+        def write_file(*args: Any, **kwargs: Any) -> str:
+            return "ok"
+
+        @chio_flow(
+            scope=_scope_for_tools("chio_file_write"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+        )
+        def myflow() -> str:
+            return write_file("/tmp/x", "PROD_SECRET=abc123")
+
+        assert myflow() == "ok"
+
+        import json
+
+        forwarded = [
+            c for c in chio.calls if c.method == "evaluate_tool_call"
+        ][0].parameters
+        assert "PROD_SECRET" not in json.dumps(forwarded)
+        assert forwarded["args"][0] == "/tmp/x"
+        assert forwarded["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert forwarded["kwargs"] == {}
+
+    def test_var_positional_extras_remain_in_args(self) -> None:
+        # ``*extras`` past the fixed positional slots have no parameter
+        # name to bind to, so they remain in args (not migrated to
+        # kwargs and not dropped).
+        from typing import Any
+
+        chio = allow_all()
+
+        @chio_task(
+            scope=_scope_for_tools("chio_file_write"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+            tool_name="chio_file_write",
+        )
+        def write_file(path: str, content: str, *extras: Any) -> str:
+            return "ok"
+
+        @chio_flow(
+            scope=_scope_for_tools("chio_file_write"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+        )
+        def myflow() -> str:
+            return write_file(
+                "/tmp/x",
+                "PROD_SECRET=abc123",
+                "trailing-1",
+                "trailing-2",
+            )
+
+        assert myflow() == "ok"
+
+        import json
+
+        forwarded = [
+            c for c in chio.calls if c.method == "evaluate_tool_call"
+        ][0].parameters
+        assert "PROD_SECRET" not in json.dumps(forwarded)
+        assert forwarded["args"][0] == "/tmp/x"
+        assert forwarded["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert forwarded["args"][2] == "trailing-1"
+        assert forwarded["args"][3] == "trailing-2"
+        assert forwarded["kwargs"] == {}
 
     def test_bind_partial_failure_does_not_leak_positional_args(self) -> None:
         # Duplicate keyword: bind_partial raises TypeError before fn() is

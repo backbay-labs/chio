@@ -173,11 +173,13 @@ class TestAllowPath:
         assert result == "fetched:/tmp/data"
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
-        # Positional args are now bound to parameter names before
-        # forwarding so the redactor can inspect them as named fields.
+        # Wire shape preserved: positional values stay positional. The
+        # redactor still binds them to declared names internally so
+        # protected bodies get scrubbed, but the call bucket on the
+        # wire matches what the caller passed.
         assert evaluate_calls[0].parameters == {
-            "args": [],
-            "kwargs": {"path": "/tmp/data"},
+            "args": ["/tmp/data"],
+            "kwargs": {},
         }
         assert capture.of(EVENT_ALLOW)
 
@@ -419,9 +421,11 @@ def test_task_parameters_include_kwargs_and_args() -> None:
     assert result == "hi ada!"
     evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
     assert len(evaluate_calls) == 1
-    # All call args (positional + keyword) are bound to parameter names
-    # before forwarding so the redactor can apply uniformly.
+    # Wire shape preserved: positional ``"ada"`` stays in args while
+    # keyword ``excited=True`` stays in kwargs. The redactor still
+    # binds positional values to declared names internally for body
+    # field lookup, but does not migrate values between buckets.
     assert evaluate_calls[0].parameters == {
-        "args": [],
-        "kwargs": {"name": "ada", "excited": True},
+        "args": ["ada"],
+        "kwargs": {"excited": True},
     }
