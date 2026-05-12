@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   across calls and cannot distinguish content. For per-call forensics,
   combine `byte_count` with the path and the receipt id; the underlying
   tool execution still receives the original args.
+- design note: redaction is wired only on the TaskFlow `@chio_task`
+  path. `ChioOperator` records DAG / task / capability context fields
+  in the sidecar payload rather than per-tool argument bodies because
+  the wrapper does not introspect the inner operator's parameters; the
+  inner operator's templated fields and `op_kwargs` are owned by the
+  caller and remain outside the per-call redaction surface here.
+- v0.2 follow-up (deferred primitives): `chio-adapter-base` is also
+  missing `sanitised_env`, `bounded_subprocess`, `harden_git_argv`, and
+  `shell_argv_escape_check` per the cross-adapter audit. Once those
+  land, downstream Airflow operators that shell out should adopt them.
 
 ## [0.1.0]
 
