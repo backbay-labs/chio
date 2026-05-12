@@ -350,6 +350,76 @@ export interface RelayTrendReport {
   points: RelayTrendPoint[]
 }
 
+export interface RelayAlertHandoffRouteReadiness {
+  receiverId: string
+  kind: 'alertmanager' | 'pagerduty' | 'opsgenie' | 'slack' | 'email' | 'webhook'
+  targetRef: string
+  notificationRoute: string
+  opsgenie: string
+  highestSeverity: 'info' | 'warning' | 'critical'
+  alertCodes: string[]
+  escalationRef: string
+  ready: boolean
+}
+
+export interface RelayAlertHandoffReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  sourceAlertReportSha256: string
+  sourceTrendReportSha256: string
+  firingAlertCount: number
+  suppressedAlertCount: number
+  criticalFiringCount: number
+  routes: RelayAlertHandoffRouteReadiness[]
+  checks: RelayAlertCheck[]
+}
+
+export type RelayAlertDeliveryStatus =
+  | 'delivered'
+  | 'accepted'
+  | 'failed'
+  | 'delayed'
+  | 'duplicate'
+  | 'unknown'
+  | 'operator_acknowledged'
+
+export interface RelayAlertDeliveryResult {
+  resultId: string
+  receiverId: string
+  kind: 'alertmanager' | 'pagerduty' | 'opsgenie' | 'slack' | 'email' | 'webhook'
+  targetRef: string
+  notificationRoute: string
+  opsgenie: string
+  alertCode: string
+  dedupeKey: string
+  severity: 'info' | 'warning' | 'critical'
+  runbook: string
+  status: RelayAlertDeliveryStatus
+  observedAtUnixMs: number
+  downstreamEvidenceSha256: string
+}
+
+export interface RelayAlertDeliveryReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  sourceHandoffReportSha256: string
+  sourceAlertReportSha256: string
+  sourceTrendReportSha256: string
+  criticalFiringCount: number
+  deliveredCount: number
+  delayedCount: number
+  failedCount: number
+  unknownCount: number
+  results: RelayAlertDeliveryResult[]
+  checks: RelayAlertCheck[]
+}
+
 export interface PassportVerification {
   subject: string
   issuer?: string | null

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-handoff-drift-report.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Handoff Drift Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "sinceUnixMs",
+    "untilUnixMs",
+    "handoffReportCount",
+    "deliveryReportCount",
+    "driftCount",
+    "drifts",
+    "checks"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-handoff-drift-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "sinceUnixMs": { "type": "integer", "minimum": 0 },
+    "untilUnixMs": { "type": "integer", "minimum": 0 },
+    "handoffReportCount": { "type": "integer", "minimum": 0 },
+    "deliveryReportCount": { "type": "integer", "minimum": 0 },
+    "driftCount": { "type": "integer", "minimum": 0 },
+    "drifts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "receiverId", "alertCode", "detail"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+          "receiverId": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "alertCode": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "accepted", "detail"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "accepted": { "type": "boolean" },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

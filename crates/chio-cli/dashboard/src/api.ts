@@ -12,6 +12,8 @@ import type {
   ReceiptAnalyticsResponse,
   ReceiptQueryResponse,
   RelayAlertReport,
+  RelayAlertDeliveryReport,
+  RelayAlertHandoffReport,
   RelayObservabilityReport,
   RelayTrendReport,
 } from './types'
@@ -202,6 +204,36 @@ export async function fetchRelayTrendReport(): Promise<RelayTrendReport> {
     throw new Error(`Relay trend request failed: ${res.status} ${res.statusText}`)
   }
   return res.json() as Promise<RelayTrendReport>
+}
+
+export async function fetchRelayAlertHandoffReport(): Promise<RelayAlertHandoffReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/alert-handoff', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert handoff request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertHandoffReport>
+}
+
+export async function fetchRelayAlertDeliveryReport(): Promise<RelayAlertDeliveryReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/alert-delivery', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert delivery request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertDeliveryReport>
 }
 
 /**

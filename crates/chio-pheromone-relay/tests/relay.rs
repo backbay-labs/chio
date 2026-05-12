@@ -1,8 +1,10 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::sync::Arc;
+use std::{fs, sync::Arc};
 
 use async_trait::async_trait;
+use chio_core_types::canonical::canonical_json_bytes;
+use chio_core_types::crypto::sha256_hex;
 use chio_core_types::Keypair;
 use chio_federation::{
     PheromoneDepositGossip, PheromoneGossipBatch, PHEROMONE_GOSSIP_BATCH_SCHEMA,
@@ -13,16 +15,20 @@ use chio_pheromone::{
     Severity, PHEROMONE_DEPOSIT_SCHEMA,
 };
 use chio_pheromone_relay::{
-    deliver_due_batches, evaluate_relay_alert_handoff, evaluate_relay_alerts,
+    deliver_due_batches, evaluate_relay_alert_acknowledgement, evaluate_relay_alert_delivery,
+    evaluate_relay_alert_handoff, evaluate_relay_alerts, generate_relay_alert_handoff_drift_report,
     generate_relay_trend_report, promote_peer_directory_candidate,
+    relay_alert_delivery_evidence_from_json, relay_alert_delivery_profile_from_json,
     relay_alert_handoff_profile_from_json, relay_alert_routing_profile_from_json,
     relay_alert_suppression_state_from_json, sign_peer_directory_bundle, sign_relay_http_request,
     CatchupRequest, CatchupResponse, PeerDirectory, PeerDirectoryBundleSigningInput,
     PeerDirectoryBundleTrust, PeerDirectoryDocument, PeerDirectoryEntry,
     PeerDirectoryStateDocument, PheromoneRelayClient, PheromoneRelayConfig, PheromoneRelayError,
-    PheromoneRelayService, RelayAlertEvaluationInput, RelayAlertHandoffEscalation,
-    RelayAlertHandoffInput, RelayAlertHandoffProfileDocument, RelayAlertHandoffReceiver,
-    RelayAlertHandoffSinkKind, RelayAlertRoute, RelayAlertRouteKind,
+    PheromoneRelayService, RelayAlertAcknowledgementInput, RelayAlertDeliveryEvidence,
+    RelayAlertDeliveryInput, RelayAlertDeliveryProfileDocument, RelayAlertDeliveryReceiver,
+    RelayAlertDeliveryStatus, RelayAlertEvaluationInput, RelayAlertHandoffDriftInput,
+    RelayAlertHandoffEscalation, RelayAlertHandoffInput, RelayAlertHandoffProfileDocument,
+    RelayAlertHandoffReceiver, RelayAlertHandoffSinkKind, RelayAlertRoute, RelayAlertRouteKind,
     RelayAlertRoutingProfileDocument, RelayAlertRule, RelayAlertSeverity,
     RelayAlertSuppressionEntry, RelayAlertSuppressionStateDocument, RelayBatchReceiver,
     RelayEventReport, RelayHttpSigningInput, RelayHttpVerificationContext, RelayLadderRef,
@@ -30,15 +36,20 @@ use chio_pheromone_relay::{
     RelayObservabilityReport, RelayProfile, RelayProfileLimits, RelayRole, RelayTrendInput,
     SqlitePheromoneRelayStore, TrustedPeerDirectoryIssuer, PHEROMONE_BATCH_RELAY_PATH,
     PHEROMONE_CATCHUP_RELAY_PATH, PHEROMONE_CATCHUP_REQUEST_SCHEMA,
-    PHEROMONE_PEER_DIRECTORY_SCHEMA, PHEROMONE_RELAY_ALERT_HANDOFF_PROFILE_SCHEMA,
-    PHEROMONE_RELAY_ALERT_HANDOFF_REPORT_SCHEMA, PHEROMONE_RELAY_ALERT_REPORT_SCHEMA,
-    PHEROMONE_RELAY_ALERT_ROUTING_PROFILE_SCHEMA, PHEROMONE_RELAY_METRICS_SNAPSHOT_SCHEMA,
-    PHEROMONE_RELAY_OBSERVABILITY_PATH, PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA,
-    PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA, PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
+    PHEROMONE_PEER_DIRECTORY_SCHEMA, PHEROMONE_RELAY_ALERT_ACKNOWLEDGEMENT_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_DELIVERY_EVIDENCE_SCHEMA, PHEROMONE_RELAY_ALERT_DELIVERY_PROFILE_SCHEMA,
+    PHEROMONE_RELAY_ALERT_DELIVERY_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_HANDOFF_DRIFT_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_HANDOFF_PROFILE_SCHEMA, PHEROMONE_RELAY_ALERT_HANDOFF_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_REPORT_SCHEMA, PHEROMONE_RELAY_ALERT_ROUTING_PROFILE_SCHEMA,
+    PHEROMONE_RELAY_METRICS_SNAPSHOT_SCHEMA, PHEROMONE_RELAY_OBSERVABILITY_PATH,
+    PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA, PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA,
+    PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
 };
 use chio_pheromone_runtime::{
     PheromoneFrameReport, PheromoneReceiveReport, PHEROMONE_RECEIVE_REPORT_SCHEMA,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 const NOW: u64 = 1_766_000_000_500;
@@ -800,6 +811,10 @@ fn alert_event(code: &str) -> RelayEventReport {
     }
 }
 
+fn canonical_hash<T: Serialize>(value: &T) -> String {
+    sha256_hex(&canonical_json_bytes(value).unwrap())
+}
+
 fn handoff_profile() -> RelayAlertHandoffProfileDocument {
     RelayAlertHandoffProfileDocument {
         schema: PHEROMONE_RELAY_ALERT_HANDOFF_PROFILE_SCHEMA.to_string(),
@@ -846,6 +861,295 @@ fn handoff_profile() -> RelayAlertHandoffProfileDocument {
             },
         ],
     }
+}
+
+fn delivery_profile() -> RelayAlertDeliveryProfileDocument {
+    RelayAlertDeliveryProfileDocument {
+        schema: PHEROMONE_RELAY_ALERT_DELIVERY_PROFILE_SCHEMA.to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 600_000,
+        max_handoff_report_age_ms: 300_000,
+        max_evidence_age_ms: 300_000,
+        max_acknowledgement_age_ms: 300_000,
+        receivers: vec![
+            RelayAlertDeliveryReceiver {
+                receiver_id: "alertmanager-pagerduty-primary".to_string(),
+                kind: RelayAlertHandoffSinkKind::Alertmanager,
+                target_ref: "alertmanager:pagerduty-primary".to_string(),
+                notification_route: "pagerduty-primary".to_string(),
+                opsgenie: "relay-oncall".to_string(),
+                severity_floor: RelayAlertSeverity::Critical,
+                max_delay_ms: 300_000,
+                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
+                    .to_string(),
+            },
+            RelayAlertDeliveryReceiver {
+                receiver_id: "alertmanager-slack-digest".to_string(),
+                kind: RelayAlertHandoffSinkKind::Alertmanager,
+                target_ref: "alertmanager:slack-ops-digest".to_string(),
+                notification_route: "slack-ops-digest".to_string(),
+                opsgenie: "relay-oncall".to_string(),
+                severity_floor: RelayAlertSeverity::Info,
+                max_delay_ms: 3_600_000,
+                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox".to_string(),
+            },
+        ],
+    }
+}
+
+fn generated_handoff_report() -> chio_pheromone_relay::RelayAlertHandoffReport {
+    let profile = relay_alert_routing_profile_from_json(
+        &serde_json::to_string(&alert_profile()).unwrap(),
+        NOW,
+    )
+    .unwrap();
+    let events = vec![alert_event("dead_letters_present")];
+    let alert_report = evaluate_relay_alerts(RelayAlertEvaluationInput {
+        observability: &degraded_observability_report(),
+        routing_profile: &profile,
+        suppression_state: None,
+        event_reports: &events,
+        now_unix_ms: NOW + 60_000,
+        expected_source_report_sha256: None,
+    })
+    .unwrap();
+    let trend_report = generate_relay_trend_report(RelayTrendInput {
+        local_kernel_id: "did:chio:buyer-kernel",
+        observability_reports: &[degraded_observability_report()],
+        event_reports: &events,
+        routing_profile: &profile,
+        since_unix_ms: NOW - 60_000,
+        until_unix_ms: NOW + 60_000,
+    })
+    .unwrap();
+    let handoff = relay_alert_handoff_profile_from_json(
+        &serde_json::to_string(&handoff_profile()).unwrap(),
+        NOW,
+    )
+    .unwrap();
+    evaluate_relay_alert_handoff(RelayAlertHandoffInput {
+        alert_report: &alert_report,
+        trend_report: &trend_report,
+        routing_profile: &profile,
+        handoff_profile: &handoff,
+        now_unix_ms: NOW + 60_000,
+    })
+    .unwrap()
+}
+
+fn delivery_evidence(
+    handoff_hash: &str,
+    receiver: &RelayAlertDeliveryReceiver,
+    alert_code: &str,
+    severity: RelayAlertSeverity,
+    status: RelayAlertDeliveryStatus,
+) -> RelayAlertDeliveryEvidence {
+    let mut labels = std::collections::BTreeMap::new();
+    labels.insert(
+        "notification_route".to_string(),
+        receiver.notification_route.clone(),
+    );
+    labels.insert("opsgenie".to_string(), receiver.opsgenie.clone());
+    labels.insert("service".to_string(), "chiodos-pheromone-relay".to_string());
+    labels.insert("severity".to_string(), severity.as_str().to_string());
+    labels.insert("status".to_string(), status.as_str().to_string());
+    labels.insert("receiver".to_string(), receiver.receiver_id.clone());
+    RelayAlertDeliveryEvidence {
+        schema: PHEROMONE_RELAY_ALERT_DELIVERY_EVIDENCE_SCHEMA.to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        observed_at_unix_ms: NOW + 61_000,
+        result_id: format!("delivery:{alert_code}"),
+        receiver_id: receiver.receiver_id.clone(),
+        kind: receiver.kind,
+        target_ref: receiver.target_ref.clone(),
+        notification_route: receiver.notification_route.clone(),
+        opsgenie: receiver.opsgenie.clone(),
+        alert_code: alert_code.to_string(),
+        dedupe_key: format!("chiodos-relay:did:chio:buyer-kernel:{alert_code}:delivery"),
+        severity,
+        runbook: receiver.runbook.clone(),
+        status,
+        source_handoff_report_sha256: handoff_hash.to_string(),
+        downstream_evidence_sha256: "d".repeat(64),
+        labels,
+    }
+}
+
+fn delivery_evidence_set(
+    handoff_hash: &str,
+    profile: &RelayAlertDeliveryProfileDocument,
+) -> Vec<RelayAlertDeliveryEvidence> {
+    vec![
+        delivery_evidence(
+            handoff_hash,
+            &profile.receivers[0],
+            "dead_letters_present",
+            RelayAlertSeverity::Critical,
+            RelayAlertDeliveryStatus::Delivered,
+        ),
+        delivery_evidence(
+            handoff_hash,
+            &profile.receivers[0],
+            "endpoint_denied",
+            RelayAlertSeverity::Critical,
+            RelayAlertDeliveryStatus::Accepted,
+        ),
+        delivery_evidence(
+            handoff_hash,
+            &profile.receivers[1],
+            "retries_pending",
+            RelayAlertSeverity::Info,
+            RelayAlertDeliveryStatus::Delivered,
+        ),
+    ]
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NegativeCorpus {
+    cases: Vec<NegativeCase>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NegativeCase {
+    id: String,
+    expected_code: String,
+}
+
+fn delivery_negative_code(case_id: &str) -> String {
+    let mut handoff_report = generated_handoff_report();
+    let handoff_hash = canonical_hash(&handoff_report);
+    let mut profile = relay_alert_delivery_profile_from_json(
+        &serde_json::to_string(&delivery_profile()).unwrap(),
+        NOW + 60_000,
+    )
+    .unwrap();
+    let mut evidence = delivery_evidence_set(&handoff_hash, &profile);
+
+    let err = match case_id {
+        "live-url" => {
+            profile.receivers[0].target_ref = "https://alerts.example.test/relay".to_string();
+            relay_alert_delivery_profile_from_json(&serde_json::to_string(&profile).unwrap(), NOW)
+                .unwrap_err()
+        }
+        "inline-token" => {
+            profile.receivers[0].target_ref = "alertmanager:secret-token".to_string();
+            relay_alert_delivery_profile_from_json(&serde_json::to_string(&profile).unwrap(), NOW)
+                .unwrap_err()
+        }
+        "unbounded-label" => {
+            evidence[0]
+                .labels
+                .insert("peer_id".to_string(), "did:chio:vendor-a".to_string());
+            relay_alert_delivery_evidence_from_json(&serde_json::to_string(&evidence[0]).unwrap())
+                .unwrap_err()
+        }
+        "unknown-receiver" => {
+            evidence[0].receiver_id = "alertmanager-unknown".to_string();
+            evidence[0]
+                .labels
+                .insert("receiver".to_string(), "alertmanager-unknown".to_string());
+            evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+                handoff_report: &handoff_report,
+                delivery_profile: &profile,
+                evidence: &evidence,
+                now_unix_ms: NOW + 70_000,
+            })
+            .unwrap_err()
+        }
+        "route-mismatch" => {
+            evidence[0].notification_route = "slack-ops-digest".to_string();
+            evidence[0].labels.insert(
+                "notification_route".to_string(),
+                "slack-ops-digest".to_string(),
+            );
+            evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+                handoff_report: &handoff_report,
+                delivery_profile: &profile,
+                evidence: &evidence,
+                now_unix_ms: NOW + 70_000,
+            })
+            .unwrap_err()
+        }
+        "dedupe-missing" => {
+            evidence[0].dedupe_key.clear();
+            evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+                handoff_report: &handoff_report,
+                delivery_profile: &profile,
+                evidence: &evidence,
+                now_unix_ms: NOW + 70_000,
+            })
+            .unwrap_err()
+        }
+        "stale-handoff" => {
+            handoff_report.generated_at_unix_ms = NOW - 600_000;
+            evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+                handoff_report: &handoff_report,
+                delivery_profile: &profile,
+                evidence: &evidence,
+                now_unix_ms: NOW + 70_000,
+            })
+            .unwrap_err()
+        }
+        "source-hash-mismatch" => {
+            evidence[0].source_handoff_report_sha256 = "a".repeat(64);
+            evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+                handoff_report: &handoff_report,
+                delivery_profile: &profile,
+                evidence: &evidence,
+                now_unix_ms: NOW + 70_000,
+            })
+            .unwrap_err()
+        }
+        "duplicate-result" => {
+            evidence[1].result_id = evidence[0].result_id.clone();
+            evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+                handoff_report: &handoff_report,
+                delivery_profile: &profile,
+                evidence: &evidence,
+                now_unix_ms: NOW + 70_000,
+            })
+            .unwrap_err()
+        }
+        "missing-critical-delivery" => {
+            evidence.retain(|item| item.alert_code != "endpoint_denied");
+            evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+                handoff_report: &handoff_report,
+                delivery_profile: &profile,
+                evidence: &evidence,
+                now_unix_ms: NOW + 70_000,
+            })
+            .unwrap_err()
+        }
+        "severity-weakened" => {
+            evidence[0].severity = RelayAlertSeverity::Warning;
+            evidence[0]
+                .labels
+                .insert("severity".to_string(), "warning".to_string());
+            evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+                handoff_report: &handoff_report,
+                delivery_profile: &profile,
+                evidence: &evidence,
+                now_unix_ms: NOW + 70_000,
+            })
+            .unwrap_err()
+        }
+        "runbook-drift" => {
+            evidence[0].runbook =
+                "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#other".to_string();
+            evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+                handoff_report: &handoff_report,
+                delivery_profile: &profile,
+                evidence: &evidence,
+                now_unix_ms: NOW + 70_000,
+            })
+            .unwrap_err()
+        }
+        other => panic!("unsupported delivery negative case {other}"),
+    };
+    err.code().to_string()
 }
 
 #[test]
@@ -1307,6 +1611,266 @@ fn relay_alert_handoff_rejects_secret_dynamic_and_uncovered_targets() {
     )
     .unwrap_err();
     assert_eq!(err.code(), "alert_routing_invalid");
+}
+
+#[test]
+fn relay_alert_delivery_import_binds_downstream_evidence_to_handoff() {
+    let handoff_report = generated_handoff_report();
+    let handoff_hash = canonical_hash(&handoff_report);
+    let profile = relay_alert_delivery_profile_from_json(
+        &serde_json::to_string(&delivery_profile()).unwrap(),
+        NOW + 60_000,
+    )
+    .unwrap();
+    let pager = &profile.receivers[0];
+    let digest = &profile.receivers[1];
+    let evidence = vec![
+        delivery_evidence(
+            &handoff_hash,
+            pager,
+            "dead_letters_present",
+            RelayAlertSeverity::Critical,
+            RelayAlertDeliveryStatus::Delivered,
+        ),
+        delivery_evidence(
+            &handoff_hash,
+            pager,
+            "endpoint_denied",
+            RelayAlertSeverity::Critical,
+            RelayAlertDeliveryStatus::Accepted,
+        ),
+        delivery_evidence(
+            &handoff_hash,
+            digest,
+            "retries_pending",
+            RelayAlertSeverity::Info,
+            RelayAlertDeliveryStatus::Duplicate,
+        ),
+    ];
+
+    let report = evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+        handoff_report: &handoff_report,
+        delivery_profile: &profile,
+        evidence: &evidence,
+        now_unix_ms: NOW + 70_000,
+    })
+    .unwrap();
+
+    assert_eq!(report.schema, PHEROMONE_RELAY_ALERT_DELIVERY_REPORT_SCHEMA);
+    assert!(report.accepted);
+    assert_eq!(report.code, "accepted");
+    assert_eq!(report.source_handoff_report_sha256, handoff_hash);
+    assert_eq!(report.delivered_count, 3);
+    assert_eq!(report.failed_count, 0);
+    assert_eq!(report.results.len(), 3);
+    assert!(report
+        .results
+        .iter()
+        .all(|result| result.downstream_evidence_sha256.len() == 64));
+}
+
+#[test]
+fn relay_alert_delivery_rejects_secrets_unbounded_labels_and_mismatches() {
+    let mut bad_profile = delivery_profile();
+    bad_profile.receivers[0].target_ref = "alertmanager:bearer-prod".to_string();
+    let err =
+        relay_alert_delivery_profile_from_json(&serde_json::to_string(&bad_profile).unwrap(), NOW)
+            .unwrap_err();
+    assert_eq!(err.code(), "alert_delivery_invalid");
+
+    let handoff_report = generated_handoff_report();
+    let handoff_hash = canonical_hash(&handoff_report);
+    let profile = relay_alert_delivery_profile_from_json(
+        &serde_json::to_string(&delivery_profile()).unwrap(),
+        NOW + 60_000,
+    )
+    .unwrap();
+    let mut evidence = delivery_evidence(
+        &handoff_hash,
+        &profile.receivers[0],
+        "dead_letters_present",
+        RelayAlertSeverity::Critical,
+        RelayAlertDeliveryStatus::Delivered,
+    );
+
+    evidence.receiver_id = "alertmanager-unknown".to_string();
+    let err = evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+        handoff_report: &handoff_report,
+        delivery_profile: &profile,
+        evidence: &[evidence.clone()],
+        now_unix_ms: NOW + 70_000,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_delivery_invalid");
+
+    evidence.receiver_id = profile.receivers[0].receiver_id.clone();
+    evidence
+        .labels
+        .insert("peer_id".to_string(), "did:chio:vendor-a".to_string());
+    let err = relay_alert_delivery_evidence_from_json(&serde_json::to_string(&evidence).unwrap())
+        .unwrap_err();
+    assert_eq!(err.code(), "alert_delivery_invalid");
+
+    let mut missing = vec![delivery_evidence(
+        &handoff_hash,
+        &profile.receivers[0],
+        "dead_letters_present",
+        RelayAlertSeverity::Critical,
+        RelayAlertDeliveryStatus::Delivered,
+    )];
+    missing.push(missing[0].clone());
+    let err = evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+        handoff_report: &handoff_report,
+        delivery_profile: &profile,
+        evidence: &missing,
+        now_unix_ms: NOW + 70_000,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_delivery_invalid");
+
+    let mut stale_handoff = handoff_report.clone();
+    stale_handoff.generated_at_unix_ms = NOW - 600_000;
+    let err = evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+        handoff_report: &stale_handoff,
+        delivery_profile: &profile,
+        evidence: &[],
+        now_unix_ms: NOW + 70_000,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_delivery_invalid");
+}
+
+#[test]
+fn relay_alert_delivery_acknowledgement_and_drift_reports_are_bounded() {
+    let handoff_report = generated_handoff_report();
+    let handoff_hash = canonical_hash(&handoff_report);
+    let profile = relay_alert_delivery_profile_from_json(
+        &serde_json::to_string(&delivery_profile()).unwrap(),
+        NOW + 60_000,
+    )
+    .unwrap();
+    let evidence = vec![
+        delivery_evidence(
+            &handoff_hash,
+            &profile.receivers[0],
+            "dead_letters_present",
+            RelayAlertSeverity::Critical,
+            RelayAlertDeliveryStatus::Delivered,
+        ),
+        delivery_evidence(
+            &handoff_hash,
+            &profile.receivers[0],
+            "endpoint_denied",
+            RelayAlertSeverity::Critical,
+            RelayAlertDeliveryStatus::Accepted,
+        ),
+        delivery_evidence(
+            &handoff_hash,
+            &profile.receivers[1],
+            "retries_pending",
+            RelayAlertSeverity::Info,
+            RelayAlertDeliveryStatus::Delivered,
+        ),
+    ];
+    let delivery_report = evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+        handoff_report: &handoff_report,
+        delivery_profile: &profile,
+        evidence: &evidence,
+        now_unix_ms: NOW + 70_000,
+    })
+    .unwrap();
+
+    let acknowledgement = evaluate_relay_alert_acknowledgement(RelayAlertAcknowledgementInput {
+        handoff_report: &handoff_report,
+        delivery_report: &delivery_report,
+        delivery_profile: &profile,
+        now_unix_ms: NOW + 80_000,
+    })
+    .unwrap();
+    assert_eq!(
+        acknowledgement.schema,
+        PHEROMONE_RELAY_ALERT_ACKNOWLEDGEMENT_REPORT_SCHEMA
+    );
+    assert!(acknowledgement.accepted);
+    assert_eq!(acknowledgement.acknowledged_count, 3);
+    assert_eq!(acknowledgement.pending_count, 0);
+
+    let drift = generate_relay_alert_handoff_drift_report(RelayAlertHandoffDriftInput {
+        handoff_reports: std::slice::from_ref(&handoff_report),
+        delivery_reports: std::slice::from_ref(&delivery_report),
+        delivery_profile: &profile,
+        since_unix_ms: NOW,
+        until_unix_ms: NOW + 90_000,
+    })
+    .unwrap();
+    assert_eq!(
+        drift.schema,
+        PHEROMONE_RELAY_ALERT_HANDOFF_DRIFT_REPORT_SCHEMA
+    );
+    assert!(drift.accepted);
+    assert_eq!(drift.drift_count, 0);
+
+    let mut incomplete_delivery = delivery_report.clone();
+    incomplete_delivery
+        .results
+        .retain(|result| result.alert_code != "endpoint_denied");
+    let drift = generate_relay_alert_handoff_drift_report(RelayAlertHandoffDriftInput {
+        handoff_reports: &[handoff_report],
+        delivery_reports: &[incomplete_delivery],
+        delivery_profile: &profile,
+        since_unix_ms: NOW,
+        until_unix_ms: NOW + 90_000,
+    })
+    .unwrap();
+    assert!(!drift.accepted);
+    assert_eq!(drift.code, "handoff_drift_detected");
+    assert!(drift
+        .drifts
+        .iter()
+        .any(|entry| entry.code == "missing_delivery_result"));
+}
+
+#[test]
+fn relay_alert_delivery_negative_corpus_cases_are_executable() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../examples/chiodos-3vendor/fixtures/pheromone/relay/",
+        "relay-alert-delivery-negative-cases.json"
+    );
+    let corpus: NegativeCorpus = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    let mut seen = std::collections::BTreeSet::new();
+    for case in &corpus.cases {
+        assert!(seen.insert(case.id.as_str()), "duplicate case {}", case.id);
+        if case.id == "wrong-expected-code" {
+            let observed = delivery_negative_code("source-hash-mismatch");
+            assert_ne!(observed, "unsupported_schema");
+            assert_eq!(case.expected_code, "negative_expectation_mismatch");
+            continue;
+        }
+        let observed = delivery_negative_code(&case.id);
+        assert_eq!(
+            observed, case.expected_code,
+            "negative case {} expected {} but observed {}",
+            case.id, case.expected_code, observed
+        );
+    }
+    for required in [
+        "live-url",
+        "inline-token",
+        "unbounded-label",
+        "unknown-receiver",
+        "route-mismatch",
+        "dedupe-missing",
+        "stale-handoff",
+        "source-hash-mismatch",
+        "duplicate-result",
+        "missing-critical-delivery",
+        "severity-weakened",
+        "runbook-drift",
+        "wrong-expected-code",
+    ] {
+        assert!(seen.contains(required), "missing negative case {required}");
+    }
 }
 
 #[test]

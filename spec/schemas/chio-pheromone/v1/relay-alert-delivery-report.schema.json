@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-delivery-report.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Delivery Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "sourceHandoffReportSha256",
+    "sourceAlertReportSha256",
+    "sourceTrendReportSha256",
+    "criticalFiringCount",
+    "deliveredCount",
+    "delayedCount",
+    "failedCount",
+    "unknownCount",
+    "results",
+    "checks"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-delivery-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "sourceHandoffReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceAlertReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceTrendReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "criticalFiringCount": { "type": "integer", "minimum": 0 },
+    "deliveredCount": { "type": "integer", "minimum": 0 },
+    "delayedCount": { "type": "integer", "minimum": 0 },
+    "failedCount": { "type": "integer", "minimum": 0 },
+    "unknownCount": { "type": "integer", "minimum": 0 },
+    "results": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/result" }
+    },
+    "checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/check" }
+    }
+  },
+  "$defs": {
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resultId",
+        "receiverId",
+        "kind",
+        "targetRef",
+        "notificationRoute",
+        "opsgenie",
+        "alertCode",
+        "dedupeKey",
+        "severity",
+        "runbook",
+        "status",
+        "observedAtUnixMs",
+        "downstreamEvidenceSha256"
+      ],
+      "properties": {
+        "resultId": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+        "receiverId": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+        "kind": {
+          "enum": ["alertmanager", "pagerduty", "opsgenie", "slack", "email", "webhook"]
+        },
+        "targetRef": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+        "notificationRoute": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+        "opsgenie": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+        "alertCode": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+        "dedupeKey": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+        "severity": { "enum": ["info", "warning", "critical"] },
+        "runbook": { "type": "string", "minLength": 1 },
+        "status": {
+          "enum": [
+            "delivered",
+            "accepted",
+            "failed",
+            "delayed",
+            "duplicate",
+            "unknown",
+            "operator_acknowledged"
+          ]
+        },
+        "observedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "downstreamEvidenceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "accepted", "detail"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "accepted": { "type": "boolean" },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

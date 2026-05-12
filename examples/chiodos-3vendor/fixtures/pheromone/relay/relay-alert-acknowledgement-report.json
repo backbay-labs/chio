@@ -1,0 +1,39 @@
+{
+  "schema": "chio.pheromone.relay-alert-acknowledgement-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000060000,
+  "sourceHandoffReportSha256": "34b8f475c712ec4a7d56d054ff2bd70fd1a4fc6b7cc2024b33a741238258cc01",
+  "sourceDeliveryReportSha256": "109540866f4d7f92ca6256d16984e06013c8eb202b7dbc7aaef8676d97d54b2e",
+  "acknowledgedCount": 2,
+  "pendingCount": 0,
+  "failedCount": 0,
+  "acknowledgements": [
+    {
+      "resultId": "delivery:dead-letters",
+      "receiverId": "alertmanager-pagerduty-primary",
+      "alertCode": "dead_letters_present",
+      "dedupeKey": "chiodos-relay:dataco:dead-letters",
+      "status": "delivered",
+      "acknowledgedAtUnixMs": 1766000060000,
+      "downstreamEvidenceSha256": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+      "resultId": "delivery:endpoint-denied",
+      "receiverId": "alertmanager-pagerduty-primary",
+      "alertCode": "endpoint_denied",
+      "dedupeKey": "chiodos-relay:dataco:endpoint-denied",
+      "status": "accepted",
+      "acknowledgedAtUnixMs": 1766000060000,
+      "downstreamEvidenceSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  ],
+  "checks": [
+    {
+      "code": "delivery_report",
+      "accepted": true,
+      "detail": "delivery outcomes are summarized without notifying downstream systems"
+    }
+  ]
+}

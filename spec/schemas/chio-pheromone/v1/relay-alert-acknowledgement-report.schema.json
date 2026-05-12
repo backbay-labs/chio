@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-acknowledgement-report.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Acknowledgement Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "sourceHandoffReportSha256",
+    "sourceDeliveryReportSha256",
+    "acknowledgedCount",
+    "pendingCount",
+    "failedCount",
+    "acknowledgements",
+    "checks"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-acknowledgement-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "sourceHandoffReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceDeliveryReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "acknowledgedCount": { "type": "integer", "minimum": 0 },
+    "pendingCount": { "type": "integer", "minimum": 0 },
+    "failedCount": { "type": "integer", "minimum": 0 },
+    "acknowledgements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "resultId",
+          "receiverId",
+          "alertCode",
+          "dedupeKey",
+          "status",
+          "acknowledgedAtUnixMs",
+          "downstreamEvidenceSha256"
+        ],
+        "properties": {
+          "resultId": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "receiverId": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "alertCode": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+          "dedupeKey": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "status": {
+            "enum": [
+              "delivered",
+              "accepted",
+              "failed",
+              "delayed",
+              "duplicate",
+              "unknown",
+              "operator_acknowledged"
+            ]
+          },
+          "acknowledgedAtUnixMs": { "type": "integer", "minimum": 0 },
+          "downstreamEvidenceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "accepted", "detail"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "accepted": { "type": "boolean" },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

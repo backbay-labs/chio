@@ -131,6 +131,8 @@ describe('App operator paths', () => {
         url.startsWith('/v1/chiodos/pheromone/observability')
         || url.startsWith('/v1/chiodos/pheromone/alerts')
         || url.startsWith('/v1/chiodos/pheromone/trends')
+        || url.startsWith('/v1/chiodos/pheromone/alert-handoff')
+        || url.startsWith('/v1/chiodos/pheromone/alert-delivery')
       ) {
         return Promise.resolve({
           ok: false,
@@ -251,6 +253,8 @@ describe('App operator paths', () => {
         url.startsWith('/v1/chiodos/pheromone/observability')
         || url.startsWith('/v1/chiodos/pheromone/alerts')
         || url.startsWith('/v1/chiodos/pheromone/trends')
+        || url.startsWith('/v1/chiodos/pheromone/alert-handoff')
+        || url.startsWith('/v1/chiodos/pheromone/alert-delivery')
       ) {
         return Promise.resolve({
           ok: false,

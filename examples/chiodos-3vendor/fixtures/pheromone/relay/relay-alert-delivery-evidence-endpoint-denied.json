@@ -1,0 +1,26 @@
+{
+  "schema": "chio.pheromone.relay-alert-delivery-evidence.v1",
+  "localKernelId": "did:chio:dataco",
+  "observedAtUnixMs": 1766000060000,
+  "resultId": "delivery:endpoint-denied",
+  "receiverId": "alertmanager-pagerduty-primary",
+  "kind": "alertmanager",
+  "targetRef": "alertmanager:pagerduty-primary",
+  "notificationRoute": "pagerduty-primary",
+  "opsgenie": "relay-oncall",
+  "alertCode": "endpoint_denied",
+  "dedupeKey": "chiodos-relay:dataco:endpoint-denied",
+  "severity": "critical",
+  "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
+  "status": "accepted",
+  "sourceHandoffReportSha256": "34b8f475c712ec4a7d56d054ff2bd70fd1a4fc6b7cc2024b33a741238258cc01",
+  "downstreamEvidenceSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+  "labels": {
+    "notification_route": "pagerduty-primary",
+    "opsgenie": "relay-oncall",
+    "receiver": "alertmanager-pagerduty-primary",
+    "service": "chiodos-pheromone-relay",
+    "severity": "critical",
+    "status": "accepted"
+  }
+}

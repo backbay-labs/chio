@@ -1,0 +1,59 @@
+{
+  "schema": "chio.pheromone.relay-alert-delivery-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000060000,
+  "sourceHandoffReportSha256": "34b8f475c712ec4a7d56d054ff2bd70fd1a4fc6b7cc2024b33a741238258cc01",
+  "sourceAlertReportSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "sourceTrendReportSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+  "criticalFiringCount": 2,
+  "deliveredCount": 2,
+  "delayedCount": 0,
+  "failedCount": 0,
+  "unknownCount": 0,
+  "results": [
+    {
+      "resultId": "delivery:dead-letters",
+      "receiverId": "alertmanager-pagerduty-primary",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:pagerduty-primary",
+      "notificationRoute": "pagerduty-primary",
+      "opsgenie": "relay-oncall",
+      "alertCode": "dead_letters_present",
+      "dedupeKey": "chiodos-relay:dataco:dead-letters",
+      "severity": "critical",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
+      "status": "delivered",
+      "observedAtUnixMs": 1766000060000,
+      "downstreamEvidenceSha256": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+      "resultId": "delivery:endpoint-denied",
+      "receiverId": "alertmanager-pagerduty-primary",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:pagerduty-primary",
+      "notificationRoute": "pagerduty-primary",
+      "opsgenie": "relay-oncall",
+      "alertCode": "endpoint_denied",
+      "dedupeKey": "chiodos-relay:dataco:endpoint-denied",
+      "severity": "critical",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
+      "status": "accepted",
+      "observedAtUnixMs": 1766000060000,
+      "downstreamEvidenceSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  ],
+  "checks": [
+    {
+      "code": "handoff_report",
+      "accepted": true,
+      "detail": "handoff report is fresh and hash-bound"
+    },
+    {
+      "code": "delivery_evidence",
+      "accepted": true,
+      "detail": "downstream delivery evidence covers every handoff alert"
+    }
+  ]
+}

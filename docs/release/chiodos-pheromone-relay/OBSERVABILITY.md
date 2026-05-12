@@ -8,10 +8,13 @@ The canonical relay observability report is the first operator view for the pher
 2. Run `chio chiodos pheromone relay alert evaluate` against the observability report, routing profile, suppression state, and bounded event directory.
 3. Run `chio chiodos pheromone relay trend` across committed observability and event report artifacts for the operator window.
 4. Run `chio chiodos pheromone relay alert handoff` against the alert report, trend report, routing profile, and handoff profile.
-5. Check `relay-alert-report.v1`, then `relay-trend-report.v1`, then `relay-alert-handoff-report.v1` before opening raw store rows.
-6. Inspect bounded event reports from `--report-dir` only when an alert requires evidence.
-7. Export `chio chiodos pheromone relay metrics --format prometheus` for downstream alerting.
-8. Use raw SQLite inspection only after alert, trend, handoff, observability, and bounded event files have narrowed the incident.
+5. Run `chio chiodos pheromone relay alert delivery import` against the handoff report, delivery profile, and local downstream evidence directory.
+6. Run `chio chiodos pheromone relay alert delivery acknowledge` against the handoff and delivery reports.
+7. Run `chio chiodos pheromone relay alert delivery drift` across handoff and delivery report directories.
+8. Check `relay-alert-report.v1`, `relay-trend-report.v1`, `relay-alert-handoff-report.v1`, `relay-alert-delivery-report.v1`, `relay-alert-acknowledgement-report.v1`, and `relay-alert-handoff-drift-report.v1` before opening raw store rows.
+9. Inspect bounded event reports from `--report-dir` only when an alert requires evidence.
+10. Export `chio chiodos pheromone relay metrics --format prometheus` for downstream alerting.
+11. Use raw SQLite inspection only after alert, trend, handoff, delivery, acknowledgement, drift, observability, and bounded event files have narrowed the incident.
 
 ## Bounded Metrics
 
@@ -36,6 +39,16 @@ The trend report aggregates long-horizon observability and event artifacts using
 The relay alert handoff profile maps routing aliases to downstream receiver aliases such as Alertmanager, PagerDuty, OpsGenie, Slack, email, or generic webhook handoff. The profile contains no inline secrets, dynamic endpoints, request bodies, or credential material.
 
 The handoff report is a dry-run readiness artifact. It checks route coverage, bounded labels, dedupe keys, severity mapping, runbook refs, escalation mapping, stale inputs, and critical alert visibility. It never sends a notification. Downstream systems perform live delivery from their own credentialed configuration.
+
+## Alert Delivery Evidence
+
+The relay alert delivery profile defines bounded downstream receiver aliases and local runbook references. It contains no inline secrets, URLs, request bodies, or credential material.
+
+The delivery report imports local downstream result artifacts and binds them to the handoff report hash, alert report hash, trend report hash, receiver aliases, route aliases, dedupe keys, severity, and runbook refs. It records delivered, accepted, failed, delayed, duplicate, unknown, and operator-acknowledged outcomes without sending notifications.
+
+The acknowledgement report summarizes downstream outcomes for operator review. The drift report compares handoff and delivery report directories for missing critical delivery evidence, route alias drift, severity weakening, and stale windows.
+
+Chio never calls downstream alerting APIs in this flow. Alertmanager, PagerDuty, OpsGenie, Slack, email, webhook, and SIEM systems remain downstream consumers.
 
 ## Alert Starting Points
 

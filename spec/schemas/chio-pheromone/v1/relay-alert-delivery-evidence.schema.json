@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-delivery-evidence.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Delivery Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "localKernelId",
+    "observedAtUnixMs",
+    "resultId",
+    "receiverId",
+    "kind",
+    "targetRef",
+    "notificationRoute",
+    "opsgenie",
+    "alertCode",
+    "dedupeKey",
+    "severity",
+    "runbook",
+    "status",
+    "sourceHandoffReportSha256",
+    "downstreamEvidenceSha256",
+    "labels"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-delivery-evidence.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "observedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "resultId": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+    "receiverId": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+    "kind": {
+      "enum": ["alertmanager", "pagerduty", "opsgenie", "slack", "email", "webhook"]
+    },
+    "targetRef": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+    "notificationRoute": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+    "opsgenie": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+    "alertCode": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+    "dedupeKey": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+    "severity": { "enum": ["info", "warning", "critical"] },
+    "runbook": { "type": "string", "minLength": 1 },
+    "status": {
+      "enum": [
+        "delivered",
+        "accepted",
+        "failed",
+        "delayed",
+        "duplicate",
+        "unknown",
+        "operator_acknowledged"
+      ]
+    },
+    "sourceHandoffReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "downstreamEvidenceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "labels": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" }
+    }
+  }
+}

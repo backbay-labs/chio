@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-delivery-profile.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Delivery Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "localKernelId",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs",
+    "maxHandoffReportAgeMs",
+    "maxEvidenceAgeMs",
+    "maxAcknowledgementAgeMs",
+    "receivers"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-delivery-profile.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+    "maxHandoffReportAgeMs": { "type": "integer", "minimum": 1 },
+    "maxEvidenceAgeMs": { "type": "integer", "minimum": 1 },
+    "maxAcknowledgementAgeMs": { "type": "integer", "minimum": 1 },
+    "receivers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "receiverId",
+          "kind",
+          "targetRef",
+          "notificationRoute",
+          "opsgenie",
+          "severityFloor",
+          "maxDelayMs",
+          "runbook"
+        ],
+        "properties": {
+          "receiverId": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "kind": {
+            "enum": ["alertmanager", "pagerduty", "opsgenie", "slack", "email", "webhook"]
+          },
+          "targetRef": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "notificationRoute": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "opsgenie": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "severityFloor": { "enum": ["info", "warning", "critical"] },
+          "maxDelayMs": { "type": "integer", "minimum": 1 },
+          "runbook": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

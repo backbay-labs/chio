@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchAgentCostSeries,
   fetchOperatorReport,
+  fetchRelayAlertDeliveryReport,
+  fetchRelayAlertHandoffReport,
   fetchRelayAlertReport,
   fetchRelayObservabilityReport,
   fetchRelayTrendReport,
@@ -347,6 +349,77 @@ describe('dashboard api helpers', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/v1/chiodos/pheromone/trends',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer bearer-token',
+          'Content-Type': 'application/json',
+        }),
+      }),
+    )
+  })
+
+  it('fetches relay alert handoff reports with bearer auth', async () => {
+    sessionStorage.setItem('chio_token', 'bearer-token')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        schema: 'chio.pheromone.relay-alert-handoff-report.v1',
+        accepted: true,
+        code: 'accepted',
+        localKernelId: 'did:chio:buyer-kernel',
+        generatedAtUnixMs: 1_766_000_060_000,
+        sourceAlertReportSha256: 'a'.repeat(64),
+        sourceTrendReportSha256: 'b'.repeat(64),
+        firingAlertCount: 0,
+        suppressedAlertCount: 0,
+        criticalFiringCount: 0,
+        routes: [],
+        checks: [],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchRelayAlertHandoffReport()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/chiodos/pheromone/alert-handoff',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer bearer-token',
+          'Content-Type': 'application/json',
+        }),
+      }),
+    )
+  })
+
+  it('fetches relay alert delivery reports with bearer auth', async () => {
+    sessionStorage.setItem('chio_token', 'bearer-token')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        schema: 'chio.pheromone.relay-alert-delivery-report.v1',
+        accepted: true,
+        code: 'accepted',
+        localKernelId: 'did:chio:buyer-kernel',
+        generatedAtUnixMs: 1_766_000_060_000,
+        sourceHandoffReportSha256: 'c'.repeat(64),
+        sourceAlertReportSha256: 'a'.repeat(64),
+        sourceTrendReportSha256: 'b'.repeat(64),
+        criticalFiringCount: 0,
+        deliveredCount: 0,
+        delayedCount: 0,
+        failedCount: 0,
+        unknownCount: 0,
+        results: [],
+        checks: [],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchRelayAlertDeliveryReport()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/chiodos/pheromone/alert-delivery',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer bearer-token',

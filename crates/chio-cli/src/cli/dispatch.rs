@@ -2605,6 +2605,49 @@ fn main() {
                             now_unix_ms,
                             &report,
                         ),
+                        ChiodosPheromoneRelayAlertCommands::Delivery { command } => match command {
+                            ChiodosPheromoneRelayAlertDeliveryCommands::Import {
+                                handoff_report,
+                                delivery_profile,
+                                evidence_dir,
+                                now_unix_ms,
+                                report,
+                            } => cmd_chiodos_pheromone_relay_alert_delivery_import(
+                                &handoff_report,
+                                &delivery_profile,
+                                &evidence_dir,
+                                now_unix_ms,
+                                &report,
+                            ),
+                            ChiodosPheromoneRelayAlertDeliveryCommands::Acknowledge {
+                                handoff_report,
+                                delivery_report,
+                                delivery_profile,
+                                now_unix_ms,
+                                report,
+                            } => cmd_chiodos_pheromone_relay_alert_delivery_acknowledge(
+                                &handoff_report,
+                                &delivery_report,
+                                &delivery_profile,
+                                now_unix_ms,
+                                &report,
+                            ),
+                            ChiodosPheromoneRelayAlertDeliveryCommands::Drift {
+                                handoff_reports_dir,
+                                delivery_reports_dir,
+                                delivery_profile,
+                                since_unix_ms,
+                                until_unix_ms,
+                                report,
+                            } => cmd_chiodos_pheromone_relay_alert_delivery_drift(
+                                &handoff_reports_dir,
+                                &delivery_reports_dir,
+                                &delivery_profile,
+                                since_unix_ms,
+                                until_unix_ms,
+                                &report,
+                            ),
+                        },
                     },
                     ChiodosPheromoneRelayCommands::Trend {
                         reports_dir,
@@ -3725,6 +3768,127 @@ fn cmd_chiodos_pheromone_relay_alert_handoff(
     )
 }
 
+fn cmd_chiodos_pheromone_relay_alert_delivery_import(
+    handoff_report: &Path,
+    delivery_profile: &Path,
+    evidence_dir: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let handoff_report: chio_pheromone_relay::RelayAlertHandoffReport = serde_json::from_str(
+        &read_utf8_json_file(handoff_report, "Chiodos relay alert handoff report")?,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert handoff report: {error}"))
+    })?;
+    let delivery_profile = chio_pheromone_relay::relay_alert_delivery_profile_from_json(
+        &read_utf8_json_file(delivery_profile, "Chiodos relay alert delivery profile")?,
+        now_unix_ms,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert delivery profile: {error}"))
+    })?;
+    let evidence = read_relay_alert_delivery_evidence(evidence_dir)?;
+    let delivery_report = chio_pheromone_relay::evaluate_relay_alert_delivery(
+        chio_pheromone_relay::RelayAlertDeliveryInput {
+            handoff_report: &handoff_report,
+            delivery_profile: &delivery_profile,
+            evidence: &evidence,
+            now_unix_ms,
+        },
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert delivery import: {error}"))
+    })?;
+    write_pretty_json(
+        report,
+        &delivery_report,
+        "Chiodos relay alert delivery report",
+    )
+}
+
+fn cmd_chiodos_pheromone_relay_alert_delivery_acknowledge(
+    handoff_report: &Path,
+    delivery_report: &Path,
+    delivery_profile: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let handoff_report: chio_pheromone_relay::RelayAlertHandoffReport = serde_json::from_str(
+        &read_utf8_json_file(handoff_report, "Chiodos relay alert handoff report")?,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert handoff report: {error}"))
+    })?;
+    let delivery_report: chio_pheromone_relay::RelayAlertDeliveryReport = serde_json::from_str(
+        &read_utf8_json_file(delivery_report, "Chiodos relay alert delivery report")?,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert delivery report: {error}"))
+    })?;
+    let delivery_profile = chio_pheromone_relay::relay_alert_delivery_profile_from_json(
+        &read_utf8_json_file(delivery_profile, "Chiodos relay alert delivery profile")?,
+        now_unix_ms,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert delivery profile: {error}"))
+    })?;
+    let acknowledgement_report = chio_pheromone_relay::evaluate_relay_alert_acknowledgement(
+        chio_pheromone_relay::RelayAlertAcknowledgementInput {
+            handoff_report: &handoff_report,
+            delivery_report: &delivery_report,
+            delivery_profile: &delivery_profile,
+            now_unix_ms,
+        },
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "Chiodos relay alert delivery acknowledgement: {error}"
+        ))
+    })?;
+    write_pretty_json(
+        report,
+        &acknowledgement_report,
+        "Chiodos relay alert acknowledgement report",
+    )
+}
+
+fn cmd_chiodos_pheromone_relay_alert_delivery_drift(
+    handoff_reports_dir: &Path,
+    delivery_reports_dir: &Path,
+    delivery_profile: &Path,
+    since_unix_ms: u64,
+    until_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let delivery_profile = chio_pheromone_relay::relay_alert_delivery_profile_from_json(
+        &read_utf8_json_file(delivery_profile, "Chiodos relay alert delivery profile")?,
+        until_unix_ms,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert delivery profile: {error}"))
+    })?;
+    let handoff_reports = read_relay_alert_handoff_reports(handoff_reports_dir)?;
+    let delivery_reports = read_relay_alert_delivery_reports(delivery_reports_dir)?;
+    let drift_report = chio_pheromone_relay::generate_relay_alert_handoff_drift_report(
+        chio_pheromone_relay::RelayAlertHandoffDriftInput {
+            handoff_reports: &handoff_reports,
+            delivery_reports: &delivery_reports,
+            delivery_profile: &delivery_profile,
+            since_unix_ms,
+            until_unix_ms,
+        },
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay alert delivery drift: {error}"))
+    })?;
+    write_pretty_json(
+        report,
+        &drift_report,
+        "Chiodos relay alert handoff drift report",
+    )
+}
+
 fn cmd_chiodos_pheromone_relay_trend(
     reports_dir: &Path,
     event_dir: &Path,
@@ -3773,6 +3937,77 @@ fn read_relay_event_reports(
         dir,
         "relay event report",
         chio_pheromone_relay::PHEROMONE_RELAY_EVENT_REPORT_SCHEMA,
+    )
+}
+
+fn read_relay_alert_delivery_evidence(
+    dir: &Path,
+) -> Result<Vec<chio_pheromone_relay::RelayAlertDeliveryEvidence>, CliError> {
+    let entries = fs::read_dir(dir).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to read Chiodos relay alert delivery evidence dir {}: {error}",
+            dir.display()
+        ))
+    })?;
+    let mut paths = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to read Chiodos relay alert delivery evidence dir entry {}: {error}",
+                dir.display()
+            ))
+        })?;
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    let mut evidence = Vec::new();
+    for path in paths {
+        let json = read_utf8_json_file(&path, "relay alert delivery evidence")?;
+        let value: serde_json::Value = serde_json::from_str(&json).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos relay alert delivery evidence {}: {error}",
+                path.display()
+            ))
+        })?;
+        if value.get("schema").and_then(|schema| schema.as_str())
+            != Some(chio_pheromone_relay::PHEROMONE_RELAY_ALERT_DELIVERY_EVIDENCE_SCHEMA)
+        {
+            continue;
+        }
+        evidence.push(
+            chio_pheromone_relay::relay_alert_delivery_evidence_from_json(&json).map_err(
+                |error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos relay alert delivery evidence {}: {error}",
+                        path.display()
+                    ))
+                },
+            )?,
+        );
+    }
+    Ok(evidence)
+}
+
+fn read_relay_alert_handoff_reports(
+    dir: &Path,
+) -> Result<Vec<chio_pheromone_relay::RelayAlertHandoffReport>, CliError> {
+    read_json_documents_from_dir(
+        dir,
+        "relay alert handoff report",
+        chio_pheromone_relay::PHEROMONE_RELAY_ALERT_HANDOFF_REPORT_SCHEMA,
+    )
+}
+
+fn read_relay_alert_delivery_reports(
+    dir: &Path,
+) -> Result<Vec<chio_pheromone_relay::RelayAlertDeliveryReport>, CliError> {
+    read_json_documents_from_dir(
+        dir,
+        "relay alert delivery report",
+        chio_pheromone_relay::PHEROMONE_RELAY_ALERT_DELIVERY_REPORT_SCHEMA,
     )
 }
 
