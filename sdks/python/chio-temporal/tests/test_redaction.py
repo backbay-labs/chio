@@ -1,0 +1,375 @@
+"""Tests for ChioActivityInterceptor argument redaction.
+
+These tests assert that ``ChioActivityInterceptor`` redacts secret-bearing
+fields from its activity arguments BEFORE forwarding them to the Chio
+sidecar's ``evaluate_tool_call`` endpoint, so the per-step
+:class:`WorkflowReceipt` never carries the raw secret bytes.
+
+Source of truth: ``chio_adapter_base.redact.redact_args``.
+
+Placement: redaction is applied in the activity-layer interceptor
+(``_ChioInboundInterceptor.execute_activity``), not inside any workflow
+definition, so Temporal's workflow determinism rules are unaffected.
+"""
+
+from __future__ import annotations
+
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from chio_adapter_base.redact import RedactionPolicy
+from chio_sdk.models import (
+    CapabilityToken,
+    ChioScope,
+    Operation,
+    ToolGrant,
+)
+from chio_sdk.testing import MockChioClient, allow_all
+from temporalio import activity
+
+from chio_temporal import ChioActivityInterceptor, WorkflowGrant
+from chio_temporal.interceptor import _ChioInboundInterceptor
+
+# ---------------------------------------------------------------------------
+# Test doubles / helpers (mirrors test_interceptor.py for consistency)
+# ---------------------------------------------------------------------------
+
+
+def _scope_for_tools(*tool_names: str, server_id: str = "srv") -> ChioScope:
+    grants = [
+        ToolGrant(
+            server_id=server_id,
+            tool_name=name,
+            operations=[Operation.INVOKE],
+        )
+        for name in tool_names
+    ]
+    return ChioScope(grants=grants)
+
+
+def _default_info(
+    *,
+    activity_type: str,
+    activity_id: str = "act-1",
+    workflow_id: str = "wf-1",
+    workflow_run_id: str = "run-1",
+    attempt: int = 1,
+) -> activity.Info:
+    utc_zero = datetime.fromtimestamp(0, tz=UTC)
+    import temporalio.common as temporal_common
+
+    return activity.Info(
+        activity_id=activity_id,
+        activity_type=activity_type,
+        attempt=attempt,
+        current_attempt_scheduled_time=utc_zero,
+        heartbeat_details=[],
+        heartbeat_timeout=None,
+        is_local=False,
+        namespace="default",
+        schedule_to_close_timeout=timedelta(seconds=10),
+        scheduled_time=utc_zero,
+        start_to_close_timeout=timedelta(seconds=10),
+        started_time=utc_zero,
+        task_queue="tq",
+        task_token=b"tt",
+        workflow_id=workflow_id,
+        workflow_namespace="default",
+        workflow_run_id=workflow_run_id,
+        workflow_type="TestWorkflow",
+        priority=temporal_common.Priority.default,
+        retry_policy=None,
+        activity_run_id=None,
+    )
+
+
+class _NextInterceptor:
+    """Stand-in for the downstream :class:`ActivityInboundInterceptor`."""
+
+    def __init__(self, result: Any = "ok") -> None:
+        self.result = result
+        self.called = False
+        self.received_args: list[Any] | None = None
+
+    def init(self, outbound: Any) -> None:  # pragma: no cover -- unused
+        pass
+
+    async def execute_activity(self, input: Any) -> Any:
+        self.called = True
+        # Snapshot the args the underlying activity actually receives so
+        # the test can assert that the executor still gets the original
+        # (unredacted) payload.
+        self.received_args = list(input.args)
+        return self.result
+
+
+@contextmanager
+def _patched_activity_info(info: activity.Info):
+    original = activity.info
+    activity.info = lambda: info  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        activity.info = original  # type: ignore[assignment]
+
+
+def _make_input(*args: Any) -> Any:
+    from temporalio.worker import ExecuteActivityInput
+
+    async def _fn() -> None:  # pragma: no cover -- not invoked
+        pass
+
+    return ExecuteActivityInput(
+        fn=_fn,
+        args=list(args),
+        executor=None,
+        headers={},
+    )
+
+
+async def _mint_token(
+    chio: MockChioClient,
+    *,
+    subject: str,
+    scope: ChioScope,
+) -> CapabilityToken:
+    token = await chio.create_capability(subject=subject, scope=scope)
+    store: dict[str, Any] = getattr(chio, "_tokens", {})
+    store[token.id] = token
+    chio._tokens = store  # type: ignore[attr-defined]
+    return token
+
+
+# ---------------------------------------------------------------------------
+# Default policy: chio_file_write.content / chio_file_edit.patch
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultPolicyRedacts:
+    async def test_chio_file_write_content_is_redacted(self) -> None:
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("chio_file_write"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+            )
+            interceptor = ChioActivityInterceptor(chio_client=chio)
+            interceptor.register_workflow_grant(grant)
+
+            next_i = _NextInterceptor()
+            inbound = _ChioInboundInterceptor(next_i, interceptor)
+
+            payload = {"path": "/tmp/x", "content": "PROD_SECRET=abc123"}
+            info = _default_info(activity_type="chio_file_write")
+            with _patched_activity_info(info):
+                await inbound.execute_activity(_make_input(payload))
+
+        # The sidecar should have received the REDACTED parameters.
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        assert len(evaluate_calls) == 1
+        forwarded_args = evaluate_calls[0].parameters["args"]
+        assert len(forwarded_args) == 1
+        forwarded = forwarded_args[0]
+        assert forwarded["path"] == "/tmp/x"
+        assert forwarded["content"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+
+        # Underlying activity still receives the ORIGINAL (unredacted) args.
+        assert next_i.received_args == [payload]
+        assert payload["content"] == "PROD_SECRET=abc123"
+
+        # And the per-step receipt parameters mirror the redacted payload.
+        receipt = interceptor.workflow_receipt("wf-1", "run-1")
+        assert receipt is not None
+        step = receipt.steps[0]
+        recorded = step.receipt.action.parameters["args"][0]
+        assert recorded["path"] == "/tmp/x"
+        assert recorded["content"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+
+    async def test_chio_file_edit_patch_is_redacted(self) -> None:
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("chio_file_edit"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+            )
+            interceptor = ChioActivityInterceptor(chio_client=chio)
+            interceptor.register_workflow_grant(grant)
+
+            next_i = _NextInterceptor()
+            inbound = _ChioInboundInterceptor(next_i, interceptor)
+
+            payload = {"path": "/tmp/x", "patch": "--- a\n+++ b\n@@ secret @@"}
+            info = _default_info(activity_type="chio_file_edit")
+            with _patched_activity_info(info):
+                await inbound.execute_activity(_make_input(payload))
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        forwarded = evaluate_calls[0].parameters["args"][0]
+        assert forwarded["path"] == "/tmp/x"
+        assert forwarded["patch"] == {
+            "omitted": True,
+            "byte_count": len(b"--- a\n+++ b\n@@ secret @@"),
+        }
+        # Other fields preserved.
+        assert "content" not in forwarded
+
+    async def test_unrelated_activity_passes_args_through(self) -> None:
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("send_email"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+            )
+            interceptor = ChioActivityInterceptor(chio_client=chio)
+            interceptor.register_workflow_grant(grant)
+
+            inbound = _ChioInboundInterceptor(_NextInterceptor(), interceptor)
+            payload = {"to": "alice@example.com", "content": "not redacted"}
+            info = _default_info(activity_type="send_email")
+            with _patched_activity_info(info):
+                await inbound.execute_activity(_make_input(payload))
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        forwarded = evaluate_calls[0].parameters["args"][0]
+        # The default policy only matches chio_file_write / chio_file_edit;
+        # unrelated activities see their args unmodified.
+        assert forwarded == {
+            "to": "alice@example.com",
+            "content": "not redacted",
+        }
+
+    async def test_positional_non_dict_args_pass_through(self) -> None:
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("chio_file_write"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+            )
+            interceptor = ChioActivityInterceptor(chio_client=chio)
+            interceptor.register_workflow_grant(grant)
+
+            inbound = _ChioInboundInterceptor(_NextInterceptor(), interceptor)
+            info = _default_info(activity_type="chio_file_write")
+            with _patched_activity_info(info):
+                # Two positional args (path, content) -- redaction only
+                # fires for the single-dict-arg convention, so these
+                # propagate unchanged.
+                await inbound.execute_activity(
+                    _make_input("/tmp/x", "PROD_SECRET=abc123")
+                )
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        forwarded = evaluate_calls[0].parameters["args"]
+        assert forwarded == ["/tmp/x", "PROD_SECRET=abc123"]
+
+
+# ---------------------------------------------------------------------------
+# Custom policy: only my_activity.body is redacted
+# ---------------------------------------------------------------------------
+
+
+class TestCustomPolicy:
+    async def test_custom_policy_redacts_only_named_fields(self) -> None:
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("my_activity"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+            )
+            custom = RedactionPolicy(body_fields={"my_activity": ("body",)})
+            interceptor = ChioActivityInterceptor(
+                chio_client=chio,
+                redaction_policy=custom,
+            )
+            interceptor.register_workflow_grant(grant)
+
+            inbound = _ChioInboundInterceptor(_NextInterceptor(), interceptor)
+            payload = {"label": "hello", "body": "SECRET_TOKEN=xyz"}
+            info = _default_info(activity_type="my_activity")
+            with _patched_activity_info(info):
+                await inbound.execute_activity(_make_input(payload))
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        forwarded = evaluate_calls[0].parameters["args"][0]
+        assert forwarded["label"] == "hello"
+        assert forwarded["body"] == {
+            "omitted": True,
+            "byte_count": len(b"SECRET_TOKEN=xyz"),
+        }
+
+    async def test_custom_policy_does_not_redact_default_fields(self) -> None:
+        """A custom policy fully replaces the default; chio_file_write
+        is no longer redacted under it.
+        """
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("chio_file_write"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+            )
+            custom = RedactionPolicy(body_fields={"my_activity": ("body",)})
+            interceptor = ChioActivityInterceptor(
+                chio_client=chio,
+                redaction_policy=custom,
+            )
+            interceptor.register_workflow_grant(grant)
+
+            inbound = _ChioInboundInterceptor(_NextInterceptor(), interceptor)
+            payload = {"path": "/tmp/x", "content": "not-redacted-now"}
+            info = _default_info(activity_type="chio_file_write")
+            with _patched_activity_info(info):
+                await inbound.execute_activity(_make_input(payload))
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        forwarded = evaluate_calls[0].parameters["args"][0]
+        assert forwarded["content"] == "not-redacted-now"
+
+
+# ---------------------------------------------------------------------------
+# Default ctor uses chio-default policy
+# ---------------------------------------------------------------------------
+
+
+class TestInterceptorDefaultPolicy:
+    def test_default_policy_is_chio_default(self) -> None:
+        interceptor = ChioActivityInterceptor()
+        # Default policy is the chio-default mapping.
+        assert "chio_file_write" in interceptor._redaction_policy.body_fields
+        assert "chio_file_edit" in interceptor._redaction_policy.body_fields
