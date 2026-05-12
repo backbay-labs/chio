@@ -107,6 +107,80 @@ class TestDefaultPolicyRedacts:
         }
 
 
+class TestPositionalArgsAreBoundAndRedacted:
+    """Regression: positional invocations must not bypass the redactor.
+
+    The wrapper accepts ``*args`` so a caller writing
+    ``write_file("/tmp/x", "PROD_SECRET")`` would otherwise leave
+    ``content`` in ``parameters["args"]`` unredacted because
+    ``redact_args`` keys on parameter names.
+    """
+
+    def test_chio_file_write_positional_content_is_redacted(self) -> None:
+        chio = allow_all()
+
+        @chio_task(
+            capability_id="cap-1",
+            tool_server="fs",
+            tool_name="chio_file_write",
+            chio_client=chio,
+        )
+        def write_file(path: str, content: str) -> str:
+            return f"wrote {len(content)} bytes to {path}"
+
+        ti = _RecordingTI(task_id="write_file")
+        body = _wrapped_function(write_file)
+
+        with _install_context(ti):
+            result = body("/tmp/x", "PROD_SECRET=abc123")
+
+        assert result == "wrote 18 bytes to /tmp/x"
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        assert len(evaluate_calls) == 1
+        forwarded = evaluate_calls[0].parameters
+        # No raw "PROD_SECRET" should leak anywhere in the forwarded
+        # parameters payload.
+        import json
+
+        serialised = json.dumps(forwarded)
+        assert "PROD_SECRET" not in serialised
+        assert forwarded["kwargs"]["path"] == "/tmp/x"
+        assert forwarded["kwargs"]["content"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+
+    def test_chio_file_edit_positional_patch_is_redacted(self) -> None:
+        chio = allow_all()
+
+        @chio_task(
+            capability_id="cap-1",
+            tool_server="fs",
+            tool_name="chio_file_edit",
+            chio_client=chio,
+        )
+        def edit_file(path: str, patch: str) -> str:
+            return "ok"
+
+        ti = _RecordingTI(task_id="edit_file")
+        body = _wrapped_function(edit_file)
+
+        diff = "@@ -1,1 +1,1 @@\n-old\n+API_TOKEN=ghp_abc\n"
+        with _install_context(ti):
+            assert body("/etc/cfg", diff) == "ok"
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        forwarded = evaluate_calls[0].parameters
+        import json
+
+        assert "API_TOKEN" not in json.dumps(forwarded)
+        assert forwarded["kwargs"]["patch"] == {
+            "omitted": True,
+            "byte_count": len(diff.encode("utf-8")),
+        }
+
+
 class TestUntargetedToolPreserved:
     def test_unknown_tool_name_keeps_kwargs_intact(self) -> None:
         chio = allow_all()

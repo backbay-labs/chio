@@ -113,7 +113,9 @@ class TestAllowPath:
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
         assert evaluate_calls[0].tool_name == "double"
-        assert evaluate_calls[0].parameters == {"args": [21], "kwargs": {}}
+        # Positional args are now bound to parameter names before
+        # forwarding so the redactor sees them as named fields.
+        assert evaluate_calls[0].parameters == {"args": [], "kwargs": {"x": 21}}
 
         pushed = dict(ti.pushed)
         assert pushed[XCOM_RECEIPT_ID_KEY].startswith("mock-r-")
@@ -141,9 +143,11 @@ class TestAllowPath:
         assert result == "fetched:/tmp/data"
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
+        # Positional args are now bound to parameter names; see the
+        # sync companion test for rationale.
         assert evaluate_calls[0].parameters == {
-            "args": ["/tmp/data"],
-            "kwargs": {},
+            "args": [],
+            "kwargs": {"path": "/tmp/data"},
         }
 
 

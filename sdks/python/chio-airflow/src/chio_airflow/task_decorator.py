@@ -105,6 +105,7 @@ def chio_task(
                     sidecar_url=resolved_sidecar,
                     chio_client=chio_client,
                     redaction_policy=resolved_policy,
+                    fn=fn,
                 )
                 return await cast(Callable[..., Awaitable[Any]], fn)(
                     *args, **kwargs
@@ -125,6 +126,7 @@ def chio_task(
                     sidecar_url=resolved_sidecar,
                     chio_client=chio_client,
                     redaction_policy=resolved_policy,
+                    fn=fn,
                 )
                 return fn(*args, **kwargs)
 
@@ -149,6 +151,7 @@ def _evaluate_and_push(
     sidecar_url: str,
     chio_client: ChioClientLike | None,
     redaction_policy: RedactionPolicy,
+    fn: Callable[..., Any] | None = None,
 ) -> None:
     """Sync evaluation; deny -> AirflowException; XCom push is best-effort."""
     from airflow.exceptions import AirflowException
@@ -159,6 +162,7 @@ def _evaluate_and_push(
         args=args,
         kwargs=kwargs,
         policy=redaction_policy,
+        fn=fn,
     )
     try:
         receipt = evaluate_sync(
@@ -194,6 +198,7 @@ async def _evaluate_and_push_async(
     sidecar_url: str,
     chio_client: ChioClientLike | None,
     redaction_policy: RedactionPolicy,
+    fn: Callable[..., Any] | None = None,
 ) -> None:
     """Async evaluation; cannot call :func:`asyncio.run` under Airflow 3's loop."""
     from airflow.exceptions import AirflowException
@@ -204,6 +209,7 @@ async def _evaluate_and_push_async(
         args=args,
         kwargs=kwargs,
         policy=redaction_policy,
+        fn=fn,
     )
     owner = _ChioClientOwner(client=chio_client, sidecar_url=sidecar_url)
     try:
@@ -258,11 +264,40 @@ def _build_redacted_parameters(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
     policy: RedactionPolicy,
+    fn: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
-    """Build sidecar payload; positional args bypass redaction (policy keys on kwargs)."""
+    """Build sidecar payload with positional args bound to parameter names.
+
+    ``redact_args`` keys on parameter names. Positional callers
+    (``write_file("/tmp/x", "PROD_SECRET")``) would otherwise bypass
+    redaction because the body field would land in ``parameters["args"]``
+    untouched. We bind positional args to their declared names via
+    :func:`inspect.signature` before redaction, then surface the result
+    under ``kwargs`` so the sidecar / receipt both see the redacted form.
+
+    Falls back to the prior ``args`` / ``kwargs`` shape when the wrapped
+    function uses ``*args`` / ``**kwargs`` (no fixed parameter names to
+    bind against), or when binding fails for any reason. In the fallback
+    path positional args remain unredacted but kwargs are still scrubbed,
+    matching the previous behaviour rather than failing closed and
+    breaking working DAGs.
+    """
+    if fn is None:
+        return {
+            "args": list(args),
+            "kwargs": redact_args(tool_name, kwargs, policy=policy),
+        }
+    try:
+        sig = inspect.signature(fn)
+        bound = sig.bind_partial(*args, **kwargs).arguments
+    except TypeError:
+        return {
+            "args": list(args),
+            "kwargs": redact_args(tool_name, kwargs, policy=policy),
+        }
     return {
-        "args": list(args),
-        "kwargs": redact_args(tool_name, kwargs, policy=policy),
+        "args": [],
+        "kwargs": redact_args(tool_name, dict(bound), policy=policy),
     }
 
 
