@@ -63,6 +63,7 @@ jobs:
           # only for human readability.
           all_packages=(
             "sdks/python/chio-sdk-python"
+            "sdks/python/chio-adapter-base"
             "sdks/python/chio-asgi"
             "sdks/python/chio-django"
             "sdks/python/chio-fastapi"
