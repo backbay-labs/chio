@@ -460,6 +460,95 @@ def test_positional_only_with_same_named_protected_kwarg_redacts_both() -> None:
     assert kwargs == {"content": {"omitted": True, "byte_count": 9}}
 
 
+def test_known_tool_with_renamed_param_redacts_correctly() -> None:
+    """Wrapper renames the canonical body field; rebuild still redacts.
+
+    Regression for PR #666 P1 (3229550950): when a wrapper for a
+    chio-default tool uses a non-canonical parameter name (here
+    ``def write_file(path, body)`` against ``chio_file_write`` whose
+    canonical slots are ``("path", "content")``), the rebuild must
+    route the value through the table-derived canonical name so the
+    policy lookup matches. Previously the wrapper's ``body`` name was
+    used directly and ``content``-keyed policy missed it, leaking the
+    raw secret in ``parameters["args"][1]``.
+    """
+
+    def write_file(path: str, body: str) -> None:
+        del path, body
+
+    # Pure positional call.
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("/tmp/x", "PROD_SECRET"),
+        {},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == "/tmp/x"
+    assert args[1] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    assert kwargs == {}
+
+    # Mixed positional + kwarg under the wrapper's renamed name.
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("/tmp/x",),
+        {"body": "PROD_SECRET"},
+        tool_name="chio_file_write",
+    )
+    assert args == ["/tmp/x"]
+    assert kwargs == {
+        "body": {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    }
+
+    # Pure kwarg call under the wrapper's renamed name.
+    args, kwargs = bind_and_redact(
+        write_file,
+        (),
+        {"path": "/tmp/x", "body": "PROD_SECRET"},
+        tool_name="chio_file_write",
+    )
+    assert args == []
+    assert kwargs["path"] == "/tmp/x"
+    assert kwargs["body"] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET"),
+    }
+
+
+def test_pure_forwarder_skips_table_slot_filled_by_kwarg() -> None:
+    """Pure forwarder fallback maps positional[0] to next free slot.
+
+    Regression for PR #666 P1 (3229550957): a pure-forwarding wrapper
+    (``def proxy(*args, **kwargs)``) registered as ``chio_file_write``
+    called as ``proxy("PROD_SECRET", path="/tmp/x")``. The kwarg already
+    fills slot 0 (``path``), so the lone positional value is logically
+    the ``content`` slot. Previously the fallback always mapped
+    positional[0] -> table slot 0, returning the raw secret under
+    ``args[0]``.
+    """
+
+    def proxy(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    args, kwargs = bind_and_redact(
+        proxy,
+        ("PROD_SECRET",),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    assert args == [{"omitted": True, "byte_count": len(b"PROD_SECRET")}]
+    assert kwargs == {"path": "/tmp/x"}
+
+    # Same shape with ``fn=None`` (the other table-fallback entry).
+    args, kwargs = bind_and_redact(
+        None,
+        ("PROD_SECRET",),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    assert args == [{"omitted": True, "byte_count": len(b"PROD_SECRET")}]
+    assert kwargs == {"path": "/tmp/x"}
+
+
 def test_default_tool_positional_names_covers_chio_default_tools() -> None:
     """The default table must mirror the chio_default redaction policy."""
 
