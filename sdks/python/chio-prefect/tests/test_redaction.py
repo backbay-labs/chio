@@ -1,13 +1,4 @@
-"""Tests for chio-prefect argument redaction (chio-adapter-base wiring).
-
-These tests assert that ``@chio_task`` redacts secret-bearing fields
-from its tool kwargs BEFORE forwarding them to the sidecar's
-``evaluate_tool_call`` endpoint, so the receipt log never carries the
-raw secret bytes. The wrapped function body still receives the
-original, unredacted arguments.
-
-Source of truth: ``chio_adapter_base.redact.redact_args``.
-"""
+"""Argument-redaction tests for chio-prefect."""
 
 from __future__ import annotations
 
@@ -30,11 +21,6 @@ def _scope_for_tools(*tool_names: str, server_id: str = "srv") -> ChioScope:
     return ChioScope(grants=grants)
 
 
-# ---------------------------------------------------------------------------
-# Default policy: chio_file_write.content / chio_file_edit.patch
-# ---------------------------------------------------------------------------
-
-
 class TestDefaultPolicyRedacts:
     def test_chio_file_write_content_is_redacted_in_sidecar_payload(self) -> None:
         chio = allow_all()
@@ -48,7 +34,7 @@ class TestDefaultPolicyRedacts:
             tool_name="chio_file_write",
         )
         def write_file(*, path: str, content: str) -> str:
-            # Function body must still see the *original* unredacted args.
+            # Body must see the original unredacted args.
             body_seen["path"] = path
             body_seen["content"] = content
             return "ok"
@@ -65,7 +51,6 @@ class TestDefaultPolicyRedacts:
         result = myflow()
         assert result == "ok"
 
-        # Sidecar must have received the REDACTED kwargs.
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
         forwarded = evaluate_calls[0].parameters
@@ -75,8 +60,6 @@ class TestDefaultPolicyRedacts:
             "omitted": True,
             "byte_count": len(b"PROD_SECRET=abc123"),
         }
-
-        # And the function body must have seen the raw bytes.
         assert body_seen["content"] == "PROD_SECRET=abc123"
         assert body_seen["path"] == "/tmp/x"
 
@@ -138,19 +121,13 @@ class TestDefaultPolicyRedacts:
 
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         forwarded = evaluate_calls[0].parameters
-        # The default policy only matches chio_file_write / chio_file_edit;
-        # unrelated tools see their kwargs unmodified.
         assert forwarded["kwargs"] == {
             "query": "quantum",
             "content": "not redacted here",
         }
 
     def test_positional_args_are_not_touched(self) -> None:
-        """Positional args are forwarded verbatim because the wrapper does
-        not know the callable's parameter names. Tools with secret bodies
-        should accept them as keyword-only arguments to opt in to
-        redaction (this is documented in :func:`_task_parameters`).
-        """
+        """Positional args bypass redaction; tools with secret bodies must use kwargs."""
         chio = allow_all()
 
         @chio_task(
@@ -170,22 +147,14 @@ class TestDefaultPolicyRedacts:
             chio_client=chio,
         )
         def myflow() -> str:
-            # Note: positional, not kwarg.
             return write_file("/tmp/x", "RAW_SECRET=xyz")
 
         myflow()
 
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         forwarded = evaluate_calls[0].parameters
-        # Args land in the args list verbatim; kwargs is empty so there is
-        # nothing for redact_args to touch. This is documented behaviour.
         assert forwarded["args"] == ["/tmp/x", "RAW_SECRET=xyz"]
         assert forwarded["kwargs"] == {}
-
-
-# ---------------------------------------------------------------------------
-# Custom policy: only my_tool.body is redacted
-# ---------------------------------------------------------------------------
 
 
 class TestCustomPolicy:
@@ -224,9 +193,7 @@ class TestCustomPolicy:
         }
 
     def test_custom_task_policy_does_not_redact_default_fields(self) -> None:
-        """A custom policy fully replaces the default; chio_file_write is
-        no longer redacted under it.
-        """
+        """Custom policy fully replaces the default."""
         chio = allow_all()
         custom = RedactionPolicy(body_fields={"my_tool": ("body",)})
 
@@ -255,11 +222,6 @@ class TestCustomPolicy:
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         forwarded = evaluate_calls[0].parameters
         assert forwarded["kwargs"]["content"] == "not-redacted-now"
-
-
-# ---------------------------------------------------------------------------
-# Flow-level policy is inherited by enclosed tasks
-# ---------------------------------------------------------------------------
 
 
 class TestFlowPolicyInheritance:
@@ -326,7 +288,7 @@ class TestFlowPolicyInheritance:
 
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         forwarded = evaluate_calls[0].parameters
-        # Task policy wins: ``taskbody`` is stubbed, ``flowbody`` is not.
+        # Task policy wins.
         assert forwarded["kwargs"]["taskbody"] == {
             "omitted": True,
             "byte_count": len(b"SECRET"),

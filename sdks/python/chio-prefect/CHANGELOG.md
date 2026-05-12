@@ -7,16 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1]
 
-- feat: redact tool argument bodies before forwarding them to the Chio
-  sidecar (and therefore before they land in the receipt log). Uses
-  `chio_adapter_base.redact.redact_args` with the chio-default policy
-  (`{"chio_file_write": ("content",), "chio_file_edit": ("patch",)}`).
-  Pass a custom `RedactionPolicy` via the new `redaction_policy`
-  keyword argument on `@chio_task` and `@chio_flow` to define which
-  fields get redacted (replaces the chio default; if you want both,
-  include the default fields explicitly). The wrapped task body still
-  receives the original, unredacted arguments; only the receipt-bound
-  `parameters` payload is redacted.
+- feat: redact tool argument bodies via
+  `chio_adapter_base.redact.redact_args` before forwarding to the Chio
+  sidecar. Default policy covers `chio_file_write.content` and
+  `chio_file_edit.patch`. Pass a custom `RedactionPolicy` via the new
+  `redaction_policy` keyword on `@chio_task` / `@chio_flow` (a custom
+  policy fully replaces the default). The wrapped task body still
+  receives the original, unredacted arguments.
 
 ## [0.1.0]
 

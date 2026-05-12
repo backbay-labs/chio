@@ -1,37 +1,11 @@
 """Chio-governed Prefect decorators.
 
-:func:`chio_task` wraps Prefect's :func:`prefect.task` so every task
-invocation flows through the Chio sidecar for capability-scoped
-authorisation. :func:`chio_flow` wraps :func:`prefect.flow` to bind a
-capability id and a flow-level scope that bounds every task's scope via
-attenuation.
-
-The decorators preserve Prefect's sync / async contract: wrapping a
-``def`` function yields a sync Prefect task; wrapping an ``async def``
-function yields an async Prefect task. All Prefect options (``name``,
-``retries``, ``retry_delay_seconds``, ``tags``, ``timeout_seconds``,
-etc.) pass straight through to the underlying :func:`prefect.task` /
-:func:`prefect.flow`.
-
-Denied tasks raise :class:`PermissionError`. Prefect routes any
-exception raised inside a task body to a ``Failed`` task-run state, so
-``PermissionError`` surfaces naturally on the flow-run timeline. The
-integration also emits an ``chio.receipt.deny`` Prefect event (see
-:mod:`chio_prefect.events`) before raising so Automations can fire.
-
-Allow verdicts emit an ``chio.receipt.allow`` event with the receipt id
-so the receipt renders on the Prefect UI timeline.
-
-Flow scope attenuation
-----------------------
-
-``@chio_flow(scope=..., capability_id=...)`` registers a flow-level grant
-on a per-flow-run registry (keyed by the Prefect flow run id). Tasks
-decorated with ``@chio_task(scope=...)`` check, at call time, that their
-declared scope is a subset of the enclosing flow's scope (the "scope
-bounds every task" rule). A task call outside any Chio-governed flow
-falls back to the task's own scope without attenuation; this keeps
-``@chio_task`` usable in non-Chio flows for gradual adoption.
+``@chio_task`` and ``@chio_flow`` wrap Prefect's ``task`` / ``flow`` so
+every invocation flows through the Chio sidecar. Denied tasks raise
+``PermissionError``; allow / deny verdicts emit ``chio.receipt.*``
+Prefect events. A ``@chio_flow``'s scope bounds every enclosed task's
+scope via attenuation; a task outside any ``@chio_flow`` runs against
+its own scope (gradual adoption).
 """
 
 from __future__ import annotations
@@ -53,20 +27,13 @@ from chio_sdk.models import ChioReceipt, ChioScope
 from chio_prefect.errors import ChioPrefectConfigError, ChioPrefectError
 from chio_prefect.events import emit_allow_event, emit_deny_event
 
-# Anything that quacks like an :class:`chio_sdk.ChioClient` -- we accept
-# the real client and the :class:`chio_sdk.testing.MockChioClient`
-# interchangeably, so tests can inject an in-memory policy.
+# Real ChioClient or :class:`chio_sdk.testing.MockChioClient`.
 ChioClientLike = Any
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-# ---------------------------------------------------------------------------
-# Flow-scope registry (ContextVar-backed so concurrent flow runs do not
-# stomp each other's grants, even on async task runners).
-# ---------------------------------------------------------------------------
-
-
+# ContextVar-backed so concurrent flow runs do not stomp each other.
 @dataclass(frozen=True)
 class _FlowContext:
     """Per-flow-run Chio context visible to enclosed :func:`chio_task` calls."""
@@ -77,10 +44,7 @@ class _FlowContext:
     chio_client: ChioClientLike | None
     sidecar_url: str
     flow_run_id: str | None
-    # Per-flow argument redaction policy, propagated to enclosed
-    # :func:`chio_task` invocations whose own ``redaction_policy`` is
-    # unset. ``None`` means "use the chio-default policy at the task
-    # boundary" (resolved in :func:`_invoke_task`).
+    # ``None`` means "use the chio-default policy at the task boundary".
     redaction_policy: RedactionPolicy | None = None
 
 
@@ -90,7 +54,6 @@ _current_flow: ContextVar[_FlowContext | None] = ContextVar(
 
 
 def _current_flow_run_id() -> str | None:
-    """Best-effort fetch of the current Prefect flow-run id (or ``None``)."""
     try:
         from prefect.runtime import flow_run
 
@@ -100,7 +63,6 @@ def _current_flow_run_id() -> str | None:
 
 
 def _current_task_run_id() -> str | None:
-    """Best-effort fetch of the current Prefect task-run id (or ``None``)."""
     try:
         from prefect.runtime import task_run
 
@@ -110,7 +72,6 @@ def _current_task_run_id() -> str | None:
 
 
 def _current_task_name(fallback: str) -> str:
-    """Best-effort fetch of the Prefect-resolved task-run name."""
     try:
         from prefect.runtime import task_run
 
@@ -122,19 +83,8 @@ def _current_task_name(fallback: str) -> str:
     return fallback
 
 
-# ---------------------------------------------------------------------------
-# Shared Chio client plumbing
-# ---------------------------------------------------------------------------
-
-
 class _ChioClientOwner:
-    """Owns a lazily-constructed :class:`ChioClient` for an integration call.
-
-    The decorator path may see an explicit client (from the flow
-    context or a test fixture) or may need to mint a default pointing at
-    ``sidecar_url``. We track ownership so we only close the client we
-    created, never a caller-supplied one.
-    """
+    """Lazy :class:`ChioClient` owner; only closes clients it created itself."""
 
     __slots__ = ("_client", "_owns", "_sidecar_url")
 
@@ -158,11 +108,6 @@ class _ChioClientOwner:
                 self._client = None
 
 
-# ---------------------------------------------------------------------------
-# Core evaluation: call the sidecar, emit events, raise on deny.
-# ---------------------------------------------------------------------------
-
-
 async def _evaluate_and_emit(
     *,
     chio_client: ChioClientLike,
@@ -173,12 +118,10 @@ async def _evaluate_and_emit(
     flow_run_id: str | None,
     task_run_id: str | None,
 ) -> ChioReceipt:
-    """Evaluate a task invocation via the Chio sidecar and emit the receipt event.
+    """Evaluate via the sidecar; emit receipt event; raise PermissionError on deny.
 
-    Returns the :class:`ChioReceipt`. Raises :class:`PermissionError` on
-    deny (both the receipt-path deny and the HTTP-403 ``ChioDeniedError``
-    path). Kernel / transport errors propagate as the original
-    :class:`ChioError` so Prefect can apply its retry policy.
+    Kernel / transport errors propagate as :class:`ChioError` so Prefect
+    can apply its retry policy (a transport failure is not a deny).
     """
     try:
         receipt = await chio_client.evaluate_tool_call(
@@ -188,8 +131,7 @@ async def _evaluate_and_emit(
             parameters=parameters,
         )
     except ChioDeniedError as exc:
-        # HTTP 403 path -- no full receipt body; synthesise a deny event
-        # and translate to PermissionError.
+        # HTTP 403: no receipt body; synthesise a deny event.
         emit_deny_event(
             receipt=None,
             task_name=tool_name,
@@ -212,10 +154,6 @@ async def _evaluate_and_emit(
             receipt_id=exc.receipt_id,
         ) from exc
     except ChioError:
-        # Transport / sidecar error -- let Prefect retry per the task's
-        # configured retry policy. We deliberately do NOT translate to
-        # PermissionError here; the task is not denied, the kernel was
-        # unreachable.
         raise
 
     if receipt.is_denied:
@@ -261,14 +199,7 @@ def _denied_permission_error(
     receipt_id: str | None,
     decision: dict[str, Any] | None = None,
 ) -> PermissionError:
-    """Build the :class:`PermissionError` the task decorator raises on deny.
-
-    The :class:`ChioPrefectError` rides along on ``__cause__`` (via
-    ``raise ... from``) so structured-log consumers can inspect the full
-    deny context; the surface type is :class:`PermissionError` so
-    callers can ``except PermissionError`` naturally, per the roadmap
-    acceptance criterion.
-    """
+    """Build the deny :class:`PermissionError`; full context rides on ``__cause__``."""
     err = ChioPrefectError(
         reason,
         task_name=task_name,
@@ -286,11 +217,6 @@ def _denied_permission_error(
     return permission_error
 
 
-# ---------------------------------------------------------------------------
-# Scope resolution
-# ---------------------------------------------------------------------------
-
-
 def _resolve_task_context(
     *,
     task_scope: ChioScope | None,
@@ -300,19 +226,10 @@ def _resolve_task_context(
     chio_client_override: ChioClientLike | None,
     sidecar_url_override: str | None,
 ) -> tuple[_FlowContext | None, str, ChioScope, str]:
-    """Resolve the capability_id / scope / tool_server for a task call.
-
-    Returns ``(flow_context, capability_id, scope, tool_server)``. The
-    ``flow_context`` is ``None`` when the task is executing outside any
-    Chio-governed flow; in that case the task's own ``capability_id`` is
-    required (otherwise :class:`ChioPrefectConfigError`).
-    """
+    """Resolve ``(flow_context, capability_id, scope, tool_server)`` for a task call."""
     flow_ctx = _current_flow.get()
     if flow_ctx is not None:
-        # Flow-attenuation rule: task scope (when declared) must be a
-        # subset of the flow scope. An empty ``task_scope`` inherits the
-        # flow scope as-is, which is the common case for flows that
-        # already declared a tight ceiling.
+        # Attenuation: a declared task scope must be a subset of the flow scope.
         if task_scope is not None and not task_scope.is_subset_of(flow_ctx.scope):
             raise ChioPrefectConfigError(
                 f"chio_task scope for {task_name!r} is not a subset of the "
@@ -323,7 +240,7 @@ def _resolve_task_context(
         tool_server = task_tool_server or flow_ctx.tool_server
         return flow_ctx, capability_id, resolved_scope, tool_server
 
-    # No flow context -- standalone task call. Require capability id.
+    # Standalone task call requires its own capability id.
     if not task_capability_id:
         raise ChioPrefectConfigError(
             f"chio_task {task_name!r} was invoked outside an @chio_flow and no "
@@ -334,11 +251,6 @@ def _resolve_task_context(
         task_scope = ChioScope()
     tool_server = task_tool_server or ""
     return None, task_capability_id, task_scope, tool_server
-
-
-# ---------------------------------------------------------------------------
-# @chio_task
-# ---------------------------------------------------------------------------
 
 
 @overload
@@ -373,49 +285,20 @@ def chio_task(
     redaction_policy: RedactionPolicy | None = None,
     **task_options: Any,
 ) -> Any:
-    """Decorator that wraps a function as an Chio-governed Prefect task.
+    """Wrap ``fn`` as a Chio-governed Prefect task.
 
-    Parameters
-    ----------
-    scope:
-        The task's :class:`ChioScope`. When the task runs inside an
-        :func:`chio_flow`, ``scope`` must be a subset of the flow's
-        scope. When ``None`` inside an ``chio_flow``, the task inherits
-        the flow scope.
-    capability_id:
-        Pre-minted capability id to use for standalone task calls
-        (outside any ``chio_flow``). Ignored when an ``chio_flow`` context
-        is active (the flow's capability_id wins).
-    tool_server:
-        Chio tool server id for this task's evaluation. Falls back to the
-        flow's ``tool_server`` when unset.
-    tool_name:
-        Chio tool name to use for evaluation. Defaults to the function
-        name.
-    chio_client:
-        Optional :class:`chio_sdk.ChioClient` (or mock) to use instead of
-        minting a default one. The decorator does not close caller-owned
-        clients; it only closes clients it created itself.
-    sidecar_url:
-        Base URL of the Chio sidecar when the decorator has to mint its
-        own client. Defaults to the flow context's url or
-        ``http://127.0.0.1:9090``.
-    redaction_policy:
-        Per-task argument redaction policy. Applied to the task kwargs
-        right before they are forwarded to the Chio sidecar so secret-
-        bearing fields (e.g. the ``content`` of ``chio_file_write``)
-        never land in the receipt log. Defaults to the policy of the
-        enclosing :func:`chio_flow` (when set) and otherwise to
-        :meth:`RedactionPolicy.chio_default`. The wrapped function body
-        always sees the original, unredacted arguments.
-    task_options:
-        Forwarded verbatim to :func:`prefect.task` (e.g. ``retries``,
-        ``retry_delay_seconds``, ``tags``, ``timeout_seconds``,
-        ``name``). The wrapper preserves Prefect's sync / async
-        contract.
+    A task running inside an :func:`chio_flow` inherits the flow's
+    scope / capability_id when its own are unset, and any declared
+    ``scope`` must be a subset of the flow scope. Standalone tasks (no
+    enclosing flow) require their own ``capability_id``.
+
+    ``redaction_policy`` controls which kwargs are stubbed before
+    reaching the sidecar; defaults to the enclosing flow's policy or
+    :meth:`RedactionPolicy.chio_default`. The wrapped body always sees
+    the original arguments. ``**task_options`` pass straight through to
+    :func:`prefect.task`.
     """
-    # Lazy import keeps the module importable for unit tests that do
-    # not exercise Prefect.
+    # Lazy import: keeps unit tests that do not exercise Prefect importable.
     from prefect import task as prefect_task
 
     def decorator(fn: F) -> F:
@@ -448,11 +331,8 @@ def chio_task(
 
         @functools.wraps(fn)
         def sync_body(*args: Any, **kwargs: Any) -> Any:
-            # Run the (async) evaluation plumbing on a throwaway event
-            # loop so the task body itself stays synchronous. Prefect
-            # synchronises task calls on the caller's loop when one
-            # exists; this local runner is only hit for true sync
-            # tasks.
+            # Run the async evaluation plumbing on a throwaway loop so
+            # the sync task body stays synchronous.
             return asyncio.run(
                 _invoke_task(
                     fn=fn,
@@ -472,7 +352,6 @@ def chio_task(
         return cast(F, prefect_task(**task_kwargs)(sync_body))
 
     if __fn is not None:
-        # Used as ``@chio_task`` with no parens.
         return decorator(__fn)
     return decorator
 
@@ -491,12 +370,7 @@ async def _invoke_task(
     redaction_policy_override: RedactionPolicy | None,
     is_async: bool,
 ) -> Any:
-    """Shared task-body implementation for sync and async variants.
-
-    This performs the full pre-dispatch flow: resolve the scope, evaluate
-    via the sidecar, emit the receipt event, raise :class:`PermissionError`
-    on deny, otherwise invoke the wrapped function.
-    """
+    """Resolve scope, evaluate via the sidecar, then invoke the wrapped function."""
     flow_ctx, cap_id, _resolved_scope, server = _resolve_task_context(
         task_scope=task_scope,
         task_capability_id=task_capability_id,
@@ -515,13 +389,7 @@ async def _invoke_task(
         or ChioClient.DEFAULT_BASE_URL
     )
 
-    # Resolution order for the redaction policy:
-    #   1. Per-task override (explicit ``redaction_policy=`` on @chio_task).
-    #   2. Enclosing flow's policy (when running inside @chio_flow).
-    #   3. The chio-default policy (covers chio_file_write.content,
-    #      chio_file_edit.patch).
-    # We always apply *some* policy; defaulting to chio_default keeps
-    # adoption a no-op for callers that do not explicitly configure one.
+    # Policy resolution: per-task override > flow policy > chio default.
     resolved_policy = redaction_policy_override
     if resolved_policy is None and flow_ctx is not None:
         resolved_policy = flow_ctx.redaction_policy
@@ -548,13 +416,10 @@ async def _invoke_task(
     finally:
         await owner.close()
 
-    # Allow path -- run the original function body. Preserve sync /
-    # async contract: async bodies are awaited, sync bodies are invoked
-    # in a thread so we never block the loop for a long-running sync
-    # task.
     _ = resolved_task_name  # reserved for future metadata on receipts
     if is_async:
         return await cast(Callable[..., Awaitable[Any]], fn)(*args, **kwargs)
+    # Sync body offloaded so we never block the loop on a long-running task.
     return await asyncio.to_thread(fn, *args, **kwargs)
 
 
@@ -564,30 +429,16 @@ def _task_parameters(
     tool_name: str,
     policy: RedactionPolicy,
 ) -> dict[str, Any]:
-    """Canonicalise task call arguments for the sidecar payload.
+    """Canonicalise call arguments for the sidecar payload (kwargs are redacted).
 
-    Prefect delivers tasks with both positional and keyword arguments;
-    the Chio sidecar evaluates on a dict. We wrap positional args under a
-    stable ``args`` key and forward kwargs as-is so the parameter hash
-    remains deterministic across runs with identical inputs.
-
-    The ``kwargs`` dict is run through :func:`redact_args` so secret-
-    bearing fields named by ``policy`` (e.g. ``content`` for
-    ``chio_file_write``) are replaced with a byte-count stub before they
-    reach the sidecar (and therefore the receipt log). Positional
-    ``args`` are not redacted because the wrapper does not know the
-    callable's parameter names; tools that carry secret bodies should
-    accept them as keyword-only arguments to opt in to redaction.
+    Positional ``args`` are forwarded verbatim because the wrapper does
+    not know the callable's parameter names; tools with secret bodies
+    must accept them as keyword-only arguments to opt in to redaction.
     """
     return {
         "args": list(args),
         "kwargs": redact_args(tool_name, kwargs, policy=policy),
     }
-
-
-# ---------------------------------------------------------------------------
-# @chio_flow
-# ---------------------------------------------------------------------------
 
 
 @overload
@@ -620,39 +471,14 @@ def chio_flow(
     redaction_policy: RedactionPolicy | None = None,
     **flow_options: Any,
 ) -> Any:
-    """Decorator that wraps a function as an Chio-governed Prefect flow.
+    """Wrap ``fn`` as a Chio-governed Prefect flow.
 
-    The flow's ``scope`` becomes the ceiling for every :func:`chio_task`
-    inside its body; tasks declaring a broader scope are rejected with
-    :class:`ChioPrefectConfigError` at call time. The ``capability_id``
-    is the pre-minted capability token id the enclosed tasks evaluate
-    against.
-
-    Parameters
-    ----------
-    scope:
-        Flow :class:`ChioScope`. Required when using the keyword form.
-    capability_id:
-        Flow-level capability id. Required when using the keyword form.
-    tool_server:
-        Default Chio tool server id for tasks whose own ``tool_server``
-        is unset.
-    chio_client:
-        Optional :class:`chio_sdk.ChioClient` (or mock). Shared with all
-        enclosed :func:`chio_task` invocations so tests can observe every
-        call via a single mock.
-    sidecar_url:
-        Fallback sidecar URL. Default ``http://127.0.0.1:9090``.
-    redaction_policy:
-        Default argument-redaction policy for every enclosed
-        :func:`chio_task` whose own ``redaction_policy`` is unset. When
-        ``None``, the chio-default policy is applied at the task
-        boundary (covers ``chio_file_write.content`` and
-        ``chio_file_edit.patch``).
-    flow_options:
-        Forwarded verbatim to :func:`prefect.flow` (``name``,
-        ``retries``, ``timeout_seconds``, ``task_runner``, ``tags``,
-        etc.).
+    The flow's ``scope`` becomes the ceiling for every enclosed
+    :func:`chio_task`; broader task scopes are rejected at call time
+    with :class:`ChioPrefectConfigError`. ``redaction_policy`` is the
+    default policy for enclosed tasks (otherwise
+    :meth:`RedactionPolicy.chio_default`). ``**flow_options`` pass
+    straight through to :func:`prefect.flow`.
     """
     from prefect import flow as prefect_flow
 
@@ -718,7 +544,6 @@ def _enter_flow_context(
     sidecar_url: str | None,
     redaction_policy: RedactionPolicy | None = None,
 ) -> Any:
-    """Push a :class:`_FlowContext` onto the ContextVar stack for this flow run."""
     flow_run_id = _current_flow_run_id() or f"adhoc-{uuid.uuid4().hex[:8]}"
     ctx = _FlowContext(
         capability_id=capability_id,
