@@ -33,12 +33,8 @@ F = TypeVar("F", bound=Callable[..., Any])
 _REQUIRES_ATTR = "_chio_required_scope"
 _REQUIRES_SPEC_ATTR = "_chio_required_scope_spec"
 
-# Cache the chio default redaction policy at import time so the per-call
-# `getattr(actor, "_chio_redaction_policy", _DEFAULT_REDACTION_POLICY)`
-# fallback does not allocate a fresh policy object on every method
-# invocation. The policy is intentionally treated as immutable by callers
-# (RedactionPolicy.chio_default returns a new instance on each call); we
-# rely on the module-level singleton for the hot path.
+# Module-level singleton so the per-call getattr fallback below does not
+# allocate a fresh policy on every method invocation.
 _DEFAULT_REDACTION_POLICY: RedactionPolicy = RedactionPolicy.chio_default()
 _REQUIRES_TOOL_NAME_ATTR = "_chio_required_tool_name"
 
@@ -242,9 +238,6 @@ async def _enforce_actor_method(
     chio_client: ChioClientLike | None = getattr(actor, "_chio_client", None)
     sidecar_url: str = getattr(actor, "_chio_sidecar_url", "http://127.0.0.1:9090")
 
-    # Use the module-level _DEFAULT_REDACTION_POLICY so the getattr default
-    # does not allocate a fresh policy object on every call; the actor still
-    # owns its per-instance _chio_redaction_policy when one was configured.
     redaction_policy: RedactionPolicy = getattr(
         actor, "_chio_redaction_policy", _DEFAULT_REDACTION_POLICY
     )
@@ -274,14 +267,9 @@ async def _enforce_actor_method(
     actor._chio_receipts.append(receipt)
 
 
-# Sentinel placeholder for the implicit receiver. The wrapper passes
-# ``args`` that already exclude ``self``; binding the original method
-# directly would raise (one missing positional). We hand
-# :func:`bind_and_redact` a :func:`functools.partial` whose first
-# positional is pre-bound to this sentinel, which yields a callable
-# whose :func:`inspect.signature` drops the receiver. The sentinel
-# itself never appears in the redacted payload because the partial
-# strips it from the visible signature before binding ``args``.
+# Pre-bound to the receiver slot via functools.partial so
+# bind_and_redact sees a signature aligned with the wrapper's
+# receiver-less ``args`` (the wrapper has already stripped ``self``).
 _RECEIVER_PLACEHOLDER: Any = object()
 
 
@@ -293,14 +281,7 @@ def _redact_method_call(
     tool_name: str,
     policy: RedactionPolicy,
 ) -> tuple[list[Any], dict[str, Any]]:
-    """Bind positional args to parameter names and redact protected fields.
-
-    The wrapper-supplied ``args`` excludes the implicit receiver.
-    :func:`functools.partial` pre-binds the receiver slot so
-    :func:`chio_adapter_base.redact.bind_and_redact` sees a signature
-    aligned with ``args`` (without needing ``drop_self``, which expects
-    the receiver to live at ``args[0]``).
-    """
+    """Bind positional args to parameter names and redact protected fields."""
     receiver_less = functools.partial(method, _RECEIVER_PLACEHOLDER)
     return bind_and_redact(
         receiver_less,

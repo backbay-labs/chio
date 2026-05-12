@@ -28,9 +28,8 @@ ChioClientLike = Any
 
 F = TypeVar("F", bound=Callable[..., Any])
 
-# Cache the chio default redaction policy at import time so each chio_remote
-# decoration does not allocate a fresh policy object when the caller did not
-# pass one. Treated as immutable by callers of redact_args.
+# Module-level singleton so each chio_remote decoration does not allocate
+# a fresh policy when the caller did not pass one.
 _DEFAULT_REDACTION_POLICY: RedactionPolicy = RedactionPolicy.chio_default()
 
 
@@ -280,19 +279,7 @@ def _build_redacted_call(
     *,
     drop_self: bool = False,
 ) -> tuple[list[Any], dict[str, Any]]:
-    """Bind args to declared names, redact protected fields, preserve wire shape.
-
-    Thin wrapper around :func:`chio_adapter_base.redact.bind_and_redact`
-    (added in chio-adapter-base 0.1.1). Positional values stay
-    positional, keyword values stay keyword; the helper handles fixed
-    signatures, pure forwarding wrappers (via the chio-default
-    positional-name table), ``VAR_POSITIONAL`` extras, ``VAR_KEYWORD``
-    spillover, non-introspectable callables, and the merge-conflict
-    edge case. ``drop_self=True`` strips the leading positional value
-    from both the signature and ``args`` for receivers that the caller
-    has not pre-stripped (the actor path uses the
-    :func:`functools.partial` shim in :mod:`chio_ray.actor` instead).
-    """
+    """Bind args to declared names, redact protected fields, preserve wire shape."""
     return bind_and_redact(
         fn,
         args,
@@ -311,12 +298,7 @@ def _task_parameters(
     policy: RedactionPolicy,
     fn: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
-    """Canonicalise call args for the sidecar.
-
-    Delegates to :func:`_build_redacted_call`; positional values stay
-    in ``parameters["args"]``, keyword values stay in
-    ``parameters["kwargs"]``.
-    """
+    """Canonicalise call args for the sidecar (positional stays positional)."""
     new_args, new_kwargs = _build_redacted_call(
         fn, args, kwargs, tool_name, policy
     )

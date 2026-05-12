@@ -62,8 +62,6 @@ class TestChioRemoteRedaction:
         calls = _eval_calls(chio)
         assert len(calls) == 1
         forwarded = calls[0].parameters["kwargs"]
-        # Path field passes through unchanged; content is replaced by
-        # the byte-count omission stub.
         assert forwarded["path"] == "/tmp/x"
         assert forwarded["content"] == {
             "omitted": True,
@@ -159,11 +157,6 @@ class TestChioRemoteRedaction:
         assert forwarded["content"] == "not-redacted-now"
 
     def test_positional_args_for_known_tool_are_redacted(self) -> None:
-        # Positional callers must NOT bypass redaction for chio-default
-        # tools. The previous behaviour (forwarding raw positional
-        # values) leaked the body field; the bind-by-name fix scrubs it
-        # while preserving the original wire shape (positional values
-        # stay in parameters["args"]).
         chio = allow_all()
 
         @chio_remote(
@@ -182,7 +175,6 @@ class TestChioRemoteRedaction:
         import json
 
         params = _eval_calls(chio)[0].parameters
-        # Wire shape preserved: positional values stay positional.
         assert params["args"][0] == "/tmp/x"
         assert params["args"][1] == {
             "omitted": True,
@@ -194,10 +186,6 @@ class TestChioRemoteRedaction:
     def test_pure_forwarding_wrapper_redacts_positional_via_tool_table(
         self,
     ) -> None:
-        # Forwarding wrappers ``def fn(*args, **kwargs)`` have no fixed
-        # parameter names to bind positional values against. The
-        # tool-arity table covers chio-default tools so their bodies
-        # still get scrubbed when supplied positionally.
         chio = allow_all()
 
         @chio_remote(
@@ -225,13 +213,9 @@ class TestChioRemoteRedaction:
         assert params["kwargs"] == {}
 
     def test_pure_forwarding_wrapper_preserves_kwarg_conflict(self) -> None:
-        # Pathological caller supplies both a positional AND a keyword
-        # for the same field (``write('/tmp/x', path='/etc/passwd')``).
-        # Both must be redacted independently so the kwarg-side payload
-        # cannot leak by overwriting the positional value before the
-        # redactor runs. The wrapped function itself will raise
-        # ``TypeError`` for the duplicate parameter; we do not try to
-        # repair caller error.
+        # Caller supplies both positional and kwarg for the same field;
+        # both sides must be redacted independently. The wrapped fn raises
+        # TypeError for the duplicate; we only assert sidecar saw both redacted.
         chio = allow_all()
 
         @chio_remote(
@@ -244,8 +228,6 @@ class TestChioRemoteRedaction:
         def write(*args: Any, **kwargs: Any) -> str:
             return str(args[0]) if args else ""
 
-        # Call directly (bypass Ray's actual dispatch) to inspect the
-        # sidecar parameters before the wrapped function raises.
         try:
             ref = write.remote(
                 "/tmp/x",
@@ -255,9 +237,7 @@ class TestChioRemoteRedaction:
             )
             ray.get(ref)
         except Exception:
-            # The wrapped function raises TypeError for the duplicate
-            # ``path`` keyword. That is correct; we only care that the
-            # sidecar saw both values redacted.
+            # TypeError from the duplicate ``path`` kwarg; expected.
             pass
 
         import json
@@ -281,9 +261,6 @@ class TestChioRemoteRedaction:
         }
 
     def test_var_positional_extras_remain_in_args(self) -> None:
-        # ``*extras`` past the fixed positional slots have no parameter
-        # name to bind to, so they remain in args (not migrated to
-        # kwargs and not dropped).
         chio = allow_all()
 
         @chio_remote(
@@ -456,9 +433,6 @@ class TestChioActorRedaction:
         }
 
     def test_positional_method_args_still_redacted(self) -> None:
-        # Confirm the existing positional-args binding path still works
-        # and preserves the wire shape (positional values stay in
-        # parameters["args"] after redaction).
         chio = allow_all()
         scope = _scope_for_tools("chio_file_write", server_id="srv")
         token = _local_token(scope)
@@ -487,7 +461,6 @@ class TestChioActorRedaction:
 
         params = _eval_calls(chio)[0].parameters
         assert "PROD_SECRET" not in json.dumps(params)
-        # Wire shape preserved: positional values stay positional.
         assert params["args"][0] == "/tmp/x"
         assert params["args"][1] == {
             "omitted": True,
@@ -498,11 +471,9 @@ class TestChioActorRedaction:
     def test_method_receiver_not_named_self_still_drops_implicit_arg(
         self,
     ) -> None:
-        # When the receiver parameter is not literally called ``self``,
-        # the redaction helper must still drop the implicit receiver
-        # from the signature. Otherwise the bind step shifts every
-        # subsequent positional value one slot to the left and the body
-        # field is bound to ``path``, leaving ``content`` unredacted.
+        # Receiver named "this" rather than "self"; the redaction helper
+        # must still drop the implicit receiver or the body field binds
+        # to "path" and "content" leaks unredacted.
         chio = allow_all()
         scope = _scope_for_tools("chio_file_write", server_id="srv")
         token = _local_token(scope)
@@ -521,8 +492,6 @@ class TestChioActorRedaction:
                 "tools:chio_file_write", tool_name="chio_file_write"
             )
             def chio_file_write(this, path: str, content: str) -> str:  # noqa: N805
-                # Receiver named ``this`` rather than ``self`` (legal
-                # Python; PEP 8 only convention).
                 return path
 
         handle = WriterAlt.remote()
@@ -536,7 +505,6 @@ class TestChioActorRedaction:
         params = _eval_calls(chio)[0].parameters
         forwarded_blob = json.dumps(params)
         assert "PROD_SECRET" not in forwarded_blob
-        # Wire shape preserved and the body field is correctly redacted.
         assert params["args"][0] == "/tmp/x"
         assert params["args"][1] == {
             "omitted": True,
