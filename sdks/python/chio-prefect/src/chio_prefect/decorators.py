@@ -595,6 +595,14 @@ def _task_parameters(
     }
     flat = {k: v for k, v in bound.items() if k not in var_keys}
     redacted_flat = redact_args(tool_name, flat, policy=policy)
+    # Track keys that are owned by the fixed-named buckets so a same-named
+    # entry inside a VAR_KEYWORD spillover dict does NOT overwrite the
+    # positional value's redacted form. Python lets positional-only params
+    # coexist with a same-named entry in **kwargs (e.g. ``def write(path, /,
+    # **kw)`` called as ``write("/etc", path="/tmp")`` binds to
+    # ``{"path": "/etc", "kw": {"path": "/tmp"}}``); both values are real
+    # and must be redacted independently rather than collapsed.
+    spillover_redacted: dict[str, Any] = {}
     if has_var_keyword:
         for vk in var_keys:
             v = bound.get(vk)
@@ -602,7 +610,17 @@ def _task_parameters(
                 for kk, vv in redact_args(
                     tool_name, dict(v), policy=policy
                 ).items():
-                    redacted_flat[kk] = vv
+                    if kk in redacted_flat:
+                        # Spillover collision with a fixed name: keep both
+                        # redacted values, but route the spillover to the
+                        # kwargs bucket via a deterministic synthetic key
+                        # so neither is silently dropped. The wrapped fn
+                        # accepted this shape (bind_partial succeeded), so
+                        # the underlying invocation can still run; the
+                        # sidecar payload now carries both byte counts.
+                        spillover_redacted[f"{kk}__var_kw_spillover__"] = vv
+                    else:
+                        redacted_flat[kk] = vv
 
     # Rebuild original wire shape: positional values stay positional,
     # keyword values stay keyword. The first ``bound_positional_count``
@@ -615,15 +633,43 @@ def _task_parameters(
             new_args.append(redacted_flat[n])
         else:
             new_args.append(args[i])
-    # VAR_POSITIONAL extras have no name to bind to; surface them in
-    # args so the wire shape matches the caller's invocation.
+    # VAR_POSITIONAL extras: positional values past the fixed slots have
+    # no fixed parameter name, but the chio default tool-arity table may
+    # still declare a name we can bind them to (e.g. ``def write_file(path,
+    # *args)`` called as ``write_file("/tmp/x", "PROD_SECRET")`` puts the
+    # secret in args[1]; chio_file_write -> ("path", "content") tells us
+    # to redact that slot as `content`). Without this, the secret would
+    # be re-emitted unredacted.
     if has_var_positional and len(args) > bound_positional_count:
-        new_args.extend(args[bound_positional_count:])
+        positional_table = _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name)
+        extras = list(args[bound_positional_count:])
+        if positional_table is not None:
+            for i, value in enumerate(extras):
+                table_index = bound_positional_count + i
+                if table_index >= len(positional_table):
+                    # Past the table cardinality: no name to bind against;
+                    # surface the extra unchanged.
+                    new_args.append(value)
+                    continue
+                slot_name = positional_table[table_index]
+                if slot_name in {n for n in fixed_positional_names}:
+                    # The table name collides with a fixed parameter name;
+                    # the fixed slot already got its redacted value above,
+                    # so just surface the extra unchanged here.
+                    new_args.append(value)
+                    continue
+                redacted_extra = redact_args(
+                    tool_name, {slot_name: value}, policy=policy
+                )
+                new_args.append(redacted_extra[slot_name])
+        else:
+            new_args.extend(extras)
     new_kwargs = {
         k: v
         for k, v in redacted_flat.items()
         if k not in fixed_positional_names[:bound_positional_count]
     }
+    new_kwargs.update(spillover_redacted)
     return {"args": new_args, "kwargs": new_kwargs}
 
 

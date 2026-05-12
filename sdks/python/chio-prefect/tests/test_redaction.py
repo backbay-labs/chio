@@ -744,3 +744,162 @@ class TestForwardingTablePassthroughHelper:
             "omitted": True,
             "byte_count": len(b"POSITIONAL_BODY"),
         }
+
+
+class TestFixedPositionalWithVarPositional:
+    """Coverage for ``def fn(path, *args)`` shape (closes 3228423995)."""
+
+    def test_var_positional_secret_is_redacted_via_tool_arity_table(
+        self,
+    ) -> None:
+        # ``def write_file(path, *args)`` called as
+        # ``write_file("/tmp/x", "PROD_SECRET")`` puts the secret in the
+        # VAR_POSITIONAL bucket; the chio default tool-arity table
+        # (chio_file_write -> ("path", "content")) must still bind it to
+        # `content` so it gets redacted, otherwise the secret would
+        # re-emit unredacted in `args`.
+        from typing import Any
+
+        from chio_prefect.decorators import _task_parameters
+
+        def write_file(path: str, *args: Any) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/tmp/x", "PROD_SECRET=abc123"),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write_file,
+        )
+
+        import json
+
+        forwarded = json.dumps(params)
+        assert "PROD_SECRET" not in forwarded
+        assert params["args"][0] == "/tmp/x"
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert params["kwargs"] == {}
+
+    def test_var_positional_extras_past_table_pass_through_unredacted(
+        self,
+    ) -> None:
+        # ``def write_file(path, *args)`` called with two trailing extras
+        # past the chio_file_write table cardinality (path, content).
+        # Extras beyond index 1 have no declared name to bind to and
+        # remain in args unchanged.
+        from typing import Any
+
+        from chio_prefect.decorators import _task_parameters
+
+        def write_file(path: str, *args: Any) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/tmp/x", "PROD_SECRET=abc123", "trailing-1", "trailing-2"),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write_file,
+        )
+
+        import json
+
+        forwarded = json.dumps(params)
+        assert "PROD_SECRET" not in forwarded
+        assert params["args"][0] == "/tmp/x"
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert params["args"][2] == "trailing-1"
+        assert params["args"][3] == "trailing-2"
+        assert params["kwargs"] == {}
+
+
+class TestPositionalOnlyVarKeywordSpillover:
+    """Coverage for ``def fn(path, /, **kw)`` spillover (closes 3228423999)."""
+
+    def test_positional_only_with_same_named_var_keyword_spillover(
+        self,
+    ) -> None:
+        # Python permits a positional-only param and a same-named entry
+        # inside **kwargs to coexist: ``def write(path, /, **kw)`` called
+        # as ``write("/etc", path="/tmp")`` binds to
+        # ``{"path": "/etc", "kw": {"path": "/tmp"}}``. Both values are
+        # real and must be redacted independently rather than collapsed:
+        # the positional value's redacted form must NOT be overwritten
+        # by the spillover entry.
+        from typing import Any
+
+        from chio_prefect.decorators import _task_parameters
+
+        def write(path: str, /, **kw: Any) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/etc/POSITIONAL",),
+            {"path": "/tmp/SPILLOVER"},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        # Both raw values must be absent from the wire payload because
+        # neither is a redacted body field, but the assertion below is
+        # the strong one: both values survive in different buckets so
+        # neither is silently dropped.
+        assert params["args"][0] == "/etc/POSITIONAL"
+        # Spillover entry surfaces under the synthetic key so it cannot
+        # silently collapse with the fixed name; the wrapped fn already
+        # accepted the call shape, so the underlying invocation runs.
+        spillover_key = "path__var_kw_spillover__"
+        assert spillover_key in params["kwargs"]
+        assert params["kwargs"][spillover_key] == "/tmp/SPILLOVER"
+
+    def test_positional_only_spillover_redacted_when_name_is_body_field(
+        self,
+    ) -> None:
+        # Same shape but the spilled-over name IS a redacted body field
+        # (chio_file_write -> ("content",)). Both the positional and the
+        # spillover values must be redacted independently.
+        from typing import Any
+
+        from chio_prefect.decorators import _task_parameters
+
+        def write(content: str, /, **kw: Any) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("POSITIONAL_BODY",),
+            {"content": "SPILLOVER_BODY"},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        import json
+
+        forwarded = json.dumps(params)
+        assert "POSITIONAL_BODY" not in forwarded
+        assert "SPILLOVER_BODY" not in forwarded
+        # Positional content's redacted envelope is preserved in args[0].
+        assert params["args"][0] == {
+            "omitted": True,
+            "byte_count": len(b"POSITIONAL_BODY"),
+        }
+        # Spillover redacted envelope is routed to the synthetic kwargs
+        # key so it does not overwrite the positional redacted value.
+        spillover_key = "content__var_kw_spillover__"
+        assert spillover_key in params["kwargs"]
+        assert params["kwargs"][spillover_key] == {
+            "omitted": True,
+            "byte_count": len(b"SPILLOVER_BODY"),
+        }
