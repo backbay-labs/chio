@@ -28,6 +28,11 @@ ChioClientLike = Any
 
 F = TypeVar("F", bound=Callable[..., Any])
 
+# Cache the chio default redaction policy at import time so each chio_remote
+# decoration does not allocate a fresh policy object when the caller did not
+# pass one. Treated as immutable by callers of redact_args.
+_DEFAULT_REDACTION_POLICY: RedactionPolicy = RedactionPolicy.chio_default()
+
 
 async def _evaluate_with_sidecar(
     *,
@@ -179,9 +184,15 @@ def chio_remote(
         bound_redaction_policy = (
             redaction_policy
             if redaction_policy is not None
-            else RedactionPolicy.chio_default()
+            else _DEFAULT_REDACTION_POLICY
         )
 
+        # TODO(v0.2): Ray pickles args into the object store BEFORE this
+        # wrapper fires; the original (unredacted) values may persist in the
+        # cluster's object store even though the sidecar payload built below
+        # is redacted. Cross-adapter object-store hardening (a chio-adapter-
+        # base concern) needs to land before this leak path is closed end-
+        # to-end.
         if is_coro:
 
             @functools.wraps(fn)

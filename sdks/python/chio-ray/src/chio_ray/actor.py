@@ -33,6 +33,14 @@ F = TypeVar("F", bound=Callable[..., Any])
 # Stamped on each wrapper for introspection / discovery.
 _REQUIRES_ATTR = "_chio_required_scope"
 _REQUIRES_SPEC_ATTR = "_chio_required_scope_spec"
+
+# Cache the chio default redaction policy at import time so the per-call
+# `getattr(actor, "_chio_redaction_policy", _DEFAULT_REDACTION_POLICY)`
+# fallback does not allocate a fresh policy object on every method
+# invocation. The policy is intentionally treated as immutable by callers
+# (RedactionPolicy.chio_default returns a new instance on each call); we
+# rely on the module-level singleton for the hot path.
+_DEFAULT_REDACTION_POLICY: RedactionPolicy = RedactionPolicy.chio_default()
 _REQUIRES_TOOL_NAME_ATTR = "_chio_required_tool_name"
 
 
@@ -235,9 +243,17 @@ async def _enforce_actor_method(
     chio_client: ChioClientLike | None = getattr(actor, "_chio_client", None)
     sidecar_url: str = getattr(actor, "_chio_sidecar_url", "http://127.0.0.1:9090")
 
+    # Use the module-level _DEFAULT_REDACTION_POLICY so the getattr default
+    # does not allocate a fresh policy object on every call; the actor still
+    # owns its per-instance _chio_redaction_policy when one was configured.
     redaction_policy: RedactionPolicy = getattr(
-        actor, "_chio_redaction_policy", RedactionPolicy.chio_default()
+        actor, "_chio_redaction_policy", _DEFAULT_REDACTION_POLICY
     )
+    # TODO(v0.2): Ray pickles args into the object store BEFORE this hook
+    # fires; the original (unredacted) values may persist in the cluster's
+    # object store even though the sidecar payload below is redacted. Cross-
+    # adapter object-store hardening (a chio-adapter-base concern) needs to
+    # land before this leak path is closed end-to-end.
     bound_args, bound_kwargs = _redact_method_call(
         method=method,
         args=args,
