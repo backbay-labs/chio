@@ -21,6 +21,21 @@ from contextvars import ContextVar
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from chio_adapter_base.filters import (
+    filter_diff_output as _adapter_base_filter_diff_output,
+)
+from chio_adapter_base.filters import (
+    filter_directory_entries as _adapter_base_filter_directory_entries,
+)
+from chio_adapter_base.filters import (
+    filter_status_output as _adapter_base_filter_status_output,
+)
+from chio_adapter_base.filters import forbidden_path_filter
+from chio_adapter_base.security import ChioPathEscapeError
+from chio_adapter_base.security import (
+    reject_shell_argv_escape as _adapter_base_reject_shell_argv_escape,
+)
+
 from chio_hermes import executors as _exec
 
 if TYPE_CHECKING:
@@ -291,32 +306,21 @@ def _factory_file_list(handle: RuntimeHandle) -> ToolHandler:
 def _filter_directory_entries(
     handle: RuntimeHandle, listing_root: str, result: Any
 ) -> Any:
+    """Drop forbidden directory entries; delegates to chio-adapter-base.
+
+    Hermes-aware adapter over
+    :func:`chio_adapter_base.filters.filter_directory_entries`. Builds
+    an ``is_forbidden`` callable that runs ``handle.policy.check_read``
+    so the chio-adapter-base helper does not need a chio-code-agent
+    dependency.
+    """
     if not isinstance(result, dict):
         return result
-    entries = result.get("entries")
-    if not isinstance(entries, list):
-        return result
-    base = result.get("path") or listing_root
-    from pathlib import Path
-
-    base_path = Path(str(base))
-    kept: list[str] = []
-    dropped: list[str] = []
-    for entry in entries:
-        if not isinstance(entry, str):
-            kept.append(entry)
-            continue
-        child = str(base_path / entry)
-        if _is_read_forbidden(handle, child):
-            dropped.append(entry)
-            continue
-        kept.append(entry)
-    if not dropped:
-        return result
-    filtered = dict(result)
-    filtered["entries"] = kept
-    filtered["forbidden_paths_filtered"] = sorted(set(dropped))
-    return filtered
+    return _adapter_base_filter_directory_entries(
+        result,
+        is_forbidden=lambda child: _is_read_forbidden(handle, child),
+        listing_root=listing_root,
+    )
 
 
 def _factory_file_search(handle: RuntimeHandle) -> ToolHandler:
@@ -350,22 +354,28 @@ def _filter_search_matches(handle: RuntimeHandle, invocation: Any) -> Any:
 
 
 def _filter_matches(handle: RuntimeHandle, result: Any) -> Any:
+    """Drop forbidden search matches via chio-adapter-base.
+
+    Uses :func:`chio_adapter_base.filters.forbidden_path_filter` for
+    the policy-check loop and re-assembles the chio-hermes search
+    result envelope. Non-string match entries pass through untouched
+    (the chio-hermes 0.1.0 contract).
+    """
     if not isinstance(result, dict):
         return result
     matches = result.get("matches")
     if not isinstance(matches, list):
         return result
-    kept: list[Any] = []
-    dropped: list[str] = []
-    for match in matches:
-        if isinstance(match, str) and _is_read_forbidden(handle, match):
-            dropped.append(match)
-            continue
-        kept.append(match)
+    str_matches = [m for m in matches if isinstance(m, str)]
+    non_str = [m for m in matches if not isinstance(m, str)]
+    kept_strs, dropped = forbidden_path_filter(
+        str_matches,
+        is_forbidden=lambda path: _is_read_forbidden(handle, path),
+    )
     if not dropped:
         return result
     filtered = dict(result)
-    filtered["matches"] = kept
+    filtered["matches"] = [*kept_strs, *non_str]
     filtered["forbidden_paths_filtered"] = sorted(set(dropped))
     return filtered
 
@@ -406,42 +416,35 @@ def _factory_shell_run(handle: RuntimeHandle) -> ToolHandler:
 
 
 def _reject_shell_argv_escape(command: str, *, root: Any) -> None:
-    import shlex
-    from pathlib import Path
+    """Reject argv tokens that escape the workspace root.
 
+    Delegates to :func:`chio_adapter_base.security.reject_shell_argv_escape`
+    and translates its :class:`ChioPathEscapeError` into the
+    chio-hermes :class:`ChioCodeAgentDeniedError` so the surrounding
+    handler envelope renders the deny verdict with the historical
+    ``tool_name`` / ``reason`` / ``guard`` fields.
+    """
     from chio_code_agent.errors import ChioCodeAgentDeniedError
 
     try:
-        argv = shlex.split(command or "")
-    except ValueError:
-        # Malformed quoting: let the executor surface the syntax error
-        # rather than masking it as a path escape.
-        return
-    root_path = Path(str(root)).resolve() if root is not None else None
-    for token in argv:
-        normalised = token.replace("\\", "/")
-        segments = normalised.split("/")
-        if any(seg == ".." for seg in segments):
-            raise ChioCodeAgentDeniedError(
-                f"shell argv token {token!r} contains `..` (workspace escape)",
-                tool_name="run_command",
-                reason="path_escape",
-                guard="chio_path_escape",
+        _adapter_base_reject_shell_argv_escape(command, root=root)
+    except ChioPathEscapeError as exc:
+        if exc.reason == "dotdot_segment":
+            message = (
+                f"shell argv token {exc.token!r} contains `..` "
+                "(workspace escape)"
             )
-        if root_path is not None and normalised.startswith("/"):
-            try:
-                resolved = Path(token).resolve()
-            except OSError:
-                continue
-            try:
-                resolved.relative_to(root_path)
-            except ValueError:
-                raise ChioCodeAgentDeniedError(
-                    f"shell argv token {token!r} points outside the workspace root",
-                    tool_name="run_command",
-                    reason="path_escape",
-                    guard="chio_path_escape",
-                ) from None
+        else:
+            message = (
+                f"shell argv token {exc.token!r} points outside the "
+                "workspace root"
+            )
+        raise ChioCodeAgentDeniedError(
+            message,
+            tool_name="run_command",
+            reason="path_escape",
+            guard="chio_path_escape",
+        ) from None
 
 
 def _factory_git_status(handle: RuntimeHandle) -> ToolHandler:
@@ -470,44 +473,13 @@ def _filter_invocation_status(handle: RuntimeHandle, invocation: Any) -> Any:
 
 
 def _filter_status_output(handle: RuntimeHandle, result: Any) -> Any:
-    # Porcelain v1: `XY <path>` or rename `XY <old> -> <new>`. Drop the
-    # row when either side fails check_read.
+    """Drop porcelain rows for forbidden paths; delegates to chio-adapter-base."""
     if not isinstance(result, dict):
         return result
-    stdout = result.get("stdout")
-    if not isinstance(stdout, str) or not stdout:
-        return result
-    kept_lines: list[str] = []
-    dropped: list[str] = []
-    for raw_line in stdout.splitlines():
-        if len(raw_line) < 4:
-            kept_lines.append(raw_line)
-            continue
-        body = raw_line[3:]
-        if " -> " in body:
-            old, new = body.split(" -> ", 1)
-            paths = [_strip_quotes(old), _strip_quotes(new)]
-        else:
-            paths = [_strip_quotes(body)]
-        forbidden = [p for p in paths if _is_read_forbidden(handle, p)]
-        if forbidden:
-            dropped.extend(forbidden)
-            continue
-        kept_lines.append(raw_line)
-    if not dropped:
-        return result
-    filtered = dict(result)
-    filtered["stdout"] = "\n".join(kept_lines) + ("\n" if kept_lines else "")
-    filtered["forbidden_paths_filtered"] = sorted(set(dropped))
-    return filtered
-
-
-def _strip_quotes(path: str) -> str:
-    # Porcelain quotes paths with unusual chars; strip them.
-    text = path.strip()
-    if len(text) >= 2 and text[0] == '"' and text[-1] == '"':
-        return text[1:-1]
-    return text
+    return _adapter_base_filter_status_output(
+        result,
+        is_forbidden=lambda path: _is_read_forbidden(handle, path),
+    )
 
 
 def _factory_git_diff(handle: RuntimeHandle) -> ToolHandler:
@@ -537,61 +509,13 @@ def _filter_invocation_diff(handle: RuntimeHandle, invocation: Any) -> Any:
 
 
 def _filter_diff_output(handle: RuntimeHandle, result: Any) -> Any:
+    """Drop diff hunks for forbidden paths; delegates to chio-adapter-base."""
     if not isinstance(result, dict):
         return result
-    stdout = result.get("stdout")
-    if not isinstance(stdout, str) or not stdout:
-        return result
-    hunks = _split_git_diff_hunks(stdout)
-    if not hunks:
-        return result
-    kept: list[str] = []
-    dropped: list[str] = []
-    for path, body in hunks:
-        if path is not None and _is_read_forbidden(handle, path):
-            dropped.append(path)
-            continue
-        kept.append(body)
-    if not dropped:
-        return result
-    filtered = dict(result)
-    filtered["stdout"] = "".join(kept)
-    filtered["forbidden_paths_filtered"] = sorted(set(dropped))
-    return filtered
-
-
-def _split_git_diff_hunks(stdout: str) -> list[tuple[str | None, str]]:
-    # Returns (path, hunk_text); path is None on malformed header.
-    if "diff --git" not in stdout:
-        return []
-    hunks: list[tuple[str | None, str]] = []
-    current_path: str | None = None
-    current_lines: list[str] = []
-    for line in stdout.splitlines(keepends=True):
-        if line.startswith("diff --git "):
-            if current_lines:
-                hunks.append((current_path, "".join(current_lines)))
-            current_lines = [line]
-            current_path = _parse_diff_git_header(line)
-        else:
-            current_lines.append(line)
-    if current_lines:
-        hunks.append((current_path, "".join(current_lines)))
-    return hunks
-
-
-def _parse_diff_git_header(line: str) -> str | None:
-    # `diff --git a/<p> b/<p>` -> b path.
-    parts = line.strip().split()
-    if len(parts) < 4:
-        return None
-    a_path = parts[2]
-    b_path = parts[3]
-    if a_path.startswith("a/"):
-        a_path = a_path[2:]
-    if b_path.startswith("b/"):
-        b_path = b_path[2:]
-    return b_path or a_path or None
+    return _adapter_base_filter_diff_output(
+        result,
+        is_forbidden=lambda path: _is_read_forbidden(handle, path),
+    )
 
 
 def _factory_git_log(handle: RuntimeHandle) -> ToolHandler:
