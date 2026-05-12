@@ -189,6 +189,65 @@ class TestCustomPolicyOnTerraform:
         assert "tfplan" in params["plan_path"]
 
 
+class TestCustomPolicyReplacesDefault:
+    async def test_custom_policy_does_not_redact_default_fields(
+        self,
+        recorder: _Recorder,
+        fake_terraform_binary: str,
+        tmp_path: Path,
+    ) -> None:
+        # A custom policy fully replaces the chio default (no merge).
+        # Here the custom policy targets only "my_tool.body"; the iac
+        # invocation dispatches as "terraform:plan", which is absent from
+        # the custom policy, so args must survive unredacted.
+        chio = allow_all()
+        recorder.show_json = _tf_plan(
+            ("aws_db_instance", ["create"], "aws_db_instance.primary"),
+        )
+        custom = RedactionPolicy(body_fields={"my_tool": ("body",)})
+
+        await run_terraform(
+            "plan",
+            ["-var=password=PROD_SECRET"],
+            capability_id="cap-plan",
+            working_dir=tmp_path,
+            chio_client=chio,
+            redaction_policy=custom,
+        )
+
+        calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        assert len(calls) == 1
+        params = calls[0].parameters
+        # No redaction envelope: args is the raw list, untouched.
+        assert params["args"] == ["-var=password=PROD_SECRET"]
+        assert params["subcommand"] == "plan"
+
+    async def test_custom_policy_does_not_redact_pulumi_program(self) -> None:
+        # Same replace-semantic check on the pulumi path. The custom policy
+        # only names "my_tool"; the wrapper dispatches as "pulumi:up", so
+        # program must be the raw function name (no omitted envelope).
+        chio = allow_all()
+        custom = RedactionPolicy(body_fields={"my_tool": ("body",)})
+
+        @chio_pulumi(
+            capability_id="cap-pulumi",
+            phase="apply",
+            allowlist=ResourceTypeAllowlist(patterns=["aws:rds/*"]),
+            chio_client=chio,
+            redaction_policy=custom,
+        )
+        async def my_program() -> str:
+            record_resource("aws:rds/instance:Instance", name="db")
+            return "ok"
+
+        await my_program()
+
+        calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        assert len(calls) == 1
+        params = calls[0].parameters
+        assert params["program"] == "my_program"
+
+
 class TestCustomPolicyOnPulumi:
     async def test_pulumi_apply_custom_policy_redacts_program(self) -> None:
         chio = allow_all()
