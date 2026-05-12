@@ -1,32 +1,12 @@
 """Chio-governed wrapper around Pulumi programs.
 
-The :func:`chio_pulumi` decorator adapts the two-phase capability model
-(``infra:plan`` / ``infra:apply``) to Pulumi's ``pulumi.Program``
-abstraction. It is used in two complementary modes:
-
-1. **Program gate** -- decorate a ``pulumi.Program`` (a zero-arg
-   callable that registers resources) so that every preview / up that
-   invokes the program first evaluates the Chio sidecar with the matching
-   scope. Pulumi's preview maps to ``infra:plan``; up / apply maps to
-   ``infra:apply``.
-
-2. **Resource reviewer** -- when the decorator runs in ``apply`` mode it
-   invokes the wrapped program in a "collection" pass that records the
-   resource types it would register without actually creating them,
-   then runs the :class:`PlanReviewGuard` against that collection. This
-   lets Pulumi programs participate in the same plan-review flow the
-   Terraform wrapper uses, even though Pulumi does not emit a plan JSON
-   file by default.
-
-The decorator is deliberately agnostic about how Pulumi is orchestrated
--- callers can wire it into ``pulumi automation`` (``pulumi.automation``
-Python SDK), a raw ``pulumi up`` subprocess, or a test harness. The
-only contract is that Pulumi eventually calls the decorated program.
-
-Pulumi is an *optional* dependency (``chio-iac[pulumi]`` extra). When
-Pulumi is not installed, the decorator still works for plan / review
-purposes; only the resource-registration shim requires the
-:mod:`pulumi` package.
+:func:`chio_pulumi` adapts the two-phase capability model
+(``infra:plan`` / ``infra:apply``) to a Pulumi program. On ``apply`` it
+first runs the program in a recording pass (via :func:`record_resource`
+or the optional ``pulumi`` shim), executes :class:`PlanReviewGuard`,
+then evaluates the sidecar before invoking the program for real.
+``pulumi`` is an optional extra; the decorator works without it for
+plan / review.
 """
 
 from __future__ import annotations
@@ -56,16 +36,6 @@ ChioClientLike = Any
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-# ---------------------------------------------------------------------------
-# Phase selector
-# ---------------------------------------------------------------------------
-
-
-#: Valid phase strings. ``"plan"`` evaluates ``infra:plan`` and invokes
-#: the program in a collection pass that records resource types without
-#: registering them. ``"apply"`` evaluates ``infra:apply`` (after a
-#: plan-review pass) and then invokes the program normally so Pulumi
-#: registers resources.
 _PHASES: frozenset[str] = frozenset({"plan", "apply"})
 
 _PHASE_SCOPE: dict[str, str] = {
@@ -79,15 +49,8 @@ _PHASE_TOOL_NAME: dict[str, str] = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Resource collection context
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class _CollectedResource:
-    """A resource type recorded during a plan-phase collection pass."""
-
     resource_type: str
     name: str = ""
     action: str = "create"
@@ -95,8 +58,6 @@ class _CollectedResource:
 
 @dataclass
 class _PulumiContext:
-    """Per-program-invocation state exposed to the collection shim."""
-
     phase: str
     collected: list[_CollectedResource] = field(default_factory=list)
 
@@ -107,7 +68,6 @@ _current_context: ContextVar[_PulumiContext | None] = ContextVar(
 
 
 def _current_pulumi_context() -> _PulumiContext | None:
-    """Return the active :class:`_PulumiContext` (or ``None``)."""
     return _current_context.get()
 
 
@@ -117,25 +77,11 @@ def record_resource(
     name: str = "",
     action: str = "create",
 ) -> None:
-    """Record a resource the decorated program would register.
+    """Record a resource the decorated program would register (no-op outside ``plan``).
 
-    Pulumi programs can call this explicitly when they want to
-    participate in Chio's plan-review pass without relying on the
-    automatic :mod:`pulumi` shim. The call is a no-op outside an
-    :func:`chio_pulumi` ``plan`` invocation.
-
-    Parameters
-    ----------
-    resource_type:
-        The Pulumi resource type token (e.g. ``aws:rds/instance:Instance``
-        or ``kubernetes:apps/v1:Deployment``). The plan-review guard
-        matches against this string.
-    name:
-        Optional Pulumi logical name -- surfaced on deny violations so
-        operators can identify which resource was out of scope.
-    action:
-        One of ``create``, ``update``, ``delete``, ``replace``. Defaults
-        to ``create`` for new-resource programs.
+    ``resource_type`` is the Pulumi type token (e.g.
+    ``aws:rds/instance:Instance``) the plan-review guard matches on.
+    ``action`` is one of ``create``, ``update``, ``delete``, ``replace``.
     """
     ctx = _current_context.get()
     if ctx is None:
@@ -149,11 +95,6 @@ def record_resource(
     )
 
 
-# ---------------------------------------------------------------------------
-# Sidecar evaluation
-# ---------------------------------------------------------------------------
-
-
 async def _evaluate_sidecar(
     *,
     chio_client: ChioClientLike,
@@ -164,7 +105,7 @@ async def _evaluate_sidecar(
     parameters: dict[str, Any],
     redaction_policy: RedactionPolicy,
 ) -> ChioReceipt:
-    """Evaluate the sidecar and translate denies into :class:`ChioIACError`."""
+    """Sidecar evaluate; translate both deny paths to :class:`ChioIACError`."""
     redacted_parameters = redact_args(
         tool_name, parameters, policy=redaction_policy
     )
@@ -204,11 +145,6 @@ async def _evaluate_sidecar(
     return receipt
 
 
-# ---------------------------------------------------------------------------
-# @chio_pulumi decorator
-# ---------------------------------------------------------------------------
-
-
 @overload
 def chio_pulumi(
     __fn: F,
@@ -245,53 +181,13 @@ def chio_pulumi(
     sidecar_url: str | None = None,
     redaction_policy: RedactionPolicy | None = None,
 ) -> Any:
-    """Decorator that gates a Pulumi program on an Chio capability.
+    """Gate a Pulumi program on a Chio capability.
 
-    The decorated program is invoked exactly as Pulumi expects: as a
-    zero-arg (or keyword-only) callable that registers resources. The
-    difference is that the wrapper first evaluates the Chio sidecar for
-    the configured ``phase`` and, on the ``apply`` phase, runs a
-    :class:`PlanReviewGuard` against the resource types the program
-    would register. Only after the plan passes review and the sidecar
-    allows does the program run through to Pulumi for real.
-
-    Parameters
-    ----------
-    capability_id:
-        Required. Pre-minted capability token id.
-    phase:
-        ``"plan"`` evaluates ``infra:plan``; ``"apply"`` evaluates
-        ``infra:apply`` and runs plan-review. Defaults to ``"apply"``.
-    tool_server:
-        Chio tool-server id for the sidecar evaluation. Defaults to
-        ``"pulumi"``.
-    plan_review_guard / allowlist / denylist / allow_destroy:
-        Same as :func:`chio_iac.terraform.run_terraform`. Ignored on the
-        ``plan`` phase (plan-review only runs before apply).
-    chio_client / sidecar_url:
-        Injection points for tests and custom transports.
-    redaction_policy:
-        Optional :class:`RedactionPolicy` applied to the parameters
-        dict before it is forwarded to the sidecar. Defaults to
-        :meth:`RedactionPolicy.chio_default`.
-
-    Examples
-    --------
-
-    Guarding an apply:
-
-    .. code-block:: python
-
-        from chio_iac import chio_pulumi
-        from chio_iac.plan_review import ResourceTypeAllowlist
-
-        @chio_pulumi(
-            capability_id="cap-42",
-            allowlist=ResourceTypeAllowlist(patterns=["aws:rds/*"]),
-        )
-        def program():
-            import pulumi_aws as aws
-            aws.rds.Instance("db", engine="postgres", instance_class="db.t3.small")
+    ``phase="plan"`` evaluates ``infra:plan``; ``"apply"`` evaluates
+    ``infra:apply`` after a plan-review pass. ``plan_review_guard`` /
+    ``allowlist`` / ``denylist`` / ``allow_destroy`` mirror
+    :func:`chio_iac.terraform.run_terraform`; they are ignored on
+    ``plan``.
     """
 
     def decorator(fn: F) -> F:
@@ -372,15 +268,12 @@ def _resolve_guard(
     denylist: ResourceTypeDenylist | None,
     allow_destroy: bool | None,
 ) -> PlanReviewGuard | None:
-    """Materialise the plan-review guard for the apply phase (if any)."""
     if phase != "apply":
         return None
     if plan_review_guard is not None:
         return plan_review_guard
     if allowlist is None and denylist is None and allow_destroy is None:
-        # Apply phase without a guard is permitted when the program has
-        # no collected resources (the kernel then gets full say). We
-        # return None here and the invoke path degrades gracefully.
+        # No guard configured: kernel gets full say.
         return None
     return PlanReviewGuard(
         allowlist=allowlist or ResourceTypeAllowlist(),
@@ -403,7 +296,6 @@ async def _invoke_pulumi(
     is_async: bool,
     redaction_policy: RedactionPolicy,
 ) -> Any:
-    """Shared sync / async implementation for :func:`chio_pulumi`."""
     scope_label = _PHASE_SCOPE[phase]
     tool_name = _PHASE_TOOL_NAME[phase]
 
@@ -414,11 +306,7 @@ async def _invoke_pulumi(
     try:
         client = owner.get()
 
-        # ------------------------------------------------------------------
-        # Plan-review pass (apply only): invoke the program with
-        # resource-recording enabled to learn which resource types it
-        # would register, then run the guard.
-        # ------------------------------------------------------------------
+        # Plan-review (apply only): collection pass, then guard.
         resource_types: list[str] = []
         if phase == "apply" and guard is not None:
             collected = await _collect_resources(fn, args, kwargs, is_async)
@@ -432,9 +320,6 @@ async def _invoke_pulumi(
                 capability_id=capability_id,
             )
 
-        # ------------------------------------------------------------------
-        # Sidecar evaluation.
-        # ------------------------------------------------------------------
         await _evaluate_sidecar(
             chio_client=client,
             capability_id=capability_id,
@@ -452,9 +337,7 @@ async def _invoke_pulumi(
     finally:
         await owner.close()
 
-    # ------------------------------------------------------------------
-    # Allow path: run the program normally so Pulumi registers resources.
-    # ------------------------------------------------------------------
+    # Allow: run the program normally so Pulumi registers resources.
     if is_async:
         return await cast(Callable[..., Awaitable[Any]], fn)(*args, **kwargs)
     return await asyncio.to_thread(fn, *args, **kwargs)
@@ -466,19 +349,7 @@ async def _collect_resources(
     kwargs: dict[str, Any],
     is_async: bool,
 ) -> list[_CollectedResource]:
-    """Invoke ``fn`` in collection mode and return the recorded resources.
-
-    The collection mode is best-effort: Pulumi programs that do not call
-    :func:`record_resource` explicitly will yield an empty list, which
-    the plan-review guard interprets as "no resources to review" (i.e.
-    the review step is a no-op). Programs that *do* call
-    :func:`record_resource` -- either directly or through an integration
-    layer -- get first-class plan-review.
-
-    Exceptions raised by the program during collection are re-raised
-    verbatim so configuration errors surface the same way they would
-    during a real Pulumi run.
-    """
+    """Invoke ``fn`` in collection mode; an empty list is "no resources to review"."""
     ctx = _PulumiContext(phase="plan")
     token = _current_context.set(ctx)
     try:
@@ -494,7 +365,6 @@ async def _collect_resources(
 def _collected_to_plan(
     collected: list[_CollectedResource],
 ) -> dict[str, Any]:
-    """Convert collected resources into the plan shape the guard expects."""
     return {
         "resources": [
             {
@@ -507,13 +377,8 @@ def _collected_to_plan(
     }
 
 
-# ---------------------------------------------------------------------------
-# ChioClient ownership helper
-# ---------------------------------------------------------------------------
-
-
 class _ChioClientOwner:
-    """Own a lazily-constructed :class:`ChioClient` for one decorator call."""
+    """Lazy :class:`ChioClient` owner; only closes clients it created itself."""
 
     __slots__ = ("_client", "_owns", "_sidecar_url")
 
