@@ -39,6 +39,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, TypeVar, cast, overload
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt
@@ -161,14 +162,25 @@ async def _evaluate_sidecar(
     tool_name: str,
     phase: str,
     parameters: dict[str, Any],
+    redaction_policy: RedactionPolicy,
 ) -> ChioReceipt:
-    """Evaluate the sidecar and translate denies into :class:`ChioIACError`."""
+    """Evaluate the sidecar and translate denies into :class:`ChioIACError`.
+
+    The ``parameters`` dict is run through
+    :func:`chio_adapter_base.redact.redact_args` keyed on ``tool_name``
+    before being forwarded to the sidecar, so any body-bearing fields
+    listed in ``redaction_policy`` are replaced with a byte-count stub
+    and never land in the receipt log.
+    """
+    redacted_parameters = redact_args(
+        tool_name, parameters, policy=redaction_policy
+    )
     try:
         receipt = await chio_client.evaluate_tool_call(
             capability_id=capability_id,
             tool_server=tool_server,
             tool_name=tool_name,
-            parameters=parameters,
+            parameters=redacted_parameters,
         )
     except ChioDeniedError as exc:
         raise ChioIACError(
@@ -222,6 +234,7 @@ def chio_pulumi(
     allow_destroy: bool | None = None,
     chio_client: ChioClientLike | None = None,
     sidecar_url: str | None = None,
+    redaction_policy: RedactionPolicy | None = None,
 ) -> Callable[[F], F]: ...
 
 
@@ -237,6 +250,7 @@ def chio_pulumi(
     allow_destroy: bool | None = None,
     chio_client: ChioClientLike | None = None,
     sidecar_url: str | None = None,
+    redaction_policy: RedactionPolicy | None = None,
 ) -> Any:
     """Decorator that gates a Pulumi program on an Chio capability.
 
@@ -263,6 +277,13 @@ def chio_pulumi(
         ``plan`` phase (plan-review only runs before apply).
     chio_client / sidecar_url:
         Injection points for tests and custom transports.
+    redaction_policy:
+        Optional :class:`chio_adapter_base.redact.RedactionPolicy` used
+        to redact body-bearing fields from the parameters dict before
+        it is forwarded to the sidecar (and, transitively, the receipt
+        log). Defaults to :meth:`RedactionPolicy.chio_default`. Pass a
+        custom policy to redact pulumi-specific fields, e.g.
+        ``RedactionPolicy({"pulumi:up": ("program",)})``.
 
     Examples
     --------
@@ -300,6 +321,11 @@ def chio_pulumi(
             denylist=denylist,
             allow_destroy=allow_destroy,
         )
+        effective_redaction_policy = (
+            redaction_policy
+            if redaction_policy is not None
+            else RedactionPolicy.chio_default()
+        )
 
         is_coro = inspect.iscoroutinefunction(fn)
 
@@ -318,6 +344,7 @@ def chio_pulumi(
                     chio_client_override=chio_client,
                     sidecar_url_override=sidecar_url,
                     is_async=True,
+                    redaction_policy=effective_redaction_policy,
                 )
 
             return cast(F, async_body)
@@ -336,6 +363,7 @@ def chio_pulumi(
                     chio_client_override=chio_client,
                     sidecar_url_override=sidecar_url,
                     is_async=False,
+                    redaction_policy=effective_redaction_policy,
                 )
             )
 
@@ -383,6 +411,7 @@ async def _invoke_pulumi(
     chio_client_override: ChioClientLike | None,
     sidecar_url_override: str | None,
     is_async: bool,
+    redaction_policy: RedactionPolicy,
 ) -> Any:
     """Shared sync / async implementation for :func:`chio_pulumi`."""
     scope_label = _PHASE_SCOPE[phase]
@@ -428,6 +457,7 @@ async def _invoke_pulumi(
                 "resource_types": resource_types,
                 "program": getattr(fn, "__name__", "<anonymous>"),
             },
+            redaction_policy=redaction_policy,
         )
     finally:
         await owner.close()

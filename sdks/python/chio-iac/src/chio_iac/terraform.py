@@ -62,6 +62,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt
@@ -212,19 +213,30 @@ async def _evaluate_sidecar(
     tool_name: str,
     subcommand: str,
     parameters: dict[str, Any],
+    redaction_policy: RedactionPolicy,
 ) -> ChioReceipt:
     """Call the sidecar ``/v1/evaluate`` endpoint and translate denies.
 
     Raises :class:`ChioIACError` on deny (both receipt-path and HTTP-403
     paths). Transport / kernel errors propagate as :class:`ChioError` so
     callers can retry without conflating them with policy denials.
+
+    The ``parameters`` dict is run through
+    :func:`chio_adapter_base.redact.redact_args` keyed on ``tool_name``
+    before being forwarded to the sidecar, so any body-bearing fields
+    listed in ``redaction_policy`` (e.g. terraform ``args`` carrying
+    ``-var=password=...``) are replaced with a byte-count stub and
+    never land in the receipt log.
     """
+    redacted_parameters = redact_args(
+        tool_name, parameters, policy=redaction_policy
+    )
     try:
         receipt = await chio_client.evaluate_tool_call(
             capability_id=capability_id,
             tool_server=tool_server,
             tool_name=tool_name,
-            parameters=parameters,
+            parameters=redacted_parameters,
         )
     except ChioDeniedError as exc:
         raise ChioIACError(
@@ -278,6 +290,7 @@ async def run_terraform(
     terraform_binary: str | None = None,
     env: dict[str, str] | None = None,
     capture_output: bool = True,
+    redaction_policy: RedactionPolicy | None = None,
 ) -> TerraformResult:
     """Run ``terraform <subcommand>`` with Chio capability enforcement.
 
@@ -343,6 +356,14 @@ async def run_terraform(
         When True (default), stdout / stderr are captured and returned.
         When False, the streams are forwarded to the parent terminal --
         useful for interactive plans.
+    redaction_policy:
+        Optional :class:`chio_adapter_base.redact.RedactionPolicy` used to
+        redact body-bearing fields from the parameters dict before it is
+        forwarded to the sidecar (and, transitively, the receipt log).
+        Defaults to :meth:`RedactionPolicy.chio_default`. Pass a custom
+        policy to redact terraform-specific fields, e.g.
+        ``RedactionPolicy({"terraform:apply": ("args",)})`` so a
+        ``-var=password=...`` flag is replaced with a byte-count stub.
     """
     if subcommand not in _SUBCOMMAND_SCOPE:
         raise ChioIACConfigError(
@@ -378,6 +399,11 @@ async def run_terraform(
         denylist=denylist,
         allow_destroy=allow_destroy,
     )
+    effective_redaction_policy = (
+        redaction_policy
+        if redaction_policy is not None
+        else RedactionPolicy.chio_default()
+    )
 
     owner = _ChioClientOwner(client=chio_client, sidecar_url=sidecar_url)
     try:
@@ -395,6 +421,7 @@ async def run_terraform(
                 terraform_binary=resolved_binary,
                 env=resolved_env,
                 capture_output=capture_output,
+                redaction_policy=effective_redaction_policy,
             )
 
         return await _run_apply_or_destroy(
@@ -411,6 +438,7 @@ async def run_terraform(
             terraform_binary=resolved_binary,
             env=resolved_env,
             capture_output=capture_output,
+            redaction_policy=effective_redaction_policy,
         )
     finally:
         await owner.close()
@@ -463,6 +491,7 @@ async def _run_plan(
     terraform_binary: str,
     env: dict[str, str] | None,
     capture_output: bool,
+    redaction_policy: RedactionPolicy,
 ) -> TerraformResult:
     """Evaluate ``infra:plan`` scope, then run ``terraform plan``.
 
@@ -483,6 +512,7 @@ async def _run_plan(
             "plan_path": str(plan_path),
             "args": extra_args,
         },
+        redaction_policy=redaction_policy,
     )
 
     command = [
@@ -551,6 +581,7 @@ async def _run_apply_or_destroy(
     terraform_binary: str,
     env: dict[str, str] | None,
     capture_output: bool,
+    redaction_policy: RedactionPolicy,
 ) -> TerraformResult:
     """Run the plan-review guard, then evaluate ``infra:apply``, then apply.
 
@@ -597,6 +628,7 @@ async def _run_apply_or_destroy(
             "resource_types": resource_types,
             "args": extra_args,
         },
+        redaction_policy=redaction_policy,
     )
 
     if subcommand == "apply":

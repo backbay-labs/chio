@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chio-iac"
-version = "0.1.0"
+version = "0.1.1"
 description = "Infrastructure-as-Code governance for the Chio protocol -- Terraform CLI wrapper and Pulumi decorator with two-phase plan / apply capability enforcement"
 license = "MIT"
 requires-python = ">=3.11"
@@ -34,6 +34,7 @@ classifiers = [
 
 dependencies = [
     "chio-sdk-python>=0.1.0",
+    "chio-adapter-base>=0.1.0,<0.2",
     "pydantic>=2.5,<3",
 ]
 
@@ -53,6 +54,7 @@ chio-iac = "chio_iac.__main__:main"
 
 [tool.uv.sources]
 chio-sdk-python = { path = "../chio-sdk-python" }
+chio-adapter-base = { path = "../chio-adapter-base" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/chio_iac"]
