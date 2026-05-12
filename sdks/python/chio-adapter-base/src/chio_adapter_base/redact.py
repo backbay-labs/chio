@@ -326,6 +326,13 @@ def bind_and_redact(
         bind_args = bind_args[1:]
 
     use_table_fallback = sig is None or _is_pure_forwarder(sig)
+    # When True, the table is the ONLY source of positional ordering
+    # (pure forwarder / non-introspectable / fn=None). Positional args
+    # consume table slots not already filled by kwargs. When False, the
+    # signature already pinned positional values to slot indices, so
+    # positional[idx] -> slot[idx] directly (merge-conflict TypeError
+    # path).
+    fallback_skips_kwarg_filled_slots = use_table_fallback
 
     # bind_partial may raise TypeError (e.g. duplicate name across
     # positional + kwargs for a fixed-signature custom tool). When that
@@ -342,6 +349,9 @@ def bind_and_redact(
             bound = sig.bind_partial(*bind_args, **kwargs)
         except TypeError:
             use_table_fallback = True
+            # Stay in the fixed-signature semantics: positional[idx]
+            # maps to slot[idx]. Do not skip kwarg-filled slots.
+            fallback_skips_kwarg_filled_slots = False
             sig_positional_names = tuple(
                 p.name
                 for p in sig.parameters.values()
@@ -368,6 +378,7 @@ def bind_and_redact(
             tool_name=tool_name,
             policy=effective_policy,
             table=fallback_table,
+            skip_kwarg_filled_slots=fallback_skips_kwarg_filled_slots,
         )
         if has_receiver:
             fb_args.insert(0, receiver_value)
@@ -386,12 +397,56 @@ def bind_and_redact(
         elif param.kind is inspect.Parameter.VAR_POSITIONAL:
             var_positional_param = param.name
 
-    # Redact named (fixed) params first.
-    fixed_named = {
-        name: value
-        for name, value in bound.arguments.items()
-        if name not in (var_keyword_param, var_positional_param)
-    }
+    # The wrapper's signature param names are the wrapper's own naming
+    # (e.g. ``def write_file(path, body)``) which may differ from the
+    # canonical wire-level slot names declared by the per-tool
+    # ``positional_table`` (e.g. ``("path", "content")`` for
+    # ``chio_file_write``). The redaction policy's protected fields are
+    # keyed by canonical names. To redact correctly when the wrapper
+    # uses an alias, build a canonical-named view of fixed params and
+    # remember the alias mapping so the rebuild can look values up by
+    # canonical name and emit them under the wrapper's name.
+    #
+    # Aliasing is only applied when the wrapper's param name does NOT
+    # itself appear in the table. A param whose name already matches a
+    # canonical slot is left alone - the wrapper is naming things
+    # canonically (possibly in a non-default order) and we redact by
+    # name. This guards against false aliasing for shapes like
+    # ``def write(content, /, **kw)`` where the wrapper's param IS the
+    # canonical name but happens to sit at a different position than
+    # the table's default ordering.
+    table_slots_for_tool: tuple[str, ...] = table.get(tool_name, ())
+    fixed_positional_names: list[str] = [
+        p.name
+        for p in sig.parameters.values()
+        if p.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+    ]
+    sig_to_canonical: dict[str, str] = {}
+    for idx, sig_name in enumerate(fixed_positional_names):
+        if sig_name in table_slots_for_tool:
+            # Wrapper uses a canonical name; redact by name as-is.
+            sig_to_canonical[sig_name] = sig_name
+        elif idx < len(table_slots_for_tool):
+            # Wrapper alias for the slot at this index; route via the
+            # canonical name so the policy lookup matches.
+            sig_to_canonical[sig_name] = table_slots_for_tool[idx]
+        else:
+            sig_to_canonical[sig_name] = sig_name
+
+    # Redact named (fixed) params first. Build the dict using canonical
+    # names so the policy lookup matches the wire-level contract even
+    # when the wrapper renamed the param (closes PR #666 P1
+    # 3229550950).
+    fixed_named: dict[str, Any] = {}
+    for name, value in bound.arguments.items():
+        if name in (var_keyword_param, var_positional_param):
+            continue
+        canonical_name = sig_to_canonical.get(name, name)
+        fixed_named[canonical_name] = value
     redacted_fixed = _redact_named(
         fixed_named, tool_name=tool_name, policy=effective_policy
     )
@@ -436,35 +491,34 @@ def bind_and_redact(
     # Walk the caller's positional list and pull redacted values back
     # into their original wire positions.
     rebuilt_args = []
-    positional_param_names: list[str] = [
-        p.name
-        for p in sig.parameters.values()
-        if p.kind
-        in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        )
-    ]
+    # ``fixed_positional_names`` (the wrapper's signature names) was
+    # already collected above for the canonical alias map. Reuse it.
     # VAR_POSITIONAL extras have no fixed parameter name, but the
     # per-tool positional_table still declares wire-level slot names.
     # Match each extra against the next free table slot (one not
     # already filled by a bound fixed positional or kwarg) so a call
     # like ``fn("/tmp/x", "SECRET")`` against ``def fn(path, *rest)``
     # redacts ``rest[0]`` as ``content`` for chio_file_write.
-    table_slots: tuple[str, ...] = table.get(tool_name, ())
+    table_slots: tuple[str, ...] = table_slots_for_tool
     filled_slot_names: set[str] = set()
-    for idx in range(min(len(positional_param_names), len(bind_args))):
+    for idx in range(min(len(fixed_positional_names), len(bind_args))):
         if idx < len(table_slots):
             filled_slot_names.add(table_slots[idx])
+    # Also account for any kwarg whose wrapper-name aliases a table
+    # slot via the canonical map (so ``body=`` for a ``("path","content")``
+    # tool fills the ``content`` slot just like ``content=`` would).
     for kwarg_name in kwargs:
         if kwarg_name in table_slots:
             filled_slot_names.add(kwarg_name)
+        canonical_kw = sig_to_canonical.get(kwarg_name)
+        if canonical_kw is not None and canonical_kw in table_slots:
+            filled_slot_names.add(canonical_kw)
     free_slot_iter = iter(
         slot for slot in table_slots if slot not in filled_slot_names
     )
     var_positional_extras: dict[int, Any] = {}
     if var_positional_param is not None and table_slots:
-        fixed_positional_cardinality = len(positional_param_names)
+        fixed_positional_cardinality = len(fixed_positional_names)
         for idx, value in enumerate(bind_args):
             if idx < fixed_positional_cardinality:
                 continue
@@ -483,10 +537,15 @@ def bind_and_redact(
     # for every position past the fixed-positional cardinality.
     var_pos_named_idx = 0
     for idx, value in enumerate(bind_args):
-        if idx < len(positional_param_names):
-            name = positional_param_names[idx]
-            if name in redacted_fixed:
-                rebuilt_args.append(redacted_fixed[name])
+        if idx < len(fixed_positional_names):
+            sig_name = fixed_positional_names[idx]
+            # Look up the redacted value via the canonical name (which
+            # is the table slot name when one exists, else the sig
+            # name itself). This routes alias-renamed slots like
+            # ``body`` -> ``content`` to the correct redaction.
+            canonical_name = sig_to_canonical.get(sig_name, sig_name)
+            if canonical_name in redacted_fixed:
+                rebuilt_args.append(redacted_fixed[canonical_name])
                 continue
         else:
             # Past the fixed positional cardinality: this is a
@@ -521,8 +580,14 @@ def bind_and_redact(
         # dropped. (See bot comments 3229301699 / 3229411436.)
         if name in spillover_keys and name in redacted_spillover:
             rebuilt_kwargs[name] = redacted_spillover[name]
-        elif name in redacted_fixed:
-            rebuilt_kwargs[name] = redacted_fixed[name]
+            continue
+        # Resolve through the canonical alias map so a kwarg supplied
+        # under the wrapper's renamed param (e.g. ``body=`` for a tool
+        # whose canonical slot is ``content``) still picks up the
+        # redacted value.
+        canonical_kw = sig_to_canonical.get(name, name)
+        if canonical_kw in redacted_fixed:
+            rebuilt_kwargs[name] = redacted_fixed[canonical_kw]
         elif name in redacted_spillover:
             rebuilt_kwargs[name] = redacted_spillover[name]
         else:
@@ -540,8 +605,26 @@ def _table_fallback_redact(
     tool_name: str,
     policy: RedactionPolicy,
     table: Mapping[str, tuple[str, ...]],
+    skip_kwarg_filled_slots: bool = False,
 ) -> tuple[list[Any], dict[str, Any]]:
-    """Shared positional-name table redaction used by every fallback path."""
+    """Shared positional-name table redaction used by every fallback path.
+
+    ``skip_kwarg_filled_slots`` controls how positional args are mapped
+    onto table slots when a kwarg has already named one of those slots:
+
+    - ``False`` (default, fixed-signature TypeError fallback): map
+      positional[idx] to slot[idx] directly. The fixed signature
+      already pinned each positional value to a parameter index, so
+      a duplicate-name TypeError is the merge-conflict case where both
+      positions get redacted independently.
+    - ``True`` (pure forwarder + ``fn=None`` fallback): the table is
+      the only source of positional ordering. Skip slots already filled
+      by a kwarg of the same name and consume free slots in order. This
+      is what ``def proxy(*args, **kwargs)`` called as
+      ``proxy("PROD_SECRET", path="/tmp/x")`` needs - the positional
+      value is the ``content`` slot, not the already-consumed ``path``
+      slot (closes PR #666 P1 3229550957).
+    """
     positional_names = table.get(tool_name, ())
     redacted_kwargs = _redact_named(
         kwargs, tool_name=tool_name, policy=policy
@@ -551,18 +634,35 @@ def _table_fallback_redact(
         # redacted already.
         return list(args), redacted_kwargs
 
+    if skip_kwarg_filled_slots:
+        filled_by_kwarg: set[str] = {
+            kwarg_name
+            for kwarg_name in kwargs
+            if kwarg_name in positional_names
+        }
+        slot_sequence: list[str] = [
+            slot for slot in positional_names if slot not in filled_by_kwarg
+        ]
+    else:
+        slot_sequence = list(positional_names)
+
     named_from_positional: dict[str, Any] = {}
+    positional_to_slot: list[str | None] = []
     for idx, value in enumerate(args):
-        if idx >= len(positional_names):
-            break
-        named_from_positional[positional_names[idx]] = value
+        if idx < len(slot_sequence):
+            slot = slot_sequence[idx]
+            named_from_positional[slot] = value
+            positional_to_slot.append(slot)
+        else:
+            positional_to_slot.append(None)
     redacted_named = _redact_named(
         named_from_positional, tool_name=tool_name, policy=policy
     )
     rebuilt_args: list[Any] = []
     for idx, value in enumerate(args):
-        if idx < len(positional_names):
-            rebuilt_args.append(redacted_named[positional_names[idx]])
+        slot = positional_to_slot[idx]
+        if slot is not None:
+            rebuilt_args.append(redacted_named[slot])
         else:
             # Extras beyond the table entry stay positional and raw.
             rebuilt_args.append(value)
