@@ -408,7 +408,7 @@ async def _invoke_task(
             tool_server=server,
             tool_name=tool_name_override,
             parameters=_task_parameters(
-                args, kwargs, tool_name_override, resolved_policy
+                args, kwargs, tool_name_override, resolved_policy, fn=fn
             ),
             flow_run_id=flow_run_id,
             task_run_id=task_run_id,
@@ -428,16 +428,44 @@ def _task_parameters(
     kwargs: dict[str, Any],
     tool_name: str,
     policy: RedactionPolicy,
+    fn: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
-    """Canonicalise call arguments for the sidecar payload (kwargs are redacted).
+    """Canonicalise call arguments for the sidecar payload.
 
-    Positional ``args`` are forwarded verbatim because the wrapper does
-    not know the callable's parameter names; tools with secret bodies
-    must accept them as keyword-only arguments to opt in to redaction.
+    Positional callers (``write_file("/tmp/x", "PROD_SECRET")``) would
+    otherwise leave the body field in ``parameters["args"]`` unredacted,
+    because :func:`redact_args` keys on parameter names. We bind
+    positional args to declared names with
+    :func:`inspect.signature.bind_partial` before redaction and forward
+    the bound dict under ``kwargs`` so the sidecar and receipt both see
+    the redacted form.
+
+    When ``fn`` is ``None`` or its signature uses ``*args`` /
+    ``**kwargs`` (no fixed names to bind against), fall back to the
+    prior shape: kwargs are scrubbed, positional args remain raw, and
+    we do not break working flows.
+
+    This supersedes the earlier "kwargs-only redaction" decision; that
+    path leaked positional bodies into receipts for the standard
+    ``chio_file_write(path, content)`` / ``chio_file_edit(path, patch)``
+    Prefect task signatures.
     """
+    if fn is None:
+        return {
+            "args": list(args),
+            "kwargs": redact_args(tool_name, kwargs, policy=policy),
+        }
+    try:
+        sig = inspect.signature(fn)
+        bound = sig.bind_partial(*args, **kwargs).arguments
+    except TypeError:
+        return {
+            "args": list(args),
+            "kwargs": redact_args(tool_name, kwargs, policy=policy),
+        }
     return {
-        "args": list(args),
-        "kwargs": redact_args(tool_name, kwargs, policy=policy),
+        "args": [],
+        "kwargs": redact_args(tool_name, dict(bound), policy=policy),
     }
 
 

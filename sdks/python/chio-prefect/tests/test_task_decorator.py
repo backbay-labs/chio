@@ -173,7 +173,12 @@ class TestAllowPath:
         assert result == "fetched:/tmp/data"
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
-        assert evaluate_calls[0].parameters == {"args": ["/tmp/data"], "kwargs": {}}
+        # Positional args are now bound to parameter names before
+        # forwarding so the redactor can inspect them as named fields.
+        assert evaluate_calls[0].parameters == {
+            "args": [],
+            "kwargs": {"path": "/tmp/data"},
+        }
         assert capture.of(EVENT_ALLOW)
 
     def test_standalone_task_requires_capability_id(self) -> None:
@@ -414,7 +419,9 @@ def test_task_parameters_include_kwargs_and_args() -> None:
     assert result == "hi ada!"
     evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
     assert len(evaluate_calls) == 1
+    # All call args (positional + keyword) are bound to parameter names
+    # before forwarding so the redactor can apply uniformly.
     assert evaluate_calls[0].parameters == {
-        "args": ["ada"],
-        "kwargs": {"excited": True},
+        "args": [],
+        "kwargs": {"name": "ada", "excited": True},
     }

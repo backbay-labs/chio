@@ -126,8 +126,15 @@ class TestDefaultPolicyRedacts:
             "content": "not redacted here",
         }
 
-    def test_positional_args_are_not_touched(self) -> None:
-        """Positional args bypass redaction; tools with secret bodies must use kwargs."""
+    def test_positional_args_are_bound_and_redacted(self) -> None:
+        """Positional invocations must NOT bypass the redactor.
+
+        Regression for the previous "positional args bypass redaction"
+        leak. Positional args are now bound to declared parameter names
+        via ``inspect.signature.bind_partial`` before redaction so the
+        same body fields are scrubbed regardless of how the caller
+        passes them.
+        """
         chio = allow_all()
 
         @chio_task(
@@ -153,8 +160,18 @@ class TestDefaultPolicyRedacts:
 
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         forwarded = evaluate_calls[0].parameters
-        assert forwarded["args"] == ["/tmp/x", "RAW_SECRET=xyz"]
-        assert forwarded["kwargs"] == {}
+        # Bound shape: positional args lifted to kwargs under their
+        # declared parameter names, content scrubbed by the default
+        # chio_file_write policy.
+        import json
+
+        assert "RAW_SECRET" not in json.dumps(forwarded)
+        assert forwarded["args"] == []
+        assert forwarded["kwargs"]["path"] == "/tmp/x"
+        assert forwarded["kwargs"]["content"] == {
+            "omitted": True,
+            "byte_count": len(b"RAW_SECRET=xyz"),
+        }
 
 
 class TestCustomPolicy:
