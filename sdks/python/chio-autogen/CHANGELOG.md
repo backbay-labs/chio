@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1]
 
+- chore: bump `chio-adapter-base` dependency to `>=0.1.1,<0.2` so the
+  centralised `bind_and_redact` helper and
+  `DEFAULT_TOOL_POSITIONAL_NAMES` registry (added in chio-adapter-base
+  0.1.1, PR #675) are available downstream. No source change is needed
+  here because `chio-autogen` already redacts via dict-keyed kwargs and
+  has no positional-binding helper to consolidate.
 - feat: redact tool argument bodies via `chio_adapter_base.redact.redact_args`
   before forwarding them to the sidecar. Override via the new
   `redaction_policy` ctor arg on `ChioFunctionRegistry`.

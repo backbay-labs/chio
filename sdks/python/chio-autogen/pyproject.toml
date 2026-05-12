@@ -31,7 +31,7 @@ classifiers = [
 # Python 3.11-3.13.
 dependencies = [
     "chio-sdk-python>=0.1.0",
-    "chio-adapter-base>=0.1.0,<0.2",
+    "chio-adapter-base>=0.1.1,<0.2",
     "pyautogen>=0.2,<0.3",
     "pydantic>=2.5,<3",
 ]
