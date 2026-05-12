@@ -26,6 +26,7 @@ import threading
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from typing import Any
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope, CapabilityToken
 
@@ -69,6 +70,13 @@ class ChioFunctionRegistry:
         Optional logical role label for this agent. Consulted by
         :class:`chio_autogen.ChioGroupChatManager` when enforcing
         per-role scopes.
+    redaction_policy:
+        Per-registry argument redaction policy applied right before
+        parameters are forwarded to the sidecar so secret-bearing fields
+        never land in the receipt log. Defaults to
+        :meth:`RedactionPolicy.chio_default`; pass a custom
+        :class:`RedactionPolicy` to extend with adapter or workspace
+        specific tool names.
 
     Example
     -------
@@ -98,6 +106,7 @@ class ChioFunctionRegistry:
         capability_id: str = "",
         role: str | None = None,
         sidecar_url: str = "http://127.0.0.1:9090",
+        redaction_policy: RedactionPolicy | None = None,
     ) -> None:
         if agent is None:
             raise ChioAutogenConfigError("agent must not be None")
@@ -111,6 +120,11 @@ class ChioFunctionRegistry:
         self._sidecar_url = sidecar_url
         self._scopes: dict[str, ChioScope] = {}
         self._receipts: dict[str, ChioReceipt] = {}
+        self._redaction_policy = (
+            redaction_policy
+            if redaction_policy is not None
+            else RedactionPolicy.chio_default()
+        )
 
     # ------------------------------------------------------------------
     # Accessors
@@ -290,10 +304,17 @@ class ChioFunctionRegistry:
         if inspect.iscoroutinefunction(func):
 
             async def async_wrapper(**kwargs: Any) -> Any:
+                # Redact body fields (e.g. chio_file_write.content) before
+                # they cross into the sidecar so the receipt log never
+                # carries the raw secret bytes. The underlying function
+                # still receives the original kwargs below.
+                recorded_kwargs = redact_args(
+                    name, kwargs, policy=self._redaction_policy
+                )
                 receipt = await self._evaluate(
                     name=name,
                     server_id=server_id,
-                    parameters=kwargs,
+                    parameters=recorded_kwargs,
                 )
                 self._receipts[name] = receipt
                 self._raise_if_denied(
@@ -306,10 +327,13 @@ class ChioFunctionRegistry:
             return async_wrapper
 
         def sync_wrapper(**kwargs: Any) -> Any:
+            recorded_kwargs = redact_args(
+                name, kwargs, policy=self._redaction_policy
+            )
             coro = self._evaluate(
                 name=name,
                 server_id=server_id,
-                parameters=kwargs,
+                parameters=recorded_kwargs,
             )
             receipt = _run_sync(coro)
             self._receipts[name] = receipt
