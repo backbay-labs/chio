@@ -261,7 +261,7 @@ class TestChioApprovalNodeRedacts:
         # Raw secret must never appear in the HITL approval prompt.
         assert "PROD_SECRET=abc123" not in repr(payload)
 
-    async def test_approval_node_custom_policy_extends_default(self) -> None:
+    async def test_approval_node_custom_policy_replaces_default(self) -> None:
         custom = RedactionPolicy(body_fields={"my_tool": ("body",)})
 
         def my_body(_state: dict[str, Any]) -> dict[str, Any]:
