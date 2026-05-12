@@ -89,14 +89,9 @@ def chio_node(
         ``"langgraph"``; override when a single kernel fronts several
         distinct graphs and needs per-graph receipt filtering.
     redaction_policy:
-        Per-tool argument redaction policy. Applied to the parameters
-        derived from LangGraph state right before they cross into the
-        sidecar so secret-bearing fields (e.g. the ``content`` of
-        ``chio_file_write``) never land in the receipt log. Defaults to
-        :meth:`RedactionPolicy.chio_default`; pass a custom
-        :class:`RedactionPolicy` to extend with adapter or
-        workspace-specific tool names. The wrapped node body always
-        receives the original LangGraph state untouched.
+        Optional :class:`RedactionPolicy` applied to the
+        state-derived parameters before sidecar evaluation. Defaults
+        to :meth:`RedactionPolicy.chio_default`.
 
     Returns
     -------
@@ -141,12 +136,6 @@ def chio_node(
                 tool_name=node_name,
                 reason="missing_capability",
             )
-        # Redact body fields (e.g. chio_file_write.content) from the
-        # parameters derived from state before they cross into the
-        # sidecar. The wrapped node body, when invoked below, still
-        # receives the original LangGraph state untouched -- this only
-        # governs what lands in the receipt and is propagated to any
-        # downstream HITL approval payload.
         parameters = redact_args(
             node_name,
             _state_to_parameters(state),

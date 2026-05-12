@@ -1,15 +1,4 @@
-"""Tests for chio-langgraph argument redaction (chio-adapter-base wiring).
-
-These tests assert that ``chio_node`` and ``chio_approval_node`` redact
-secret-bearing fields from the parameters derived from LangGraph state
-BEFORE they cross into the sidecar's ``evaluate_tool_call`` endpoint, so
-neither the receipt log nor the HITL approval prompt carries the raw
-secret bytes. The wrapped node body itself still receives the original
-LangGraph state untouched -- redaction governs only what flows into the
-chio sidecar/receipt boundary.
-
-Source of truth: ``chio_adapter_base.redact.redact_args``.
-"""
+"""Tests for chio-langgraph argument redaction."""
 
 from __future__ import annotations
 
@@ -27,11 +16,6 @@ from chio_langgraph import (
 )
 
 SERVER_ID = "demo-srv"
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 class State(TypedDict, total=False):
@@ -72,11 +56,7 @@ def _last_eval(chio: MockChioClient) -> Any:
 
 
 class _FakeInterrupt:
-    """Drop-in replacement for ``langgraph.types.interrupt``.
-
-    Captures the payload handed to ``interrupt`` and returns a canned
-    resume value so the wrapper can proceed without a real checkpointer.
-    """
+    """Drop-in replacement for ``langgraph.types.interrupt``."""
 
     def __init__(self, resume_value: Any) -> None:
         self.resume_value = resume_value
@@ -87,16 +67,9 @@ class _FakeInterrupt:
         return self.resume_value
 
 
-# ---------------------------------------------------------------------------
-# (a) chio_node: default policy redacts chio_file_write.content
-# ---------------------------------------------------------------------------
-
-
 class TestChioNodeDefaultPolicy:
     async def test_chio_file_write_content_is_redacted(self) -> None:
         def write_body(state: State) -> dict[str, Any]:
-            # The body still sees the ORIGINAL state contents -- redaction
-            # only governs what crosses into the sidecar.
             assert state.get("content") == "PROD_SECRET=abc123"
             return {"path": state.get("path", "")}
 
@@ -145,10 +118,6 @@ class TestChioNodeDefaultPolicy:
         }
 
     async def test_unrelated_tool_passes_state_through(self) -> None:
-        """The default policy only matches chio_file_write / chio_file_edit;
-        unrelated tools see their parameters unmodified.
-        """
-
         def search_body(_state: State) -> dict[str, Any]:
             return {"query": "ok"}
 
@@ -169,12 +138,6 @@ class TestChioNodeDefaultPolicy:
         assert forwarded == {"query": "quantum", "content": "not redacted here"}
 
     async def test_body_receives_original_state(self) -> None:
-        """The wrapped body must see the un-redacted LangGraph state.
-
-        Redaction governs only the parameters that cross into the
-        sidecar; the user's node body still operates on the original
-        state values.
-        """
         seen: list[dict[str, Any]] = []
 
         def write_body(state: State) -> dict[str, Any]:
@@ -195,11 +158,6 @@ class TestChioNodeDefaultPolicy:
         await wrapped({"path": "/tmp/x", "content": "PLAINTEXT_SECRET"})
 
         assert seen == [{"path": "/tmp/x", "content": "PLAINTEXT_SECRET"}]
-
-
-# ---------------------------------------------------------------------------
-# (b) chio_node: custom policy
-# ---------------------------------------------------------------------------
 
 
 class TestChioNodeCustomPolicy:
@@ -231,9 +189,6 @@ class TestChioNodeCustomPolicy:
         }
 
     async def test_custom_policy_does_not_redact_default_fields(self) -> None:
-        """A custom policy fully replaces the default; chio_file_write
-        is no longer redacted under it.
-        """
         custom = RedactionPolicy(body_fields={"my_tool": ("body",)})
 
         def write_body(_state: State) -> dict[str, Any]:
@@ -257,20 +212,10 @@ class TestChioNodeCustomPolicy:
         assert forwarded["content"] == "not-redacted-now"
 
 
-# ---------------------------------------------------------------------------
-# (c) chio_approval_node: redaction applies BEFORE the sidecar/HITL prompt
-# ---------------------------------------------------------------------------
-
-
 class TestChioApprovalNodeRedacts:
     async def test_approval_payload_carries_redacted_parameter_hash(
         self,
     ) -> None:
-        """The approval interrupt payload must derive its parameter_hash
-        from the redacted parameters (because that hash comes from the
-        sidecar receipt, which itself was computed over the redacted
-        params we sent). The body still sees the un-redacted state.
-        """
         ran: list[dict[str, Any]] = []
 
         def write_body(state: State) -> dict[str, Any]:
@@ -303,23 +248,17 @@ class TestChioApprovalNodeRedacts:
             {"path": "/tmp/x", "content": "PROD_SECRET=abc123"}
         )
 
-        # 1. Sidecar received redacted parameters.
         forwarded = _last_eval(chio).parameters
         assert forwarded["content"] == {
             "omitted": True,
             "byte_count": len(b"PROD_SECRET=abc123"),
         }
-        # 2. Body saw original (un-redacted) state contents.
         assert ran == [
             {"path": "/tmp/x", "content": "PROD_SECRET=abc123"}
         ]
-        # 3. The HITL interrupt payload was built from the receipt that
-        #    in turn was built over the redacted params -- raw secrets do
-        #    not surface in the approval prompt at all.
         assert len(fake_interrupt.payloads) == 1
         payload = fake_interrupt.payloads[0]
-        # Defensive: stringify the whole payload and assert the secret
-        # never appears anywhere in it.
+        # Raw secret must never appear in the HITL approval prompt.
         assert "PROD_SECRET=abc123" not in repr(payload)
 
     async def test_approval_node_custom_policy_extends_default(self) -> None:

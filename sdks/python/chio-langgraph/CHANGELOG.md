@@ -7,19 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1]
 
-- feat: redact sensitive node-dispatch parameters before they cross into
-  the Chio sidecar (and therefore before they land in the receipt log).
-  Uses `chio_adapter_base.redact.redact_args` with the chio-default
-  policy (`{"chio_file_write": ("content",), "chio_file_edit":
-  ("patch",)}`). The redaction is applied to the parameters derived from
-  LangGraph state by `_state_to_parameters` right before
-  `evaluate_tool_call` and the optional approval-request payload, so
-  neither the receipt nor the HITL approval prompt carries raw secret
-  bytes. The wrapped node body still receives the original LangGraph
-  state untouched. Pass a custom `RedactionPolicy` via the new
-  `redaction_policy` constructor arg on `chio_node` and
-  `chio_approval_node` to extend the default with adapter or
-  workspace-specific tool names.
+- feat: redact node-dispatch parameters via
+  `chio_adapter_base.redact.redact_args` before forwarding to the
+  sidecar (and any HITL approval payload). Override via the new
+  `redaction_policy` arg on `chio_node` and `chio_approval_node`.
 
 ## [0.1.0]
 

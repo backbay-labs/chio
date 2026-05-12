@@ -189,15 +189,9 @@ def chio_approval_node(
         Indirection hook for :func:`langgraph.types.interrupt`. Tests
         substitute a fake so they can drive the resume payload directly.
     redaction_policy:
-        Per-tool argument redaction policy. Applied to the parameters
-        derived from LangGraph state right before the sidecar
-        evaluation, so neither the receipt log nor the HITL approval
-        prompt carries raw secret bytes (e.g. the ``content`` of
-        ``chio_file_write``). Defaults to
-        :meth:`RedactionPolicy.chio_default`; pass a custom
-        :class:`RedactionPolicy` to extend with adapter or
-        workspace-specific tool names. The wrapped node body always
-        receives the original LangGraph state untouched.
+        Optional :class:`RedactionPolicy` applied to the
+        state-derived parameters before sidecar evaluation. Defaults
+        to :meth:`RedactionPolicy.chio_default`.
     """
     node_name: str = name or str(getattr(fn, "__name__", "approval_node"))
     enforce_subgraph_ceiling(config, node_name, scope)
@@ -236,11 +230,7 @@ def chio_approval_node(
 
         # Step 1: sidecar evaluation. Deny -> immediate raise; allow ->
         # proceed; pending_approval -> branch to the interrupt path with
-        # the approval_id the kernel emitted. Redact body fields from
-        # the parameters derived from state before they cross into the
-        # sidecar so the receipt and any HITL approval prompt never
-        # carry raw secret bytes; the wrapped node body, when it runs
-        # later, still sees the original LangGraph state untouched.
+        # the approval_id the kernel emitted.
         parameters = redact_args(
             node_name,
             _state_to_parameters(state),
