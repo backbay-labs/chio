@@ -2,15 +2,7 @@
 
 `chio_code_agent` ships default executors for `read_file` / `write_file`
 only; the other ten tool methods accept an `executor` kwarg with no
-default and silently no-op without one. This module supplies the
-missing executors so the plugin can apply real filesystem / subprocess
-/ git effects after the sidecar emits an allow verdict.
-
-All paths are resolved relative to the explicit `cwd` kwarg and
-rejected if they escape via symlink or `..`. Subprocess calls always
-pass an argv list (NEVER `shell=True`), capture stdout + stderr,
-honour `CHIO_SHELL_TIMEOUT` (default 60 s), and run inside
-`asyncio.to_thread` so the Hermes event loop stays free.
+default and silently no-op without one.
 """
 
 from __future__ import annotations
@@ -25,10 +17,8 @@ from typing import Any
 DEFAULT_SHELL_TIMEOUT = 60
 DEFAULT_SUBPROCESS_MAX_BYTES = 1 << 20  # 1 MiB
 
-# Environment variables stripped from every child process the executors
-# spawn. The denylist is intentionally generous: any token matching a
-# substring/suffix here is dropped before the executor inherits it.
-# Documented in HERMES.md "Security model".
+# Credential-carrying env vars stripped from child processes. See
+# HERMES.md "Security model" for the contract.
 _ENV_DENY_PREFIXES: tuple[str, ...] = (
     "CHIO_",
     "HERMES_",
@@ -57,8 +47,6 @@ _ENV_DENY_SUFFIXES: tuple[str, ...] = (
     "_CREDENTIALS",
     "_CREDS",
 )
-# Specific names that are not caught by the prefix/suffix scan but are
-# well-known credential carriers.
 _ENV_DENY_EXACT: frozenset[str] = frozenset(
     {
         "OPENAI_API_KEY",
@@ -76,7 +64,6 @@ _ENV_DENY_EXACT: frozenset[str] = frozenset(
 
 
 def _is_denied_env(name: str) -> bool:
-    """Return True if env var `name` should be stripped from child env."""
     if name in _ENV_DENY_EXACT:
         return True
     upper = name.upper()
@@ -88,13 +75,6 @@ def _is_denied_env(name: str) -> bool:
 
 
 def _sanitised_env() -> dict[str, str]:
-    """Return a copy of `os.environ` with credential-carrying vars dropped.
-
-    Keeps benign locale / shell vars (`PATH`, `HOME`, `LANG`, `LC_*`,
-    `TERM`, `TZ`, `USER`, `SHELL`) so commands the model runs still
-    behave normally. See `_is_denied_env` for the deny rules and
-    HERMES.md "Security model" for the prose contract.
-    """
     return {k: v for k, v in os.environ.items() if not _is_denied_env(k)}
 
 
@@ -110,11 +90,8 @@ def subprocess_max_bytes() -> int:
 
 
 def workspace_root() -> Path:
-    """Return the workspace root for ad-hoc CLI use.
-
-    Hermes-side callers thread `cwd=` through the handler factories;
-    this fallback is for unit tests of executors invoked without `cwd`.
-    """
+    # Fallback for executors invoked without `cwd`; Hermes-side callers
+    # thread `cwd=` through the handler factories.
     raw = os.environ.get("CHIO_WORKSPACE_ROOT")
     base = Path(raw) if raw else Path.cwd()
     return base.resolve()
@@ -132,19 +109,15 @@ def shell_timeout() -> int:
 
 
 def _resolve_within(path: str, root: Path) -> Path:
-    """Resolve `path` and confirm it lives inside `root`.
-
-    Falls back to a lexical resolve for non-existent targets so writes
-    that create new files are still gated.
-    """
+    """Resolve `path` and confirm it lives inside `root`."""
     candidate = Path(path)
     if not candidate.is_absolute():
         candidate = root / candidate
     try:
         resolved = candidate.resolve()
     except OSError:
-        # Target may not exist yet (e.g. chio_file_write); lexical
-        # resolve still handles `..`.
+        # Target may not exist yet (chio_file_write); lexical resolve
+        # still handles `..`.
         resolved = Path(os.path.normpath(str(candidate)))
     try:
         resolved.relative_to(root)
@@ -158,14 +131,9 @@ def _resolve_within(path: str, root: Path) -> Path:
 def _drain_stream_to_cap(
     stream: Any, cap: int
 ) -> tuple[bytearray, bool]:
-    """Drain `stream` into a `bytearray`, capped at `cap` bytes.
-
-    Reads in 8 KiB chunks. Returns ``(buf, truncated)``. After the cap
-    is hit the function continues to drain (and discard) the rest of
-    the stream so the producer does not block on a full pipe; without
-    that drain, the child can never exit and the surrounding `wait()`
-    times out even when the cap was meant to be the bound.
-    """
+    # Continue draining past the cap so the producer does not block on
+    # a full pipe (which would cause the surrounding wait() to time out
+    # even when the cap was meant to be the bound).
     buf = bytearray()
     truncated = False
     if stream is None:
@@ -176,8 +144,6 @@ def _drain_stream_to_cap(
             break
         if len(buf) >= cap:
             truncated = True
-            # Discard once the cap is hit, but keep reading so the
-            # producer is unblocked.
             continue
         room = cap - len(buf)
         if len(chunk) <= room:
@@ -195,19 +161,10 @@ def _run_subprocess(
     timeout: int,
     stdin: str | None = None,
 ) -> dict[str, Any]:
-    """Run `argv` with a bounded output buffer and a sanitised env.
-
-    `subprocess.run(..., capture_output=True)` buffers ALL of stdout
-    and stderr in memory until exit; a tool that streams large output
-    (`yes`, `git diff` against a big tree, a runaway shell loop) can
-    exhaust Hermes's RAM before the timeout fires. Spawn via `Popen`
-    and drain each pipe in a thread with a per-stream cap
-    (`CHIO_SUBPROCESS_MAX_BYTES`, default 1 MiB).
-
-    Also drop credential-carrying env vars (`CHIO_*`, `_API_KEY`,
-    `OPENAI_API_KEY`, ...) so the child the model is about to run
-    cannot exfiltrate them via `env` / `os.environ`.
-    """
+    # `subprocess.run(..., capture_output=True)` buffers all output in
+    # memory until exit; a tool that streams large output (yes, big
+    # `git diff`) can OOM Hermes before the timeout fires. Spawn via
+    # Popen and drain each pipe in a thread with a per-stream cap.
     import threading
 
     env = _sanitised_env()
@@ -251,8 +208,6 @@ def _run_subprocess(
             proc.kill()
             proc.wait()
     finally:
-        # Wait for the readers so the buffers are flushed even on
-        # timeout / kill.
         stdout_thread.join(timeout=5)
         stderr_thread.join(timeout=5)
         for stream in (proc.stdout, proc.stderr, proc.stdin):
@@ -263,8 +218,8 @@ def _run_subprocess(
                     pass
 
     if timed_out:
-        # Mirror `subprocess.run`'s contract so the caller still sees a
-        # `TimeoutExpired` rather than a silent `returncode=-9`.
+        # Mirror subprocess.run so the caller sees TimeoutExpired rather
+        # than a silent returncode=-9.
         raise subprocess.TimeoutExpired(cmd=argv, timeout=timeout)
 
     stdout_buf, stdout_truncated = drained["stdout"]
@@ -289,10 +244,7 @@ def _resolve_cwd(cwd: Path | None) -> Path:
 async def edit_file_executor(
     *, path: str, patch: str, cwd: Path | None = None
 ) -> dict[str, Any]:
-    """Apply `patch` to `path` via `patch -p0` reading the diff on stdin.
-
-    Using `patch(1)` avoids an extra `unidiff` dependency.
-    """
+    # Use `patch(1)` to avoid an extra `unidiff` dependency.
     root = _resolve_cwd(cwd)
     target = _resolve_within(path, root)
     result = await asyncio.to_thread(
@@ -325,10 +277,6 @@ async def list_directory_executor(
 async def search_files_executor(
     *, query: str, path: str = ".", cwd: Path | None = None
 ) -> dict[str, Any]:
-    """Search files by glob via `Path.rglob(query)` under `path`.
-
-    Returns paths relative to the workspace root for stable test output.
-    """
     root = _resolve_cwd(cwd)
     target = _resolve_within(path, root)
     if not target.exists() or not target.is_dir():
@@ -338,8 +286,8 @@ async def search_files_executor(
         try:
             matches.append(str(hit.relative_to(root)))
         except ValueError:
-            # rglob can return paths under symlinked subtrees; keep the
-            # absolute path rather than dropping silently.
+            # rglob can return paths under symlinked subtrees; keep
+            # absolute rather than dropping silently.
             matches.append(str(hit))
     matches.sort()
     return {"path": str(target), "query": query, "matches": matches}
@@ -348,7 +296,6 @@ async def search_files_executor(
 async def shell_run_executor(
     *, command: str, cwd: Path | None = None
 ) -> dict[str, Any]:
-    """Run `command` after tokenising via `shlex.split` (NEVER shell=True)."""
     root = _resolve_cwd(cwd)
     argv = shlex.split(command)
     if not argv:
@@ -361,15 +308,9 @@ async def shell_run_executor(
 async def _git(
     *args: str, cwd: Path | None = None, stdin: str | None = None
 ) -> dict[str, Any]:
-    """Run `git` anchored to `cwd` so the repo discovery cannot walk up.
-
-    Passes `-C <root>` (and `--git-dir=<root>/.git` when present) so a
-    workspace that lives inside a larger worktree does not silently
-    pick up the parent's git config / .gitignore. If `<root>/.git` is
-    not a directory, git still discovers the repo via the working
-    directory; document workspace-must-be-git-root in the integration
-    docs for that case.
-    """
+    # Anchor git at `cwd` (`-C <root>` plus `--git-dir`/`--work-tree`
+    # when present) so a workspace inside a larger worktree does not
+    # silently pick up the parent's git config / .gitignore.
     root = _resolve_cwd(cwd)
     git_argv: list[str] = ["git", "-C", str(root)]
     git_dir = root / ".git"
@@ -416,17 +357,11 @@ async def git_add_executor(
 async def git_commit_executor(
     *, message: str, cwd: Path | None = None
 ) -> dict[str, Any]:
-    """Run `git commit -m <message> --no-verify`.
-
-    `--no-verify` is mandatory: `pre-commit`, `commit-msg`, and
-    `prepare-commit-msg` hooks execute repo-local scripts in the
-    commit's working tree. Those scripts run with the executor's
-    privileges and (sanitised) env, which would let an attacker who
-    controls the repo escalate from "model can call git_commit" to
-    arbitrary code execution on the host. Users who genuinely want a
-    hook to run can dispatch it themselves through `chio_shell_run`,
-    which is gated by the policy's shell deny list.
-    """
+    # `--no-verify` is mandatory: pre-commit / commit-msg /
+    # prepare-commit-msg hooks execute repo-local scripts in the
+    # commit's working tree, escalating "model can call git_commit"
+    # to arbitrary code execution. Users who want hooks can dispatch
+    # them via `chio_shell_run` (gated by the shell deny list).
     if not message:
         raise ValueError("git_commit requires a non-empty message")
     return await _git("commit", "--no-verify", "-m", message, cwd=cwd)
@@ -435,7 +370,6 @@ async def git_commit_executor(
 async def git_run_executor(
     *, command: str, cwd: Path | None = None
 ) -> dict[str, Any]:
-    """Run an arbitrary `git ...` command after `shlex.split`."""
     argv = shlex.split(command)
     if not argv:
         raise ValueError("git_run requires a non-empty command")

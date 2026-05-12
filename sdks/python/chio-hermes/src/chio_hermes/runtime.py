@@ -1,18 +1,9 @@
 """`RuntimeHandle`: per-`register(ctx)` plugin state container.
 
-Bundles the live `ChioClient`, `CodeAgent` facade, active
-`CodeAgentPolicy`, `ReceiptBuffer`, and resolved configuration.
-Threaded into every handler / hook / slash factory via closure capture
-so the plugin keeps no module-level mutable state.
-
 Construction is fail-soft: missing env or a missing chio-code-agent
-install yields a "degraded" handle whose `is_configured()` returns
-False; tools registered against it short-circuit to `chio_not_configured`
-JSON instead of crashing Hermes startup.
-
-Hermes populates the process env from `plugins.entries.chio.*` and
-`~/.hermes/.env` before invoking `register`, so this module only needs
-to read process env directly.
+install yields a degraded handle whose `is_configured()` returns False;
+tools short-circuit to `chio_not_configured` JSON instead of crashing
+Hermes startup.
 """
 
 from __future__ import annotations
@@ -28,13 +19,7 @@ DEFAULT_SIDECAR_URL = "http://127.0.0.1:9090"
 
 @dataclass
 class RuntimeHandle:
-    """All long-lived plugin state, owned by one `register(ctx)` call.
-
-    The handle is fail-closed by construction: there is no fail-open
-    escape hatch in v0.1.x. A future release may add one with
-    sidecar-mediated semantics; until then any configuration gap
-    surfaces as `chio_not_configured` from the tool envelope.
-    """
+    """All long-lived plugin state owned by one `register(ctx)` call."""
 
     chio_client: Any | None = None
     capability_id: str | None = None
@@ -54,7 +39,6 @@ class RuntimeHandle:
         )
 
     def masked_capability_id(self) -> str:
-        """Return the last 8 chars of the capability id, or `<unset>`."""
         if not self.capability_id:
             return "<unset>"
         cap = self.capability_id
@@ -63,26 +47,14 @@ class RuntimeHandle:
 
 @dataclass
 class _PolicyLoad:
-    """Outcome of `_load_policy`.
-
-    `policy` is the compiled policy on success, `None` on failure.
-    `error` carries a human-readable reason on failure so the caller
-    can surface `chio_not_configured` instead of silently falling back.
-    """
-
     policy: Any | None
     error: str | None = None
 
 
 def _load_policy() -> _PolicyLoad:
-    """Compile the configured policy.
-
-    Returns the bundled `DEFAULT_POLICY` only when `CHIO_POLICY_FILE`
-    is unset. If the env var IS set but the file is missing or the YAML
-    fails to compile, return a degraded `_PolicyLoad` so the caller can
-    fail closed (the user explicitly opted into a custom policy; falling
-    back to DEFAULT_POLICY would silently widen the trust surface).
-    """
+    # Use `DEFAULT_POLICY` only when CHIO_POLICY_FILE is unset. If the
+    # user opted in but the file is missing/invalid, fail closed rather
+    # than silently widening the trust surface.
     try:
         from chio_code_agent.policy import (
             DEFAULT_POLICY,
@@ -102,8 +74,6 @@ def _load_policy() -> _PolicyLoad:
         text = Path(policy_path).read_text(encoding="utf-8")
         return _PolicyLoad(policy=compile_policy(text))
     except Exception as exc:  # noqa: BLE001
-        # Explicit user opt-in via CHIO_POLICY_FILE: fail closed rather
-        # than silently fall back to DEFAULT_POLICY.
         print(
             f"[chio-hermes] failed to load CHIO_POLICY_FILE={policy_path!r}: {exc}",
             file=sys.stderr,
@@ -115,12 +85,7 @@ def _load_policy() -> _PolicyLoad:
 
 
 def build_runtime_handle() -> RuntimeHandle:
-    """Construct a `RuntimeHandle` from process env.
-
-    Never raises. Any failure produces a degraded handle whose
-    `is_configured()` returns False and whose `init_error` describes
-    the problem.
-    """
+    """Construct a `RuntimeHandle` from process env. Never raises."""
     from chio_hermes.receipts import ReceiptBuffer
 
     sidecar_url = os.environ.get("CHIO_SIDECAR_URL", DEFAULT_SIDECAR_URL)
@@ -154,9 +119,8 @@ def build_runtime_handle() -> RuntimeHandle:
     except Exception as exc:  # noqa: BLE001
         handle.init_error = f"failed to construct ChioClient: {exc}"
         return handle
-    # Wrap evaluate_tool_call so the most recent allow-receipt id is
-    # available to the envelope wrapper if the executor later raises.
-    # See `chio_hermes.handlers._wrap_envelope` for the consumer side.
+    # Capture the most recent allow-receipt id so the envelope wrapper
+    # can surface it on later executor errors (see handlers._wrap_envelope).
     _install_receipt_id_capture(client)
     handle.chio_client = client
 
@@ -183,13 +147,9 @@ def build_runtime_handle() -> RuntimeHandle:
 
 
 def _install_receipt_id_capture(client: Any) -> None:
-    """Patch `client.evaluate_tool_call` to publish the receipt id.
-
-    The wrapper sets `chio_hermes.handlers._LAST_RECEIPT_ID` on every
-    successful evaluate so a later executor exception can surface the
-    receipt id from the prior allow verdict in
-    `chio_executor_error` envelopes.
-    """
+    # Patch evaluate_tool_call to publish the receipt id into
+    # handlers._LAST_RECEIPT_ID so a later executor exception can
+    # surface the prior allow verdict's receipt id.
     original = getattr(client, "evaluate_tool_call", None)
     if original is None or getattr(original, "__chio_hermes_wrapped__", False):
         return

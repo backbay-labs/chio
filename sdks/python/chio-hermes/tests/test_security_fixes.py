@@ -1,5 +1,3 @@
-"""Regression tests pinning bot-reviewer security fixes from PR #650."""
-
 from __future__ import annotations
 
 import json
@@ -26,7 +24,7 @@ def _allow_all_policy(_t: str, _s: dict, _c: dict) -> MockVerdict:
 def test_runtime_fails_closed_when_policy_file_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # P1-2: CHIO_POLICY_FILE opt-in must not fall back to DEFAULT_POLICY.
+    # CHIO_POLICY_FILE opt-in must not fall back to DEFAULT_POLICY.
     missing = tmp_path / "does-not-exist.yaml"
     monkeypatch.setenv("CHIO_POLICY_FILE", str(missing))
     monkeypatch.setenv("CHIO_SIDECAR_URL", "http://127.0.0.1:9090")
@@ -91,7 +89,6 @@ def test_filter_diff_output_no_op_on_clean_diff(tmp_workspace: Path) -> None:
 async def test_chio_shell_run_rejects_dotdot_token(
     tmp_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # P1-4: shell argv tokens that escape the workspace are rejected.
     from chio_hermes import executors as _exec
 
     async def _ok(**_kw: Any) -> dict[str, Any]:
@@ -116,7 +113,7 @@ async def test_chio_shell_run_rejects_dotdot_token(
 async def test_chio_git_add_rejects_forbidden_expansion(
     tmp_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # P1-5: pathspec expanding to `.env` is denied, even when literal
+    # Pathspec expanding to .env is denied even when the literal
     # pathspec passes policy.check_write.
     runtime = make_configured_runtime(cwd=tmp_workspace)
 
@@ -184,7 +181,6 @@ def test_truncate_receipt_result_passthrough_for_small_payload() -> None:
 
 
 def test_truncate_receipt_result_passthrough_for_chio_file_write() -> None:
-    # chio_file_write is not content-heavy; result is small status JSON.
     big = '{"status":"allowed","result":"' + ("A" * 1024) + '"}'
     payload, truncated = _hooks._truncate_receipt_result("chio_file_write", big)
     assert truncated is False
@@ -219,10 +215,8 @@ async def test_chio_file_search_rejects_dotdot_query(
 async def test_chio_git_run_denies_when_check_shell_requires_approval(
     tmp_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # P2-14: a custom policy returning True from check_shell (approval
-    # required) must deny, not silently allow.
-    # Clone DEFAULT_POLICY so other tests still see git/run absent from
-    # allowed_tools.
+    # Custom policy: check_shell returning True (approval required)
+    # must deny rather than silently allow.
     import copy
 
     from chio_code_agent.policy import DEFAULT_POLICY, AllowedTool
@@ -249,7 +243,6 @@ async def test_chio_git_run_denies_when_check_shell_requires_approval(
 
 @pytest.mark.asyncio
 async def test_slash_chio_handles_unclosed_quote(tmp_workspace: Path) -> None:
-    # Cursor M: shlex.split ValueError in /chio dispatch.
     runtime = make_configured_runtime(cwd=tmp_workspace)
     handle_slash = make_slash_handler(runtime)
     out = await handle_slash('"unclosed')
@@ -258,7 +251,6 @@ async def test_slash_chio_handles_unclosed_quote(tmp_workspace: Path) -> None:
 
 
 def test_receipt_buffer_recent_zero_returns_empty() -> None:
-    # Cursor L: ReceiptBuffer.recent(0) returns [].
     buf = ReceiptBuffer()
     for i in range(5):
         buf._buffer.append({"i": i})  # type: ignore[attr-defined]
@@ -271,9 +263,8 @@ def test_receipt_buffer_recent_zero_returns_empty() -> None:
 async def test_executor_error_recovers_receipt_id_from_context(
     tmp_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # P2-13: executor raising a generic exception (no receipt_id attr)
-    # still surfaces the receipt id captured from the most recent allow
-    # verdict by the chio_client wrapper.
+    # Generic executor exception still surfaces the receipt id from
+    # the most recent allow verdict via the client wrapper.
     captured: dict[str, Any] = {}
 
     class _ClientCapture(MockChioClient):
@@ -306,15 +297,10 @@ async def test_executor_error_recovers_receipt_id_from_context(
     assert payload["receipt_id"] == captured["receipt_id"]
 
 
-# ---------------------------------------------------------------------------
-# Round 2 P1-2 (id 3222802723): capability cache file is mode 0600
-# ---------------------------------------------------------------------------
-
-
 def test_capability_cache_file_is_mode_0600(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`_save_cache` must chmod the cache to 0600; bearer creds live there."""
+    # Cache holds bearer credentials; must chmod 0600.
     import os
     import stat
 
@@ -335,16 +321,14 @@ def test_capability_cache_file_is_mode_0600(
 def test_capability_cache_save_is_atomic(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`_save_cache` writes via tempfile + replace so a concurrent
-    `hermes chio issue` (race F15) cannot leave a torn JSON blob."""
+    # Tempfile + replace guards against a torn write under concurrent
+    # `hermes chio issue` (race F15).
     from chio_hermes import cli as _cli
 
     home = tmp_path / "hermes-home"
     monkeypatch.setattr(_cli, "_hermes_home", lambda: home)
     monkeypatch.setenv("HERMES_PROFILE", "default")
 
-    # Two writes in succession; the file should always be valid JSON
-    # whose newest contents reflect the most recent call.
     _cli._save_cache([{"capability_id": "cap-1"}])
     _cli._save_cache([{"capability_id": "cap-1"}, {"capability_id": "cap-2"}])
 
@@ -353,17 +337,10 @@ def test_capability_cache_save_is_atomic(
     assert [entry["capability_id"] for entry in parsed] == ["cap-1", "cap-2"]
 
 
-# ---------------------------------------------------------------------------
-# Round 2 P1-3 (id 3222802729): subprocess env is sanitised
-# ---------------------------------------------------------------------------
-
-
 def test_run_subprocess_strips_credential_env_vars(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The child process must NOT inherit `CHIO_*` / `_API_KEY` / `_TOKEN`
-    env vars. Probe by running `python -c "import os, json;
-    print(json.dumps(dict(os.environ)))"` and decoding the inherited env."""
+    # Child must not inherit CHIO_* / _API_KEY / _TOKEN env vars.
     import sys
 
     from chio_hermes import executors as _exec
@@ -387,21 +364,15 @@ def test_run_subprocess_strips_credential_env_vars(
     assert "CHIO_CAPABILITY_ID" not in child_env
     assert "OPENAI_API_KEY" not in child_env
     assert "MY_CUSTOM_TOKEN" not in child_env
-    # Benign vars stay so commands like `python` (which needs PATH) work.
     assert child_env.get("BENIGN_VAR") == "ok"
-
-
-# ---------------------------------------------------------------------------
-# Round 2 P1-4 (id 3222802730): git_commit passes --no-verify
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_git_commit_executor_passes_no_verify(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`git commit` must run with `--no-verify` so repo-local hook
-    scripts cannot escalate to RCE on the host."""
+    # --no-verify guards against repo-local hook scripts escalating
+    # to RCE on the host.
     import subprocess as _subprocess
 
     from chio_hermes import executors as _exec
@@ -432,13 +403,7 @@ async def test_git_commit_executor_passes_no_verify(
     out = await _exec.git_commit_executor(message="test", cwd=tmp_path)
     assert out["returncode"] == 0
     assert "--no-verify" in captured["argv"]
-    # Sanity: the commit is still a `git commit`.
     assert "commit" in captured["argv"]
-
-
-# ---------------------------------------------------------------------------
-# Round 2 P2-2 (id 3222802725): receipt args redact body-bearing fields
-# ---------------------------------------------------------------------------
 
 
 def test_redact_args_omits_chio_file_write_content() -> None:
@@ -461,16 +426,11 @@ def test_redact_args_omits_chio_file_edit_patch() -> None:
 
 
 def test_redact_args_passthrough_for_chio_shell_run() -> None:
-    """`chio_shell_run.command` is the auditable bit; pass through unchanged."""
+    # chio_shell_run.command is the auditable bit; pass through.
     redacted = _hooks._redact_args(
         "chio_shell_run", {"command": "ls -la /tmp"}
     )
     assert redacted == {"command": "ls -la /tmp"}
-
-
-# ---------------------------------------------------------------------------
-# Round 2 P2-3 (id 3222802726): forbidden paths filtered from search results
-# ---------------------------------------------------------------------------
 
 
 def test_filter_search_matches_drops_forbidden(tmp_workspace: Path) -> None:
@@ -494,11 +454,6 @@ def test_filter_search_matches_no_op_when_clean(tmp_workspace: Path) -> None:
     assert out is raw
 
 
-# ---------------------------------------------------------------------------
-# Round 2 P2-4 (id 3222802727): forbidden paths filtered from git status
-# ---------------------------------------------------------------------------
-
-
 def test_filter_status_output_drops_forbidden_rows(tmp_workspace: Path) -> None:
     runtime = make_configured_runtime(cwd=tmp_workspace)
     raw = {
@@ -519,7 +474,6 @@ def test_filter_status_output_handles_renames(tmp_workspace: Path) -> None:
         "returncode": 0,
     }
     filtered = _handlers._filter_status_output(runtime, raw)
-    # Rename row references `.env` on the new side; drop the whole row.
     assert ".env" not in filtered["stdout"]
     assert "src/main.py" in filtered["stdout"]
 
@@ -532,20 +486,14 @@ def test_filter_status_output_no_op_when_clean(tmp_workspace: Path) -> None:
     assert out is raw
 
 
-# ---------------------------------------------------------------------------
-# Round 2 P2-5 (id 3222802732): subprocess output is bounded
-# ---------------------------------------------------------------------------
-
-
 def test_run_subprocess_truncates_runaway_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A child that streams a large blob is truncated, not buffered to OOM."""
+    # Streaming child is truncated rather than buffered to OOM.
     import sys
 
     from chio_hermes import executors as _exec
 
-    # Cap the cap so the test runs fast.
     monkeypatch.setenv("CHIO_SUBPROCESS_MAX_BYTES", "4096")
 
     out = _exec._run_subprocess(
@@ -557,20 +505,13 @@ def test_run_subprocess_truncates_runaway_output(
         cwd=tmp_path,
         timeout=15,
     )
-    # Either the child finished and the buffer was truncated at the cap,
-    # or the executor killed it; in both cases the marker is set.
     assert out.get("output_truncated") is True
     assert len(out["stdout"].encode("utf-8")) <= 4096 + 1
 
 
-# ---------------------------------------------------------------------------
-# F14 (deferred-from-interval-2): on_session_start flushes pending receipts
-# ---------------------------------------------------------------------------
-
-
 def test_on_session_start_flushes_pending_into_recorded_buffer() -> None:
-    """If Hermes fires on_session_start per turn, pending receipts must
-    be flushed into the recorded buffer, not silently dropped."""
+    # F14: per-turn on_session_start must flush pending into recorded
+    # rather than silently drop them.
     from chio_hermes.receipts import ReceiptBuffer
     from chio_hermes.runtime import RuntimeHandle
 
@@ -582,9 +523,7 @@ def test_on_session_start_flushes_pending_into_recorded_buffer() -> None:
     on_start = _hooks.make_on_session_start(handle)
     on_start(session_id="sess-1")
 
-    # Drained pending: nothing left in the queue.
     assert receipts.pending_total() == 0
-    # Recorded into the visible buffer with the flush marker.
     recent = receipts.recent(10)
     assert len(recent) == 2
     assert all(entry.get("session_start_flush") for entry in recent)

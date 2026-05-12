@@ -1,9 +1,8 @@
 """Hermes hook factories.
 
-Hermes's `PluginManager.invoke_hook` (`hermes_cli/plugins.py:1222`)
-runs callbacks as `ret = cb(**kwargs)` with NO await, so every hook
-here is a plain `def`. Returning a coroutine would silently drop the
-body and trigger a `RuntimeWarning` at GC time.
+`PluginManager.invoke_hook` (`hermes_cli/plugins.py:1222`) runs
+callbacks as `ret = cb(**kwargs)` with NO await, so every hook is a
+plain `def`; returning a coroutine would silently drop the body.
 """
 
 from __future__ import annotations
@@ -78,7 +77,7 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
 
 def _envelope_status_fields(result: Any) -> tuple[str | None, str | None]:
     # Hoist status/error from the handler's JSON envelope so
-    # ReceiptBuffer.denial_count (which reads top-level keys) sees deny.
+    # ReceiptBuffer.denial_count (top-level key reader) sees denies.
     if not isinstance(result, str):
         return None, None
     try:
@@ -97,9 +96,8 @@ def _envelope_status_fields(result: Any) -> tuple[str | None, str | None]:
 
 RECEIPT_RESULT_MAX_BYTES = 256
 
-# Tools whose result is mostly raw content (file bodies, stdout, diff
-# text). Persisting the full payload bakes secrets and large blobs into
-# the audit trail; truncate to RECEIPT_RESULT_MAX_BYTES.
+# Tools whose result is mostly raw content; truncate so secrets and
+# large blobs do not get baked into the audit trail.
 _CONTENT_HEAVY_TOOLS = frozenset(
     {
         "chio_file_read",
@@ -127,10 +125,9 @@ def _truncate_receipt_result(
     return head, True
 
 
-# Tools whose `args` carry the raw file body the model is about to
-# write. Persisting that body to the receipt log bakes any embedded
-# secret into the audit trail. Replace the body field with a stub
-# describing the byte count; the path / message is preserved.
+# Tools whose `args` carry a raw body the model is about to write;
+# replace with a byte-count stub so embedded secrets do not land in
+# the receipt log. Path / message fields are preserved.
 _BODY_REDACT_FIELDS: dict[str, tuple[str, ...]] = {
     "chio_file_write": ("content",),
     "chio_file_edit": ("patch",),
@@ -140,7 +137,6 @@ _BODY_REDACT_FIELDS: dict[str, tuple[str, ...]] = {
 def _redact_args(
     tool_name: str | None, args: dict[str, Any]
 ) -> dict[str, Any]:
-    """Return a copy of `args` with body-bearing fields stubbed out."""
     fields = _BODY_REDACT_FIELDS.get(tool_name or "")
     if not fields:
         return dict(args)
@@ -209,12 +205,9 @@ def make_on_session_start(handle: RuntimeHandle) -> SessionHook:
         _ = session_id
         if handle.receipts is None:
             return
-        # F14 (deferred-from-interval-2): if Hermes fires on_session_start
-        # per turn (its precise dispatch contract is undocumented),
-        # `clear_pending` would silently drop any receipts queued in the
-        # previous turn. Flush them into the recorded buffer instead so
-        # the audit trail still reflects the calls. The buffer cap
-        # (`CHIO_RECEIPT_BUFFER_MAX`, default 1000) handles overflow.
+        # F14: if Hermes fires on_session_start per turn (dispatch
+        # contract is undocumented), `clear_pending` would drop any
+        # queued receipts. Flush into the recorded buffer instead.
         for entry in list(handle.receipts.drain_pending()):
             entry["recorded_at"] = time.time()
             entry["session_start_flush"] = True

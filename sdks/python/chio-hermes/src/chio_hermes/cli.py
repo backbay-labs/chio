@@ -1,14 +1,4 @@
-"""`hermes chio` CLI subcommand: capability lifecycle helpers.
-
-* `issue`  mints a capability via `ChioClient.create_capability` and
-  caches metadata in `<hermes_home>/profiles/<active>/chio-capabilities.json`.
-* `list`   reads the local cache; never calls Chio APIs.
-* `revoke` shells out to `chio trust revoke --capability-id <id>` and
-  marks the cache entry revoked on success.
-
-Hermes invokes CLI handlers synchronously, so async work runs through
-`asyncio.run` for the one async call (`create_capability`).
-"""
+"""`hermes chio` CLI subcommand: capability lifecycle helpers."""
 
 from __future__ import annotations
 
@@ -25,7 +15,7 @@ from typing import Any
 
 
 def _hermes_home() -> Path:
-    """Resolve `<hermes_home>` lazily so `chio_hermes` imports without Hermes."""
+    # Lazy resolve so chio_hermes imports without Hermes installed.
     try:
         from hermes_constants import get_hermes_home
 
@@ -60,24 +50,15 @@ def _load_cache() -> list[dict[str, Any]]:
 
 
 def _save_cache(entries: list[dict[str, Any]]) -> None:
-    """Atomically write the capability cache with mode `0600`.
-
-    The cache holds capability ids that are bearer credentials for the
-    sidecar; default umask would leave the file world-readable on many
-    systems. Write to a tempfile in the same directory, `chmod 0600`,
-    then `os.replace` so a concurrent `hermes chio issue` (race F15)
-    cannot leave a torn file. Parent directory is forced to `0700`
-    on creation for the same reason.
-    """
+    # Capability ids are bearer credentials; write tempfile + chmod 0600
+    # + os.replace so a concurrent issue (race F15) cannot leave a torn
+    # or world-readable file. Parent forced to 0700 on creation.
     path = _cache_path()
     parent = path.parent
     parent.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(parent, 0o700)
     except OSError:
-        # Parent may live on a filesystem that does not honour POSIX
-        # mode bits (Windows, FAT). Best-effort; the file mode below
-        # is the load-bearing protection.
         pass
     serialised = json.dumps(entries, sort_keys=True, indent=2) + "\n"
     fd, tmp_name = tempfile.mkstemp(
@@ -95,14 +76,12 @@ def _save_cache(entries: list[dict[str, Any]]) -> None:
             pass
         os.replace(tmp_path, path)
     except Exception:
-        # Roll the tempfile back so a failed write does not leave debris.
         try:
             tmp_path.unlink()
         except OSError:
             pass
         raise
-    # Belt-and-braces: re-chmod the destination in case `os.replace`
-    # crossed a filesystem and the mode did not survive.
+    # Re-chmod in case os.replace crossed a filesystem boundary.
     try:
         os.chmod(path, 0o600)
     except OSError:
@@ -110,7 +89,6 @@ def _save_cache(entries: list[dict[str, Any]]) -> None:
 
 
 def setup(parser: argparse.ArgumentParser) -> None:
-    """Register `issue` / `list` / `revoke` subparsers on `parser`."""
     parser.add_argument(
         "--json",
         action="store_true",
@@ -291,12 +269,9 @@ def _do_list(args: argparse.Namespace) -> int:
 
 
 def _do_revoke(args: argparse.Namespace) -> int:
-    # `chio trust revoke` requires either `--control-url <url>` (talks
-    # to a running control plane) or `--revocation-db <path>` (writes
-    # straight to the local sqlite store). Without one of them the
-    # subprocess errors with a usage message that is opaque from the
-    # Hermes CLI surface, so resolve the backend up front from env vars
-    # and refuse early when neither is configured.
+    # `chio trust revoke` requires `--control-url` (control plane) or
+    # `--revocation-db` (local sqlite). Resolve up front so we surface
+    # a clear error rather than the opaque subprocess usage message.
     control_url = os.environ.get("CHIO_CONTROL_URL")
     revocation_db = os.environ.get("CHIO_REVOCATION_DB")
     backend_args: list[str]
