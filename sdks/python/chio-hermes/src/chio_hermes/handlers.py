@@ -301,19 +301,21 @@ def _filter_directory_entries(
 
     base_path = Path(str(base))
     kept: list[str] = []
+    dropped: list[str] = []
     for entry in entries:
         if not isinstance(entry, str):
             kept.append(entry)
             continue
         child = str(base_path / entry)
         if _is_read_forbidden(handle, child):
+            dropped.append(entry)
             continue
         kept.append(entry)
-    if len(kept) == len(entries):
+    if not dropped:
         return result
     filtered = dict(result)
     filtered["entries"] = kept
-    filtered["entries_filtered"] = True
+    filtered["forbidden_paths_filtered"] = sorted(set(dropped))
     return filtered
 
 
@@ -354,17 +356,17 @@ def _filter_matches(handle: RuntimeHandle, result: Any) -> Any:
     if not isinstance(matches, list):
         return result
     kept: list[Any] = []
-    dropped = 0
+    dropped: list[str] = []
     for match in matches:
         if isinstance(match, str) and _is_read_forbidden(handle, match):
-            dropped += 1
+            dropped.append(match)
             continue
         kept.append(match)
-    if dropped == 0:
+    if not dropped:
         return result
     filtered = dict(result)
     filtered["matches"] = kept
-    filtered["entries_filtered"] = True
+    filtered["forbidden_paths_filtered"] = sorted(set(dropped))
     return filtered
 
 

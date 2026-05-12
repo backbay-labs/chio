@@ -141,7 +141,7 @@ def test_filter_directory_entries_drops_dotenv(tmp_workspace: Path) -> None:
     filtered = _handlers._filter_directory_entries(runtime, ".", raw)
     assert ".env" not in filtered["entries"]
     assert "README.md" in filtered["entries"]
-    assert filtered["entries_filtered"] is True
+    assert filtered["forbidden_paths_filtered"] == [".env"]
 
 
 @pytest.mark.parametrize(
@@ -443,14 +443,14 @@ def test_filter_search_matches_drops_forbidden(tmp_workspace: Path) -> None:
     filtered = _handlers._filter_matches(runtime, raw)
     assert ".env" not in filtered["matches"]
     assert "src/main.py" in filtered["matches"]
-    assert filtered["entries_filtered"] is True
+    assert filtered["forbidden_paths_filtered"] == [".env"]
 
 
 def test_filter_search_matches_no_op_when_clean(tmp_workspace: Path) -> None:
     runtime = make_configured_runtime(cwd=tmp_workspace)
     raw = {"matches": ["src/main.py", "README.md"]}
     out = _handlers._filter_matches(runtime, raw)
-    assert "entries_filtered" not in out
+    assert "forbidden_paths_filtered" not in out
     assert out is raw
 
 
@@ -507,6 +507,97 @@ def test_run_subprocess_truncates_runaway_output(
     )
     assert out.get("output_truncated") is True
     assert len(out["stdout"].encode("utf-8")) <= 4096 + 1
+
+
+def test_run_subprocess_strips_git_config_and_hook_overrides(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # GIT_CONFIG_* / GIT_HOOKS_PATH / GIT_DIR / GIT_WORK_TREE /
+    # GIT_INDEX_FILE / GIT_ALTERNATE_OBJECT_DIRECTORIES /
+    # GIT_OBJECT_DIRECTORY in the parent env can defeat workspace
+    # anchoring or `--no-verify`. They must not reach the child.
+    import sys
+
+    from chio_hermes import executors as _exec
+
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.hooksPath")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "/tmp/evil-hooks")
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", "/tmp/evil.gitconfig")
+    monkeypatch.setenv("GIT_HOOKS_PATH", "/tmp/evil-hooks")
+    monkeypatch.setenv("GIT_DIR", "/tmp/other/.git")
+    monkeypatch.setenv("GIT_WORK_TREE", "/tmp/other")
+    monkeypatch.setenv("GIT_INDEX_FILE", "/tmp/alt-index")
+    monkeypatch.setenv("GIT_ALTERNATE_OBJECT_DIRECTORIES", "/tmp/alt-objs")
+    monkeypatch.setenv("GIT_OBJECT_DIRECTORY", "/tmp/alt-objs")
+    monkeypatch.setenv("BENIGN_VAR", "ok")
+
+    out = _exec._run_subprocess(
+        [
+            sys.executable,
+            "-c",
+            "import json,os,sys; sys.stdout.write(json.dumps(dict(os.environ)))",
+        ],
+        cwd=tmp_path,
+        timeout=10,
+    )
+    assert out["returncode"] == 0
+    child_env = json.loads(out["stdout"])
+    for leaked in (
+        "GIT_CONFIG_COUNT",
+        "GIT_CONFIG_KEY_0",
+        "GIT_CONFIG_VALUE_0",
+        "GIT_CONFIG_SYSTEM",
+        "GIT_HOOKS_PATH",
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_OBJECT_DIRECTORY",
+    ):
+        assert leaked not in child_env, f"{leaked} leaked into child env"
+    assert child_env.get("BENIGN_VAR") == "ok"
+
+
+def test_harden_git_run_argv_injects_no_verify_for_commit() -> None:
+    from chio_hermes import executors as _exec
+
+    out = _exec._harden_git_run_argv(["commit", "-m", "x"])
+    assert out == ["commit", "--no-verify", "-m", "x"]
+
+
+def test_harden_git_run_argv_skips_when_no_verify_present() -> None:
+    from chio_hermes import executors as _exec
+
+    out = _exec._harden_git_run_argv(["commit", "--no-verify", "-m", "x"])
+    assert out == ["commit", "--no-verify", "-m", "x"]
+
+
+def test_harden_git_run_argv_rejects_explicit_verify() -> None:
+    from chio_hermes import executors as _exec
+
+    with pytest.raises(PermissionError):
+        _exec._harden_git_run_argv(["commit", "--verify", "-m", "x"])
+
+
+def test_harden_git_run_argv_passes_through_non_commit_subcommands() -> None:
+    from chio_hermes import executors as _exec
+
+    assert _exec._harden_git_run_argv(["status", "--porcelain"]) == [
+        "status",
+        "--porcelain",
+    ]
+    assert _exec._harden_git_run_argv(["log", "-n5"]) == ["log", "-n5"]
+
+
+def test_harden_git_run_argv_skips_leading_global_flags() -> None:
+    # `git -c foo=bar commit -m x` -- leading -c is a global option,
+    # not the subcommand. The implementation walks past leading flags
+    # until it finds the first non-flag token.
+    from chio_hermes import executors as _exec
+
+    out = _exec._harden_git_run_argv(["-c", "user.name=x", "commit", "-m", "y"])
+    assert out == ["-c", "user.name=x", "commit", "--no-verify", "-m", "y"]
 
 
 def test_on_session_start_flushes_pending_into_recorded_buffer() -> None:

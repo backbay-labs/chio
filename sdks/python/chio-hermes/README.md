@@ -174,13 +174,15 @@ stack both, or every tool call will be policy-checked twice.
 
 | Variable | Required | Default | Notes |
 |----------|----------|---------|-------|
-| `CHIO_SIDECAR_URL` | yes | `http://127.0.0.1:9090` | Sidecar HTTP endpoint. |
-| `CHIO_CAPABILITY_ID` | yes | (none) | Capability id from `hermes chio issue`. Without this the handlers return `chio_not_configured`. Stored in `~/.hermes/.env` with mode `0600` is recommended. |
-| `CHIO_POLICY_FILE` | no | (bundled `DEFAULT_POLICY`) | Path to a YAML policy. |
-| `CHIO_RECEIPT_BUFFER_MAX` | no | `1000` | In-memory recorded-receipt buffer cap (cap on the global FIFO deque exposed via `/chio receipts`, NOT a per-task limit). |
-| `CHIO_SUBPROCESS_MAX_BYTES` | no | `1048576` (1 MiB) | Per-stream byte cap for `chio_shell_run` / `chio_git_*` subprocess output. Output past the cap is truncated and the result envelope carries `output_truncated: true`. |
-| `CHIO_CONTROL_URL` | no | (none) | Read by `hermes chio revoke` to forward `--control-url` to `chio trust revoke`. Either this or `CHIO_REVOCATION_DB` must be set; otherwise `revoke` exits with `chio_revocation_backend_unconfigured`. |
-| `CHIO_REVOCATION_DB` | no | (none) | Read by `hermes chio revoke` to forward `--revocation-db` to `chio trust revoke` when no `CHIO_CONTROL_URL` is configured. |
+| `CHIO_SIDECAR_URL` | yes | `http://127.0.0.1:9090` | Sidecar HTTP endpoint. Not secret. |
+| `CHIO_CAPABILITY_ID` | yes | (none) | Capability id from `hermes chio issue`. Without this the handlers return `chio_not_configured`. Long-lived bearer secret; store in `~/.hermes/.env` with mode `0600`. |
+| `CHIO_POLICY_FILE` | no | (bundled `DEFAULT_POLICY`) | Path to a YAML policy. Not secret. |
+| `CHIO_WORKSPACE_ROOT` | no | current working directory | Constrains every `chio_file_*`, `chio_git_*`, and `chio_shell_run` operation to a single resolved root; paths that resolve outside are rejected with `PermissionError`. Not secret. |
+| `CHIO_SHELL_TIMEOUT` | no | `60` (seconds) | Per-subprocess wall-clock timeout for `chio_shell_run`, `chio_file_edit`, and `chio_git_*` (each invocation, not the cumulative budget). Not secret. |
+| `CHIO_SUBPROCESS_MAX_BYTES` | no | `1048576` (1 MiB) | Per-stream byte cap for `chio_shell_run` / `chio_git_*` subprocess output. Output past the cap is truncated and the result envelope carries `output_truncated: true`. Not secret. |
+| `CHIO_RECEIPT_BUFFER_MAX` | no | `1000` | In-memory recorded-receipt buffer cap (cap on the global FIFO deque exposed via `/chio receipts`, NOT a per-task limit). Not secret. |
+| `CHIO_CONTROL_URL` | required for `hermes chio revoke` (when `CHIO_REVOCATION_DB` is unset) | (none) | Forwarded as `--control-url` to `chio trust revoke`. Takes precedence over `CHIO_REVOCATION_DB`. Without this or `CHIO_REVOCATION_DB`, `revoke` exits with `chio_revocation_backend_unconfigured`. Not secret (URL only; auth is the capability bearer). |
+| `CHIO_REVOCATION_DB` | required for `hermes chio revoke` (when `CHIO_CONTROL_URL` is unset) | (none) | Filesystem path forwarded as `--revocation-db` to `chio trust revoke`. Used when `CHIO_CONTROL_URL` is not set. Not secret (path only). |
 
 ## Configuration precedence
 

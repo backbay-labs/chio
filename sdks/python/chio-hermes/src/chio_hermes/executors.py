@@ -32,6 +32,11 @@ _ENV_DENY_PREFIXES: tuple[str, ...] = (
     "GH_",
     "GITHUB_",
     "GIT_AUTH_",
+    # GIT_CONFIG_* (GIT_CONFIG_COUNT/KEY_n/VALUE_n,
+    # GIT_CONFIG_SYSTEM/GLOBAL/NOSYSTEM, GIT_CONFIG_PARAMETERS) lets a
+    # parent process inject `core.hooksPath`, `include.path`, etc. into
+    # every git invocation, defeating the `--no-verify` hardening.
+    "GIT_CONFIG_",
     "VAULT_",
     "DATABRICKS_",
     "HF_",
@@ -59,6 +64,18 @@ _ENV_DENY_EXACT: frozenset[str] = frozenset(
         "DOCKER_PASSWORD",
         "SLACK_TOKEN",
         "DATABASE_URL",
+        # Git environment overrides that defeat workspace anchoring or
+        # hook execution hardening (`--no-verify`). The CLI flags
+        # (`--git-dir`, `--work-tree`, `-C`) win over the env when both
+        # are present, but bare `_git()` calls in `git_run_executor`
+        # only pass user-supplied subcommands; unsanitised env vars
+        # apply to every git child.
+        "GIT_HOOKS_PATH",
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_OBJECT_DIRECTORY",
     }
 )
 
@@ -377,7 +394,34 @@ async def git_run_executor(
         argv = argv[1:]
     if not argv:
         raise ValueError("git_run command must include a git subcommand")
+    argv = _harden_git_run_argv(argv)
     return await _git(*argv, cwd=cwd)
+
+
+def _harden_git_run_argv(argv: list[str]) -> list[str]:
+    """Defense-in-depth: mirror `git_commit_executor`'s `--no-verify`.
+
+    `git_commit_executor` injects `--no-verify` to block hook RCE. If a
+    custom policy enables `git/run`, a model can call
+    `chio_git_run command="commit -m foo"` and bypass the hardening.
+    Locate the `commit` subcommand (which may follow leading global
+    options like `-c name=value`) and inject `--no-verify` right after
+    it. Reject explicit `--verify` (the model trying to override). Skip
+    if `--no-verify` is already there (no double-inject).
+    """
+    try:
+        subcommand_idx = argv.index("commit")
+    except ValueError:
+        return argv
+    tail = argv[subcommand_idx + 1 :]
+    if "--verify" in tail:
+        raise PermissionError(
+            "git_run: explicit --verify is forbidden; "
+            "commit hooks must stay disabled (use chio_shell_run for hooks)"
+        )
+    if "--no-verify" in tail:
+        return argv
+    return [*argv[: subcommand_idx + 1], "--no-verify", *tail]
 
 
 __all__ = [
