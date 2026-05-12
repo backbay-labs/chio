@@ -40,6 +40,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
 
@@ -151,6 +152,7 @@ def chio_approval_node(
     approval_ttl_seconds: int = 3600,
     summary: str | None = None,
     interrupt_fn: _InterruptFn | None = None,
+    redaction_policy: RedactionPolicy | None = None,
 ) -> Callable[..., Any]:
     """Wrap ``fn`` in an Chio-governed HITL approval node.
 
@@ -186,6 +188,16 @@ def chio_approval_node(
     interrupt_fn:
         Indirection hook for :func:`langgraph.types.interrupt`. Tests
         substitute a fake so they can drive the resume payload directly.
+    redaction_policy:
+        Per-tool argument redaction policy. Applied to the parameters
+        derived from LangGraph state right before the sidecar
+        evaluation, so neither the receipt log nor the HITL approval
+        prompt carries raw secret bytes (e.g. the ``content`` of
+        ``chio_file_write``). Defaults to
+        :meth:`RedactionPolicy.chio_default`; pass a custom
+        :class:`RedactionPolicy` to extend with adapter or
+        workspace-specific tool names. The wrapped node body always
+        receives the original LangGraph state untouched.
     """
     node_name: str = name or str(getattr(fn, "__name__", "approval_node"))
     enforce_subgraph_ceiling(config, node_name, scope)
@@ -200,6 +212,11 @@ def chio_approval_node(
         approval_policy = _default_policy
 
     default_summary = summary or f"Approve execution of node '{node_name}'"
+    effective_redaction_policy: RedactionPolicy = (
+        redaction_policy
+        if redaction_policy is not None
+        else RedactionPolicy.chio_default()
+    )
 
     async def _dispatch(state: Any, runtime_config: Any) -> Any:
         cap_id = _resolve_capability_id(
@@ -219,8 +236,16 @@ def chio_approval_node(
 
         # Step 1: sidecar evaluation. Deny -> immediate raise; allow ->
         # proceed; pending_approval -> branch to the interrupt path with
-        # the approval_id the kernel emitted.
-        parameters = _state_to_parameters(state)
+        # the approval_id the kernel emitted. Redact body fields from
+        # the parameters derived from state before they cross into the
+        # sidecar so the receipt and any HITL approval prompt never
+        # carry raw secret bytes; the wrapped node body, when it runs
+        # later, still sees the original LangGraph state untouched.
+        parameters = redact_args(
+            node_name,
+            _state_to_parameters(state),
+            policy=effective_redaction_policy,
+        )
         try:
             receipt = await config.chio_client.evaluate_tool_call(
                 capability_id=cap_id,

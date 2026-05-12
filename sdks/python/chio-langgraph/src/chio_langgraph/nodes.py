@@ -36,6 +36,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
 
@@ -58,6 +59,7 @@ def chio_node(
     config: ChioGraphConfig,
     name: str | None = None,
     tool_server: str = "langgraph",
+    redaction_policy: RedactionPolicy | None = None,
 ) -> NodeCallable:
     """Wrap a LangGraph node with Chio capability enforcement.
 
@@ -86,6 +88,15 @@ def chio_node(
         Sidecar ``tool_server`` identifier. Defaults to
         ``"langgraph"``; override when a single kernel fronts several
         distinct graphs and needs per-graph receipt filtering.
+    redaction_policy:
+        Per-tool argument redaction policy. Applied to the parameters
+        derived from LangGraph state right before they cross into the
+        sidecar so secret-bearing fields (e.g. the ``content`` of
+        ``chio_file_write``) never land in the receipt log. Defaults to
+        :meth:`RedactionPolicy.chio_default`; pass a custom
+        :class:`RedactionPolicy` to extend with adapter or
+        workspace-specific tool names. The wrapped node body always
+        receives the original LangGraph state untouched.
 
     Returns
     -------
@@ -108,6 +119,11 @@ def chio_node(
     is_async = asyncio.iscoroutinefunction(fn)
     sig = inspect.signature(fn) if callable(fn) else None
     takes_config = _node_accepts_config(sig)
+    effective_redaction_policy: RedactionPolicy = (
+        redaction_policy
+        if redaction_policy is not None
+        else RedactionPolicy.chio_default()
+    )
 
     async def _dispatch(state: Any, runtime_config: Any) -> NodeResult:
         """Core Chio dispatch: evaluate, then call the wrapped node."""
@@ -125,7 +141,17 @@ def chio_node(
                 tool_name=node_name,
                 reason="missing_capability",
             )
-        parameters = _state_to_parameters(state)
+        # Redact body fields (e.g. chio_file_write.content) from the
+        # parameters derived from state before they cross into the
+        # sidecar. The wrapped node body, when invoked below, still
+        # receives the original LangGraph state untouched -- this only
+        # governs what lands in the receipt and is propagated to any
+        # downstream HITL approval payload.
+        parameters = redact_args(
+            node_name,
+            _state_to_parameters(state),
+            policy=effective_redaction_policy,
+        )
         receipt = await _evaluate(
             chio_client=config.chio_client,
             capability_id=cap_id,
