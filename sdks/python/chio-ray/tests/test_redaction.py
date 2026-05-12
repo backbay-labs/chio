@@ -158,8 +158,12 @@ class TestChioRemoteRedaction:
         forwarded = _eval_calls(chio)[0].parameters["kwargs"]
         assert forwarded["content"] == "not-redacted-now"
 
-    def test_positional_args_are_forwarded_unchanged(self) -> None:
-        # Positional args bypass redaction: policy keys on field name.
+    def test_positional_args_for_known_tool_are_redacted(self) -> None:
+        # Positional callers must NOT bypass redaction for chio-default
+        # tools. The previous behaviour (forwarding raw positional
+        # values) leaked the body field; the bind-by-name fix scrubs it
+        # while preserving the original wire shape (positional values
+        # stay in parameters["args"]).
         chio = allow_all()
 
         @chio_remote(
@@ -175,8 +179,83 @@ class TestChioRemoteRedaction:
         ref = write.remote("/tmp/x", "POSITIONAL_SECRET")
         assert ray.get(ref) == "/tmp/x"
 
+        import json
+
         params = _eval_calls(chio)[0].parameters
-        assert params["args"] == ["/tmp/x", "POSITIONAL_SECRET"]
+        # Wire shape preserved: positional values stay positional.
+        assert params["args"][0] == "/tmp/x"
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"POSITIONAL_SECRET"),
+        }
+        assert params["kwargs"] == {}
+        assert "POSITIONAL_SECRET" not in json.dumps(params)
+
+    def test_pure_forwarding_wrapper_redacts_positional_via_tool_table(
+        self,
+    ) -> None:
+        # Forwarding wrappers ``def fn(*args, **kwargs)`` have no fixed
+        # parameter names to bind positional values against. The
+        # tool-arity table covers chio-default tools so their bodies
+        # still get scrubbed when supplied positionally.
+        chio = allow_all()
+
+        @chio_remote(
+            scope="tools:chio_file_write",
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+            tool_name="chio_file_write",
+        )
+        def write(*args: Any, **kwargs: Any) -> str:
+            return str(args[0]) if args else ""
+
+        ref = write.remote("/tmp/x", "PROD_SECRET=abc123")
+        assert ray.get(ref) == "/tmp/x"
+
+        import json
+
+        params = _eval_calls(chio)[0].parameters
+        assert "PROD_SECRET" not in json.dumps(params)
+        assert params["args"][0] == "/tmp/x"
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert params["kwargs"] == {}
+
+    def test_var_positional_extras_remain_in_args(self) -> None:
+        # ``*extras`` past the fixed positional slots have no parameter
+        # name to bind to, so they remain in args (not migrated to
+        # kwargs and not dropped).
+        chio = allow_all()
+
+        @chio_remote(
+            scope="tools:chio_file_write",
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+            tool_name="chio_file_write",
+        )
+        def write(path: str, content: str, *extras: Any) -> str:
+            return path
+
+        ref = write.remote(
+            "/tmp/x", "PROD_SECRET=abc123", "trailing-1", "trailing-2"
+        )
+        assert ray.get(ref) == "/tmp/x"
+
+        import json
+
+        params = _eval_calls(chio)[0].parameters
+        assert "PROD_SECRET" not in json.dumps(params)
+        assert params["args"][0] == "/tmp/x"
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert params["args"][2] == "trailing-1"
+        assert params["args"][3] == "trailing-2"
         assert params["kwargs"] == {}
 
 
@@ -322,7 +401,8 @@ class TestChioActorRedaction:
 
     def test_positional_method_args_still_redacted(self) -> None:
         # Confirm the existing positional-args binding path still works
-        # after the VAR_KEYWORD refactor.
+        # and preserves the wire shape (positional values stay in
+        # parameters["args"] after redaction).
         chio = allow_all()
         scope = _scope_for_tools("chio_file_write", server_id="srv")
         token = _local_token(scope)
@@ -351,6 +431,13 @@ class TestChioActorRedaction:
 
         params = _eval_calls(chio)[0].parameters
         assert "PROD_SECRET" not in json.dumps(params)
+        # Wire shape preserved: positional values stay positional.
+        assert params["args"][0] == "/tmp/x"
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert params["kwargs"] == {}
 
     def test_custom_policy_via_actor_ctor(self) -> None:
         chio = allow_all()
