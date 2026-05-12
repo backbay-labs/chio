@@ -2838,6 +2838,16 @@ fn main() {
             issuer_oidc.as_deref(),
             json_output,
         ),
+        Commands::Start {
+            listen,
+            receipt_store,
+            print_config,
+        } => cmd_start(
+            &listen,
+            receipt_store.as_deref().or(receipt_db.as_deref()),
+            authority_seed_file.as_deref(),
+            print_config,
+        ),
     };
 
     if let Err(e) = result {

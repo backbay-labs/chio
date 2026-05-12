@@ -295,15 +295,26 @@ chio-hermes / chio-CLI scope.
 | `hermes plugins enable chio` fails                                    | `_plugin_exists` (`hermes_cli/plugins_cmd.py:684`) only matches user/bundled directory names; rejects entry-point plugin names.                        | Edit `~/.hermes/config.yaml` directly to set `plugins.enabled: ["chio"]`.                                                    |
 | `hermes setup` does not prompt for `CHIO_*` env                       | `_missing_requires_env_names` (`hermes_cli/plugins_cmd.py:194, 1336`) is only consulted by the install pipeline for git/directory plugins; pip plugins skip it. | Export `CHIO_SIDECAR_URL` and `CHIO_CAPABILITY_ID` manually, or write them to `~/.hermes/.env` (mode `0600`).                |
 | `chio_*` tools do not surface in a session even with plugin enabled   | The `chio` toolset is opt-in. Hermes's tool-router only loads toolsets in `toolsets:` config or `-t` flag.                                            | Pass `hermes -t chio,hermes-cli ...`, or add `chio` to the `toolsets:` list in `~/.hermes/config.yaml`.                      |
-| Plugin always reports `chio_sidecar_unreachable` even with sidecar up | The `chio` CLI does not currently ship a one-line sidecar entry point at `/v1/capabilities/*`. `chio api protect` mints under `/v1/capabilities/mint` but the SDK expects bare `/v1/capabilities` POST. | v0.1.0 ships in degraded-but-safe mode (every client-side guard still fires; only `status: allowed` paths require a sidecar). Tracked for a follow-up sidecar surface PR. |
+| Plugin always reports `chio_sidecar_unreachable` even with sidecar up | The `chio` CLI does not currently ship a one-line sidecar entry point at `/v1/capabilities/*`. `chio api protect` mints under `/v1/capabilities/mint` but the SDK expects bare `/v1/capabilities` POST. | Resolved in chio v0.2: run `chio start` (a zero-config alias for `chio api protect` with the SDK path aliases on). For pre-v0.2 chio binaries, the plugin still ships in degraded-but-safe mode (client-side guards keep firing). |
 
 The first three are fixable upstream by teaching
 `_discover_all_plugins` / `_plugin_exists` /
 `_missing_requires_env_names` to consult the entry-point manifest
 cache that `_scan_entry_points` already populates. The fourth is a
-docs/UX issue covered in the README quickstart. The fifth needs a
-chio-side surface decision (whether to ship `chio kernel serve` or
-align the SDK to `chio api protect`'s routes).
+docs/UX issue covered in the README quickstart. The fifth landed in
+chio v0.2: `chio start` is a friendly zero-config alias for
+`chio api protect` that mounts the SDK-shape path aliases
+(`POST /v1/capabilities`, `POST /v1/evaluate`,
+`POST /v1/capabilities/validate`, `POST /v1/receipts/verify`) plus
+the existing canonical routes. Quickstart:
+
+```bash
+chio start --listen 127.0.0.1:9090 --print-config
+# in another shell:
+export CHIO_SIDECAR_URL=http://127.0.0.1:9090
+hermes chio issue --description "default backbay capability" --json
+export CHIO_CAPABILITY_ID=<id-from-issue>
+```
 
 LLM-driven dispatch (`hermes -z "..."`) was end-to-end verified
 against Anthropic in the comprehensive dogfood pass: every advertised

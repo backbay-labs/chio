@@ -465,6 +465,41 @@ enum Commands {
         #[arg(long, value_name = "URL")]
         issuer_oidc: Option<String>,
     },
+
+    /// Start the Chio sidecar with sensible zero-config defaults.
+    ///
+    /// Convenience alias for `chio api protect` aimed at SDK quickstart
+    /// and chio-hermes integration users. It runs the same axum router
+    /// (capability mint/release/validate, receipt verify, tool-call
+    /// evaluate, HITL approval endpoints) but with:
+    ///
+    /// - no upstream proxy (the catch-all `/{*path}` 502s loud);
+    /// - in-memory stores by default (no `--receipt-db`);
+    /// - a friendly startup banner that prints the bound address.
+    ///
+    /// `chio api protect` remains the canonical name for production
+    /// deployments that need `--upstream`, `--spec`, and persistent
+    /// stores.
+    Start {
+        /// Address to listen on. Defaults to `127.0.0.1:9090` to
+        /// match `chio-sdk-python`'s `ChioClient.DEFAULT_BASE_URL`.
+        /// Pass `127.0.0.1:0` to bind an ephemeral port; the bound
+        /// address is then printed in the startup banner.
+        #[arg(long, default_value = "127.0.0.1:9090")]
+        listen: String,
+
+        /// Optional SQLite receipt store path. Defaults to in-memory
+        /// so the first run leaves no on-disk artifacts.
+        #[arg(long = "receipt-store")]
+        receipt_store: Option<PathBuf>,
+
+        /// Print the chio-hermes config snippet (env vars + slash
+        /// commands) on startup so users can copy/paste into their
+        /// shell before running their agent. Off by default to keep
+        /// the banner short.
+        #[arg(long, default_value_t = false)]
+        print_config: bool,
+    },
 }
 
 /// Sub-subcommands for `arc arena`.
