@@ -1,5 +1,32 @@
 # 15 - Receipt schema stress test and v3 evolution strategy
 
+> **Erratum (wave 3) - canonical types for v3 core fields:**
+>
+> - **`policy_hash` / `policy_digest`** is a hex `String` (matches existing [`crates/chio-core-types/src/receipt.rs:159`](crates/chio-core-types/src/receipt.rs:159); RFC 8785 canonical-JSON friendly). NOT `[u8; 32]`. Earlier references in this doc to `[u8; 32]` should be read as the hex-encoded form.
+> - **`tool_origin`** has the canonical 4-variant enum `CallerExecuted | HostExecutedAttested | HostExecutedUnmediated | HostExecutedRedacted`. (`HostExecutedRedacted` covers the Bedrock Lambda trace-redaction case from doc 13.)
+> - **`human_principal`** is the typed `HumanPrincipal` enum defined on `CallerIdentity` in [doc 14](14-voice-agent-bridges.md). This doc's `VoiceExtension` references it by canonical encoding, not as a duplicate `Option<String>` definition.
+> - **`ActorRef`** (the actor-chain element type) needs a concrete definition stub. Proposed shape:
+>
+>   ```rust
+>   /// Single actor in the OAuth on-behalf-of delegation chain.
+>   /// Maps to the IETF draft-oauth-ai-agents-on-behalf-of-user actor-chain JWT claim.
+>   #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+>   pub struct ActorRef {
+>       /// Stable subject identifier (DID, user ID, agent ID).
+>       pub subject: String,
+>       /// Issuer that minted this hop's credential (URL or DID).
+>       pub issuer: String,
+>       /// Scopes asserted at this hop.
+>       pub scopes: Vec<String>,
+>       /// Hop expiry (RFC 3339 timestamp).
+>       pub expires_at: String,
+>       /// Optional class tag: human | agent | service.
+>       pub principal_class: Option<PrincipalClass>,
+>   }
+>   ```
+>
+>   This stub should land in `chio-core-types` alongside the v3 ReceiptBody promotion. Refine in a follow-on against the IETF draft as it stabilizes.
+
 ## TL;DR
 
 The current `ChioReceiptBody` is too flat and too unstructured to absorb the

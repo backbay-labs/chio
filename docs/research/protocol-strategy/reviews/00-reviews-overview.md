@@ -1,5 +1,18 @@
 # Review swarm synthesis (wave 3)
 
+> **Status: errata applied (commit on this branch following wave 4).** All 10 numbered errata below have landed as documentation edits:
+>
+> - **#1 n8n Chain D / Chain C** corrected in [05](../05-workflow-orchestrator-mediation.md), [00-overview](../00-overview.md), [00-overview-v2](../00-overview-v2.md).
+> - **#2 bench-stub count + responses.rs path** corrected in [16](../16-latency-budget-audit.md), [00-overview-v2](../00-overview-v2.md).
+> - **#3 `human_principal` typed twice** canonicalized: typed enum on `CallerIdentity` in [14](../14-voice-agent-bridges.md); receipt extension in [15](../15-receipt-schema-v3.md) references by canonical encoding.
+> - **#4 `ActorRef` undefined** addressed: definition stub added to [15](../15-receipt-schema-v3.md) erratum block.
+> - **#5 `policy_hash` String vs `[u8; 32]`** canonicalized to hex `String` in [04](../04-policy-engine-collaborators.md), [15](../15-receipt-schema-v3.md), [00-overview](../00-overview.md), [00-overview-v2](../00-overview-v2.md).
+> - **#6 `tool_origin` enum drift** canonicalized to 4 variants (`CallerExecuted | HostExecutedAttested | HostExecutedUnmediated | HostExecutedRedacted`) in [12](../12-openai-responses-adapter.md), [13](../13-bedrock-agents-bridge.md), [15](../15-receipt-schema-v3.md), [00-overview-v2](../00-overview-v2.md).
+> - **#7 `chio-bridge-*` prefix** struck in favor of `-adapter` convention across overviews and superseded `chio-bridge-agntcy` per erratum #10.
+> - **#8 three-ACPs warning** restored in [00-overview-v2](../00-overview-v2.md); doc 02 `chio-bridge-acp` references covered by erratum at top of doc 02.
+> - **#9 em dashes** removed from both overview docs (verified zero across all 26 docs in this directory).
+> - **#10 AGNTCY ACP archival** captured in [17](../17-agntcy-revisited.md); doc 08 marked SUPERSEDED; doc 02 has erratum; build queue updated in both overviews.
+
 ## Context
 
 Six review agents audited the 17 research docs in `docs/research/protocol-strategy/` for cross-doc consistency and codebase grounding. Each cluster verified file:line citations against the real code, cross-checked field names and trait shapes, and flagged contradictions. Reviews live in this directory:

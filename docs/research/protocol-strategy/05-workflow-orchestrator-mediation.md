@@ -1,5 +1,7 @@
 # 05 - Workflow Orchestrator Mediation
 
+> **Erratum (wave 3):** The n8n priority-1 framing below originally cited the Cisco Talos 686% abuse spike. Per the wave-3 n8n threat-chain mapping ([11-n8n-threat-mapping.md](11-n8n-threat-mapping.md)), that spike is **Chain D** (unauthenticated webhook ingress abuse), which is **below Chio's layer and is NOT blocked by Chio**. The actually-blocked threat is **Chain C** (prompt-injection-driven agent-to-webhook exfiltration), where manifest workflow-ID allowlist + `args_schema` + `HttpEgressContract` authority pinning + loopback / link-local / ULA denial give end-to-end coverage and receipts add chain-of-custody. Keep n8n as priority-1; restrict the value-prop wording to Chain C.
+
 ## TL;DR
 
 Chio should cover three workflow orchestrators via egress mediation, in this

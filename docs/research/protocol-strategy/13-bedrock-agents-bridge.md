@@ -1,5 +1,7 @@
 # Chio bridge for AWS Bedrock Agents (`InvokeAgent`)
 
+> **Erratum (wave 3):** Canonical `tool_origin` enum is `CallerExecuted | HostExecutedAttested | HostExecutedUnmediated | HostExecutedRedacted` per [15-receipt-schema-v3.md](15-receipt-schema-v3.md). The Lambda action-group + trace-redaction case from this doc maps to `HostExecutedRedacted`. The "tool_origin" mentions in this doc should be read as references to the canonical 4-variant enum.
+
 ## TL;DR
 
 Add a `chio-bedrock-agents-adapter` crate (sibling, not extension, of `chio-bedrock-converse-adapter` at [`crates/chio-bedrock-converse-adapter/src/lib.rs:1`](crates/chio-bedrock-converse-adapter/src/lib.rs:1)). MVP: full `ToolServerConnection::invoke` mediation for `RETURN_CONTROL` action groups; receipt-only logging for `LAMBDA` action groups (AWS trust boundary); default-on trace redaction (free-form reasoning replaced by salted hashes; opt-in verbatim retention under stricter bounds); reuse the converse adapter's signed `IamPrincipalsConfig` for caller identity. KB citation gating and multi-agent collaboration deferred. Region: us-east-1 + us-west-2 at MVP, full thirteen-region list as a follow-on. The decision boundary is sharp: Chio mediates the agent's *decision to dispatch* in both modes, but only mediates the *runtime parameters* for `RETURN_CONTROL`, because that is the only mode where the caller (and therefore Chio) executes the action.

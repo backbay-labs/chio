@@ -1,5 +1,7 @@
 # 12. OpenAI Responses API Adapter (E1)
 
+> **Erratum (wave 3):** Canonical `tool_origin` enum across the corpus is 4 variants: `CallerExecuted | HostExecutedAttested | HostExecutedUnmediated | HostExecutedRedacted`. The `HostExecutedRedacted` variant was added in doc 13 (Bedrock Lambda trace redaction) and is now part of the v3 core schema in [15-receipt-schema-v3.md](15-receipt-schema-v3.md). References below that show only 3 variants should be read as referring to the canonical 4-variant enum.
+
 Status: research, not yet implemented.
 Branch: `research/protocol-strategy-2026`.
 Output of swarm task E1. Coordinates with X1 (receipt schema v3) on the
