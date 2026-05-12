@@ -236,15 +236,8 @@ class TestDefaultPolicyRedacts:
         }
 
     async def test_chio_file_write_positional_args_are_redacted(self) -> None:
-        """Regression: positional ``chio_file_write(path, content)`` must
-        not leak the body field into the receipt.
-
-        Activities implemented as plain Python functions deliver
-        positional args as a tuple. The interceptor binds the known
-        chio-default tool names against their declared parameter names
-        (``chio_file_write -> (path, content)``) before redaction so
-        the receipt records the redacted form.
-        """
+        """Regression: positional ``chio_file_write(path, content)`` must not
+        leak the body field into the receipt."""
         async with allow_all() as chio:
             token = await _mint_token(
                 chio,
@@ -320,12 +313,7 @@ class TestDefaultPolicyRedacts:
         ]
 
     async def test_unknown_tool_positional_args_pass_through(self) -> None:
-        """Pass-through preserved for non-chio-default tools.
-
-        The interceptor only binds positional args for the known
-        chio_file_write / chio_file_edit shapes. Custom tools with
-        secret bodies should pass a single dict arg or use kwargs.
-        """
+        """Non-chio-default tools' positional args forward verbatim."""
         async with allow_all() as chio:
             token = await _mint_token(
                 chio,

@@ -352,12 +352,8 @@ class _ChioInboundInterceptor(ActivityInboundInterceptor):
             ) from exc
 
 
-#: Signature arities for the chio-default tools. Temporal activities
-#: implemented as plain Python functions (e.g. ``chio_file_write(path,
-#: content)``) deliver positional args to the interceptor as a tuple,
-#: so the dict-only redact path would otherwise leak the body field.
-#: We special-case the known chio-default tool names to bind positional
-#: args to declared parameter names before redaction.
+#: Positional-arg parameter names for chio-default tools, used to bind
+#: tuple-shaped activity args to names before name-keyed redaction.
 _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES: dict[str, tuple[str, ...]] = {
     "chio_file_write": ("path", "content"),
     "chio_file_edit": ("path", "patch"),
@@ -370,23 +366,7 @@ def _activity_parameters(
     tool_name: str | None = None,
     policy: RedactionPolicy | None = None,
 ) -> dict[str, Any]:
-    """Build the sidecar payload, redacting body fields where possible.
-
-    Three shapes are handled:
-
-    1. Single-dict convention (``activity(my_dict)``): redact in place.
-       Most common for Chio-aware Temporal activities.
-    2. Known chio-default tools with positional args
-       (``chio_file_write(path, content)``, ``chio_file_edit(path,
-       patch)``): bind positional args to their declared parameter
-       names via ``_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES`` and redact.
-       Forwarded under a single bound dict so the receipt records the
-       redacted form even when callers use the natural positional
-       Python signature.
-    3. Anything else: forwarded verbatim. Custom activities that carry
-       secret bodies positionally should either supply a single dict
-       arg or arrange for the body field to be a kwarg.
-    """
+    """Build the sidecar payload, redacting body fields where possible."""
     args_list = list(input.args)
     if policy is None:
         return {"args": args_list}
