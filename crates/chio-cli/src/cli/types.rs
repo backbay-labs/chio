@@ -1587,6 +1587,18 @@ enum ChiodosPheromoneRelayAlertAssuranceCommands {
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },
+
+    /// Plan verifier-owned archive lifecycle over signed export bundles.
+    Archive {
+        #[command(subcommand)]
+        command: ChiodosPheromoneRelayAlertAssuranceArchiveCommands,
+    },
+
+    /// Review signed export bundles for operator-managed closeout.
+    Closeout {
+        #[command(subcommand)]
+        command: ChiodosPheromoneRelayAlertAssuranceCloseoutCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1606,6 +1618,66 @@ enum ChiodosPheromoneRelayAlertAssuranceRetentionCommands {
         now_unix_ms: u64,
 
         /// Output path for relay alert assurance retention report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosPheromoneRelayAlertAssuranceArchiveCommands {
+    /// Plan archive lifecycle over local export bundle directories without moving evidence.
+    Plan {
+        /// Directory containing export bundle directories.
+        #[arg(long, value_name = "DIR")]
+        bundle_root: PathBuf,
+
+        /// Trusted exporter profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_exporters: PathBuf,
+
+        /// Relay alert assurance archive profile JSON.
+        #[arg(long, value_name = "PATH")]
+        archive_profile: PathBuf,
+
+        /// Relay alert assurance retention profile JSON.
+        #[arg(long, value_name = "PATH")]
+        retention_profile: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for relay alert assurance archive report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosPheromoneRelayAlertAssuranceCloseoutCommands {
+    /// Review local export bundle directories for operator-managed closeout.
+    Review {
+        /// Directory containing export bundle directories.
+        #[arg(long, value_name = "DIR")]
+        bundle_root: PathBuf,
+
+        /// Trusted exporter profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_exporters: PathBuf,
+
+        /// Relay alert assurance closeout profile JSON.
+        #[arg(long, value_name = "PATH")]
+        closeout_profile: PathBuf,
+
+        /// Relay alert assurance retention profile JSON.
+        #[arg(long, value_name = "PATH")]
+        retention_profile: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for relay alert assurance closeout report JSON.
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },

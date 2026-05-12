@@ -2798,6 +2798,44 @@ fn main() {
                                 now_unix_ms,
                                 &report,
                             ),
+                            ChiodosPheromoneRelayAlertAssuranceCommands::Archive {
+                                command,
+                            } => match command {
+                                ChiodosPheromoneRelayAlertAssuranceArchiveCommands::Plan {
+                                    bundle_root,
+                                    trusted_exporters,
+                                    archive_profile,
+                                    retention_profile,
+                                    now_unix_ms,
+                                    report,
+                                } => cmd_chiodos_pheromone_relay_alert_assurance_archive_plan(
+                                    &bundle_root,
+                                    &trusted_exporters,
+                                    &archive_profile,
+                                    &retention_profile,
+                                    now_unix_ms,
+                                    &report,
+                                ),
+                            },
+                            ChiodosPheromoneRelayAlertAssuranceCommands::Closeout {
+                                command,
+                            } => match command {
+                                ChiodosPheromoneRelayAlertAssuranceCloseoutCommands::Review {
+                                    bundle_root,
+                                    trusted_exporters,
+                                    closeout_profile,
+                                    retention_profile,
+                                    now_unix_ms,
+                                    report,
+                                } => cmd_chiodos_pheromone_relay_alert_assurance_closeout_review(
+                                    &bundle_root,
+                                    &trusted_exporters,
+                                    &closeout_profile,
+                                    &retention_profile,
+                                    now_unix_ms,
+                                    &report,
+                                ),
+                            },
                         },
                     },
                     ChiodosPheromoneRelayCommands::Trend {
@@ -4476,6 +4514,90 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_recovery_drill(
     )
 }
 
+fn cmd_chiodos_pheromone_relay_alert_assurance_archive_plan(
+    bundle_root: &Path,
+    trusted_exporters: &Path,
+    archive_profile: &Path,
+    retention_profile: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let bundles = read_relay_alert_assurance_archive_candidates(bundle_root)?;
+    let trusted_exporters: chio_pheromone_relay::RelayAlertAssuranceTrustedExportersDocument =
+        read_json_file(
+            trusted_exporters,
+            "Chiodos relay alert assurance trusted exporters",
+        )?;
+    let archive_profile: chio_pheromone_relay::RelayAlertAssuranceArchiveProfileDocument =
+        read_json_file(
+            archive_profile,
+            "Chiodos relay alert assurance archive profile",
+        )?;
+    let retention_profile: chio_pheromone_relay::RelayAlertAssuranceRetentionProfileDocument =
+        read_json_file(retention_profile, "Chiodos relay alert assurance retention profile")?;
+    let archive_report = chio_pheromone_relay::generate_relay_alert_assurance_archive_report(
+        chio_pheromone_relay::RelayAlertAssuranceArchiveInput {
+            bundles: &bundles,
+            trusted_exporters: &trusted_exporters,
+            archive_profile: &archive_profile,
+            retention_profile: &retention_profile,
+            now_unix_ms,
+        },
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "Chiodos relay alert assurance archive plan: {error}"
+        ))
+    })?;
+    write_pretty_json(
+        report,
+        &archive_report,
+        "Chiodos relay alert assurance archive report",
+    )
+}
+
+fn cmd_chiodos_pheromone_relay_alert_assurance_closeout_review(
+    bundle_root: &Path,
+    trusted_exporters: &Path,
+    closeout_profile: &Path,
+    retention_profile: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let bundles = read_relay_alert_assurance_archive_candidates(bundle_root)?;
+    let trusted_exporters: chio_pheromone_relay::RelayAlertAssuranceTrustedExportersDocument =
+        read_json_file(
+            trusted_exporters,
+            "Chiodos relay alert assurance trusted exporters",
+        )?;
+    let closeout_profile: chio_pheromone_relay::RelayAlertAssuranceCloseoutProfileDocument =
+        read_json_file(
+            closeout_profile,
+            "Chiodos relay alert assurance closeout profile",
+        )?;
+    let retention_profile: chio_pheromone_relay::RelayAlertAssuranceRetentionProfileDocument =
+        read_json_file(retention_profile, "Chiodos relay alert assurance retention profile")?;
+    let closeout_report = chio_pheromone_relay::generate_relay_alert_assurance_closeout_report(
+        chio_pheromone_relay::RelayAlertAssuranceCloseoutInput {
+            bundles: &bundles,
+            trusted_exporters: &trusted_exporters,
+            closeout_profile: &closeout_profile,
+            retention_profile: &retention_profile,
+            now_unix_ms,
+        },
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "Chiodos relay alert assurance closeout review: {error}"
+        ))
+    })?;
+    write_pretty_json(
+        report,
+        &closeout_report,
+        "Chiodos relay alert assurance closeout report",
+    )
+}
+
 fn cmd_chiodos_pheromone_relay_trend(
     reports_dir: &Path,
     event_dir: &Path,
@@ -4783,6 +4905,76 @@ fn read_relay_alert_assurance_bundle_root(
         )));
     }
     Ok(bundles)
+}
+
+fn read_relay_alert_assurance_archive_candidates(
+    bundle_root: &Path,
+) -> Result<Vec<chio_pheromone_relay::RelayAlertAssuranceArchiveBundleCandidate>, CliError> {
+    if bundle_root.join("manifest.json").is_file() {
+        return Ok(vec![read_relay_alert_assurance_archive_candidate(
+            bundle_root,
+        )]);
+    }
+    let entries = fs::read_dir(bundle_root).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to read Chiodos relay alert assurance bundle root {}: {error}",
+            bundle_root.display()
+        ))
+    })?;
+    let mut dirs = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to read Chiodos relay alert assurance bundle root entry {}: {error}",
+                bundle_root.display()
+            ))
+        })?;
+        let path = entry.path();
+        if path.is_dir() && path.join("manifest.json").is_file() {
+            dirs.push(path);
+        }
+    }
+    dirs.sort();
+    let mut candidates = Vec::new();
+    for dir in dirs {
+        candidates.push(read_relay_alert_assurance_archive_candidate(&dir));
+    }
+    if candidates.is_empty() {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos relay alert assurance bundle root {} contains no bundles",
+            bundle_root.display()
+        )));
+    }
+    Ok(candidates)
+}
+
+fn read_relay_alert_assurance_archive_candidate(
+    bundle_dir: &Path,
+) -> chio_pheromone_relay::RelayAlertAssuranceArchiveBundleCandidate {
+    let bundle_path = relay_alert_assurance_bundle_label(bundle_dir);
+    match read_relay_alert_assurance_bundle(bundle_dir) {
+        Ok(bundle) => chio_pheromone_relay::RelayAlertAssuranceArchiveBundleCandidate {
+            bundle_path,
+            bundle: Some(bundle),
+            error_code: None,
+            error_detail: None,
+        },
+        Err(error) => chio_pheromone_relay::RelayAlertAssuranceArchiveBundleCandidate {
+            bundle_path,
+            bundle: None,
+            error_code: Some("bundle_read_failed".to_string()),
+            error_detail: Some(error.to_string()),
+        },
+    }
+}
+
+fn relay_alert_assurance_bundle_label(bundle_dir: &Path) -> String {
+    bundle_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or("export-bundle")
+        .to_string()
 }
 
 fn ensure_clean_output_dir(out_dir: &Path) -> Result<(), CliError> {

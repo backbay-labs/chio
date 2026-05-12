@@ -16,8 +16,9 @@ use chio_pheromone::{
 };
 use chio_pheromone_relay::{
     deliver_due_batches, evaluate_relay_alert_acknowledgement, evaluate_relay_alert_delivery,
-    evaluate_relay_alert_handoff, evaluate_relay_alerts, generate_relay_alert_assurance_package,
-    generate_relay_alert_assurance_recovery_drill_report,
+    evaluate_relay_alert_handoff, evaluate_relay_alerts,
+    generate_relay_alert_assurance_archive_report, generate_relay_alert_assurance_closeout_report,
+    generate_relay_alert_assurance_package, generate_relay_alert_assurance_recovery_drill_report,
     generate_relay_alert_assurance_replay_report, generate_relay_alert_assurance_retention_report,
     generate_relay_alert_delivery_drift_report_v2, generate_relay_alert_handoff_drift_report,
     generate_relay_alert_route_review_packet, generate_relay_trend_report,
@@ -30,25 +31,32 @@ use chio_pheromone_relay::{
     PeerDirectoryBundleSigningInput, PeerDirectoryBundleTrust, PeerDirectoryDocument,
     PeerDirectoryEntry, PeerDirectoryStateDocument, PheromoneRelayClient, PheromoneRelayConfig,
     PheromoneRelayError, PheromoneRelayService, RelayAlertAcknowledgementInput,
-    RelayAlertAssuranceExportBuildInput, RelayAlertAssuranceInput,
-    RelayAlertAssuranceRecoveryDrillInput, RelayAlertAssuranceReplayInput,
-    RelayAlertAssuranceRetentionInput, RelayAlertAssuranceRetentionProfileDocument,
-    RelayAlertAssuranceRetentionRule, RelayAlertAssuranceTrustedExporter,
-    RelayAlertAssuranceTrustedExportersDocument, RelayAlertDeliveryDriftInputV2,
-    RelayAlertDeliveryEvidence, RelayAlertDeliveryInput, RelayAlertDeliveryProfileDocument,
-    RelayAlertDeliveryReceiver, RelayAlertDeliveryStatus, RelayAlertEvaluationInput,
-    RelayAlertHandoffDriftInput, RelayAlertHandoffEscalation, RelayAlertHandoffInput,
-    RelayAlertHandoffProfileDocument, RelayAlertHandoffReceiver, RelayAlertHandoffSinkKind,
-    RelayAlertNormalizationInput, RelayAlertNormalizationProfileDocument, RelayAlertRoute,
-    RelayAlertRouteKind, RelayAlertRouteOwner, RelayAlertRouteOwnerProfileDocument,
-    RelayAlertRouteReviewInput, RelayAlertRoutingProfileDocument, RelayAlertRule,
-    RelayAlertSeverity, RelayAlertSuppressionEntry, RelayAlertSuppressionStateDocument,
-    RelayBatchReceiver, RelayEventReport, RelayHttpSigningInput, RelayHttpVerificationContext,
-    RelayLadderRef, RelayMetricsFormat, RelayNonceRecorder, RelayNonceSet, RelayObservabilityInput,
+    RelayAlertAssuranceArchiveBundleCandidate, RelayAlertAssuranceArchiveInput,
+    RelayAlertAssuranceArchiveProfileDocument, RelayAlertAssuranceCloseoutInput,
+    RelayAlertAssuranceCloseoutProfileDocument, RelayAlertAssuranceExportBuildInput,
+    RelayAlertAssuranceInput, RelayAlertAssuranceRecoveryDrillInput,
+    RelayAlertAssuranceReplayInput, RelayAlertAssuranceRetentionInput,
+    RelayAlertAssuranceRetentionProfileDocument, RelayAlertAssuranceRetentionRule,
+    RelayAlertAssuranceTrustedExporter, RelayAlertAssuranceTrustedExportersDocument,
+    RelayAlertDeliveryDriftInputV2, RelayAlertDeliveryEvidence, RelayAlertDeliveryInput,
+    RelayAlertDeliveryProfileDocument, RelayAlertDeliveryReceiver, RelayAlertDeliveryStatus,
+    RelayAlertEvaluationInput, RelayAlertHandoffDriftInput, RelayAlertHandoffEscalation,
+    RelayAlertHandoffInput, RelayAlertHandoffProfileDocument, RelayAlertHandoffReceiver,
+    RelayAlertHandoffSinkKind, RelayAlertNormalizationInput,
+    RelayAlertNormalizationProfileDocument, RelayAlertRoute, RelayAlertRouteKind,
+    RelayAlertRouteOwner, RelayAlertRouteOwnerProfileDocument, RelayAlertRouteReviewInput,
+    RelayAlertRoutingProfileDocument, RelayAlertRule, RelayAlertSeverity,
+    RelayAlertSuppressionEntry, RelayAlertSuppressionStateDocument, RelayBatchReceiver,
+    RelayEventReport, RelayHttpSigningInput, RelayHttpVerificationContext, RelayLadderRef,
+    RelayMetricsFormat, RelayNonceRecorder, RelayNonceSet, RelayObservabilityInput,
     RelayObservabilityReport, RelayProfile, RelayProfileLimits, RelayRole, RelayTrendInput,
     SqlitePheromoneRelayStore, TrustedPeerDirectoryIssuer, PHEROMONE_BATCH_RELAY_PATH,
     PHEROMONE_CATCHUP_RELAY_PATH, PHEROMONE_CATCHUP_REQUEST_SCHEMA,
     PHEROMONE_PEER_DIRECTORY_SCHEMA, PHEROMONE_RELAY_ALERT_ACKNOWLEDGEMENT_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PROFILE_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_CLOSEOUT_PROFILE_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_CLOSEOUT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_EXPORT_MANIFEST_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_EXPORT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_PACKAGE_SCHEMA,
@@ -2318,6 +2326,142 @@ fn trusted_exporters(
             status: "active".to_string(),
         }],
     }
+}
+
+fn archive_profile_for_export() -> RelayAlertAssuranceArchiveProfileDocument {
+    RelayAlertAssuranceArchiveProfileDocument {
+        schema: PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PROFILE_SCHEMA.to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 600_000,
+        require_replay_match: true,
+        require_recovery_drill: true,
+    }
+}
+
+fn closeout_profile_for_export() -> RelayAlertAssuranceCloseoutProfileDocument {
+    RelayAlertAssuranceCloseoutProfileDocument {
+        schema: PHEROMONE_RELAY_ALERT_ASSURANCE_CLOSEOUT_PROFILE_SCHEMA.to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 600_000,
+        require_replay_match: true,
+        require_recovery_drill: true,
+        block_legal_hold: true,
+        block_eligible_for_delete: false,
+    }
+}
+
+fn relay_alert_assurance_export_bundle(
+    seed: u8,
+    bundle_id: &str,
+) -> (
+    chio_pheromone_relay::RelayAlertAssuranceExportBundle,
+    Keypair,
+) {
+    let chain = generated_assurance_chain();
+    let exporter = key(seed);
+    let bundle = sign_relay_alert_assurance_export_bundle(RelayAlertAssuranceExportBuildInput {
+        bundle_id,
+        exporter_id: "relay-exporter",
+        exporter_key_id: "relay-export-key-1",
+        signing_key: &exporter,
+        retention_profile: &retention_profile_for_export(),
+        alert_report: &chain.alert_report,
+        trend_report: &chain.trend_report,
+        handoff_report: &chain.handoff_report,
+        normalization_report: &chain.normalization_report,
+        delivery_report: &chain.delivery_report,
+        acknowledgement_report: &chain.acknowledgement_report,
+        drift_report: &chain.drift_report,
+        review_packet: &chain.review_packet,
+        assurance_package: &chain.assurance_package,
+        normalized_delivery_evidence: &chain.normalization_report.evidence,
+        exported_at_unix_ms: NOW + 100_000,
+    })
+    .unwrap();
+    (bundle, exporter)
+}
+
+#[test]
+fn relay_alert_assurance_archive_verifies_before_closeout_review() {
+    let (bundle, exporter) =
+        relay_alert_assurance_export_bundle(93, "relay-alert-assurance-export-archive-001");
+    let candidate = RelayAlertAssuranceArchiveBundleCandidate {
+        bundle_path: "exports/relay-alert-assurance-export-archive-001".to_string(),
+        bundle: Some(bundle),
+        error_code: None,
+        error_detail: None,
+    };
+    let trusted = trusted_exporters(exporter.public_key());
+    let archive = generate_relay_alert_assurance_archive_report(RelayAlertAssuranceArchiveInput {
+        bundles: std::slice::from_ref(&candidate),
+        trusted_exporters: &trusted,
+        archive_profile: &archive_profile_for_export(),
+        retention_profile: &retention_profile_for_export(),
+        now_unix_ms: NOW + 100_000,
+    })
+    .unwrap();
+
+    assert_eq!(
+        archive.schema,
+        PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_REPORT_SCHEMA
+    );
+    assert!(archive.accepted);
+    assert_eq!(archive.archive_ready_count, 1);
+    assert_eq!(archive.quarantine_count, 0);
+    assert_eq!(archive.legal_hold_count, 1);
+    assert_eq!(archive.reviews[0].state, "archive_ready");
+    assert!(archive.reviews[0].trusted_exporter_verified);
+    assert!(archive.reviews[0].replay_matched);
+    assert!(archive.reviews[0].recovery_drill_accepted);
+
+    let closeout =
+        generate_relay_alert_assurance_closeout_report(RelayAlertAssuranceCloseoutInput {
+            bundles: &[candidate],
+            trusted_exporters: &trusted,
+            closeout_profile: &closeout_profile_for_export(),
+            retention_profile: &retention_profile_for_export(),
+            now_unix_ms: NOW + 100_000,
+        })
+        .unwrap();
+    assert_eq!(
+        closeout.schema,
+        PHEROMONE_RELAY_ALERT_ASSURANCE_CLOSEOUT_REPORT_SCHEMA
+    );
+    assert!(!closeout.accepted);
+    assert_eq!(closeout.closeout_blocked_count, 1);
+    assert_eq!(closeout.reviews[0].state, "closeout_blocked");
+    assert_eq!(closeout.reviews[0].code, "legal_hold_blocked");
+}
+
+#[test]
+fn relay_alert_assurance_archive_quarantines_bad_bundle_without_aborting_batch() {
+    let (bundle, _exporter) =
+        relay_alert_assurance_export_bundle(94, "relay-alert-assurance-export-archive-002");
+    let candidate = RelayAlertAssuranceArchiveBundleCandidate {
+        bundle_path: "exports/relay-alert-assurance-export-archive-002".to_string(),
+        bundle: Some(bundle),
+        error_code: None,
+        error_detail: None,
+    };
+    let untrusted = trusted_exporters(key(95).public_key());
+
+    let archive = generate_relay_alert_assurance_archive_report(RelayAlertAssuranceArchiveInput {
+        bundles: &[candidate],
+        trusted_exporters: &untrusted,
+        archive_profile: &archive_profile_for_export(),
+        retention_profile: &retention_profile_for_export(),
+        now_unix_ms: NOW + 100_000,
+    })
+    .unwrap();
+
+    assert!(!archive.accepted);
+    assert_eq!(archive.archive_ready_count, 0);
+    assert_eq!(archive.quarantine_count, 1);
+    assert_eq!(archive.reviews[0].state, "quarantine");
+    assert_eq!(archive.reviews[0].code, "signature_invalid");
+    assert!(!archive.reviews[0].trusted_exporter_verified);
 }
 
 #[test]

@@ -1545,6 +1545,133 @@ mod cli_entrypoint_tests {
                 "expected chiodos pheromone relay alert assurance retention plan subcommand"
             ),
         }
+
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "alert",
+            "assurance",
+            "archive",
+            "plan",
+            "--bundle-root",
+            "exports",
+            "--trusted-exporters",
+            "trusted-exporters.json",
+            "--archive-profile",
+            "relay-alert-assurance-archive-profile.json",
+            "--retention-profile",
+            "relay-alert-assurance-retention-profile.json",
+            "--now-unix-ms",
+            "1766000100000",
+            "--report",
+            "relay-alert-assurance-archive-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Alert {
+                                        command:
+                                            ChiodosPheromoneRelayAlertCommands::Assurance {
+                                                command:
+                                                    ChiodosPheromoneRelayAlertAssuranceCommands::Archive {
+                                                        command:
+                                                            ChiodosPheromoneRelayAlertAssuranceArchiveCommands::Plan {
+                                                                bundle_root,
+                                                                trusted_exporters,
+                                                                archive_profile,
+                                                                report,
+                                                                ..
+                                                            },
+                                                    },
+                                            },
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(bundle_root, std::path::PathBuf::from("exports"));
+                assert_eq!(
+                    trusted_exporters,
+                    std::path::PathBuf::from("trusted-exporters.json")
+                );
+                assert_eq!(
+                    archive_profile,
+                    std::path::PathBuf::from("relay-alert-assurance-archive-profile.json")
+                );
+                assert_eq!(
+                    report,
+                    std::path::PathBuf::from("relay-alert-assurance-archive-report.json")
+                );
+            }
+            _ => panic!("expected chiodos pheromone relay alert assurance archive plan subcommand"),
+        }
+
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "alert",
+            "assurance",
+            "closeout",
+            "review",
+            "--bundle-root",
+            "exports",
+            "--trusted-exporters",
+            "trusted-exporters.json",
+            "--closeout-profile",
+            "relay-alert-assurance-closeout-profile.json",
+            "--retention-profile",
+            "relay-alert-assurance-retention-profile.json",
+            "--now-unix-ms",
+            "1766000100000",
+            "--report",
+            "relay-alert-assurance-closeout-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Alert {
+                                        command:
+                                            ChiodosPheromoneRelayAlertCommands::Assurance {
+                                                command:
+                                                    ChiodosPheromoneRelayAlertAssuranceCommands::Closeout {
+                                                        command:
+                                                            ChiodosPheromoneRelayAlertAssuranceCloseoutCommands::Review {
+                                                                closeout_profile,
+                                                                report,
+                                                                ..
+                                                            },
+                                                    },
+                                            },
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(
+                    closeout_profile,
+                    std::path::PathBuf::from("relay-alert-assurance-closeout-profile.json")
+                );
+                assert_eq!(
+                    report,
+                    std::path::PathBuf::from("relay-alert-assurance-closeout-report.json")
+                );
+            }
+            _ => {
+                panic!("expected chiodos pheromone relay alert assurance closeout review subcommand")
+            }
+        }
     }
 
     #[test]
