@@ -24,6 +24,43 @@ and subprocesses that `chio-hermes` bounds at 1 MiB run unbounded in
 `chio-adapter-base` extracts the seven primitives into one tested
 package so the family can converge on one implementation.
 
+## Where to redact: pre-evaluation vs post-tool-call
+
+There are two valid places to redact tool args, and they trade off
+defense-in-depth against per-call forensics:
+
+**Pre-evaluation (the chio-langchain/llamaindex/crewai/iac/airflow/ray/
+temporal/langgraph/dagster/prefect pattern):** redact args BEFORE handing
+them to `ChioClient.evaluate_tool_call`. Pros: the sidecar (and its
+receipt log) never see secrets; defense-in-depth assumes the sidecar
+itself may be compromised or run in a less-trusted process. Cons: the
+sidecar's policy can't make decisions based on field content (e.g., "block
+if content contains 'API_KEY'"); the signed `parameter_hash` in the
+receipt is uniform across all chio_file_write calls (cannot distinguish
+which file was written). Use byte_count + path + tool_call_id together
+for forensic correlation.
+
+**Post-tool-call (the chio-hermes pattern):** send raw args to
+`evaluate_tool_call`, then redact at the receipt-write boundary
+(`make_post_tool_call` in chio-hermes hooks.py). Pros: policy sees real
+content; parameter_hash is unique per call. Cons: secrets flow through
+the sidecar (must trust it); the sidecar's own logging must redact too
+(chio-api-protect handles this server-side via `redact_args` on the
+receipt-store path).
+
+**Picking one:** chio-hermes embeds the sidecar in-process so the trust
+boundary is different; the 9 sibling adapters run agent code in a
+separate process from the sidecar, so the on-the-wire trust boundary
+favors pre-evaluation. Both are valid; choose based on your sidecar
+deployment topology.
+
+The `bind_and_redact` helper (added in 0.1.1) is the canonical entry
+point for the pre-evaluation pattern when the wrapper sees the tool call
+as ``(*args, **kwargs)`` rather than as a pre-named dict. Sibling
+adapters that previously hand-rolled inline ``_build_redacted_parameters``
+/ ``_redact_method_call`` / ``_task_parameters`` helpers can swap them
+for an import.
+
 ## Public API
 
 Surface organised by threat-model area, not by a flat namespace.
@@ -44,6 +81,8 @@ from chio_adapter_base.receipts import (
 from chio_adapter_base.redact import (
     redact_args,
     RedactionPolicy,
+    bind_and_redact,
+    DEFAULT_TOOL_POSITIONAL_NAMES,
 )
 from chio_adapter_base.filters import (
     forbidden_path_filter,
