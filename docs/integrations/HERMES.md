@@ -210,6 +210,38 @@ Hermes's tool-output parser can route it consistently:
 | Configuration missing         | `{"error":"chio_not_configured","message":"set CHIO_CAPABILITY_ID before invoking Chio tools"}`                                  |
 | Generic exception             | `{"error":"chio_error","message":"<exception text>"}`                                                                           |
 | Executor I/O error after allow| `{"error":"chio_executor_error","message":"<text>","receipt_id":"rcpt-..."}`                                                    |
+| HITL approval required        | `{"status":"requires_approval","error":"chio_requires_approval","approval_id":"ap-...","command":"...","tool_name":"chio_shell_run","tool_server":"shell","hint":"Use /chio approve <id> ..."}` |
+
+### 2.5.1 HITL approval channel
+
+`chio_shell_run` and `chio_git_run` previously denied approval-required
+commands outright. As of v0.2 the plugin holds them in the sidecar's
+HITL queue and surfaces the `chio_requires_approval` envelope above so
+the model gets a structured response. Resolve the held call with one of:
+
+* `/chio approvals` -- list pending entries from the sidecar.
+* `/chio approve <approval_id> [reason]` -- POST the operator-respond
+  shortcut so the sidecar signs a `GovernedApprovalToken` with its own
+  keypair and resolves the entry.
+* `/chio deny <approval_id> [reason]` -- same path with a deny outcome.
+* `hermes chio approvals list` / `hermes chio approvals respond
+  <approval_id> --approve|--deny [--reason TEXT] [--json]` from another
+  shell.
+
+Walkthrough:
+
+1. Model calls `chio_shell_run` with `{"command":"rm -rf old_build/"}`.
+2. The plugin policy flags the command as approval-required and POSTs
+   to `POST /approvals/submit` on the sidecar; it returns a fresh
+   `approval_id`.
+3. The model receives
+   `{"status":"requires_approval","error":"chio_requires_approval","approval_id":"ap-...", ...}`
+   and stops.
+4. User types `/chio approve ap-...` (or runs `hermes chio approvals
+   respond ap-... --approve`). The slash command POSTs to
+   `POST /approvals/{id}/operator-respond`.
+5. The model retries the original tool call. Auto-resume of held calls
+   is v0.3 work; v0.2 requires the manual retry.
 
 ### 2.6 Configuration precedence
 

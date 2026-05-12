@@ -152,6 +152,42 @@ def setup(parser: argparse.ArgumentParser) -> None:
         help="Free-form reason recorded in the local cache.",
     )
 
+    approvals = sub.add_parser(
+        "approvals",
+        help="Inspect and resolve pending HITL approvals on the sidecar.",
+    )
+    approvals_sub = approvals.add_subparsers(
+        dest="approvals_subcommand", required=True
+    )
+    approvals_sub.add_parser(
+        "list", help="List pending approvals from the sidecar."
+    )
+    respond = approvals_sub.add_parser(
+        "respond",
+        help="Approve or deny a pending approval (operator-respond shortcut).",
+    )
+    respond.add_argument("approval_id", help="Approval id to resolve.")
+    verdict_group = respond.add_mutually_exclusive_group(required=True)
+    verdict_group.add_argument(
+        "--approve",
+        dest="verdict",
+        action="store_const",
+        const="approve",
+        help="Approve the held call.",
+    )
+    verdict_group.add_argument(
+        "--deny",
+        dest="verdict",
+        action="store_const",
+        const="deny",
+        help="Deny the held call.",
+    )
+    respond.add_argument(
+        "--reason",
+        default=None,
+        help="Free-form note recorded with the resolution.",
+    )
+
 
 def _build_scope(tool_servers: list[str], tool_name: str) -> Any:
     from chio_sdk.models import (
@@ -329,6 +365,110 @@ def _do_revoke(args: argparse.Namespace) -> int:
     return 0
 
 
+def _approvals_client(args: argparse.Namespace) -> Any:
+    """Construct a `ChioClient` for approval operations."""
+    from chio_sdk.client import ChioClient
+
+    sidecar_url = args.sidecar_url or os.environ.get("CHIO_SIDECAR_URL")
+    client_kwargs: dict[str, Any] = {"timeout": args.timeout}
+    if sidecar_url:
+        client_kwargs["base_url"] = sidecar_url
+    return ChioClient(**client_kwargs)
+
+
+def _do_approvals_list(args: argparse.Namespace) -> int:
+    try:
+        client = _approvals_client(args)
+    except Exception as exc:  # noqa: BLE001
+        print(f"error: chio-sdk-python is not importable: {exc}", file=sys.stderr)
+        return 1
+
+    async def _run() -> Any:
+        try:
+            return await client.list_pending_approvals()
+        finally:
+            try:
+                await client.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    try:
+        rows = asyncio.run(_run())
+    except Exception as exc:  # noqa: BLE001
+        print(f"error: list_pending_approvals failed: {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        payload = [
+            row.model_dump() if hasattr(row, "model_dump") else dict(row)
+            for row in rows
+        ]
+        print(json.dumps(payload, sort_keys=True, indent=2))
+        return 0
+
+    if not rows:
+        print("no pending chio approvals")
+        return 0
+
+    print(f"pending chio approvals ({len(rows)}):")
+    for row in rows:
+        approval_id = getattr(row, "approval_id", "?")
+        tool_server = getattr(row, "tool_server", "?")
+        tool_name = getattr(row, "tool_name", "?")
+        summary = getattr(row, "summary", "")
+        expires_at = getattr(row, "expires_at", "?")
+        print(
+            f"  - {approval_id} {tool_server}/{tool_name} "
+            f"expires={expires_at} summary={summary!r}"
+        )
+    return 0
+
+
+def _do_approvals_respond(args: argparse.Namespace) -> int:
+    try:
+        client = _approvals_client(args)
+    except Exception as exc:  # noqa: BLE001
+        print(f"error: chio-sdk-python is not importable: {exc}", file=sys.stderr)
+        return 1
+
+    async def _run() -> Any:
+        try:
+            return await client.respond_approval(
+                args.approval_id, args.verdict, args.reason
+            )
+        finally:
+            try:
+                await client.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    try:
+        result = asyncio.run(_run())
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"error: respond_approval failed for {args.approval_id}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+
+    outcome = getattr(result, "outcome", args.verdict)
+    outcome_str = getattr(outcome, "value", str(outcome))
+    if args.json:
+        payload = (
+            result.model_dump() if hasattr(result, "model_dump") else dict(result)
+        )
+        print(json.dumps(payload, sort_keys=True, indent=2))
+        return 0
+
+    print(f"chio approval {args.approval_id} -> {outcome_str}")
+    if args.reason:
+        print(f"  reason: {args.reason}")
+    print(
+        "Retry the original tool call to proceed (auto-resume is v0.3 work)."
+    )
+    return 0
+
+
 def handle(args: argparse.Namespace) -> int:
     sub = getattr(args, "subcommand", None)
     if sub == "issue":
@@ -337,6 +477,17 @@ def handle(args: argparse.Namespace) -> int:
         return _do_list(args)
     if sub == "revoke":
         return _do_revoke(args)
+    if sub == "approvals":
+        approvals_sub = getattr(args, "approvals_subcommand", None)
+        if approvals_sub == "list":
+            return _do_approvals_list(args)
+        if approvals_sub == "respond":
+            return _do_approvals_respond(args)
+        print(
+            f"unknown approvals subcommand: {approvals_sub!r}",
+            file=sys.stderr,
+        )
+        return 2
     print(f"unknown subcommand: {sub!r}", file=sys.stderr)
     return 2
 

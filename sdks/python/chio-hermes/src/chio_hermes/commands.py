@@ -2,7 +2,7 @@
 
 `make_slash_handler(handle)` returns the async closure Hermes registers
 via `ctx.register_command(...)`. Subcommands: `status`, `receipts [N]`,
-`policy`.
+`policy`, `approvals`, `approve <id>`, `deny <id>`.
 """
 
 from __future__ import annotations
@@ -83,6 +83,62 @@ def _format_policy(handle: RuntimeHandle) -> str:
     return "chio policy summary:\n" + json.dumps(summary, sort_keys=True, indent=2)
 
 
+async def _format_approvals_list(handle: RuntimeHandle) -> str:
+    """`/chio approvals` -- list pending HITL approvals from the sidecar."""
+    client = handle.chio_client
+    if client is None:
+        return "chio approvals unavailable (chio client not initialised)"
+    try:
+        rows = await client.list_pending_approvals()
+    except Exception as exc:  # noqa: BLE001 - surface to user
+        return f"failed to list approvals: {exc}"
+    if not rows:
+        return "no pending chio approvals"
+    lines = [f"pending chio approvals ({len(rows)}):"]
+    for row in rows:
+        approval_id = getattr(row, "approval_id", "?")
+        tool_server = getattr(row, "tool_server", "?")
+        tool_name = getattr(row, "tool_name", "?")
+        summary = getattr(row, "summary", "")
+        expires_at = getattr(row, "expires_at", "?")
+        lines.append(
+            f"  - {approval_id} {tool_server}/{tool_name} "
+            f"expires={expires_at} summary={summary!r}"
+        )
+    lines.append("respond with `/chio approve <id> [reason]` or `/chio deny <id> [reason]`.")
+    return "\n".join(lines)
+
+
+async def _respond_approval(
+    handle: RuntimeHandle,
+    *,
+    verdict: str,
+    args: list[str],
+) -> str:
+    if not args:
+        return f"usage: /chio {verdict} <approval_id> [reason]"
+    approval_id = args[0]
+    reason = " ".join(args[1:]).strip() or None
+    client = handle.chio_client
+    if client is None:
+        return "chio approvals unavailable (chio client not initialised)"
+    try:
+        result = await client.respond_approval(approval_id, verdict, reason)
+    except Exception as exc:  # noqa: BLE001
+        return f"failed to {verdict} {approval_id}: {exc}"
+    outcome = getattr(result, "outcome", verdict)
+    outcome_str = getattr(outcome, "value", str(outcome))
+    if reason:
+        return (
+            f"chio approval {approval_id} -> {outcome_str} (reason: {reason}). "
+            "Retry the original tool call to proceed (auto-resume is v0.3 work)."
+        )
+    return (
+        f"chio approval {approval_id} -> {outcome_str}. "
+        "Retry the original tool call to proceed (auto-resume is v0.3 work)."
+    )
+
+
 def make_slash_handler(handle: RuntimeHandle) -> SlashHandler:
     """Return an async `/chio` handler bound to `handle`."""
 
@@ -99,9 +155,15 @@ def make_slash_handler(handle: RuntimeHandle) -> SlashHandler:
             return _format_receipts(handle, rest)
         if sub == "policy":
             return _format_policy(handle)
+        if sub == "approvals":
+            return await _format_approvals_list(handle)
+        if sub == "approve":
+            return await _respond_approval(handle, verdict="approve", args=rest)
+        if sub == "deny":
+            return await _respond_approval(handle, verdict="deny", args=rest)
         return (
             f"unknown /chio subcommand: {sub!r} "
-            "(try: status, receipts, policy)"
+            "(try: status, receipts, policy, approvals, approve, deny)"
         )
 
     return handle_slash
