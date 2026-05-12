@@ -122,20 +122,27 @@ class TestBothPassesCompose:
         assert "context" not in kwargs
 
     def test_redaction_precedes_sanitisation_so_stubs_survive(self) -> None:
-        # Order matters: if sanitise ran first, a non-JSON-safe content
-        # value would be wrapped as __chio_type__ before redaction
-        # could record its byte count.
+        # Order matters. Use a non-JSON-safe stand-in for content so that
+        # if _sanitise_kwargs ran FIRST, content would arrive at redact_args
+        # already wrapped as {"__chio_type__": "_NotJsonSafe"} (a dict, not
+        # a redacted-body envelope). With redact_args running first, content
+        # is replaced by the {omitted, byte_count} envelope BEFORE the
+        # sanitiser ever sees it, so the dict-shape leak path is closed.
         payload = _compute_parameters(
             context=None,
             args=(),
-            kwargs={"path": "/tmp/x", "content": "secret-bytes"},
+            kwargs={"path": "/tmp/x", "content": _NotJsonSafe()},
             tool_name="chio_file_write",
             redaction_policy=RedactionPolicy.chio_default(),
         )
-        assert payload["kwargs"]["content"] == {
-            "omitted": True,
-            "byte_count": len(b"secret-bytes"),
-        }
+        # Shape only: the exact byte_count is an implementation detail of
+        # chio_adapter_base._byte_count when the value is a non-JSON-safe
+        # object. The proof is that the envelope shape wins, not the
+        # __chio_type__ sanitiser dict.
+        assert isinstance(payload["kwargs"]["content"], dict)
+        assert payload["kwargs"]["content"].get("omitted") is True
+        assert payload["kwargs"]["content"].get("byte_count", 0) > 0
+        assert "__chio_type__" not in payload["kwargs"]["content"]
 
 
 class TestRunWithGuardThreadsPolicy:

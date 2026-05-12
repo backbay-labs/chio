@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - feat: redact kwargs via `chio_adapter_base.redact.redact_args`
   before the existing `_sanitise_kwargs` JSON-safety pass. Override
   via the new `redaction_policy` keyword on `chio_asset` / `chio_op`.
+- design note: redact_args runs BEFORE evaluate_tool_call as defense-in-depth;
+  sidecar receives only metadata for redacted fields. Tradeoff: parameter_hash
+  for chio_file_write/chio_file_edit is uniform across calls. Underlying tool
+  execution still receives original args.
 
 ## [0.1.0]
 
