@@ -14,10 +14,11 @@ The canonical relay observability report is the first operator view for the pher
 8. Run `chio chiodos pheromone relay alert delivery drift-window` across handoff and delivery report directories.
 9. Run `chio chiodos pheromone relay alert review` against handoff, delivery, acknowledgement, drift-window, and route-owner inputs.
 10. Run `chio chiodos pheromone relay alert assurance package` to bind the full operator evidence chain.
-11. Check `relay-alert-report.v1`, `relay-trend-report.v1`, `relay-alert-handoff-report.v1`, `relay-alert-normalization-report.v1`, `relay-alert-delivery-report.v1`, `relay-alert-acknowledgement-report.v1`, `relay-alert-delivery-drift-report.v2`, `relay-alert-route-review-packet.v1`, and `relay-alert-assurance-package.v1` before opening raw store rows.
-12. Inspect bounded event reports from `--report-dir` only when an alert requires evidence.
-13. Export `chio chiodos pheromone relay metrics --format prometheus` for downstream alerting.
-14. Use raw SQLite inspection only after alert, trend, handoff, normalization, delivery, acknowledgement, drift-window, route review, assurance, observability, and bounded event files have narrowed the incident.
+11. Run `chio chiodos pheromone relay alert assurance export`, `verify`, `replay`, `retention plan`, and `recovery-drill` to close the local incident bundle.
+12. Check `relay-alert-report.v1`, `relay-trend-report.v1`, `relay-alert-handoff-report.v1`, `relay-alert-normalization-report.v1`, `relay-alert-delivery-report.v1`, `relay-alert-acknowledgement-report.v1`, `relay-alert-delivery-drift-report.v2`, `relay-alert-route-review-packet.v1`, `relay-alert-assurance-package.v1`, `relay-alert-assurance-export-manifest.v1`, `relay-alert-assurance-export-report.v1`, `relay-alert-assurance-replay-report.v1`, `relay-alert-assurance-retention-report.v1`, and `relay-alert-assurance-recovery-drill-report.v1` before opening raw store rows.
+13. Inspect bounded event reports from `--report-dir` only when an alert requires evidence.
+14. Export `chio chiodos pheromone relay metrics --format prometheus` for downstream alerting.
+15. Use raw SQLite inspection only after alert, trend, handoff, normalization, delivery, acknowledgement, drift-window, route review, assurance, export, replay, retention, recovery drill, observability, and bounded event files have narrowed the incident.
 
 ## Bounded Metrics
 
@@ -51,7 +52,7 @@ The normalization profile maps local Alertmanager-style and SIEM-style drops int
 
 The delivery report imports normalized local downstream result artifacts and binds them to the handoff report hash, alert report hash, trend report hash, receiver aliases, route aliases, dedupe keys, severity, and runbook refs. It records delivered, accepted, failed, delayed, duplicate, unknown, and operator-acknowledged outcomes without sending notifications.
 
-The acknowledgement report summarizes downstream outcomes for operator review. The source-bound drift report compares handoff and delivery report directories by handoff hash, receiver id, and alert code so a later delivery result cannot mask an earlier missing handoff. The route review packet binds bounded owner aliases to the delivery and acknowledgement state. The assurance package binds alert, trend, handoff, normalization, delivery, acknowledgement, drift, and review reports by canonical SHA-256. It may report unhealthy states with `accepted=false`; it must not claim a human was notified.
+The acknowledgement report summarizes downstream outcomes for operator review. The source-bound drift report compares handoff and delivery report directories by handoff hash, receiver id, and alert code so a later delivery result cannot mask an earlier missing handoff. The route review packet binds bounded owner aliases to the delivery and acknowledgement state. The assurance package binds alert, trend, handoff, normalization, delivery, acknowledgement, drift, and review reports by canonical SHA-256. The signed export manifest binds the package and source reports into a local directory bundle that can be verified, replayed, retention-planned, and drilled after the incident window closes. These artifacts may report unhealthy states with `accepted=false`; they must not claim a human was notified.
 
 Chio never calls downstream alerting APIs in this flow. Alertmanager, PagerDuty, OpsGenie, Slack, email, webhook, and SIEM systems remain downstream consumers.
 

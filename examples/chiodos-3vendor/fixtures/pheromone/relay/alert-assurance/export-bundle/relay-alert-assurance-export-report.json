@@ -1,0 +1,18 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-export-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000100000,
+  "bundleId": "relay-alert-assurance-export",
+  "manifestSha256": "83f91be3ea46a6ca0695e453471f2df65b94f76e6e84b86e68e8231909f128b0",
+  "sourcePackageSha256": "bd44555b22f2f05588766fba4f9b318a5d5996bba9b4dac3e2d8efd469106929",
+  "artifactCount": 13,
+  "checks": [
+    {
+      "code": "export_manifest_signed",
+      "accepted": true,
+      "detail": "export manifest is signed over canonical bundle metadata"
+    }
+  ]
+}

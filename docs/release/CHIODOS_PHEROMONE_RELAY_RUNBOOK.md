@@ -13,7 +13,7 @@ Profiles:
 
 Recommended deployment:
 
-1. Generate the relay observability report, relay alert report, relay trend report, relay handoff report, normalized downstream evidence, delivery import report, acknowledgement report, source-bound drift report, route review packet, and assurance package before inspecting raw store rows.
+1. Generate the relay observability report, relay alert report, relay trend report, relay handoff report, normalized downstream evidence, delivery import report, acknowledgement report, source-bound drift report, route review packet, assurance package, signed export, verification report, replay report, retention plan, and recovery drill before inspecting raw store rows.
 2. Terminate TLS at a reverse proxy owned by the same operator boundary as the relay.
 3. Pin the relay upstream path to `/v1/chiodos/pheromone`.
 4. Disable redirects on egress.
@@ -191,12 +191,13 @@ Production observability and metrics endpoints require `Authorization: Bearer <t
 8. Run `relay alert delivery drift-window` and read `relay-alert-delivery-drift-report.v2`.
 9. Run `relay alert review` and read `relay-alert-route-review-packet.v1`.
 10. Run `relay alert assurance package` and read `relay-alert-assurance-package.v1`.
-11. Use bounded event reports in `--report-dir` to inspect recent batch receive, catch-up, outbound delivery, and request rejection evidence.
-12. Use raw SQLite inspection only after alert, trend, handoff, normalization, delivery, acknowledgement, drift-window, route review, assurance, observability, and bounded event reports have narrowed the incident.
-13. Export `relay metrics --format prometheus` for downstream Alertmanager routing. Labels are bounded to status, reason, notification route, service, severity, and downstream route aliases.
-14. Use the receipt dashboard relay cards as a view over the canonical reports. Missing relay reports render as `unknown` and do not block receipt workflows.
+11. Run `relay alert assurance export`, then `verify`, `replay`, `retention plan`, and `recovery-drill` to close the local incident bundle without deleting retained evidence.
+12. Use bounded event reports in `--report-dir` to inspect recent batch receive, catch-up, outbound delivery, and request rejection evidence.
+13. Use raw SQLite inspection only after alert, trend, handoff, normalization, delivery, acknowledgement, drift-window, route review, assurance, export, replay, retention, recovery drill, observability, and bounded event reports have narrowed the incident.
+14. Export `relay metrics --format prometheus` for downstream Alertmanager routing. Labels are bounded to status, reason, notification route, service, severity, and downstream route aliases.
+15. Use the receipt dashboard relay cards as a view over the canonical reports. Missing relay reports render as `unknown` and do not block receipt workflows.
 
-Chio produces alert handoff, delivery, review, and assurance evidence only. Downstream Alertmanager, PagerDuty, OpsGenie, Slack, email, webhook, and SIEM systems perform live notification delivery from their own credentialed configuration. The assurance package may show downstream evidence present, missing, stale, delayed, failed, duplicated, or drifted, but it must not claim a human was notified.
+Chio produces alert handoff, delivery, review, assurance, export, replay, retention, and recovery-drill evidence only. Downstream Alertmanager, PagerDuty, OpsGenie, Slack, email, webhook, and SIEM systems perform live notification delivery from their own credentialed configuration. The assurance package and export bundle may show downstream evidence present, missing, stale, delayed, failed, duplicated, drifted, retained, or replayed, but they must not claim a human was notified.
 
 ## Recovery Procedures
 

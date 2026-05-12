@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-export-manifest.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Assurance Export Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "body", "signerPublicKey", "signature"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-assurance-export-manifest.v1" },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "bundleId",
+        "localKernelId",
+        "exporterId",
+        "exporterKeyId",
+        "exportedAtUnixMs",
+        "sourcePackageSha256",
+        "artifacts",
+        "safetyClaims"
+      ],
+      "properties": {
+        "schema": { "const": "chio.pheromone.relay-alert-assurance-export-manifest.v1" },
+        "bundleId": { "type": "string", "minLength": 1 },
+        "localKernelId": { "type": "string", "minLength": 1 },
+        "exporterId": { "type": "string", "minLength": 1 },
+        "exporterKeyId": { "type": "string", "minLength": 1 },
+        "exportedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "sourcePackageSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "artifacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/artifact" }
+        },
+        "safetyClaims": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" }
+        }
+      }
+    },
+    "signerPublicKey": { "type": "string", "minLength": 64 },
+    "signature": { "type": "string", "minLength": 64 }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "schema", "path", "sha256", "byteCount", "retentionClass"],
+      "properties": {
+        "role": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+        "schema": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "not": { "pattern": "^(?:/|.*\\.\\.|.*\\\\|.*:)" }
+        },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "byteCount": { "type": "integer", "minimum": 0 },
+        "retentionClass": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" }
+      }
+    }
+  }
+}

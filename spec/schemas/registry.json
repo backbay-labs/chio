@@ -458,6 +458,54 @@
       "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-negative-fixture-corpus.schema.json"
     },
     {
+      "schema": "chio.pheromone.relay-alert-assurance-export-manifest.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_export_manifest",
+      "introducedBy": "chiodos-relay-alert-assurance-export/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-export-manifest.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-export-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_export_report",
+      "introducedBy": "chiodos-relay-alert-assurance-export/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-export-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-trusted-exporters.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_trusted_exporters",
+      "introducedBy": "chiodos-relay-alert-assurance-export/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-trusted-exporters.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-replay-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_replay_report",
+      "introducedBy": "chiodos-relay-alert-assurance-export/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-replay-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-retention-profile.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_retention_profile",
+      "introducedBy": "chiodos-relay-alert-assurance-export/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-retention-profile.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-retention-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_retention_report",
+      "introducedBy": "chiodos-relay-alert-assurance-export/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-retention-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-recovery-drill-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_recovery_drill_report",
+      "introducedBy": "chiodos-relay-alert-assurance-export/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-recovery-drill-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-export-negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_export_negative_fixture_corpus",
+      "introducedBy": "chiodos-relay-alert-assurance-export/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-export-negative-fixture-corpus.schema.json"
+    },
+    {
       "schema": "chio.pheromone.catchup-request.v1",
       "artifactKind": "chiodos_pheromone_catchup_request",
       "introducedBy": "chiodos-live-pheromone-relay/v1",

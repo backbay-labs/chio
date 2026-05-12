@@ -1,0 +1,21 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-export-negative-fixture-corpus.v1",
+  "cases": [
+    {
+      "caseId": "invalid_signature",
+      "expectedCode": "signature_invalid"
+    },
+    {
+      "caseId": "source_hash_mismatch",
+      "expectedCode": "body_hash_mismatch"
+    },
+    {
+      "caseId": "path_traversal",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "caseId": "wrong_expected_code",
+      "expectedCode": "wrong_expected_code"
+    }
+  ]
+}

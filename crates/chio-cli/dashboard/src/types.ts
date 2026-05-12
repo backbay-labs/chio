@@ -445,6 +445,55 @@ export interface RelayAlertAssurancePackage {
   checks: RelayAlertCheck[]
 }
 
+export interface RelayAlertAssuranceExportReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  bundleId: string
+  manifestSha256: string
+  sourcePackageSha256: string
+  artifactCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceReplayReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  bundleId: string
+  sourcePackageSha256: string
+  replayedPackageSha256: string
+  mismatchCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceRetentionReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  retainedCount: number
+  expiringSoonCount: number
+  eligibleForDeleteCount: number
+  blockedCount: number
+  missingCount: number
+  quarantineCount: number
+  entries: Array<{
+    bundleId: string
+    artifactRole: string
+    path: string
+    state: string
+    retainUntilUnixMs: number | null
+    detail: string
+  }>
+  checks: RelayAlertCheck[]
+}
+
 export interface PassportVerification {
   subject: string
   issuer?: string | null

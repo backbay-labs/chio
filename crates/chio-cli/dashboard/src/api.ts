@@ -13,8 +13,11 @@ import type {
   ReceiptQueryResponse,
   RelayAlertReport,
   RelayAlertDeliveryReport,
+  RelayAlertAssuranceExportReport,
   RelayAlertHandoffReport,
   RelayAlertAssurancePackage,
+  RelayAlertAssuranceReplayReport,
+  RelayAlertAssuranceRetentionReport,
   RelayObservabilityReport,
   RelayTrendReport,
 } from './types'
@@ -250,6 +253,51 @@ export async function fetchRelayAlertAssurancePackage(): Promise<RelayAlertAssur
     throw new Error(`Relay alert assurance request failed: ${res.status} ${res.statusText}`)
   }
   return res.json() as Promise<RelayAlertAssurancePackage>
+}
+
+export async function fetchRelayAlertAssuranceExportReport(): Promise<RelayAlertAssuranceExportReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/export', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance export request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssuranceExportReport>
+}
+
+export async function fetchRelayAlertAssuranceReplayReport(): Promise<RelayAlertAssuranceReplayReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/replay', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance replay request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssuranceReplayReport>
+}
+
+export async function fetchRelayAlertAssuranceRetentionReport(): Promise<RelayAlertAssuranceRetentionReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/retention', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance retention request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssuranceRetentionReport>
 }
 
 /**

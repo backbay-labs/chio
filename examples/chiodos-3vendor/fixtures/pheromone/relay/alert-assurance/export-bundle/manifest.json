@@ -1,0 +1,125 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-export-manifest.v1",
+  "body": {
+    "schema": "chio.pheromone.relay-alert-assurance-export-manifest.v1",
+    "bundleId": "relay-alert-assurance-export",
+    "localKernelId": "did:chio:dataco",
+    "exporterId": "relay-exporter",
+    "exporterKeyId": "default",
+    "exportedAtUnixMs": 1766000100000,
+    "sourcePackageSha256": "bd44555b22f2f05588766fba4f9b318a5d5996bba9b4dac3e2d8efd469106929",
+    "artifacts": [
+      {
+        "role": "alert_report",
+        "schema": "chio.pheromone.relay-alert-report.v1",
+        "path": "reports/relay-alert-report.json",
+        "sha256": "d3c114682c63eb3f556419c8fac785f239c661909fb9cac799fe96edd24ce862",
+        "byteCount": 3645,
+        "retentionClass": "incident_evidence"
+      },
+      {
+        "role": "trend_report",
+        "schema": "chio.pheromone.relay-trend-report.v1",
+        "path": "reports/relay-trend-report.json",
+        "sha256": "38904fa48c9f5bfe45a3819e7b5d82022cdf7b3c2524c59fcca3c93b2891461d",
+        "byteCount": 727,
+        "retentionClass": "incident_evidence"
+      },
+      {
+        "role": "handoff_report",
+        "schema": "chio.pheromone.relay-alert-handoff-report.v1",
+        "path": "reports/relay-alert-handoff-report.json",
+        "sha256": "7c1d1ed0df1b7557e17c0c849313e14801382cf8d183f22e95d1139392b9f0e9",
+        "byteCount": 1455,
+        "retentionClass": "incident_evidence"
+      },
+      {
+        "role": "normalization_report",
+        "schema": "chio.pheromone.relay-alert-normalization-report.v1",
+        "path": "reports/relay-alert-normalization-report.json",
+        "sha256": "9452d762412020932e89e1ab2da6d9c9aa009fcb3002070adb73e86fc36f9e95",
+        "byteCount": 3448,
+        "retentionClass": "incident_evidence"
+      },
+      {
+        "role": "delivery_report",
+        "schema": "chio.pheromone.relay-alert-delivery-report.v1",
+        "path": "reports/relay-alert-delivery-report.json",
+        "sha256": "fec5b548ebb90e7c0ba1b6cff8ec3e8db5c727d684b6dcfa1e39a84f566605f0",
+        "byteCount": 2488,
+        "retentionClass": "incident_evidence"
+      },
+      {
+        "role": "acknowledgement_report",
+        "schema": "chio.pheromone.relay-alert-acknowledgement-report.v1",
+        "path": "reports/relay-alert-acknowledgement-report.json",
+        "sha256": "62027550d21672acbc8f5a7861bc736cc27d958987814777dbf1bda84973067e",
+        "byteCount": 1612,
+        "retentionClass": "incident_evidence"
+      },
+      {
+        "role": "drift_report",
+        "schema": "chio.pheromone.relay-alert-delivery-drift-report.v2",
+        "path": "reports/relay-alert-delivery-drift-report-v2.json",
+        "sha256": "b76063cb46ad9129de05931f097a60f1c62d03ffa0828a2532abc2edca7b0727",
+        "byteCount": 442,
+        "retentionClass": "incident_evidence"
+      },
+      {
+        "role": "route_review_packet",
+        "schema": "chio.pheromone.relay-alert-route-review-packet.v1",
+        "path": "reports/relay-alert-route-review-packet.json",
+        "sha256": "3958f5bab145c09e1b90d40e7d42928caeb089ec13d37129f52a8c59b763f492",
+        "byteCount": 1248,
+        "retentionClass": "incident_evidence"
+      },
+      {
+        "role": "assurance_package",
+        "schema": "chio.pheromone.relay-alert-assurance-package.v1",
+        "path": "reports/relay-alert-assurance-package.json",
+        "sha256": "bd44555b22f2f05588766fba4f9b318a5d5996bba9b4dac3e2d8efd469106929",
+        "byteCount": 1330,
+        "retentionClass": "legal_hold"
+      },
+      {
+        "role": "retention_profile",
+        "schema": "chio.pheromone.relay-alert-assurance-retention-profile.v1",
+        "path": "profiles/relay-alert-assurance-retention-profile.json",
+        "sha256": "6a9223f2ebdd2f7ae3ef33a42024153aea85f10ede1b401310c346ead3fb0220",
+        "byteCount": 423,
+        "retentionClass": "operator_profile"
+      },
+      {
+        "role": "normalized_delivery_evidence",
+        "schema": "chio.pheromone.relay-alert-delivery-evidence.v1",
+        "path": "evidence/relay-alert-delivery-evidence-000.json",
+        "sha256": "4381b1b81896a13daf4f12d73f8ae75a918c5739b1a4a006dd8fbea3f02a1891",
+        "byteCount": 948,
+        "retentionClass": "incident_evidence"
+      },
+      {
+        "role": "normalized_delivery_evidence",
+        "schema": "chio.pheromone.relay-alert-delivery-evidence.v1",
+        "path": "evidence/relay-alert-delivery-evidence-001.json",
+        "sha256": "632eeb2460a6cc2fa1e81d6a80688bde7c7e788e501cf7639a28569486555c18",
+        "byteCount": 959,
+        "retentionClass": "incident_evidence"
+      },
+      {
+        "role": "normalized_delivery_evidence",
+        "schema": "chio.pheromone.relay-alert-delivery-evidence.v1",
+        "path": "evidence/relay-alert-delivery-evidence-002.json",
+        "sha256": "fc21c0be035bada97606f232e4064047ae81ed724f18ed9563661f2c059ca72e",
+        "byteCount": 977,
+        "retentionClass": "incident_evidence"
+      }
+    ],
+    "safetyClaims": [
+      "local_export_only",
+      "no_live_notification_delivery",
+      "retention_report_only"
+    ]
+  },
+  "signerPublicKey": "6b734a8eff246fe734b38d4046c148eee5f04fe87b3a0a423955a77956de066b",
+  "signature": "2258d1f7e1d4717d5713b6d8436b4a1e09313963e6962b693384096fc24f9e3e51d3e00e14011694a233d77cb24a0c897a02f76adc65d0887ffdbcfd9594360c"
+}

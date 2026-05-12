@@ -1,0 +1,18 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-replay-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000100000,
+  "bundleId": "relay-alert-assurance-export",
+  "sourcePackageSha256": "bd44555b22f2f05588766fba4f9b318a5d5996bba9b4dac3e2d8efd469106929",
+  "replayedPackageSha256": "bd44555b22f2f05588766fba4f9b318a5d5996bba9b4dac3e2d8efd469106929",
+  "mismatchCount": 0,
+  "checks": [
+    {
+      "code": "assurance_replay",
+      "accepted": true,
+      "detail": "assurance package was replayed from exported canonical source reports"
+    }
+  ]
+}
