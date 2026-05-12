@@ -292,9 +292,12 @@ impl ReceiptStore for SqliteReceiptStore {
                 "#,
             params![receipt.body_hash.as_str(), legacy_receipt_id_alias, raw_json],
         )?;
-        Ok((rows > 0)
-            .then(|| connection.last_insert_rowid().max(0) as u64)
-            .unwrap_or(0))
+        let inserted_row_id = if rows > 0 {
+            connection.last_insert_rowid().max(0) as u64
+        } else {
+            0
+        };
+        Ok(inserted_row_id)
     }
 
     fn contains_chio_receipt_v2_body_hash(
@@ -1169,6 +1172,7 @@ fn make_delegation_link(
     .unwrap()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_v2_delegated_child(
     kernel: &ChioKernel,
     parent: &CapabilityToken,

@@ -8,6 +8,7 @@ license.workspace = true
 repository.workspace = true
 readme = "README.md"
 publish = false
+autobenches = false
 
 [lib]
 name = "chio_kernel"
@@ -23,6 +24,7 @@ name = "chio_kernel"
 default = ["legacy-sync", "delegation_v2"]
 legacy-sync = []
 dhat-heap = []
+sustained-p99-nightly = []
 otel = ["dep:opentelemetry-semantic-conventions"]
 tokio-console-smoke = ["tokio/tracing"]
 # M03 hybrid signing path: pulls the pq cargo feature on chio-core-types so
@@ -139,6 +141,10 @@ required-features = ["dhat-heap"]
 [[bench]]
 name = "dispatch_deny"
 harness = false
+
+[[bench]]
+name = "sustained_p99_30min"
+required-features = ["sustained-p99-nightly"]
 
 # Property-based replay-invariance suite (signing-is-a-function,
 # replay-root-is-idempotent, shuffle-preserves-bytes). Cargo would auto-

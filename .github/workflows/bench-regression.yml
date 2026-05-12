@@ -158,6 +158,17 @@ jobs:
             cargo bench -p chio-kernel --bench "$bench" -- --noplot --sample-size 100
           done < "${benches_file}"
 
+      - name: Run current feature-gated kernel bench smokes
+        working-directory: ${{ runner.temp }}/chio-bench-current
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/chio-bench-current-target
+          CARGO_BUILD_JOBS: "1"
+          CARGO_INCREMENTAL: "0"
+        run: |
+          set -euo pipefail
+          cargo bench -p chio-kernel --features dhat-heap --bench dispatch_allow_dhat
+
       - name: Locate Criterion outputs
         id: criterion
         shell: bash
