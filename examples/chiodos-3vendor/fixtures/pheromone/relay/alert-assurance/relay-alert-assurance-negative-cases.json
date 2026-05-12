@@ -1,0 +1,41 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-negative-fixture-corpus.v1",
+  "cases": [
+    {
+      "caseId": "stale-source",
+      "artifact": "normalization-source",
+      "mutation": "observed-at-old",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "caseId": "ambiguous-mapping",
+      "artifact": "normalization-source",
+      "mutation": "duplicate-receiver-alert",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "caseId": "secret-looking-field",
+      "artifact": "normalization-source",
+      "mutation": "inline-token",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "caseId": "source-hash-mismatch",
+      "artifact": "assurance-package",
+      "mutation": "wrong-handoff-hash",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "caseId": "later-delivery-masking",
+      "artifact": "delivery-drift-v2",
+      "mutation": "cross-handoff-delivery",
+      "expectedCode": "missing_delivery_result"
+    },
+    {
+      "caseId": "route-owner-missing",
+      "artifact": "route-review",
+      "mutation": "missing-owner-alias",
+      "expectedCode": "alert_delivery_invalid"
+    }
+  ]
+}

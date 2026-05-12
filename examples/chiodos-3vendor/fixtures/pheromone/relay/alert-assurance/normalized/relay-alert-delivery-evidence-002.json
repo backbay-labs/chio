@@ -1,0 +1,26 @@
+{
+  "schema": "chio.pheromone.relay-alert-delivery-evidence.v1",
+  "localKernelId": "did:chio:dataco",
+  "observedAtUnixMs": 1766000065000,
+  "resultId": "normalized:alertmanager-pagerduty-primary:dead_letters_present",
+  "receiverId": "alertmanager-pagerduty-primary",
+  "kind": "alertmanager",
+  "targetRef": "alertmanager:pagerduty-primary",
+  "notificationRoute": "pagerduty-primary",
+  "opsgenie": "relay-oncall",
+  "alertCode": "dead_letters_present",
+  "dedupeKey": "chiodos-relay:dataco:dead-letters",
+  "severity": "critical",
+  "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
+  "status": "delivered",
+  "sourceHandoffReportSha256": "7c1d1ed0df1b7557e17c0c849313e14801382cf8d183f22e95d1139392b9f0e9",
+  "downstreamEvidenceSha256": "b7177458f62846a0471b9079e664b0c9b096560ec3736c4aeff6a054551d5d94",
+  "labels": {
+    "notification_route": "pagerduty-primary",
+    "opsgenie": "relay-oncall",
+    "receiver": "alertmanager-pagerduty-primary",
+    "service": "chiodos-pheromone-relay",
+    "severity": "critical",
+    "status": "delivered"
+  }
+}

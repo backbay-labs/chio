@@ -8,13 +8,16 @@ The canonical relay observability report is the first operator view for the pher
 2. Run `chio chiodos pheromone relay alert evaluate` against the observability report, routing profile, suppression state, and bounded event directory.
 3. Run `chio chiodos pheromone relay trend` across committed observability and event report artifacts for the operator window.
 4. Run `chio chiodos pheromone relay alert handoff` against the alert report, trend report, routing profile, and handoff profile.
-5. Run `chio chiodos pheromone relay alert delivery import` against the handoff report, delivery profile, and local downstream evidence directory.
-6. Run `chio chiodos pheromone relay alert delivery acknowledge` against the handoff and delivery reports.
-7. Run `chio chiodos pheromone relay alert delivery drift` across handoff and delivery report directories.
-8. Check `relay-alert-report.v1`, `relay-trend-report.v1`, `relay-alert-handoff-report.v1`, `relay-alert-delivery-report.v1`, `relay-alert-acknowledgement-report.v1`, and `relay-alert-handoff-drift-report.v1` before opening raw store rows.
-9. Inspect bounded event reports from `--report-dir` only when an alert requires evidence.
-10. Export `chio chiodos pheromone relay metrics --format prometheus` for downstream alerting.
-11. Use raw SQLite inspection only after alert, trend, handoff, delivery, acknowledgement, drift, observability, and bounded event files have narrowed the incident.
+5. Run `chio chiodos pheromone relay alert normalize` against local Alertmanager or SIEM-style drops.
+6. Run `chio chiodos pheromone relay alert delivery import` against the handoff report, delivery profile, and normalized evidence directory.
+7. Run `chio chiodos pheromone relay alert delivery acknowledge` against the handoff and delivery reports.
+8. Run `chio chiodos pheromone relay alert delivery drift-window` across handoff and delivery report directories.
+9. Run `chio chiodos pheromone relay alert review` against handoff, delivery, acknowledgement, drift-window, and route-owner inputs.
+10. Run `chio chiodos pheromone relay alert assurance package` to bind the full operator evidence chain.
+11. Check `relay-alert-report.v1`, `relay-trend-report.v1`, `relay-alert-handoff-report.v1`, `relay-alert-normalization-report.v1`, `relay-alert-delivery-report.v1`, `relay-alert-acknowledgement-report.v1`, `relay-alert-delivery-drift-report.v2`, `relay-alert-route-review-packet.v1`, and `relay-alert-assurance-package.v1` before opening raw store rows.
+12. Inspect bounded event reports from `--report-dir` only when an alert requires evidence.
+13. Export `chio chiodos pheromone relay metrics --format prometheus` for downstream alerting.
+14. Use raw SQLite inspection only after alert, trend, handoff, normalization, delivery, acknowledgement, drift-window, route review, assurance, observability, and bounded event files have narrowed the incident.
 
 ## Bounded Metrics
 
@@ -44,9 +47,11 @@ The handoff report is a dry-run readiness artifact. It checks route coverage, bo
 
 The relay alert delivery profile defines bounded downstream receiver aliases and local runbook references. It contains no inline secrets, URLs, request bodies, or credential material.
 
-The delivery report imports local downstream result artifacts and binds them to the handoff report hash, alert report hash, trend report hash, receiver aliases, route aliases, dedupe keys, severity, and runbook refs. It records delivered, accepted, failed, delayed, duplicate, unknown, and operator-acknowledged outcomes without sending notifications.
+The normalization profile maps local Alertmanager-style and SIEM-style drops into Chio delivery evidence. It rejects inline secrets, URLs, unknown receivers, ambiguous mappings, unbounded labels, dynamic endpoints, stale drops, and missing source hashes.
 
-The acknowledgement report summarizes downstream outcomes for operator review. The drift report compares handoff and delivery report directories for missing critical delivery evidence, route alias drift, severity weakening, and stale windows.
+The delivery report imports normalized local downstream result artifacts and binds them to the handoff report hash, alert report hash, trend report hash, receiver aliases, route aliases, dedupe keys, severity, and runbook refs. It records delivered, accepted, failed, delayed, duplicate, unknown, and operator-acknowledged outcomes without sending notifications.
+
+The acknowledgement report summarizes downstream outcomes for operator review. The source-bound drift report compares handoff and delivery report directories by handoff hash, receiver id, and alert code so a later delivery result cannot mask an earlier missing handoff. The route review packet binds bounded owner aliases to the delivery and acknowledgement state. The assurance package binds alert, trend, handoff, normalization, delivery, acknowledgement, drift, and review reports by canonical SHA-256. It may report unhealthy states with `accepted=false`; it must not claim a human was notified.
 
 Chio never calls downstream alerting APIs in this flow. Alertmanager, PagerDuty, OpsGenie, Slack, email, webhook, and SIEM systems remain downstream consumers.
 

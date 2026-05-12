@@ -1212,10 +1212,70 @@ enum ChiodosPheromoneRelayAlertCommands {
         report: PathBuf,
     },
 
+    /// Normalize local downstream alert exports into Chio delivery evidence.
+    Normalize {
+        /// Relay alert normalization profile JSON.
+        #[arg(long, value_name = "PATH")]
+        profile: PathBuf,
+
+        /// Directory containing local downstream alert export JSON.
+        #[arg(long, value_name = "DIR")]
+        input_dir: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Directory for canonical Chio delivery evidence JSON.
+        #[arg(long, value_name = "DIR")]
+        out_dir: PathBuf,
+
+        /// Output path for relay alert normalization report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
     /// Import downstream delivery, acknowledgement, or drift evidence.
     Delivery {
         #[command(subcommand)]
         command: ChiodosPheromoneRelayAlertDeliveryCommands,
+    },
+
+    /// Generate route-owner review evidence.
+    Review {
+        /// Relay alert handoff report JSON.
+        #[arg(long, value_name = "PATH")]
+        handoff_report: PathBuf,
+
+        /// Relay alert delivery report JSON.
+        #[arg(long, value_name = "PATH")]
+        delivery_report: PathBuf,
+
+        /// Relay alert acknowledgement report JSON.
+        #[arg(long, value_name = "PATH")]
+        acknowledgement_report: PathBuf,
+
+        /// Relay alert delivery drift report JSON.
+        #[arg(long, value_name = "PATH")]
+        drift_report: PathBuf,
+
+        /// Relay alert route-owner profile JSON.
+        #[arg(long, value_name = "PATH")]
+        route_owner_profile: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for relay alert route review packet JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Build relay alert assurance packages.
+    Assurance {
+        #[command(subcommand)]
+        command: ChiodosPheromoneRelayAlertAssuranceCommands,
     },
 }
 
@@ -1290,6 +1350,79 @@ enum ChiodosPheromoneRelayAlertDeliveryCommands {
         until_unix_ms: u64,
 
         /// Output path for relay alert handoff drift report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Compare handoff and delivery report directories with source-bound delivery drift.
+    DriftWindow {
+        /// Directory containing relay alert handoff reports.
+        #[arg(long, value_name = "DIR")]
+        handoff_reports_dir: PathBuf,
+
+        /// Directory containing relay alert delivery reports.
+        #[arg(long, value_name = "DIR")]
+        delivery_reports_dir: PathBuf,
+
+        /// Relay alert delivery profile JSON.
+        #[arg(long, value_name = "PATH")]
+        delivery_profile: PathBuf,
+
+        /// Lower bound in Unix milliseconds.
+        #[arg(long)]
+        since_unix_ms: u64,
+
+        /// Upper bound in Unix milliseconds.
+        #[arg(long)]
+        until_unix_ms: u64,
+
+        /// Output path for source-bound relay alert delivery drift report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosPheromoneRelayAlertAssuranceCommands {
+    /// Bind alert evidence into one operator-safe assurance package.
+    Package {
+        /// Relay alert report JSON.
+        #[arg(long, value_name = "PATH")]
+        alert_report: PathBuf,
+
+        /// Relay trend report JSON.
+        #[arg(long, value_name = "PATH")]
+        trend_report: PathBuf,
+
+        /// Relay alert handoff report JSON.
+        #[arg(long, value_name = "PATH")]
+        handoff_report: PathBuf,
+
+        /// Relay alert normalization report JSON.
+        #[arg(long, value_name = "PATH")]
+        normalization_report: PathBuf,
+
+        /// Relay alert delivery report JSON.
+        #[arg(long, value_name = "PATH")]
+        delivery_report: PathBuf,
+
+        /// Relay alert acknowledgement report JSON.
+        #[arg(long, value_name = "PATH")]
+        acknowledgement_report: PathBuf,
+
+        /// Source-bound relay alert delivery drift report JSON.
+        #[arg(long, value_name = "PATH")]
+        drift_report: PathBuf,
+
+        /// Relay alert route review packet JSON.
+        #[arg(long, value_name = "PATH")]
+        review_packet: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for relay alert assurance package JSON.
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },

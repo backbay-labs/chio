@@ -13,7 +13,7 @@ Profiles:
 
 Recommended deployment:
 
-1. Generate the relay observability report, relay alert report, relay trend report, relay handoff report, delivery import report, acknowledgement report, and drift report before inspecting raw store rows.
+1. Generate the relay observability report, relay alert report, relay trend report, relay handoff report, normalized downstream evidence, delivery import report, acknowledgement report, source-bound drift report, route review packet, and assurance package before inspecting raw store rows.
 2. Terminate TLS at a reverse proxy owned by the same operator boundary as the relay.
 3. Pin the relay upstream path to `/v1/chiodos/pheromone`.
 4. Disable redirects on egress.
@@ -99,10 +99,17 @@ chio chiodos pheromone relay alert handoff \
   --now-unix-ms <now-unix-ms> \
   --report relay-alert-handoff-report.json
 
+chio chiodos pheromone relay alert normalize \
+  --profile relay-alert-normalization-profile.json \
+  --input-dir downstream-alert-exports \
+  --now-unix-ms <now-unix-ms> \
+  --out-dir normalized-delivery-evidence \
+  --report relay-alert-normalization-report.json
+
 chio chiodos pheromone relay alert delivery import \
   --handoff-report relay-alert-handoff-report.json \
   --delivery-profile relay-alert-delivery-profile.json \
-  --evidence-dir downstream-delivery-evidence \
+  --evidence-dir normalized-delivery-evidence \
   --now-unix-ms <now-unix-ms> \
   --report relay-alert-delivery-report.json
 
@@ -120,6 +127,35 @@ chio chiodos pheromone relay alert delivery drift \
   --since-unix-ms <since-unix-ms> \
   --until-unix-ms <until-unix-ms> \
   --report relay-alert-handoff-drift-report.json
+
+chio chiodos pheromone relay alert delivery drift-window \
+  --handoff-reports-dir reports \
+  --delivery-reports-dir reports \
+  --delivery-profile relay-alert-delivery-profile.json \
+  --since-unix-ms <since-unix-ms> \
+  --until-unix-ms <until-unix-ms> \
+  --report relay-alert-delivery-drift-report-v2.json
+
+chio chiodos pheromone relay alert review \
+  --handoff-report relay-alert-handoff-report.json \
+  --delivery-report relay-alert-delivery-report.json \
+  --acknowledgement-report relay-alert-acknowledgement-report.json \
+  --drift-report relay-alert-delivery-drift-report-v2.json \
+  --route-owner-profile relay-alert-route-owner-profile.json \
+  --now-unix-ms <now-unix-ms> \
+  --report relay-alert-route-review-packet.json
+
+chio chiodos pheromone relay alert assurance package \
+  --alert-report relay-alert-report.json \
+  --trend-report relay-trend-report.json \
+  --handoff-report relay-alert-handoff-report.json \
+  --normalization-report relay-alert-normalization-report.json \
+  --delivery-report relay-alert-delivery-report.json \
+  --acknowledgement-report relay-alert-acknowledgement-report.json \
+  --drift-report relay-alert-delivery-drift-report-v2.json \
+  --review-packet relay-alert-route-review-packet.json \
+  --now-unix-ms <now-unix-ms> \
+  --report relay-alert-assurance-package.json
 
 chio chiodos pheromone relay supervisor lint \
   --profile relay-supervisor-profile.json \
@@ -149,15 +185,18 @@ Production observability and metrics endpoints require `Authorization: Bearer <t
 2. Run `relay alert evaluate` and read `relay-alert-report.v1`.
 3. Run `relay trend` and read `relay-trend-report.v1` to check whether the condition is isolated or growing.
 4. Run `relay alert handoff` and read `relay-alert-handoff-report.v1` to confirm downstream route coverage, dedupe keys, severity mapping, escalation mapping, and runbook references.
-5. Run `relay alert delivery import` and read `relay-alert-delivery-report.v1` to confirm downstream systems produced bounded delivery, rejection, duplicate, delayed, or unknown evidence.
-6. Run `relay alert delivery acknowledge` and read `relay-alert-acknowledgement-report.v1`.
-7. Run `relay alert delivery drift` and read `relay-alert-handoff-drift-report.v1`.
-8. Use bounded event reports in `--report-dir` to inspect recent batch receive, catch-up, outbound delivery, and request rejection evidence.
-9. Use raw SQLite inspection only after alert, trend, handoff, delivery, acknowledgement, drift, observability, and bounded event reports have narrowed the incident.
-10. Export `relay metrics --format prometheus` for downstream Alertmanager routing. Labels are bounded to status, reason, notification route, service, severity, and downstream route aliases.
-11. Use the receipt dashboard relay cards as a view over the canonical reports. Missing relay reports render as `unknown` and do not block receipt workflows.
+5. Run `relay alert normalize` against local Alertmanager or SIEM-style drops and read `relay-alert-normalization-report.v1`.
+6. Run `relay alert delivery import` and read `relay-alert-delivery-report.v1` to confirm downstream systems produced bounded delivery, rejection, duplicate, delayed, or unknown evidence.
+7. Run `relay alert delivery acknowledge` and read `relay-alert-acknowledgement-report.v1`.
+8. Run `relay alert delivery drift-window` and read `relay-alert-delivery-drift-report.v2`.
+9. Run `relay alert review` and read `relay-alert-route-review-packet.v1`.
+10. Run `relay alert assurance package` and read `relay-alert-assurance-package.v1`.
+11. Use bounded event reports in `--report-dir` to inspect recent batch receive, catch-up, outbound delivery, and request rejection evidence.
+12. Use raw SQLite inspection only after alert, trend, handoff, normalization, delivery, acknowledgement, drift-window, route review, assurance, observability, and bounded event reports have narrowed the incident.
+13. Export `relay metrics --format prometheus` for downstream Alertmanager routing. Labels are bounded to status, reason, notification route, service, severity, and downstream route aliases.
+14. Use the receipt dashboard relay cards as a view over the canonical reports. Missing relay reports render as `unknown` and do not block receipt workflows.
 
-Chio produces alert handoff and delivery evidence only. Downstream Alertmanager, PagerDuty, OpsGenie, Slack, email, webhook, and SIEM systems perform live notification delivery from their own credentialed configuration.
+Chio produces alert handoff, delivery, review, and assurance evidence only. Downstream Alertmanager, PagerDuty, OpsGenie, Slack, email, webhook, and SIEM systems perform live notification delivery from their own credentialed configuration. The assurance package may show downstream evidence present, missing, stale, delayed, failed, duplicated, or drifted, but it must not claim a human was notified.
 
 ## Recovery Procedures
 

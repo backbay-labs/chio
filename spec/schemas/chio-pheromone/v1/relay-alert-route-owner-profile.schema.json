@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-route-owner-profile.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Route Owner Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "localKernelId",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs",
+    "maxReportAgeMs",
+    "owners"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-route-owner-profile.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+    "maxReportAgeMs": { "type": "integer", "minimum": 1 },
+    "owners": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ownerAlias", "receiverIds", "notificationRoutes", "runbook"],
+        "properties": {
+          "ownerAlias": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+          "receiverIds": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" }
+          },
+          "notificationRoutes": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" }
+          },
+          "runbook": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

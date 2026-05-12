@@ -1,0 +1,21 @@
+{
+  "schema": "chio.pheromone.relay-alert-route-owner-profile.v1",
+  "localKernelId": "did:chio:dataco",
+  "issuedAtUnixMs": 1766000000000,
+  "expiresAtUnixMs": 1766003600000,
+  "maxReportAgeMs": 900000,
+  "owners": [
+    {
+      "ownerAlias": "relay-primary-owner",
+      "receiverIds": ["alertmanager-pagerduty-primary"],
+      "notificationRoutes": ["pagerduty-primary"],
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
+    },
+    {
+      "ownerAlias": "relay-security-owner",
+      "receiverIds": ["alertmanager-auth-watch"],
+      "notificationRoutes": ["opsgenie-auth-watch"],
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#replay-storm"
+    }
+  ]
+}

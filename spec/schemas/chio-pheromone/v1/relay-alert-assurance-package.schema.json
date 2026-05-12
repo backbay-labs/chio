@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-package.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Assurance Package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "sourceAlertReportSha256",
+    "sourceTrendReportSha256",
+    "sourceHandoffReportSha256",
+    "sourceNormalizationReportSha256",
+    "sourceDeliveryReportSha256",
+    "sourceAcknowledgementReportSha256",
+    "sourceDriftReportSha256",
+    "sourceReviewPacketSha256",
+    "firingAlertCount",
+    "criticalFiringAlertCount",
+    "normalizedCount",
+    "readyRouteCount",
+    "deliveryAttentionCount",
+    "acknowledgementPendingCount",
+    "driftCount",
+    "operatorActionCodes",
+    "checks"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-assurance-package.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "sourceAlertReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceTrendReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceHandoffReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceNormalizationReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceDeliveryReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceAcknowledgementReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceDriftReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceReviewPacketSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "firingAlertCount": { "type": "integer", "minimum": 0 },
+    "criticalFiringAlertCount": { "type": "integer", "minimum": 0 },
+    "normalizedCount": { "type": "integer", "minimum": 0 },
+    "readyRouteCount": { "type": "integer", "minimum": 0 },
+    "deliveryAttentionCount": { "type": "integer", "minimum": 0 },
+    "acknowledgementPendingCount": { "type": "integer", "minimum": 0 },
+    "driftCount": { "type": "integer", "minimum": 0 },
+    "operatorActionCodes": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" }
+    },
+    "checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/check" }
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "accepted", "detail"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "accepted": { "type": "boolean" },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

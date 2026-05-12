@@ -420,6 +420,31 @@ export interface RelayAlertDeliveryReport {
   checks: RelayAlertCheck[]
 }
 
+export interface RelayAlertAssurancePackage {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  sourceAlertReportSha256: string
+  sourceTrendReportSha256: string
+  sourceHandoffReportSha256: string
+  sourceNormalizationReportSha256: string
+  sourceDeliveryReportSha256: string
+  sourceAcknowledgementReportSha256: string
+  sourceDriftReportSha256: string
+  sourceReviewPacketSha256: string
+  firingAlertCount: number
+  criticalFiringAlertCount: number
+  normalizedCount: number
+  readyRouteCount: number
+  deliveryAttentionCount: number
+  acknowledgementPendingCount: number
+  driftCount: number
+  operatorActionCodes: string[]
+  checks: RelayAlertCheck[]
+}
+
 export interface PassportVerification {
   subject: string
   issuer?: string | null

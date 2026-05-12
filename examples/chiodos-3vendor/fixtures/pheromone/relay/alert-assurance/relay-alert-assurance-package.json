@@ -1,0 +1,32 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-package.v1",
+  "accepted": false,
+  "code": "assurance_attention_required",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000090000,
+  "sourceAlertReportSha256": "d3c114682c63eb3f556419c8fac785f239c661909fb9cac799fe96edd24ce862",
+  "sourceTrendReportSha256": "38904fa48c9f5bfe45a3819e7b5d82022cdf7b3c2524c59fcca3c93b2891461d",
+  "sourceHandoffReportSha256": "7c1d1ed0df1b7557e17c0c849313e14801382cf8d183f22e95d1139392b9f0e9",
+  "sourceNormalizationReportSha256": "9452d762412020932e89e1ab2da6d9c9aa009fcb3002070adb73e86fc36f9e95",
+  "sourceDeliveryReportSha256": "fec5b548ebb90e7c0ba1b6cff8ec3e8db5c727d684b6dcfa1e39a84f566605f0",
+  "sourceAcknowledgementReportSha256": "62027550d21672acbc8f5a7861bc736cc27d958987814777dbf1bda84973067e",
+  "sourceDriftReportSha256": "b76063cb46ad9129de05931f097a60f1c62d03ffa0828a2532abc2edca7b0727",
+  "sourceReviewPacketSha256": "3958f5bab145c09e1b90d40e7d42928caeb089ec13d37129f52a8c59b763f492",
+  "firingAlertCount": 3,
+  "criticalFiringAlertCount": 3,
+  "normalizedCount": 3,
+  "readyRouteCount": 2,
+  "deliveryAttentionCount": 0,
+  "acknowledgementPendingCount": 0,
+  "driftCount": 0,
+  "operatorActionCodes": [
+    "active_alerts_present"
+  ],
+  "checks": [
+    {
+      "code": "alert_assurance_chain",
+      "accepted": false,
+      "detail": "alert, handoff, normalized delivery, acknowledgement, drift, and review reports are hash-bound"
+    }
+  ]
+}

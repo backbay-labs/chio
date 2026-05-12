@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchAgentCostSeries,
   fetchOperatorReport,
+  fetchRelayAlertAssurancePackage,
   fetchRelayAlertDeliveryReport,
   fetchRelayAlertHandoffReport,
   fetchRelayAlertReport,
@@ -420,6 +421,50 @@ describe('dashboard api helpers', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/v1/chiodos/pheromone/alert-delivery',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer bearer-token',
+          'Content-Type': 'application/json',
+        }),
+      }),
+    )
+  })
+
+  it('fetches relay alert assurance packages with bearer auth', async () => {
+    sessionStorage.setItem('chio_token', 'bearer-token')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        schema: 'chio.pheromone.relay-alert-assurance-package.v1',
+        accepted: false,
+        code: 'assurance_attention_required',
+        localKernelId: 'did:chio:buyer-kernel',
+        generatedAtUnixMs: 1_766_000_090_000,
+        sourceAlertReportSha256: 'a'.repeat(64),
+        sourceTrendReportSha256: 'b'.repeat(64),
+        sourceHandoffReportSha256: 'c'.repeat(64),
+        sourceNormalizationReportSha256: 'd'.repeat(64),
+        sourceDeliveryReportSha256: 'e'.repeat(64),
+        sourceAcknowledgementReportSha256: 'f'.repeat(64),
+        sourceDriftReportSha256: '1'.repeat(64),
+        sourceReviewPacketSha256: '2'.repeat(64),
+        firingAlertCount: 1,
+        criticalFiringAlertCount: 1,
+        normalizedCount: 1,
+        readyRouteCount: 1,
+        deliveryAttentionCount: 0,
+        acknowledgementPendingCount: 0,
+        driftCount: 0,
+        operatorActionCodes: ['active_alerts_present'],
+        checks: [],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchRelayAlertAssurancePackage()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/chiodos/pheromone/alert-assurance',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer bearer-token',

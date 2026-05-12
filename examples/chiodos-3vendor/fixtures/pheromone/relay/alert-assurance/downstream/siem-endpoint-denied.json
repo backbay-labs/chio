@@ -1,0 +1,16 @@
+{
+  "receiver": "alertmanager-auth-watch",
+  "alertname": "endpoint_denied",
+  "severity": "critical",
+  "outcome": "accepted",
+  "observed_at_unix_ms": 1766000065000,
+  "source_handoff_report_sha256": "7c1d1ed0df1b7557e17c0c849313e14801382cf8d183f22e95d1139392b9f0e9",
+  "dedupe_key": "chiodos-relay:dataco:endpoint-denied",
+  "runbook_ref": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#replay-storm",
+  "labels": {
+    "notification_route": "opsgenie-auth-watch",
+    "opsgenie": "relay-security",
+    "service": "chiodos-pheromone-relay",
+    "severity": "critical"
+  }
+}

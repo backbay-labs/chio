@@ -1,0 +1,43 @@
+{
+  "schema": "chio.pheromone.relay-alert-route-review-packet.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000090000,
+  "sourceHandoffReportSha256": "7c1d1ed0df1b7557e17c0c849313e14801382cf8d183f22e95d1139392b9f0e9",
+  "sourceDeliveryReportSha256": "fec5b548ebb90e7c0ba1b6cff8ec3e8db5c727d684b6dcfa1e39a84f566605f0",
+  "sourceAcknowledgementReportSha256": "62027550d21672acbc8f5a7861bc736cc27d958987814777dbf1bda84973067e",
+  "sourceDriftReportSha256": "b76063cb46ad9129de05931f097a60f1c62d03ffa0828a2532abc2edca7b0727",
+  "readyRouteCount": 2,
+  "ownerReviewCount": 2,
+  "reviews": [
+    {
+      "ownerAlias": "relay-primary-owner",
+      "receiverId": "alertmanager-pagerduty-primary",
+      "notificationRoute": "pagerduty-primary",
+      "alertCodes": [
+        "dead_letters_present"
+      ],
+      "status": "ready",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
+    },
+    {
+      "ownerAlias": "relay-security-owner",
+      "receiverId": "alertmanager-auth-watch",
+      "notificationRoute": "opsgenie-auth-watch",
+      "alertCodes": [
+        "relay_nonce_replay",
+        "endpoint_denied"
+      ],
+      "status": "ready",
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#replay-storm"
+    }
+  ],
+  "checks": [
+    {
+      "code": "route_owner_review",
+      "accepted": true,
+      "detail": "route owners are bound to handoff and delivery evidence"
+    }
+  ]
+}

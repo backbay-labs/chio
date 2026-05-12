@@ -1128,6 +1128,246 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn chiodos_pheromone_relay_alert_assurance_subcommands_parse() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "alert",
+            "normalize",
+            "--profile",
+            "relay-alert-normalization-profile.json",
+            "--input-dir",
+            "downstream-alerts",
+            "--now-unix-ms",
+            "1766000070000",
+            "--out-dir",
+            "normalized-delivery",
+            "--report",
+            "relay-alert-normalization-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Alert {
+                                        command:
+                                            ChiodosPheromoneRelayAlertCommands::Normalize {
+                                                profile,
+                                                input_dir,
+                                                now_unix_ms,
+                                                out_dir,
+                                                report,
+                                            },
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(
+                    profile,
+                    std::path::PathBuf::from("relay-alert-normalization-profile.json")
+                );
+                assert_eq!(input_dir, std::path::PathBuf::from("downstream-alerts"));
+                assert_eq!(now_unix_ms, 1_766_000_070_000);
+                assert_eq!(out_dir, std::path::PathBuf::from("normalized-delivery"));
+                assert_eq!(
+                    report,
+                    std::path::PathBuf::from("relay-alert-normalization-report.json")
+                );
+            }
+            _ => panic!("expected chiodos pheromone relay alert normalize subcommand"),
+        }
+
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "alert",
+            "delivery",
+            "drift-window",
+            "--handoff-reports-dir",
+            "handoff-reports",
+            "--delivery-reports-dir",
+            "delivery-reports",
+            "--delivery-profile",
+            "relay-alert-delivery-profile.json",
+            "--since-unix-ms",
+            "1765999900000",
+            "--until-unix-ms",
+            "1766000090000",
+            "--report",
+            "relay-alert-delivery-drift-report-v2.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Alert {
+                                        command:
+                                            ChiodosPheromoneRelayAlertCommands::Delivery {
+                                                command:
+                                                    ChiodosPheromoneRelayAlertDeliveryCommands::DriftWindow {
+                                                        handoff_reports_dir,
+                                                        delivery_reports_dir,
+                                                        until_unix_ms,
+                                                        report,
+                                                        ..
+                                                    },
+                                            },
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(
+                    handoff_reports_dir,
+                    std::path::PathBuf::from("handoff-reports")
+                );
+                assert_eq!(
+                    delivery_reports_dir,
+                    std::path::PathBuf::from("delivery-reports")
+                );
+                assert_eq!(until_unix_ms, 1_766_000_090_000);
+                assert_eq!(
+                    report,
+                    std::path::PathBuf::from("relay-alert-delivery-drift-report-v2.json")
+                );
+            }
+            _ => panic!("expected chiodos pheromone relay alert delivery drift-window subcommand"),
+        }
+
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "alert",
+            "review",
+            "--handoff-report",
+            "relay-alert-handoff-report.json",
+            "--delivery-report",
+            "relay-alert-delivery-report.json",
+            "--acknowledgement-report",
+            "relay-alert-acknowledgement-report.json",
+            "--drift-report",
+            "relay-alert-delivery-drift-report-v2.json",
+            "--route-owner-profile",
+            "relay-alert-route-owner-profile.json",
+            "--now-unix-ms",
+            "1766000090000",
+            "--report",
+            "relay-alert-route-review-packet.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Alert {
+                                        command:
+                                            ChiodosPheromoneRelayAlertCommands::Review {
+                                                route_owner_profile,
+                                                report,
+                                                ..
+                                            },
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(
+                    route_owner_profile,
+                    std::path::PathBuf::from("relay-alert-route-owner-profile.json")
+                );
+                assert_eq!(
+                    report,
+                    std::path::PathBuf::from("relay-alert-route-review-packet.json")
+                );
+            }
+            _ => panic!("expected chiodos pheromone relay alert review subcommand"),
+        }
+
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "alert",
+            "assurance",
+            "package",
+            "--alert-report",
+            "relay-alert-report.json",
+            "--trend-report",
+            "relay-trend-report.json",
+            "--handoff-report",
+            "relay-alert-handoff-report.json",
+            "--normalization-report",
+            "relay-alert-normalization-report.json",
+            "--delivery-report",
+            "relay-alert-delivery-report.json",
+            "--acknowledgement-report",
+            "relay-alert-acknowledgement-report.json",
+            "--drift-report",
+            "relay-alert-delivery-drift-report-v2.json",
+            "--review-packet",
+            "relay-alert-route-review-packet.json",
+            "--now-unix-ms",
+            "1766000090000",
+            "--report",
+            "relay-alert-assurance-package.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Alert {
+                                        command:
+                                            ChiodosPheromoneRelayAlertCommands::Assurance {
+                                                command:
+                                                    ChiodosPheromoneRelayAlertAssuranceCommands::Package {
+                                                        normalization_report,
+                                                        review_packet,
+                                                        report,
+                                                        ..
+                                                    },
+                                            },
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(
+                    normalization_report,
+                    std::path::PathBuf::from("relay-alert-normalization-report.json")
+                );
+                assert_eq!(
+                    review_packet,
+                    std::path::PathBuf::from("relay-alert-route-review-packet.json")
+                );
+                assert_eq!(
+                    report,
+                    std::path::PathBuf::from("relay-alert-assurance-package.json")
+                );
+            }
+            _ => panic!("expected chiodos pheromone relay alert assurance package subcommand"),
+        }
+    }
+
+    #[test]
     fn mcp_wrap_emit_config_flag_parses() {
         let cli = Cli::try_parse_from([
             "chio",

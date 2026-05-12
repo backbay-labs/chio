@@ -12,6 +12,7 @@ import { decisionKind, formatMinorUnits, receiptSubjectKey } from '../types'
 import { OperatorSummary } from './OperatorSummary'
 import { PortableReputationPanel } from './PortableReputationPanel'
 import { RelayAlertDeliverySummary } from './RelayAlertDeliverySummary'
+import { RelayAlertAssuranceSummary } from './RelayAlertAssuranceSummary'
 import { RelayAlertRoutingSummary } from './RelayAlertRoutingSummary'
 import { RelayObservabilitySummary } from './RelayObservabilitySummary'
 
@@ -336,6 +337,7 @@ export function ReceiptTable({ filters }: ReceiptTableProps) {
           <RelayObservabilitySummary />
           <RelayAlertRoutingSummary />
           <RelayAlertDeliverySummary />
+          <RelayAlertAssuranceSummary />
           <PortableReputationPanel subjectKey={filters.agentSubject || undefined} />
           {receipts.length === 0 ? (
             <div className="state-empty">No receipts found</div>

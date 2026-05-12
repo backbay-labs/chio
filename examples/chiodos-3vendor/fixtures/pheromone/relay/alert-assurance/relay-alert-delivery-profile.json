@@ -1,0 +1,31 @@
+{
+  "schema": "chio.pheromone.relay-alert-delivery-profile.v1",
+  "localKernelId": "did:chio:dataco",
+  "issuedAtUnixMs": 1766000000000,
+  "expiresAtUnixMs": 1766003600000,
+  "maxHandoffReportAgeMs": 300000,
+  "maxEvidenceAgeMs": 300000,
+  "maxAcknowledgementAgeMs": 300000,
+  "receivers": [
+    {
+      "receiverId": "alertmanager-pagerduty-primary",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:pagerduty-primary",
+      "notificationRoute": "pagerduty-primary",
+      "opsgenie": "relay-oncall",
+      "severityFloor": "critical",
+      "maxDelayMs": 300000,
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
+    },
+    {
+      "receiverId": "alertmanager-auth-watch",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:relay-auth-watch",
+      "notificationRoute": "opsgenie-auth-watch",
+      "opsgenie": "relay-security",
+      "severityFloor": "critical",
+      "maxDelayMs": 600000,
+      "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#replay-storm"
+    }
+  ]
+}

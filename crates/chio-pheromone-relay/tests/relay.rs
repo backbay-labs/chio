@@ -16,19 +16,24 @@ use chio_pheromone::{
 };
 use chio_pheromone_relay::{
     deliver_due_batches, evaluate_relay_alert_acknowledgement, evaluate_relay_alert_delivery,
-    evaluate_relay_alert_handoff, evaluate_relay_alerts, generate_relay_alert_handoff_drift_report,
-    generate_relay_trend_report, promote_peer_directory_candidate,
+    evaluate_relay_alert_handoff, evaluate_relay_alerts, generate_relay_alert_assurance_package,
+    generate_relay_alert_delivery_drift_report_v2, generate_relay_alert_handoff_drift_report,
+    generate_relay_alert_route_review_packet, generate_relay_trend_report,
+    normalize_relay_alert_delivery_evidence, promote_peer_directory_candidate,
     relay_alert_delivery_evidence_from_json, relay_alert_delivery_profile_from_json,
     relay_alert_handoff_profile_from_json, relay_alert_routing_profile_from_json,
     relay_alert_suppression_state_from_json, sign_peer_directory_bundle, sign_relay_http_request,
     CatchupRequest, CatchupResponse, PeerDirectory, PeerDirectoryBundleSigningInput,
     PeerDirectoryBundleTrust, PeerDirectoryDocument, PeerDirectoryEntry,
     PeerDirectoryStateDocument, PheromoneRelayClient, PheromoneRelayConfig, PheromoneRelayError,
-    PheromoneRelayService, RelayAlertAcknowledgementInput, RelayAlertDeliveryEvidence,
-    RelayAlertDeliveryInput, RelayAlertDeliveryProfileDocument, RelayAlertDeliveryReceiver,
-    RelayAlertDeliveryStatus, RelayAlertEvaluationInput, RelayAlertHandoffDriftInput,
-    RelayAlertHandoffEscalation, RelayAlertHandoffInput, RelayAlertHandoffProfileDocument,
-    RelayAlertHandoffReceiver, RelayAlertHandoffSinkKind, RelayAlertRoute, RelayAlertRouteKind,
+    PheromoneRelayService, RelayAlertAcknowledgementInput, RelayAlertAssuranceInput,
+    RelayAlertDeliveryDriftInputV2, RelayAlertDeliveryEvidence, RelayAlertDeliveryInput,
+    RelayAlertDeliveryProfileDocument, RelayAlertDeliveryReceiver, RelayAlertDeliveryStatus,
+    RelayAlertEvaluationInput, RelayAlertHandoffDriftInput, RelayAlertHandoffEscalation,
+    RelayAlertHandoffInput, RelayAlertHandoffProfileDocument, RelayAlertHandoffReceiver,
+    RelayAlertHandoffSinkKind, RelayAlertNormalizationInput,
+    RelayAlertNormalizationProfileDocument, RelayAlertRoute, RelayAlertRouteKind,
+    RelayAlertRouteOwner, RelayAlertRouteOwnerProfileDocument, RelayAlertRouteReviewInput,
     RelayAlertRoutingProfileDocument, RelayAlertRule, RelayAlertSeverity,
     RelayAlertSuppressionEntry, RelayAlertSuppressionStateDocument, RelayBatchReceiver,
     RelayEventReport, RelayHttpSigningInput, RelayHttpVerificationContext, RelayLadderRef,
@@ -37,11 +42,16 @@ use chio_pheromone_relay::{
     SqlitePheromoneRelayStore, TrustedPeerDirectoryIssuer, PHEROMONE_BATCH_RELAY_PATH,
     PHEROMONE_CATCHUP_RELAY_PATH, PHEROMONE_CATCHUP_REQUEST_SCHEMA,
     PHEROMONE_PEER_DIRECTORY_SCHEMA, PHEROMONE_RELAY_ALERT_ACKNOWLEDGEMENT_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_PACKAGE_SCHEMA,
+    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_EVIDENCE_SCHEMA, PHEROMONE_RELAY_ALERT_DELIVERY_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_HANDOFF_DRIFT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_HANDOFF_PROFILE_SCHEMA, PHEROMONE_RELAY_ALERT_HANDOFF_REPORT_SCHEMA,
-    PHEROMONE_RELAY_ALERT_REPORT_SCHEMA, PHEROMONE_RELAY_ALERT_ROUTING_PROFILE_SCHEMA,
+    PHEROMONE_RELAY_ALERT_NORMALIZATION_PROFILE_SCHEMA,
+    PHEROMONE_RELAY_ALERT_NORMALIZATION_REPORT_SCHEMA, PHEROMONE_RELAY_ALERT_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ROUTE_OWNER_PROFILE_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ROUTE_REVIEW_PACKET_SCHEMA, PHEROMONE_RELAY_ALERT_ROUTING_PROFILE_SCHEMA,
     PHEROMONE_RELAY_METRICS_SNAPSHOT_SCHEMA, PHEROMONE_RELAY_OBSERVABILITY_PATH,
     PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA, PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA,
     PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
@@ -898,7 +908,47 @@ fn delivery_profile() -> RelayAlertDeliveryProfileDocument {
     }
 }
 
-fn generated_handoff_report() -> chio_pheromone_relay::RelayAlertHandoffReport {
+fn normalization_profile() -> RelayAlertNormalizationProfileDocument {
+    RelayAlertNormalizationProfileDocument {
+        schema: PHEROMONE_RELAY_ALERT_NORMALIZATION_PROFILE_SCHEMA.to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 600_000,
+        max_source_age_ms: 300_000,
+        receivers: delivery_profile().receivers,
+    }
+}
+
+fn route_owner_profile() -> RelayAlertRouteOwnerProfileDocument {
+    RelayAlertRouteOwnerProfileDocument {
+        schema: PHEROMONE_RELAY_ALERT_ROUTE_OWNER_PROFILE_SCHEMA.to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 600_000,
+        max_report_age_ms: 900_000,
+        owners: vec![
+            RelayAlertRouteOwner {
+                owner_alias: "relay-primary-owner".to_string(),
+                receiver_ids: vec!["alertmanager-pagerduty-primary".to_string()],
+                notification_routes: vec!["pagerduty-primary".to_string()],
+                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
+                    .to_string(),
+            },
+            RelayAlertRouteOwner {
+                owner_alias: "relay-digest-owner".to_string(),
+                receiver_ids: vec!["alertmanager-slack-digest".to_string()],
+                notification_routes: vec!["slack-ops-digest".to_string()],
+                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox".to_string(),
+            },
+        ],
+    }
+}
+
+fn generated_alert_trend_handoff() -> (
+    chio_pheromone_relay::RelayAlertReport,
+    chio_pheromone_relay::RelayTrendReport,
+    chio_pheromone_relay::RelayAlertHandoffReport,
+) {
     let profile = relay_alert_routing_profile_from_json(
         &serde_json::to_string(&alert_profile()).unwrap(),
         NOW,
@@ -928,14 +978,19 @@ fn generated_handoff_report() -> chio_pheromone_relay::RelayAlertHandoffReport {
         NOW,
     )
     .unwrap();
-    evaluate_relay_alert_handoff(RelayAlertHandoffInput {
+    let handoff_report = evaluate_relay_alert_handoff(RelayAlertHandoffInput {
         alert_report: &alert_report,
         trend_report: &trend_report,
         routing_profile: &profile,
         handoff_profile: &handoff,
         now_unix_ms: NOW + 60_000,
     })
-    .unwrap()
+    .unwrap();
+    (alert_report, trend_report, handoff_report)
+}
+
+fn generated_handoff_report() -> chio_pheromone_relay::RelayAlertHandoffReport {
+    generated_alert_trend_handoff().2
 }
 
 fn delivery_evidence(
@@ -1871,6 +1926,256 @@ fn relay_alert_delivery_negative_corpus_cases_are_executable() {
     ] {
         assert!(seen.contains(required), "missing negative case {required}");
     }
+}
+
+#[test]
+fn relay_alert_assurance_normalizes_downstream_evidence() {
+    let handoff_report = generated_handoff_report();
+    let handoff_hash = canonical_hash(&handoff_report);
+    let profile = normalization_profile();
+    let sources = vec![
+        json!({
+            "schema": "downstream.alertmanager.drop.v1",
+            "receiverId": "alertmanager-pagerduty-primary",
+            "alertCode": "dead_letters_present",
+            "dedupeKey": "chiodos-relay:did:chio:buyer-kernel:dead_letters_present:delivery",
+            "status": "delivered",
+            "severity": "critical",
+            "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
+            "observedAtUnixMs": NOW + 61_000,
+            "sourceHandoffReportSha256": handoff_hash,
+            "labels": {
+                "notification_route": "pagerduty-primary",
+                "opsgenie": "relay-oncall",
+                "service": "chiodos-pheromone-relay",
+                "severity": "critical",
+                "status": "delivered",
+                "receiver": "alertmanager-pagerduty-primary"
+            }
+        }),
+        json!({
+            "schema": "downstream.alertmanager.drop.v1",
+            "receiverId": "alertmanager-pagerduty-primary",
+            "alertCode": "endpoint_denied",
+            "dedupeKey": "chiodos-relay:did:chio:buyer-kernel:endpoint_denied:delivery",
+            "status": "accepted",
+            "severity": "critical",
+            "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
+            "observedAtUnixMs": NOW + 61_000,
+            "sourceHandoffReportSha256": handoff_hash,
+            "labels": {
+                "notification_route": "pagerduty-primary",
+                "opsgenie": "relay-oncall",
+                "service": "chiodos-pheromone-relay",
+                "severity": "critical",
+                "status": "accepted",
+                "receiver": "alertmanager-pagerduty-primary"
+            }
+        }),
+        json!({
+            "schema": "downstream.siem.drop.v1",
+            "receiver_id": "alertmanager-slack-digest",
+            "alert_code": "retries_pending",
+            "dedupe_key": "chiodos-relay:did:chio:buyer-kernel:retries_pending:delivery",
+            "outcome": "delivered",
+            "severity": "info",
+            "runbook_ref": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox",
+            "observed_at_unix_ms": NOW + 61_000,
+            "source_handoff_report_sha256": handoff_hash,
+            "labels": {
+                "notification_route": "slack-ops-digest",
+                "opsgenie": "relay-oncall",
+                "service": "chiodos-pheromone-relay",
+                "severity": "info",
+                "status": "delivered",
+                "receiver": "alertmanager-slack-digest"
+            }
+        }),
+    ];
+
+    let report = normalize_relay_alert_delivery_evidence(RelayAlertNormalizationInput {
+        profile: &profile,
+        sources: &sources,
+        now_unix_ms: NOW + 70_000,
+    })
+    .unwrap();
+
+    assert_eq!(
+        report.schema,
+        PHEROMONE_RELAY_ALERT_NORMALIZATION_REPORT_SCHEMA
+    );
+    assert!(report.accepted);
+    assert_eq!(report.normalized_count, 3);
+    assert_eq!(report.evidence.len(), 3);
+    assert!(report
+        .evidence
+        .iter()
+        .all(|item| item.schema == PHEROMONE_RELAY_ALERT_DELIVERY_EVIDENCE_SCHEMA));
+
+    let delivery = evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+        handoff_report: &handoff_report,
+        delivery_profile: &delivery_profile(),
+        evidence: &report.evidence,
+        now_unix_ms: NOW + 70_000,
+    })
+    .unwrap();
+    assert!(delivery.accepted);
+}
+
+#[test]
+fn relay_alert_assurance_rejects_bad_normalization_inputs() {
+    let mut duplicate_profile = normalization_profile();
+    duplicate_profile
+        .receivers
+        .push(duplicate_profile.receivers[0].clone());
+    let err = normalize_relay_alert_delivery_evidence(RelayAlertNormalizationInput {
+        profile: &duplicate_profile,
+        sources: &[],
+        now_unix_ms: NOW + 70_000,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_delivery_invalid");
+
+    let profile = normalization_profile();
+    let err = normalize_relay_alert_delivery_evidence(RelayAlertNormalizationInput {
+        profile: &profile,
+        sources: &[json!({
+            "schema": "downstream.alertmanager.drop.v1",
+            "receiverId": "alertmanager-pagerduty-primary",
+            "alertCode": "dead_letters_present",
+            "status": "delivered",
+            "severity": "critical",
+            "observedAtUnixMs": NOW + 61_000,
+            "sourceHandoffReportSha256": "a".repeat(64),
+            "url": "https://alerts.example.test/api"
+        })],
+        now_unix_ms: NOW + 70_000,
+    })
+    .unwrap_err();
+    assert_eq!(err.code(), "alert_delivery_invalid");
+}
+
+#[test]
+fn relay_alert_assurance_source_bound_drift_rejects_cross_handoff_masking() {
+    let old_handoff = generated_handoff_report();
+    let old_handoff_hash = canonical_hash(&old_handoff);
+    let mut newer_handoff = old_handoff.clone();
+    newer_handoff.generated_at_unix_ms = NOW + 80_000;
+    let newer_handoff_hash = canonical_hash(&newer_handoff);
+    let profile = relay_alert_delivery_profile_from_json(
+        &serde_json::to_string(&delivery_profile()).unwrap(),
+        NOW + 120_000,
+    )
+    .unwrap();
+    let newer_evidence = delivery_evidence_set(&newer_handoff_hash, &profile);
+    let newer_delivery = evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+        handoff_report: &newer_handoff,
+        delivery_profile: &profile,
+        evidence: &newer_evidence,
+        now_unix_ms: NOW + 90_000,
+    })
+    .unwrap();
+
+    let drift = generate_relay_alert_delivery_drift_report_v2(RelayAlertDeliveryDriftInputV2 {
+        handoff_reports: &[old_handoff, newer_handoff],
+        delivery_reports: &[newer_delivery],
+        delivery_profile: &profile,
+        since_unix_ms: NOW,
+        until_unix_ms: NOW + 120_000,
+    })
+    .unwrap();
+
+    assert_eq!(
+        drift.schema,
+        PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA
+    );
+    assert!(!drift.accepted);
+    assert!(drift
+        .drifts
+        .iter()
+        .any(|entry| entry.code == "missing_delivery_result"
+            && entry.source_handoff_report_sha256 == old_handoff_hash));
+}
+
+#[test]
+fn relay_alert_assurance_package_binds_full_operator_chain() {
+    let (alert_report, trend_report, handoff_report) = generated_alert_trend_handoff();
+    let handoff_hash = canonical_hash(&handoff_report);
+    let delivery_profile = relay_alert_delivery_profile_from_json(
+        &serde_json::to_string(&delivery_profile()).unwrap(),
+        NOW + 90_000,
+    )
+    .unwrap();
+    let normalization = normalize_relay_alert_delivery_evidence(RelayAlertNormalizationInput {
+        profile: &normalization_profile(),
+        sources: &delivery_evidence_set(&handoff_hash, &delivery_profile)
+            .into_iter()
+            .map(|evidence| serde_json::to_value(evidence).unwrap())
+            .collect::<Vec<_>>(),
+        now_unix_ms: NOW + 70_000,
+    })
+    .unwrap();
+    let delivery_report = evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
+        handoff_report: &handoff_report,
+        delivery_profile: &delivery_profile,
+        evidence: &normalization.evidence,
+        now_unix_ms: NOW + 70_000,
+    })
+    .unwrap();
+    let acknowledgement = evaluate_relay_alert_acknowledgement(RelayAlertAcknowledgementInput {
+        handoff_report: &handoff_report,
+        delivery_report: &delivery_report,
+        delivery_profile: &delivery_profile,
+        now_unix_ms: NOW + 80_000,
+    })
+    .unwrap();
+    let drift = generate_relay_alert_delivery_drift_report_v2(RelayAlertDeliveryDriftInputV2 {
+        handoff_reports: std::slice::from_ref(&handoff_report),
+        delivery_reports: std::slice::from_ref(&delivery_report),
+        delivery_profile: &delivery_profile,
+        since_unix_ms: NOW,
+        until_unix_ms: NOW + 90_000,
+    })
+    .unwrap();
+    let review = generate_relay_alert_route_review_packet(RelayAlertRouteReviewInput {
+        handoff_report: &handoff_report,
+        delivery_report: &delivery_report,
+        acknowledgement_report: &acknowledgement,
+        drift_report: &drift,
+        route_owner_profile: &route_owner_profile(),
+        now_unix_ms: NOW + 90_000,
+    })
+    .unwrap();
+    assert_eq!(
+        review.schema,
+        PHEROMONE_RELAY_ALERT_ROUTE_REVIEW_PACKET_SCHEMA
+    );
+    assert!(review.accepted);
+
+    let assurance = generate_relay_alert_assurance_package(RelayAlertAssuranceInput {
+        alert_report: &alert_report,
+        trend_report: &trend_report,
+        handoff_report: &handoff_report,
+        normalization_report: &normalization,
+        delivery_report: &delivery_report,
+        acknowledgement_report: &acknowledgement,
+        drift_report: &drift,
+        review_packet: &review,
+        now_unix_ms: NOW + 90_000,
+    })
+    .unwrap();
+
+    assert_eq!(
+        assurance.schema,
+        PHEROMONE_RELAY_ALERT_ASSURANCE_PACKAGE_SCHEMA
+    );
+    assert!(!assurance.accepted);
+    assert_eq!(assurance.code, "assurance_attention_required");
+    assert_eq!(assurance.source_handoff_report_sha256, handoff_hash);
+    assert!(assurance
+        .operator_action_codes
+        .iter()
+        .any(|code| code == "active_alerts_present"));
 }
 
 #[test]

@@ -1,0 +1,63 @@
+{
+  "schema": "chio.pheromone.relay-alert-handoff-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000060000,
+  "sourceAlertReportSha256": "d3c114682c63eb3f556419c8fac785f239c661909fb9cac799fe96edd24ce862",
+  "sourceTrendReportSha256": "38904fa48c9f5bfe45a3819e7b5d82022cdf7b3c2524c59fcca3c93b2891461d",
+  "firingAlertCount": 3,
+  "suppressedAlertCount": 1,
+  "criticalFiringCount": 3,
+  "routes": [
+    {
+      "receiverId": "alertmanager-pagerduty-primary",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:pagerduty-primary",
+      "notificationRoute": "pagerduty-primary",
+      "opsgenie": "relay-oncall",
+      "highestSeverity": "critical",
+      "alertCodes": [
+        "dead_letters_present"
+      ],
+      "escalationRef": "relay-critical-page",
+      "ready": true
+    },
+    {
+      "receiverId": "alertmanager-auth-watch",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:relay-auth-watch",
+      "notificationRoute": "opsgenie-auth-watch",
+      "opsgenie": "relay-security",
+      "highestSeverity": "critical",
+      "alertCodes": [
+        "relay_nonce_replay",
+        "endpoint_denied"
+      ],
+      "escalationRef": "relay-auth-watch",
+      "ready": true
+    }
+  ],
+  "checks": [
+    {
+      "code": "alert_report",
+      "accepted": true,
+      "detail": "alert report is fresh and schema-bound"
+    },
+    {
+      "code": "trend_report",
+      "accepted": true,
+      "detail": "trend report is fresh and schema-bound"
+    },
+    {
+      "code": "route_coverage",
+      "accepted": true,
+      "detail": "every routing profile route has a downstream handoff receiver"
+    },
+    {
+      "code": "handoff_dry_run",
+      "accepted": true,
+      "detail": "all firing alerts are routeable without sending notifications"
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-route-review-packet.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Route Review Packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "sourceHandoffReportSha256",
+    "sourceDeliveryReportSha256",
+    "sourceAcknowledgementReportSha256",
+    "sourceDriftReportSha256",
+    "readyRouteCount",
+    "ownerReviewCount",
+    "reviews",
+    "checks"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-route-review-packet.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "sourceHandoffReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceDeliveryReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceAcknowledgementReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceDriftReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "readyRouteCount": { "type": "integer", "minimum": 0 },
+    "ownerReviewCount": { "type": "integer", "minimum": 0 },
+    "reviews": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/review" }
+    },
+    "checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/check" }
+    }
+  },
+  "$defs": {
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerAlias",
+        "receiverId",
+        "notificationRoute",
+        "alertCodes",
+        "status",
+        "runbook"
+      ],
+      "properties": {
+        "ownerAlias": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+        "receiverId": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+        "notificationRoute": { "type": "string", "pattern": "^[a-z0-9_.:/-]{1,128}$" },
+        "alertCodes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" }
+        },
+        "status": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+        "runbook": { "type": "string", "minLength": 1 }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "accepted", "detail"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "accepted": { "type": "boolean" },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
