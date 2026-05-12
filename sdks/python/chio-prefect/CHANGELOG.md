@@ -12,9 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `chio_adapter_base.redact.redact_args` with the chio-default policy
   (`{"chio_file_write": ("content",), "chio_file_edit": ("patch",)}`).
   Pass a custom `RedactionPolicy` via the new `redaction_policy`
-  keyword argument on `@chio_task` and `@chio_flow` to extend with
-  adapter-specific tool names. The wrapped task body still receives
-  the original, unredacted arguments; only the receipt-bound
+  keyword argument on `@chio_task` and `@chio_flow` to define which
+  fields get redacted (replaces the chio default; if you want both,
+  include the default fields explicitly). The wrapped task body still
+  receives the original, unredacted arguments; only the receipt-bound
   `parameters` payload is redacted.
 
 ## [0.1.0]
