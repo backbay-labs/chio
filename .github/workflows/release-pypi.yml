@@ -278,12 +278,13 @@ jobs:
             pip install --quiet "${GITHUB_WORKSPACE}/sdks/python/chio-sdk-python"
           fi
           # chio-adapter-base is a runtime dep of every adapter migrated
-          # to the shared primitives package. On the very first publish
-          # run it is not yet on the index, so the smoke test must
-          # resolve it from the workspace path the same way it does for
-          # chio-sdk-python.
+          # to the shared primitives package. Try PyPI first so a slug-only
+          # release surfaces a real "missing on the index" failure for end
+          # users; fall back to the workspace path only when PyPI does not
+          # yet have it (the very first co-publish).
           if [[ "$PKG_NAME" != "chio-sdk-python" && "$PKG_NAME" != "chio-adapter-base" ]]; then
-            pip install --quiet "${GITHUB_WORKSPACE}/sdks/python/chio-adapter-base"
+            pip install --quiet chio-adapter-base 2>/dev/null \
+              || pip install --quiet "${GITHUB_WORKSPACE}/sdks/python/chio-adapter-base"
           fi
           pip install --quiet "$wheel"
           # Derive import name: hyphens -> underscores, "chio-sdk-python" ->
