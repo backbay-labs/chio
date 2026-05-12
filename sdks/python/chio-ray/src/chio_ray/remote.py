@@ -15,7 +15,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar, cast
 
-from chio_adapter_base.redact import RedactionPolicy, redact_args
+from chio_adapter_base.redact import RedactionPolicy, bind_and_redact
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
@@ -271,17 +271,6 @@ def chio_remote(
     return decorator
 
 
-# Tool-arity table for forwarding wrappers that have no fixed-signature
-# parameter names to bind positional args against. When the tool name
-# matches, positional values are mapped onto these declared positional
-# names so they can be redacted before scrubbing. Tools not in this
-# table cannot have positional payloads redacted by name.
-_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES: dict[str, tuple[str, ...]] = {
-    "chio_file_write": ("path", "content"),
-    "chio_file_edit": ("path", "patch"),
-}
-
-
 def _build_redacted_call(
     fn: Callable[..., Any] | None,
     args: tuple[Any, ...],
@@ -293,159 +282,25 @@ def _build_redacted_call(
 ) -> tuple[list[Any], dict[str, Any]]:
     """Bind args to declared names, redact protected fields, preserve wire shape.
 
-    Returns ``(redacted_positional_list, redacted_keyword_dict)`` for
-    embedding under ``parameters = {"args": ..., "kwargs": ...}``. The
-    returned positional list mirrors what the caller supplied
-    positionally (with chio-default body fields stubbed); the keyword
-    dict mirrors what they supplied as kwargs (with body fields stubbed
-    and any VAR_KEYWORD spillover scrubbed). Values are NOT migrated
-    between the positional and keyword buckets.
-
-    ``inspect.Signature.bind_partial`` does NOT raise for callables
-    accepting ``**kwargs`` or ``*args``; it absorbs extras into the
-    variadic parameter (``def f(**kw)`` called with ``content="SECRET"``
-    binds to ``{"kw": {"content": "SECRET"}}``). That nests the
-    protected field one level deeper than ``redact_args`` looks. We
-    therefore branch on signature shape:
-
-    * Pure forwarding wrappers (only ``*args``/``**kwargs``, no fixed
-      named params): consult ``_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES`` to
-      map positional values onto declared field names so they can be
-      redacted, then split the redacted dict back into the caller's
-      positional / keyword buckets. Tools absent from the table fall
-      back to kwargs-only redaction (positional values pass through
-      raw).
-    * Fixed-signature callables: redact named values, but keep
-      positional values positional and keyword values keyword.
-      ``VAR_POSITIONAL`` extras (positional values past the fixed
-      positional slots) remain in ``args`` because there is no
-      parameter name to bind them to.
-
-    Falls back to kwargs-only redaction when ``fn`` is ``None`` or when
-    introspection raises. ``drop_self=True`` strips the implicit ``self``
-    parameter for bound-method signatures.
+    Thin wrapper around :func:`chio_adapter_base.redact.bind_and_redact`
+    (added in chio-adapter-base 0.1.1). Positional values stay
+    positional, keyword values stay keyword; the helper handles fixed
+    signatures, pure forwarding wrappers (via the chio-default
+    positional-name table), ``VAR_POSITIONAL`` extras, ``VAR_KEYWORD``
+    spillover, non-introspectable callables, and the merge-conflict
+    edge case. ``drop_self=True`` strips the leading positional value
+    from both the signature and ``args`` for receivers that the caller
+    has not pre-stripped (the actor path uses the
+    :func:`functools.partial` shim in :mod:`chio_ray.actor` instead).
     """
-    if fn is None:
-        return list(args), redact_args(tool_name, dict(kwargs), policy=policy)
-    try:
-        sig = inspect.signature(fn)
-    except (TypeError, ValueError):
-        return list(args), redact_args(tool_name, dict(kwargs), policy=policy)
-
-    if drop_self:
-        params_list = list(sig.parameters.values())
-        # Drop the implicit receiver regardless of its declared name.
-        # Methods bound via @ChioActor.requires may name the receiver
-        # something other than ``self`` (e.g. ``cls``, ``this``); the
-        # caller's ``args`` already excludes the receiver, so the
-        # signature must shed that first positional parameter to stay
-        # in sync.
-        if params_list and params_list[0].kind in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        ):
-            sig = sig.replace(parameters=params_list[1:])
-
-    params = sig.parameters
-    has_var_keyword = any(
-        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+    return bind_and_redact(
+        fn,
+        args,
+        kwargs,
+        tool_name=tool_name,
+        policy=policy,
+        drop_self=drop_self,
     )
-    has_var_positional = any(
-        p.kind == inspect.Parameter.VAR_POSITIONAL for p in params.values()
-    )
-    fixed_positional_names = [
-        p.name
-        for p in params.values()
-        if p.kind
-        in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        )
-    ]
-    has_fixed_named = any(
-        p.kind
-        in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            inspect.Parameter.KEYWORD_ONLY,
-        )
-        for p in params.values()
-    )
-
-    # Pure forwarding wrapper: ``def fn(*args, **kwargs)`` style. No
-    # fixed parameter names to bind positional values against; consult
-    # the tool-arity table so chio-default tools still get their
-    # positional bodies redacted.
-    if not has_fixed_named:
-        positional_names = _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name)
-        if positional_names is None or not args:
-            return list(args), redact_args(
-                tool_name, dict(kwargs), policy=policy
-            )
-        # Redact the positional-mapped fields and the keyword fields
-        # SEPARATELY. A pathological caller may supply both a positional
-        # AND a keyword for the same field (``write('/tmp/x',
-        # path='/etc/passwd')``); merging would let the kwarg overwrite
-        # the positional value before redaction, so the kwarg-side leak
-        # would slip through. Keeping the buckets independent ensures
-        # neither value is forwarded raw, and the wrapped function
-        # itself raises ``TypeError`` for the duplicate parameter (the
-        # correct Python behaviour we should not try to repair here).
-        named_positional = {
-            n: a for n, a in zip(positional_names, args, strict=False)
-        }
-        redacted_named = redact_args(
-            tool_name, named_positional, policy=policy
-        )
-        redacted_kwargs = redact_args(tool_name, dict(kwargs), policy=policy)
-        bound_count = min(len(args), len(positional_names))
-        new_args: list[Any] = [
-            redacted_named[positional_names[i]] for i in range(bound_count)
-        ]
-        if len(args) > bound_count:
-            new_args.extend(args[bound_count:])
-        return new_args, redacted_kwargs
-
-    try:
-        bound = sig.bind_partial(*args, **kwargs).arguments
-    except TypeError:
-        # Duplicate keyword / unexpected arg. Do NOT forward raw
-        # positional args; they may carry the secret we are scrubbing.
-        return [], redact_args(tool_name, dict(kwargs), policy=policy)
-
-    var_keys = {
-        name
-        for name, p in params.items()
-        if p.kind
-        in (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
-    }
-    flat = {k: v for k, v in bound.items() if k not in var_keys}
-    redacted_flat = redact_args(tool_name, flat, policy=policy)
-    if has_var_keyword:
-        for vk in var_keys:
-            v = bound.get(vk)
-            if isinstance(v, dict):
-                for kk, vv in redact_args(
-                    tool_name, dict(v), policy=policy
-                ).items():
-                    redacted_flat[kk] = vv
-
-    bound_positional_count = min(len(args), len(fixed_positional_names))
-    new_args = []
-    for i in range(bound_positional_count):
-        n = fixed_positional_names[i]
-        if n in redacted_flat:
-            new_args.append(redacted_flat[n])
-        else:
-            new_args.append(args[i])
-    if has_var_positional and len(args) > bound_positional_count:
-        new_args.extend(args[bound_positional_count:])
-    new_kwargs = {
-        k: v
-        for k, v in redacted_flat.items()
-        if k not in fixed_positional_names[:bound_positional_count]
-    }
-    return new_args, new_kwargs
 
 
 def _task_parameters(
@@ -458,12 +313,9 @@ def _task_parameters(
 ) -> dict[str, Any]:
     """Canonicalise call args for the sidecar.
 
-    Positional values are bound to declared parameter names via
-    :func:`inspect.signature` so :func:`redact_args` (which keys on
-    field name) can scrub protected bodies. The original wire shape is
-    preserved: positional values stay in ``parameters["args"]``,
-    keyword values stay in ``parameters["kwargs"]``. See
-    :func:`_build_redacted_call` for the full signature-shape handling.
+    Delegates to :func:`_build_redacted_call`; positional values stay
+    in ``parameters["args"]``, keyword values stay in
+    ``parameters["kwargs"]``.
     """
     new_args, new_kwargs = _build_redacted_call(
         fn, args, kwargs, tool_name, policy

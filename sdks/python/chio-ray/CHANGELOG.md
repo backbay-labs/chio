@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1]
 
+- refactor: `_build_redacted_call` (used by `@chio_remote`) and
+  `_redact_method_call` (used by `ChioActor`) now delegate to
+  `chio_adapter_base.redact.bind_and_redact` (added in
+  chio-adapter-base 0.1.1, PR #675). The local positional-name table
+  and signature-walking code are removed in favour of the centralised
+  helper. Wire shape and behaviour are unchanged. The actor path uses
+  a `functools.partial` shim to align the receiver-less `args` shape
+  with `bind_and_redact`'s signature binding (``drop_self`` expects
+  the receiver to live at ``args[0]``, which the wrapper has already
+  stripped). Dependency bumped to `chio-adapter-base>=0.1.1,<0.2`.
 - feat: redact kwargs via `chio_adapter_base.redact.redact_args`
   before forwarding to the sidecar. Override via the new
   `redaction_policy` keyword on `chio_remote(...)` and

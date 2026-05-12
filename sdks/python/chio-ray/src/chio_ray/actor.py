@@ -16,13 +16,12 @@ import inspect
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any, TypeVar, cast
 
-from chio_adapter_base.redact import RedactionPolicy
+from chio_adapter_base.redact import RedactionPolicy, bind_and_redact
 from chio_sdk.models import CapabilityToken, ChioScope, Operation, ToolGrant
 
 from chio_ray.errors import ChioRayConfigError, ChioRayError
 from chio_ray.grants import ChioClientLike, StandingGrant, scope_from_spec
 from chio_ray.remote import (
-    _build_redacted_call,
     _evaluate_allow_or_raise,
     _permission_error,
 )
@@ -275,6 +274,17 @@ async def _enforce_actor_method(
     actor._chio_receipts.append(receipt)
 
 
+# Sentinel placeholder for the implicit receiver. The wrapper passes
+# ``args`` that already exclude ``self``; binding the original method
+# directly would raise (one missing positional). We hand
+# :func:`bind_and_redact` a :func:`functools.partial` whose first
+# positional is pre-bound to this sentinel, which yields a callable
+# whose :func:`inspect.signature` drops the receiver. The sentinel
+# itself never appears in the redacted payload because the partial
+# strips it from the visible signature before binding ``args``.
+_RECEIVER_PLACEHOLDER: Any = object()
+
+
 def _redact_method_call(
     *,
     method: Callable[..., Any],
@@ -285,15 +295,19 @@ def _redact_method_call(
 ) -> tuple[list[Any], dict[str, Any]]:
     """Bind positional args to parameter names and redact protected fields.
 
-    Delegates to :func:`chio_ray.remote._build_redacted_call` (shared
-    with ``chio_remote``) and asks it to drop the implicit ``self``.
-    See that helper's docstring for the full signature-shape handling.
-    The wire shape is preserved: positional values stay in
-    ``parameters["args"]`` (after redaction), keyword values stay in
-    ``parameters["kwargs"]``.
+    The wrapper-supplied ``args`` excludes the implicit receiver.
+    :func:`functools.partial` pre-binds the receiver slot so
+    :func:`chio_adapter_base.redact.bind_and_redact` sees a signature
+    aligned with ``args`` (without needing ``drop_self``, which expects
+    the receiver to live at ``args[0]``).
     """
-    return _build_redacted_call(
-        method, args, kwargs, tool_name, policy, drop_self=True
+    receiver_less = functools.partial(method, _RECEIVER_PLACEHOLDER)
+    return bind_and_redact(
+        receiver_less,
+        args,
+        kwargs,
+        tool_name=tool_name,
+        policy=policy,
     )
 
 
