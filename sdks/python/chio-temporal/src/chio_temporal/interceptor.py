@@ -352,16 +352,61 @@ class _ChioInboundInterceptor(ActivityInboundInterceptor):
             ) from exc
 
 
+#: Signature arities for the chio-default tools. Temporal activities
+#: implemented as plain Python functions (e.g. ``chio_file_write(path,
+#: content)``) deliver positional args to the interceptor as a tuple,
+#: so the dict-only redact path would otherwise leak the body field.
+#: We special-case the known chio-default tool names to bind positional
+#: args to declared parameter names before redaction.
+_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES: dict[str, tuple[str, ...]] = {
+    "chio_file_write": ("path", "content"),
+    "chio_file_edit": ("path", "patch"),
+}
+
+
 def _activity_parameters(
     input: ExecuteActivityInput,
     *,
     tool_name: str | None = None,
     policy: RedactionPolicy | None = None,
 ) -> dict[str, Any]:
-    """Build the sidecar payload; redaction applies to a single dict arg."""
+    """Build the sidecar payload, redacting body fields where possible.
+
+    Three shapes are handled:
+
+    1. Single-dict convention (``activity(my_dict)``): redact in place.
+       Most common for Chio-aware Temporal activities.
+    2. Known chio-default tools with positional args
+       (``chio_file_write(path, content)``, ``chio_file_edit(path,
+       patch)``): bind positional args to their declared parameter
+       names via ``_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES`` and redact.
+       Forwarded under a single bound dict so the receipt records the
+       redacted form even when callers use the natural positional
+       Python signature.
+    3. Anything else: forwarded verbatim. Custom activities that carry
+       secret bodies positionally should either supply a single dict
+       arg or arrange for the body field to be a kwarg.
+    """
     args_list = list(input.args)
-    if policy is not None and len(args_list) == 1 and isinstance(args_list[0], dict):
+    if policy is None:
+        return {"args": args_list}
+
+    # Shape 1: single dict.
+    if len(args_list) == 1 and isinstance(args_list[0], dict):
         args_list[0] = redact_args(tool_name, args_list[0], policy=policy)
+        return {"args": args_list}
+
+    # Shape 2: known chio-default tool with positional args.
+    positional_names = _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name or "")
+    if (
+        positional_names is not None
+        and len(args_list) == len(positional_names)
+        and tool_name in policy.body_fields
+    ):
+        bound = dict(zip(positional_names, args_list, strict=True))
+        return {"args": [redact_args(tool_name, bound, policy=policy)]}
+
+    # Shape 3: pass-through.
     return {"args": args_list}
 
 

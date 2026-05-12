@@ -235,7 +235,16 @@ class TestDefaultPolicyRedacts:
             "content": "not redacted",
         }
 
-    async def test_positional_non_dict_args_pass_through(self) -> None:
+    async def test_chio_file_write_positional_args_are_redacted(self) -> None:
+        """Regression: positional ``chio_file_write(path, content)`` must
+        not leak the body field into the receipt.
+
+        Activities implemented as plain Python functions deliver
+        positional args as a tuple. The interceptor binds the known
+        chio-default tool names against their declared parameter names
+        (``chio_file_write -> (path, content)``) before redaction so
+        the receipt records the redacted form.
+        """
         async with allow_all() as chio:
             token = await _mint_token(
                 chio,
@@ -257,9 +266,88 @@ class TestDefaultPolicyRedacts:
                     _make_input("/tmp/x", "PROD_SECRET=abc123")
                 )
 
+        import json
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        forwarded = evaluate_calls[0].parameters
+        assert "PROD_SECRET" not in json.dumps(forwarded)
+        # Bound shape: positional args lifted into a single dict under
+        # the declared parameter names.
+        assert forwarded["args"] == [
+            {
+                "path": "/tmp/x",
+                "content": {
+                    "omitted": True,
+                    "byte_count": len(b"PROD_SECRET=abc123"),
+                },
+            }
+        ]
+
+    async def test_chio_file_edit_positional_args_are_redacted(self) -> None:
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("chio_file_edit"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+            )
+            interceptor = ChioActivityInterceptor(chio_client=chio)
+            interceptor.register_workflow_grant(grant)
+
+            inbound = _ChioInboundInterceptor(_NextInterceptor(), interceptor)
+            info = _default_info(activity_type="chio_file_edit")
+            diff = "@@ -1,1 +1,1 @@\n-old\n+API_TOKEN=ghp_abc\n"
+            with _patched_activity_info(info):
+                await inbound.execute_activity(_make_input("/etc/cfg", diff))
+
+        import json
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        forwarded = evaluate_calls[0].parameters
+        assert "API_TOKEN" not in json.dumps(forwarded)
+        assert forwarded["args"] == [
+            {
+                "path": "/etc/cfg",
+                "patch": {
+                    "omitted": True,
+                    "byte_count": len(diff.encode("utf-8")),
+                },
+            }
+        ]
+
+    async def test_unknown_tool_positional_args_pass_through(self) -> None:
+        """Pass-through preserved for non-chio-default tools.
+
+        The interceptor only binds positional args for the known
+        chio_file_write / chio_file_edit shapes. Custom tools with
+        secret bodies should pass a single dict arg or use kwargs.
+        """
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("custom_tool"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+            )
+            interceptor = ChioActivityInterceptor(chio_client=chio)
+            interceptor.register_workflow_grant(grant)
+
+            inbound = _ChioInboundInterceptor(_NextInterceptor(), interceptor)
+            info = _default_info(activity_type="custom_tool")
+            with _patched_activity_info(info):
+                await inbound.execute_activity(_make_input("a", "b"))
+
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         forwarded = evaluate_calls[0].parameters["args"]
-        assert forwarded == ["/tmp/x", "PROD_SECRET=abc123"]
+        assert forwarded == ["a", "b"]
 
 
 class TestCustomPolicy:
