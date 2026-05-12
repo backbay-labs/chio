@@ -283,22 +283,35 @@ permitted tool to escalate beyond its intended surface.
   exits with `chio_revocation_backend_unconfigured` rather than
   invoking `chio` blind.
 
-### 2.9 Known issues (upstream Hermes)
+### 2.9 Known issues (upstream Hermes and v0.1.0 caveats)
 
-Four `hermes-agent` 0.13.0 gaps affect entry-point plugins; fixes
-belong in upstream `hermes_cli`.
+Five gaps affect chio-hermes 0.1.0 in real Hermes 0.13.0 sessions.
+The first three are upstream `hermes_cli` issues; the last two are
+chio-hermes / chio-CLI scope.
 
-| Symptom                                          | Root cause                                                                                                                                            | Workaround                                                                                                                  |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `hermes plugins list` does not show `chio`       | `_discover_all_plugins` (`hermes_cli/plugins_cmd.py:710`) walks user/bundled directories only; never calls `_scan_entry_points`.                       | Trust `pip show chio-hermes` and the `[plugins] DEBUG Loading plugin 'chio'` line under `HERMES_PLUGINS_DEBUG=1`.            |
-| `hermes plugins enable chio` fails               | `_plugin_exists` (`hermes_cli/plugins_cmd.py:684`) only matches user/bundled directory names; rejects entry-point plugin names.                        | Edit `~/.hermes/config.yaml` directly to set `plugins.enabled: ["chio"]`.                                                    |
-| `hermes setup` does not prompt for `CHIO_*` env  | `_missing_requires_env_names` (`hermes_cli/plugins_cmd.py:194, 1336`) is only consulted by the install pipeline for git/directory plugins; pip plugins skip it. | Export `CHIO_SIDECAR_URL` and `CHIO_CAPABILITY_ID` manually, or write them to `~/.hermes/.env` (mode `0600`).                |
-| `hermes -z "..."` (LLM-driven dispatch) unproven | No provider API key on the dogfood box; the `-z` path hung. Static surface verified end to end.                                                       | Provide an LLM provider key and retry.                                                                                       |
+| Symptom                                                               | Root cause                                                                                                                                            | Workaround                                                                                                                  |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `hermes plugins list` does not show `chio`                            | `_discover_all_plugins` (`hermes_cli/plugins_cmd.py:710`) walks user/bundled directories only; never calls `_scan_entry_points`.                       | Trust `pip show chio-hermes` and the `[plugins] DEBUG Loading plugin 'chio'` line under `HERMES_PLUGINS_DEBUG=1`.            |
+| `hermes plugins enable chio` fails                                    | `_plugin_exists` (`hermes_cli/plugins_cmd.py:684`) only matches user/bundled directory names; rejects entry-point plugin names.                        | Edit `~/.hermes/config.yaml` directly to set `plugins.enabled: ["chio"]`.                                                    |
+| `hermes setup` does not prompt for `CHIO_*` env                       | `_missing_requires_env_names` (`hermes_cli/plugins_cmd.py:194, 1336`) is only consulted by the install pipeline for git/directory plugins; pip plugins skip it. | Export `CHIO_SIDECAR_URL` and `CHIO_CAPABILITY_ID` manually, or write them to `~/.hermes/.env` (mode `0600`).                |
+| `chio_*` tools do not surface in a session even with plugin enabled   | The `chio` toolset is opt-in. Hermes's tool-router only loads toolsets in `toolsets:` config or `-t` flag.                                            | Pass `hermes -t chio,hermes-cli ...`, or add `chio` to the `toolsets:` list in `~/.hermes/config.yaml`.                      |
+| Plugin always reports `chio_sidecar_unreachable` even with sidecar up | The `chio` CLI does not currently ship a one-line sidecar entry point at `/v1/capabilities/*`. `chio api protect` mints under `/v1/capabilities/mint` but the SDK expects bare `/v1/capabilities` POST. | v0.1.0 ships in degraded-but-safe mode (every client-side guard still fires; only `status: allowed` paths require a sidecar). Tracked for a follow-up sidecar surface PR. |
 
 The first three are fixable upstream by teaching
 `_discover_all_plugins` / `_plugin_exists` /
 `_missing_requires_env_names` to consult the entry-point manifest
-cache that `_scan_entry_points` already populates.
+cache that `_scan_entry_points` already populates. The fourth is a
+docs/UX issue covered in the README quickstart. The fifth needs a
+chio-side surface decision (whether to ship `chio kernel serve` or
+align the SDK to `chio api protect`'s routes).
+
+LLM-driven dispatch (`hermes -z "..."`) was end-to-end verified
+against Anthropic in the comprehensive dogfood pass: every advertised
+guard (env sanitization, output capping at `CHIO_SUBPROCESS_MAX_BYTES`,
+forbidden-path filters, `chio_path_escape`, `--no-verify` injection,
+`_redact_args` body redaction) fired against bait files and bait env
+vars without leaking. See `.planning/chio-hermes/DOGFOOD-COMPREHENSIVE.md`
+for the test matrix.
 
 ## 3. Path A vs Path B: when to pick which
 

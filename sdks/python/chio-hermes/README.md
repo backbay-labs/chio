@@ -85,13 +85,28 @@ hermes chio issue \
 export CHIO_SIDECAR_URL="http://127.0.0.1:9090"
 export CHIO_CAPABILITY_ID="cap-..."   # printed by `hermes chio issue`
 
-hermes chat
+hermes chat -t chio,hermes-cli
 ```
+
+The `chio` toolset is opt-in. Add `chio` to the `toolsets:` list in
+`~/.hermes/config.yaml`, or pass `-t chio,hermes-cli` per-invocation,
+or the 12 `chio_*` tools will not surface in the session even with
+`plugins.enabled: [chio]` set.
 
 Inside the session, `chio_file_read`, `chio_shell_run`, `chio_git_*`
 and the rest of the 12 `chio_*` tools are available. `/chio status`
 shows the configured sidecar, masked capability id, and recent
 receipts.
+
+> **Sidecar caveat (v0.1.0):** the plugin expects a Chio sidecar at
+> `CHIO_SIDECAR_URL` exposing `/v1/capabilities/*`. The current `chio`
+> CLI does not ship a one-line "start a sidecar" command; the plugin
+> handles the unreachable case cleanly (returns `chio_sidecar_unreachable`
+> envelopes), and every client-side guard (path filters, env
+> sanitization, `--no-verify`, output capping) still fires, but
+> `status: allowed` calls require an external sidecar wired up
+> separately. See [docs/integrations/HERMES.md](../../../docs/integrations/HERMES.md)
+> "Known issues" for the current state.
 
 ## What the bundled default policy denies
 
