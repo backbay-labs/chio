@@ -451,6 +451,17 @@ def _legacy_envelope(
        re-routes the kwarg value to the synthetic key (matching the
        v0.2 wire shape; v0.4 will deprecate the synthetic key with a
        one-release migration window).
+
+    Note on shim length: this function is ~88 lines (not the "~20
+    lines" the FINAL-PLAN initially estimated). The functional core is
+    a single ``bind_and_redact`` call plus the envelope rebuild; the
+    bulk of the body is the synthetic-key spillover-detection loop
+    (positional-only collision walk + per-name index lookup) and the
+    wire-shape rebuild that re-routes kwargs into the envelope under
+    either their original key or the synthetic spillover key. Both
+    pieces are prefect-specific behaviour the bare helper does not
+    own; v0.4 will deprecate the synthetic-key emission so this shim
+    can shrink to the envelope-pack only.
     """
     redacted_args, redacted_kwargs = bind_and_redact(
         fn,
@@ -509,6 +520,10 @@ def _legacy_envelope(
     new_kwargs: dict[str, Any] = {}
     for k, v in redacted_kwargs.items():
         if k in spillover_keys:
+            # TODO(chio-prefect 0.4): remove the synthetic-key
+            # re-emission per the deprecation window documented in the
+            # CHANGELOG. Callers will read the redacted spillover from
+            # ``kwargs[<original_name>]`` directly.
             new_kwargs[f"{k}__var_kw_spillover__"] = v
         else:
             new_kwargs[k] = v

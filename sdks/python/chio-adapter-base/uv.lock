@@ -85,6 +85,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "hypothesis" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -95,6 +96,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "chio-sdk-python", directory = "../chio-sdk-python" },
+    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6,<7" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<9" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23,<1" },
@@ -270,6 +272,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956/httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc", size = 141406, upload-time = "2024-12-06T15:37:23.222Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517, upload-time = "2024-12-06T15:37:21.509Z" },
+]
+
+[[package]]
+name = "hypothesis"
+version = "6.152.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sortedcontainers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f0/09/f5219c8fd75ff1f270a6f691df651c206e9316b9d0ce2cbd8b6f82844e1e/hypothesis-6.152.6.tar.gz", hash = "sha256:4a3f21e9a7349a17616626e9010f04360b02e6bf8ff15fdc7c53e76d5517c1e8", size = 467945, upload-time = "2026-05-11T13:12:59.888Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5f/1c/ed568eca3a963dc3e447b01961ae653e0d6f107c2cfd77b3f2b1a5cfc520/hypothesis-6.152.6-py3-none-any.whl", hash = "sha256:b20ffc532e5f2901229348d10ed7cb37fd9723ebf4799df663d2dce1cdce4e32", size = 533724, upload-time = "2026-05-11T13:12:56.182Z" },
 ]
 
 [[package]]
@@ -640,6 +654,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ea/f9/0ae446942c846b8266059ad8a30702a35afae55f5cdc54c5adf8d7afdc27/ruff-0.15.12-py3-none-win32.whl", hash = "sha256:d0185894e038d7043ba8fd6aee7499ece6462dc0ea9f1e260c7451807c714c20", size = 10657277, upload-time = "2026-04-24T18:17:18.591Z" },
     { url = "https://files.pythonhosted.org/packages/33/f1/9614e03e1cdcbf9437570b5400ced8a720b5db22b28d8e0f1bda429f660d/ruff-0.15.12-py3-none-win_amd64.whl", hash = "sha256:c87a162d61ab3adca47c03f7f717c68672edec7d1b5499e652331780fe74950d", size = 11837758, upload-time = "2026-04-24T18:17:00.113Z" },
     { url = "https://files.pythonhosted.org/packages/c0/98/6beb4b351e472e5f4c4613f7c35a5290b8be2497e183825310c4c3a3984b/ruff-0.15.12-py3-none-win_arm64.whl", hash = "sha256:a538f7a82d061cee7be55542aca1d86d1393d55d81d4fcc314370f4340930d4f", size = 11120821, upload-time = "2026-04-24T18:16:57.979Z" },
+]
+
+[[package]]
+name = "sortedcontainers"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/c4/ba2f8066cceb6f23394729afe52f3bf7adec04bf9ed2c820b39e19299111/sortedcontainers-2.4.0.tar.gz", hash = "sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88", size = 30594, upload-time = "2021-05-16T22:03:42.897Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/46/9cb0e58b2deb7f82b84065f37f3bffeb12413f947f9388e4cac22c4621ce/sortedcontainers-2.4.0-py2.py3-none-any.whl", hash = "sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0", size = 29575, upload-time = "2021-05-16T22:03:41.177Z" },
 ]
 
 [[package]]

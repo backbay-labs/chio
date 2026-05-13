@@ -944,21 +944,26 @@ def _table_fallback_redact(
         return kwarg_alias_map.get(name, name)
 
     if kwarg_alias_map:
-        # Redact kwargs under canonical names so wrapper aliases still
-        # match the policy keys, then re-emit results under the wrapper
-        # names so the wire shape stays identical.
-        canonical_view: dict[str, Any] = {}
-        canonical_to_alias: dict[str, str] = {}
+        # Redact each kwarg under its canonical name so wrapper aliases
+        # still match the policy keys, then re-emit results under the
+        # wrapper name so the wire shape stays identical.
+        #
+        # Two kwargs may resolve to the SAME canonical (e.g. wrapper
+        # alias ``body`` -> canonical ``content`` AND a literal
+        # ``content=`` kwarg both arriving in the same call). Building a
+        # single ``canonical_view`` keyed by canonical would silently
+        # drop one of the two values. Mirror the merge-conflict
+        # semantics from the variadic / overflow paths: redact each
+        # bucket independently, keyed by the ORIGINAL wrapper name, so
+        # both buckets round-trip with their own redaction record.
+        # (Closes Cursor Bugbot Medium on PR #679.)
+        redacted_kwargs: dict[str, Any] = {}
         for k, v in kwargs.items():
             canonical = _to_canonical(k)
-            canonical_view[canonical] = v
-            canonical_to_alias[canonical] = k
-        redacted_canonical = _redact_named(
-            canonical_view, tool_name=tool_name, policy=policy
-        )
-        redacted_kwargs: dict[str, Any] = {
-            canonical_to_alias[c]: v for c, v in redacted_canonical.items()
-        }
+            single_redacted = _redact_named(
+                {canonical: v}, tool_name=tool_name, policy=policy
+            )
+            redacted_kwargs[k] = single_redacted[canonical]
     else:
         redacted_kwargs = _redact_named(
             kwargs, tool_name=tool_name, policy=policy

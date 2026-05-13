@@ -831,14 +831,20 @@ def test_typeerror_fallback_arity_mismatch_keeps_alias_map() -> None:
     assert args[2] == "trailing"
 
 
-def test_typeerror_fallback_duplicate_keyword_keeps_alias_map() -> None:
+def test_alias_map_redacts_kwarg_under_canonical_no_fallback() -> None:
     """Cell SS1 / AP3 / KP4 / DT1. Closes deferred ID 3229898779.
 
-    Same renamed-protected wrapper as above but the TypeError comes
-    from a duplicate-keyword conflict (positional and kwarg both target
-    the same slot). The alias map must still apply so the kwarg
-    supplied under the wrapper's renamed name (``body=``) redacts as
-    the canonical ``content``.
+    Also covers deferred IDs 3229550950, 3229550957 (same root: PR
+    #666 P1 alias-rename for default-tool slot + kwarg-fills-table-slot
+    fallback path).
+
+    Same renamed-protected wrapper as above. The original test name
+    referenced a TypeError fallback path, but ``bind_partial`` actually
+    succeeds here (path positional + body kwarg, no duplicate keyword
+    or arity mismatch); the non-fallback path is what runs. Both
+    buckets must still redact independently under the wrapper's alias
+    map so the kwarg supplied under the wrapper's renamed name
+    (``body=``) redacts as the canonical ``content``.
     """
 
     def write_file(path: str, body: str) -> None:
@@ -1015,6 +1021,10 @@ def test_custom_positional_table_replaces_default_locked_v0_3_semantic() -> None
 def test_kwarg_filling_table_slot_does_not_leak_positional_when_renamed_wrapper() -> None:  # noqa: E501
     """Cell SS1 / AP2 / KP4 / DT1. Closes deferred ID 3229883416.
 
+    Also covers deferred IDs 3229550950, 3229550957 (same root: PR
+    #666 P1 alias-rename for default-tool slot + kwarg-fills-table-slot
+    fallback path).
+
     Wrapper renames protected slot, kwarg supplies the wrapper's
     renamed name AND a positional secret arrives. Both buckets must
     redact independently; neither should be silently dropped.
@@ -1033,6 +1043,50 @@ def test_kwarg_filling_table_slot_does_not_leak_positional_when_renamed_wrapper(
     assert args[1] == {"omitted": True, "byte_count": len(b"POS_SECRET")}
     assert kwargs == {
         "body": {"omitted": True, "byte_count": len(b"KW_SECRET")}
+    }
+
+
+def test_typeerror_fallback_two_kwargs_same_canonical_both_redact() -> None:
+    """Cell SS1 / AP1 / KP4 / DT1. Closes Cursor Bugbot Medium on PR #679.
+
+    Two distinct kwarg names resolve to the SAME canonical: a wrapper
+    aliases ``body`` -> canonical ``content`` AND the caller passes both
+    ``body=`` AND a literal ``content=`` in the same call. Both buckets
+    must redact independently and round-trip under their original
+    wrapper-name keys; neither value may be silently dropped.
+
+    Before the C1 fix, the TypeError-fallback alias-map path collapsed
+    both values into a single ``canonical_view[canonical]`` entry, so
+    the second kwarg overwrote the first and only one bucket survived
+    in the rebuilt ``redacted_kwargs``. The fix mirrors the
+    merge-conflict semantics from the variadic / overflow paths:
+    redact each kwarg independently, keyed by its ORIGINAL wrapper
+    name.
+    """
+
+    def write(body: str, path: str) -> None:
+        del body, path
+
+    # ``content=`` is not a parameter of ``write``; bind_partial will
+    # raise TypeError, dropping the helper into the alias-map fallback
+    # path where C1 previously dropped one of the two kwargs.
+    args, kwargs = bind_and_redact(
+        write,
+        (),
+        {"body": "BODY_SECRET", "content": "CONTENT_SECRET"},
+        tool_name="chio_file_write",
+    )
+    # Both kwargs survive with their own redaction record. Neither key
+    # collapses onto the other; neither value is silently lost.
+    assert args == []
+    assert set(kwargs.keys()) == {"body", "content"}
+    assert kwargs["body"] == {
+        "omitted": True,
+        "byte_count": len(b"BODY_SECRET"),
+    }
+    assert kwargs["content"] == {
+        "omitted": True,
+        "byte_count": len(b"CONTENT_SECRET"),
     }
 
 
