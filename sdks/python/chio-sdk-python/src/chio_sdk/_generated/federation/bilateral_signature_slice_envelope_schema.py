@@ -13,20 +13,25 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, constr
+from pydantic import BaseModel, ConfigDict, Field, constr
 
 
-class Detail(BaseModel):
+class Signature(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    guard: constr(min_length=1)
-    reason: constr(min_length=1)
+    keyid: constr(pattern=r"^[0-9a-f]{64}$")
+    sig: constr(min_length=1)
 
 
-class ChioToolcallerrorPolicyDenied(BaseModel):
+class ChioBilateralDsseSignatureSliceEnvelope(BaseModel):
+    """
+    Top-level DSSE envelope for Chio bilateral signature-slice artifacts. The base64 payload is the canonical JSON in-toto Statement described by bilateral-signature-slice.schema.json.
+    """
+
     model_config = ConfigDict(
         extra="forbid",
     )
-    code: Literal["policy_denied"]
-    detail: Detail
+    payloadType: Literal["application/vnd.in-toto+json"]
+    payload: constr(min_length=1)
+    signatures: list[Signature] = Field(..., max_length=2, min_length=2)

@@ -797,6 +797,207 @@ impl<'de> ::serde::Deserialize<'de> for BodyTreeRoot {
             })
     }
 }
+///`CapabilityLeaseRef`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "expires_at_unix_ms",
+///    "issuer",
+///    "lease_id"
+///  ],
+///  "properties": {
+///    "expires_at_unix_ms": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "issuer": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "lease_id": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "scope_digest": {
+///      "$ref": "#/$defs/hashRecord"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CapabilityLeaseRef {
+    pub expires_at_unix_ms: u64,
+    pub issuer: CapabilityLeaseRefIssuer,
+    pub lease_id: CapabilityLeaseRefLeaseId,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub scope_digest: ::std::option::Option<HashRecord>,
+}
+impl ::std::convert::From<&CapabilityLeaseRef> for CapabilityLeaseRef {
+    fn from(value: &CapabilityLeaseRef) -> Self {
+        value.clone()
+    }
+}
+///`CapabilityLeaseRefIssuer`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CapabilityLeaseRefIssuer(::std::string::String);
+impl ::std::ops::Deref for CapabilityLeaseRefIssuer {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CapabilityLeaseRefIssuer> for ::std::string::String {
+    fn from(value: CapabilityLeaseRefIssuer) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&CapabilityLeaseRefIssuer> for CapabilityLeaseRefIssuer {
+    fn from(value: &CapabilityLeaseRefIssuer) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for CapabilityLeaseRefIssuer {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CapabilityLeaseRefIssuer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CapabilityLeaseRefIssuer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CapabilityLeaseRefIssuer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CapabilityLeaseRefIssuer {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`CapabilityLeaseRefLeaseId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct CapabilityLeaseRefLeaseId(::std::string::String);
+impl ::std::ops::Deref for CapabilityLeaseRefLeaseId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<CapabilityLeaseRefLeaseId> for ::std::string::String {
+    fn from(value: CapabilityLeaseRefLeaseId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&CapabilityLeaseRefLeaseId> for CapabilityLeaseRefLeaseId {
+    fn from(value: &CapabilityLeaseRefLeaseId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for CapabilityLeaseRefLeaseId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for CapabilityLeaseRefLeaseId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CapabilityLeaseRefLeaseId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CapabilityLeaseRefLeaseId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for CapabilityLeaseRefLeaseId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`Caveat`
 ///
 /// <details><summary>JSON schema</summary>
@@ -1187,26 +1388,6 @@ for ChioAgentMessageListCapabilities {
 ///  "properties": {
 ///    "capability_token": {
 ///      "type": "object",
-///      "oneOf": [
-///        {
-///          "required": [
-///            "attenuation_proof",
-///            "schema"
-///          ],
-///          "properties": {
-///            "schema": {
-///              "const": "chio.capability.v2"
-///            }
-///          }
-///        },
-///        {
-///          "properties": {
-///            "schema": {
-///              "const": "chio.capability.v1"
-///            }
-///          }
-///        }
-///      ],
 ///      "required": [
 ///        "expires_at",
 ///        "id",
@@ -1341,12 +1522,10 @@ for ChioAgentMessageListCapabilities {
 ///          "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///        },
 ///        "schema": {
+///          "description": "Signed-artifact schema ID for live capability-token serialization.",
 ///          "default": "chio.capability.v1",
 ///          "type": "string",
-///          "enum": [
-///            "chio.capability.v1",
-///            "chio.capability.v2"
-///          ]
+///          "const": "chio.capability.v1"
 ///        },
 ///        "scope": {
 ///          "type": "object",
@@ -1583,26 +1762,6 @@ for ChioAgentMessageToolCallRequest {
 /// ```json
 ///{
 ///  "type": "object",
-///  "oneOf": [
-///    {
-///      "required": [
-///        "attenuation_proof",
-///        "schema"
-///      ],
-///      "properties": {
-///        "schema": {
-///          "const": "chio.capability.v2"
-///        }
-///      }
-///    },
-///    {
-///      "properties": {
-///        "schema": {
-///          "const": "chio.capability.v1"
-///        }
-///      }
-///    }
-///  ],
 ///  "required": [
 ///    "expires_at",
 ///    "id",
@@ -1737,12 +1896,10 @@ for ChioAgentMessageToolCallRequest {
 ///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
 ///    "schema": {
+///      "description": "Signed-artifact schema ID for live capability-token serialization.",
 ///      "default": "chio.capability.v1",
 ///      "type": "string",
-///      "enum": [
-///        "chio.capability.v1",
-///        "chio.capability.v2"
-///      ]
+///      "const": "chio.capability.v1"
 ///    },
 ///    "scope": {
 ///      "type": "object",
@@ -1937,75 +2094,50 @@ for ChioAgentMessageToolCallRequest {
 /// ```
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(untagged, deny_unknown_fields)]
-pub enum ChioAgentMessageToolCallRequestCapabilityToken {
-    Variant0 {
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        algorithm: ::std::option::Option<
-            ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm,
-        >,
-        attenuation_proof: ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProof,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        budget_share_bps: ::std::option::Option<i64>,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        caveats: ::std::vec::Vec<
-            ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItem,
-        >,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        delegation_chain: ::std::vec::Vec<
-            ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItem,
-        >,
-        expires_at: u64,
-        id: ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id,
-        issued_at: u64,
-        issuer: ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer,
-        schema: ChioAgentMessageToolCallRequestCapabilityTokenVariant0Schema,
-        scope: ChioAgentMessageToolCallRequestCapabilityTokenVariant0Scope,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        scope_attenuations: ::std::vec::Vec<
-            ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItem,
-        >,
-        signature: ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature,
-        subject: ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject,
-    },
-    Variant1 {
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        algorithm: ::std::option::Option<
-            ChioAgentMessageToolCallRequestCapabilityTokenVariant1Algorithm,
-        >,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        budget_share_bps: ::std::option::Option<i64>,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        caveats: ::std::vec::Vec<
-            ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItem,
-        >,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        delegation_chain: ::std::vec::Vec<
-            ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItem,
-        >,
-        expires_at: u64,
-        id: ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id,
-        issued_at: u64,
-        issuer: ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        schema: ::std::option::Option<
-            ChioAgentMessageToolCallRequestCapabilityTokenVariant1Schema,
-        >,
-        scope: ChioAgentMessageToolCallRequestCapabilityTokenVariant1Scope,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        scope_attenuations: ::std::vec::Vec<
-            ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItem,
-        >,
-        signature: ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature,
-        subject: ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject,
-    },
+#[serde(deny_unknown_fields)]
+pub struct ChioAgentMessageToolCallRequestCapabilityToken {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub algorithm: ::std::option::Option<
+        ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm,
+    >,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub attenuation_proof: ::std::option::Option<
+        ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProof,
+    >,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub budget_share_bps: ::std::option::Option<i64>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub caveats: ::std::vec::Vec<
+        ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItem,
+    >,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub delegation_chain: ::std::vec::Vec<
+        ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItem,
+    >,
+    pub expires_at: u64,
+    pub id: ChioAgentMessageToolCallRequestCapabilityTokenId,
+    pub issued_at: u64,
+    pub issuer: ChioAgentMessageToolCallRequestCapabilityTokenIssuer,
+    ///Signed-artifact schema ID for live capability-token serialization.
+    #[serde(
+        default = "defaults::chio_agent_message_tool_call_request_capability_token_schema"
+    )]
+    pub schema: ::std::string::String,
+    pub scope: ChioAgentMessageToolCallRequestCapabilityTokenScope,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub scope_attenuations: ::std::vec::Vec<
+        ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItem,
+    >,
+    pub signature: ChioAgentMessageToolCallRequestCapabilityTokenSignature,
+    pub subject: ChioAgentMessageToolCallRequestCapabilityTokenSubject,
 }
-impl ::std::convert::From<&Self> for ChioAgentMessageToolCallRequestCapabilityToken {
+impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityToken>
+for ChioAgentMessageToolCallRequestCapabilityToken {
     fn from(value: &ChioAgentMessageToolCallRequestCapabilityToken) -> Self {
         value.clone()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm`
+///`ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -2033,7 +2165,7 @@ impl ::std::convert::From<&Self> for ChioAgentMessageToolCallRequestCapabilityTo
     PartialEq,
     PartialOrd
 )]
-pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
+pub enum ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
     #[serde(rename = "ed25519")]
     Ed25519,
     #[serde(rename = "p256")]
@@ -2044,15 +2176,12 @@ pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
     Hybrid,
 }
 impl ::std::convert::From<&Self>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm,
-    ) -> Self {
+for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
+    fn from(value: &ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm) -> Self {
         value.clone()
     }
 }
-impl ::std::fmt::Display
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
+impl ::std::fmt::Display for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::Ed25519 => f.write_str("ed25519"),
@@ -2062,8 +2191,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
         }
     }
 }
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
+impl ::std::str::FromStr for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -2078,7 +2206,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
+for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -2087,7 +2215,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
+for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -2096,7 +2224,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
+for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -2104,7 +2232,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
         value.parse()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProof`
+///`ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProof`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -2138,21 +2266,21 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Algorithm {
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProof {
-    pub child_scope_hash: ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash,
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProof {
+    pub child_scope_hash: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash,
     pub normalized_subset_proof: ::std::vec::Vec<::std::string::String>,
-    pub parent_scope_hash: ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash,
+    pub parent_scope_hash: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash,
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProof,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProof {
+    &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProof,
+> for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProof {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProof,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProof,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash`
+///`ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -2165,37 +2293,36 @@ impl ::std::convert::From<
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash,
+    ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash {
+    &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash,
+> for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -2209,7 +2336,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildS
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -2218,7 +2345,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildS
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -2227,7 +2354,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildS
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -2236,7 +2363,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildS
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -2248,7 +2375,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildS
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash`
+///`ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -2261,37 +2388,36 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofChildS
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash,
+    ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash {
+    &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash,
+> for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -2305,7 +2431,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParent
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -2314,7 +2440,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParent
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -2323,7 +2449,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParent
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -2332,7 +2458,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParent
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParentScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -2344,7 +2470,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParent
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItem`
+///`ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -2372,24 +2498,21 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0AttenuationProofParent
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItem {
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItem {
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub enforced_at: ::std::option::Option<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt,
+        ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt,
     >,
-    pub kind: ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind,
+    pub kind: ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind,
     pub predicate: ::serde_json::Value,
 }
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItem,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItem {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItem,
-    ) -> Self {
+impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItem>
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItem {
+    fn from(value: &ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItem) -> Self {
         value.clone()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt`
+///`ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -2402,36 +2525,36 @@ impl ::std::convert::From<
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt {
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt,
+    ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt {
+    &ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt,
+> for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt {
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -2443,7 +2566,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt 
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt {
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -2452,7 +2575,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt 
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt {
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -2461,7 +2584,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt 
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt {
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -2470,7 +2593,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt 
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt {
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemEnforcedAt {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -2482,7 +2605,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt 
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind`
+///`ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -2495,36 +2618,34 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemEnforcedAt 
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind,
-> for ::std::string::String {
+impl ::std::convert::From<ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind>
+for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind,
     ) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
+impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind>
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -2536,7 +2657,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -2545,7 +2666,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -2554,7 +2675,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -2563,7 +2684,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
+for ChioAgentMessageToolCallRequestCapabilityTokenCaveatsItemKind {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -2575,7 +2696,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItem`
+///`ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -2627,31 +2748,31 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0CaveatsItemKind {
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItem {
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItem {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub attenuations: ::std::vec::Vec<
         ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     >,
-    pub capability_id: ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId,
-    pub delegatee: ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee,
-    pub delegator: ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator,
+    pub capability_id: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId,
+    pub delegatee: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee,
+    pub delegator: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub scope_hash: ::std::option::Option<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash,
+        ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash,
     >,
-    pub signature: ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature,
+    pub signature: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature,
     pub timestamp: u64,
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItem,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItem {
+    &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItem,
+> for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItem {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItem,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItem,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId`
+///`ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -2664,37 +2785,36 @@ impl ::std::convert::From<
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId,
+    ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId {
+    &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId,
+> for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -2706,7 +2826,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCap
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -2715,7 +2835,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCap
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -2724,7 +2844,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCap
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -2733,7 +2853,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCap
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCapabilityId {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemCapabilityId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -2745,7 +2865,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCap
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee`
+///`ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -2758,37 +2878,36 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemCap
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee,
+    ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee {
+    &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee,
+> for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -2810,7 +2929,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDel
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -2819,7 +2938,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDel
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -2828,7 +2947,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDel
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -2837,7 +2956,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDel
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegatee {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegatee {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -2849,7 +2968,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDel
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator`
+///`ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -2862,37 +2981,36 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDel
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator,
+    ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator {
+    &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator,
+> for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -2914,7 +3032,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDel
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -2923,7 +3041,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDel
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -2932,7 +3050,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDel
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -2941,7 +3059,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDel
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDelegator {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemDelegator {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -2953,7 +3071,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDel
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash`
+///`ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -2966,37 +3084,36 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemDel
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash,
+    ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash {
+    &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash,
+> for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -3010,7 +3127,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSco
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -3019,7 +3136,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSco
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -3028,7 +3145,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSco
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -3037,7 +3154,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSco
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemScopeHash {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemScopeHash {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -3049,7 +3166,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSco
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature`
+///`ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -3062,37 +3179,36 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSco
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature,
+    ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature {
+    &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature,
+> for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -3114,7 +3230,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSig
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -3123,7 +3239,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSig
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -3132,7 +3248,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSig
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -3141,7 +3257,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSig
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSignature {
+for ChioAgentMessageToolCallRequestCapabilityTokenDelegationChainItemSignature {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -3153,7 +3269,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSig
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id`
+///`ChioAgentMessageToolCallRequestCapabilityTokenId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -3166,28 +3282,26 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0DelegationChainItemSig
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id(
-    ::std::string::String,
-);
-impl ::std::ops::Deref for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id {
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenId(::std::string::String);
+impl ::std::ops::Deref for ChioAgentMessageToolCallRequestCapabilityTokenId {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id>
+impl ::std::convert::From<ChioAgentMessageToolCallRequestCapabilityTokenId>
 for ::std::string::String {
-    fn from(value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id) -> Self {
+    fn from(value: ChioAgentMessageToolCallRequestCapabilityTokenId) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id {
-    fn from(value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id) -> Self {
+impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenId>
+for ChioAgentMessageToolCallRequestCapabilityTokenId {
+    fn from(value: &ChioAgentMessageToolCallRequestCapabilityTokenId) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id {
+impl ::std::str::FromStr for ChioAgentMessageToolCallRequestCapabilityTokenId {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -3198,8 +3312,7 @@ impl ::std::str::FromStr for ChioAgentMessageToolCallRequestCapabilityTokenVaria
         Ok(Self(value.to_string()))
     }
 }
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id {
+impl ::std::convert::TryFrom<&str> for ChioAgentMessageToolCallRequestCapabilityTokenId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -3208,7 +3321,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id {
+for ChioAgentMessageToolCallRequestCapabilityTokenId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -3217,7 +3330,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id {
+for ChioAgentMessageToolCallRequestCapabilityTokenId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -3226,7 +3339,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id {
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id {
+for ChioAgentMessageToolCallRequestCapabilityTokenId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -3238,7 +3351,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id {
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer`
+///`ChioAgentMessageToolCallRequestCapabilityTokenIssuer`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -3251,33 +3364,26 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Id {
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer(
-    ::std::string::String,
-);
-impl ::std::ops::Deref for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer {
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenIssuer(::std::string::String);
+impl ::std::ops::Deref for ChioAgentMessageToolCallRequestCapabilityTokenIssuer {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer>
+impl ::std::convert::From<ChioAgentMessageToolCallRequestCapabilityTokenIssuer>
 for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer,
-    ) -> Self {
+    fn from(value: ChioAgentMessageToolCallRequestCapabilityTokenIssuer) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer,
-    ) -> Self {
+impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenIssuer>
+for ChioAgentMessageToolCallRequestCapabilityTokenIssuer {
+    fn from(value: &ChioAgentMessageToolCallRequestCapabilityTokenIssuer) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer {
+impl ::std::str::FromStr for ChioAgentMessageToolCallRequestCapabilityTokenIssuer {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -3299,7 +3405,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer {
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer {
+for ChioAgentMessageToolCallRequestCapabilityTokenIssuer {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -3308,7 +3414,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer {
+for ChioAgentMessageToolCallRequestCapabilityTokenIssuer {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -3317,7 +3423,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer {
+for ChioAgentMessageToolCallRequestCapabilityTokenIssuer {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -3326,7 +3432,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer {
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer {
+for ChioAgentMessageToolCallRequestCapabilityTokenIssuer {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -3338,91 +3444,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Issuer {
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0Schema`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "enum": [
-///    "chio.capability.v2"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant0Schema {
-    #[serde(rename = "chio.capability.v2")]
-    ChioCapabilityV2,
-}
-impl ::std::convert::From<&Self>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Schema {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0Schema,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Schema {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::ChioCapabilityV2 => f.write_str("chio.capability.v2"),
-        }
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Schema {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "chio.capability.v2" => Ok(Self::ChioCapabilityV2),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Schema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Schema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Schema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0Scope`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScope`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -3594,30 +3616,27 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Schema {
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0Scope {
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScope {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub grants: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItem,
+        ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItem,
     >,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub prompt_grants: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItem,
+        ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItem,
     >,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub resource_grants: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItem,
+        ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItem,
     >,
 }
-impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenVariant0Scope>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Scope {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0Scope,
-    ) -> Self {
+impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenScope>
+for ChioAgentMessageToolCallRequestCapabilityTokenScope {
+    fn from(value: &ChioAgentMessageToolCallRequestCapabilityTokenScope) -> Self {
         value.clone()
     }
 }
-impl ::std::default::Default
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Scope {
+impl ::std::default::Default for ChioAgentMessageToolCallRequestCapabilityTokenScope {
     fn default() -> Self {
         Self {
             grants: Default::default(),
@@ -3626,7 +3645,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Scope {
         }
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItem`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -3647,20 +3666,20 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Scope {
 /// ```
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItem {
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItem {
     #[serde(rename = "type")]
-    pub type_: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType,
+    pub type_: ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType,
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItem,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItem {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItem,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItem {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItem,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItem,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -3673,36 +3692,36 @@ impl ::std::convert::From<
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType,
+    ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -3714,7 +3733,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemT
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -3723,7 +3742,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemT
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -3732,7 +3751,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemT
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -3741,7 +3760,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemT
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemType {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeAttenuationsItemType {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -3753,7 +3772,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemT
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItem`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -3854,39 +3873,38 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeAttenuationsItemT
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItem {
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItem {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub constraints: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItem,
+        ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItem,
     >,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub dpop_required: ::std::option::Option<bool>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub max_cost_per_invocation: ::std::option::Option<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocation,
+        ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocation,
     >,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub max_invocations: ::std::option::Option<u64>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub max_total_cost: ::std::option::Option<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCost,
+        ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCost,
     >,
     pub operations: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperationsItem,
+        ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemOperationsItem,
     >,
-    pub server_id: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId,
-    pub tool_name: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName,
+    pub server_id: ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId,
+    pub tool_name: ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName,
 }
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItem,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItem {
+impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItem>
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItem {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItem,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItem,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItem`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -3907,23 +3925,22 @@ impl ::std::convert::From<
 /// ```
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItem {
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItem {
     #[serde(rename = "type")]
-    pub type_: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType,
+    pub type_: ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub value: ::std::option::Option<::serde_json::Value>,
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItem,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItem {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItem,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItem {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItem,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItem,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -3936,37 +3953,36 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstra
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType,
+    ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -3978,7 +3994,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstra
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -3987,7 +4003,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstra
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -3996,7 +4012,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstra
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -4005,7 +4021,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstra
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstraintsItemType {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemConstraintsItemType {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -4017,7 +4033,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstra
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocation`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocation`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4044,21 +4060,20 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemConstra
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocation {
-    pub currency: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency,
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocation {
+    pub currency: ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency,
     pub units: u64,
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocation,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocation {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocation,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocation {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocation,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocation,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4071,37 +4086,37 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCost
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency,
+    ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency,
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency,
 >
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -4113,7 +4128,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCost
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -4122,7 +4137,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCost
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -4131,7 +4146,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCost
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -4140,7 +4155,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCost
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxCostPerInvocationCurrency {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -4152,7 +4167,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCost
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCost`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCost`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4179,20 +4194,20 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxCost
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCost {
-    pub currency: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency,
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCost {
+    pub currency: ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency,
     pub units: u64,
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCost,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCost {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCost,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCost {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCost,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCost,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4205,37 +4220,36 @@ impl ::std::convert::From<
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency,
+    ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -4247,7 +4261,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTota
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -4256,7 +4270,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTota
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -4265,7 +4279,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTota
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -4274,7 +4288,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTota
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemMaxTotalCostCurrency {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -4286,7 +4300,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTota
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperationsItem`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemOperationsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4315,7 +4329,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemMaxTota
     PartialEq,
     PartialOrd
 )]
-pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperationsItem {
+pub enum ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemOperationsItem {
     #[serde(rename = "invoke")]
     Invoke,
     #[serde(rename = "read_result")]
@@ -4330,15 +4344,15 @@ pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOp
     Delegate,
 }
 impl ::std::convert::From<&Self>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemOperationsItem {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperationsItem,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemOperationsItem,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::fmt::Display
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemOperationsItem {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::Invoke => f.write_str("invoke"),
@@ -4351,7 +4365,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperati
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemOperationsItem {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -4368,7 +4382,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperati
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -4377,7 +4391,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperati
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -4386,7 +4400,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperati
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -4394,7 +4408,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperati
         value.parse()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4407,36 +4421,36 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemOperati
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId,
+    ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -4448,7 +4462,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerI
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -4457,7 +4471,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerI
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -4466,7 +4480,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerI
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -4475,7 +4489,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerI
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerId {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemServerId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -4487,7 +4501,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerI
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4500,36 +4514,36 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemServerI
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName,
+    ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -4541,7 +4555,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolNam
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -4550,7 +4564,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolNam
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -4559,7 +4573,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolNam
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -4568,7 +4582,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolNam
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolName {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeGrantsItemToolName {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -4580,7 +4594,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolNam
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItem`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4617,22 +4631,22 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeGrantsItemToolNam
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItem {
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItem {
     pub operations: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemOperationsItem,
+        ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemOperationsItem,
     >,
-    pub prompt_name: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName,
+    pub prompt_name: ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName,
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItem,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItem {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItem,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItem {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItem,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItem,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemOperationsItem`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemOperationsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4661,7 +4675,7 @@ impl ::std::convert::From<
     PartialEq,
     PartialOrd
 )]
-pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemOperationsItem {
+pub enum ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemOperationsItem {
     #[serde(rename = "invoke")]
     Invoke,
     #[serde(rename = "read_result")]
@@ -4676,15 +4690,15 @@ pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrants
     Delegate,
 }
 impl ::std::convert::From<&Self>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemOperationsItem {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemOperationsItem,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemOperationsItem,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::fmt::Display
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemOperationsItem {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::Invoke => f.write_str("invoke"),
@@ -4697,7 +4711,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemO
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemOperationsItem {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -4714,7 +4728,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemO
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -4723,7 +4737,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemO
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -4732,7 +4746,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemO
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -4740,7 +4754,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemO
         value.parse()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4753,37 +4767,36 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemO
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName,
+    ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -4795,7 +4808,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemP
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -4804,7 +4817,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemP
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -4813,7 +4826,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemP
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -4822,7 +4835,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemP
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemPromptName {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopePromptGrantsItemPromptName {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -4834,7 +4847,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemP
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItem`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4871,22 +4884,22 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopePromptGrantsItemP
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItem {
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItem {
     pub operations: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemOperationsItem,
+        ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemOperationsItem,
     >,
-    pub uri_pattern: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern,
+    pub uri_pattern: ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern,
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItem,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItem {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItem,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItem {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItem,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItem,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemOperationsItem`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemOperationsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4915,7 +4928,7 @@ impl ::std::convert::From<
     PartialEq,
     PartialOrd
 )]
-pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemOperationsItem {
+pub enum ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemOperationsItem {
     #[serde(rename = "invoke")]
     Invoke,
     #[serde(rename = "read_result")]
@@ -4930,15 +4943,15 @@ pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGran
     Delegate,
 }
 impl ::std::convert::From<&Self>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemOperationsItem {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemOperationsItem,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemOperationsItem,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::fmt::Display
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemOperationsItem {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::Invoke => f.write_str("invoke"),
@@ -4951,7 +4964,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsIte
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemOperationsItem {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -4968,7 +4981,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsIte
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -4977,7 +4990,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsIte
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -4986,7 +4999,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsIte
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemOperationsItem {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -4994,7 +5007,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsIte
         value.parse()
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern`
+///`ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -5007,37 +5020,36 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsIte
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern,
+    ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern,
 > for ::std::string::String {
     fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern,
+        value: ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern {
+    &ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern,
+> for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern {
     fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern,
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -5049,7 +5061,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsIte
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -5058,7 +5070,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsIte
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -5067,7 +5079,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsIte
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -5076,7 +5088,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsIte
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsItemUriPattern {
+for ChioAgentMessageToolCallRequestCapabilityTokenScopeResourceGrantsItemUriPattern {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -5088,7 +5100,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsIte
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature`
+///`ChioAgentMessageToolCallRequestCapabilityTokenSignature`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -5101,36 +5113,28 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0ScopeResourceGrantsIte
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature(
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenSignature(
     ::std::string::String,
 );
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
+impl ::std::ops::Deref for ChioAgentMessageToolCallRequestCapabilityTokenSignature {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature,
-    ) -> Self {
+impl ::std::convert::From<ChioAgentMessageToolCallRequestCapabilityTokenSignature>
+for ::std::string::String {
+    fn from(value: ChioAgentMessageToolCallRequestCapabilityTokenSignature) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature,
-    ) -> Self {
+impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenSignature>
+for ChioAgentMessageToolCallRequestCapabilityTokenSignature {
+    fn from(value: &ChioAgentMessageToolCallRequestCapabilityTokenSignature) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
+impl ::std::str::FromStr for ChioAgentMessageToolCallRequestCapabilityTokenSignature {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -5152,7 +5156,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
+for ChioAgentMessageToolCallRequestCapabilityTokenSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -5161,7 +5165,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
+for ChioAgentMessageToolCallRequestCapabilityTokenSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -5170,7 +5174,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
+for ChioAgentMessageToolCallRequestCapabilityTokenSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -5179,7 +5183,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
+for ChioAgentMessageToolCallRequestCapabilityTokenSignature {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -5191,7 +5195,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
             })
     }
 }
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject`
+///`ChioAgentMessageToolCallRequestCapabilityTokenSubject`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -5204,34 +5208,26 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Signature {
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject {
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenSubject(::std::string::String);
+impl ::std::ops::Deref for ChioAgentMessageToolCallRequestCapabilityTokenSubject {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject>
+impl ::std::convert::From<ChioAgentMessageToolCallRequestCapabilityTokenSubject>
 for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject,
-    ) -> Self {
+    fn from(value: ChioAgentMessageToolCallRequestCapabilityTokenSubject) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject,
-    ) -> Self {
+impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenSubject>
+for ChioAgentMessageToolCallRequestCapabilityTokenSubject {
+    fn from(value: &ChioAgentMessageToolCallRequestCapabilityTokenSubject) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject {
+impl ::std::str::FromStr for ChioAgentMessageToolCallRequestCapabilityTokenSubject {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -5253,7 +5249,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject {
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject {
+for ChioAgentMessageToolCallRequestCapabilityTokenSubject {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -5262,7 +5258,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject {
+for ChioAgentMessageToolCallRequestCapabilityTokenSubject {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -5271,7 +5267,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject {
+for ChioAgentMessageToolCallRequestCapabilityTokenSubject {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -5280,3054 +5276,7 @@ for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject {
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant0Subject {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1Algorithm`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "enum": [
-///    "ed25519",
-///    "p256",
-///    "p384",
-///    "hybrid"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant1Algorithm {
-    #[serde(rename = "ed25519")]
-    Ed25519,
-    #[serde(rename = "p256")]
-    P256,
-    #[serde(rename = "p384")]
-    P384,
-    #[serde(rename = "hybrid")]
-    Hybrid,
-}
-impl ::std::convert::From<&Self>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Algorithm {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1Algorithm,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Algorithm {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::Ed25519 => f.write_str("ed25519"),
-            Self::P256 => f.write_str("p256"),
-            Self::P384 => f.write_str("p384"),
-            Self::Hybrid => f.write_str("hybrid"),
-        }
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Algorithm {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "ed25519" => Ok(Self::Ed25519),
-            "p256" => Ok(Self::P256),
-            "p384" => Ok(Self::P384),
-            "hybrid" => Ok(Self::Hybrid),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "kind",
-///    "predicate"
-///  ],
-///  "properties": {
-///    "enforced_at": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "kind": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "predicate": true
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItem {
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub enforced_at: ::std::option::Option<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt,
-    >,
-    pub kind: ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind,
-    pub predicate: ::serde_json::Value,
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItem,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItem {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemEnforcedAt {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1CaveatsItemKind {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "capability_id",
-///    "delegatee",
-///    "delegator",
-///    "signature",
-///    "timestamp"
-///  ],
-///  "properties": {
-///    "attenuations": {
-///      "type": "array",
-///      "items": {
-///        "type": "object"
-///      }
-///    },
-///    "capability_id": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "delegatee": {
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///    },
-///    "delegator": {
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///    },
-///    "scope_hash": {
-///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
-///    },
-///    "signature": {
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
-///    },
-///    "timestamp": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItem {
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub attenuations: ::std::vec::Vec<
-        ::serde_json::Map<::std::string::String, ::serde_json::Value>,
-    >,
-    pub capability_id: ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId,
-    pub delegatee: ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee,
-    pub delegator: ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub scope_hash: ::std::option::Option<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash,
-    >,
-    pub signature: ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature,
-    pub timestamp: u64,
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItem,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItem {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemCapabilityId {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegatee {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemDelegator {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemScopeHash {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1DelegationChainItemSignature {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id(
-    ::std::string::String,
-);
-impl ::std::ops::Deref for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id>
-for ::std::string::String {
-    fn from(value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id {
-    fn from(value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Id {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer(
-    ::std::string::String,
-);
-impl ::std::ops::Deref for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer>
-for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Issuer {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1Schema`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "enum": [
-///    "chio.capability.v1"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant1Schema {
-    #[serde(rename = "chio.capability.v1")]
-    ChioCapabilityV1,
-}
-impl ::std::convert::From<&Self>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Schema {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1Schema,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Schema {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::ChioCapabilityV1 => f.write_str("chio.capability.v1"),
-        }
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Schema {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "chio.capability.v1" => Ok(Self::ChioCapabilityV1),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Schema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Schema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Schema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1Scope`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "properties": {
-///    "grants": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "required": [
-///          "operations",
-///          "server_id",
-///          "tool_name"
-///        ],
-///        "properties": {
-///          "constraints": {
-///            "type": "array",
-///            "items": {
-///              "type": "object",
-///              "required": [
-///                "type"
-///              ],
-///              "properties": {
-///                "type": {
-///                  "type": "string",
-///                  "minLength": 1
-///                },
-///                "value": true
-///              }
-///            }
-///          },
-///          "dpop_required": {
-///            "type": "boolean"
-///          },
-///          "max_cost_per_invocation": {
-///            "type": "object",
-///            "required": [
-///              "currency",
-///              "units"
-///            ],
-///            "properties": {
-///              "currency": {
-///                "type": "string",
-///                "minLength": 1
-///              },
-///              "units": {
-///                "type": "integer",
-///                "minimum": 0.0
-///              }
-///            },
-///            "additionalProperties": false
-///          },
-///          "max_invocations": {
-///            "type": "integer",
-///            "minimum": 0.0
-///          },
-///          "max_total_cost": {
-///            "type": "object",
-///            "required": [
-///              "currency",
-///              "units"
-///            ],
-///            "properties": {
-///              "currency": {
-///                "type": "string",
-///                "minLength": 1
-///              },
-///              "units": {
-///                "type": "integer",
-///                "minimum": 0.0
-///              }
-///            },
-///            "additionalProperties": false
-///          },
-///          "operations": {
-///            "type": "array",
-///            "items": {
-///              "enum": [
-///                "invoke",
-///                "read_result",
-///                "read",
-///                "subscribe",
-///                "get",
-///                "delegate"
-///              ]
-///            },
-///            "minItems": 1
-///          },
-///          "server_id": {
-///            "type": "string",
-///            "minLength": 1
-///          },
-///          "tool_name": {
-///            "type": "string",
-///            "minLength": 1
-///          }
-///        },
-///        "additionalProperties": false
-///      }
-///    },
-///    "prompt_grants": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "required": [
-///          "operations",
-///          "prompt_name"
-///        ],
-///        "properties": {
-///          "operations": {
-///            "type": "array",
-///            "items": {
-///              "enum": [
-///                "invoke",
-///                "read_result",
-///                "read",
-///                "subscribe",
-///                "get",
-///                "delegate"
-///              ]
-///            },
-///            "minItems": 1
-///          },
-///          "prompt_name": {
-///            "type": "string",
-///            "minLength": 1
-///          }
-///        },
-///        "additionalProperties": false
-///      }
-///    },
-///    "resource_grants": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "required": [
-///          "operations",
-///          "uri_pattern"
-///        ],
-///        "properties": {
-///          "operations": {
-///            "type": "array",
-///            "items": {
-///              "enum": [
-///                "invoke",
-///                "read_result",
-///                "read",
-///                "subscribe",
-///                "get",
-///                "delegate"
-///              ]
-///            },
-///            "minItems": 1
-///          },
-///          "uri_pattern": {
-///            "type": "string",
-///            "minLength": 1
-///          }
-///        },
-///        "additionalProperties": false
-///      }
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1Scope {
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub grants: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItem,
-    >,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub prompt_grants: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItem,
-    >,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub resource_grants: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItem,
-    >,
-}
-impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenVariant1Scope>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Scope {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1Scope,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::default::Default
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Scope {
-    fn default() -> Self {
-        Self {
-            grants: Default::default(),
-            prompt_grants: Default::default(),
-            resource_grants: Default::default(),
-        }
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "type"
-///  ],
-///  "properties": {
-///    "type": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": true
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItem {
-    #[serde(rename = "type")]
-    pub type_: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType,
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItem,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItem {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeAttenuationsItemType {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "operations",
-///    "server_id",
-///    "tool_name"
-///  ],
-///  "properties": {
-///    "constraints": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "required": [
-///          "type"
-///        ],
-///        "properties": {
-///          "type": {
-///            "type": "string",
-///            "minLength": 1
-///          },
-///          "value": true
-///        }
-///      }
-///    },
-///    "dpop_required": {
-///      "type": "boolean"
-///    },
-///    "max_cost_per_invocation": {
-///      "type": "object",
-///      "required": [
-///        "currency",
-///        "units"
-///      ],
-///      "properties": {
-///        "currency": {
-///          "type": "string",
-///          "minLength": 1
-///        },
-///        "units": {
-///          "type": "integer",
-///          "minimum": 0.0
-///        }
-///      },
-///      "additionalProperties": false
-///    },
-///    "max_invocations": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    },
-///    "max_total_cost": {
-///      "type": "object",
-///      "required": [
-///        "currency",
-///        "units"
-///      ],
-///      "properties": {
-///        "currency": {
-///          "type": "string",
-///          "minLength": 1
-///        },
-///        "units": {
-///          "type": "integer",
-///          "minimum": 0.0
-///        }
-///      },
-///      "additionalProperties": false
-///    },
-///    "operations": {
-///      "type": "array",
-///      "items": {
-///        "enum": [
-///          "invoke",
-///          "read_result",
-///          "read",
-///          "subscribe",
-///          "get",
-///          "delegate"
-///        ]
-///      },
-///      "minItems": 1
-///    },
-///    "server_id": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "tool_name": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItem {
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub constraints: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItem,
-    >,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub dpop_required: ::std::option::Option<bool>,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub max_cost_per_invocation: ::std::option::Option<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocation,
-    >,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub max_invocations: ::std::option::Option<u64>,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub max_total_cost: ::std::option::Option<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCost,
-    >,
-    pub operations: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemOperationsItem,
-    >,
-    pub server_id: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId,
-    pub tool_name: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName,
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItem,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItem {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "type"
-///  ],
-///  "properties": {
-///    "type": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "value": true
-///  }
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItem {
-    #[serde(rename = "type")]
-    pub type_: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub value: ::std::option::Option<::serde_json::Value>,
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItem,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItem {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemConstraintsItemType {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocation`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "currency",
-///    "units"
-///  ],
-///  "properties": {
-///    "currency": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "units": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocation {
-    pub currency: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency,
-    pub units: u64,
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocation,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocation {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocation,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCost`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "currency",
-///    "units"
-///  ],
-///  "properties": {
-///    "currency": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "units": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCost {
-    pub currency: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency,
-    pub units: u64,
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCost,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCost {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCost,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemOperationsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "enum": [
-///    "invoke",
-///    "read_result",
-///    "read",
-///    "subscribe",
-///    "get",
-///    "delegate"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemOperationsItem {
-    #[serde(rename = "invoke")]
-    Invoke,
-    #[serde(rename = "read_result")]
-    ReadResult,
-    #[serde(rename = "read")]
-    Read,
-    #[serde(rename = "subscribe")]
-    Subscribe,
-    #[serde(rename = "get")]
-    Get,
-    #[serde(rename = "delegate")]
-    Delegate,
-}
-impl ::std::convert::From<&Self>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemOperationsItem {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemOperationsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemOperationsItem {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::Invoke => f.write_str("invoke"),
-            Self::ReadResult => f.write_str("read_result"),
-            Self::Read => f.write_str("read"),
-            Self::Subscribe => f.write_str("subscribe"),
-            Self::Get => f.write_str("get"),
-            Self::Delegate => f.write_str("delegate"),
-        }
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemOperationsItem {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "invoke" => Ok(Self::Invoke),
-            "read_result" => Ok(Self::ReadResult),
-            "read" => Ok(Self::Read),
-            "subscribe" => Ok(Self::Subscribe),
-            "get" => Ok(Self::Get),
-            "delegate" => Ok(Self::Delegate),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemServerId {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeGrantsItemToolName {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "operations",
-///    "prompt_name"
-///  ],
-///  "properties": {
-///    "operations": {
-///      "type": "array",
-///      "items": {
-///        "enum": [
-///          "invoke",
-///          "read_result",
-///          "read",
-///          "subscribe",
-///          "get",
-///          "delegate"
-///        ]
-///      },
-///      "minItems": 1
-///    },
-///    "prompt_name": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItem {
-    pub operations: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemOperationsItem,
-    >,
-    pub prompt_name: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName,
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItem,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItem {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemOperationsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "enum": [
-///    "invoke",
-///    "read_result",
-///    "read",
-///    "subscribe",
-///    "get",
-///    "delegate"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemOperationsItem {
-    #[serde(rename = "invoke")]
-    Invoke,
-    #[serde(rename = "read_result")]
-    ReadResult,
-    #[serde(rename = "read")]
-    Read,
-    #[serde(rename = "subscribe")]
-    Subscribe,
-    #[serde(rename = "get")]
-    Get,
-    #[serde(rename = "delegate")]
-    Delegate,
-}
-impl ::std::convert::From<&Self>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemOperationsItem {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemOperationsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemOperationsItem {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::Invoke => f.write_str("invoke"),
-            Self::ReadResult => f.write_str("read_result"),
-            Self::Read => f.write_str("read"),
-            Self::Subscribe => f.write_str("subscribe"),
-            Self::Get => f.write_str("get"),
-            Self::Delegate => f.write_str("delegate"),
-        }
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemOperationsItem {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "invoke" => Ok(Self::Invoke),
-            "read_result" => Ok(Self::ReadResult),
-            "read" => Ok(Self::Read),
-            "subscribe" => Ok(Self::Subscribe),
-            "get" => Ok(Self::Get),
-            "delegate" => Ok(Self::Delegate),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopePromptGrantsItemPromptName {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "operations",
-///    "uri_pattern"
-///  ],
-///  "properties": {
-///    "operations": {
-///      "type": "array",
-///      "items": {
-///        "enum": [
-///          "invoke",
-///          "read_result",
-///          "read",
-///          "subscribe",
-///          "get",
-///          "delegate"
-///        ]
-///      },
-///      "minItems": 1
-///    },
-///    "uri_pattern": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItem {
-    pub operations: ::std::vec::Vec<
-        ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemOperationsItem,
-    >,
-    pub uri_pattern: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern,
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItem,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItem {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemOperationsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "enum": [
-///    "invoke",
-///    "read_result",
-///    "read",
-///    "subscribe",
-///    "get",
-///    "delegate"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemOperationsItem {
-    #[serde(rename = "invoke")]
-    Invoke,
-    #[serde(rename = "read_result")]
-    ReadResult,
-    #[serde(rename = "read")]
-    Read,
-    #[serde(rename = "subscribe")]
-    Subscribe,
-    #[serde(rename = "get")]
-    Get,
-    #[serde(rename = "delegate")]
-    Delegate,
-}
-impl ::std::convert::From<&Self>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemOperationsItem {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemOperationsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemOperationsItem {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::Invoke => f.write_str("invoke"),
-            Self::ReadResult => f.write_str("read_result"),
-            Self::Read => f.write_str("read"),
-            Self::Subscribe => f.write_str("subscribe"),
-            Self::Get => f.write_str("get"),
-            Self::Delegate => f.write_str("delegate"),
-        }
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemOperationsItem {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "invoke" => Ok(Self::Invoke),
-            "read_result" => Ok(Self::ReadResult),
-            "read" => Ok(Self::Read),
-            "subscribe" => Ok(Self::Subscribe),
-            "get" => Ok(Self::Get),
-            "delegate" => Ok(Self::Delegate),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern,
->
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1ScopeResourceGrantsItemUriPattern {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature,
-> for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature,
-> for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Signature {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject>
-for ::std::string::String {
-    fn from(
-        value: ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject {
-    fn from(
-        value: &ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioAgentMessageToolCallRequestCapabilityTokenVariant1Subject {
+for ChioAgentMessageToolCallRequestCapabilityTokenSubject {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -8706,6 +5655,1441 @@ impl<'de> ::serde::Deserialize<'de> for ChioAnchorBatchV1Signature {
             })
     }
 }
+///Top-level DSSE envelope for Chio bilateral signature-slice artifacts. The base64 payload is the canonical JSON in-toto Statement described by bilateral-signature-slice.schema.json.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/federation/bilateral-signature-slice-envelope",
+///  "title": "Chio bilateral DSSE signature-slice envelope",
+///  "description": "Top-level DSSE envelope for Chio bilateral signature-slice artifacts. The base64 payload is the canonical JSON in-toto Statement described by bilateral-signature-slice.schema.json.",
+///  "type": "object",
+///  "required": [
+///    "payload",
+///    "payloadType",
+///    "signatures"
+///  ],
+///  "properties": {
+///    "payload": {
+///      "type": "string",
+///      "minLength": 1,
+///      "contentEncoding": "base64"
+///    },
+///    "payloadType": {
+///      "type": "string",
+///      "const": "application/vnd.in-toto+json"
+///    },
+///    "signatures": {
+///      "type": "array",
+///      "items": {
+///        "type": "object",
+///        "required": [
+///          "keyid",
+///          "sig"
+///        ],
+///        "properties": {
+///          "keyid": {
+///            "type": "string",
+///            "pattern": "^[0-9a-f]{64}$"
+///          },
+///          "sig": {
+///            "type": "string",
+///            "minLength": 1,
+///            "contentEncoding": "base64"
+///          }
+///        },
+///        "additionalProperties": false
+///      },
+///      "maxItems": 2,
+///      "minItems": 2
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioBilateralDsseSignatureSliceEnvelope {
+    pub payload: ChioBilateralDsseSignatureSliceEnvelopePayload,
+    #[serde(rename = "payloadType")]
+    pub payload_type: ::std::string::String,
+    pub signatures: [ChioBilateralDsseSignatureSliceEnvelopeSignaturesItem; 2usize],
+}
+impl ::std::convert::From<&ChioBilateralDsseSignatureSliceEnvelope>
+for ChioBilateralDsseSignatureSliceEnvelope {
+    fn from(value: &ChioBilateralDsseSignatureSliceEnvelope) -> Self {
+        value.clone()
+    }
+}
+///`ChioBilateralDsseSignatureSliceEnvelopePayload`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1,
+///  "contentEncoding": "base64"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioBilateralDsseSignatureSliceEnvelopePayload(::std::string::String);
+impl ::std::ops::Deref for ChioBilateralDsseSignatureSliceEnvelopePayload {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioBilateralDsseSignatureSliceEnvelopePayload>
+for ::std::string::String {
+    fn from(value: ChioBilateralDsseSignatureSliceEnvelopePayload) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioBilateralDsseSignatureSliceEnvelopePayload>
+for ChioBilateralDsseSignatureSliceEnvelopePayload {
+    fn from(value: &ChioBilateralDsseSignatureSliceEnvelopePayload) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioBilateralDsseSignatureSliceEnvelopePayload {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioBilateralDsseSignatureSliceEnvelopePayload {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioBilateralDsseSignatureSliceEnvelopePayload {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioBilateralDsseSignatureSliceEnvelopePayload {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioBilateralDsseSignatureSliceEnvelopePayload {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioBilateralDsseSignatureSliceEnvelopeSignaturesItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "keyid",
+///    "sig"
+///  ],
+///  "properties": {
+///    "keyid": {
+///      "type": "string",
+///      "pattern": "^[0-9a-f]{64}$"
+///    },
+///    "sig": {
+///      "type": "string",
+///      "minLength": 1,
+///      "contentEncoding": "base64"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioBilateralDsseSignatureSliceEnvelopeSignaturesItem {
+    pub keyid: ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid,
+    pub sig: ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig,
+}
+impl ::std::convert::From<&ChioBilateralDsseSignatureSliceEnvelopeSignaturesItem>
+for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItem {
+    fn from(value: &ChioBilateralDsseSignatureSliceEnvelopeSignaturesItem) -> Self {
+        value.clone()
+    }
+}
+///`ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid(
+    ::std::string::String,
+);
+impl ::std::ops::Deref for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid>
+for ::std::string::String {
+    fn from(value: ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid>
+for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid {
+    fn from(value: &ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemKeyid {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1,
+///  "contentEncoding": "base64"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig(
+    ::std::string::String,
+);
+impl ::std::ops::Deref for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig>
+for ::std::string::String {
+    fn from(value: ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig>
+for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig {
+    fn from(value: &ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict CHIODOS bilateral cosign invocation predicate.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/federation/bilateral-signature-slice",
+///  "title": "Chio bilateral DSSE signature-slice statement",
+///  "description": "Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict CHIODOS bilateral cosign invocation predicate.",
+///  "type": "object",
+///  "required": [
+///    "_type",
+///    "predicate",
+///    "predicateType",
+///    "subject"
+///  ],
+///  "properties": {
+///    "_type": {
+///      "type": "string",
+///      "const": "https://in-toto.io/Statement/v1"
+///    },
+///    "predicate": {
+///      "type": "object",
+///      "required": [
+///        "co_sign",
+///        "consistency_model",
+///        "cross_org_visibility",
+///        "invocation_id",
+///        "receipt_canonical_json",
+///        "schema",
+///        "timestamp_unix_ms",
+///        "tool_name",
+///        "tool_server_a",
+///        "tool_server_b"
+///      ],
+///      "properties": {
+///        "capability_lease_ref": {
+///          "$ref": "#/$defs/capabilityLeaseRef"
+///        },
+///        "co_sign": {
+///          "type": "string",
+///          "enum": [
+///            "bilateral_required",
+///            "bilateral_if_cross_org"
+///          ]
+///        },
+///        "consistency_anchor": {
+///          "type": "string",
+///          "minLength": 1
+///        },
+///        "consistency_model": {
+///          "type": "string",
+///          "const": "crdt-commutative"
+///        },
+///        "cross_org_visibility": {
+///          "type": "string",
+///          "enum": [
+///            "private",
+///            "treaty_only",
+///            "federated",
+///            "public"
+///          ]
+///        },
+///        "governance_receipt_ref": {
+///          "$ref": "#/$defs/governanceReceiptRef"
+///        },
+///        "invocation_id": {
+///          "type": "string",
+///          "minLength": 1
+///        },
+///        "policy_evaluation_summary": {
+///          "$ref": "#/$defs/policyEvaluationSummary"
+///        },
+///        "receipt_canonical_json": {
+///          "type": "string",
+///          "minLength": 2
+///        },
+///        "schema": {
+///          "type": "string",
+///          "const": "chio.bilateral-signature-slice.v1"
+///        },
+///        "timestamp_unix_ms": {
+///          "type": "integer",
+///          "minimum": 0.0
+///        },
+///        "tool_name": {
+///          "type": "string",
+///          "minLength": 1
+///        },
+///        "tool_server_a": {
+///          "$ref": "#/$defs/kernelIdentity"
+///        },
+///        "tool_server_b": {
+///          "$ref": "#/$defs/kernelIdentity"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    "predicateType": {
+///      "type": "string",
+///      "const": "chio.bilateral-signature-slice.v1"
+///    },
+///    "subject": {
+///      "type": "array",
+///      "items": {
+///        "type": "object",
+///        "required": [
+///          "digest",
+///          "name"
+///        ],
+///        "properties": {
+///          "digest": {
+///            "type": "object",
+///            "required": [
+///              "sha256"
+///            ],
+///            "properties": {
+///              "sha256": {
+///                "type": "string",
+///                "pattern": "^[0-9a-f]{64}$"
+///              }
+///            },
+///            "additionalProperties": false
+///          },
+///          "name": {
+///            "type": "string",
+///            "pattern": "^chio-receipt:.+"
+///          }
+///        },
+///        "additionalProperties": false
+///      },
+///      "maxItems": 1,
+///      "minItems": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioBilateralDsseSignatureSliceStatement {
+    pub predicate: ChioBilateralDsseSignatureSliceStatementPredicate,
+    #[serde(rename = "predicateType")]
+    pub predicate_type: ::std::string::String,
+    pub subject: [ChioBilateralDsseSignatureSliceStatementSubjectItem; 1usize],
+    #[serde(rename = "_type")]
+    pub type_: ::std::string::String,
+}
+impl ::std::convert::From<&ChioBilateralDsseSignatureSliceStatement>
+for ChioBilateralDsseSignatureSliceStatement {
+    fn from(value: &ChioBilateralDsseSignatureSliceStatement) -> Self {
+        value.clone()
+    }
+}
+///`ChioBilateralDsseSignatureSliceStatementPredicate`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "co_sign",
+///    "consistency_model",
+///    "cross_org_visibility",
+///    "invocation_id",
+///    "receipt_canonical_json",
+///    "schema",
+///    "timestamp_unix_ms",
+///    "tool_name",
+///    "tool_server_a",
+///    "tool_server_b"
+///  ],
+///  "properties": {
+///    "capability_lease_ref": {
+///      "$ref": "#/$defs/capabilityLeaseRef"
+///    },
+///    "co_sign": {
+///      "type": "string",
+///      "enum": [
+///        "bilateral_required",
+///        "bilateral_if_cross_org"
+///      ]
+///    },
+///    "consistency_anchor": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "consistency_model": {
+///      "type": "string",
+///      "const": "crdt-commutative"
+///    },
+///    "cross_org_visibility": {
+///      "type": "string",
+///      "enum": [
+///        "private",
+///        "treaty_only",
+///        "federated",
+///        "public"
+///      ]
+///    },
+///    "governance_receipt_ref": {
+///      "$ref": "#/$defs/governanceReceiptRef"
+///    },
+///    "invocation_id": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "policy_evaluation_summary": {
+///      "$ref": "#/$defs/policyEvaluationSummary"
+///    },
+///    "receipt_canonical_json": {
+///      "type": "string",
+///      "minLength": 2
+///    },
+///    "schema": {
+///      "type": "string",
+///      "const": "chio.bilateral-signature-slice.v1"
+///    },
+///    "timestamp_unix_ms": {
+///      "type": "integer",
+///      "minimum": 0.0
+///    },
+///    "tool_name": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "tool_server_a": {
+///      "$ref": "#/$defs/kernelIdentity"
+///    },
+///    "tool_server_b": {
+///      "$ref": "#/$defs/kernelIdentity"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioBilateralDsseSignatureSliceStatementPredicate {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub capability_lease_ref: ::std::option::Option<CapabilityLeaseRef>,
+    pub co_sign: ChioBilateralDsseSignatureSliceStatementPredicateCoSign,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub consistency_anchor: ::std::option::Option<
+        ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor,
+    >,
+    pub consistency_model: ::std::string::String,
+    pub cross_org_visibility: ChioBilateralDsseSignatureSliceStatementPredicateCrossOrgVisibility,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub governance_receipt_ref: ::std::option::Option<GovernanceReceiptRef>,
+    pub invocation_id: ChioBilateralDsseSignatureSliceStatementPredicateInvocationId,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub policy_evaluation_summary: ::std::option::Option<PolicyEvaluationSummary>,
+    pub receipt_canonical_json: ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson,
+    pub schema: ::std::string::String,
+    pub timestamp_unix_ms: u64,
+    pub tool_name: ChioBilateralDsseSignatureSliceStatementPredicateToolName,
+    pub tool_server_a: KernelIdentity,
+    pub tool_server_b: KernelIdentity,
+}
+impl ::std::convert::From<&ChioBilateralDsseSignatureSliceStatementPredicate>
+for ChioBilateralDsseSignatureSliceStatementPredicate {
+    fn from(value: &ChioBilateralDsseSignatureSliceStatementPredicate) -> Self {
+        value.clone()
+    }
+}
+///`ChioBilateralDsseSignatureSliceStatementPredicateCoSign`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "bilateral_required",
+///    "bilateral_if_cross_org"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioBilateralDsseSignatureSliceStatementPredicateCoSign {
+    #[serde(rename = "bilateral_required")]
+    BilateralRequired,
+    #[serde(rename = "bilateral_if_cross_org")]
+    BilateralIfCrossOrg,
+}
+impl ::std::convert::From<&Self>
+for ChioBilateralDsseSignatureSliceStatementPredicateCoSign {
+    fn from(value: &ChioBilateralDsseSignatureSliceStatementPredicateCoSign) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioBilateralDsseSignatureSliceStatementPredicateCoSign {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::BilateralRequired => f.write_str("bilateral_required"),
+            Self::BilateralIfCrossOrg => f.write_str("bilateral_if_cross_org"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioBilateralDsseSignatureSliceStatementPredicateCoSign {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "bilateral_required" => Ok(Self::BilateralRequired),
+            "bilateral_if_cross_org" => Ok(Self::BilateralIfCrossOrg),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioBilateralDsseSignatureSliceStatementPredicateCoSign {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementPredicateCoSign {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementPredicateCoSign {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor(
+    ::std::string::String,
+);
+impl ::std::ops::Deref
+for ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<
+    ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor,
+> for ::std::string::String {
+    fn from(
+        value: ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor,
+    ) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<
+    &ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor,
+> for ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor {
+    fn from(
+        value: &ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor,
+    ) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr
+for ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioBilateralDsseSignatureSliceStatementPredicateConsistencyAnchor {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioBilateralDsseSignatureSliceStatementPredicateCrossOrgVisibility`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "private",
+///    "treaty_only",
+///    "federated",
+///    "public"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioBilateralDsseSignatureSliceStatementPredicateCrossOrgVisibility {
+    #[serde(rename = "private")]
+    Private,
+    #[serde(rename = "treaty_only")]
+    TreatyOnly,
+    #[serde(rename = "federated")]
+    Federated,
+    #[serde(rename = "public")]
+    Public,
+}
+impl ::std::convert::From<&Self>
+for ChioBilateralDsseSignatureSliceStatementPredicateCrossOrgVisibility {
+    fn from(
+        value: &ChioBilateralDsseSignatureSliceStatementPredicateCrossOrgVisibility,
+    ) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display
+for ChioBilateralDsseSignatureSliceStatementPredicateCrossOrgVisibility {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Private => f.write_str("private"),
+            Self::TreatyOnly => f.write_str("treaty_only"),
+            Self::Federated => f.write_str("federated"),
+            Self::Public => f.write_str("public"),
+        }
+    }
+}
+impl ::std::str::FromStr
+for ChioBilateralDsseSignatureSliceStatementPredicateCrossOrgVisibility {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "private" => Ok(Self::Private),
+            "treaty_only" => Ok(Self::TreatyOnly),
+            "federated" => Ok(Self::Federated),
+            "public" => Ok(Self::Public),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioBilateralDsseSignatureSliceStatementPredicateCrossOrgVisibility {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementPredicateCrossOrgVisibility {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementPredicateCrossOrgVisibility {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ChioBilateralDsseSignatureSliceStatementPredicateInvocationId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioBilateralDsseSignatureSliceStatementPredicateInvocationId(
+    ::std::string::String,
+);
+impl ::std::ops::Deref
+for ChioBilateralDsseSignatureSliceStatementPredicateInvocationId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioBilateralDsseSignatureSliceStatementPredicateInvocationId>
+for ::std::string::String {
+    fn from(
+        value: ChioBilateralDsseSignatureSliceStatementPredicateInvocationId,
+    ) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioBilateralDsseSignatureSliceStatementPredicateInvocationId>
+for ChioBilateralDsseSignatureSliceStatementPredicateInvocationId {
+    fn from(
+        value: &ChioBilateralDsseSignatureSliceStatementPredicateInvocationId,
+    ) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr
+for ChioBilateralDsseSignatureSliceStatementPredicateInvocationId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioBilateralDsseSignatureSliceStatementPredicateInvocationId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementPredicateInvocationId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementPredicateInvocationId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioBilateralDsseSignatureSliceStatementPredicateInvocationId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 2
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson(
+    ::std::string::String,
+);
+impl ::std::ops::Deref
+for ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<
+    ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson,
+> for ::std::string::String {
+    fn from(
+        value: ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson,
+    ) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<
+    &ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson,
+> for ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson {
+    fn from(
+        value: &ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson,
+    ) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr
+for ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 2usize {
+            return Err("shorter than 2 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioBilateralDsseSignatureSliceStatementPredicateReceiptCanonicalJson {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioBilateralDsseSignatureSliceStatementPredicateToolName`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioBilateralDsseSignatureSliceStatementPredicateToolName(
+    ::std::string::String,
+);
+impl ::std::ops::Deref for ChioBilateralDsseSignatureSliceStatementPredicateToolName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioBilateralDsseSignatureSliceStatementPredicateToolName>
+for ::std::string::String {
+    fn from(value: ChioBilateralDsseSignatureSliceStatementPredicateToolName) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioBilateralDsseSignatureSliceStatementPredicateToolName>
+for ChioBilateralDsseSignatureSliceStatementPredicateToolName {
+    fn from(value: &ChioBilateralDsseSignatureSliceStatementPredicateToolName) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioBilateralDsseSignatureSliceStatementPredicateToolName {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioBilateralDsseSignatureSliceStatementPredicateToolName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementPredicateToolName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementPredicateToolName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioBilateralDsseSignatureSliceStatementPredicateToolName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioBilateralDsseSignatureSliceStatementSubjectItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "digest",
+///    "name"
+///  ],
+///  "properties": {
+///    "digest": {
+///      "type": "object",
+///      "required": [
+///        "sha256"
+///      ],
+///      "properties": {
+///        "sha256": {
+///          "type": "string",
+///          "pattern": "^[0-9a-f]{64}$"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    "name": {
+///      "type": "string",
+///      "pattern": "^chio-receipt:.+"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioBilateralDsseSignatureSliceStatementSubjectItem {
+    pub digest: ChioBilateralDsseSignatureSliceStatementSubjectItemDigest,
+    pub name: ChioBilateralDsseSignatureSliceStatementSubjectItemName,
+}
+impl ::std::convert::From<&ChioBilateralDsseSignatureSliceStatementSubjectItem>
+for ChioBilateralDsseSignatureSliceStatementSubjectItem {
+    fn from(value: &ChioBilateralDsseSignatureSliceStatementSubjectItem) -> Self {
+        value.clone()
+    }
+}
+///`ChioBilateralDsseSignatureSliceStatementSubjectItemDigest`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "sha256"
+///  ],
+///  "properties": {
+///    "sha256": {
+///      "type": "string",
+///      "pattern": "^[0-9a-f]{64}$"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioBilateralDsseSignatureSliceStatementSubjectItemDigest {
+    pub sha256: ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256,
+}
+impl ::std::convert::From<&ChioBilateralDsseSignatureSliceStatementSubjectItemDigest>
+for ChioBilateralDsseSignatureSliceStatementSubjectItemDigest {
+    fn from(value: &ChioBilateralDsseSignatureSliceStatementSubjectItemDigest) -> Self {
+        value.clone()
+    }
+}
+///`ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256(
+    ::std::string::String,
+);
+impl ::std::ops::Deref
+for ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256 {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<
+    ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256,
+> for ::std::string::String {
+    fn from(
+        value: ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256,
+    ) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<
+    &ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256,
+> for ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256 {
+    fn from(
+        value: &ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256,
+    ) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr
+for ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256 {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256 {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256 {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256 {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioBilateralDsseSignatureSliceStatementSubjectItemDigestSha256 {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioBilateralDsseSignatureSliceStatementSubjectItemName`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^chio-receipt:.+"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioBilateralDsseSignatureSliceStatementSubjectItemName(
+    ::std::string::String,
+);
+impl ::std::ops::Deref for ChioBilateralDsseSignatureSliceStatementSubjectItemName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioBilateralDsseSignatureSliceStatementSubjectItemName>
+for ::std::string::String {
+    fn from(value: ChioBilateralDsseSignatureSliceStatementSubjectItemName) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioBilateralDsseSignatureSliceStatementSubjectItemName>
+for ChioBilateralDsseSignatureSliceStatementSubjectItemName {
+    fn from(value: &ChioBilateralDsseSignatureSliceStatementSubjectItemName) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioBilateralDsseSignatureSliceStatementSubjectItemName {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^chio-receipt:.+").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^chio-receipt:.+\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioBilateralDsseSignatureSliceStatementSubjectItemName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementSubjectItemName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioBilateralDsseSignatureSliceStatementSubjectItemName {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioBilateralDsseSignatureSliceStatementSubjectItemName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///A single grant carried inside a capability token's `scope`. Chio uses three distinct grant kinds (tool, resource, prompt) that share no common discriminator field; this schema accepts any one of them via `oneOf`. Mirrors `ToolGrant`, `ResourceGrant`, and `PromptGrant` in `crates/chio-core-types/src/capability.rs`. The wrapper `ChioScope` partitions grants into three named arrays (`grants`, `resource_grants`, `prompt_grants`); validators that consume a token can dispatch to the appropriate `$defs/*` shape directly without relying on `oneOf` matching.
 ///
 /// <details><summary>JSON schema</summary>
@@ -8756,7 +7140,7 @@ impl ::std::convert::From<PromptGrant> for ChioCapabilityGrant {
         Self::PromptGrant(value)
     }
 }
-///Feature bitset exchanged during federation trust establishment. Malformed feature names and unsupported schema IDs fail closed before peers negotiate capability v2, receipt v2, or anchor-batch support.
+///Feature bitset exchanged during federation trust establishment. Malformed feature names and unsupported schema IDs fail closed.
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -8764,10 +7148,9 @@ impl ::std::convert::From<PromptGrant> for ChioCapabilityGrant {
 ///{
 ///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/capabilities/v1",
 ///  "title": "Chio capability negotiation v1",
-///  "description": "Feature bitset exchanged during federation trust establishment. Malformed feature names and unsupported schema IDs fail closed before peers negotiate capability v2, receipt v2, or anchor-batch support.",
+///  "description": "Feature bitset exchanged during federation trust establishment. Malformed feature names and unsupported schema IDs fail closed.",
 ///  "type": "object",
 ///  "required": [
-///    "maxCapabilitySchema",
 ///    "schema"
 ///  ],
 ///  "properties": {
@@ -8781,13 +7164,6 @@ impl ::std::convert::From<PromptGrant> for ChioCapabilityGrant {
 ///        "type": "string",
 ///        "pattern": "^[a-z0-9_.-]{1,96}$"
 ///      }
-///    },
-///    "maxCapabilitySchema": {
-///      "type": "string",
-///      "enum": [
-///        "chio.capability.v1",
-///        "chio.capability.v2"
-///      ]
 ///    },
 ///    "schema": {
 ///      "type": "string",
@@ -8807,8 +7183,6 @@ pub struct ChioCapabilityNegotiationV1 {
         ChioCapabilityNegotiationV1FeaturesKey,
         bool,
     >,
-    #[serde(rename = "maxCapabilitySchema")]
-    pub max_capability_schema: ChioCapabilityNegotiationV1MaxCapabilitySchema,
     pub schema: ::std::string::String,
 }
 impl ::std::convert::From<&ChioCapabilityNegotiationV1> for ChioCapabilityNegotiationV1 {
@@ -8897,89 +7271,6 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityNegotiationV1FeaturesKey {
             .map_err(|e: self::error::ConversionError| {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
-    }
-}
-///`ChioCapabilityNegotiationV1MaxCapabilitySchema`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "enum": [
-///    "chio.capability.v1",
-///    "chio.capability.v2"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioCapabilityNegotiationV1MaxCapabilitySchema {
-    #[serde(rename = "chio.capability.v1")]
-    ChioCapabilityV1,
-    #[serde(rename = "chio.capability.v2")]
-    ChioCapabilityV2,
-}
-impl ::std::convert::From<&Self> for ChioCapabilityNegotiationV1MaxCapabilitySchema {
-    fn from(value: &ChioCapabilityNegotiationV1MaxCapabilitySchema) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display for ChioCapabilityNegotiationV1MaxCapabilitySchema {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::ChioCapabilityV1 => f.write_str("chio.capability.v1"),
-            Self::ChioCapabilityV2 => f.write_str("chio.capability.v2"),
-        }
-    }
-}
-impl ::std::str::FromStr for ChioCapabilityNegotiationV1MaxCapabilitySchema {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "chio.capability.v1" => Ok(Self::ChioCapabilityV1),
-            "chio.capability.v2" => Ok(Self::ChioCapabilityV2),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioCapabilityNegotiationV1MaxCapabilitySchema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioCapabilityNegotiationV1MaxCapabilitySchema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioCapabilityNegotiationV1MaxCapabilitySchema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
     }
 }
 ///A single revocation entry recording that a previously issued capability token (identified by its `id`) is no longer valid as of `revoked_at`. Mirrors `RevocationRecord` in `crates/chio-kernel/src/revocation_store.rs` (the kernel's persisted revocation row), and is the wire-level companion to the `capability_revoked` kernel notification under `chio-wire/v1/kernel/capability_revoked.schema.json`. Operators read these entries from `/admin/revocations` (hosted edge) and from the trust-control revocation list.
@@ -9107,7 +7398,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityRevocationEntryCapabilityI
             })
     }
 }
-///A Chio capability token: an Ed25519-signed, FIPS-algorithm, or hybrid PQ scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384), and renders hybrid keys as `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>`. Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms, and `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.
+///A Chio capability token with typed caveats, attenuation fields, attenuation proof, budget share, and hybrid signing support folded into the unreleased v1 wire shape.
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -9115,7 +7406,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityRevocationEntryCapabilityI
 ///{
 ///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/token/v1",
 ///  "title": "Chio CapabilityToken",
-///  "description": "A Chio capability token: an Ed25519-signed, FIPS-algorithm, or hybrid PQ scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384), and renders hybrid keys as `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>`. Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms, and `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.",
+///  "description": "A Chio capability token with typed caveats, attenuation fields, attenuation proof, budget share, and hybrid signing support folded into the unreleased v1 wire shape.",
 ///  "type": "object",
 ///  "required": [
 ///    "expires_at",
@@ -9128,7 +7419,6 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityRevocationEntryCapabilityI
 ///  ],
 ///  "properties": {
 ///    "algorithm": {
-///      "description": "Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.",
 ///      "type": "string",
 ///      "enum": [
 ///        "ed25519",
@@ -9137,35 +7427,44 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityRevocationEntryCapabilityI
 ///        "hybrid"
 ///      ]
 ///    },
+///    "attenuation_proof": {
+///      "$ref": "#/$defs/attenuationProof"
+///    },
+///    "budget_share_bps": {
+///      "description": "Fixed-point child share in basis points. Values above 10000 re-amplify budget and fail closed.",
+///      "type": "integer",
+///      "maximum": 10000.0,
+///      "minimum": 0.0
+///    },
+///    "caveats": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/caveat"
+///      }
+///    },
 ///    "delegation_chain": {
-///      "description": "Ordered list of delegation links from the root authority to this token. Omitted (or empty) for direct issuances.",
 ///      "type": "array",
 ///      "items": {
 ///        "$ref": "#/$defs/delegationLink"
 ///      }
 ///    },
 ///    "expires_at": {
-///      "description": "Unix timestamp (seconds) when the token expires.",
 ///      "type": "integer",
 ///      "minimum": 0.0
 ///    },
 ///    "id": {
-///      "description": "Unique token ID (UUIDv7 recommended), used for revocation.",
 ///      "type": "string",
 ///      "minLength": 1
 ///    },
 ///    "issued_at": {
-///      "description": "Unix timestamp (seconds) when the token was issued.",
 ///      "type": "integer",
 ///      "minimum": 0.0
 ///    },
 ///    "issuer": {
-///      "description": "Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ.",
 ///      "type": "string",
 ///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
 ///    "schema": {
-///      "description": "Signed-artifact schema ID. Optional on the wire: legacy v1 tokens persisted before this field was introduced omit it entirely, and verifiers default the missing value to `chio.capability.v1` so those tokens deserialize unchanged. Newly issued tokens carry it in the schema-aware signing input.",
 ///      "default": "chio.capability.v1",
 ///      "type": "string",
 ///      "const": "chio.capability.v1"
@@ -9173,13 +7472,27 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityRevocationEntryCapabilityI
 ///    "scope": {
 ///      "$ref": "#/$defs/chioScope"
 ///    },
+///    "scope_attenuations": {
+///      "type": "array",
+///      "items": {
+///        "type": "object",
+///        "required": [
+///          "type"
+///        ],
+///        "properties": {
+///          "type": {
+///            "type": "string",
+///            "minLength": 1
+///          }
+///        },
+///        "additionalProperties": true
+///      }
+///    },
 ///    "signature": {
-///      "description": "Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms, or `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
 ///      "type": "string",
 ///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
 ///    "subject": {
-///      "description": "Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.",
 ///      "type": "string",
 ///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    }
@@ -9191,27 +7504,27 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityRevocationEntryCapabilityI
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ChioCapabilityToken {
-    ///Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub algorithm: ::std::option::Option<ChioCapabilityTokenAlgorithm>,
-    ///Ordered list of delegation links from the root authority to this token. Omitted (or empty) for direct issuances.
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub attenuation_proof: ::std::option::Option<AttenuationProof>,
+    ///Fixed-point child share in basis points. Values above 10000 re-amplify budget and fail closed.
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub budget_share_bps: ::std::option::Option<i64>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub caveats: ::std::vec::Vec<Caveat>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub delegation_chain: ::std::vec::Vec<DelegationLink>,
-    ///Unix timestamp (seconds) when the token expires.
     pub expires_at: u64,
-    ///Unique token ID (UUIDv7 recommended), used for revocation.
     pub id: ChioCapabilityTokenId,
-    ///Unix timestamp (seconds) when the token was issued.
     pub issued_at: u64,
-    ///Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ.
     pub issuer: ChioCapabilityTokenIssuer,
-    ///Signed-artifact schema ID. Optional on the wire: legacy v1 tokens persisted before this field was introduced omit it entirely, and verifiers default the missing value to `chio.capability.v1` so those tokens deserialize unchanged. Newly issued tokens carry it in the schema-aware signing input.
     #[serde(default = "defaults::chio_capability_token_schema")]
     pub schema: ::std::string::String,
     pub scope: ChioScope,
-    ///Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms, or `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub scope_attenuations: ::std::vec::Vec<ChioCapabilityTokenScopeAttenuationsItem>,
     pub signature: ChioCapabilityTokenSignature,
-    ///Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.
     pub subject: ChioCapabilityTokenSubject,
 }
 impl ::std::convert::From<&ChioCapabilityToken> for ChioCapabilityToken {
@@ -9219,13 +7532,12 @@ impl ::std::convert::From<&ChioCapabilityToken> for ChioCapabilityToken {
         value.clone()
     }
 }
-///Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
+///`ChioCapabilityTokenAlgorithm`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.",
 ///  "type": "string",
 ///  "enum": [
 ///    "ed25519",
@@ -9311,13 +7623,12 @@ impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenAlgor
         value.parse()
     }
 }
-///Unique token ID (UUIDv7 recommended), used for revocation.
+///`ChioCapabilityTokenId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Unique token ID (UUIDv7 recommended), used for revocation.",
 ///  "type": "string",
 ///  "minLength": 1
 ///}
@@ -9389,13 +7700,12 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenId {
             })
     }
 }
-///Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ.
+///`ChioCapabilityTokenIssuer`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding), or `hybrid:<classical-public-key>:<mldsa65-public-key-hex>:<alg_set>` for hybrid PQ.",
 ///  "type": "string",
 ///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
@@ -9477,13 +7787,124 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenIssuer {
             })
     }
 }
-///Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms, or `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+///`ChioCapabilityTokenScopeAttenuationsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms, or `hybrid:<classical-signature>:<mldsa65-signature-hex>:<alg_set>` for hybrid PQ. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+///  "type": "object",
+///  "required": [
+///    "type"
+///  ],
+///  "properties": {
+///    "type": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": true
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct ChioCapabilityTokenScopeAttenuationsItem {
+    #[serde(rename = "type")]
+    pub type_: ChioCapabilityTokenScopeAttenuationsItemType,
+}
+impl ::std::convert::From<&ChioCapabilityTokenScopeAttenuationsItem>
+for ChioCapabilityTokenScopeAttenuationsItem {
+    fn from(value: &ChioCapabilityTokenScopeAttenuationsItem) -> Self {
+        value.clone()
+    }
+}
+///`ChioCapabilityTokenScopeAttenuationsItemType`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioCapabilityTokenScopeAttenuationsItemType(::std::string::String);
+impl ::std::ops::Deref for ChioCapabilityTokenScopeAttenuationsItemType {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioCapabilityTokenScopeAttenuationsItemType>
+for ::std::string::String {
+    fn from(value: ChioCapabilityTokenScopeAttenuationsItemType) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioCapabilityTokenScopeAttenuationsItemType>
+for ChioCapabilityTokenScopeAttenuationsItemType {
+    fn from(value: &ChioCapabilityTokenScopeAttenuationsItemType) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioCapabilityTokenScopeAttenuationsItemType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenScopeAttenuationsItemType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioCapabilityTokenScopeAttenuationsItemType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioCapabilityTokenScopeAttenuationsItemType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenScopeAttenuationsItemType {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioCapabilityTokenSignature`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
 ///  "type": "string",
 ///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
@@ -9566,13 +7987,12 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenSignature {
             })
     }
 }
-///Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.
+///`ChioCapabilityTokenSubject`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.",
 ///  "type": "string",
 ///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///}
@@ -9643,1223 +8063,6 @@ impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenSubje
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenSubject {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///A Chio capability token: an Ed25519-signed (or FIPS-algorithm), scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), and renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384). Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/token.v1",
-///  "title": "Chio CapabilityToken v1",
-///  "description": "A Chio capability token: an Ed25519-signed (or FIPS-algorithm), scoped, time-bounded authorization to invoke a tool. Mirrors the serde shape of `CapabilityToken` in `crates/chio-core-types/src/capability.rs`. The `signature` field covers the canonical JSON of all other fields except `algorithm`. The `algorithm` envelope field is informational (verification dispatches off the signature hex prefix) and is omitted for legacy Ed25519 tokens. PublicKey serde renders Ed25519 keys as bare 64-character lowercase hex (`PublicKey::to_hex` in `crates/chio-core-types/src/crypto.rs`), and renders FIPS keys with a self-describing prefix (`p256:<130-char hex>` for uncompressed SEC1 P-256, `p384:<194-char hex>` for P-384). Signatures follow the same convention: bare 128-char hex for Ed25519, `p256:<DER hex>` and `p384:<DER hex>` for FIPS algorithms. The grant `$defs` (`toolGrant`, `resourceGrant`, `promptGrant`, `operation`, `monetaryAmount`, `constraint`) are duplicated with `capability/grant.schema.json` because the current Rust codegen pipeline (`typify =0.4.3`) does not support cross-file `$ref`; both copies must be kept byte-identical when either file is edited until the M01 phase 3 codegen split lands.",
-///  "type": "object",
-///  "required": [
-///    "expires_at",
-///    "id",
-///    "issued_at",
-///    "issuer",
-///    "scope",
-///    "signature",
-///    "subject"
-///  ],
-///  "properties": {
-///    "algorithm": {
-///      "description": "Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.",
-///      "type": "string",
-///      "enum": [
-///        "ed25519",
-///        "p256",
-///        "p384"
-///      ]
-///    },
-///    "delegation_chain": {
-///      "description": "Ordered list of delegation links from the root authority to this token. Omitted (or empty) for direct issuances.",
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/delegationLink"
-///      }
-///    },
-///    "expires_at": {
-///      "description": "Unix timestamp (seconds) when the token expires.",
-///      "type": "integer",
-///      "minimum": 0.0
-///    },
-///    "id": {
-///      "description": "Unique token ID (UUIDv7 recommended), used for revocation.",
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "issued_at": {
-///      "description": "Unix timestamp (seconds) when the token was issued.",
-///      "type": "integer",
-///      "minimum": 0.0
-///    },
-///    "issuer": {
-///      "description": "Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).",
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
-///    },
-///    "schema": {
-///      "description": "Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.",
-///      "type": "string",
-///      "const": "chio.capability.v1"
-///    },
-///    "scope": {
-///      "$ref": "#/$defs/chioScope"
-///    },
-///    "signature": {
-///      "description": "Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
-///    },
-///    "subject": {
-///      "description": "Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.",
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioCapabilityTokenV1 {
-    ///Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub algorithm: ::std::option::Option<ChioCapabilityTokenV1Algorithm>,
-    ///Ordered list of delegation links from the root authority to this token. Omitted (or empty) for direct issuances.
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub delegation_chain: ::std::vec::Vec<DelegationLink>,
-    ///Unix timestamp (seconds) when the token expires.
-    pub expires_at: u64,
-    ///Unique token ID (UUIDv7 recommended), used for revocation.
-    pub id: ChioCapabilityTokenV1Id,
-    ///Unix timestamp (seconds) when the token was issued.
-    pub issued_at: u64,
-    ///Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).
-    pub issuer: ChioCapabilityTokenV1Issuer,
-    ///Signed-artifact schema ID. Legacy wire tokens that omitted this field are interpreted as chio.capability.v1 by compatibility verifiers, but newly issued tokens carry it in the schema-aware signing input.
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub schema: ::std::option::Option<::std::string::String>,
-    pub scope: ChioScope,
-    ///Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
-    pub signature: ChioCapabilityTokenV1Signature,
-    ///Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.
-    pub subject: ChioCapabilityTokenV1Subject,
-}
-impl ::std::convert::From<&ChioCapabilityTokenV1> for ChioCapabilityTokenV1 {
-    fn from(value: &ChioCapabilityTokenV1) -> Self {
-        value.clone()
-    }
-}
-///Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Signing algorithm envelope hint. Omitted for legacy Ed25519 tokens to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field.",
-///  "type": "string",
-///  "enum": [
-///    "ed25519",
-///    "p256",
-///    "p384"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioCapabilityTokenV1Algorithm {
-    #[serde(rename = "ed25519")]
-    Ed25519,
-    #[serde(rename = "p256")]
-    P256,
-    #[serde(rename = "p384")]
-    P384,
-}
-impl ::std::convert::From<&Self> for ChioCapabilityTokenV1Algorithm {
-    fn from(value: &ChioCapabilityTokenV1Algorithm) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display for ChioCapabilityTokenV1Algorithm {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::Ed25519 => f.write_str("ed25519"),
-            Self::P256 => f.write_str("p256"),
-            Self::P384 => f.write_str("p384"),
-        }
-    }
-}
-impl ::std::str::FromStr for ChioCapabilityTokenV1Algorithm {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "ed25519" => Ok(Self::Ed25519),
-            "p256" => Ok(Self::P256),
-            "p384" => Ok(Self::P384),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV1Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV1Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV1Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///Unique token ID (UUIDv7 recommended), used for revocation.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Unique token ID (UUIDv7 recommended), used for revocation.",
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioCapabilityTokenV1Id(::std::string::String);
-impl ::std::ops::Deref for ChioCapabilityTokenV1Id {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioCapabilityTokenV1Id> for ::std::string::String {
-    fn from(value: ChioCapabilityTokenV1Id) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioCapabilityTokenV1Id> for ChioCapabilityTokenV1Id {
-    fn from(value: &ChioCapabilityTokenV1Id) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioCapabilityTokenV1Id {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV1Id {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV1Id {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV1Id {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV1Id {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Public key of the Capability Authority (or delegating agent) that issued this token. Bare 64-char lowercase hex for Ed25519, or `p256:<130-char hex>` / `p384:<194-char hex>` for FIPS algorithms (uncompressed SEC1 encoding).",
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioCapabilityTokenV1Issuer(::std::string::String);
-impl ::std::ops::Deref for ChioCapabilityTokenV1Issuer {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioCapabilityTokenV1Issuer> for ::std::string::String {
-    fn from(value: ChioCapabilityTokenV1Issuer) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioCapabilityTokenV1Issuer> for ChioCapabilityTokenV1Issuer {
-    fn from(value: &ChioCapabilityTokenV1Issuer) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioCapabilityTokenV1Issuer {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV1Issuer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV1Issuer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV1Issuer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV1Issuer {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Hex-encoded signature over the canonical JSON of the token body. Bare 128-char hex for Ed25519, or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioCapabilityTokenV1Signature(::std::string::String);
-impl ::std::ops::Deref for ChioCapabilityTokenV1Signature {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioCapabilityTokenV1Signature> for ::std::string::String {
-    fn from(value: ChioCapabilityTokenV1Signature) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioCapabilityTokenV1Signature>
-for ChioCapabilityTokenV1Signature {
-    fn from(value: &ChioCapabilityTokenV1Signature) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioCapabilityTokenV1Signature {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new("^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$")
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV1Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV1Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV1Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV1Signature {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Public key of the agent this capability is bound to (DPoP sender constraint). Same encoding as `issuer`.",
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioCapabilityTokenV1Subject(::std::string::String);
-impl ::std::ops::Deref for ChioCapabilityTokenV1Subject {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioCapabilityTokenV1Subject> for ::std::string::String {
-    fn from(value: ChioCapabilityTokenV1Subject) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioCapabilityTokenV1Subject>
-for ChioCapabilityTokenV1Subject {
-    fn from(value: &ChioCapabilityTokenV1Subject) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioCapabilityTokenV1Subject {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV1Subject {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV1Subject {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV1Subject {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV1Subject {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///Schema-tagged v2 capability token with typed caveats, first-class attenuation fields, an attenuation_proof witness, and a reserved hybrid algorithm enum value for the T2.1 compatibility path.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/token.v2",
-///  "title": "Chio CapabilityToken v2",
-///  "description": "Schema-tagged v2 capability token with typed caveats, first-class attenuation fields, an attenuation_proof witness, and a reserved hybrid algorithm enum value for the T2.1 compatibility path.",
-///  "type": "object",
-///  "required": [
-///    "attenuation_proof",
-///    "expires_at",
-///    "id",
-///    "issued_at",
-///    "issuer",
-///    "schema",
-///    "scope",
-///    "signature",
-///    "subject"
-///  ],
-///  "properties": {
-///    "algorithm": {
-///      "type": "string",
-///      "enum": [
-///        "ed25519",
-///        "p256",
-///        "p384",
-///        "hybrid"
-///      ]
-///    },
-///    "attenuation_proof": {
-///      "$ref": "#/$defs/attenuationProof"
-///    },
-///    "budget_share_bps": {
-///      "description": "Fixed-point child share in basis points. Values above 10000 re-amplify budget and fail closed.",
-///      "type": "integer",
-///      "maximum": 10000.0,
-///      "minimum": 0.0
-///    },
-///    "caveats": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/caveat"
-///      }
-///    },
-///    "delegation_chain": {
-///      "type": "array",
-///      "items": {
-///        "type": "object"
-///      }
-///    },
-///    "expires_at": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    },
-///    "id": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "issued_at": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    },
-///    "issuer": {
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///    },
-///    "schema": {
-///      "type": "string",
-///      "const": "chio.capability.v2"
-///    },
-///    "scope": {
-///      "$ref": "#/$defs/chioScope"
-///    },
-///    "scope_attenuations": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "required": [
-///          "type"
-///        ],
-///        "properties": {
-///          "type": {
-///            "type": "string",
-///            "minLength": 1
-///          }
-///        },
-///        "additionalProperties": true
-///      }
-///    },
-///    "signature": {
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
-///    },
-///    "subject": {
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioCapabilityTokenV2 {
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub algorithm: ::std::option::Option<ChioCapabilityTokenV2Algorithm>,
-    pub attenuation_proof: AttenuationProof,
-    ///Fixed-point child share in basis points. Values above 10000 re-amplify budget and fail closed.
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub budget_share_bps: ::std::option::Option<i64>,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub caveats: ::std::vec::Vec<Caveat>,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub delegation_chain: ::std::vec::Vec<
-        ::serde_json::Map<::std::string::String, ::serde_json::Value>,
-    >,
-    pub expires_at: u64,
-    pub id: ChioCapabilityTokenV2Id,
-    pub issued_at: u64,
-    pub issuer: ChioCapabilityTokenV2Issuer,
-    pub schema: ::std::string::String,
-    pub scope: ChioScope,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub scope_attenuations: ::std::vec::Vec<ChioCapabilityTokenV2ScopeAttenuationsItem>,
-    pub signature: ChioCapabilityTokenV2Signature,
-    pub subject: ChioCapabilityTokenV2Subject,
-}
-impl ::std::convert::From<&ChioCapabilityTokenV2> for ChioCapabilityTokenV2 {
-    fn from(value: &ChioCapabilityTokenV2) -> Self {
-        value.clone()
-    }
-}
-///`ChioCapabilityTokenV2Algorithm`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "enum": [
-///    "ed25519",
-///    "p256",
-///    "p384",
-///    "hybrid"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioCapabilityTokenV2Algorithm {
-    #[serde(rename = "ed25519")]
-    Ed25519,
-    #[serde(rename = "p256")]
-    P256,
-    #[serde(rename = "p384")]
-    P384,
-    #[serde(rename = "hybrid")]
-    Hybrid,
-}
-impl ::std::convert::From<&Self> for ChioCapabilityTokenV2Algorithm {
-    fn from(value: &ChioCapabilityTokenV2Algorithm) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display for ChioCapabilityTokenV2Algorithm {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::Ed25519 => f.write_str("ed25519"),
-            Self::P256 => f.write_str("p256"),
-            Self::P384 => f.write_str("p384"),
-            Self::Hybrid => f.write_str("hybrid"),
-        }
-    }
-}
-impl ::std::str::FromStr for ChioCapabilityTokenV2Algorithm {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "ed25519" => Ok(Self::Ed25519),
-            "p256" => Ok(Self::P256),
-            "p384" => Ok(Self::P384),
-            "hybrid" => Ok(Self::Hybrid),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV2Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV2Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV2Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioCapabilityTokenV2Id`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioCapabilityTokenV2Id(::std::string::String);
-impl ::std::ops::Deref for ChioCapabilityTokenV2Id {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioCapabilityTokenV2Id> for ::std::string::String {
-    fn from(value: ChioCapabilityTokenV2Id) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioCapabilityTokenV2Id> for ChioCapabilityTokenV2Id {
-    fn from(value: &ChioCapabilityTokenV2Id) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioCapabilityTokenV2Id {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV2Id {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV2Id {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV2Id {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2Id {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioCapabilityTokenV2Issuer`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioCapabilityTokenV2Issuer(::std::string::String);
-impl ::std::ops::Deref for ChioCapabilityTokenV2Issuer {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioCapabilityTokenV2Issuer> for ::std::string::String {
-    fn from(value: ChioCapabilityTokenV2Issuer) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioCapabilityTokenV2Issuer> for ChioCapabilityTokenV2Issuer {
-    fn from(value: &ChioCapabilityTokenV2Issuer) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioCapabilityTokenV2Issuer {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV2Issuer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV2Issuer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV2Issuer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2Issuer {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioCapabilityTokenV2ScopeAttenuationsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "type"
-///  ],
-///  "properties": {
-///    "type": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": true
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-pub struct ChioCapabilityTokenV2ScopeAttenuationsItem {
-    #[serde(rename = "type")]
-    pub type_: ChioCapabilityTokenV2ScopeAttenuationsItemType,
-}
-impl ::std::convert::From<&ChioCapabilityTokenV2ScopeAttenuationsItem>
-for ChioCapabilityTokenV2ScopeAttenuationsItem {
-    fn from(value: &ChioCapabilityTokenV2ScopeAttenuationsItem) -> Self {
-        value.clone()
-    }
-}
-///`ChioCapabilityTokenV2ScopeAttenuationsItemType`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioCapabilityTokenV2ScopeAttenuationsItemType(::std::string::String);
-impl ::std::ops::Deref for ChioCapabilityTokenV2ScopeAttenuationsItemType {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioCapabilityTokenV2ScopeAttenuationsItemType>
-for ::std::string::String {
-    fn from(value: ChioCapabilityTokenV2ScopeAttenuationsItemType) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioCapabilityTokenV2ScopeAttenuationsItemType>
-for ChioCapabilityTokenV2ScopeAttenuationsItemType {
-    fn from(value: &ChioCapabilityTokenV2ScopeAttenuationsItemType) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioCapabilityTokenV2ScopeAttenuationsItemType {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV2ScopeAttenuationsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioCapabilityTokenV2ScopeAttenuationsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioCapabilityTokenV2ScopeAttenuationsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2ScopeAttenuationsItemType {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioCapabilityTokenV2Signature`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioCapabilityTokenV2Signature(::std::string::String);
-impl ::std::ops::Deref for ChioCapabilityTokenV2Signature {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioCapabilityTokenV2Signature> for ::std::string::String {
-    fn from(value: ChioCapabilityTokenV2Signature) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioCapabilityTokenV2Signature>
-for ChioCapabilityTokenV2Signature {
-    fn from(value: &ChioCapabilityTokenV2Signature) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioCapabilityTokenV2Signature {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV2Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV2Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV2Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2Signature {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioCapabilityTokenV2Subject`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioCapabilityTokenV2Subject(::std::string::String);
-impl ::std::ops::Deref for ChioCapabilityTokenV2Subject {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioCapabilityTokenV2Subject> for ::std::string::String {
-    fn from(value: ChioCapabilityTokenV2Subject) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioCapabilityTokenV2Subject>
-for ChioCapabilityTokenV2Subject {
-    fn from(value: &ChioCapabilityTokenV2Subject) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioCapabilityTokenV2Subject {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioCapabilityTokenV2Subject {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioCapabilityTokenV2Subject {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioCapabilityTokenV2Subject {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenV2Subject {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -11881,26 +9084,6 @@ impl<'de> ::serde::Deserialize<'de> for ChioJsonRpc20ResponseVariant1IdVariant1 
 ///      "type": "array",
 ///      "items": {
 ///        "type": "object",
-///        "oneOf": [
-///          {
-///            "required": [
-///              "attenuation_proof",
-///              "schema"
-///            ],
-///            "properties": {
-///              "schema": {
-///                "const": "chio.capability.v2"
-///              }
-///            }
-///          },
-///          {
-///            "properties": {
-///              "schema": {
-///                "const": "chio.capability.v1"
-///              }
-///            }
-///          }
-///        ],
 ///        "required": [
 ///          "expires_at",
 ///          "id",
@@ -12034,10 +9217,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioJsonRpc20ResponseVariant1IdVariant1 
 ///            "description": "Signed-artifact schema ID for live capability-token serialization.",
 ///            "default": "chio.capability.v1",
 ///            "type": "string",
-///            "enum": [
-///              "chio.capability.v1",
-///              "chio.capability.v2"
-///            ]
+///            "const": "chio.capability.v1"
 ///          },
 ///          "scope": {
 ///            "type": "object",
@@ -12258,26 +9438,6 @@ for ChioKernelMessageCapabilityList {
 /// ```json
 ///{
 ///  "type": "object",
-///  "oneOf": [
-///    {
-///      "required": [
-///        "attenuation_proof",
-///        "schema"
-///      ],
-///      "properties": {
-///        "schema": {
-///          "const": "chio.capability.v2"
-///        }
-///      }
-///    },
-///    {
-///      "properties": {
-///        "schema": {
-///          "const": "chio.capability.v1"
-///        }
-///      }
-///    }
-///  ],
 ///  "required": [
 ///    "expires_at",
 ///    "id",
@@ -12411,10 +9571,7 @@ for ChioKernelMessageCapabilityList {
 ///      "description": "Signed-artifact schema ID for live capability-token serialization.",
 ///      "default": "chio.capability.v1",
 ///      "type": "string",
-///      "enum": [
-///        "chio.capability.v1",
-///        "chio.capability.v2"
-///      ]
+///      "const": "chio.capability.v1"
 ///    },
 ///    "scope": {
 ///      "type": "object",
@@ -12609,75 +9766,50 @@ for ChioKernelMessageCapabilityList {
 /// ```
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(untagged, deny_unknown_fields)]
-pub enum ChioKernelMessageCapabilityListCapabilitiesItem {
-    Variant0 {
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        algorithm: ::std::option::Option<
-            ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm,
-        >,
-        attenuation_proof: ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProof,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        budget_share_bps: ::std::option::Option<i64>,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        caveats: ::std::vec::Vec<
-            ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItem,
-        >,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        delegation_chain: ::std::vec::Vec<
-            ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItem,
-        >,
-        expires_at: u64,
-        id: ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id,
-        issued_at: u64,
-        issuer: ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer,
-        schema: ChioKernelMessageCapabilityListCapabilitiesItemVariant0Schema,
-        scope: ChioKernelMessageCapabilityListCapabilitiesItemVariant0Scope,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        scope_attenuations: ::std::vec::Vec<
-            ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItem,
-        >,
-        signature: ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature,
-        subject: ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject,
-    },
-    Variant1 {
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        algorithm: ::std::option::Option<
-            ChioKernelMessageCapabilityListCapabilitiesItemVariant1Algorithm,
-        >,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        budget_share_bps: ::std::option::Option<i64>,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        caveats: ::std::vec::Vec<
-            ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItem,
-        >,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        delegation_chain: ::std::vec::Vec<
-            ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItem,
-        >,
-        expires_at: u64,
-        id: ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id,
-        issued_at: u64,
-        issuer: ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        schema: ::std::option::Option<
-            ChioKernelMessageCapabilityListCapabilitiesItemVariant1Schema,
-        >,
-        scope: ChioKernelMessageCapabilityListCapabilitiesItemVariant1Scope,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        scope_attenuations: ::std::vec::Vec<
-            ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItem,
-        >,
-        signature: ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature,
-        subject: ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject,
-    },
+#[serde(deny_unknown_fields)]
+pub struct ChioKernelMessageCapabilityListCapabilitiesItem {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub algorithm: ::std::option::Option<
+        ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm,
+    >,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub attenuation_proof: ::std::option::Option<
+        ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProof,
+    >,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub budget_share_bps: ::std::option::Option<i64>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub caveats: ::std::vec::Vec<
+        ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItem,
+    >,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub delegation_chain: ::std::vec::Vec<
+        ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItem,
+    >,
+    pub expires_at: u64,
+    pub id: ChioKernelMessageCapabilityListCapabilitiesItemId,
+    pub issued_at: u64,
+    pub issuer: ChioKernelMessageCapabilityListCapabilitiesItemIssuer,
+    ///Signed-artifact schema ID for live capability-token serialization.
+    #[serde(
+        default = "defaults::chio_kernel_message_capability_list_capabilities_item_schema"
+    )]
+    pub schema: ::std::string::String,
+    pub scope: ChioKernelMessageCapabilityListCapabilitiesItemScope,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub scope_attenuations: ::std::vec::Vec<
+        ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItem,
+    >,
+    pub signature: ChioKernelMessageCapabilityListCapabilitiesItemSignature,
+    pub subject: ChioKernelMessageCapabilityListCapabilitiesItemSubject,
 }
-impl ::std::convert::From<&Self> for ChioKernelMessageCapabilityListCapabilitiesItem {
+impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItem>
+for ChioKernelMessageCapabilityListCapabilitiesItem {
     fn from(value: &ChioKernelMessageCapabilityListCapabilitiesItem) -> Self {
         value.clone()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm`
+///`ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -12705,7 +9837,7 @@ impl ::std::convert::From<&Self> for ChioKernelMessageCapabilityListCapabilities
     PartialEq,
     PartialOrd
 )]
-pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
+pub enum ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm {
     #[serde(rename = "ed25519")]
     Ed25519,
     #[serde(rename = "p256")]
@@ -12716,15 +9848,12 @@ pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
     Hybrid,
 }
 impl ::std::convert::From<&Self>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm,
-    ) -> Self {
+for ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm {
+    fn from(value: &ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm) -> Self {
         value.clone()
     }
 }
-impl ::std::fmt::Display
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
+impl ::std::fmt::Display for ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::Ed25519 => f.write_str("ed25519"),
@@ -12734,8 +9863,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
         }
     }
 }
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
+impl ::std::str::FromStr for ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -12750,7 +9878,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
+for ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -12759,7 +9887,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
+for ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -12768,7 +9896,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
+for ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -12776,7 +9904,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
         value.parse()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProof`
+///`ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProof`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -12810,21 +9938,21 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Algorithm {
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProof {
-    pub child_scope_hash: ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash,
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProof {
+    pub child_scope_hash: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash,
     pub normalized_subset_proof: ::std::vec::Vec<::std::string::String>,
-    pub parent_scope_hash: ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash,
+    pub parent_scope_hash: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash,
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProof,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProof {
+    &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProof,
+> for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProof {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProof,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProof,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash`
+///`ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -12837,37 +9965,36 @@ impl ::std::convert::From<
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash {
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash,
+    ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash {
+    &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash,
+> for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash {
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -12881,7 +10008,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChild
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash {
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -12890,7 +10017,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChild
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash {
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -12899,7 +10026,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChild
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash {
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -12908,7 +10035,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChild
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChildScopeHash {
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -12920,7 +10047,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChild
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash`
+///`ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -12933,37 +10060,36 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofChild
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash {
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash,
+    ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash {
+    &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash,
+> for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash {
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -12977,7 +10103,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParen
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash {
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -12986,7 +10112,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParen
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash {
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -12995,7 +10121,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParen
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash {
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -13004,7 +10130,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParen
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParentScopeHash {
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -13016,7 +10142,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParen
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItem`
+///`ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -13044,24 +10170,21 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0AttenuationProofParen
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItem {
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItem {
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub enforced_at: ::std::option::Option<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt,
+        ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt,
     >,
-    pub kind: ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind,
+    pub kind: ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind,
     pub predicate: ::serde_json::Value,
 }
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItem,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItem {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItem,
-    ) -> Self {
+impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItem>
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItem {
+    fn from(value: &ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItem) -> Self {
         value.clone()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt`
+///`ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -13074,36 +10197,36 @@ impl ::std::convert::From<
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt {
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt,
+    ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt {
+    &ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt,
+> for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt {
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -13115,7 +10238,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt {
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -13124,7 +10247,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt {
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -13133,7 +10256,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt {
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -13142,7 +10265,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt {
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemEnforcedAt {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -13154,7 +10277,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind`
+///`ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -13167,36 +10290,35 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemEnforcedAt
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind,
-> for ::std::string::String {
+impl ::std::convert::From<ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind>
+for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
+    &ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind,
+> for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -13208,7 +10330,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -13217,7 +10339,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -13226,7 +10348,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -13235,7 +10357,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
+for ChioKernelMessageCapabilityListCapabilitiesItemCaveatsItemKind {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -13247,7 +10369,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItem`
+///`ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -13295,27 +10417,27 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0CaveatsItemKind {
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItem {
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItem {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub attenuations: ::std::vec::Vec<
         ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     >,
-    pub capability_id: ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId,
-    pub delegatee: ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee,
-    pub delegator: ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator,
-    pub signature: ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature,
+    pub capability_id: ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId,
+    pub delegatee: ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee,
+    pub delegator: ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator,
+    pub signature: ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature,
     pub timestamp: u64,
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItem,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItem {
+    &ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItem,
+> for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItem {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItem,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItem,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId`
+///`ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -13328,37 +10450,36 @@ impl ::std::convert::From<
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId,
+    ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId {
+    &ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId,
+> for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -13370,7 +10491,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCa
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -13379,7 +10500,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCa
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -13388,7 +10509,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCa
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -13397,7 +10518,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCa
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCapabilityId {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemCapabilityId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -13409,7 +10530,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCa
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee`
+///`ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -13422,37 +10543,36 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemCa
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee,
+    ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee {
+    &ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee,
+> for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -13466,7 +10586,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDe
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -13475,7 +10595,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDe
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -13484,7 +10604,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDe
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -13493,7 +10613,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDe
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegatee {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegatee {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -13505,7 +10625,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDe
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator`
+///`ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -13518,37 +10638,36 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDe
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator,
+    ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator {
+    &ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator,
+> for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -13562,7 +10681,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDe
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -13571,7 +10690,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDe
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -13580,7 +10699,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDe
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -13589,7 +10708,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDe
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDelegator {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemDelegator {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -13601,7 +10720,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDe
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature`
+///`ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -13614,37 +10733,36 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemDe
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature,
+    ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature {
+    &ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature,
+> for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -13666,7 +10784,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSi
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -13675,7 +10793,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSi
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -13684,7 +10802,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSi
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -13693,7 +10811,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSi
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSignature {
+for ChioKernelMessageCapabilityListCapabilitiesItemDelegationChainItemSignature {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -13705,7 +10823,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSi
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id`
+///`ChioKernelMessageCapabilityListCapabilitiesItemId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -13718,28 +10836,26 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0DelegationChainItemSi
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id(
-    ::std::string::String,
-);
-impl ::std::ops::Deref for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id {
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemId(::std::string::String);
+impl ::std::ops::Deref for ChioKernelMessageCapabilityListCapabilitiesItemId {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id>
+impl ::std::convert::From<ChioKernelMessageCapabilityListCapabilitiesItemId>
 for ::std::string::String {
-    fn from(value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id) -> Self {
+    fn from(value: ChioKernelMessageCapabilityListCapabilitiesItemId) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id {
-    fn from(value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id) -> Self {
+impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItemId>
+for ChioKernelMessageCapabilityListCapabilitiesItemId {
+    fn from(value: &ChioKernelMessageCapabilityListCapabilitiesItemId) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id {
+impl ::std::str::FromStr for ChioKernelMessageCapabilityListCapabilitiesItemId {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -13751,7 +10867,7 @@ impl ::std::str::FromStr for ChioKernelMessageCapabilityListCapabilitiesItemVari
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id {
+for ChioKernelMessageCapabilityListCapabilitiesItemId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -13760,7 +10876,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id {
+for ChioKernelMessageCapabilityListCapabilitiesItemId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -13769,7 +10885,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id {
+for ChioKernelMessageCapabilityListCapabilitiesItemId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -13778,7 +10894,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id {
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id {
+for ChioKernelMessageCapabilityListCapabilitiesItemId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -13790,7 +10906,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id {
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer`
+///`ChioKernelMessageCapabilityListCapabilitiesItemIssuer`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -13803,34 +10919,26 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Id {
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer {
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemIssuer(::std::string::String);
+impl ::std::ops::Deref for ChioKernelMessageCapabilityListCapabilitiesItemIssuer {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer>
+impl ::std::convert::From<ChioKernelMessageCapabilityListCapabilitiesItemIssuer>
 for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer,
-    ) -> Self {
+    fn from(value: ChioKernelMessageCapabilityListCapabilitiesItemIssuer) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer,
-    ) -> Self {
+impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItemIssuer>
+for ChioKernelMessageCapabilityListCapabilitiesItemIssuer {
+    fn from(value: &ChioKernelMessageCapabilityListCapabilitiesItemIssuer) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer {
+impl ::std::str::FromStr for ChioKernelMessageCapabilityListCapabilitiesItemIssuer {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -13852,7 +10960,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer {
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer {
+for ChioKernelMessageCapabilityListCapabilitiesItemIssuer {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -13861,7 +10969,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer {
+for ChioKernelMessageCapabilityListCapabilitiesItemIssuer {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -13870,7 +10978,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer {
+for ChioKernelMessageCapabilityListCapabilitiesItemIssuer {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -13879,7 +10987,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer {
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer {
+for ChioKernelMessageCapabilityListCapabilitiesItemIssuer {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -13891,91 +10999,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Issuer {
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0Schema`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "enum": [
-///    "chio.capability.v2"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant0Schema {
-    #[serde(rename = "chio.capability.v2")]
-    ChioCapabilityV2,
-}
-impl ::std::convert::From<&Self>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Schema {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0Schema,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Schema {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::ChioCapabilityV2 => f.write_str("chio.capability.v2"),
-        }
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Schema {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "chio.capability.v2" => Ok(Self::ChioCapabilityV2),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Schema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Schema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Schema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0Scope`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScope`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14147,30 +11171,27 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Schema {
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0Scope {
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScope {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub grants: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItem,
+        ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItem,
     >,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub prompt_grants: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem,
+        ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItem,
     >,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub resource_grants: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItem,
+        ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItem,
     >,
 }
-impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItemVariant0Scope>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Scope {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0Scope,
-    ) -> Self {
+impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItemScope>
+for ChioKernelMessageCapabilityListCapabilitiesItemScope {
+    fn from(value: &ChioKernelMessageCapabilityListCapabilitiesItemScope) -> Self {
         value.clone()
     }
 }
-impl ::std::default::Default
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Scope {
+impl ::std::default::Default for ChioKernelMessageCapabilityListCapabilitiesItemScope {
     fn default() -> Self {
         Self {
             grants: Default::default(),
@@ -14179,7 +11200,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Scope {
         }
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItem`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14200,20 +11221,20 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Scope {
 /// ```
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItem {
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItem {
     #[serde(rename = "type")]
-    pub type_: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType,
+    pub type_: ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType,
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItem,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItem {
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItem,
+> for ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItem {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItem,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItem,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14226,36 +11247,36 @@ impl ::std::convert::From<
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType,
+    ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType {
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType,
+> for ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -14267,7 +11288,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItem
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -14276,7 +11297,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItem
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -14285,7 +11306,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItem
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -14294,7 +11315,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItem
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItemType {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeAttenuationsItemType {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -14306,7 +11327,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItem
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItem`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14407,39 +11428,39 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeAttenuationsItem
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItem {
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItem {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub constraints: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItem,
+        ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItem,
     >,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub dpop_required: ::std::option::Option<bool>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub max_cost_per_invocation: ::std::option::Option<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocation,
+        ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocation,
     >,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub max_invocations: ::std::option::Option<u64>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub max_total_cost: ::std::option::Option<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCost,
+        ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCost,
     >,
     pub operations: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperationsItem,
+        ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemOperationsItem,
     >,
-    pub server_id: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId,
-    pub tool_name: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName,
+    pub server_id: ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId,
+    pub tool_name: ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName,
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItem,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItem {
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItem,
+> for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItem {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItem,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItem,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItem`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14460,23 +11481,22 @@ impl ::std::convert::From<
 /// ```
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItem {
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItem {
     #[serde(rename = "type")]
-    pub type_: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType,
+    pub type_: ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub value: ::std::option::Option<::serde_json::Value>,
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItem,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItem {
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItem,
+> for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItem {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItem,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItem,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14489,37 +11509,36 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstr
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType,
+    ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType {
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType,
+> for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -14531,7 +11550,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstr
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -14540,7 +11559,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstr
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -14549,7 +11568,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstr
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -14558,7 +11577,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstr
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstraintsItemType {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemConstraintsItemType {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -14570,7 +11589,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstr
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocation`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocation`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14597,21 +11616,21 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemConstr
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocation {
-    pub currency: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency,
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocation {
+    pub currency: ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency,
     pub units: u64,
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocation,
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocation,
 >
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocation {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocation {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocation,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocation,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14624,37 +11643,37 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCos
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency,
+    ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency,
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency,
 >
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -14666,7 +11685,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCos
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -14675,7 +11694,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCos
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -14684,7 +11703,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCos
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -14693,7 +11712,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCos
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCostPerInvocationCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxCostPerInvocationCurrency {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -14705,7 +11724,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCos
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCost`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCost`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14732,21 +11751,20 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxCos
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCost {
-    pub currency: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency,
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCost {
+    pub currency: ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency,
     pub units: u64,
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCost,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCost {
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCost,
+> for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCost {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCost,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCost,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14759,37 +11777,37 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTot
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency,
+    ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency,
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency,
 >
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -14801,7 +11819,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTot
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -14810,7 +11828,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTot
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -14819,7 +11837,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTot
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -14828,7 +11846,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTot
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTotalCostCurrency {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemMaxTotalCostCurrency {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -14840,7 +11858,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTot
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperationsItem`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemOperationsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14869,7 +11887,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemMaxTot
     PartialEq,
     PartialOrd
 )]
-pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperationsItem {
+pub enum ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemOperationsItem {
     #[serde(rename = "invoke")]
     Invoke,
     #[serde(rename = "read_result")]
@@ -14884,15 +11902,15 @@ pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemO
     Delegate,
 }
 impl ::std::convert::From<&Self>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemOperationsItem {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperationsItem,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemOperationsItem,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::fmt::Display
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemOperationsItem {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::Invoke => f.write_str("invoke"),
@@ -14905,7 +11923,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperat
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemOperationsItem {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -14922,7 +11940,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperat
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -14931,7 +11949,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperat
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -14940,7 +11958,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperat
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -14948,7 +11966,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperat
         value.parse()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14961,36 +11979,36 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemOperat
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId,
+    ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId {
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId,
+> for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -15002,7 +12020,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServer
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -15011,7 +12029,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServer
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -15020,7 +12038,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServer
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -15029,7 +12047,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServer
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServerId {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemServerId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -15041,7 +12059,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServer
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -15054,36 +12072,36 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemServer
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName,
+    ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName {
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName,
+> for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -15095,7 +12113,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolNa
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -15104,7 +12122,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolNa
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -15113,7 +12131,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolNa
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -15122,7 +12140,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolNa
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolName {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeGrantsItemToolName {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -15134,7 +12152,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolNa
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -15171,22 +12189,22 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeGrantsItemToolNa
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem {
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItem {
     pub operations: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemOperationsItem,
+        ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemOperationsItem,
     >,
-    pub prompt_name: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName,
+    pub prompt_name: ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName,
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem {
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItem,
+> for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItem {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItem,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemOperationsItem`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemOperationsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -15215,7 +12233,7 @@ impl ::std::convert::From<
     PartialEq,
     PartialOrd
 )]
-pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemOperationsItem {
+pub enum ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemOperationsItem {
     #[serde(rename = "invoke")]
     Invoke,
     #[serde(rename = "read_result")]
@@ -15230,15 +12248,15 @@ pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrant
     Delegate,
 }
 impl ::std::convert::From<&Self>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemOperationsItem {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemOperationsItem,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemOperationsItem,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::fmt::Display
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemOperationsItem {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::Invoke => f.write_str("invoke"),
@@ -15251,7 +12269,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemOperationsItem {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -15268,7 +12286,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -15277,7 +12295,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -15286,7 +12304,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -15294,7 +12312,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem
         value.parse()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -15307,37 +12325,36 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName,
+    ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName {
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName,
+> for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -15349,7 +12366,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -15358,7 +12375,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -15367,7 +12384,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -15376,7 +12393,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItemPromptName {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopePromptGrantsItemPromptName {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -15388,7 +12405,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItem`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -15425,22 +12442,22 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopePromptGrantsItem
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItem {
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItem {
     pub operations: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemOperationsItem,
+        ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemOperationsItem,
     >,
-    pub uri_pattern: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern,
+    pub uri_pattern: ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern,
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItem,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItem {
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItem,
+> for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItem {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItem,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItem,
     ) -> Self {
         value.clone()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemOperationsItem`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemOperationsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -15469,7 +12486,7 @@ impl ::std::convert::From<
     PartialEq,
     PartialOrd
 )]
-pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemOperationsItem {
+pub enum ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemOperationsItem {
     #[serde(rename = "invoke")]
     Invoke,
     #[serde(rename = "read_result")]
@@ -15484,15 +12501,15 @@ pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGra
     Delegate,
 }
 impl ::std::convert::From<&Self>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemOperationsItem {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemOperationsItem,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemOperationsItem,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::fmt::Display
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemOperationsItem {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::Invoke => f.write_str("invoke"),
@@ -15505,7 +12522,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsIt
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemOperationsItem {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -15522,7 +12539,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsIt
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -15531,7 +12548,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsIt
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -15540,7 +12557,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsIt
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemOperationsItem {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemOperationsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -15548,7 +12565,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsIt
         value.parse()
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern`
+///`ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -15561,37 +12578,36 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsIt
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
 impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern,
+    ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern,
 > for ::std::string::String {
     fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern,
+        value: ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern,
     ) -> Self {
         value.0
     }
 }
 impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern {
+    &ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern,
+> for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern {
     fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern,
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern,
     ) -> Self {
         value.clone()
     }
 }
 impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -15603,7 +12619,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsIt
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -15612,7 +12628,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsIt
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -15621,7 +12637,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsIt
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -15630,7 +12646,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsIt
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsItemUriPattern {
+for ChioKernelMessageCapabilityListCapabilitiesItemScopeResourceGrantsItemUriPattern {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -15642,7 +12658,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsIt
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature`
+///`ChioKernelMessageCapabilityListCapabilitiesItemSignature`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -15655,36 +12671,28 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0ScopeResourceGrantsIt
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature(
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemSignature(
     ::std::string::String,
 );
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
+impl ::std::ops::Deref for ChioKernelMessageCapabilityListCapabilitiesItemSignature {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature,
-    ) -> Self {
+impl ::std::convert::From<ChioKernelMessageCapabilityListCapabilitiesItemSignature>
+for ::std::string::String {
+    fn from(value: ChioKernelMessageCapabilityListCapabilitiesItemSignature) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature,
-    ) -> Self {
+impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItemSignature>
+for ChioKernelMessageCapabilityListCapabilitiesItemSignature {
+    fn from(value: &ChioKernelMessageCapabilityListCapabilitiesItemSignature) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
+impl ::std::str::FromStr for ChioKernelMessageCapabilityListCapabilitiesItemSignature {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -15706,7 +12714,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
+for ChioKernelMessageCapabilityListCapabilitiesItemSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -15715,7 +12723,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
+for ChioKernelMessageCapabilityListCapabilitiesItemSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -15724,7 +12732,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
+for ChioKernelMessageCapabilityListCapabilitiesItemSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -15733,7 +12741,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
+for ChioKernelMessageCapabilityListCapabilitiesItemSignature {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -15745,7 +12753,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
             })
     }
 }
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject`
+///`ChioKernelMessageCapabilityListCapabilitiesItemSubject`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -15758,35 +12766,26 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Signature {
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject {
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemSubject(::std::string::String);
+impl ::std::ops::Deref for ChioKernelMessageCapabilityListCapabilitiesItemSubject {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject>
+impl ::std::convert::From<ChioKernelMessageCapabilityListCapabilitiesItemSubject>
 for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject,
-    ) -> Self {
+    fn from(value: ChioKernelMessageCapabilityListCapabilitiesItemSubject) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject,
-    ) -> Self {
+impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItemSubject>
+for ChioKernelMessageCapabilityListCapabilitiesItemSubject {
+    fn from(value: &ChioKernelMessageCapabilityListCapabilitiesItemSubject) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject {
+impl ::std::str::FromStr for ChioKernelMessageCapabilityListCapabilitiesItemSubject {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -15808,7 +12807,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject {
     }
 }
 impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject {
+for ChioKernelMessageCapabilityListCapabilitiesItemSubject {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -15817,7 +12816,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject {
+for ChioKernelMessageCapabilityListCapabilitiesItemSubject {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -15826,7 +12825,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject {
+for ChioKernelMessageCapabilityListCapabilitiesItemSubject {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -15835,2937 +12834,7 @@ for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject {
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant0Subject {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1Algorithm`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "enum": [
-///    "ed25519",
-///    "p256",
-///    "p384",
-///    "hybrid"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant1Algorithm {
-    #[serde(rename = "ed25519")]
-    Ed25519,
-    #[serde(rename = "p256")]
-    P256,
-    #[serde(rename = "p384")]
-    P384,
-    #[serde(rename = "hybrid")]
-    Hybrid,
-}
-impl ::std::convert::From<&Self>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Algorithm {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1Algorithm,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Algorithm {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::Ed25519 => f.write_str("ed25519"),
-            Self::P256 => f.write_str("p256"),
-            Self::P384 => f.write_str("p384"),
-            Self::Hybrid => f.write_str("hybrid"),
-        }
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Algorithm {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "ed25519" => Ok(Self::Ed25519),
-            "p256" => Ok(Self::P256),
-            "p384" => Ok(Self::P384),
-            "hybrid" => Ok(Self::Hybrid),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "kind",
-///    "predicate"
-///  ],
-///  "properties": {
-///    "enforced_at": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "kind": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "predicate": true
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItem {
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub enforced_at: ::std::option::Option<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt,
-    >,
-    pub kind: ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind,
-    pub predicate: ::serde_json::Value,
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItem,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItem {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemEnforcedAt {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1CaveatsItemKind {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "capability_id",
-///    "delegatee",
-///    "delegator",
-///    "signature",
-///    "timestamp"
-///  ],
-///  "properties": {
-///    "attenuations": {
-///      "type": "array",
-///      "items": {
-///        "type": "object"
-///      }
-///    },
-///    "capability_id": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "delegatee": {
-///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
-///    },
-///    "delegator": {
-///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
-///    },
-///    "signature": {
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
-///    },
-///    "timestamp": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItem {
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub attenuations: ::std::vec::Vec<
-        ::serde_json::Map<::std::string::String, ::serde_json::Value>,
-    >,
-    pub capability_id: ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId,
-    pub delegatee: ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee,
-    pub delegator: ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator,
-    pub signature: ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature,
-    pub timestamp: u64,
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItem,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItem {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemCapabilityId {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegatee {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemDelegator {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1DelegationChainItemSignature {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id(
-    ::std::string::String,
-);
-impl ::std::ops::Deref for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id>
-for ::std::string::String {
-    fn from(value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id {
-    fn from(value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Id {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer>
-for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Issuer {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1Schema`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "enum": [
-///    "chio.capability.v1"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant1Schema {
-    #[serde(rename = "chio.capability.v1")]
-    ChioCapabilityV1,
-}
-impl ::std::convert::From<&Self>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Schema {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1Schema,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Schema {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::ChioCapabilityV1 => f.write_str("chio.capability.v1"),
-        }
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Schema {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "chio.capability.v1" => Ok(Self::ChioCapabilityV1),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Schema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Schema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Schema {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1Scope`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "properties": {
-///    "grants": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "required": [
-///          "operations",
-///          "server_id",
-///          "tool_name"
-///        ],
-///        "properties": {
-///          "constraints": {
-///            "type": "array",
-///            "items": {
-///              "type": "object",
-///              "required": [
-///                "type"
-///              ],
-///              "properties": {
-///                "type": {
-///                  "type": "string",
-///                  "minLength": 1
-///                },
-///                "value": true
-///              }
-///            }
-///          },
-///          "dpop_required": {
-///            "type": "boolean"
-///          },
-///          "max_cost_per_invocation": {
-///            "type": "object",
-///            "required": [
-///              "currency",
-///              "units"
-///            ],
-///            "properties": {
-///              "currency": {
-///                "type": "string",
-///                "minLength": 1
-///              },
-///              "units": {
-///                "type": "integer",
-///                "minimum": 0.0
-///              }
-///            },
-///            "additionalProperties": false
-///          },
-///          "max_invocations": {
-///            "type": "integer",
-///            "minimum": 0.0
-///          },
-///          "max_total_cost": {
-///            "type": "object",
-///            "required": [
-///              "currency",
-///              "units"
-///            ],
-///            "properties": {
-///              "currency": {
-///                "type": "string",
-///                "minLength": 1
-///              },
-///              "units": {
-///                "type": "integer",
-///                "minimum": 0.0
-///              }
-///            },
-///            "additionalProperties": false
-///          },
-///          "operations": {
-///            "type": "array",
-///            "items": {
-///              "enum": [
-///                "invoke",
-///                "read_result",
-///                "read",
-///                "subscribe",
-///                "get",
-///                "delegate"
-///              ]
-///            },
-///            "minItems": 1
-///          },
-///          "server_id": {
-///            "type": "string",
-///            "minLength": 1
-///          },
-///          "tool_name": {
-///            "type": "string",
-///            "minLength": 1
-///          }
-///        },
-///        "additionalProperties": false
-///      }
-///    },
-///    "prompt_grants": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "required": [
-///          "operations",
-///          "prompt_name"
-///        ],
-///        "properties": {
-///          "operations": {
-///            "type": "array",
-///            "items": {
-///              "enum": [
-///                "invoke",
-///                "read_result",
-///                "read",
-///                "subscribe",
-///                "get",
-///                "delegate"
-///              ]
-///            },
-///            "minItems": 1
-///          },
-///          "prompt_name": {
-///            "type": "string",
-///            "minLength": 1
-///          }
-///        },
-///        "additionalProperties": false
-///      }
-///    },
-///    "resource_grants": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "required": [
-///          "operations",
-///          "uri_pattern"
-///        ],
-///        "properties": {
-///          "operations": {
-///            "type": "array",
-///            "items": {
-///              "enum": [
-///                "invoke",
-///                "read_result",
-///                "read",
-///                "subscribe",
-///                "get",
-///                "delegate"
-///              ]
-///            },
-///            "minItems": 1
-///          },
-///          "uri_pattern": {
-///            "type": "string",
-///            "minLength": 1
-///          }
-///        },
-///        "additionalProperties": false
-///      }
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1Scope {
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub grants: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItem,
-    >,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub prompt_grants: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItem,
-    >,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub resource_grants: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItem,
-    >,
-}
-impl ::std::convert::From<&ChioKernelMessageCapabilityListCapabilitiesItemVariant1Scope>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Scope {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1Scope,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::default::Default
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Scope {
-    fn default() -> Self {
-        Self {
-            grants: Default::default(),
-            prompt_grants: Default::default(),
-            resource_grants: Default::default(),
-        }
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "type"
-///  ],
-///  "properties": {
-///    "type": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": true
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItem {
-    #[serde(rename = "type")]
-    pub type_: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType,
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItem,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItem {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeAttenuationsItemType {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "operations",
-///    "server_id",
-///    "tool_name"
-///  ],
-///  "properties": {
-///    "constraints": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "required": [
-///          "type"
-///        ],
-///        "properties": {
-///          "type": {
-///            "type": "string",
-///            "minLength": 1
-///          },
-///          "value": true
-///        }
-///      }
-///    },
-///    "dpop_required": {
-///      "type": "boolean"
-///    },
-///    "max_cost_per_invocation": {
-///      "type": "object",
-///      "required": [
-///        "currency",
-///        "units"
-///      ],
-///      "properties": {
-///        "currency": {
-///          "type": "string",
-///          "minLength": 1
-///        },
-///        "units": {
-///          "type": "integer",
-///          "minimum": 0.0
-///        }
-///      },
-///      "additionalProperties": false
-///    },
-///    "max_invocations": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    },
-///    "max_total_cost": {
-///      "type": "object",
-///      "required": [
-///        "currency",
-///        "units"
-///      ],
-///      "properties": {
-///        "currency": {
-///          "type": "string",
-///          "minLength": 1
-///        },
-///        "units": {
-///          "type": "integer",
-///          "minimum": 0.0
-///        }
-///      },
-///      "additionalProperties": false
-///    },
-///    "operations": {
-///      "type": "array",
-///      "items": {
-///        "enum": [
-///          "invoke",
-///          "read_result",
-///          "read",
-///          "subscribe",
-///          "get",
-///          "delegate"
-///        ]
-///      },
-///      "minItems": 1
-///    },
-///    "server_id": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "tool_name": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItem {
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub constraints: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItem,
-    >,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub dpop_required: ::std::option::Option<bool>,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub max_cost_per_invocation: ::std::option::Option<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocation,
-    >,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub max_invocations: ::std::option::Option<u64>,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub max_total_cost: ::std::option::Option<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCost,
-    >,
-    pub operations: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemOperationsItem,
-    >,
-    pub server_id: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId,
-    pub tool_name: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName,
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItem,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItem {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "type"
-///  ],
-///  "properties": {
-///    "type": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "value": true
-///  }
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItem {
-    #[serde(rename = "type")]
-    pub type_: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub value: ::std::option::Option<::serde_json::Value>,
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItem,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItem {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemConstraintsItemType {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocation`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "currency",
-///    "units"
-///  ],
-///  "properties": {
-///    "currency": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "units": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocation {
-    pub currency: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency,
-    pub units: u64,
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocation,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocation {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocation,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxCostPerInvocationCurrency {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCost`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "currency",
-///    "units"
-///  ],
-///  "properties": {
-///    "currency": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "units": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCost {
-    pub currency: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency,
-    pub units: u64,
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCost,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCost {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCost,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemMaxTotalCostCurrency {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemOperationsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "enum": [
-///    "invoke",
-///    "read_result",
-///    "read",
-///    "subscribe",
-///    "get",
-///    "delegate"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemOperationsItem {
-    #[serde(rename = "invoke")]
-    Invoke,
-    #[serde(rename = "read_result")]
-    ReadResult,
-    #[serde(rename = "read")]
-    Read,
-    #[serde(rename = "subscribe")]
-    Subscribe,
-    #[serde(rename = "get")]
-    Get,
-    #[serde(rename = "delegate")]
-    Delegate,
-}
-impl ::std::convert::From<&Self>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemOperationsItem {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemOperationsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemOperationsItem {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::Invoke => f.write_str("invoke"),
-            Self::ReadResult => f.write_str("read_result"),
-            Self::Read => f.write_str("read"),
-            Self::Subscribe => f.write_str("subscribe"),
-            Self::Get => f.write_str("get"),
-            Self::Delegate => f.write_str("delegate"),
-        }
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemOperationsItem {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "invoke" => Ok(Self::Invoke),
-            "read_result" => Ok(Self::ReadResult),
-            "read" => Ok(Self::Read),
-            "subscribe" => Ok(Self::Subscribe),
-            "get" => Ok(Self::Get),
-            "delegate" => Ok(Self::Delegate),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemServerId {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeGrantsItemToolName {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "operations",
-///    "prompt_name"
-///  ],
-///  "properties": {
-///    "operations": {
-///      "type": "array",
-///      "items": {
-///        "enum": [
-///          "invoke",
-///          "read_result",
-///          "read",
-///          "subscribe",
-///          "get",
-///          "delegate"
-///        ]
-///      },
-///      "minItems": 1
-///    },
-///    "prompt_name": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItem {
-    pub operations: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemOperationsItem,
-    >,
-    pub prompt_name: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName,
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItem,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItem {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemOperationsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "enum": [
-///    "invoke",
-///    "read_result",
-///    "read",
-///    "subscribe",
-///    "get",
-///    "delegate"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemOperationsItem {
-    #[serde(rename = "invoke")]
-    Invoke,
-    #[serde(rename = "read_result")]
-    ReadResult,
-    #[serde(rename = "read")]
-    Read,
-    #[serde(rename = "subscribe")]
-    Subscribe,
-    #[serde(rename = "get")]
-    Get,
-    #[serde(rename = "delegate")]
-    Delegate,
-}
-impl ::std::convert::From<&Self>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemOperationsItem {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemOperationsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemOperationsItem {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::Invoke => f.write_str("invoke"),
-            Self::ReadResult => f.write_str("read_result"),
-            Self::Read => f.write_str("read"),
-            Self::Subscribe => f.write_str("subscribe"),
-            Self::Get => f.write_str("get"),
-            Self::Delegate => f.write_str("delegate"),
-        }
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemOperationsItem {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "invoke" => Ok(Self::Invoke),
-            "read_result" => Ok(Self::ReadResult),
-            "read" => Ok(Self::Read),
-            "subscribe" => Ok(Self::Subscribe),
-            "get" => Ok(Self::Get),
-            "delegate" => Ok(Self::Delegate),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopePromptGrantsItemPromptName {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "operations",
-///    "uri_pattern"
-///  ],
-///  "properties": {
-///    "operations": {
-///      "type": "array",
-///      "items": {
-///        "enum": [
-///          "invoke",
-///          "read_result",
-///          "read",
-///          "subscribe",
-///          "get",
-///          "delegate"
-///        ]
-///      },
-///      "minItems": 1
-///    },
-///    "uri_pattern": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItem {
-    pub operations: ::std::vec::Vec<
-        ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemOperationsItem,
-    >,
-    pub uri_pattern: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern,
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItem,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItem {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemOperationsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "enum": [
-///    "invoke",
-///    "read_result",
-///    "read",
-///    "subscribe",
-///    "get",
-///    "delegate"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemOperationsItem {
-    #[serde(rename = "invoke")]
-    Invoke,
-    #[serde(rename = "read_result")]
-    ReadResult,
-    #[serde(rename = "read")]
-    Read,
-    #[serde(rename = "subscribe")]
-    Subscribe,
-    #[serde(rename = "get")]
-    Get,
-    #[serde(rename = "delegate")]
-    Delegate,
-}
-impl ::std::convert::From<&Self>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemOperationsItem {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemOperationsItem,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemOperationsItem {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::Invoke => f.write_str("invoke"),
-            Self::ReadResult => f.write_str("read_result"),
-            Self::Read => f.write_str("read"),
-            Self::Subscribe => f.write_str("subscribe"),
-            Self::Get => f.write_str("get"),
-            Self::Delegate => f.write_str("delegate"),
-        }
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemOperationsItem {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "invoke" => Ok(Self::Invoke),
-            "read_result" => Ok(Self::ReadResult),
-            "read" => Ok(Self::Read),
-            "subscribe" => Ok(Self::Subscribe),
-            "get" => Ok(Self::Get),
-            "delegate" => Ok(Self::Delegate),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemOperationsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern,
->
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1ScopeResourceGrantsItemUriPattern {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<
-    ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature,
-> for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Signature {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject(
-    ::std::string::String,
-);
-impl ::std::ops::Deref
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject>
-for ::std::string::String {
-    fn from(
-        value: ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject,
-    ) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<
-    &ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject,
-> for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject {
-    fn from(
-        value: &ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject,
-    ) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de>
-for ChioKernelMessageCapabilityListCapabilitiesItemVariant1Subject {
+for ChioKernelMessageCapabilityListCapabilitiesItemSubject {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -25938,35 +20007,55 @@ impl ::std::convert::From<&Self> for ChioProvenanceVerdictLinkVariant3 {
         value.clone()
     }
 }
-///Signed multi-parent lineage statement. parentReceiptIds are v2 body_hash values, canonical sorted and deduplicated, with parentSetHash = H(canonical(parentReceiptIds)).
+///Signed pairwise receipt lineage statement. Multi-parent lineage views are derived aggregates over these signed parent-child statements.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/lineage_statement.v2",
-///  "title": "Chio receipt lineage statement v2",
-///  "description": "Signed multi-parent lineage statement. parentReceiptIds are v2 body_hash values, canonical sorted and deduplicated, with parentSetHash = H(canonical(parentReceiptIds)).",
+///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/lineage_statement/v1",
+///  "title": "Chio receipt lineage statement",
+///  "description": "Signed pairwise receipt lineage statement. Multi-parent lineage views are derived aggregates over these signed parent-child statements.",
 ///  "type": "object",
 ///  "required": [
-///    "chainId",
-///    "childBodyHash",
+///    "childReceiptId",
+///    "childRequestId",
+///    "childSessionAnchor",
+///    "evidenceClass",
 ///    "id",
 ///    "issuedAt",
 ///    "kernelKey",
-///    "parentReceiptIds",
-///    "parentSetHash",
+///    "parentReceiptId",
+///    "parentRequestId",
+///    "parentSessionAnchor",
+///    "relationKind",
 ///    "schema",
 ///    "signature"
 ///  ],
 ///  "properties": {
-///    "chainId": {
+///    "childReceiptId": {
 ///      "type": "string",
 ///      "minLength": 1
 ///    },
-///    "childBodyHash": {
+///    "childRequestId": {
 ///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
+///      "minLength": 1
+///    },
+///    "childSessionAnchor": {
+///      "$ref": "#/$defs/sessionAnchorReference"
+///    },
+///    "continuationTokenId": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "evidenceClass": {
+///      "default": "verified",
+///      "type": "string",
+///      "enum": [
+///        "asserted",
+///        "observed",
+///        "verified"
+///      ]
 ///    },
 ///    "id": {
 ///      "type": "string",
@@ -25980,21 +20069,27 @@ impl ::std::convert::From<&Self> for ChioProvenanceVerdictLinkVariant3 {
 ///      "type": "string",
 ///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
 ///    },
-///    "parentReceiptIds": {
-///      "type": "array",
-///      "items": {
-///        "type": "string",
-///        "pattern": "^[0-9a-f]{64}$"
-///      },
-///      "uniqueItems": true
-///    },
-///    "parentSetHash": {
+///    "parentReceiptId": {
 ///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
+///      "minLength": 1
+///    },
+///    "parentRequestId": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "parentSessionAnchor": {
+///      "$ref": "#/$defs/sessionAnchorReference"
+///    },
+///    "relationKind": {
+///      "type": "string",
+///      "enum": [
+///        "local_child",
+///        "continued"
+///      ]
 ///    },
 ///    "schema": {
 ///      "type": "string",
-///      "const": "chio.receipt_lineage_statement.v2"
+///      "const": "chio.receipt_lineage_statement.v1"
 ///    },
 ///    "signature": {
 ///      "type": "string",
@@ -26007,30 +20102,45 @@ impl ::std::convert::From<&Self> for ChioProvenanceVerdictLinkVariant3 {
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ChioReceiptLineageStatementV2 {
-    #[serde(rename = "chainId")]
-    pub chain_id: ChioReceiptLineageStatementV2ChainId,
-    #[serde(rename = "childBodyHash")]
-    pub child_body_hash: ChioReceiptLineageStatementV2ChildBodyHash,
-    pub id: ChioReceiptLineageStatementV2Id,
+pub struct ChioReceiptLineageStatement {
+    #[serde(rename = "childReceiptId")]
+    pub child_receipt_id: ChioReceiptLineageStatementChildReceiptId,
+    #[serde(rename = "childRequestId")]
+    pub child_request_id: ChioReceiptLineageStatementChildRequestId,
+    #[serde(rename = "childSessionAnchor")]
+    pub child_session_anchor: SessionAnchorReference,
+    #[serde(
+        rename = "continuationTokenId",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub continuation_token_id: ::std::option::Option<
+        ChioReceiptLineageStatementContinuationTokenId,
+    >,
+    #[serde(rename = "evidenceClass")]
+    pub evidence_class: ChioReceiptLineageStatementEvidenceClass,
+    pub id: ChioReceiptLineageStatementId,
     #[serde(rename = "issuedAt")]
     pub issued_at: u64,
     #[serde(rename = "kernelKey")]
-    pub kernel_key: ChioReceiptLineageStatementV2KernelKey,
-    #[serde(rename = "parentReceiptIds")]
-    pub parent_receipt_ids: Vec<ChioReceiptLineageStatementV2ParentReceiptIdsItem>,
-    #[serde(rename = "parentSetHash")]
-    pub parent_set_hash: ChioReceiptLineageStatementV2ParentSetHash,
+    pub kernel_key: ChioReceiptLineageStatementKernelKey,
+    #[serde(rename = "parentReceiptId")]
+    pub parent_receipt_id: ChioReceiptLineageStatementParentReceiptId,
+    #[serde(rename = "parentRequestId")]
+    pub parent_request_id: ChioReceiptLineageStatementParentRequestId,
+    #[serde(rename = "parentSessionAnchor")]
+    pub parent_session_anchor: SessionAnchorReference,
+    #[serde(rename = "relationKind")]
+    pub relation_kind: ChioReceiptLineageStatementRelationKind,
     pub schema: ::std::string::String,
-    pub signature: ChioReceiptLineageStatementV2Signature,
+    pub signature: ChioReceiptLineageStatementSignature,
 }
-impl ::std::convert::From<&ChioReceiptLineageStatementV2>
-for ChioReceiptLineageStatementV2 {
-    fn from(value: &ChioReceiptLineageStatementV2) -> Self {
+impl ::std::convert::From<&ChioReceiptLineageStatement> for ChioReceiptLineageStatement {
+    fn from(value: &ChioReceiptLineageStatement) -> Self {
         value.clone()
     }
 }
-///`ChioReceiptLineageStatementV2ChainId`
+///`ChioReceiptLineageStatementChildReceiptId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -26043,26 +20153,26 @@ for ChioReceiptLineageStatementV2 {
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioReceiptLineageStatementV2ChainId(::std::string::String);
-impl ::std::ops::Deref for ChioReceiptLineageStatementV2ChainId {
+pub struct ChioReceiptLineageStatementChildReceiptId(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementChildReceiptId {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ChioReceiptLineageStatementV2ChainId>
+impl ::std::convert::From<ChioReceiptLineageStatementChildReceiptId>
 for ::std::string::String {
-    fn from(value: ChioReceiptLineageStatementV2ChainId) -> Self {
+    fn from(value: ChioReceiptLineageStatementChildReceiptId) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<&ChioReceiptLineageStatementV2ChainId>
-for ChioReceiptLineageStatementV2ChainId {
-    fn from(value: &ChioReceiptLineageStatementV2ChainId) -> Self {
+impl ::std::convert::From<&ChioReceiptLineageStatementChildReceiptId>
+for ChioReceiptLineageStatementChildReceiptId {
+    fn from(value: &ChioReceiptLineageStatementChildReceiptId) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr for ChioReceiptLineageStatementV2ChainId {
+impl ::std::str::FromStr for ChioReceiptLineageStatementChildReceiptId {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -26073,7 +20183,7 @@ impl ::std::str::FromStr for ChioReceiptLineageStatementV2ChainId {
         Ok(Self(value.to_string()))
     }
 }
-impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2ChainId {
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementChildReceiptId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -26082,7 +20192,7 @@ impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2ChainId {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioReceiptLineageStatementV2ChainId {
+for ChioReceiptLineageStatementChildReceiptId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -26091,7 +20201,7 @@ for ChioReceiptLineageStatementV2ChainId {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioReceiptLineageStatementV2ChainId {
+for ChioReceiptLineageStatementChildReceiptId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -26099,7 +20209,7 @@ for ChioReceiptLineageStatementV2ChainId {
         value.parse()
     }
 }
-impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2ChainId {
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementChildReceiptId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -26111,90 +20221,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2ChainId {
             })
     }
 }
-///`ChioReceiptLineageStatementV2ChildBodyHash`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioReceiptLineageStatementV2ChildBodyHash(::std::string::String);
-impl ::std::ops::Deref for ChioReceiptLineageStatementV2ChildBodyHash {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioReceiptLineageStatementV2ChildBodyHash>
-for ::std::string::String {
-    fn from(value: ChioReceiptLineageStatementV2ChildBodyHash) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioReceiptLineageStatementV2ChildBodyHash>
-for ChioReceiptLineageStatementV2ChildBodyHash {
-    fn from(value: &ChioReceiptLineageStatementV2ChildBodyHash) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioReceiptLineageStatementV2ChildBodyHash {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2ChildBodyHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ChioReceiptLineageStatementV2ChildBodyHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ChioReceiptLineageStatementV2ChildBodyHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2ChildBodyHash {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioReceiptLineageStatementV2Id`
+///`ChioReceiptLineageStatementChildRequestId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -26207,25 +20234,26 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2ChildBodyHa
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioReceiptLineageStatementV2Id(::std::string::String);
-impl ::std::ops::Deref for ChioReceiptLineageStatementV2Id {
+pub struct ChioReceiptLineageStatementChildRequestId(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementChildRequestId {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ChioReceiptLineageStatementV2Id> for ::std::string::String {
-    fn from(value: ChioReceiptLineageStatementV2Id) -> Self {
+impl ::std::convert::From<ChioReceiptLineageStatementChildRequestId>
+for ::std::string::String {
+    fn from(value: ChioReceiptLineageStatementChildRequestId) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<&ChioReceiptLineageStatementV2Id>
-for ChioReceiptLineageStatementV2Id {
-    fn from(value: &ChioReceiptLineageStatementV2Id) -> Self {
+impl ::std::convert::From<&ChioReceiptLineageStatementChildRequestId>
+for ChioReceiptLineageStatementChildRequestId {
+    fn from(value: &ChioReceiptLineageStatementChildRequestId) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr for ChioReceiptLineageStatementV2Id {
+impl ::std::str::FromStr for ChioReceiptLineageStatementChildRequestId {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -26236,7 +20264,7 @@ impl ::std::str::FromStr for ChioReceiptLineageStatementV2Id {
         Ok(Self(value.to_string()))
     }
 }
-impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2Id {
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementChildRequestId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -26245,7 +20273,7 @@ impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2Id {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioReceiptLineageStatementV2Id {
+for ChioReceiptLineageStatementChildRequestId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -26253,7 +20281,8 @@ for ChioReceiptLineageStatementV2Id {
         value.parse()
     }
 }
-impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptLineageStatementV2Id {
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioReceiptLineageStatementChildRequestId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -26261,7 +20290,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptLineageStatem
         value.parse()
     }
 }
-impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2Id {
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementChildRequestId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -26273,7 +20302,260 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2Id {
             })
     }
 }
-///`ChioReceiptLineageStatementV2KernelKey`
+///`ChioReceiptLineageStatementContinuationTokenId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioReceiptLineageStatementContinuationTokenId(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementContinuationTokenId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioReceiptLineageStatementContinuationTokenId>
+for ::std::string::String {
+    fn from(value: ChioReceiptLineageStatementContinuationTokenId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioReceiptLineageStatementContinuationTokenId>
+for ChioReceiptLineageStatementContinuationTokenId {
+    fn from(value: &ChioReceiptLineageStatementContinuationTokenId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioReceiptLineageStatementContinuationTokenId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementContinuationTokenId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioReceiptLineageStatementContinuationTokenId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioReceiptLineageStatementContinuationTokenId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementContinuationTokenId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioReceiptLineageStatementEvidenceClass`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "default": "verified",
+///  "type": "string",
+///  "enum": [
+///    "asserted",
+///    "observed",
+///    "verified"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioReceiptLineageStatementEvidenceClass {
+    #[serde(rename = "asserted")]
+    Asserted,
+    #[serde(rename = "observed")]
+    Observed,
+    #[serde(rename = "verified")]
+    Verified,
+}
+impl ::std::convert::From<&Self> for ChioReceiptLineageStatementEvidenceClass {
+    fn from(value: &ChioReceiptLineageStatementEvidenceClass) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioReceiptLineageStatementEvidenceClass {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Asserted => f.write_str("asserted"),
+            Self::Observed => f.write_str("observed"),
+            Self::Verified => f.write_str("verified"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioReceiptLineageStatementEvidenceClass {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "asserted" => Ok(Self::Asserted),
+            "observed" => Ok(Self::Observed),
+            "verified" => Ok(Self::Verified),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementEvidenceClass {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioReceiptLineageStatementEvidenceClass {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioReceiptLineageStatementEvidenceClass {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for ChioReceiptLineageStatementEvidenceClass {
+    fn default() -> Self {
+        ChioReceiptLineageStatementEvidenceClass::Verified
+    }
+}
+///`ChioReceiptLineageStatementId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioReceiptLineageStatementId(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ChioReceiptLineageStatementId> for ::std::string::String {
+    fn from(value: ChioReceiptLineageStatementId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&ChioReceiptLineageStatementId>
+for ChioReceiptLineageStatementId {
+    fn from(value: &ChioReceiptLineageStatementId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for ChioReceiptLineageStatementId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptLineageStatementId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptLineageStatementId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioReceiptLineageStatementKernelKey`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -26286,26 +20568,26 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2Id {
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioReceiptLineageStatementV2KernelKey(::std::string::String);
-impl ::std::ops::Deref for ChioReceiptLineageStatementV2KernelKey {
+pub struct ChioReceiptLineageStatementKernelKey(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementKernelKey {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ChioReceiptLineageStatementV2KernelKey>
+impl ::std::convert::From<ChioReceiptLineageStatementKernelKey>
 for ::std::string::String {
-    fn from(value: ChioReceiptLineageStatementV2KernelKey) -> Self {
+    fn from(value: ChioReceiptLineageStatementKernelKey) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<&ChioReceiptLineageStatementV2KernelKey>
-for ChioReceiptLineageStatementV2KernelKey {
-    fn from(value: &ChioReceiptLineageStatementV2KernelKey) -> Self {
+impl ::std::convert::From<&ChioReceiptLineageStatementKernelKey>
+for ChioReceiptLineageStatementKernelKey {
+    fn from(value: &ChioReceiptLineageStatementKernelKey) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr for ChioReceiptLineageStatementV2KernelKey {
+impl ::std::str::FromStr for ChioReceiptLineageStatementKernelKey {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -26326,7 +20608,7 @@ impl ::std::str::FromStr for ChioReceiptLineageStatementV2KernelKey {
         Ok(Self(value.to_string()))
     }
 }
-impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2KernelKey {
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementKernelKey {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -26335,7 +20617,7 @@ impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2KernelKey {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioReceiptLineageStatementV2KernelKey {
+for ChioReceiptLineageStatementKernelKey {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -26344,7 +20626,7 @@ for ChioReceiptLineageStatementV2KernelKey {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioReceiptLineageStatementV2KernelKey {
+for ChioReceiptLineageStatementKernelKey {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -26352,7 +20634,7 @@ for ChioReceiptLineageStatementV2KernelKey {
         value.parse()
     }
 }
-impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2KernelKey {
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementKernelKey {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -26364,53 +20646,50 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2KernelKey {
             })
     }
 }
-///`ChioReceiptLineageStatementV2ParentReceiptIdsItem`
+///`ChioReceiptLineageStatementParentReceiptId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
+///  "minLength": 1
 ///}
 /// ```
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioReceiptLineageStatementV2ParentReceiptIdsItem(::std::string::String);
-impl ::std::ops::Deref for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+pub struct ChioReceiptLineageStatementParentReceiptId(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementParentReceiptId {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ChioReceiptLineageStatementV2ParentReceiptIdsItem>
+impl ::std::convert::From<ChioReceiptLineageStatementParentReceiptId>
 for ::std::string::String {
-    fn from(value: ChioReceiptLineageStatementV2ParentReceiptIdsItem) -> Self {
+    fn from(value: ChioReceiptLineageStatementParentReceiptId) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<&ChioReceiptLineageStatementV2ParentReceiptIdsItem>
-for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
-    fn from(value: &ChioReceiptLineageStatementV2ParentReceiptIdsItem) -> Self {
+impl ::std::convert::From<&ChioReceiptLineageStatementParentReceiptId>
+for ChioReceiptLineageStatementParentReceiptId {
+    fn from(value: &ChioReceiptLineageStatementParentReceiptId) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+impl ::std::str::FromStr for ChioReceiptLineageStatementParentReceiptId {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
         }
         Ok(Self(value.to_string()))
     }
 }
-impl ::std::convert::TryFrom<&str>
-for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementParentReceiptId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -26419,7 +20698,7 @@ for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+for ChioReceiptLineageStatementParentReceiptId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -26428,7 +20707,7 @@ for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+for ChioReceiptLineageStatementParentReceiptId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -26436,8 +20715,7 @@ for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
         value.parse()
     }
 }
-impl<'de> ::serde::Deserialize<'de>
-for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementParentReceiptId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -26449,52 +20727,50 @@ for ChioReceiptLineageStatementV2ParentReceiptIdsItem {
             })
     }
 }
-///`ChioReceiptLineageStatementV2ParentSetHash`
+///`ChioReceiptLineageStatementParentRequestId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
 ///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
+///  "minLength": 1
 ///}
 /// ```
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioReceiptLineageStatementV2ParentSetHash(::std::string::String);
-impl ::std::ops::Deref for ChioReceiptLineageStatementV2ParentSetHash {
+pub struct ChioReceiptLineageStatementParentRequestId(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementParentRequestId {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ChioReceiptLineageStatementV2ParentSetHash>
+impl ::std::convert::From<ChioReceiptLineageStatementParentRequestId>
 for ::std::string::String {
-    fn from(value: ChioReceiptLineageStatementV2ParentSetHash) -> Self {
+    fn from(value: ChioReceiptLineageStatementParentRequestId) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<&ChioReceiptLineageStatementV2ParentSetHash>
-for ChioReceiptLineageStatementV2ParentSetHash {
-    fn from(value: &ChioReceiptLineageStatementV2ParentSetHash) -> Self {
+impl ::std::convert::From<&ChioReceiptLineageStatementParentRequestId>
+for ChioReceiptLineageStatementParentRequestId {
+    fn from(value: &ChioReceiptLineageStatementParentRequestId) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr for ChioReceiptLineageStatementV2ParentSetHash {
+impl ::std::str::FromStr for ChioReceiptLineageStatementParentRequestId {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
         }
         Ok(Self(value.to_string()))
     }
 }
-impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2ParentSetHash {
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementParentRequestId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -26503,7 +20779,7 @@ impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2ParentSetHas
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioReceiptLineageStatementV2ParentSetHash {
+for ChioReceiptLineageStatementParentRequestId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -26512,7 +20788,7 @@ for ChioReceiptLineageStatementV2ParentSetHash {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioReceiptLineageStatementV2ParentSetHash {
+for ChioReceiptLineageStatementParentRequestId {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -26520,7 +20796,7 @@ for ChioReceiptLineageStatementV2ParentSetHash {
         value.parse()
     }
 }
-impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2ParentSetHash {
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementParentRequestId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -26532,7 +20808,90 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2ParentSetHa
             })
     }
 }
-///`ChioReceiptLineageStatementV2Signature`
+///`ChioReceiptLineageStatementRelationKind`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "local_child",
+///    "continued"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ChioReceiptLineageStatementRelationKind {
+    #[serde(rename = "local_child")]
+    LocalChild,
+    #[serde(rename = "continued")]
+    Continued,
+}
+impl ::std::convert::From<&Self> for ChioReceiptLineageStatementRelationKind {
+    fn from(value: &ChioReceiptLineageStatementRelationKind) -> Self {
+        value.clone()
+    }
+}
+impl ::std::fmt::Display for ChioReceiptLineageStatementRelationKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::LocalChild => f.write_str("local_child"),
+            Self::Continued => f.write_str("continued"),
+        }
+    }
+}
+impl ::std::str::FromStr for ChioReceiptLineageStatementRelationKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "local_child" => Ok(Self::LocalChild),
+            "continued" => Ok(Self::Continued),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementRelationKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioReceiptLineageStatementRelationKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioReceiptLineageStatementRelationKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ChioReceiptLineageStatementSignature`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -26545,26 +20904,26 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2ParentSetHa
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ChioReceiptLineageStatementV2Signature(::std::string::String);
-impl ::std::ops::Deref for ChioReceiptLineageStatementV2Signature {
+pub struct ChioReceiptLineageStatementSignature(::std::string::String);
+impl ::std::ops::Deref for ChioReceiptLineageStatementSignature {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ChioReceiptLineageStatementV2Signature>
+impl ::std::convert::From<ChioReceiptLineageStatementSignature>
 for ::std::string::String {
-    fn from(value: ChioReceiptLineageStatementV2Signature) -> Self {
+    fn from(value: ChioReceiptLineageStatementSignature) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<&ChioReceiptLineageStatementV2Signature>
-for ChioReceiptLineageStatementV2Signature {
-    fn from(value: &ChioReceiptLineageStatementV2Signature) -> Self {
+impl ::std::convert::From<&ChioReceiptLineageStatementSignature>
+for ChioReceiptLineageStatementSignature {
+    fn from(value: &ChioReceiptLineageStatementSignature) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr for ChioReceiptLineageStatementV2Signature {
+impl ::std::str::FromStr for ChioReceiptLineageStatementSignature {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -26585,7 +20944,7 @@ impl ::std::str::FromStr for ChioReceiptLineageStatementV2Signature {
         Ok(Self(value.to_string()))
     }
 }
-impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2Signature {
+impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -26594,7 +20953,7 @@ impl ::std::convert::TryFrom<&str> for ChioReceiptLineageStatementV2Signature {
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-for ChioReceiptLineageStatementV2Signature {
+for ChioReceiptLineageStatementSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -26603,7 +20962,7 @@ for ChioReceiptLineageStatementV2Signature {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-for ChioReceiptLineageStatementV2Signature {
+for ChioReceiptLineageStatementSignature {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -26611,7 +20970,7 @@ for ChioReceiptLineageStatementV2Signature {
         value.parse()
     }
 }
-impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementV2Signature {
+impl<'de> ::serde::Deserialize<'de> for ChioReceiptLineageStatementSignature {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -26763,7 +21122,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptMerkleInclusionProofAuditPath
             })
     }
 }
-///A signed Chio receipt: proof that a tool call was evaluated by the Kernel. Mirrors the serde shape of `ChioReceipt` in `crates/chio-core-types/src/receipt.rs`. The `signature` field covers the canonical JSON of `ChioReceiptBody` (every field below except `algorithm` and `signature`). The `algorithm` envelope field is informational (verification dispatches off the self-describing hex prefix on the signature itself) and is omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Optional fields (`evidence`, `metadata`, `trust_level`, `tenant_id`, `algorithm`) are skipped on the wire when set to their default or unset values.
+///A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical receipt body excluding id, algorithm, and signature.
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -26771,7 +21130,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptMerkleInclusionProofAuditPath
 ///{
 ///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/record/v1",
 ///  "title": "Chio Receipt Record",
-///  "description": "A signed Chio receipt: proof that a tool call was evaluated by the Kernel. Mirrors the serde shape of `ChioReceipt` in `crates/chio-core-types/src/receipt.rs`. The `signature` field covers the canonical JSON of `ChioReceiptBody` (every field below except `algorithm` and `signature`). The `algorithm` envelope field is informational (verification dispatches off the self-describing hex prefix on the signature itself) and is omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Optional fields (`evidence`, `metadata`, `trust_level`, `tenant_id`, `algorithm`) are skipped on the wire when set to their default or unset values.",
+///  "description": "A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical receipt body excluding id, algorithm, and signature.",
 ///  "type": "object",
 ///  "required": [
 ///    "action",
@@ -26820,9 +21179,10 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptMerkleInclusionProofAuditPath
 ///      }
 ///    },
 ///    "id": {
-///      "description": "Unique receipt ID. UUIDv7 recommended.",
+///      "description": "Authoritative content-addressed receipt id.",
 ///      "type": "string",
-///      "minLength": 1
+///      "minLength": 1,
+///      "pattern": "^[0-9a-f]{64}$"
 ///    },
 ///    "kernel_key": {
 ///      "description": "Kernel public key (for verification without out-of-band lookup). Bare 64-char lowercase hex string for Ed25519, `p256:<130-char hex>` for uncompressed SEC1 P-256 (65 bytes; leading byte `0x04`), or `p384:<194-char hex>` for uncompressed SEC1 P-384 (97 bytes; leading byte `0x04`). Anything outside these length classes is rejected at decode time by `PublicKey::from_hex` in `crates/chio-core-types/src/crypto.rs`.",
@@ -26863,7 +21223,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptMerkleInclusionProofAuditPath
 ///      "minLength": 1
 ///    },
 ///    "trust_level": {
-///      "description": "Strength of kernel mediation that produced this receipt. Defaults to `mediated`. Older receipts that omit this field deserialize to `mediated` for backward compatibility.",
+///      "description": "Strength of kernel mediation that produced this receipt. Defaults to mediated.",
 ///      "type": "string",
 ///      "enum": [
 ///        "mediated",
@@ -26891,7 +21251,7 @@ pub struct ChioReceiptRecord {
     ///Per-guard evidence collected during evaluation. Omitted from the wire when empty (matches `#[serde(skip_serializing_if = "Vec::is_empty")]`).
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub evidence: ::std::vec::Vec<GuardEvidence>,
-    ///Unique receipt ID. UUIDv7 recommended.
+    ///Authoritative content-addressed receipt id.
     pub id: ChioReceiptRecordId,
     ///Kernel public key (for verification without out-of-band lookup). Bare 64-char lowercase hex string for Ed25519, `p256:<130-char hex>` for uncompressed SEC1 P-256 (65 bytes; leading byte `0x04`), or `p384:<194-char hex>` for uncompressed SEC1 P-384 (97 bytes; leading byte `0x04`). Anything outside these length classes is rejected at decode time by `PublicKey::from_hex` in `crates/chio-core-types/src/crypto.rs`.
     pub kernel_key: ChioReceiptRecordKernelKey,
@@ -26911,7 +21271,7 @@ pub struct ChioReceiptRecord {
     pub tool_name: ChioReceiptRecordToolName,
     ///Tool server that handled the invocation.
     pub tool_server: ChioReceiptRecordToolServer,
-    ///Strength of kernel mediation that produced this receipt. Defaults to `mediated`. Older receipts that omit this field deserialize to `mediated` for backward compatibility.
+    ///Strength of kernel mediation that produced this receipt. Defaults to mediated.
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub trust_level: ::std::option::Option<ChioReceiptRecordTrustLevel>,
 }
@@ -27167,15 +21527,16 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptRecordContentHash {
             })
     }
 }
-///Unique receipt ID. UUIDv7 recommended.
+///Authoritative content-addressed receipt id.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Unique receipt ID. UUIDv7 recommended.",
+///  "description": "Authoritative content-addressed receipt id.",
 ///  "type": "string",
-///  "minLength": 1
+///  "minLength": 1,
+///  "pattern": "^[0-9a-f]{64}$"
 ///}
 /// ```
 /// </details>
@@ -27205,6 +21566,11 @@ impl ::std::str::FromStr for ChioReceiptRecordId {
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         if value.chars().count() < 1usize {
             return Err("shorter than 1 characters".into());
+        }
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
         }
         Ok(Self(value.to_string()))
     }
@@ -27731,13 +22097,13 @@ impl<'de> ::serde::Deserialize<'de> for ChioReceiptRecordToolServer {
             })
     }
 }
-///Strength of kernel mediation that produced this receipt. Defaults to `mediated`. Older receipts that omit this field deserialize to `mediated` for backward compatibility.
+///Strength of kernel mediation that produced this receipt. Defaults to mediated.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Strength of kernel mediation that produced this receipt. Defaults to `mediated`. Older receipts that omit this field deserialize to `mediated` for backward compatibility.",
+///  "description": "Strength of kernel mediation that produced this receipt. Defaults to mediated.",
 ///  "type": "string",
 ///  "enum": [
 ///    "mediated",
@@ -27816,515 +22182,6 @@ impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptRecordTrustLe
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
-    }
-}
-///Content-addressed v2 receipt. bodyHash is H(canonical_jcs(ReceiptV2BodyHashInput)); receiptId is a non-authoritative legacy UUIDv7 tooling alias and is not used for replay.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/v2",
-///  "title": "Chio receipt v2",
-///  "description": "Content-addressed v2 receipt. bodyHash is H(canonical_jcs(ReceiptV2BodyHashInput)); receiptId is a non-authoritative legacy UUIDv7 tooling alias and is not used for replay.",
-///  "type": "object",
-///  "required": [
-///    "body",
-///    "bodyHash",
-///    "receiptId",
-///    "signature"
-///  ],
-///  "properties": {
-///    "algorithm": {
-///      "type": "string",
-///      "enum": [
-///        "ed25519",
-///        "p256",
-///        "p384",
-///        "hybrid"
-///      ]
-///    },
-///    "body": {
-///      "$ref": "#/$defs/receiptV2BodyHashInput"
-///    },
-///    "bodyHash": {
-///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
-///    },
-///    "receiptId": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "signature": {
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioReceiptV2 {
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub algorithm: ::std::option::Option<ChioReceiptV2Algorithm>,
-    pub body: ReceiptV2BodyHashInput,
-    #[serde(rename = "bodyHash")]
-    pub body_hash: ChioReceiptV2BodyHash,
-    #[serde(rename = "receiptId")]
-    pub receipt_id: ChioReceiptV2ReceiptId,
-    pub signature: ChioReceiptV2Signature,
-}
-impl ::std::convert::From<&ChioReceiptV2> for ChioReceiptV2 {
-    fn from(value: &ChioReceiptV2) -> Self {
-        value.clone()
-    }
-}
-///`ChioReceiptV2Algorithm`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "enum": [
-///    "ed25519",
-///    "p256",
-///    "p384",
-///    "hybrid"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ChioReceiptV2Algorithm {
-    #[serde(rename = "ed25519")]
-    Ed25519,
-    #[serde(rename = "p256")]
-    P256,
-    #[serde(rename = "p384")]
-    P384,
-    #[serde(rename = "hybrid")]
-    Hybrid,
-}
-impl ::std::convert::From<&Self> for ChioReceiptV2Algorithm {
-    fn from(value: &ChioReceiptV2Algorithm) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display for ChioReceiptV2Algorithm {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::Ed25519 => f.write_str("ed25519"),
-            Self::P256 => f.write_str("p256"),
-            Self::P384 => f.write_str("p384"),
-            Self::Hybrid => f.write_str("hybrid"),
-        }
-    }
-}
-impl ::std::str::FromStr for ChioReceiptV2Algorithm {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "ed25519" => Ok(Self::Ed25519),
-            "p256" => Ok(Self::P256),
-            "p384" => Ok(Self::P384),
-            "hybrid" => Ok(Self::Hybrid),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioReceiptV2Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptV2Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptV2Algorithm {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///`ChioReceiptV2BodyHash`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioReceiptV2BodyHash(::std::string::String);
-impl ::std::ops::Deref for ChioReceiptV2BodyHash {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioReceiptV2BodyHash> for ::std::string::String {
-    fn from(value: ChioReceiptV2BodyHash) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioReceiptV2BodyHash> for ChioReceiptV2BodyHash {
-    fn from(value: &ChioReceiptV2BodyHash) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioReceiptV2BodyHash {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioReceiptV2BodyHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptV2BodyHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptV2BodyHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioReceiptV2BodyHash {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioReceiptV2ReceiptId`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioReceiptV2ReceiptId(::std::string::String);
-impl ::std::ops::Deref for ChioReceiptV2ReceiptId {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioReceiptV2ReceiptId> for ::std::string::String {
-    fn from(value: ChioReceiptV2ReceiptId) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioReceiptV2ReceiptId> for ChioReceiptV2ReceiptId {
-    fn from(value: &ChioReceiptV2ReceiptId) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioReceiptV2ReceiptId {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioReceiptV2ReceiptId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptV2ReceiptId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptV2ReceiptId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioReceiptV2ReceiptId {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ChioReceiptV2Signature`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ChioReceiptV2Signature(::std::string::String);
-impl ::std::ops::Deref for ChioReceiptV2Signature {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ChioReceiptV2Signature> for ::std::string::String {
-    fn from(value: ChioReceiptV2Signature) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ChioReceiptV2Signature> for ChioReceiptV2Signature {
-    fn from(value: &ChioReceiptV2Signature) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ChioReceiptV2Signature {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ChioReceiptV2Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ChioReceiptV2Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ChioReceiptV2Signature {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ChioReceiptV2Signature {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.",
-///  "type": "object",
-///  "properties": {
-///    "grants": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/toolGrant"
-///      }
-///    },
-///    "prompt_grants": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/promptGrant"
-///      }
-///    },
-///    "resource_grants": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/resourceGrant"
-///      }
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioScope {
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub grants: ::std::vec::Vec<ToolGrant>,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub prompt_grants: ::std::vec::Vec<PromptGrant>,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub resource_grants: ::std::vec::Vec<ResourceGrant>,
-}
-impl ::std::convert::From<&ChioScope> for ChioScope {
-    fn from(value: &ChioScope) -> Self {
-        value.clone()
-    }
-}
-impl ::std::default::Default for ChioScope {
-    fn default() -> Self {
-        Self {
-            grants: Default::default(),
-            prompt_grants: Default::default(),
-            resource_grants: Default::default(),
-        }
-    }
-}
-///What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.",
-///  "type": "object",
-///  "properties": {
-///    "grants": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/toolGrant"
-///      }
-///    },
-///    "prompt_grants": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/promptGrant"
-///      }
-///    },
-///    "resource_grants": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/resourceGrant"
-///      }
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ChioScope {
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub grants: ::std::vec::Vec<ToolGrant>,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub prompt_grants: ::std::vec::Vec<PromptGrant>,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub resource_grants: ::std::vec::Vec<ResourceGrant>,
-}
-impl ::std::convert::From<&ChioScope> for ChioScope {
-    fn from(value: &ChioScope) -> Self {
-        value.clone()
-    }
-}
-impl ::std::default::Default for ChioScope {
-    fn default() -> Self {
-        Self {
-            grants: Default::default(),
-            prompt_grants: Default::default(),
-            resource_grants: Default::default(),
-        }
     }
 }
 ///What a capability token authorizes. Mirrors `ChioScope` in `chio-core-types`.
@@ -32149,72 +26006,6 @@ impl ::std::convert::From<&Constraint> for Constraint {
         value.clone()
     }
 }
-///Tagged enum mirroring `Constraint`. Encoded as `{ type, value }` (or `{ type }` for unit variants like `governed_intent_required`). The variant set is intentionally extensible per ADR-TYPE-EVOLUTION; this schema validates the discriminator only and lets downstream guards interpret the `value`.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Tagged enum mirroring `Constraint`. Encoded as `{ type, value }` (or `{ type }` for unit variants like `governed_intent_required`). The variant set is intentionally extensible per ADR-TYPE-EVOLUTION; this schema validates the discriminator only and lets downstream guards interpret the `value`.",
-///  "type": "object",
-///  "required": [
-///    "type"
-///  ],
-///  "properties": {
-///    "type": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "value": true
-///  }
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-pub struct Constraint {
-    #[serde(rename = "type")]
-    pub type_: ConstraintType,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub value: ::std::option::Option<::serde_json::Value>,
-}
-impl ::std::convert::From<&Constraint> for Constraint {
-    fn from(value: &Constraint) -> Self {
-        value.clone()
-    }
-}
-///Tagged enum mirroring `Constraint`. Encoded as `{ type, value }` (or `{ type }` for unit variants like `governed_intent_required`). The variant set is intentionally extensible per ADR-TYPE-EVOLUTION; this schema validates the discriminator only and lets downstream guards interpret the `value`.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Tagged enum mirroring `Constraint`. Encoded as `{ type, value }` (or `{ type }` for unit variants like `governed_intent_required`). The variant set is intentionally extensible per ADR-TYPE-EVOLUTION; this schema validates the discriminator only and lets downstream guards interpret the `value`.",
-///  "type": "object",
-///  "required": [
-///    "type"
-///  ],
-///  "properties": {
-///    "type": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "value": true
-///  }
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-pub struct Constraint {
-    #[serde(rename = "type")]
-    pub type_: ConstraintType,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub value: ::std::option::Option<::serde_json::Value>,
-}
-impl ::std::convert::From<&Constraint> for Constraint {
-    fn from(value: &Constraint) -> Self {
-        value.clone()
-    }
-}
 ///Tagged enum mirroring `Constraint`. Encoded as `{ type, value }`.
 ///
 /// <details><summary>JSON schema</summary>
@@ -32432,18 +26223,19 @@ impl ::std::convert::From<&Self> for Decision {
         value.clone()
     }
 }
-///A single link in a delegation chain. Mirrors `DelegationLink`.
+///A single delegation link. The required scope_hash binds the authorized parent scope used by the next hop's attenuation_proof.parent_scope_hash.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "A single link in a delegation chain. Mirrors `DelegationLink`.",
+///  "description": "A single delegation link. The required scope_hash binds the authorized parent scope used by the next hop's attenuation_proof.parent_scope_hash.",
 ///  "type": "object",
 ///  "required": [
 ///    "capability_id",
 ///    "delegatee",
 ///    "delegator",
+///    "scope_hash",
 ///    "signature",
 ///    "timestamp"
 ///  ],
@@ -32460,7 +26252,8 @@ impl ::std::convert::From<&Self> for Decision {
 ///            "type": "string",
 ///            "minLength": 1
 ///          }
-///        }
+///        },
+///        "additionalProperties": true
 ///      }
 ///    },
 ///    "capability_id": {
@@ -32468,19 +26261,21 @@ impl ::std::convert::From<&Self> for Decision {
 ///      "minLength": 1
 ///    },
 ///    "delegatee": {
-///      "description": "Receiving public key. Same encoding as the token-level `issuer`/`subject`.",
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
 ///    },
 ///    "delegator": {
-///      "description": "Delegating public key. Same encoding as the token-level `issuer`/`subject`.",
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
+///    },
+///    "scope_hash": {
+///      "description": "RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it.",
+///      "type": "string",
+///      "pattern": "^[0-9a-f]{64}$"
 ///    },
 ///    "signature": {
-///      "description": "Delegation-link signature. Same encoding as the token-level `signature`.",
 ///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
+///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
 ///    },
 ///    "timestamp": {
 ///      "type": "integer",
@@ -32497,89 +26292,10 @@ pub struct DelegationLink {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub attenuations: ::std::vec::Vec<DelegationLinkAttenuationsItem>,
     pub capability_id: DelegationLinkCapabilityId,
-    ///Receiving public key. Same encoding as the token-level `issuer`/`subject`.
     pub delegatee: DelegationLinkDelegatee,
-    ///Delegating public key. Same encoding as the token-level `issuer`/`subject`.
     pub delegator: DelegationLinkDelegator,
-    ///Delegation-link signature. Same encoding as the token-level `signature`.
-    pub signature: DelegationLinkSignature,
-    pub timestamp: u64,
-}
-impl ::std::convert::From<&DelegationLink> for DelegationLink {
-    fn from(value: &DelegationLink) -> Self {
-        value.clone()
-    }
-}
-///A single link in a delegation chain. Mirrors `DelegationLink`.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "A single link in a delegation chain. Mirrors `DelegationLink`.",
-///  "type": "object",
-///  "required": [
-///    "capability_id",
-///    "delegatee",
-///    "delegator",
-///    "signature",
-///    "timestamp"
-///  ],
-///  "properties": {
-///    "attenuations": {
-///      "type": "array",
-///      "items": {
-///        "type": "object",
-///        "required": [
-///          "type"
-///        ],
-///        "properties": {
-///          "type": {
-///            "type": "string",
-///            "minLength": 1
-///          }
-///        }
-///      }
-///    },
-///    "capability_id": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "delegatee": {
-///      "description": "Receiving public key. Same encoding as the token-level `issuer`/`subject`.",
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
-///    },
-///    "delegator": {
-///      "description": "Delegating public key. Same encoding as the token-level `issuer`/`subject`.",
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$"
-///    },
-///    "signature": {
-///      "description": "Delegation-link signature. Same encoding as the token-level `signature`.",
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$"
-///    },
-///    "timestamp": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct DelegationLink {
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub attenuations: ::std::vec::Vec<DelegationLinkAttenuationsItem>,
-    pub capability_id: DelegationLinkCapabilityId,
-    ///Receiving public key. Same encoding as the token-level `issuer`/`subject`.
-    pub delegatee: DelegationLinkDelegatee,
-    ///Delegating public key. Same encoding as the token-level `issuer`/`subject`.
-    pub delegator: DelegationLinkDelegator,
-    ///Delegation-link signature. Same encoding as the token-level `signature`.
+    ///RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it.
+    pub scope_hash: DelegationLinkScopeHash,
     pub signature: DelegationLinkSignature,
     pub timestamp: u64,
 }
@@ -32603,7 +26319,8 @@ impl ::std::convert::From<&DelegationLink> for DelegationLink {
 ///      "type": "string",
 ///      "minLength": 1
 ///    }
-///  }
+///  },
+///  "additionalProperties": true
 ///}
 /// ```
 /// </details>
@@ -32775,15 +26492,14 @@ impl<'de> ::serde::Deserialize<'de> for DelegationLinkCapabilityId {
             })
     }
 }
-///Receiving public key. Same encoding as the token-level `issuer`/`subject`.
+///`DelegationLinkDelegatee`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Receiving public key. Same encoding as the token-level `issuer`/`subject`.",
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
 ///}
 /// ```
 /// </details>
@@ -32814,13 +26530,13 @@ impl ::std::str::FromStr for DelegationLinkDelegatee {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$\""
                     .into(),
             );
         }
@@ -32863,15 +26579,14 @@ impl<'de> ::serde::Deserialize<'de> for DelegationLinkDelegatee {
             })
     }
 }
-///Delegating public key. Same encoding as the token-level `issuer`/`subject`.
+///`DelegationLinkDelegator`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Delegating public key. Same encoding as the token-level `issuer`/`subject`.",
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$"
 ///}
 /// ```
 /// </details>
@@ -32902,13 +26617,13 @@ impl ::std::str::FromStr for DelegationLinkDelegator {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
+                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
+                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+)$\""
                     .into(),
             );
         }
@@ -32951,15 +26666,94 @@ impl<'de> ::serde::Deserialize<'de> for DelegationLinkDelegator {
             })
     }
 }
-///Delegation-link signature. Same encoding as the token-level `signature`.
+///RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Delegation-link signature. Same encoding as the token-level `signature`.",
+///  "description": "RFC 8785 canonical scope hash for this delegation hop. Runtime verification rejects links that omit it.",
 ///  "type": "string",
-///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct DelegationLinkScopeHash(::std::string::String);
+impl ::std::ops::Deref for DelegationLinkScopeHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<DelegationLinkScopeHash> for ::std::string::String {
+    fn from(value: DelegationLinkScopeHash) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&DelegationLinkScopeHash> for DelegationLinkScopeHash {
+    fn from(value: &DelegationLinkScopeHash) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for DelegationLinkScopeHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for DelegationLinkScopeHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for DelegationLinkScopeHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for DelegationLinkScopeHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for DelegationLinkScopeHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`DelegationLinkSignature`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$"
 ///}
 /// ```
 /// </details>
@@ -32990,13 +26784,13 @@ impl ::std::str::FromStr for DelegationLinkSignature {
         static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
         {
             ::regress::Regex::new(
-                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$",
+                    "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$",
                 )
                 .unwrap()
         });
         if PATTERN.find(value).is_none() {
             return Err(
-                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$\""
+                "doesn't match pattern \"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:[a-z0-9_-]+:[a-z0-9_-]+:[a-z0-9_+.-]+:[0-9a-f]+:[0-9a-f]+)$\""
                     .into(),
             );
         }
@@ -33028,6 +26822,203 @@ impl ::std::convert::TryFrom<::std::string::String> for DelegationLinkSignature 
     }
 }
 impl<'de> ::serde::Deserialize<'de> for DelegationLinkSignature {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`GovernanceReceiptRef`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "digest",
+///    "kernel_id",
+///    "receipt_id"
+///  ],
+///  "properties": {
+///    "digest": {
+///      "$ref": "#/$defs/hashRecord"
+///    },
+///    "kernel_id": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "receipt_id": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct GovernanceReceiptRef {
+    pub digest: HashRecord,
+    pub kernel_id: GovernanceReceiptRefKernelId,
+    pub receipt_id: GovernanceReceiptRefReceiptId,
+}
+impl ::std::convert::From<&GovernanceReceiptRef> for GovernanceReceiptRef {
+    fn from(value: &GovernanceReceiptRef) -> Self {
+        value.clone()
+    }
+}
+///`GovernanceReceiptRefKernelId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct GovernanceReceiptRefKernelId(::std::string::String);
+impl ::std::ops::Deref for GovernanceReceiptRefKernelId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<GovernanceReceiptRefKernelId> for ::std::string::String {
+    fn from(value: GovernanceReceiptRefKernelId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&GovernanceReceiptRefKernelId>
+for GovernanceReceiptRefKernelId {
+    fn from(value: &GovernanceReceiptRefKernelId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for GovernanceReceiptRefKernelId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for GovernanceReceiptRefKernelId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for GovernanceReceiptRefKernelId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for GovernanceReceiptRefKernelId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for GovernanceReceiptRefKernelId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`GovernanceReceiptRefReceiptId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct GovernanceReceiptRefReceiptId(::std::string::String);
+impl ::std::ops::Deref for GovernanceReceiptRefReceiptId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<GovernanceReceiptRefReceiptId> for ::std::string::String {
+    fn from(value: GovernanceReceiptRefReceiptId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&GovernanceReceiptRefReceiptId>
+for GovernanceReceiptRefReceiptId {
+    fn from(value: &GovernanceReceiptRefReceiptId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for GovernanceReceiptRefReceiptId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for GovernanceReceiptRefReceiptId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for GovernanceReceiptRefReceiptId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for GovernanceReceiptRefReceiptId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for GovernanceReceiptRefReceiptId {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -33071,7 +27062,9 @@ impl<'de> ::serde::Deserialize<'de> for DelegationLinkSignature {
 ///    },
 ///    "subset": {
 ///      "type": "boolean",
-///      "const": true
+///      "enum": [
+///        true
+///      ]
 ///    }
 ///  },
 ///  "additionalProperties": false
@@ -33305,7 +27298,7 @@ impl<'de> ::serde::Deserialize<'de> for GuardEvidenceGuardName {
             })
     }
 }
-///`Hlc`
+///`HashRecord`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -33313,22 +27306,17 @@ impl<'de> ::serde::Deserialize<'de> for GuardEvidenceGuardName {
 ///{
 ///  "type": "object",
 ///  "required": [
-///    "kernelId",
-///    "logical",
-///    "wallSeconds"
+///    "alg",
+///    "value"
 ///  ],
 ///  "properties": {
-///    "kernelId": {
+///    "alg": {
 ///      "type": "string",
-///      "minLength": 1
+///      "const": "sha256"
 ///    },
-///    "logical": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    },
-///    "wallSeconds": {
-///      "type": "integer",
-///      "minimum": 0.0
+///    "value": {
+///      "type": "string",
+///      "pattern": "^[0-9a-f]{64}$"
 ///    }
 ///  },
 ///  "additionalProperties": false
@@ -33337,60 +27325,59 @@ impl<'de> ::serde::Deserialize<'de> for GuardEvidenceGuardName {
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct Hlc {
-    #[serde(rename = "kernelId")]
-    pub kernel_id: HlcKernelId,
-    pub logical: u64,
-    #[serde(rename = "wallSeconds")]
-    pub wall_seconds: u64,
+pub struct HashRecord {
+    pub alg: ::std::string::String,
+    pub value: HashRecordValue,
 }
-impl ::std::convert::From<&Hlc> for Hlc {
-    fn from(value: &Hlc) -> Self {
+impl ::std::convert::From<&HashRecord> for HashRecord {
+    fn from(value: &HashRecord) -> Self {
         value.clone()
     }
 }
-///`HlcKernelId`
+///`HashRecordValue`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
 ///  "type": "string",
-///  "minLength": 1
+///  "pattern": "^[0-9a-f]{64}$"
 ///}
 /// ```
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct HlcKernelId(::std::string::String);
-impl ::std::ops::Deref for HlcKernelId {
+pub struct HashRecordValue(::std::string::String);
+impl ::std::ops::Deref for HashRecordValue {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<HlcKernelId> for ::std::string::String {
-    fn from(value: HlcKernelId) -> Self {
+impl ::std::convert::From<HashRecordValue> for ::std::string::String {
+    fn from(value: HashRecordValue) -> Self {
         value.0
     }
 }
-impl ::std::convert::From<&HlcKernelId> for HlcKernelId {
-    fn from(value: &HlcKernelId) -> Self {
+impl ::std::convert::From<&HashRecordValue> for HashRecordValue {
+    fn from(value: &HashRecordValue) -> Self {
         value.clone()
     }
 }
-impl ::std::str::FromStr for HlcKernelId {
+impl ::std::str::FromStr for HashRecordValue {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
         }
         Ok(Self(value.to_string()))
     }
 }
-impl ::std::convert::TryFrom<&str> for HlcKernelId {
+impl ::std::convert::TryFrom<&str> for HashRecordValue {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -33398,7 +27385,7 @@ impl ::std::convert::TryFrom<&str> for HlcKernelId {
         value.parse()
     }
 }
-impl ::std::convert::TryFrom<&::std::string::String> for HlcKernelId {
+impl ::std::convert::TryFrom<&::std::string::String> for HashRecordValue {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -33406,7 +27393,7 @@ impl ::std::convert::TryFrom<&::std::string::String> for HlcKernelId {
         value.parse()
     }
 }
-impl ::std::convert::TryFrom<::std::string::String> for HlcKernelId {
+impl ::std::convert::TryFrom<::std::string::String> for HashRecordValue {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -33414,7 +27401,7 @@ impl ::std::convert::TryFrom<::std::string::String> for HlcKernelId {
         value.parse()
     }
 }
-impl<'de> ::serde::Deserialize<'de> for HlcKernelId {
+impl<'de> ::serde::Deserialize<'de> for HashRecordValue {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -33626,26 +27613,30 @@ impl<'de> ::serde::Deserialize<'de> for InclusionLeafHash {
             })
     }
 }
-///A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.
+///`KernelIdentity`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.",
 ///  "type": "object",
 ///  "required": [
-///    "currency",
-///    "units"
+///    "alg",
+///    "kernel_id",
+///    "passport_key_fingerprint"
 ///  ],
 ///  "properties": {
-///    "currency": {
+///    "alg": {
+///      "type": "string",
+///      "const": "ed25519"
+///    },
+///    "kernel_id": {
 ///      "type": "string",
 ///      "minLength": 1
 ///    },
-///    "units": {
-///      "type": "integer",
-///      "minimum": 0.0
+///    "passport_key_fingerprint": {
+///      "type": "string",
+///      "pattern": "^[0-9a-f]{64}$"
 ///    }
 ///  },
 ///  "additionalProperties": false
@@ -33654,50 +27645,174 @@ impl<'de> ::serde::Deserialize<'de> for InclusionLeafHash {
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct MonetaryAmount {
-    pub currency: MonetaryAmountCurrency,
-    pub units: u64,
+pub struct KernelIdentity {
+    pub alg: ::std::string::String,
+    pub kernel_id: KernelIdentityKernelId,
+    pub passport_key_fingerprint: KernelIdentityPassportKeyFingerprint,
 }
-impl ::std::convert::From<&MonetaryAmount> for MonetaryAmount {
-    fn from(value: &MonetaryAmount) -> Self {
+impl ::std::convert::From<&KernelIdentity> for KernelIdentity {
+    fn from(value: &KernelIdentity) -> Self {
         value.clone()
     }
 }
-///A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.
+///`KernelIdentityKernelId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.",
-///  "type": "object",
-///  "required": [
-///    "currency",
-///    "units"
-///  ],
-///  "properties": {
-///    "currency": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "units": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    }
-///  },
-///  "additionalProperties": false
+///  "type": "string",
+///  "minLength": 1
 ///}
 /// ```
 /// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct MonetaryAmount {
-    pub currency: MonetaryAmountCurrency,
-    pub units: u64,
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct KernelIdentityKernelId(::std::string::String);
+impl ::std::ops::Deref for KernelIdentityKernelId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
 }
-impl ::std::convert::From<&MonetaryAmount> for MonetaryAmount {
-    fn from(value: &MonetaryAmount) -> Self {
+impl ::std::convert::From<KernelIdentityKernelId> for ::std::string::String {
+    fn from(value: KernelIdentityKernelId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&KernelIdentityKernelId> for KernelIdentityKernelId {
+    fn from(value: &KernelIdentityKernelId) -> Self {
         value.clone()
+    }
+}
+impl ::std::str::FromStr for KernelIdentityKernelId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for KernelIdentityKernelId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for KernelIdentityKernelId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for KernelIdentityKernelId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for KernelIdentityKernelId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`KernelIdentityPassportKeyFingerprint`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct KernelIdentityPassportKeyFingerprint(::std::string::String);
+impl ::std::ops::Deref for KernelIdentityPassportKeyFingerprint {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<KernelIdentityPassportKeyFingerprint>
+for ::std::string::String {
+    fn from(value: KernelIdentityPassportKeyFingerprint) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&KernelIdentityPassportKeyFingerprint>
+for KernelIdentityPassportKeyFingerprint {
+    fn from(value: &KernelIdentityPassportKeyFingerprint) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for KernelIdentityPassportKeyFingerprint {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
+        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for KernelIdentityPassportKeyFingerprint {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for KernelIdentityPassportKeyFingerprint {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for KernelIdentityPassportKeyFingerprint {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for KernelIdentityPassportKeyFingerprint {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///A monetary amount in the currency's smallest minor unit (e.g. cents for USD). Mirrors `MonetaryAmount`.
@@ -34051,19 +28166,61 @@ impl ::std::convert::TryFrom<::std::string::String> for Operation {
         value.parse()
     }
 }
-///`Operation`
+///`PolicyEvaluationSummary`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
+///  "type": "object",
+///  "required": [
+///    "server_a_verdict",
+///    "server_b_verdict"
+///  ],
+///  "properties": {
+///    "joint_disposition": {
+///      "type": "string",
+///      "enum": [
+///        "allow",
+///        "deny"
+///      ]
+///    },
+///    "server_a_verdict": {
+///      "$ref": "#/$defs/policyVerdict"
+///    },
+///    "server_b_verdict": {
+///      "$ref": "#/$defs/policyVerdict"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct PolicyEvaluationSummary {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub joint_disposition: ::std::option::Option<
+        PolicyEvaluationSummaryJointDisposition,
+    >,
+    pub server_a_verdict: PolicyVerdict,
+    pub server_b_verdict: PolicyVerdict,
+}
+impl ::std::convert::From<&PolicyEvaluationSummary> for PolicyEvaluationSummary {
+    fn from(value: &PolicyEvaluationSummary) -> Self {
+        value.clone()
+    }
+}
+///`PolicyEvaluationSummaryJointDisposition`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
 ///  "enum": [
-///    "invoke",
-///    "read_result",
-///    "read",
-///    "subscribe",
-///    "get",
-///    "delegate"
+///    "allow",
+///    "deny"
 ///  ]
 ///}
 /// ```
@@ -34080,54 +28237,38 @@ impl ::std::convert::TryFrom<::std::string::String> for Operation {
     PartialEq,
     PartialOrd
 )]
-pub enum Operation {
-    #[serde(rename = "invoke")]
-    Invoke,
-    #[serde(rename = "read_result")]
-    ReadResult,
-    #[serde(rename = "read")]
-    Read,
-    #[serde(rename = "subscribe")]
-    Subscribe,
-    #[serde(rename = "get")]
-    Get,
-    #[serde(rename = "delegate")]
-    Delegate,
+pub enum PolicyEvaluationSummaryJointDisposition {
+    #[serde(rename = "allow")]
+    Allow,
+    #[serde(rename = "deny")]
+    Deny,
 }
-impl ::std::convert::From<&Self> for Operation {
-    fn from(value: &Operation) -> Self {
+impl ::std::convert::From<&Self> for PolicyEvaluationSummaryJointDisposition {
+    fn from(value: &PolicyEvaluationSummaryJointDisposition) -> Self {
         value.clone()
     }
 }
-impl ::std::fmt::Display for Operation {
+impl ::std::fmt::Display for PolicyEvaluationSummaryJointDisposition {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
-            Self::Invoke => f.write_str("invoke"),
-            Self::ReadResult => f.write_str("read_result"),
-            Self::Read => f.write_str("read"),
-            Self::Subscribe => f.write_str("subscribe"),
-            Self::Get => f.write_str("get"),
-            Self::Delegate => f.write_str("delegate"),
+            Self::Allow => f.write_str("allow"),
+            Self::Deny => f.write_str("deny"),
         }
     }
 }
-impl ::std::str::FromStr for Operation {
+impl ::std::str::FromStr for PolicyEvaluationSummaryJointDisposition {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         match value {
-            "invoke" => Ok(Self::Invoke),
-            "read_result" => Ok(Self::ReadResult),
-            "read" => Ok(Self::Read),
-            "subscribe" => Ok(Self::Subscribe),
-            "get" => Ok(Self::Get),
-            "delegate" => Ok(Self::Delegate),
+            "allow" => Ok(Self::Allow),
+            "deny" => Ok(Self::Deny),
             _ => Err("invalid value".into()),
         }
     }
 }
-impl ::std::convert::TryFrom<&str> for Operation {
+impl ::std::convert::TryFrom<&str> for PolicyEvaluationSummaryJointDisposition {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -34135,7 +28276,8 @@ impl ::std::convert::TryFrom<&str> for Operation {
         value.parse()
     }
 }
-impl ::std::convert::TryFrom<&::std::string::String> for Operation {
+impl ::std::convert::TryFrom<&::std::string::String>
+for PolicyEvaluationSummaryJointDisposition {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -34143,7 +28285,8 @@ impl ::std::convert::TryFrom<&::std::string::String> for Operation {
         value.parse()
     }
 }
-impl ::std::convert::TryFrom<::std::string::String> for Operation {
+impl ::std::convert::TryFrom<::std::string::String>
+for PolicyEvaluationSummaryJointDisposition {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -34151,19 +28294,298 @@ impl ::std::convert::TryFrom<::std::string::String> for Operation {
         value.parse()
     }
 }
-///`Operation`
+///`PolicyVerdict`
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
+///  "type": "object",
+///  "required": [
+///    "policy_id",
+///    "policy_version",
+///    "verdict"
+///  ],
+///  "properties": {
+///    "policy_id": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "policy_version": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "rationale_code": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "verdict": {
+///      "type": "string",
+///      "enum": [
+///        "allow",
+///        "deny"
+///      ]
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct PolicyVerdict {
+    pub policy_id: PolicyVerdictPolicyId,
+    pub policy_version: PolicyVerdictPolicyVersion,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub rationale_code: ::std::option::Option<PolicyVerdictRationaleCode>,
+    pub verdict: PolicyVerdictVerdict,
+}
+impl ::std::convert::From<&PolicyVerdict> for PolicyVerdict {
+    fn from(value: &PolicyVerdict) -> Self {
+        value.clone()
+    }
+}
+///`PolicyVerdictPolicyId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PolicyVerdictPolicyId(::std::string::String);
+impl ::std::ops::Deref for PolicyVerdictPolicyId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PolicyVerdictPolicyId> for ::std::string::String {
+    fn from(value: PolicyVerdictPolicyId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&PolicyVerdictPolicyId> for PolicyVerdictPolicyId {
+    fn from(value: &PolicyVerdictPolicyId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for PolicyVerdictPolicyId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PolicyVerdictPolicyId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for PolicyVerdictPolicyId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PolicyVerdictPolicyId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PolicyVerdictPolicyId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PolicyVerdictPolicyVersion`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PolicyVerdictPolicyVersion(::std::string::String);
+impl ::std::ops::Deref for PolicyVerdictPolicyVersion {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PolicyVerdictPolicyVersion> for ::std::string::String {
+    fn from(value: PolicyVerdictPolicyVersion) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&PolicyVerdictPolicyVersion> for PolicyVerdictPolicyVersion {
+    fn from(value: &PolicyVerdictPolicyVersion) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for PolicyVerdictPolicyVersion {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PolicyVerdictPolicyVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for PolicyVerdictPolicyVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PolicyVerdictPolicyVersion {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PolicyVerdictPolicyVersion {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PolicyVerdictRationaleCode`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct PolicyVerdictRationaleCode(::std::string::String);
+impl ::std::ops::Deref for PolicyVerdictRationaleCode {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<PolicyVerdictRationaleCode> for ::std::string::String {
+    fn from(value: PolicyVerdictRationaleCode) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&PolicyVerdictRationaleCode> for PolicyVerdictRationaleCode {
+    fn from(value: &PolicyVerdictRationaleCode) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for PolicyVerdictRationaleCode {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for PolicyVerdictRationaleCode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for PolicyVerdictRationaleCode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PolicyVerdictRationaleCode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for PolicyVerdictRationaleCode {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`PolicyVerdictVerdict`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
 ///  "enum": [
-///    "invoke",
-///    "read_result",
-///    "read",
-///    "subscribe",
-///    "get",
-///    "delegate"
+///    "allow",
+///    "deny"
 ///  ]
 ///}
 /// ```
@@ -34180,54 +28602,38 @@ impl ::std::convert::TryFrom<::std::string::String> for Operation {
     PartialEq,
     PartialOrd
 )]
-pub enum Operation {
-    #[serde(rename = "invoke")]
-    Invoke,
-    #[serde(rename = "read_result")]
-    ReadResult,
-    #[serde(rename = "read")]
-    Read,
-    #[serde(rename = "subscribe")]
-    Subscribe,
-    #[serde(rename = "get")]
-    Get,
-    #[serde(rename = "delegate")]
-    Delegate,
+pub enum PolicyVerdictVerdict {
+    #[serde(rename = "allow")]
+    Allow,
+    #[serde(rename = "deny")]
+    Deny,
 }
-impl ::std::convert::From<&Self> for Operation {
-    fn from(value: &Operation) -> Self {
+impl ::std::convert::From<&Self> for PolicyVerdictVerdict {
+    fn from(value: &PolicyVerdictVerdict) -> Self {
         value.clone()
     }
 }
-impl ::std::fmt::Display for Operation {
+impl ::std::fmt::Display for PolicyVerdictVerdict {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
-            Self::Invoke => f.write_str("invoke"),
-            Self::ReadResult => f.write_str("read_result"),
-            Self::Read => f.write_str("read"),
-            Self::Subscribe => f.write_str("subscribe"),
-            Self::Get => f.write_str("get"),
-            Self::Delegate => f.write_str("delegate"),
+            Self::Allow => f.write_str("allow"),
+            Self::Deny => f.write_str("deny"),
         }
     }
 }
-impl ::std::str::FromStr for Operation {
+impl ::std::str::FromStr for PolicyVerdictVerdict {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         match value {
-            "invoke" => Ok(Self::Invoke),
-            "read_result" => Ok(Self::ReadResult),
-            "read" => Ok(Self::Read),
-            "subscribe" => Ok(Self::Subscribe),
-            "get" => Ok(Self::Get),
-            "delegate" => Ok(Self::Delegate),
+            "allow" => Ok(Self::Allow),
+            "deny" => Ok(Self::Deny),
             _ => Err("invalid value".into()),
         }
     }
 }
-impl ::std::convert::TryFrom<&str> for Operation {
+impl ::std::convert::TryFrom<&str> for PolicyVerdictVerdict {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -34235,7 +28641,7 @@ impl ::std::convert::TryFrom<&str> for Operation {
         value.parse()
     }
 }
-impl ::std::convert::TryFrom<&::std::string::String> for Operation {
+impl ::std::convert::TryFrom<&::std::string::String> for PolicyVerdictVerdict {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &::std::string::String,
@@ -34243,92 +28649,12 @@ impl ::std::convert::TryFrom<&::std::string::String> for Operation {
         value.parse()
     }
 }
-impl ::std::convert::TryFrom<::std::string::String> for Operation {
+impl ::std::convert::TryFrom<::std::string::String> for PolicyVerdictVerdict {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
-    }
-}
-///Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.",
-///  "type": "object",
-///  "required": [
-///    "operations",
-///    "prompt_name"
-///  ],
-///  "properties": {
-///    "operations": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/operation"
-///      },
-///      "minItems": 1
-///    },
-///    "prompt_name": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct PromptGrant {
-    pub operations: ::std::vec::Vec<Operation>,
-    pub prompt_name: PromptGrantPromptName,
-}
-impl ::std::convert::From<&PromptGrant> for PromptGrant {
-    fn from(value: &PromptGrant) -> Self {
-        value.clone()
-    }
-}
-///Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.",
-///  "type": "object",
-///  "required": [
-///    "operations",
-///    "prompt_name"
-///  ],
-///  "properties": {
-///    "operations": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/operation"
-///      },
-///      "minItems": 1
-///    },
-///    "prompt_name": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct PromptGrant {
-    pub operations: ::std::vec::Vec<Operation>,
-    pub prompt_name: PromptGrantPromptName,
-}
-impl ::std::convert::From<&PromptGrant> for PromptGrant {
-    fn from(value: &PromptGrant) -> Self {
-        value.clone()
     }
 }
 ///Authorization for retrieving a prompt by name. Mirrors `PromptGrant`.
@@ -34488,1075 +28814,6 @@ impl<'de> ::serde::Deserialize<'de> for PromptGrantPromptName {
             })
     }
 }
-///`ReceiptV2BodyHashInput`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "object",
-///  "required": [
-///    "action",
-///    "capabilityId",
-///    "chainId",
-///    "contentHash",
-///    "dagOrdinal",
-///    "decision",
-///    "hlc",
-///    "kernelKey",
-///    "parentSetHash",
-///    "policyHash",
-///    "schema",
-///    "timestamp",
-///    "toolName",
-///    "toolServer"
-///  ],
-///  "properties": {
-///    "action": {
-///      "type": "object",
-///      "additionalProperties": true
-///    },
-///    "capabilityId": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "chainId": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "contentHash": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "dagOrdinal": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    },
-///    "decision": {
-///      "type": "object",
-///      "additionalProperties": true
-///    },
-///    "evidence": {
-///      "type": "array",
-///      "items": {
-///        "type": "object"
-///      }
-///    },
-///    "hlc": {
-///      "$ref": "#/$defs/hlc"
-///    },
-///    "kernelKey": {
-///      "type": "string",
-///      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///    },
-///    "metadata": true,
-///    "parentReceiptIds": {
-///      "description": "Canonical sorted and deduplicated parent body_hash values.",
-///      "type": "array",
-///      "items": {
-///        "type": "string",
-///        "pattern": "^[0-9a-f]{64}$"
-///      },
-///      "uniqueItems": true
-///    },
-///    "parentSetHash": {
-///      "type": "string",
-///      "pattern": "^[0-9a-f]{64}$"
-///    },
-///    "policyHash": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "schema": {
-///      "type": "string",
-///      "const": "chio.receipt.v2"
-///    },
-///    "tenantId": {
-///      "type": "string"
-///    },
-///    "timestamp": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    },
-///    "toolName": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "toolServer": {
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "trustLevel": {
-///      "type": "string",
-///      "enum": [
-///        "mediated",
-///        "verified",
-///        "advisory"
-///      ]
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ReceiptV2BodyHashInput {
-    pub action: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
-    #[serde(rename = "capabilityId")]
-    pub capability_id: ReceiptV2BodyHashInputCapabilityId,
-    #[serde(rename = "chainId")]
-    pub chain_id: ReceiptV2BodyHashInputChainId,
-    #[serde(rename = "contentHash")]
-    pub content_hash: ReceiptV2BodyHashInputContentHash,
-    #[serde(rename = "dagOrdinal")]
-    pub dag_ordinal: u64,
-    pub decision: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub evidence: ::std::vec::Vec<
-        ::serde_json::Map<::std::string::String, ::serde_json::Value>,
-    >,
-    pub hlc: Hlc,
-    #[serde(rename = "kernelKey")]
-    pub kernel_key: ReceiptV2BodyHashInputKernelKey,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub metadata: ::std::option::Option<::serde_json::Value>,
-    ///Canonical sorted and deduplicated parent body_hash values.
-    #[serde(
-        rename = "parentReceiptIds",
-        default,
-        skip_serializing_if = "::std::option::Option::is_none"
-    )]
-    pub parent_receipt_ids: ::std::option::Option<
-        Vec<ReceiptV2BodyHashInputParentReceiptIdsItem>,
-    >,
-    #[serde(rename = "parentSetHash")]
-    pub parent_set_hash: ReceiptV2BodyHashInputParentSetHash,
-    #[serde(rename = "policyHash")]
-    pub policy_hash: ReceiptV2BodyHashInputPolicyHash,
-    pub schema: ::std::string::String,
-    #[serde(
-        rename = "tenantId",
-        default,
-        skip_serializing_if = "::std::option::Option::is_none"
-    )]
-    pub tenant_id: ::std::option::Option<::std::string::String>,
-    pub timestamp: u64,
-    #[serde(rename = "toolName")]
-    pub tool_name: ReceiptV2BodyHashInputToolName,
-    #[serde(rename = "toolServer")]
-    pub tool_server: ReceiptV2BodyHashInputToolServer,
-    #[serde(
-        rename = "trustLevel",
-        default,
-        skip_serializing_if = "::std::option::Option::is_none"
-    )]
-    pub trust_level: ::std::option::Option<ReceiptV2BodyHashInputTrustLevel>,
-}
-impl ::std::convert::From<&ReceiptV2BodyHashInput> for ReceiptV2BodyHashInput {
-    fn from(value: &ReceiptV2BodyHashInput) -> Self {
-        value.clone()
-    }
-}
-///`ReceiptV2BodyHashInputCapabilityId`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ReceiptV2BodyHashInputCapabilityId(::std::string::String);
-impl ::std::ops::Deref for ReceiptV2BodyHashInputCapabilityId {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ReceiptV2BodyHashInputCapabilityId> for ::std::string::String {
-    fn from(value: ReceiptV2BodyHashInputCapabilityId) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ReceiptV2BodyHashInputCapabilityId>
-for ReceiptV2BodyHashInputCapabilityId {
-    fn from(value: &ReceiptV2BodyHashInputCapabilityId) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ReceiptV2BodyHashInputCapabilityId {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputCapabilityId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ReceiptV2BodyHashInputCapabilityId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ReceiptV2BodyHashInputCapabilityId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputCapabilityId {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ReceiptV2BodyHashInputChainId`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ReceiptV2BodyHashInputChainId(::std::string::String);
-impl ::std::ops::Deref for ReceiptV2BodyHashInputChainId {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ReceiptV2BodyHashInputChainId> for ::std::string::String {
-    fn from(value: ReceiptV2BodyHashInputChainId) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ReceiptV2BodyHashInputChainId>
-for ReceiptV2BodyHashInputChainId {
-    fn from(value: &ReceiptV2BodyHashInputChainId) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ReceiptV2BodyHashInputChainId {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputChainId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ReceiptV2BodyHashInputChainId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ReceiptV2BodyHashInputChainId {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputChainId {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ReceiptV2BodyHashInputContentHash`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ReceiptV2BodyHashInputContentHash(::std::string::String);
-impl ::std::ops::Deref for ReceiptV2BodyHashInputContentHash {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ReceiptV2BodyHashInputContentHash> for ::std::string::String {
-    fn from(value: ReceiptV2BodyHashInputContentHash) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ReceiptV2BodyHashInputContentHash>
-for ReceiptV2BodyHashInputContentHash {
-    fn from(value: &ReceiptV2BodyHashInputContentHash) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ReceiptV2BodyHashInputContentHash {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputContentHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ReceiptV2BodyHashInputContentHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ReceiptV2BodyHashInputContentHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputContentHash {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ReceiptV2BodyHashInputKernelKey`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ReceiptV2BodyHashInputKernelKey(::std::string::String);
-impl ::std::ops::Deref for ReceiptV2BodyHashInputKernelKey {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ReceiptV2BodyHashInputKernelKey> for ::std::string::String {
-    fn from(value: ReceiptV2BodyHashInputKernelKey) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ReceiptV2BodyHashInputKernelKey>
-for ReceiptV2BodyHashInputKernelKey {
-    fn from(value: &ReceiptV2BodyHashInputKernelKey) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ReceiptV2BodyHashInputKernelKey {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        {
-            ::regress::Regex::new(
-                    "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$",
-                )
-                .unwrap()
-        });
-        if PATTERN.find(value).is_none() {
-            return Err(
-                "doesn't match pattern \"^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$\""
-                    .into(),
-            );
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputKernelKey {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ReceiptV2BodyHashInputKernelKey {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ReceiptV2BodyHashInputKernelKey {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputKernelKey {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ReceiptV2BodyHashInputParentReceiptIdsItem`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ReceiptV2BodyHashInputParentReceiptIdsItem(::std::string::String);
-impl ::std::ops::Deref for ReceiptV2BodyHashInputParentReceiptIdsItem {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ReceiptV2BodyHashInputParentReceiptIdsItem>
-for ::std::string::String {
-    fn from(value: ReceiptV2BodyHashInputParentReceiptIdsItem) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ReceiptV2BodyHashInputParentReceiptIdsItem>
-for ReceiptV2BodyHashInputParentReceiptIdsItem {
-    fn from(value: &ReceiptV2BodyHashInputParentReceiptIdsItem) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ReceiptV2BodyHashInputParentReceiptIdsItem {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputParentReceiptIdsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ReceiptV2BodyHashInputParentReceiptIdsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ReceiptV2BodyHashInputParentReceiptIdsItem {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputParentReceiptIdsItem {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ReceiptV2BodyHashInputParentSetHash`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "pattern": "^[0-9a-f]{64}$"
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ReceiptV2BodyHashInputParentSetHash(::std::string::String);
-impl ::std::ops::Deref for ReceiptV2BodyHashInputParentSetHash {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ReceiptV2BodyHashInputParentSetHash>
-for ::std::string::String {
-    fn from(value: ReceiptV2BodyHashInputParentSetHash) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ReceiptV2BodyHashInputParentSetHash>
-for ReceiptV2BodyHashInputParentSetHash {
-    fn from(value: &ReceiptV2BodyHashInputParentSetHash) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ReceiptV2BodyHashInputParentSetHash {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        static PATTERN: ::std::sync::LazyLock<::regress::Regex> = ::std::sync::LazyLock::new(||
-        { ::regress::Regex::new("^[0-9a-f]{64}$").unwrap() });
-        if PATTERN.find(value).is_none() {
-            return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputParentSetHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ReceiptV2BodyHashInputParentSetHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ReceiptV2BodyHashInputParentSetHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputParentSetHash {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ReceiptV2BodyHashInputPolicyHash`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ReceiptV2BodyHashInputPolicyHash(::std::string::String);
-impl ::std::ops::Deref for ReceiptV2BodyHashInputPolicyHash {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ReceiptV2BodyHashInputPolicyHash> for ::std::string::String {
-    fn from(value: ReceiptV2BodyHashInputPolicyHash) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ReceiptV2BodyHashInputPolicyHash>
-for ReceiptV2BodyHashInputPolicyHash {
-    fn from(value: &ReceiptV2BodyHashInputPolicyHash) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ReceiptV2BodyHashInputPolicyHash {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputPolicyHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ReceiptV2BodyHashInputPolicyHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ReceiptV2BodyHashInputPolicyHash {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputPolicyHash {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ReceiptV2BodyHashInputToolName`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ReceiptV2BodyHashInputToolName(::std::string::String);
-impl ::std::ops::Deref for ReceiptV2BodyHashInputToolName {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ReceiptV2BodyHashInputToolName> for ::std::string::String {
-    fn from(value: ReceiptV2BodyHashInputToolName) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ReceiptV2BodyHashInputToolName>
-for ReceiptV2BodyHashInputToolName {
-    fn from(value: &ReceiptV2BodyHashInputToolName) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ReceiptV2BodyHashInputToolName {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputToolName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String> for ReceiptV2BodyHashInputToolName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String> for ReceiptV2BodyHashInputToolName {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputToolName {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ReceiptV2BodyHashInputToolServer`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "minLength": 1
-///}
-/// ```
-/// </details>
-#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[serde(transparent)]
-pub struct ReceiptV2BodyHashInputToolServer(::std::string::String);
-impl ::std::ops::Deref for ReceiptV2BodyHashInputToolServer {
-    type Target = ::std::string::String;
-    fn deref(&self) -> &::std::string::String {
-        &self.0
-    }
-}
-impl ::std::convert::From<ReceiptV2BodyHashInputToolServer> for ::std::string::String {
-    fn from(value: ReceiptV2BodyHashInputToolServer) -> Self {
-        value.0
-    }
-}
-impl ::std::convert::From<&ReceiptV2BodyHashInputToolServer>
-for ReceiptV2BodyHashInputToolServer {
-    fn from(value: &ReceiptV2BodyHashInputToolServer) -> Self {
-        value.clone()
-    }
-}
-impl ::std::str::FromStr for ReceiptV2BodyHashInputToolServer {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        if value.chars().count() < 1usize {
-            return Err("shorter than 1 characters".into());
-        }
-        Ok(Self(value.to_string()))
-    }
-}
-impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputToolServer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ReceiptV2BodyHashInputToolServer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ReceiptV2BodyHashInputToolServer {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl<'de> ::serde::Deserialize<'de> for ReceiptV2BodyHashInputToolServer {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-    where
-        D: ::serde::Deserializer<'de>,
-    {
-        ::std::string::String::deserialize(deserializer)?
-            .parse()
-            .map_err(|e: self::error::ConversionError| {
-                <D::Error as ::serde::de::Error>::custom(e.to_string())
-            })
-    }
-}
-///`ReceiptV2BodyHashInputTrustLevel`
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "type": "string",
-///  "enum": [
-///    "mediated",
-///    "verified",
-///    "advisory"
-///  ]
-///}
-/// ```
-/// </details>
-#[derive(
-    ::serde::Deserialize,
-    ::serde::Serialize,
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd
-)]
-pub enum ReceiptV2BodyHashInputTrustLevel {
-    #[serde(rename = "mediated")]
-    Mediated,
-    #[serde(rename = "verified")]
-    Verified,
-    #[serde(rename = "advisory")]
-    Advisory,
-}
-impl ::std::convert::From<&Self> for ReceiptV2BodyHashInputTrustLevel {
-    fn from(value: &ReceiptV2BodyHashInputTrustLevel) -> Self {
-        value.clone()
-    }
-}
-impl ::std::fmt::Display for ReceiptV2BodyHashInputTrustLevel {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        match *self {
-            Self::Mediated => f.write_str("mediated"),
-            Self::Verified => f.write_str("verified"),
-            Self::Advisory => f.write_str("advisory"),
-        }
-    }
-}
-impl ::std::str::FromStr for ReceiptV2BodyHashInputTrustLevel {
-    type Err = self::error::ConversionError;
-    fn from_str(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        match value {
-            "mediated" => Ok(Self::Mediated),
-            "verified" => Ok(Self::Verified),
-            "advisory" => Ok(Self::Advisory),
-            _ => Err("invalid value".into()),
-        }
-    }
-}
-impl ::std::convert::TryFrom<&str> for ReceiptV2BodyHashInputTrustLevel {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &str,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<&::std::string::String>
-for ReceiptV2BodyHashInputTrustLevel {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: &::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-impl ::std::convert::TryFrom<::std::string::String>
-for ReceiptV2BodyHashInputTrustLevel {
-    type Error = self::error::ConversionError;
-    fn try_from(
-        value: ::std::string::String,
-    ) -> ::std::result::Result<Self, self::error::ConversionError> {
-        value.parse()
-    }
-}
-///Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.",
-///  "type": "object",
-///  "required": [
-///    "operations",
-///    "uri_pattern"
-///  ],
-///  "properties": {
-///    "operations": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/operation"
-///      },
-///      "minItems": 1
-///    },
-///    "uri_pattern": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ResourceGrant {
-    pub operations: ::std::vec::Vec<Operation>,
-    pub uri_pattern: ResourceGrantUriPattern,
-}
-impl ::std::convert::From<&ResourceGrant> for ResourceGrant {
-    fn from(value: &ResourceGrant) -> Self {
-        value.clone()
-    }
-}
-///Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.",
-///  "type": "object",
-///  "required": [
-///    "operations",
-///    "uri_pattern"
-///  ],
-///  "properties": {
-///    "operations": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/operation"
-///      },
-///      "minItems": 1
-///    },
-///    "uri_pattern": {
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ResourceGrant {
-    pub operations: ::std::vec::Vec<Operation>,
-    pub uri_pattern: ResourceGrantUriPattern,
-}
-impl ::std::convert::From<&ResourceGrant> for ResourceGrant {
-    fn from(value: &ResourceGrant) -> Self {
-        value.clone()
-    }
-}
 ///Authorization for reading or subscribing to a resource. Mirrors `ResourceGrant`.
 ///
 /// <details><summary>JSON schema</summary>
@@ -35714,6 +28971,206 @@ impl<'de> ::serde::Deserialize<'de> for ResourceGrantUriPattern {
             })
     }
 }
+///`SessionAnchorReference`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "sessionAnchorHash",
+///    "sessionAnchorId"
+///  ],
+///  "properties": {
+///    "sessionAnchorHash": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "sessionAnchorId": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct SessionAnchorReference {
+    #[serde(rename = "sessionAnchorHash")]
+    pub session_anchor_hash: SessionAnchorReferenceSessionAnchorHash,
+    #[serde(rename = "sessionAnchorId")]
+    pub session_anchor_id: SessionAnchorReferenceSessionAnchorId,
+}
+impl ::std::convert::From<&SessionAnchorReference> for SessionAnchorReference {
+    fn from(value: &SessionAnchorReference) -> Self {
+        value.clone()
+    }
+}
+///`SessionAnchorReferenceSessionAnchorHash`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct SessionAnchorReferenceSessionAnchorHash(::std::string::String);
+impl ::std::ops::Deref for SessionAnchorReferenceSessionAnchorHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<SessionAnchorReferenceSessionAnchorHash>
+for ::std::string::String {
+    fn from(value: SessionAnchorReferenceSessionAnchorHash) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&SessionAnchorReferenceSessionAnchorHash>
+for SessionAnchorReferenceSessionAnchorHash {
+    fn from(value: &SessionAnchorReferenceSessionAnchorHash) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for SessionAnchorReferenceSessionAnchorHash {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for SessionAnchorReferenceSessionAnchorHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for SessionAnchorReferenceSessionAnchorHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for SessionAnchorReferenceSessionAnchorHash {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for SessionAnchorReferenceSessionAnchorHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`SessionAnchorReferenceSessionAnchorId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct SessionAnchorReferenceSessionAnchorId(::std::string::String);
+impl ::std::ops::Deref for SessionAnchorReferenceSessionAnchorId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<SessionAnchorReferenceSessionAnchorId>
+for ::std::string::String {
+    fn from(value: SessionAnchorReferenceSessionAnchorId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<&SessionAnchorReferenceSessionAnchorId>
+for SessionAnchorReferenceSessionAnchorId {
+    fn from(value: &SessionAnchorReferenceSessionAnchorId) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr for SessionAnchorReferenceSessionAnchorId {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for SessionAnchorReferenceSessionAnchorId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for SessionAnchorReferenceSessionAnchorId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for SessionAnchorReferenceSessionAnchorId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for SessionAnchorReferenceSessionAnchorId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///Describes the tool call that was evaluated. Mirrors `ToolCallAction`.
 ///
 /// <details><summary>JSON schema</summary>
@@ -35831,168 +29288,6 @@ impl<'de> ::serde::Deserialize<'de> for ToolCallActionParameterHash {
             .map_err(|e: self::error::ConversionError| {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
-    }
-}
-///Authorization to invoke a single tool. Mirrors `ToolGrant`.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Authorization to invoke a single tool. Mirrors `ToolGrant`.",
-///  "type": "object",
-///  "required": [
-///    "operations",
-///    "server_id",
-///    "tool_name"
-///  ],
-///  "properties": {
-///    "constraints": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/constraint"
-///      }
-///    },
-///    "dpop_required": {
-///      "description": "If true, the kernel requires a valid DPoP proof for every invocation under this grant.",
-///      "type": "boolean"
-///    },
-///    "max_cost_per_invocation": {
-///      "$ref": "#/$defs/monetaryAmount"
-///    },
-///    "max_invocations": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    },
-///    "max_total_cost": {
-///      "$ref": "#/$defs/monetaryAmount"
-///    },
-///    "operations": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/operation"
-///      },
-///      "minItems": 1
-///    },
-///    "server_id": {
-///      "description": "Tool server identifier from the manifest. Use `*` to match any server (only valid in parent grants for delegation).",
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "tool_name": {
-///      "description": "Tool name on the server. Use `*` to match any tool (only valid in parent grants for delegation).",
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ToolGrant {
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub constraints: ::std::vec::Vec<Constraint>,
-    ///If true, the kernel requires a valid DPoP proof for every invocation under this grant.
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub dpop_required: ::std::option::Option<bool>,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub max_cost_per_invocation: ::std::option::Option<MonetaryAmount>,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub max_invocations: ::std::option::Option<u64>,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub max_total_cost: ::std::option::Option<MonetaryAmount>,
-    pub operations: ::std::vec::Vec<Operation>,
-    ///Tool server identifier from the manifest. Use `*` to match any server (only valid in parent grants for delegation).
-    pub server_id: ToolGrantServerId,
-    ///Tool name on the server. Use `*` to match any tool (only valid in parent grants for delegation).
-    pub tool_name: ToolGrantToolName,
-}
-impl ::std::convert::From<&ToolGrant> for ToolGrant {
-    fn from(value: &ToolGrant) -> Self {
-        value.clone()
-    }
-}
-///Authorization to invoke a single tool. Mirrors `ToolGrant`.
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-///{
-///  "description": "Authorization to invoke a single tool. Mirrors `ToolGrant`.",
-///  "type": "object",
-///  "required": [
-///    "operations",
-///    "server_id",
-///    "tool_name"
-///  ],
-///  "properties": {
-///    "constraints": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/constraint"
-///      }
-///    },
-///    "dpop_required": {
-///      "description": "If true, the kernel requires a valid DPoP proof for every invocation under this grant.",
-///      "type": "boolean"
-///    },
-///    "max_cost_per_invocation": {
-///      "$ref": "#/$defs/monetaryAmount"
-///    },
-///    "max_invocations": {
-///      "type": "integer",
-///      "minimum": 0.0
-///    },
-///    "max_total_cost": {
-///      "$ref": "#/$defs/monetaryAmount"
-///    },
-///    "operations": {
-///      "type": "array",
-///      "items": {
-///        "$ref": "#/$defs/operation"
-///      },
-///      "minItems": 1
-///    },
-///    "server_id": {
-///      "description": "Tool server identifier from the manifest. Use `*` to match any server (only valid in parent grants for delegation).",
-///      "type": "string",
-///      "minLength": 1
-///    },
-///    "tool_name": {
-///      "description": "Tool name on the server. Use `*` to match any tool (only valid in parent grants for delegation).",
-///      "type": "string",
-///      "minLength": 1
-///    }
-///  },
-///  "additionalProperties": false
-///}
-/// ```
-/// </details>
-#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct ToolGrant {
-    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-    pub constraints: ::std::vec::Vec<Constraint>,
-    ///If true, the kernel requires a valid DPoP proof for every invocation under this grant.
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub dpop_required: ::std::option::Option<bool>,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub max_cost_per_invocation: ::std::option::Option<MonetaryAmount>,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub max_invocations: ::std::option::Option<u64>,
-    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-    pub max_total_cost: ::std::option::Option<MonetaryAmount>,
-    pub operations: ::std::vec::Vec<Operation>,
-    ///Tool server identifier from the manifest. Use `*` to match any server (only valid in parent grants for delegation).
-    pub server_id: ToolGrantServerId,
-    ///Tool name on the server. Use `*` to match any tool (only valid in parent grants for delegation).
-    pub tool_name: ToolGrantToolName,
-}
-impl ::std::convert::From<&ToolGrant> for ToolGrant {
-    fn from(value: &ToolGrant) -> Self {
-        value.clone()
     }
 }
 ///Authorization to invoke a single tool. Mirrors `ToolGrant`.
@@ -37252,7 +30547,13 @@ impl<'de> ::serde::Deserialize<'de> for WitnessWitnessId {
 }
 /// Generation of default values for serde.
 pub mod defaults {
+    pub(super) fn chio_agent_message_tool_call_request_capability_token_schema() -> ::std::string::String {
+        "chio.capability.v1".to_string()
+    }
     pub(super) fn chio_capability_token_schema() -> ::std::string::String {
+        "chio.capability.v1".to_string()
+    }
+    pub(super) fn chio_kernel_message_capability_list_capabilities_item_schema() -> ::std::string::String {
         "chio.capability.v1".to_string()
     }
 }

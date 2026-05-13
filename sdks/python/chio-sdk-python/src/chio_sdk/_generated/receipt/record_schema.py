@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: d680571b15f2c519e43943d2ec4e7754e54e544f1245ac1e25d16952856342c9
+# Schema sha256: 27d4f7c80ab3dae2f37ecd9e2cac2b620d452d76da7aabe48d91abcd19c69d61
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
 
 class TrustLevel(Enum):
     """
-    Strength of kernel mediation that produced this receipt. Defaults to `mediated`. Older receipts that omit this field deserialize to `mediated` for backward compatibility.
+    Strength of kernel mediation that produced this receipt. Defaults to mediated.
     """
 
     mediated = "mediated"
@@ -134,14 +134,14 @@ class GuardEvidence(BaseModel):
 
 class ChioReceiptRecord(BaseModel):
     """
-    A signed Chio receipt: proof that a tool call was evaluated by the Kernel. Mirrors the serde shape of `ChioReceipt` in `crates/chio-core-types/src/receipt.rs`. The `signature` field covers the canonical JSON of `ChioReceiptBody` (every field below except `algorithm` and `signature`). The `algorithm` envelope field is informational (verification dispatches off the self-describing hex prefix on the signature itself) and is omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Optional fields (`evidence`, `metadata`, `trust_level`, `tenant_id`, `algorithm`) are skipped on the wire when set to their default or unset values.
+    A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical receipt body excluding id, algorithm, and signature.
     """
 
     model_config = ConfigDict(
         extra="forbid",
     )
-    id: constr(min_length=1) = Field(
-        ..., description="Unique receipt ID. UUIDv7 recommended."
+    id: constr(pattern=r"^[0-9a-f]{64}$", min_length=1) = Field(
+        ..., description="Authoritative content-addressed receipt id."
     )
     timestamp: conint(ge=0) = Field(
         ..., description="Unix timestamp (seconds) when the receipt was created."
@@ -174,7 +174,7 @@ class ChioReceiptRecord(BaseModel):
     )
     trust_level: TrustLevel | None = Field(
         None,
-        description="Strength of kernel mediation that produced this receipt. Defaults to `mediated`. Older receipts that omit this field deserialize to `mediated` for backward compatibility.",
+        description="Strength of kernel mediation that produced this receipt. Defaults to mediated.",
     )
     tenant_id: constr(min_length=1) | None = Field(
         None,

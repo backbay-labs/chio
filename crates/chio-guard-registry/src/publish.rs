@@ -100,7 +100,7 @@ pub struct GuardArtifactConfig {
 }
 
 impl GuardArtifactConfig {
-    /// Build a v2 config blob for the current guard WIT world.
+    /// Build a config blob for the current guard WIT world.
     pub fn new(
         signer_public_key: impl Into<String>,
         fuel_limit: u64,
@@ -108,7 +108,7 @@ impl GuardArtifactConfig {
         epoch_id_seed: impl Into<String>,
     ) -> Self {
         Self {
-            schema_version: "chio.guard.config.v2".to_owned(),
+            schema_version: "chio.guard.config.v1".to_owned(),
             wit_world: GUARD_WIT_WORLD.to_owned(),
             signer_public_key: signer_public_key.into(),
             fuel_limit,

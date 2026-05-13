@@ -35,9 +35,7 @@
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use chio_core_types::capability::{
-    CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken, CHIO_CAPABILITY_V2_SCHEMA,
-};
+use chio_core_types::capability::{CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken};
 use chio_core_types::crypto::PublicKey;
 
 use crate::budget_split::{BudgetRegistry, NoopBudgetRegistry};
@@ -167,16 +165,6 @@ impl KernelCoreError {
                     out.push_str(msg);
                     out
                 }
-                CapabilityError::SchemaExceedsNegotiatedCeiling {
-                    token_schema,
-                    peer_max,
-                } => {
-                    let mut out = String::from("capability token schema ");
-                    out.push_str(token_schema);
-                    out.push_str(" exceeds peer-negotiated ceiling ");
-                    out.push_str(peer_max);
-                    out
-                }
             },
             KernelCoreError::SubjectMismatch { expected, actual } => {
                 let mut out = String::from("request agent ");
@@ -244,13 +232,9 @@ pub fn evaluate(input: EvaluateInput<'_>) -> EvaluationVerdict {
 /// kernel inject its own [`BudgetRegistry`] so sibling-sum oversubscription
 /// is rejected at evaluation time.
 ///
-/// Wave 1.5 note: this entry point does NOT enforce the W1.1 chain-binding
-/// rule or the W1.3 negotiated schema-ceiling rule. Production kernels MUST
-/// migrate to [`evaluate_with_full_floor`], which threads a peer-negotiated
-/// capability profile and a per-issuer trust-root resolver through the
-/// verifier in addition to the crypto floor. Calls that hit this entry
-/// point continue to work for v1 tokens but leave a v2-token soundness
-/// gap and a downgrade-attack surface open.
+/// This entry point does not enforce chain binding for attenuated delegated
+/// tokens because it has no trust-root resolver. Production kernels that
+/// accept attenuation should call [`evaluate_with_full_floor`].
 pub fn evaluate_with_crypto_floor(
     input: EvaluateInput<'_>,
     crypto_floor: CapabilityCryptoFloor,
@@ -268,9 +252,9 @@ pub fn evaluate_with_crypto_floor_and_budgets(
     budgets: &mut dyn BudgetRegistry,
 ) -> EvaluationVerdict {
     // Step 1: capability verification.
-    if input.capability.schema == CHIO_CAPABILITY_V2_SCHEMA {
+    if input.capability.attenuation_proof.is_some() {
         let core_err = KernelCoreError::InvalidCapability(CapabilityError::AttenuationViolation(
-            "v2 chain-binding requires a trust-root resolver on the evaluate path".to_string(),
+            "chain-binding requires a trust-root resolver on the evaluate path".to_string(),
         ));
         return deny(core_err, None, None);
     }
@@ -371,19 +355,19 @@ pub fn evaluate_with_crypto_floor_and_budgets(
     }
 }
 
-/// Wave 1.5 maximum-flexibility evaluation entry point.
+/// Full current-semantics evaluation entry point.
 ///
 /// Same five steps as [`evaluate_with_crypto_floor`] but uses
 /// [`crate::capability_verify::verify_capability_full`] for capability
 /// verification, which threads:
 ///
-/// - the W1.3 peer-negotiated schema ceiling, and
-/// - the W1.1 per-issuer trust-root resolver
+/// - the peer-negotiated feature profile, and
+/// - the per-issuer trust-root resolver
 ///
 /// in addition to the crypto floor. Production kernels (`chio-kernel`,
 /// `chio-kernel-browser`, `chio-kernel-mobile`, `chio-cpp-kernel-ffi`,
-/// `chio-ag-ui-proxy`) call this path so the W1.1 chain-binding rule and
-/// the W1.3 downgrade defense are actually exercised on the hot path.
+/// `chio-ag-ui-proxy`) call this path so chain-binding and feature validation
+/// are exercised on the hot path.
 pub fn evaluate_with_full_floor(
     input: EvaluateInput<'_>,
     crypto_floor: CapabilityCryptoFloor,

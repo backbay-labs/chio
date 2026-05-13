@@ -57,8 +57,8 @@
       "kind": "lean",
       "status": "assumed",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",
-      "statement": "When two peers exchange chio.capabilities.v1 feature bitsets and proceed with the intersection, neither peer can be tricked into using a feature it did not advertise (confused-deputy resistance). A v2 capability token presented to a peer whose negotiated max_capability_schema is v1 is rejected by the verifier's schema-ceiling check before any signature, time, or floor check runs.",
-      "introduced_by": "capability-negotiation-schema-ceiling",
+      "statement": "When two peers exchange chio.capabilities.v1 feature bitsets and proceed with the intersection, neither peer can be tricked into using a feature it did not advertise (confused-deputy resistance). Unknown Chio-owned capability schema identifiers are rejected before signature, time, floor, or budget checks run.",
+      "introduced_by": "capability-negotiation-feature-intersection",
       "promoted_by": "runtime-enforcement",
       "depends_on": []
     },
@@ -73,12 +73,12 @@
       "depends_on": []
     },
     {
-      "id": "theorem.receipt.body_hash_input_set_pinned",
+      "id": "theorem.receipt.id_input_set_pinned",
       "kind": "lean",
       "status": "assumed",
-      "statement": "For any chio.receipt.v2 body B, the set of fields contributing to body_hash is exactly fields(B) \\\\ {body_hash, signature, receipt_id}. The Lean proof regenerates from the JSON schema; any drift fails the proof. The kernel mints `ChioReceiptV2` whose `body_hash` field equals H(canonical_jcs(ReceiptV2BodyHashInput)) at production mint time, and the replay store keys on body_hash exclusively (the legacy UUIDv7 alias is non-authoritative).",
-      "introduced_by": "receipt-v2-body-hash",
-      "promoted_by": "receipt-v2-runtime-minting",
+      "statement": "For any chio.receipt.v1 body B, the set of fields contributing to id is exactly fields(B) \\\\ {id, algorithm, signature}. The Lean proof regenerates from the JSON schema; any drift fails the proof. The kernel mints `ChioReceipt` whose `id` field equals H(canonical_jcs(ChioReceiptIdInput)) at production mint time, and the replay store keys on id exclusively.",
+      "introduced_by": "receipt-content-addressed-id",
+      "promoted_by": "receipt-runtime-minting",
       "depends_on": []
     }
   ],
@@ -92,12 +92,12 @@
       "depends_on": ["theorem.attenuation.witness_soundness"]
     },
     {
-      "id": "theorem.receipt.body_hash_collision_resistance",
+      "id": "theorem.receipt.id_collision_resistance",
       "kind": "lean",
       "status": "proposed",
-      "statement": "Under the standard SHA-256 collision-resistance assumption, distinct ReceiptV2BodyHashInput values produce distinct body_hash values with negligible collision probability.",
-      "introduced_by": "receipt-v2-body-hash",
-      "depends_on": ["theorem.receipt.body_hash_input_set_pinned"]
+      "statement": "Under the standard SHA-256 collision-resistance assumption, distinct ChioReceiptIdInput values produce distinct receipt ids with negligible collision probability.",
+      "introduced_by": "receipt-content-addressed-id",
+      "depends_on": ["theorem.receipt.id_input_set_pinned"]
     },
     {
       "id": "theorem.receipt.dag_acyclicity",

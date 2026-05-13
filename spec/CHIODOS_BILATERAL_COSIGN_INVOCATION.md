@@ -95,7 +95,7 @@ Chiodos offline package verification is verifier-owned. The proof package
 MUST NOT define its own peer pins, accepted ladder refs, action-class
 policy, workflow-intersection acceptance hash, revocation checkpoint, BBS
 issuer trust, authority lifecycle, or disclosure policy. Those values are
-supplied by `chio.chiodos.verifier-trust-bundle.v3` plus the required
+supplied by `chio.chiodos.verifier-trust-bundle.v1` plus the required
 `chio.chiodos.verification-context.v1`. A verifier MUST reject packages
 whose embedded hints disagree with the trust bundle or whose BBS proof
 nonce is not bound to the verifier context.

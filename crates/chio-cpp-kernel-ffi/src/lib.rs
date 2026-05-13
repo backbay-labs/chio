@@ -143,12 +143,12 @@ struct EvaluateRequestEnvelope {
     request: EvaluateRequestBody,
     #[serde(default)]
     now_secs: Option<u64>,
-    /// Optional W1.3 peer-negotiated profile. Defaults to `t1_default`
-    /// (admits v2 tokens) when omitted.
+    /// Optional peer-negotiated feature profile. Defaults to `t1_default`
+    /// with current chain-binding semantics when omitted.
     #[serde(default)]
     peer_capabilities: Option<CapabilityNegotiation>,
-    /// Optional W1.1 chain-binding trust roots, keyed by issuer hex.
-    /// V2 tokens require an entry here; absent issuers fail-closed.
+    /// Optional chain-binding trust roots, keyed by issuer hex. Attenuated or
+    /// delegated tokens require an entry here; absent issuers fail-closed.
     #[serde(default)]
     capability_trust_roots: std::collections::BTreeMap<String, ScopeHash>,
     /// Optional parent-budget snapshots used to seed sibling-sum
@@ -349,10 +349,9 @@ fn evaluate_json_str(request_json: &str) -> Result<String, KernelFfiError> {
     };
     let guards: &[&dyn Guard] = &[];
 
-    // Wave 1.5 hot-path wiring: route through `evaluate_with_full_floor`
-    // so the W1.3 schema-ceiling check and the W1.1 chain-binding rule
-    // are exercised on the same hot path that already enforces the
-    // crypto floor and time bounds.
+    // Route through `evaluate_with_full_floor` so feature validation and
+    // chain-binding checks are exercised on the same hot path that already
+    // enforces the crypto floor and time bounds.
     let peer_profile = parsed
         .peer_capabilities
         .clone()
@@ -521,12 +520,6 @@ fn verify_capability_with_parts(
         CapabilityError::Internal(message) => {
             KernelFfiError::Internal(format!("capability verification failed: {message}"))
         }
-        CapabilityError::SchemaExceedsNegotiatedCeiling {
-            token_schema,
-            peer_max,
-        } => KernelFfiError::InvalidCapability(format!(
-            "capability token schema {token_schema} exceeds peer-negotiated ceiling {peer_max}"
-        )),
     })?;
 
     let scope_json = serde_json::to_string(&verified.scope)

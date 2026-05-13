@@ -14,52 +14,129 @@
     "checks"
   ],
   "properties": {
-    "schema": { "const": "chio.chiodos.verifier-report.v2" },
-    "packageSha256": { "$ref": "#/$defs/sha256" },
-    "trustBundleSha256": { "$ref": "#/$defs/sha256" },
-    "contextSha256": { "$ref": "#/$defs/sha256" },
-    "revocationEpochHeight": { "type": "integer", "minimum": 0 },
-    "accepted": { "type": "boolean" },
+    "schema": {
+      "const": "chio.chiodos.verifier-report.v1"
+    },
+    "packageSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "trustBundleSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "contextSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "revocationEpochHeight": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "accepted": {
+      "type": "boolean"
+    },
     "checks": {
       "type": "array",
-      "items": { "$ref": "#/$defs/check" }
+      "items": {
+        "$ref": "#/$defs/check"
+      }
     },
-    "failure": { "$ref": "#/$defs/failure" }
+    "failure": {
+      "$ref": "#/$defs/failure"
+    }
   },
   "allOf": [
     {
-      "if": { "properties": { "accepted": { "const": true } }, "required": ["accepted"] },
+      "if": {
+        "properties": {
+          "accepted": {
+            "const": true
+          }
+        },
+        "required": [
+          "accepted"
+        ]
+      },
       "then": {
-        "properties": { "checks": { "minItems": 1 } },
-        "not": { "required": ["failure"] }
+        "properties": {
+          "checks": {
+            "minItems": 1
+          }
+        },
+        "not": {
+          "required": [
+            "failure"
+          ]
+        }
       }
     },
     {
-      "if": { "properties": { "accepted": { "const": false } }, "required": ["accepted"] },
-      "then": { "required": ["failure"] }
+      "if": {
+        "properties": {
+          "accepted": {
+            "const": false
+          }
+        },
+        "required": [
+          "accepted"
+        ]
+      },
+      "then": {
+        "required": [
+          "failure"
+        ]
+      }
     }
   ],
   "$defs": {
-    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
     "check": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["code", "name", "passed"],
+      "required": [
+        "code",
+        "name",
+        "passed"
+      ],
       "properties": {
-        "code": { "type": "string", "minLength": 1 },
-        "name": { "type": "string", "minLength": 1 },
-        "passed": { "type": "boolean" },
-        "detail": { "type": "string" }
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string"
+        }
       }
     },
     "failure": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["code", "phase", "detail"],
+      "required": [
+        "code",
+        "phase",
+        "detail"
+      ],
       "properties": {
-        "code": { "type": "string", "minLength": 1 },
-        "phase": { "type": "string", "minLength": 1 },
-        "detail": { "type": "string", "minLength": 1 }
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "phase": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     }
   }

@@ -24,8 +24,8 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use chio_core_types::capability::{
-    CapabilityCryptoFloor, CapabilityFloorVerifyError, CapabilityNegotiation,
-    CapabilitySchemaVersion, CapabilityToken, ChioScope, ScopeHash, CHIO_CAPABILITY_V2_SCHEMA,
+    CapabilityCryptoFloor, CapabilityFloorVerifyError, CapabilityNegotiation, CapabilityToken,
+    ChioScope, ScopeHash,
 };
 use chio_core_types::crypto::PublicKey;
 
@@ -78,7 +78,7 @@ pub enum CapabilityError {
     NotYetValid,
     /// Token has expired.
     Expired,
-    /// W1.1: V2 capability token violated the chain-binding rule.
+    /// W1.1: attenuated capability token violated the chain-binding rule.
     /// `attenuation_proof.parent_scope_hash` did not match either the
     /// issuer's trust-root scope hash (direct issue) or the last
     /// delegation link's `scope_hash` (delegated chain).
@@ -87,15 +87,6 @@ pub enum CapabilityError {
     BudgetSplitRejected(BudgetSplitError),
     /// An internal invariant was violated (e.g. canonical-JSON failure).
     Internal(String),
-    /// Token's declared schema is above the schema ceiling negotiated with
-    /// the federated peer. This blocks a v1-only Mallory from forcing a
-    /// v2-aware Alice to accept v2-only fields (downgrade-attack defense).
-    SchemaExceedsNegotiatedCeiling {
-        /// The schema ID declared on the inbound token.
-        token_schema: String,
-        /// The peer-negotiated maximum capability schema ID.
-        peer_max: String,
-    },
 }
 
 impl From<BudgetSplitError> for CapabilityError {
@@ -210,46 +201,17 @@ pub fn verify_capability_with_floor(
     })
 }
 
-/// Verify a capability token while enforcing both the configured crypto
-/// floor and the schema ceiling negotiated with the federated peer.
-///
-/// Closes the W1.3 downgrade attack: a v1-only Mallory must not be able
-/// to force a v2-aware Alice to accept v2-only fields. The peer's
-/// `max_capability_schema` (populated by
-/// [`CapabilityNegotiation::negotiated_with`]) acts as a ceiling: a v2
-/// token presented across a v1-negotiated link is rejected before any
-/// signature, time, or floor check runs.
-///
-/// Symmetric direction is preserved: a v1 token presented across a
-/// v2-negotiated link still verifies, because v1 remains the universal
-/// floor of the schema lattice.
+/// Verify a capability token while enforcing the configured crypto floor.
+/// The peer profile is still accepted so federation callers can keep one
+/// call surface, but Chio-owned capability schemas are single-version until
+/// first release.
 pub fn verify_capability_with_negotiated_floor(
     token: &CapabilityToken,
     trusted_issuers: &[PublicKey],
     clock: &dyn Clock,
     crypto_floor: CapabilityCryptoFloor,
-    peer: &CapabilityNegotiation,
+    _peer: &CapabilityNegotiation,
 ) -> Result<VerifiedCapability, CapabilityError> {
-    // Schema-ceiling check: reject tokens whose declared schema is
-    // strictly above the peer-negotiated ceiling. Comparison is
-    // ordering-aware over `CapabilitySchemaVersion`, not string
-    // equality, so a v2 token across a future v3-or-higher peer
-    // ceiling is admitted. v1 tokens are always admitted regardless
-    // of the peer ceiling.
-    let token_version = CapabilitySchemaVersion::parse(&token.schema);
-    let peer_ceiling = CapabilitySchemaVersion::parse(&peer.max_capability_schema);
-    let exceeds_ceiling = match (token_version, peer_ceiling) {
-        (Some(token_v), Some(peer_v)) => token_v > peer_v,
-        (Some(token_v), None) => token_v > CapabilitySchemaVersion::V1,
-        (None, _) => false,
-    };
-    if exceeds_ceiling {
-        return Err(CapabilityError::SchemaExceedsNegotiatedCeiling {
-            token_schema: token.schema.clone(),
-            peer_max: peer.max_capability_schema.clone(),
-        });
-    }
-
     let mut budgets = NoopBudgetRegistry;
     verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor, &mut budgets)
 }
@@ -289,11 +251,11 @@ where
 /// Resolver returning the trust-root scope hash bound to a given issuer
 /// public key. Kernels supply this so the verifier can bind
 /// `attenuation_proof.parent_scope_hash` to the issuing CA's authority
-/// hash on direct-issue tokens (W1.1 chain-binding rule).
+/// hash on direct-issue attenuated tokens.
 pub trait TrustRootResolver {
     /// Resolve the trust-root scope hash for `issuer`, returning `None`
     /// when the issuer has no registered authority hash. The verifier
-    /// treats `None` as a fail-closed deny for v2 tokens that require
+    /// treats `None` as a fail-closed deny for attenuated tokens that require
     /// chain binding.
     fn trust_root_scope_hash(&self, issuer: &PublicKey) -> Option<ScopeHash>;
 }
@@ -307,11 +269,11 @@ where
     }
 }
 
-/// W1.1 chain-binding entry point. Verify a capability token while also
-/// enforcing the v2 chain-binding rule that closes the P0 soundness gap.
+/// Chain-binding entry point. Verify a capability token while also
+/// enforcing the chain-binding rule that closes the P0 soundness gap.
 ///
 /// In addition to the checks in [`verify_capability_with_floor`], this
-/// entry point requires that v2 tokens carry an `attenuation_proof`
+/// entry point checks tokens that carry an `attenuation_proof`
 /// whose `parent_scope_hash` matches either:
 ///
 /// - `trust_root_scope_hash` (when the delegation chain is empty: a
@@ -320,10 +282,7 @@ where
 /// - `delegation_chain.last().scope_hash` (when delegation has occurred:
 ///   the witness binds to the predecessor's signed scope_hash).
 ///
-/// V1 tokens are accepted unchanged. Callers that have not yet plumbed
-/// trust roots through their kernel should keep using
-/// [`verify_capability_with_floor`] but MUST NOT accept v2 tokens via
-/// that legacy entry point in production.
+/// Non-attenuated tokens are accepted unchanged.
 pub fn verify_capability_with_floor_and_trust_root(
     token: &CapabilityToken,
     trusted_issuers: &[PublicKey],
@@ -335,7 +294,7 @@ pub fn verify_capability_with_floor_and_trust_root(
     let verified =
         verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor, &mut budgets)?;
 
-    if token.schema == CHIO_CAPABILITY_V2_SCHEMA {
+    if token.requires_chain_binding() {
         token
             .validate_chain_binding(trust_root_scope_hash)
             .map_err(|err| CapabilityError::AttenuationViolation(err.to_string()))?;
@@ -360,12 +319,12 @@ pub fn verify_capability_with_floor_and_resolver(
     let verified =
         verify_capability_with_floor(token, trusted_issuers, clock, crypto_floor, &mut budgets)?;
 
-    if token.schema == CHIO_CAPABILITY_V2_SCHEMA {
+    if token.requires_chain_binding() {
         let issuer_root = trust_root
             .trust_root_scope_hash(&token.issuer)
             .ok_or_else(|| {
                 CapabilityError::AttenuationViolation(
-                    "v2 chain-binding: no trust-root scope hash registered for issuer".to_string(),
+                    "chain-binding: no trust-root scope hash registered for issuer".to_string(),
                 )
             })?;
         token
@@ -376,27 +335,7 @@ pub fn verify_capability_with_floor_and_resolver(
     Ok(verified)
 }
 
-/// Wave 1.5 maximum-flexibility verifier.
-///
-/// Composite entry point that chains all three Wave 1 defenses in a
-/// single fail-closed pass:
-///
-/// 1. W1.3 negotiated schema-ceiling check (rejects v2 tokens across a
-///    v1-only-negotiated link before any signature work).
-/// 2. Legacy issuer trust + canonical-JSON signature + crypto floor +
-///    time-window checks (the historical `verify_capability_with_floor`
-///    body).
-/// 3. W1.1 chain-binding check (v2 tokens must bind
-///    `attenuation_proof.parent_scope_hash` to either the issuer's
-///    trust-root scope hash or the last delegation link's `scope_hash`).
-///
-/// This is the verifier entry point production kernels SHOULD call
-/// going forward. The earlier partial entry points
-/// (`_with_negotiated_floor`, `_with_floor_and_trust_root`,
-/// `_with_floor_and_resolver`) remain available for callers that do
-/// not yet plumb every dependency through their boundary, but they
-/// each leave one Wave 1 defense un-wired and are therefore unsafe
-/// when used in isolation in production hot paths.
+/// Full verifier entry point for current capability semantics.
 pub fn verify_capability_full(
     token: &CapabilityToken,
     trusted_issuers: &[PublicKey],
@@ -406,60 +345,22 @@ pub fn verify_capability_full(
     trust_root: &dyn TrustRootResolver,
     budgets: &mut dyn BudgetRegistry,
 ) -> Result<VerifiedCapability, CapabilityError> {
-    // Step 1: W1.3 schema-ceiling check. Reject tokens whose declared
-    // schema is strictly above the peer-negotiated ceiling before doing
-    // any cryptographic work. The comparison is ordering-aware (a v2
-    // token across a v3-or-higher peer ceiling is admitted because v2
-    // <= v3) rather than bare equality, so adding a future v3 schema
-    // does not regress already-deployed v2 callers.
-    //
-    // Unknown schema identifiers fail-closed: the negotiation surface
-    // already rejects unknown values via `CapabilityNegotiation::validate`,
-    // and per-token validation rejects unknown token schemas. Treating
-    // an unparseable peer ceiling as `None` here keeps the ceiling at
-    // its safest interpretation (deny anything we cannot order).
-    let token_version = CapabilitySchemaVersion::parse(&token.schema);
-    let peer_ceiling = CapabilitySchemaVersion::parse(&peer.max_capability_schema);
-    let exceeds_ceiling = match (token_version, peer_ceiling) {
-        (Some(token_v), Some(peer_v)) => token_v > peer_v,
-        // Unknown peer ceiling -> fail-closed for any v2-or-higher token.
-        // v1 tokens remain the universal floor and are always admitted.
-        (Some(token_v), None) => token_v > CapabilitySchemaVersion::V1,
-        // Unknown token schema -> let downstream validation handle it.
-        (None, _) => false,
-    };
-    if exceeds_ceiling {
-        return Err(CapabilityError::SchemaExceedsNegotiatedCeiling {
-            token_schema: token.schema.clone(),
-            peer_max: peer.max_capability_schema.clone(),
-        });
-    }
-
-    // Step 2: W1.1 chain-binding check on v2 tokens. v1 tokens are admitted
-    // unchanged (no attenuation_proof field exists in their schema). Run
-    // chain-binding before the legacy signature/floor/issuer/budget pass so
-    // a witness mismatch fails closed before any budget mutation.
-    //
-    // V2 tokens require chain binding. If a peer explicitly disables
-    // `delegation_v2_chain_binding`, treat that peer as v1-only for this
-    // verifier and reject the v2 token rather than skipping the binding
-    // check.
-    if token.schema == CHIO_CAPABILITY_V2_SCHEMA {
+    if token.requires_chain_binding() {
         let chain_binding_enabled = peer
             .features
-            .get(chio_core_types::capability::capability_features::DELEGATION_V2_CHAIN_BINDING)
+            .get(chio_core_types::capability::capability_features::DELEGATION_CHAIN_BINDING)
             .copied()
             .unwrap_or(true);
         if !chain_binding_enabled {
             return Err(CapabilityError::AttenuationViolation(
-                "v2 chain-binding: peer disabled delegation_v2_chain_binding; v2 tokens are rejected".to_string(),
+                "chain-binding: peer disabled delegation_chain_binding; attenuated tokens are rejected".to_string(),
             ));
         }
         let issuer_root = trust_root
             .trust_root_scope_hash(&token.issuer)
             .ok_or_else(|| {
                 CapabilityError::AttenuationViolation(
-                    "v2 chain-binding: no trust-root scope hash registered for issuer".to_string(),
+                    "chain-binding: no trust-root scope hash registered for issuer".to_string(),
                 )
             })?;
         token
@@ -478,9 +379,11 @@ pub fn verify_capability_full(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::InMemoryBudgetRegistry;
     use chio_core_types::capability::{
         capability_features, compute_attenuation_witness, scope_hash, AttenuationProof,
-        CapabilityTokenBody, CapabilityTokenV2Body, ChioScope, DelegationLink, DelegationLinkBody,
+        CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, DelegationLink,
+        DelegationLinkBody,
     };
     use chio_core_types::crypto::Keypair;
 
@@ -546,7 +449,7 @@ mod tests {
         assert_eq!(verified.id, "cap-classical");
     }
 
-    fn make_v2_token(id: &str, issuer: &Keypair, subject: &Keypair) -> CapabilityToken {
+    fn make_attenuated_token(id: &str, issuer: &Keypair, subject: &Keypair) -> CapabilityToken {
         let scope = ChioScope::default();
         let proof = AttenuationProof {
             parent_scope_hash: scope_hash(&scope).expect("parent scope hash"),
@@ -554,8 +457,8 @@ mod tests {
             normalized_subset_proof: compute_attenuation_witness(&scope, &scope)
                 .expect("attenuation witness"),
         };
-        CapabilityToken::sign_v2(
-            CapabilityTokenV2Body {
+        CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
                 body: CapabilityTokenBody {
                     id: id.to_string(),
                     issuer: issuer.public_key(),
@@ -572,18 +475,19 @@ mod tests {
             },
             issuer,
         )
-        .expect("sign v2 token")
+        .expect("sign attenuated token")
     }
 
     #[test]
-    fn full_verifier_rejects_v2_when_chain_binding_feature_is_disabled() {
+    fn full_verifier_rejects_attenuated_token_when_chain_binding_feature_is_disabled() {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
-        let token = make_v2_token("cap-v2-disabled-chain-binding", &issuer, &subject);
+        let token =
+            make_attenuated_token("cap-attenuated-disabled-chain-binding", &issuer, &subject);
         let clock = crate::FixedClock::new(150);
         let mut peer = CapabilityNegotiation::t1_default();
         peer.features.insert(
-            capability_features::DELEGATION_V2_CHAIN_BINDING.to_string(),
+            capability_features::DELEGATION_CHAIN_BINDING.to_string(),
             false,
         );
         let trust_root_hash = scope_hash(&ChioScope::default()).expect("trust root hash");
@@ -607,7 +511,68 @@ mod tests {
             &trust_roots,
             &mut budgets,
         )
-        .expect_err("v2 token must fail when chain binding is disabled");
+        .expect_err("attenuated token must fail when chain binding is disabled");
+
+        assert!(matches!(err, CapabilityError::AttenuationViolation(_)));
+    }
+
+    #[test]
+    fn full_verifier_rejects_delegated_token_when_chain_binding_feature_is_disabled() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let parent_link = DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: "parent-capability".to_string(),
+                delegator: issuer.public_key(),
+                delegatee: issuer.public_key(),
+                attenuations: Vec::new(),
+                timestamp: 100,
+                scope_hash: None,
+            },
+            &issuer,
+        )
+        .expect("sign delegation link");
+        let token = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "delegated-current-v1-token".to_string(),
+                issuer: issuer.public_key(),
+                subject: subject.public_key(),
+                scope: ChioScope::default(),
+                issued_at: 100,
+                expires_at: 200,
+                delegation_chain: Vec::from([parent_link]),
+            },
+            &issuer,
+        )
+        .expect("sign delegated token");
+        let clock = crate::FixedClock::new(150);
+        let mut peer = CapabilityNegotiation::t1_default();
+        peer.features.insert(
+            capability_features::DELEGATION_CHAIN_BINDING.to_string(),
+            false,
+        );
+        let trust_root_hash = scope_hash(&ChioScope::default()).expect("trust root hash");
+        let issuer_public = issuer.public_key();
+        let resolver_issuer = issuer_public.clone();
+        let trust_roots = move |candidate: &PublicKey| {
+            if candidate == &resolver_issuer {
+                Some(trust_root_hash.clone())
+            } else {
+                None
+            }
+        };
+        let mut budgets = InMemoryBudgetRegistry::new();
+
+        let err = verify_capability_full(
+            &token,
+            &[issuer_public],
+            &clock,
+            CapabilityCryptoFloor::AllowClassical,
+            &peer,
+            &trust_roots,
+            &mut budgets,
+        )
+        .expect_err("delegated token must fail before budget admission");
 
         assert!(matches!(err, CapabilityError::AttenuationViolation(_)));
     }
@@ -628,15 +593,28 @@ mod tests {
             &issuer,
         )
         .expect("sign delegation link");
-        let token = CapabilityToken::sign(
-            CapabilityTokenBody {
-                id: "cap-child".to_string(),
-                issuer: issuer.public_key(),
-                subject: subject.public_key(),
-                scope: ChioScope::default(),
-                issued_at: 100,
-                expires_at: 200,
-                delegation_chain: Vec::from([parent_link]),
+        let scope = ChioScope::default();
+        let proof = AttenuationProof {
+            parent_scope_hash: scope_hash(&scope).expect("parent scope hash"),
+            child_scope_hash: scope_hash(&scope).expect("child scope hash"),
+            normalized_subset_proof: compute_attenuation_witness(&scope, &scope)
+                .expect("attenuation witness"),
+        };
+        let token = CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
+                body: CapabilityTokenBody {
+                    id: "cap-child".to_string(),
+                    issuer: issuer.public_key(),
+                    subject: subject.public_key(),
+                    scope,
+                    issued_at: 100,
+                    expires_at: 200,
+                    delegation_chain: Vec::from([parent_link]),
+                },
+                caveats: Vec::new(),
+                scope_attenuations: Vec::new(),
+                attenuation_proof: proof,
+                budget_share_bps: None,
             },
             &issuer,
         )
