@@ -521,6 +521,21 @@ def _legacy_envelope(
                         fixed_positional_arity, len(redacted_arg_list)
                     ):
                         overflow_value = redacted_arg_list[overflow_idx]
+                        # Skip if ``bind_and_redact`` already turned this
+                        # overflow positional into a redaction stub (e.g.
+                        # the kwonly-protected path covers
+                        # ``def write(path, *, content)`` overflows by
+                        # redacting under the kwonly canonical). Re-running
+                        # ``redact_args`` on the stub dict would treat its
+                        # ``repr()`` as the new "value" and overwrite
+                        # ``byte_count`` with the length of the stub repr,
+                        # corrupting the audit trail. (Closes PR #680
+                        # CursorM 3231239987 / P2 3231244182.)
+                        if (
+                            isinstance(overflow_value, dict)
+                            and overflow_value.get("omitted") is True
+                        ):
+                            continue
                         for canonical in protected_for_tool:
                             single = redact_args(
                                 tool_name,

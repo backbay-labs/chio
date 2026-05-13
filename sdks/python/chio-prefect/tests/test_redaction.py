@@ -1007,3 +1007,40 @@ class TestArityOverflowFailClosed:
         # Trailing args remain raw (not arity overflow; they fill *args).
         assert params["args"][2] == "trailing-1"
         assert params["args"][3] == "trailing-2"
+
+    def test_kwonly_overflow_not_double_redacted(self) -> None:
+        """Regression: when ``bind_and_redact`` already redacts an
+        overflow positional via the kwonly-protected path (e.g.
+        ``def write(path, *, content)`` with overflow), the
+        ``_legacy_envelope`` shim must NOT re-redact the resulting stub.
+        Re-redacting feeds the stub dict's ``repr()`` to ``redact_args``
+        as the new "value", overwriting ``byte_count`` with the length
+        of the stub repr (34) instead of the original secret length (7).
+        Closes PR #680 CursorM 3231239987 / P2 3231244182.
+        """
+        from chio_prefect.decorators import _task_parameters
+
+        def write(path: str, *, content: str) -> str:
+            return ""
+
+        secret = "SECRET2"
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/tmp", secret),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        # The overflow positional must record byte_count = LENGTH OF
+        # THE ORIGINAL SECRET, not len(repr(stub_dict)).
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(secret.encode("utf-8")),
+        }
+        # Guard against the regression: byte_count must not match the
+        # stub-repr length (34 chars for this stub).
+        assert params["args"][1]["byte_count"] != len(
+            repr({"omitted": True, "byte_count": len(secret)})
+        )
