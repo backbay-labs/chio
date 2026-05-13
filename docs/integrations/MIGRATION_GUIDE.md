@@ -15,8 +15,12 @@ The in-package guide covers:
    fixes (kwonly self-canonical, index-collision re-routing,
    TypeError fallback canonical preservation, `_is_pure_forwarder`
    exclusion of protected variadic, VAR_POSITIONAL extras with
-   kwarg-supplied slot) plus the `build_alias_map` public helper
-   and the `positional_table` REPLACES-the-default lock.
+   kwarg-supplied slot). The wrapper-name -> canonical-name alias
+   routing remains an internal implementation detail of
+   `bind_and_redact`; there is no public `build_alias_map` helper.
+   Adapters that want custom routing should pass a
+   `positional_table` and rely on `bind_and_redact` to apply the
+   alias logic.
 2. **If your adapter calls `bind_and_redact`** -- floor-pin bump
    recipe and which signature shapes warrant a regression test.
 3. **If your adapter calls `redact_args` directly** -- the call
@@ -28,11 +32,13 @@ The in-package guide covers:
    the helper hardening + prefect canary collapse; the
    post-merge file is at
    `sdks/python/chio-prefect/src/chio_prefect/decorators.py`.
-5. **Custom `positional_table` semantic change** -- v0.1.x
-   silently merged the caller's table on top of
-   `DEFAULT_TOOL_POSITIONAL_NAMES`; v0.2.0 treats the caller's
-   table as authoritative. The migration recipe is to spread the
-   default explicitly.
+5. **Custom `positional_table` semantic clarification** -- v0.3
+   explicitly documents the REPLACES-the-default semantic that
+   v0.1.1 already shipped (the caller's table is treated as
+   authoritative; the chio-default table is not merged in
+   implicitly). No code-level behaviour change. To extend the
+   chio-default with adapter-specific tools, spread the default
+   explicitly: `positional_table = {**DEFAULT_TOOL_POSITIONAL_NAMES, ...}`.
 6. **Testing your migration** -- per-cell assertions adapter
    authors should add when collapsing a local helper.
 

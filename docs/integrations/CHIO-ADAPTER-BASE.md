@@ -170,15 +170,15 @@ The current floor pin matrix (as of `chio-adapter-base 0.2.0`):
 | --- | --- | --- |
 | [`chio-hermes`](../../sdks/python/chio-hermes/) | `>=0.1.0,<0.2` | `redact_args`, `RedactionPolicy.chio_default`, `BoundedSubprocess`, `sanitised_env`, `harden_git_argv`, `forbidden_path_filter`, `ReceiptBuffer` |
 | [`chio-prefect`](../../sdks/python/chio-prefect/) | `>=0.1.1,<0.2` (will bump to `>=0.2.0,<0.3` in v0.3 PR-1) | `bind_and_redact`, `redact_args` |
-| [`chio-airflow`](../../sdks/python/chio-airflow/) | `>=0.1.1,<0.2` | `redact_args`, `BoundedSubprocess` |
-| [`chio-ray`](../../sdks/python/chio-ray/) | `>=0.1.1,<0.2` | `redact_args` |
+| [`chio-airflow`](../../sdks/python/chio-airflow/) | `>=0.1.1,<0.2` | `bind_and_redact`, `RedactionPolicy` |
+| [`chio-ray`](../../sdks/python/chio-ray/) | `>=0.1.1,<0.2` | `bind_and_redact`, `RedactionPolicy` |
 | [`chio-temporal`](../../sdks/python/chio-temporal/) | `>=0.1.1,<0.2` | `redact_args` |
 | [`chio-langchain`](../../sdks/python/chio-langchain/) | `>=0.1.0,<0.2` | `redact_args` (kwargs-only call surface; no `bind_and_redact` needed) |
 | [`chio-llamaindex`](../../sdks/python/chio-llamaindex/) | `>=0.1.0,<0.2` | `redact_args` (kwargs-only) |
 | [`chio-crewai`](../../sdks/python/chio-crewai/) | `>=0.1.0,<0.2` | `redact_args` (kwargs-only) |
 | [`chio-langgraph`](../../sdks/python/chio-langgraph/) | `>=0.1.0,<0.2` | `redact_args` |
 | [`chio-dagster`](../../sdks/python/chio-dagster/) | `>=0.1.0,<0.2` | `redact_args` |
-| [`chio-iac`](../../sdks/python/chio-iac/) | `>=0.1.0,<0.2` | `BoundedSubprocess`, `sanitised_env`, `redact_args` |
+| [`chio-iac`](../../sdks/python/chio-iac/) | `>=0.1.0,<0.2` | `redact_args`, `RedactionPolicy` |
 | [`chio-autogen`](../../sdks/python/chio-autogen/) | `>=0.1.0,<0.2` | `redact_args` |
 | [`chio-streaming`](../../sdks/python/chio-streaming/) | `>=0.1.0,<0.2` | `redact_args` |
 

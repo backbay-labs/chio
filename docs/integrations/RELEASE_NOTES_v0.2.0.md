@@ -41,10 +41,13 @@ PR #679 is the source-of-truth commit that bundles:
 3. **26 new regression tests (115 -> 141)** plus a 6-axis
    coverage matrix comment block at the top of
    `tests/test_bind_and_redact.py`.
-4. **`positional_table` argument LOCKED as
-   REPLACES-the-default**. v0.1.x silently merged the caller's
-   table on top of `DEFAULT_TOOL_POSITIONAL_NAMES`; v0.2.0 treats
-   the caller's table as authoritative.
+4. **`positional_table` argument explicitly documented as
+   REPLACES-the-default**. v0.3 documents the REPLACE semantic that
+   v0.1.1 already shipped: the caller-supplied table is
+   authoritative and the chio-default table is not merged in
+   implicitly. No code-level behaviour change. To extend the
+   chio-default with adapter-specific tools, spread it explicitly:
+   `positional_table = {**DEFAULT_TOOL_POSITIONAL_NAMES, ...}`.
 5. **chio-prefect 0.1.2 canary collapse** onto `bind_and_redact`
    plus a `_legacy_envelope` shim that preserves the
    prefect-specific `parameters["args"]` / `parameters["kwargs"]`
