@@ -736,16 +736,26 @@ def bind_and_redact(
     # by a fixed positional or another keyword-only param.
     #
     # The kwonly aliasing pass is intentionally narrow. A VAR_POSITIONAL
-    # parameter can itself be the body (e.g. ``def writer(*content, path)``
-    # for chio_file_write), so when the signature has a VAR_POSITIONAL we
-    # leave kwonly params alone - the wrapper's body is positional, not
-    # the kwonly slot. Only when the wrapper has no VAR_POSITIONAL do we
-    # try to alias an unclaimed kwonly to an unclaimed protected slot.
-    has_var_positional = any(
+    # parameter that ITSELF names a protected canonical (e.g.
+    # ``def writer(*content, path)`` for chio_file_write) carries the
+    # body positionally, so the kwonly slot is not the body and aliasing
+    # would mis-route. When the VAR_POSITIONAL is unrelated (e.g.
+    # ``def writer(path, *rest, body)`` where ``*rest`` is just overflow),
+    # the kwonly may still be the body alias and the kwonly aliasing
+    # pass MUST run; otherwise a kwarg call like ``writer('/tmp/x',
+    # body='PROD_SECRET')`` forwards the secret raw. (Closes PR #679 P2
+    # 3230955382: ``def write_file(path, *rest, body)`` with kwarg body
+    # leaked because the broad ``has_var_positional`` guard skipped the
+    # aliasing pass entirely.)
+    var_positional_is_protected_canonical = any(
         p.kind is inspect.Parameter.VAR_POSITIONAL
+        and (
+            p.name in protected_fields_for_tool
+            or p.name in table_slots_for_tool
+        )
         for p in sig.parameters.values()
     )
-    if protected_fields_for_tool and not has_var_positional:
+    if protected_fields_for_tool and not var_positional_is_protected_canonical:
         already_canonical_protected: set[str] = {
             canonical
             for canonical in sig_to_canonical.values()
@@ -775,17 +785,48 @@ def bind_and_redact(
                     already_canonical_protected.add(kw_name)
         # Pass B: any remaining kwonly is a wrapper alias for a
         # protected field. Bind to the first unclaimed protected
-        # canonical.
-        for param in kwonly_params:
-            kw_name = param.name
-            if kw_name in sig_to_canonical:
-                continue
-            for canonical in protected_fields_for_tool:
-                if canonical in already_canonical_protected:
-                    continue
-                sig_to_canonical[kw_name] = canonical
-                already_canonical_protected.add(canonical)
-                break
+        # canonical. When more unaliased kwonlys remain than there are
+        # unclaimed protected canonicals, fail-closed: alias EVERY
+        # remaining kwonly to a protected canonical (cycling through
+        # the protected list) so the secret is redacted regardless of
+        # which kwonly carries it. Mirrors the merge-conflict semantics
+        # used elsewhere in this module: when ambiguous, redact more.
+        # (Closes PR #679 P2 3230955385: ``def fn(path, *, label,
+        # body)`` greedily gave the only protected slot to the
+        # first-declared kwonly ``label`` and left the secret in
+        # ``body`` raw.)
+        unclaimed_kwonlys: list[str] = [
+            param.name
+            for param in kwonly_params
+            if param.name not in sig_to_canonical
+        ]
+        unclaimed_canonicals: list[str] = [
+            canonical
+            for canonical in protected_fields_for_tool
+            if canonical not in already_canonical_protected
+        ]
+        if unclaimed_kwonlys and len(unclaimed_kwonlys) <= len(
+            unclaimed_canonicals
+        ):
+            # Unambiguous: a 1:1 (or surjective into canonicals) mapping
+            # exists. Greedy declaration-order routing is safe here.
+            for kw_name in unclaimed_kwonlys:
+                for canonical in unclaimed_canonicals:
+                    if canonical in already_canonical_protected:
+                        continue
+                    sig_to_canonical[kw_name] = canonical
+                    already_canonical_protected.add(canonical)
+                    break
+        elif unclaimed_kwonlys and protected_fields_for_tool:
+            # Ambiguous: more kwonly aliases than free canonicals. Any
+            # of them could carry the secret. Fail-closed by routing
+            # each to a protected canonical (cycling so every kwonly
+            # gets redacted). Independent merge-conflict redaction
+            # downstream keeps the wire shape so callers see one stub
+            # per kwarg.
+            cycle = list(protected_fields_for_tool)
+            for i, kw_name in enumerate(unclaimed_kwonlys):
+                sig_to_canonical[kw_name] = cycle[i % len(cycle)]
 
     # Redact named (fixed) params first. Build the dict using canonical
     # names so the policy lookup matches the wire-level contract even
@@ -949,6 +990,23 @@ def bind_and_redact(
         # Extras with no matching free table slot stay raw.
         rebuilt_args.append(value)
 
+    # Detect kwargs that share a canonical alias (the fail-closed
+    # ambiguous-kwonly case). When two or more kwargs route to the same
+    # canonical, the single ``fixed_named[canonical]`` slot holds only
+    # the last-written value, so the shared canonical's stub would
+    # report the wrong byte_count for every other aliased kwarg. Mirror
+    # the merge-conflict semantics from ``_table_fallback_redact``:
+    # redact each colliding kwarg's value INDEPENDENTLY under the
+    # canonical so each kwarg's stub reflects its own byte_count.
+    # (Closes PR #679 P2 3230955385: ``def fn(path, *, label, body)``
+    # with both kwargs passed.)
+    canonical_kw_counts: dict[str, int] = {}
+    for kwarg_name in kwargs:
+        canonical = sig_to_canonical.get(kwarg_name, kwarg_name)
+        if canonical in protected_fields_for_tool:
+            canonical_kw_counts[canonical] = (
+                canonical_kw_counts.get(canonical, 0) + 1
+            )
     rebuilt_kwargs: dict[str, Any] = {}
     for name, value in kwargs.items():
         # When a kwarg landed in VAR_KEYWORD spillover (because the
@@ -967,7 +1025,20 @@ def bind_and_redact(
         # whose canonical slot is ``content``) still picks up the
         # redacted value.
         canonical_kw = sig_to_canonical.get(name, name)
-        if canonical_kw in redacted_fixed:
+        if (
+            canonical_kw in protected_fields_for_tool
+            and canonical_kw_counts.get(canonical_kw, 0) > 1
+        ):
+            # Multiple kwargs share this canonical: redact each value
+            # independently so each kwarg's stub reflects its own
+            # byte_count (fail-closed merge-conflict semantics).
+            single_redacted = _redact_named(
+                {canonical_kw: value},
+                tool_name=tool_name,
+                policy=effective_policy,
+            )
+            rebuilt_kwargs[name] = single_redacted[canonical_kw]
+        elif canonical_kw in redacted_fixed:
             rebuilt_kwargs[name] = redacted_fixed[canonical_kw]
         elif name in redacted_spillover:
             rebuilt_kwargs[name] = redacted_spillover[name]

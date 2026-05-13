@@ -1564,6 +1564,13 @@ def test_typeerror_fallback_protected_var_positional_multi_chunk() -> None:
     Several positional values past the unsupported-kwarg trigger should
     each redact under the variadic protected canonical, not just the
     first one.
+
+    Uses chunks of DISTINCT byte lengths so a regression that
+    overwrites earlier values (e.g. the fallback table dedup bug closed
+    by b75631cbb) cannot hide behind matching ``byte_count`` records.
+    The interval-1 version of this test used three 13-byte chunks
+    (``PROD_SECRET_A/B/C``) which masked the overwrite. Distinct
+    lengths make any future regression visible.
     """
 
     def write_file(*content: str) -> None:
@@ -1571,16 +1578,14 @@ def test_typeerror_fallback_protected_var_positional_multi_chunk() -> None:
 
     args, kwargs = bind_and_redact(
         write_file,
-        ("PROD_SECRET_A", "PROD_SECRET_B", "PROD_SECRET_C"),
+        ("S", "SS", "SSSS", "SSSSSSSS"),
         {"path": "/tmp/x"},
         tool_name="chio_file_write",
     )
-    for idx, expected in enumerate(
-        (b"PROD_SECRET_A", b"PROD_SECRET_B", b"PROD_SECRET_C")
-    ):
+    for idx, expected_len in enumerate((1, 2, 4, 8)):
         assert args[idx] == {
             "omitted": True,
-            "byte_count": len(expected),
+            "byte_count": expected_len,
         }
     assert kwargs["path"] == "/tmp/x"
 
@@ -1610,4 +1615,101 @@ def test_typeerror_fallback_protected_var_positional_distinct_byte_counts() -> N
     assert args[0] == {"omitted": True, "byte_count": 1}
     assert args[1] == {"omitted": True, "byte_count": 2}
     assert args[2] == {"omitted": True, "byte_count": 3}
+    assert kwargs["path"] == "/tmp/x"
+
+
+def test_signature_path_kwonly_body_with_unrelated_var_positional() -> None:
+    """Regression for PR #679 P2 3230955382.
+
+    ``def write_file(path, *rest, body)`` invoked with the protected
+    body as a kwarg. The kwonly aliasing pass was previously SKIPPED
+    whenever the signature contained any VAR_POSITIONAL (broad
+    ``has_var_positional`` guard). The guard is intended to defer to
+    the variadic when the variadic ITSELF names a protected canonical
+    (e.g. ``def writer(*content, path)``); when the VAR_POSITIONAL is
+    unrelated (``*rest``), the kwonly may still alias the protected
+    body. The broad guard let ``body='PROD_SECRET'`` forward raw.
+    Distinct byte length so a future regression cannot hide behind a
+    coincidentally-matching ``byte_count``.
+    """
+
+    def write_file(path: str, *rest: object, body: str) -> None:
+        del path, rest, body
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("/tmp/x",),
+        {"body": "PROD_SECRET_LONG_DISTINCT"},
+        tool_name="chio_file_write",
+    )
+    assert args == ["/tmp/x"]
+    assert kwargs["body"] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET_LONG_DISTINCT"),
+    }
+
+
+def test_signature_path_ambiguous_kwonly_aliases_redact_all() -> None:
+    """Regression for PR #679 P2 3230955385.
+
+    ``def write_file(path, *, label, body)`` invoked with both kwonly
+    kwargs supplied. Pass-B previously walked the kwonly params in
+    declaration order and greedily assigned the only unclaimed
+    protected canonical (``content``) to the first-declared kwonly
+    (``label``), leaving ``body`` unaliased so ``body='PROD_SECRET'``
+    forwarded raw. The fix routes EVERY unclaimed kwonly to a
+    protected canonical (cycling) when there are more kwonlys than
+    free canonicals, mirroring the merge-conflict semantics used by
+    other paths. Both kwargs must redact; each stub must report ITS
+    OWN byte_count (not a shared one) so a regression can't hide.
+    """
+
+    def write_file(path: str, *, label: str, body: str) -> None:
+        del path, label, body
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("/tmp/x",),
+        {"body": "PROD_SECRET_BODY_LONGER", "label": "safe"},
+        tool_name="chio_file_write",
+    )
+    assert args == ["/tmp/x"]
+    assert kwargs["body"] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET_BODY_LONGER"),
+    }
+    assert kwargs["label"] == {
+        "omitted": True,
+        "byte_count": len(b"safe"),
+    }
+
+
+def test_typeerror_fallback_protected_var_positional_distinct_lengths_strict() -> None:  # noqa: E501
+    """Regression for PR #679 P2 3230955379.
+
+    ``def write_file(*content)`` invoked with ``args=("A","BB","CCC")``
+    plus an unsupported ``path`` kwarg. The reviewer flagged that
+    earlier code overwrote the per-position byte_count so the rebuilt
+    args reported the LAST value's length for every position
+    (``byte_count: 3`` for all three). Interval-2's de-dup fix
+    (b75631cbb) did close this; this test asserts the post-fix
+    invariant with DISTINCT byte lengths so any future regression that
+    re-introduces overwrite behaviour fails loudly. Complements
+    ``test_typeerror_fallback_protected_var_positional_multi_chunk``
+    by varying the input arity and chunk-shape so the contract is
+    pinned from multiple angles.
+    """
+
+    def write_file(*content: str) -> None:
+        del content
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("X" * 5, "Y" * 17, "Z" * 64),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == {"omitted": True, "byte_count": 5}
+    assert args[1] == {"omitted": True, "byte_count": 17}
+    assert args[2] == {"omitted": True, "byte_count": 64}
     assert kwargs["path"] == "/tmp/x"
