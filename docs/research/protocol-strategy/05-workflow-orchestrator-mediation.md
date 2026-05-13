@@ -243,8 +243,8 @@ The signed decision receipt embeds:
   (`https://github.com/<owner>/<repo>/actions/runs/<id>`,
   `https://<host>/workflow/<id>/executions/<exec_id>` for n8n).
 - `policy_version` and `manifest_id`: proposed fields or signed metadata
-  that must be settled in receipt-v3 / manifest-v2 planning before this
-  adapter is implemented.
+  that must be settled in current v1 receipt-kind and event-action planning
+  before this adapter is implemented.
 
 ### Failure modes
 

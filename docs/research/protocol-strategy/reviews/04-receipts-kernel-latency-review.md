@@ -173,7 +173,7 @@ points are semantic:
    (`host-executed-redacted`). Pick three or four; pick a single casing
    (`HostExecutedUnmediated` or `host-executed-unmediated`); reflect in
    `00-overview-v2.md`, `12-openai-responses-adapter.md`, `13-bedrock-agents-bridge.md`,
-   and `15-receipt-schema-v3.md` in lockstep.
+   and `15-receipt-kind-v1.md` in lockstep.
 2. **`tool_origin` placement.** Overview v2 says "core v3 field, not an
    extension." Doc 15 puts it on `OpenaiResponsesExtension` only (line
    429-431) and explicitly recommends extension over core (line 502-508).
@@ -290,9 +290,9 @@ points are semantic:
   `metadata` on v2 (doc 15 removes `metadata`). Pick one path and update
   doc 09 lines 151-179 to match.
 
-**Doc 15 (receipt v3):**
-- Promote `tool_origin` to a core body field per overview v2 line 14, OR
-  edit overview v2 to demote it back into the extensions map. The two
+**Doc 15 (current v1 receipt-kind semantics):**
+- Promote `tool_origin` to a current v1 core body field per overview v2 line
+  14, OR edit overview v2 to demote it back into the extensions map. The two
   docs currently disagree on the highest-impact field.
 - Add the deferred-durability flag (doc 14 line 135) - spec the shape
   (`durability: Persisted | DeferredQueued | Mirrored`) and choose body

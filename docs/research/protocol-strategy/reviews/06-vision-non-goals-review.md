@@ -126,7 +126,7 @@ v1, builds on it, or is a delta document. The two phased queues disagree:
 | Wave | v1 (`00-overview.md`) Wave A | v2 (`00-overview-v2.md`) Wave A |
 |---|---|---|
 | Top item | `EventPublish`/`EventConsume` variants | **Land real bench bodies** (new, urgent) |
-| Item 2 | OAuth consumer/verifier posture | Receipt v3 schema (Option D) |
+| Item 2 | OAuth consumer/verifier posture | Current v1 receipt-kind schema (Option D) |
 | Item 3 | Rename AS to "Chio Governed Authorization Bridge" | EventPublish/EventConsume variants (demoted) |
 | OAuth AS | "rename + scope-clamp" | "feature flag + rename + scope-clamp" |
 
@@ -326,9 +326,9 @@ bench-stub PR ordering. None repeat wave-1.
   or have v2 overview acknowledge two parallel fields.
 - `14-voice-agent-bridges.md`: add `tool_origin = caller-executed` to
   the receipt-field table so the cross-cut is visible.
-- `15-receipt-schema-v3.md`: promote `tool_origin` from
+- `15-receipt-kind-v1.md`: promote `tool_origin` from
   `OpenaiResponsesExtension` to the core v3 body per v2 overview's
-  call; reconcile open question 4 (`15-receipt-schema-v3.md:502-509`)
+  call; reconcile open question 4 (`15-receipt-kind-v1.md:502-509`)
   with the v2 overview's verdict.
 
 ---

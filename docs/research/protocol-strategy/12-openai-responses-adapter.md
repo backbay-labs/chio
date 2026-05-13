@@ -2,13 +2,13 @@
 
 > **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
 >
-> **Erratum (wave 3 + PR 652 review):** `tool_origin` records execution locus, not redaction policy. ADR-0010 keeps `tool_origin` and `redaction_mode` as separate signed v3 fields. The planning default is `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`. References below that imply redaction as an origin variant should be read as historical.
+> **Erratum (wave 3 + PR 652 review):** `tool_origin` records execution locus, not redaction policy. ADR-0010 keeps `tool_origin` and `redaction_mode` as separate signed current v1 fields. The planning default is `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`. References below that imply redaction as an origin variant should be read as historical.
 >
 > **API refresh note (PR 652 review):** Before implementation, refresh against the current official OpenAI tools docs. `function` tools remain the clean MVP seam because the caller executes them. Current tool docs also describe `computer` as a caller-harness action surface and remote MCP / connectors as approval-mediated but externally executed surfaces, so this document's older "all built-ins are host-executed" shorthand must not drive adapter code.
 
 Status: research, not yet implemented.
 Branch: `research/protocol-strategy-2026`.
-Output of swarm task E1. Coordinates with X1 (receipt schema v3) on the
+Output of swarm task E1. Coordinates with X1 (current v1 receipt-kind semantics) on the
 `tool_origin` field and with the latency-audit track on streaming gates.
 
 ## TL;DR

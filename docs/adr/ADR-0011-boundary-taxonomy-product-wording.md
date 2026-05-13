@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Decision owner: protocol strategy and product
-- Related plan items: PR 652 boundary matrix, receipt v3 trace semantics, adapter ticket gates
+- Related plan items: PR 652 boundary matrix, current v1 receipt-kind trace semantics, adapter ticket gates
 
 ## Context
 

@@ -93,7 +93,7 @@ with a normative "out-of-band auth floor" recommendation.
 
 ### Finding 1: `ActorRef` is undefined.
 
-- Claim: doc 15 (`15-receipt-schema-v3.md:105, 209, 301, 418`) promotes
+- Claim: doc 15 (`15-receipt-kind-v1.md:105, 209, 301, 418`) promotes
   `actor_chain: Vec<ActorRef>` to a v3 core body field and includes it in
   `IdentityChainExtension`.
 - Reality: there is no struct definition for `ActorRef` anywhere in doc 15,

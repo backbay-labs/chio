@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Decision owner: kernel and receipt-store maintainers
-- Related plan items: PR 652 async receipt durability, voice deferral, receipt v3
+- Related plan items: PR 652 async receipt durability, voice deferral, current v1 receipt-kind semantics
 
 ## Context
 

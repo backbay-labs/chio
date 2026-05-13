@@ -149,11 +149,11 @@ mcp_tool, path_allowlist, internal_network, and arguably code_execution.
 11. **Receipt embedding.** Doc 04 says `engine_id + policy_digest` go
     into `ChioReceiptBody.policy_hash` and `GuardEvidence`. Doc 10 says
     the same. Doc 15 promotes `engine_id`, `policy_digest`,
-    `decision_id` to **separate v3 core fields**
-    (`receipt-schema-v3.md:296-299`) AND also adds a
+    `decision_id` to separate current v1 core fields
+    (`15-receipt-kind-v1.md`) AND also adds a
     `CedarExtension { engine_version, policy_set_id, policy_digest,
     decision_id, obligations, diagnostics }`
-    (`receipt-schema-v3.md:400-407`). Three real issues:
+    (`15-receipt-kind-v1.md`). Three real issues:
 
     - `policy_hash` in `ChioReceiptBody` today is `String`
       (`receipt.rs:123, 168`), a SHA-256 hex string. Doc 04's

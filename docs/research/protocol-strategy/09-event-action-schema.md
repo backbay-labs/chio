@@ -1,6 +1,6 @@
 # 09 - Event Action Schema for ToolAction and chio-manifest
 
-> **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
+> **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket. Mentions of later manifest or receipt generations, schema compatibility limits, negotiation, or pre-release compatibility paths are historical sketches. The accepted current plan folds Chio-owned pre-release schema work into v1 only.
 >
 > Wave A, item R3 from `00-overview.md`. Builds on `01-pubsub-coverage-audit.md`.
 > Code paths are cited repo-relative.
@@ -8,8 +8,8 @@
 ## TL;DR
 
 - The Rust kernel cannot today name "publish to Kafka topic X" or "consume NATS subject Y" in its `ToolAction` enum (`crates/chio-guards/src/action.rs:16-46`), so any policy that the Python `chio-streaming` SDK enforces is unverifiable on replay - the kernel sees a generic `ExternalApiCall` or `McpTool` at best. The minimum viable fix is two new variants (`EventPublish`, `EventConsume`) plus a unified `EventDestination` / `EventSource` shape that absorbs Kafka, NATS, Pulsar, EventBridge, Pub/Sub, SNS, SQS, and Redis Streams under a single schema with optional broker-specific fields.
-- Adoption requires a `chio-manifest` schema bump from `chio.manifest.v1` (`crates/chio-manifest/src/lib.rs:20`) to `chio.manifest.v2`. PR 652 review corrected an overclaim here: current negotiation covers capability schema ceilings, not manifest schema ceilings. Manifest v2 needs new `maxManifestSchema` or equivalent feature-bit plumbing before mixed-version peers can fail closed intentionally.
-- Receipt body extension piggybacks on the planned X1 receipt schema v3, adding an `event_decision` block under `ChioReceiptBody.metadata` for v2 and promoting it to a typed field in v3. The path forward is unified schema + manifest v2 + receipt v3 piggyback. The Python SDK can upgrade without breaking existing customers because the current `parameters` dict carries the same logical fields just untyped.
+- Adoption is now planned as current `chio.manifest.v1` work because Chio is unreleased. PR 652 review corrected an overclaim here: current negotiation covers capability compatibility limits, not manifest compatibility limits, and the v1-only posture removes manifest version negotiation before release.
+- Receipt body extension work is folded into current v1 receipt-kind semantics. The path forward is unified event shape + current v1 manifest planning + current v1 receipt semantics. The Python SDK can upgrade because the current `parameters` dict carries the same logical fields just untyped.
 
 ## Current state of `ToolAction`
 
@@ -151,9 +151,11 @@ The cost is that policy authors must consult the table to know which field carri
 
 ## Receipt embedding
 
-The receipt body (`crates/chio-core-types/src/receipt.rs:158-181`) currently holds `action: ToolCallAction` where `ToolCallAction` is `{ parameters: Value, parameter_hash: String }` (line 1148-1153). Event-action receipts need richer fields than an opaque parameter blob without breaking the v2 wire format.
+The receipt body (`crates/chio-core-types/src/receipt.rs:158-181`) currently holds `action: ToolCallAction` where `ToolCallAction` is `{ parameters: Value, parameter_hash: String }` (line 1148-1153). Event-action receipts need richer fields than an opaque parameter blob.
 
-**Short-term (manifest v2, receipt v2):** embed an `event_decision` block under `ChioReceiptBody.metadata: Option<Value>` (line 172). The block is:
+**Current v1 plan:** embed an `event_decision` block under
+`ChioReceiptBody.metadata: Option<Value>` (line 172) until the typed current v1
+field lands. The block is:
 
 ```json
 {
@@ -176,9 +178,16 @@ The receipt body (`crates/chio-core-types/src/receipt.rs:158-181`) currently hol
 
 Hashing `broker_id`, `partition_key`, and `consumer_group` keeps receipts portable across customers without leaking infra names; reviewers verify by recomputing.
 
-**Long-term (receipt v3, coordinated with X1):** promote `event_decision` to a typed sibling of `action` in `ChioReceiptBody`. PR 652 review corrected the schema wording: current receipts do not have a `receipt_schema: SemVer` field, and ADR-0010 chooses explicit `schema_version` plus `maxReceiptSchema` negotiation. The minimum coordination point with X1 is: **reserve `event_decision` as a v3 field name** so X1 does not collide on it.
+**Current v1 coordination with X1:** promote `event_decision` to a typed sibling
+of `action` in `ChioReceiptBody` only as part of the current v1 receipt-kind
+shape. PR 652 review corrected the schema wording: current receipts do not have
+a `receipt_schema: SemVer` field, and ADR-0010 rejects schema-ceiling
+negotiation before release. The minimum coordination point with X1 is: reserve
+`event_decision` as a current v1 field name so X1 does not collide on it.
 
-Backward compat: every v2 receipt parses successfully on a v3-aware verifier (metadata is `Option<Value>`); a v3 receipt fails parse on a v2-only verifier *unless* X1 lands `event_decision` inside metadata first and only promotes it later. Recommend the latter path.
+Pre-release compatibility: dev artifacts may be regenerated or destructively
+migrated. Verifiers that cannot validate the current v1 event-decision shape
+fail closed.
 
 ## Manifest schema version
 
@@ -224,15 +233,22 @@ SDK module layout (`core.py`, `middleware.py` for Kafka, `nats.py`, `pubsub.py`,
 
 ## Migration plan
 
-1. **Land manifest v2 with additive permissions.** Existing v1 manifests load on v2 kernels unchanged (universal floor). New `EventEndpointConstraint` fields are `Option<Vec<_>>`, defaulting to none. Customers can opt in per tool server.
+1. **Land current v1 manifest event permissions.** New
+   `EventEndpointConstraint` fields are `Option<Vec<_>>`, defaulting to none.
+   Customers can opt in per tool server.
 
 2. **Land `ToolAction::EventPublish` / `EventConsume` plus the `chio.event.*` recognizer.** This is the kernel-side change request: 1 patch to `chio-guards/src/action.rs`, 1 new crate `chio-broker-contract` mirroring `chio-egress-contract`. No existing tool call shape regresses because the recognizer matches only on the `chio.event.` prefix.
 
 3. **Ship Python SDK 0.2.0.** Modules emit `tool_name=chio.event.publish.kafka` and the new typed `parameters`. Customers running 0.1.x continue to get `McpTool` classification with existing rules.
 
-4. **Add `event_decision` metadata to receipts emitted under event actions.** Verifiers that don't know about the block ignore it (it's under `metadata`). Future v3 promotion is X1's call.
+4. **Add `event_decision` metadata to receipts emitted under event actions.**
+   Verifiers that do not know about the block fail closed until the typed
+   current v1 field lands.
 
-5. **Manifest v2 fixtures and conformance tests.** `crates/chio-conformance/` adds `verify_rejects_v2_manifest_on_v1_peer`, mirroring the existing capability-ceiling test.
+5. **Manifest event-action fixtures and conformance tests.**
+   `crates/chio-conformance/` adds rejection coverage for manifests that carry
+   event permissions before the current v1 event-action implementation is
+   enabled.
 
 6. **Documentation update.** `spec/PROTOCOL.md` adds an "Event actions" subsection cross-referencing `BrokerKind`, mapping table, and ceiling-negotiation behaviour.
 

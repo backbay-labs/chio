@@ -4,9 +4,9 @@
 >
 > - **#1 n8n Chain D / Chain C** corrected in [05](../05-workflow-orchestrator-mediation.md), [00-overview](../00-overview.md), [00-overview-v2](../00-overview-v2.md).
 > - **#2 bench-stub count + responses.rs path** corrected in [16](../16-latency-budget-audit.md), [00-overview-v2](../00-overview-v2.md).
-> - **#3 `human_principal` typed twice** canonicalized: typed enum on `CallerIdentity` in [14](../14-voice-agent-bridges.md); receipt extension in [15](../15-receipt-schema-v3.md) references by canonical encoding.
-> - **#4 `ActorRef` undefined** addressed: definition stub added to [15](../15-receipt-schema-v3.md) erratum block.
-> - **#5 `policy_hash` String vs `[u8; 32]`** canonicalized to hex `String` in [04](../04-policy-engine-collaborators.md), [15](../15-receipt-schema-v3.md), [00-overview](../00-overview.md), [00-overview-v2](../00-overview-v2.md).
+> - **#3 `human_principal` typed twice** canonicalized: typed enum on `CallerIdentity` in [14](../14-voice-agent-bridges.md); receipt extension in [15](../15-receipt-kind-v1.md) references by canonical encoding.
+> - **#4 `ActorRef` undefined** addressed: definition stub added to [15](../15-receipt-kind-v1.md) erratum block.
+> - **#5 `policy_hash` String vs `[u8; 32]`** canonicalized to hex `String` in [04](../04-policy-engine-collaborators.md), [15](../15-receipt-kind-v1.md), [00-overview](../00-overview.md), [00-overview-v2](../00-overview-v2.md).
 > - **#6 `tool_origin` enum drift** was initially canonicalized to include `HostExecutedRedacted`, then PR 652 review split execution origin from redaction policy. Current planning default: `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated` plus separate signed redaction mode; see [18](../18-decision-packet.md).
 > - **#7 `chio-bridge-*` prefix** struck in favor of `-adapter` convention across overviews and superseded `chio-bridge-agntcy` per erratum #10.
 > - **#8 three-ACPs warning** restored in [00-overview-v2](../00-overview-v2.md); doc 02 `chio-bridge-acp` references covered by erratum at top of doc 02.
@@ -67,23 +67,26 @@ plan and later code PR. ([C4](04-receipts-kernel-latency-review.md))
 
 ### 3. `human_principal` typed twice with two different shapes (addressed)
 
-[Doc 14:207-214](../14-voice-agent-bridges.md) defines it as a typed `HumanPrincipal` enum on `CallerIdentity`. [Doc 15:450](../15-receipt-schema-v3.md) defines it as `Option<String>` inside a `VoiceExtension`. Same name, two homes, two types.
+[Doc 14:207-214](../14-voice-agent-bridges.md) defines it as a typed `HumanPrincipal` enum on `CallerIdentity`. [Doc 15:450](../15-receipt-kind-v1.md) defines it as `Option<String>` inside a `VoiceExtension`. Same name, two homes, two types.
 
 **Fix applied:** Canonical form is the typed enum on `CallerIdentity`; receipt
 extensions reference it by canonical encoding. ([C1](01-identity-credentials-review.md))
 
 ### 4. `ActorRef` undefined anywhere (addressed as ADR input)
 
-Doc 15 promotes `actor_chain: Vec<ActorRef>` to v3 core body at lines 105, 209, 301, 418. **The `ActorRef` type is defined in no doc, no spec, no code.** The IETF agent-OBO draft is the implicit source but its exact wire shape was never lifted into a Chio-side type.
+Doc 15 promotes `actor_chain: Vec<ActorRef>` to the current v1 receipt body.
+**The `ActorRef` type was defined in no doc, no spec, no code.** The IETF
+agent-OBO draft is the implicit source but its exact wire shape was never
+lifted into a Chio-side type.
 
-**Fix applied:** Doc 15 now carries a definition stub. The receipt-v3 ADR must
-settle the final wire shape before implementation. ([C1](01-identity-credentials-review.md))
+**Fix applied:** Doc 15 now carries a definition stub. ADR-0010 must settle the
+final wire shape before implementation. ([C1](01-identity-credentials-review.md))
 
 ### 5. `policy_hash` is `String`, not `[u8; 32]` (addressed with PR 652 follow-up)
 
-[`crates/chio-core-types/src/receipt.rs`](../../../../crates/chio-core-types/src/receipt.rs) defines `policy_hash` as a hex `String`. Earlier docs used byte-array sketches for `policy_digest`; PR 652 now treats receipt-facing `policy_hash` / `policy_digest` as hex `String` unless the receipt-v3 ADR explicitly chooses another form.
+[`crates/chio-core-types/src/receipt.rs`](../../../../crates/chio-core-types/src/receipt.rs) defines `policy_hash` as a hex `String`. Earlier docs used byte-array sketches for `policy_digest`; PR 652 now treats receipt-facing `policy_hash` / `policy_digest` as hex `String` through ADR-0010.
 
-**Fix applied:** Receipt-facing `policy_hash` / `policy_digest` use hex `String` unless the receipt-v3 ADR explicitly chooses another form. ([C3](03-policy-guards-review.md))
+**Fix applied:** Receipt-facing `policy_hash` / `policy_digest` use hex `String`. ([C3](03-policy-guards-review.md))
 
 ### 6. `tool_origin` enum drift across three docs (addressed with PR 652 follow-up)
 
@@ -127,7 +130,7 @@ the research directory for em/en dashes. ([C6](06-vision-non-goals-review.md))
 
 1. **Bench-stub fix PR** remains the next measurement workstream, but starts with a docs-only engineering plan.
 2. **Errata pass** is captured by PR 652 and [18-decision-packet.md](../18-decision-packet.md).
-3. **Canonical specs** are now ADR inputs for receipt v3, origin/redaction, manifest v2, and async receipt durability.
+3. **Canonical specs** are now ADR inputs for current v1 receipt-kind semantics, origin/redaction, current v1 event-action planning, and async receipt durability.
 4. **Verification CI** for dash scanning remains a future hygiene improvement.
 5. **Citation linting** remains a future hygiene improvement.
 

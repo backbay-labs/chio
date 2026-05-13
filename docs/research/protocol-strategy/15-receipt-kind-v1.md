@@ -1,9 +1,16 @@
-# 15 - Receipt schema stress test and v3 evolution strategy
+# 15 - Receipt schema stress test and current v1 evolution strategy
 
-> **Erratum (wave 3) - canonical types for v3 core fields:**
+> **Historical research note (PR 652):** This document stress-tested a design
+> that was previously framed as a later receipt generation. Chio is unreleased, so accepted
+> planning folds these semantics into the current v1 receipt shape. Treat
+> mentions of later generations, schema compatibility limits, negotiation, compatibility paths, and
+> compatibility windows below as historical sketches unless [18-decision-packet.md](18-decision-packet.md)
+> keeps them.
+>
+> **Erratum (wave 3) - canonical types for current v1 core fields:**
 >
 > - **`policy_hash` / `policy_digest`** is a hex `String` (matches existing [`crates/chio-core-types/src/receipt.rs:159`](../../../crates/chio-core-types/src/receipt.rs#L159); RFC 8785 canonical-JSON friendly). NOT `[u8; 32]`. Earlier references in this doc to `[u8; 32]` should be read as the hex-encoded form.
-> - **`tool_origin`** records execution locus, not redaction policy. ADR-0010 keeps `tool_origin` and `redaction_mode` as separate signed v3 fields. Planning default: `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`.
+> - **`tool_origin`** records execution locus, not redaction policy. ADR-0010 keeps `tool_origin` and `redaction_mode` as separate signed current v1 fields. Planning default: `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`.
 > - **`human_principal`** is the typed `HumanPrincipal` enum defined on `CallerIdentity` in [doc 14](14-voice-agent-bridges.md). This doc's `VoiceExtension` references it by canonical encoding, not as a duplicate `Option<String>` definition.
 > - **`ActorRef`** (the actor-chain element type) needs a concrete definition stub. Proposed shape:
 >
@@ -25,7 +32,7 @@
 >   }
 >   ```
 >
->   This stub should land in `chio-core-types` alongside the v3 ReceiptBody promotion. Refine in a follow-on against the IETF draft as it stabilizes.
+>   This stub should land in `chio-core-types` alongside the current v1 ReceiptBody promotion. Refine in a follow-on against the IETF draft as it stabilizes.
 >
 > **Post-review status:** This document is a stress test, not the implementation spec. [18-decision-packet.md](18-decision-packet.md) is the decision packet to settle before tickets are written. It supersedes historical sketches or review notes that show `policy_digest: [u8; 32]`, redaction as a `tool_origin` variant, feature-bit-only v3 negotiation, or a decided `extensions_hash` strategy.
 
@@ -34,14 +41,12 @@
 The current `ChioReceiptBody` is too flat and too unstructured to absorb the
 ten field-pile-ups proposed across docs 01-06 and the parallel agents R2-R4
 and E1-E3 without becoming a 40+ field god-struct. Recommend **Option D
-(hybrid candidate)**: promote a small set of universally relevant fields (`schema`,
-`actor_chain`, `engine_id`, `policy_digest`, `decision_id`) into the core
-v3 body, and route every bridge-, surface-, or provider-specific payload
+(hybrid candidate)**: promote a small set of universally relevant fields
+(`actor_chain`, `engine_id`, `policy_digest`, `decision_id`) into the current
+v1 body, and route every bridge-, surface-, or provider-specific payload
 through a typed `extensions: BTreeMap<ExtensionNamespace, ExtensionPayload>`
-map keyed by stable namespace strings. Adding a core field bumps the schema
-version (`chio.receipt.v3`); adding an extension does not. ADR-0010 chooses
-explicit `maxReceiptSchema` plus extension support over the historical
-feature-bit sketch below. A
+map keyed by stable namespace strings. ADR-0010 folds this work into current
+v1 and rejects schema-ceiling or feature-bit negotiation before release. A
 `must_understand` flag per extension lets bridges mark namespace-specific
 payloads as verification-mandatory.
 
@@ -254,18 +259,13 @@ Bedrock action groups, OpenAI response IDs) lives in
 
 Justification:
 
-1. **Backward compat with `PROTOCOL.md:7-8`.** v3 is documented as a
-   backward-compatible extension; Option D respects this by additive
-   core fields plus an extensions map that v2 verifiers cannot
-   misinterpret (they will refuse to parse `chio.receipt.v3` per
-   schema-registry rules at `PROTOCOL.md:331-337` and stay on v2).
-2. **Federation negotiation needs an ADR decision.** The older sketch used
-   `accepts_receipt_v3` and `accepts_ext.<namespace>` feature bits. PR 652
-   review recommends deciding an explicit `maxReceiptSchema` ceiling instead
-   of relying only on feature bits, because older verifier behavior and
-   downgrade semantics are security-relevant. In either shape, a v2 verifier
-   negotiated with a v3 producer gets v2 receipts; producers downgrade
-   gracefully.
+1. **Pre-release v1 folding.** Chio is unreleased, so Option D is folded into
+   the current v1 receipt shape rather than shipped as a new generation. This
+   keeps one authoritative receipt model while preserving fail-closed parsing.
+2. **No schema-version negotiation before release.** The older sketch used
+   feature bits and later compatibility limits. PR 652 now treats those as
+   historical compatibility work. Verifiers that cannot validate current v1
+   receipt-kind semantics fail closed.
 3. **Signing canonicalization stays cheap and deterministic.** Two
    knobs:
    - The extensions map uses `BTreeMap<String, ExtensionPayload>`;
@@ -275,7 +275,7 @@ Justification:
    - One candidate is to canonicalize each `ExtensionPayload`, hash the
      extension map, and put a hex `extensions_hash` in the signed body.
      Another is to sign the full inline body. Coordinate with X2
-     (hot-path latency) and the receipt-v3 ADR before treating
+     (hot-path latency) and ADR-0010 before treating
      `extensions_hash` as decided.
 
 ### Migration
@@ -400,12 +400,12 @@ Verifier:
 
 ### Federation negotiation
 
-The receipt-v3 ADR must choose either explicit ceilings or feature bits:
+ADR-0010 folds Chio-owned receipt-kind semantics into current v1. Do not add
+receipt schema-ceiling fields, schema-generation feature bits, or pre-release
+compatibility paths.
 
-- Preferred candidate: `maxReceiptSchema` plus extension support advertised
-  separately.
-- Historical candidate: `accepts_receipt_v3` and `accepts_ext.<namespace>`
-  features in `chio.capabilities.v1`.
+- Current plan: one v1 receipt shape plus extension support.
+- Historical candidates: feature bits and schema compatibility limits.
 - Producers MUST NOT emit `must_understand = true` extensions for any
   namespace the negotiated peer has not advertised.
 - Federation handshake remains fail-closed: malformed feature names
