@@ -1102,6 +1102,22 @@ def _table_fallback_redact(
         if idx < len(slot_sequence):
             slot = slot_sequence[idx]
             slot_to_canonical[slot] = _slot_canonical(slot)
+            # When the slot_sequence contains repeated names (the
+            # variadic-padding case ``extended_positional_names ==
+            # ("content", "content", "content")`` for ``def
+            # write_file(*content)``), keying ``named_from_positional``
+            # by the bare slot name silently overwrites earlier values,
+            # so every rebuilt position would resolve to the LAST
+            # value's redacted record. Detect the duplicate and re-use
+            # the same positional-index sentinel approach as the
+            # overflow path so each value redacts and rebuilds
+            # independently. (Closes Cursor Bugbot Medium 3230918235 on
+            # PR #679.)
+            if slot in named_from_positional:
+                sentinel_key = f"__overflow_{idx}__{slot}"
+                named_from_positional[sentinel_key] = value
+                positional_to_slot.append(sentinel_key)
+                continue
             named_from_positional[slot] = value
             positional_to_slot.append(slot)
             continue

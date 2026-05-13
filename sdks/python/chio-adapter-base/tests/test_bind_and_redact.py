@@ -1583,3 +1583,31 @@ def test_typeerror_fallback_protected_var_positional_multi_chunk() -> None:
             "byte_count": len(expected),
         }
     assert kwargs["path"] == "/tmp/x"
+
+
+def test_typeerror_fallback_protected_var_positional_distinct_byte_counts() -> None:
+    """Regression for Cursor Bugbot Medium 3230918235 on PR #679.
+
+    The TypeError fallback pads ``extended_positional_names`` with the
+    variadic slot name (e.g. ``("content", "content", "content")`` for
+    ``def write_file(*content)``). Earlier the fallback then used the
+    bare slot name as a dict key in ``named_from_positional`` so each
+    positional value silently overwrote the previous one and every
+    rebuilt position resolved to the LAST value's redacted record. Use
+    distinct byte lengths so a regression can no longer hide behind
+    matching ``byte_count`` records.
+    """
+
+    def write_file(*content: str) -> None:
+        del content
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("A", "BB", "CCC"),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == {"omitted": True, "byte_count": 1}
+    assert args[1] == {"omitted": True, "byte_count": 2}
+    assert args[2] == {"omitted": True, "byte_count": 3}
+    assert kwargs["path"] == "/tmp/x"
