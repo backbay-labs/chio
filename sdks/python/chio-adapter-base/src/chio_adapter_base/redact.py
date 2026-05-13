@@ -479,7 +479,88 @@ def bind_and_redact(
                     inspect.Parameter.POSITIONAL_OR_KEYWORD,
                 )
             )
-            if sig_positional_names:
+            # Fail-closed extension for overflow positional values that
+            # have nowhere to land. The wrapped fn's bind_partial raised,
+            # so the caller's positional values are arity-invalid. Two
+            # shapes are silent-leak risks if we stop at
+            # sig_positional_names alone:
+            #
+            #   (a) ``def write(path, *, content)`` invoked as
+            #       ``write('/tmp/x', 'PROD_SECRET')`` -- bind_partial
+            #       raises (``content`` is keyword-only); the second
+            #       positional has no fixed slot and would be forwarded
+            #       raw. Extend the slot list with kwonly names whose
+            #       canonical IS protected so the overflow positional
+            #       redacts under the protected canonical.
+            #
+            #   (b) ``def write_file(*content)`` invoked as
+            #       ``write_file('PROD_SECRET', path='/tmp/x')`` -- the
+            #       protected-named variadic guard sends this through the
+            #       signature path, but bind_partial raises on the unknown
+            #       ``path`` kwarg. The fallback's table-derived slot list
+            #       is empty, so the chio-default ``("path", "content")``
+            #       runs and routes the secret to the unprotected ``path``
+            #       slot. Use the variadic name itself as the slot when it
+            #       is a protected canonical so the secret redacts.
+            #
+            # Closes PR #679 P2 3230753453 and 3230753454.
+            kwonly_protected_slots: list[str] = []
+            kwonly_protected_set: set[str] = set()
+            for p in sig.parameters.values():
+                if p.kind is not inspect.Parameter.KEYWORD_ONLY:
+                    continue
+                if p.name in sig_positional_names:
+                    continue
+                if p.name in kwonly_protected_set:
+                    continue
+                if (
+                    p.name in protected_fields_for_tool_pre
+                    or p.name in table.get(tool_name, ())
+                ):
+                    kwonly_protected_slots.append(p.name)
+                    kwonly_protected_set.add(p.name)
+                    continue
+                # Wrapper alias for a protected canonical - route by
+                # next-unclaimed (mirrors build_alias_map semantics).
+                claimed_so_far = set(sig_positional_names) | kwonly_protected_set
+                nxt = next(
+                    (
+                        c
+                        for c in protected_fields_for_tool_pre
+                        if c not in claimed_so_far
+                    ),
+                    None,
+                )
+                if nxt is not None:
+                    kwonly_protected_slots.append(p.name)
+                    kwonly_protected_set.add(p.name)
+
+            var_positional_protected_slot: str | None = None
+            for p in sig.parameters.values():
+                if p.kind is inspect.Parameter.VAR_POSITIONAL and (
+                    p.name in protected_fields_for_tool_pre
+                    or p.name in table.get(tool_name, ())
+                ):
+                    var_positional_protected_slot = p.name
+                    break
+
+            extended_positional_names = sig_positional_names + tuple(
+                kwonly_protected_slots
+            )
+            if var_positional_protected_slot is not None:
+                # Pad the slot list with the variadic name so each overflow
+                # positional past sig_positional_names redacts under it.
+                # Use the actual positional cardinality so multi-chunk
+                # variadic inputs all redact.
+                pad_count = max(
+                    1,
+                    len(bind_args) - len(extended_positional_names),
+                )
+                extended_positional_names = extended_positional_names + (
+                    var_positional_protected_slot,
+                ) * pad_count
+
+            if extended_positional_names:
                 # Signature-derived names take precedence so wrappers that
                 # rename a protected field (e.g. `def write(content, path)`
                 # vs the chio-default `("path", "content")`) redact at the
@@ -488,7 +569,7 @@ def bind_and_redact(
                 # tool gets shadowed by the wrapper's actual param order.
                 fallback_table = {
                     **table,
-                    tool_name: sig_positional_names,
+                    tool_name: extended_positional_names,
                 }
             # Build a wrapper-name -> canonical alias map keyed off the
             # SAME index-aware routing the non-fallback path uses, so
@@ -513,7 +594,7 @@ def bind_and_redact(
             # fallback_table; that table by definition uses wrapper
             # names).
             _alias_fb = build_alias_map(
-                sig_positional_names,
+                extended_positional_names,
                 table.get(tool_name, ()),
                 protected_fields_for_tool_pre,
             )

@@ -1387,6 +1387,11 @@ def test_index_renamed_kwonly_with_typeerror_routes_via_alias() -> None:
 
     Wrapper with renamed positional protected slot AND a kwonly alias,
     triggered into the TypeError fallback by an arity overflow.
+
+    The overflow positional ``EXTRA`` redacts under the kwonly-aliased
+    protected canonical (``content``) - the wrapped fn would reject this
+    call anyway, but a leaky receipt is the worse failure mode. Closes
+    PR #679 P2 3230753453.
     """
 
     def write_file(path: str, *, body: str) -> None:
@@ -1402,8 +1407,12 @@ def test_index_renamed_kwonly_with_typeerror_routes_via_alias() -> None:
         tool_name="chio_file_write",
     )
     assert args[0] == "/tmp/x"
-    # Second positional has no slot; surfaces raw.
-    assert args[1] == "EXTRA"
+    # Second positional borrows the kwonly alias's protected slot so the
+    # overflow value is redacted instead of forwarded raw.
+    assert args[1] == {
+        "omitted": True,
+        "byte_count": len(b"EXTRA"),
+    }
     assert kwargs["body"] == {
         "omitted": True,
         "byte_count": len(b"PROD_SECRET"),
@@ -1492,3 +1501,85 @@ def test_var_keyword_only_preserves_documented_kwargs_only_redact() -> None:
         "omitted": True,
         "byte_count": len(b"PROD_SECRET"),
     }
+
+
+def test_typeerror_fallback_kwonly_protected_redacts_overflow_positional() -> None:
+    """Cell SS2 / AP4 / KP1 / DT1. Closes PR #679 P2 3230753453.
+
+    A wrapper that keeps the protected body in a keyword-only slot,
+    invoked positionally by mistake, must redact the overflow
+    positional under the kwonly slot's protected canonical instead of
+    forwarding the secret raw. The wrapped fn would later raise
+    TypeError, but that does not run before the receipt is emitted.
+    """
+
+    def write(path: str, *, content: str) -> None:
+        del path, content
+
+    args, kwargs = bind_and_redact(
+        write,
+        ("/tmp/x", "PROD_SECRET"),
+        {},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == "/tmp/x"
+    assert args[1] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET"),
+    }
+    assert kwargs == {}
+
+
+def test_typeerror_fallback_protected_var_positional_with_unknown_kwarg() -> None:
+    """Cell SS3 / AP2 / KP3 / DT1. Closes PR #679 P2 3230753454.
+
+    A wrapper whose VAR_POSITIONAL is itself the protected canonical
+    (``def write_file(*content)``), invoked with an unsupported kwarg
+    so bind_partial raises, must still redact the positional values
+    under the variadic name. Previously the TypeError fallback dropped
+    the variadic-name slot list and the chio-default
+    ``("path", "content")`` table routed the secret to the unprotected
+    ``path`` slot.
+    """
+
+    def write_file(*content: str) -> None:
+        del content
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("PROD_SECRET",),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET"),
+    }
+    assert kwargs["path"] == "/tmp/x"
+
+
+def test_typeerror_fallback_protected_var_positional_multi_chunk() -> None:
+    """Multi-chunk variant of PR #679 P2 3230753454.
+
+    Several positional values past the unsupported-kwarg trigger should
+    each redact under the variadic protected canonical, not just the
+    first one.
+    """
+
+    def write_file(*content: str) -> None:
+        del content
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("PROD_SECRET_A", "PROD_SECRET_B", "PROD_SECRET_C"),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    for idx, expected in enumerate(
+        (b"PROD_SECRET_A", b"PROD_SECRET_B", b"PROD_SECRET_C")
+    ):
+        assert args[idx] == {
+            "omitted": True,
+            "byte_count": len(expected),
+        }
+    assert kwargs["path"] == "/tmp/x"
