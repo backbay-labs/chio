@@ -32,10 +32,12 @@ PR #679 is the source-of-truth commit that bundles:
    - `_is_pure_forwarder` no longer captures `def upload(*payload)`
      when `payload` matches a protected field
    - VAR_POSITIONAL extras for `def fn(path, *rest, **kw)` shapes
-2. **`chio_adapter_base.redact.build_alias_map` public helper**
-   exposing the wrapper-name -> canonical-name routing algorithm.
-   Available at the submodule path; not re-exported from the
-   top-level package (yet).
+2. **Wrapper-name -> canonical-name alias routing** is applied
+   internally by `bind_and_redact`; it remains an implementation
+   detail with no public `build_alias_map` helper to call.
+   Adapters that want custom routing should pass a
+   `positional_table` and rely on `bind_and_redact` to apply the
+   alias logic.
 3. **26 new regression tests (115 -> 141)** plus a 6-axis
    coverage matrix comment block at the top of
    `tests/test_bind_and_redact.py`.
