@@ -46,11 +46,11 @@ impl CefExporter {
 
     pub fn format_event(&self, event: &SiemEvent) -> Result<String, ExportError> {
         let receipt = &event.receipt;
-        let decision = decision_label(&receipt.decision);
-        let signature_id = signature_id(&receipt.decision);
-        let name = event_name(&receipt.decision);
-        let severity = severity(&receipt.decision);
-        let reason = reason_code(&receipt.decision);
+        let decision = decision_label(event);
+        let signature_id = signature_id(event);
+        let name = event_name(event);
+        let severity = severity(event);
+        let reason = reason_code(event);
         let tenant_id = receipt
             .tenant_id
             .as_deref()
@@ -95,6 +95,9 @@ impl CefExporter {
             ("cs6", redaction_status.to_string()),
             ("flexString1Label", "checkpoint_id".to_string()),
             ("flexString1", checkpoint_id.to_string()),
+            ("receiptKind", event.receipt_kind.clone()),
+            ("boundaryClass", event.boundary_class.clone()),
+            ("result", event.result.clone()),
         ]
         .into_iter()
         .map(|(key, value)| format!("{key}={}", escape_extension(&value)))
@@ -124,8 +127,11 @@ fn metadata_str<'a>(metadata: Option<&'a serde_json::Value>, key: &str) -> Optio
         .and_then(|value| value.as_str())
 }
 
-fn decision_label(decision: &Decision) -> &'static str {
-    match decision {
+fn decision_label(event: &SiemEvent) -> &str {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+        return event.receipt_kind.as_str();
+    }
+    match &event.receipt.decision {
         Decision::Allow => "allow",
         Decision::Deny { .. } => "deny",
         Decision::Cancelled { .. } => "cancelled",
@@ -133,8 +139,15 @@ fn decision_label(decision: &Decision) -> &'static str {
     }
 }
 
-fn signature_id(decision: &Decision) -> &str {
-    match decision {
+fn signature_id(event: &SiemEvent) -> &str {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+        return match event.receipt_kind.as_str() {
+            "trace_observation" => "chio.trace_observation",
+            "advisory_evaluation" => "chio.advisory_evaluation",
+            _ => "chio.observation",
+        };
+    }
+    match &event.receipt.decision {
         Decision::Allow => "chio.allow",
         Decision::Deny { guard, .. } => guard.as_str(),
         Decision::Cancelled { .. } => "chio.cancelled",
@@ -142,8 +155,15 @@ fn signature_id(decision: &Decision) -> &str {
     }
 }
 
-fn event_name(decision: &Decision) -> &'static str {
-    match decision {
+fn event_name(event: &SiemEvent) -> &'static str {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+        return match event.receipt_kind.as_str() {
+            "trace_observation" => "Chio trace observation",
+            "advisory_evaluation" => "Chio advisory evaluation",
+            _ => "Chio observation",
+        };
+    }
+    match &event.receipt.decision {
         Decision::Allow => "Chio allow",
         Decision::Deny { .. } => "Chio guard deny",
         Decision::Cancelled { .. } => "Chio cancelled",
@@ -151,8 +171,11 @@ fn event_name(decision: &Decision) -> &'static str {
     }
 }
 
-fn reason_code(decision: &Decision) -> &str {
-    match decision {
+fn reason_code(event: &SiemEvent) -> &str {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+        return event.result.as_str();
+    }
+    match &event.receipt.decision {
         Decision::Allow => "allow",
         Decision::Deny { reason, .. } => reason.as_str(),
         Decision::Cancelled { reason } => reason.as_str(),
@@ -160,8 +183,11 @@ fn reason_code(decision: &Decision) -> &str {
     }
 }
 
-fn severity(decision: &Decision) -> u8 {
-    match decision {
+fn severity(event: &SiemEvent) -> u8 {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+        return 3;
+    }
+    match &event.receipt.decision {
         Decision::Allow => 2,
         Decision::Deny { .. } => 8,
         Decision::Cancelled { .. } => 4,
@@ -196,6 +222,10 @@ fn escape_extension(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chio_core::crypto::Keypair;
+    use chio_core::receipt::{
+        ChioReceipt, ChioReceiptBody, Decision, ReceiptSemanticFields, ToolCallAction, TrustLevel,
+    };
 
     #[test]
     fn escapes_header_separator() {
@@ -205,5 +235,60 @@ mod tests {
     #[test]
     fn escapes_extension_equals() {
         assert_eq!(escape_extension("a=b"), "a\\=b");
+    }
+
+    #[test]
+    fn trace_observation_allow_formats_as_trace_not_authorization_allow() {
+        let event = SiemEvent::from_receipt(test_receipt_with_semantics(
+            Decision::Allow,
+            ReceiptSemanticFields::trace_detect_only(),
+            TrustLevel::Verified,
+        ));
+        let cef = CefExporter::default()
+            .format_event(&event)
+            .expect("format trace CEF");
+
+        assert!(cef.contains("receiptKind=trace_observation"));
+        assert!(cef.contains("boundaryClass=detect_only"));
+        assert!(!cef.contains("act=allow"));
+        assert!(!cef.contains("chio.allow"));
+        assert!(!cef.contains("Chio allow"));
+    }
+
+    fn test_receipt_with_semantics(
+        decision: Decision,
+        semantics: ReceiptSemanticFields,
+        trust_level: TrustLevel,
+    ) -> ChioReceipt {
+        let kp = Keypair::generate();
+        let action = ToolCallAction::from_parameters(serde_json::json!({
+            "path": "/etc/passwd"
+        }))
+        .expect("hash test receipt parameters");
+        let mut receipt = ChioReceipt::sign(
+            ChioReceiptBody {
+                id: "trace-cef-1".to_string(),
+                timestamp: 1_712_345_678,
+                capability_id: "cap-abc".to_string(),
+                tool_server: "srv-files".to_string(),
+                tool_name: "file_read".to_string(),
+                action,
+                decision,
+                content_hash: "content-xyz".to_string(),
+                policy_hash: "policy-xyz".to_string(),
+                evidence: Vec::new(),
+                metadata: None,
+                trust_level: TrustLevel::Mediated,
+                tenant_id: None,
+                kernel_key: kp.public_key(),
+            },
+            &kp,
+        )
+        .expect("sign test receipt");
+        receipt.metadata = Some(serde_json::json!({
+            "receipt_semantics": semantics,
+        }));
+        receipt.trust_level = trust_level;
+        receipt
     }
 }

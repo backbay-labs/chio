@@ -105,7 +105,6 @@ impl Drop for ScopedKernelReceiptTenantId {
 #[derive(Debug, Clone)]
 pub(crate) struct ReceiptFederationAdmission {
     pub remote_kernel_id: Option<String>,
-    pub receipt_version: KernelReceiptVersion,
     pub peer: Option<chio_federation::FederationPeer>,
 }
 
@@ -445,29 +444,6 @@ impl StructuredErrorReport {
     }
 }
 
-/// The current variants enumerate the spec-MUST cases that the kernel
-/// fails closed on. Additional variants may be added as further
-/// downgrade modes are wired into the spec; the enum is non-exhaustive
-/// from the public API perspective so a future variant does not break
-/// downstream `match` arms compiled against an older version.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[non_exhaustive]
-pub enum NegotiationDowngradeReason {
-    /// The dispatch named a federation peer, but no matching peer is
-    /// pinned fresh (the peer is either stale or has never been pinned).
-    /// Spec PROTOCOL.md section 6 lines 737-741 (post-B2 normative MUST)
-    /// requires the kernel to fail closed instead of silently downgrading
-    /// to a v1 receipt.
-    #[error(
-        "named federation peer {remote_kernel_id} is not pinned fresh \
-         (stale or never-pinned)"
-    )]
-    PeerNotPinnedFresh {
-        /// The `remote_kernel_id` carried on the request.
-        remote_kernel_id: String,
-    },
-}
-
 /// Errors that can occur during kernel operations.
 #[derive(Debug, thiserror::Error)]
 pub enum KernelError {
@@ -628,29 +604,6 @@ pub enum KernelError {
     /// expired, or replayed).
     #[error("approval rejected: {0}")]
     ApprovalRejected(String),
-
-    /// receipt for a request that named a federation peer expected to
-    /// be v2-capable, but the peer-pin freshness check ruled the
-    /// negotiated v2 receipt unattainable. Per PROTOCOL.md section 6
-    /// rather than silently downgrade to a v1 receipt.
-    ///
-    /// Enforcement site:
-    /// `crates/chio-kernel/src/kernel/mod.rs:kernel_receipt_version_for_remote`.
-    #[error(
-        "receipt negotiation downgrade rejected: expected {expected:?}, \
-         actual {actual:?}, reason: {reason}"
-    )]
-    ReceiptNegotiationDowngrade {
-        /// The receipt version the kernel would prefer for this dispatch
-        /// (typically `V2BodyHash`).
-        expected: KernelReceiptVersion,
-        /// The receipt version the legacy warn-and-downgrade path would
-        /// have selected (typically `V1Legacy`).
-        actual: KernelReceiptVersion,
-        /// Structured reason describing why the v2 negotiation cannot be
-        /// honored.
-        reason: NegotiationDowngradeReason,
-    },
 
     /// The sync `evaluate_tool_call` path was invoked from a context
     /// where the only available Tokio runtime is a current-thread
@@ -932,20 +885,6 @@ impl KernelError {
                 "CHIO-KERNEL-APPROVAL-REJECTED",
                 serde_json::json!({ "reason": reason }),
                 "Obtain a fresh approval token bound to this exact request and retry once a human approver has signed it.",
-            ),
-            Self::ReceiptNegotiationDowngrade {
-                expected,
-                actual,
-                reason,
-            } => self.report_with_context(
-                "CHIO-KERNEL-RECEIPT-NEGOTIATION-DOWNGRADE",
-                serde_json::json!({
-                    "expected": format!("{expected:?}"),
-                    "actual": format!("{actual:?}"),
-                    "reason": reason.to_string(),
-                }),
-                "Re-pin the named federation peer with a fresh handshake before retrying, \
-                 or route the request without naming a remote so the kernel-level default applies.",
             ),
             Self::SyncBridgeIncompatibleWithCurrentThreadRuntime => self.report_with_context(
                 "CHIO-KERNEL-SYNC-BRIDGE-INCOMPATIBLE",
@@ -1375,57 +1314,14 @@ pub struct ChioKernel {
     /// blocks dispatch; failures are surfaced through the retry/dead-
     /// letter machinery, not through this option.
     settlement_observer: Option<std::sync::Arc<dyn chio_settle::SettlementHook>>,
-    /// Recursive-delegation oracle handle. When `Some` and the
-    /// `delegation_v2` cargo feature is on, the verifier consults this
+    /// Recursive-delegation oracle handle. When `Some`, the verifier consults this
     /// arc-swap-backed snapshot on every delegated dispatch and denies
     /// the capability if any link in the chain (or the leaf) is in the
     /// revoked set. `None` falls back to the legacy per-row
     /// `RevocationStore` lookup. Field always present so the struct
-    /// shape is feature-flag agnostic; consultation is gated by
-    /// `cfg(feature = "delegation_v2")` on the read path.
+    /// shape stays feature-flag agnostic.
     revocation_view: Option<std::sync::Arc<chio_kernel_core::RevocationView>>,
     budget_registry: Mutex<chio_kernel_core::InMemoryBudgetRegistry>,
-    /// Defaults to `true` so a freshly-constructed kernel that has not
-    /// yet observed peer feature bitsets still mints v2 receipts.
-    /// Release load-bearing paths must leave this enabled. Operators
-    /// that need the previous v1-only behavior may call
-    /// [`ChioKernel::set_receipt_v2_default`] with `false`, but that is
-    /// a compatibility downgrade only and named v2 peers still fail
-    /// closed through negotiation.
-    kernel_receipt_v2_default: AtomicBool,
-    receipt_v2_replay: Mutex<chio_core::receipt::ReceiptV2ReplaySet>,
-    receipt_v2_dag_ordinal: AtomicU64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KernelReceiptVersion {
-    /// Peer is v1-only or no negotiation profile is in scope: emit
-    /// only the legacy UUIDv7 receipt.
-    V1Legacy,
-    /// Peer advertises `ACCEPTS_RECEIPT_V2`: emit a body_hash-addressed
-    /// `ChioReceiptV2` alongside the v1 fallback.
-    V2BodyHash,
-}
-
-impl KernelReceiptVersion {
-    /// Whether the v2 (body_hash-addressed) receipt should be minted
-    /// for this session.
-    #[must_use]
-    pub fn mints_v2(self) -> bool {
-        matches!(self, Self::V2BodyHash)
-    }
-
-    /// Resolve from a [`chio_core::capability::CapabilityNegotiation`]
-    /// peer profile. The peer-advertised `ACCEPTS_RECEIPT_V2` feature
-    /// flag selects v2; absence selects v1 fallback.
-    #[must_use]
-    pub fn from_capabilities(capabilities: &chio_core::capability::CapabilityNegotiation) -> Self {
-        if capabilities.supports(chio_core::capability::capability_features::ACCEPTS_RECEIPT_V2) {
-            Self::V2BodyHash
-        } else {
-            Self::V1Legacy
-        }
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -1841,47 +1737,7 @@ impl ChioKernel {
             settlement_observer: None,
             revocation_view: None,
             budget_registry: Mutex::new(chio_kernel_core::InMemoryBudgetRegistry::new()),
-            kernel_receipt_v2_default: AtomicBool::new(true),
-            receipt_v2_replay: Mutex::new(chio_core::receipt::ReceiptV2ReplaySet::default()),
-            receipt_v2_dag_ordinal: AtomicU64::new(0),
         }
-    }
-
-    /// Set the local no-profile receipt default.
-    ///
-    /// This is not a release safety valve for v2 persistence. Negotiated
-    /// v2 peers still require v2 receipts, and persistence failure on a
-    /// v2-minting path aborts before the legacy fallback is appended.
-    pub fn set_receipt_v2_default(&self, accepts_v2: bool) {
-        self.kernel_receipt_v2_default
-            .store(accepts_v2, Ordering::SeqCst);
-    }
-
-    #[must_use]
-    pub fn receipt_v2_default(&self) -> bool {
-        self.kernel_receipt_v2_default.load(Ordering::SeqCst)
-    }
-
-    fn can_persist_chio_receipt_v2(&self) -> bool {
-        self.receipt_store
-            .as_ref()
-            .is_some_and(|store| store.supports_chio_receipt_v2())
-    }
-
-    pub(crate) fn ensure_chio_receipt_v2_persistence_ready(&self) -> Result<(), KernelError> {
-        let Some(store) = self.receipt_store.as_ref() else {
-            return Err(KernelError::Internal(
-                "v2 receipt persistence unavailable: no durable v2-capable receipt store configured"
-                    .to_string(),
-            ));
-        };
-        if !store.supports_chio_receipt_v2() {
-            return Err(KernelError::Internal(
-                "v2 receipt persistence unavailable: configured receipt store is not v2-capable"
-                    .to_string(),
-            ));
-        }
-        Ok(())
     }
 
     pub(crate) fn ensure_federated_receipt_persistence_ready(
@@ -1931,10 +1787,10 @@ impl ChioKernel {
         }
     }
 
-    /// Resolve and snapshot the receipt-version decision at the admission
-    /// boundary. The returned snapshot must be carried through receipt
-    /// persistence and federation cosigning; persistence must not re-resolve
-    /// peer freshness after the tool has already executed.
+    /// Resolve and snapshot federation receipt admission at the boundary.
+    /// The returned snapshot must be carried through receipt persistence and
+    /// federation cosigning; persistence must not re-resolve peer freshness
+    /// after the tool has already executed.
     pub(crate) fn kernel_receipt_admission_for_remote(
         &self,
         remote_kernel_id: Option<&str>,
@@ -1942,160 +1798,26 @@ impl ChioKernel {
     ) -> Result<ReceiptFederationAdmission, KernelError> {
         if let Some(remote) = remote_kernel_id {
             if let Some(peer) = self.federation_peer(remote, now) {
-                let receipt_version = KernelReceiptVersion::from_capabilities(&peer.capabilities);
                 return Ok(ReceiptFederationAdmission {
                     remote_kernel_id: Some(remote.to_string()),
-                    receipt_version,
                     peer: Some(peer),
                 });
             }
-            // PROTOCOL.md section 6 (normative MUST): when a federation
-            // peer is named but is not pinned fresh, the kernel MUST
-            // reject the dispatch rather than warn-and-downgrade to v1.
-            //
-            // `expected` reports the kernel's CONFIGURED default, not a
-            // hardcoded `V2BodyHash`. On a v1-default kernel both
-            // `expected` and `actual` are `V1Legacy`, which is the
-            // accurate diagnostic - the kernel still rejects the
-            // dispatch because the peer was never pinned fresh, and
-            // operator observability sees the truthful version pair
-            // instead of a fictitious V2 expectation.
-            let expected = if self.receipt_v2_default() {
-                KernelReceiptVersion::V2BodyHash
-            } else {
-                KernelReceiptVersion::V1Legacy
-            };
-            return Err(KernelError::ReceiptNegotiationDowngrade {
-                expected,
-                actual: KernelReceiptVersion::V1Legacy,
-                reason: NegotiationDowngradeReason::PeerNotPinnedFresh {
-                    remote_kernel_id: remote.to_string(),
-                },
-            });
+            return Err(KernelError::Internal(format!(
+                "named federation peer {remote} is not pinned fresh"
+            )));
         }
-        let receipt_version = if self.receipt_v2_default() && self.can_persist_chio_receipt_v2() {
-            KernelReceiptVersion::V2BodyHash
-        } else {
-            KernelReceiptVersion::V1Legacy
-        };
         Ok(ReceiptFederationAdmission {
             remote_kernel_id: None,
-            receipt_version,
             peer: None,
         })
     }
 
-    /// The resolution order is:
-    /// 1. If a federated peer is named on the request and a matching
-    ///    peer is pinned fresh, the peer's negotiated
-    ///    `accepts_receipt_v2` feature flag wins.
-    /// 2. If a federated peer is named but no matching peer is pinned
-    ///    fresh (stale or never-pinned), the kernel **fails closed**
-    ///    with [`KernelError::ReceiptNegotiationDowngrade`]. PROTOCOL.md
-    ///    section 6 (normative MUST) requires the kernel to reject the
-    ///    dispatch rather than silently downgrade a v2-expected request
-    ///    to v1.
-    /// 3. Otherwise (no remote named), the kernel-level default
-    ///    ([`Self::receipt_v2_default`]) mints v2 only when a durable
-    ///    v2-capable receipt store is configured; local no-store kernels
-    ///    remain legacy-v1 rather than failing ordinary dispatch.
-    pub fn kernel_receipt_version_for_remote(
-        &self,
-        remote_kernel_id: Option<&str>,
-        now: u64,
-    ) -> Result<KernelReceiptVersion, KernelError> {
-        self.kernel_receipt_admission_for_remote(remote_kernel_id, now)
-            .map(|admission| admission.receipt_version)
-    }
-
-    pub fn contains_chio_receipt_v2_body_hash(&self, body_hash: &str) -> bool {
-        match self.receipt_v2_replay.lock() {
-            Ok(replay) => replay.contains_body_hash(body_hash),
-            Err(poisoned) => poisoned.into_inner().contains_body_hash(body_hash),
-        }
-    }
-
-    pub fn chio_receipt_v2_seen(&self, body_hash: &str) -> Result<bool, KernelError> {
-        if self.contains_chio_receipt_v2_body_hash(body_hash) {
-            return Ok(true);
-        }
-        if let Some(found) = self.with_receipt_store(|store| {
-            store
-                .contains_chio_receipt_v2_body_hash(body_hash)
-                .map_err(|error| {
-                    KernelError::Internal(format!("v2 receipt store probe failed: {error}"))
-                })
-        })? {
-            return Ok(found);
-        }
-        Ok(false)
-    }
-
-    /// Inserts into the in-memory replay set first; replay rejection
-    /// short-circuits the persistent write so a tampered alias on a
-    /// previously-seen body_hash cannot resurface as a fresh receipt.
-    /// The legacy UUIDv7 alias is forwarded to the persistent store
-    /// for tooling lookups but is non-authoritative for replay.
-    pub fn record_chio_receipt_v2(
-        &self,
-        receipt: &chio_core::receipt::ChioReceiptV2,
-        legacy_receipt_id_alias: Option<&str>,
-    ) -> Result<(), KernelError> {
-        self.ensure_chio_receipt_v2_persistence_ready()?;
-        let inserted = {
-            let mut replay = match self.receipt_v2_replay.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            replay
-                .insert(receipt)
-                .map_err(|error| KernelError::Internal(format!("v2 replay insert: {error}")))?
-        };
-        if !inserted {
-            return Err(KernelError::Internal(format!(
-                "receipt v2 replay rejected: body_hash {} already admitted",
-                receipt.body_hash
-            )));
-        }
-        // Persistent store mirror. Failure here is fatal (fail-closed), but
-        // the in-memory replay admission is rolled back so retrying the same
-        // receipt after a transient store failure is not poisoned by a
-        // body_hash that never became durable.
-        let persisted = self.with_receipt_store(|store| {
-            let seq = store
-                .append_chio_receipt_v2(receipt, legacy_receipt_id_alias)
-                .map_err(|error| {
-                    KernelError::Internal(format!("v2 receipt persistence failed: {error}"))
-                })?;
-            if seq == 0 {
-                return Err(KernelError::Internal(format!(
-                    "v2 receipt persistence failed: body_hash {} already exists",
-                    receipt.body_hash
-                )));
-            }
-            Ok(())
-        });
-        if let Err(error) = persisted {
-            let mut replay = match self.receipt_v2_replay.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            let _ = replay.remove_body_hash(&receipt.body_hash);
-            return Err(error);
-        }
-        Ok(())
-    }
-
-    pub(crate) fn next_v2_dag_ordinal(&self) -> u64 {
-        self.receipt_v2_dag_ordinal.fetch_add(1, Ordering::SeqCst)
-    }
-
     /// Install (or replace) the recursive-delegation oracle handle.
     /// Default deployments leave this `None` and rely on the legacy
-    /// per-row `RevocationStore` lookup. With the `delegation_v2`
-    /// feature on, installing a [`chio_kernel_core::RevocationView`]
-    /// here causes the verifier to consult it on every delegated
-    /// dispatch.
+    /// per-row `RevocationStore` lookup. Installing a
+    /// [`chio_kernel_core::RevocationView`] here causes the verifier to
+    /// consult it on every delegated dispatch.
     ///
     /// The handle is `Arc`-shared so federation gossip can install
     /// monotone snapshot updates without holding a kernel mutex.
@@ -3345,7 +3067,7 @@ impl ChioKernel {
                 warn!(
                     request_id = %request.request_id,
                     reason = %redacted!(&msg),
-                    "receipt-version negotiation failed pre-dispatch"
+                    "receipt federation admission failed pre-dispatch"
                 );
                 return self.build_negotiation_failclosed_deny_response_with_metadata(
                     request,
@@ -3356,31 +3078,12 @@ impl ChioKernel {
                 );
             }
         };
-        let receipt_mints_v2 = receipt_admission.receipt_version.mints_v2();
         let _receipt_federation_request_scope = self
             .scope_receipt_federation_admission_for_request(
                 &request.request_id,
                 receipt_admission.clone(),
             );
         let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
-
-        if receipt_mints_v2 {
-            if let Err(error) = self.ensure_chio_receipt_v2_persistence_ready() {
-                let msg = error.to_string();
-                warn!(
-                    request_id = %request.request_id,
-                    reason = %redacted!(&msg),
-                    "receipt v2 persistence unavailable pre-dispatch"
-                );
-                return self.build_receipt_v2_persistence_failclosed_deny_response_with_metadata(
-                    request,
-                    &msg,
-                    now,
-                    None,
-                    extra_metadata.clone(),
-                );
-            }
-        }
 
         self.validate_web3_evidence_prerequisites()?;
 
@@ -3945,34 +3648,19 @@ impl ChioKernel {
                 warn!(
                     request_id = %request.request_id,
                     reason = %redacted!(&msg),
-                    "receipt-version negotiation failed pre-dispatch (nested flow)"
+                    "receipt federation admission failed pre-dispatch (nested flow)"
                 );
                 return self.build_negotiation_failclosed_deny_response_with_metadata(
                     request, &msg, now, None, None,
                 );
             }
         };
-        let receipt_mints_v2 = receipt_admission.receipt_version.mints_v2();
         let _receipt_federation_request_scope = self
             .scope_receipt_federation_admission_for_request(
                 &request.request_id,
                 receipt_admission.clone(),
             );
         let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
-
-        if receipt_mints_v2 {
-            if let Err(error) = self.ensure_chio_receipt_v2_persistence_ready() {
-                let msg = error.to_string();
-                warn!(
-                    request_id = %request.request_id,
-                    reason = %redacted!(&msg),
-                    "receipt v2 persistence unavailable pre-dispatch (nested flow)"
-                );
-                return self.build_receipt_v2_persistence_failclosed_deny_response_with_metadata(
-                    request, &msg, now, None, None,
-                );
-            }
-        }
 
         self.validate_web3_evidence_prerequisites()?;
 
@@ -4818,12 +4506,12 @@ impl ChioKernel {
     }
 
     fn validate_delegation_admission(&self, cap: &CapabilityToken) -> Result<(), KernelError> {
-        // When the `delegation_v2` feature is on, consult the installed
+        // When the `delegation` feature is on, consult the installed
         // `RevocationView` snapshot before re-running the legacy chain
         // validation. Fail-closed: a revoked ancestor or leaf denies
         // dispatch even if the chain is otherwise valid. This is a
         // no-op (`Ok(())`) when no view is installed.
-        #[cfg(feature = "delegation_v2")]
+        #[cfg(feature = "delegation")]
         delegation::consult_revocation_view(cap, self.revocation_view.as_ref())?;
 
         if cap.delegation_chain.is_empty() {
@@ -7319,7 +7007,7 @@ pub(crate) fn current_unix_timestamp() -> u64 {
         .unwrap_or(0)
 }
 
-#[cfg(feature = "delegation_v2")]
+#[cfg(feature = "delegation")]
 #[path = "delegation.rs"]
 pub(crate) mod delegation;
 #[path = "evaluator.rs"]

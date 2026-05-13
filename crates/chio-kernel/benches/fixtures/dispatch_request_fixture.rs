@@ -47,7 +47,6 @@ impl DispatchAllowFixture {
     pub fn new() -> Self {
         let mut kernel = ChioKernel::new(make_config());
         kernel.register_tool_server(Box::new(BenchToolServer));
-        kernel.set_receipt_v2_default(false);
 
         let subject = Keypair::generate();
         let capability = issue_capability(&kernel, &subject);

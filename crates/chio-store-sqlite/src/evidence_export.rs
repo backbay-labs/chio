@@ -29,9 +29,11 @@ impl SqliteReceiptStore {
         &self,
         query: &EvidenceExportQuery,
     ) -> Result<EvidenceExportBundle, EvidenceExportError> {
-        let tool_receipts = self.collect_tool_receipts_for_export(query)?;
-        let child_receipt_scope = self.resolve_child_receipt_scope(query);
-        let child_receipts = self.collect_child_receipts_for_export(query, child_receipt_scope)?;
+        query.validate_read_boundary()?;
+        let query = query.normalized_for_read_boundary();
+        let tool_receipts = self.collect_tool_receipts_for_export(&query)?;
+        let child_receipt_scope = self.resolve_child_receipt_scope(&query);
+        let child_receipts = self.collect_child_receipts_for_export(&query, child_receipt_scope)?;
         let checkpoints = self.collect_checkpoints_for_export(&tool_receipts)?;
         let capability_lineage = self.collect_lineage_for_export(&tool_receipts)?;
         let (inclusion_proofs, uncheckpointed_receipts) =
@@ -467,6 +469,15 @@ mod tests {
     }
 
     fn receipt_with_ts(id: &str, capability_id: &str, timestamp: u64) -> ChioReceipt {
+        receipt_with_ts_and_tenant(id, capability_id, timestamp, None)
+    }
+
+    fn receipt_with_ts_and_tenant(
+        id: &str,
+        capability_id: &str,
+        timestamp: u64,
+        tenant_id: Option<&str>,
+    ) -> ChioReceipt {
         let keypair = Keypair::generate();
         ChioReceipt::sign(
             ChioReceiptBody {
@@ -483,7 +494,7 @@ mod tests {
                 evidence: Vec::new(),
                 metadata: None,
                 trust_level: chio_core::TrustLevel::default(),
-                tenant_id: None,
+                tenant_id: tenant_id.map(ToOwned::to_owned),
                 kernel_key: keypair.public_key(),
             },
             &keypair,
@@ -551,7 +562,7 @@ mod tests {
         store.store_checkpoint(&checkpoint).unwrap();
 
         let bundle = store
-            .build_evidence_export_bundle(&EvidenceExportQuery::default())
+            .build_evidence_export_bundle(&EvidenceExportQuery::admin_all())
             .unwrap();
 
         assert_eq!(bundle.tool_receipts.len(), 2);
@@ -575,6 +586,58 @@ mod tests {
     }
 
     #[test]
+    fn evidence_export_requires_explicit_receipt_read_boundary() {
+        let path = unique_db_path("evidence-export-read-boundary");
+        let store = SqliteReceiptStore::open(&path).unwrap();
+        store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-1", "cap-1", 100))
+            .unwrap();
+
+        let error = store
+            .build_evidence_export_bundle(&EvidenceExportQuery::default())
+            .expect_err("missing read boundary must fail closed");
+        assert!(error.to_string().contains("receipt read boundary"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn tenant_scoped_evidence_export_cannot_see_other_tenants() {
+        let path = unique_db_path("evidence-export-tenant");
+        let store = SqliteReceiptStore::open(&path).unwrap();
+        store.with_strict_tenant_isolation(true);
+        store
+            .append_chio_receipt_returning_seq(&receipt_with_ts_and_tenant(
+                "rcpt-a",
+                "cap-a",
+                100,
+                Some("tenant-a"),
+            ))
+            .unwrap();
+        store
+            .append_chio_receipt_returning_seq(&receipt_with_ts_and_tenant(
+                "rcpt-b",
+                "cap-b",
+                100,
+                Some("tenant-b"),
+            ))
+            .unwrap();
+
+        let bundle = store
+            .build_evidence_export_bundle(&EvidenceExportQuery::tenant_scoped("tenant-a"))
+            .unwrap();
+
+        assert_eq!(bundle.query.tenant.as_deref(), Some("tenant-a"));
+        assert_eq!(bundle.tool_receipts.len(), 1);
+        assert_eq!(
+            bundle.tool_receipts[0].receipt.tenant_id.as_deref(),
+            Some("tenant-a")
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn omits_child_receipts_for_capability_scoped_export_without_time_window() {
         let path = unique_db_path("evidence-export-scope");
         let store = SqliteReceiptStore::open(&path).unwrap();
@@ -592,7 +655,7 @@ mod tests {
         let bundle = store
             .build_evidence_export_bundle(&EvidenceExportQuery {
                 capability_id: Some("cap-scoped".to_string()),
-                ..EvidenceExportQuery::default()
+                ..EvidenceExportQuery::admin_all()
             })
             .unwrap();
 

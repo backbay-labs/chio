@@ -525,7 +525,7 @@ impl SqliteReceiptStore {
                     .map(|snapshot| snapshot.subject_key.clone())
             });
             let attempted_cost = financial.attempted_cost.unwrap_or(0);
-            let decision = decision_kind(&receipt.decision).to_string();
+            let decision = receipt_decision_kind(&receipt).to_string();
 
             total_cost_charged = total_cost_charged.saturating_add(financial.cost_charged);
             total_attempted_cost = total_attempted_cost.saturating_add(attempted_cost);

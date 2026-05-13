@@ -3196,7 +3196,7 @@ fn finish_receipt_for_explain(
         return Ok(matches.remove(0));
     }
     Err(CliError::cli_other_error(format!(
-        "receipt `{receipt_id}` not found in paginated receipt rows from {source}; persisted v2 bodyHash lookup is not implemented on this path, so use --input-file with the v2 receipt JSON"
+        "receipt `{receipt_id}` not found in paginated receipt rows from {source}"
     )))
 }
 
@@ -3205,13 +3205,9 @@ fn receipt_value_matches_id(value: &serde_json::Value, receipt_id: &str) -> bool
         ["id"].as_slice(),
         ["receipt_id"].as_slice(),
         ["receiptId"].as_slice(),
-        ["body_hash"].as_slice(),
-        ["bodyHash"].as_slice(),
         ["receipt", "id"].as_slice(),
         ["receipt", "receipt_id"].as_slice(),
         ["receipt", "receiptId"].as_slice(),
-        ["receipt", "body_hash"].as_slice(),
-        ["receipt", "bodyHash"].as_slice(),
     ];
     candidate_paths
         .iter()
@@ -3233,45 +3229,6 @@ fn explain_receipt_value(
     depth: usize,
     fanout_limit: usize,
 ) -> Result<serde_json::Value, CliError> {
-    if value.get("bodyHash").is_some() && value.get("body").is_some() {
-        let receipt: chio_core::receipt::ChioReceiptV2 = serde_json::from_value(value)?;
-        let signature_ok = receipt.verify_signature()?;
-        let decision = explain_decision_label(&receipt.body.decision);
-        let (reason, guard) = decision_details(&receipt.body.decision);
-        let parents = receipt
-            .body
-            .parent_receipt_ids
-            .iter()
-            .take(fanout_limit)
-            .cloned()
-            .collect::<Vec<_>>();
-        let batch_witness = receipt
-            .body
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.get("batch_witness"))
-            .and_then(|value| value.as_str())
-            .map(ToOwned::to_owned);
-        return Ok(serde_json::json!({
-            "schema": receipt.body.schema,
-            "receipt_id": receipt.receipt_id,
-            "identity": receipt.body_hash,
-            "requested_id": requested_id,
-            "signature_ok": signature_ok,
-            "decision": decision,
-            "reason": reason,
-            "guard": guard,
-            "policy_hash": receipt.body.policy_hash,
-            "guards": receipt.body.evidence,
-            "scope_diff": "requested scope vs granted scope is not embedded in this receipt",
-            "parents": parents,
-            "depth_limit": depth,
-            "fanout_limit": fanout_limit,
-            "batch_witness": batch_witness,
-            "repair_hint": repair_hint(&receipt.body.decision),
-        }));
-    }
-
     let receipt: chio_core::receipt::ChioReceipt = serde_json::from_value(value)?;
     let signature_ok = receipt.verify_signature()?;
     let decision = explain_decision_label(&receipt.decision);
@@ -3298,7 +3255,7 @@ fn explain_receipt_value(
     Ok(serde_json::json!({
         "schema": "chio.receipt.v1",
         "receipt_id": receipt.id,
-        "identity": "legacy_uuidv7_alias",
+        "identity": receipt.id,
         "requested_id": requested_id,
         "signature_ok": signature_ok,
         "decision": decision,
@@ -3360,21 +3317,14 @@ mod receipt_explain_tests {
             "id": "receipt-legacy",
             "decision": {"type": "allow"}
         });
-        let v2 = serde_json::json!({
-            "bodyHash": "body-hash-123",
-            "receiptId": "receipt-v2",
-            "body": {}
-        });
         let nested = serde_json::json!({
             "receipt": {
-                "body_hash": "nested-body-hash"
+                "id": "nested-receipt"
             }
         });
 
         assert!(receipt_value_matches_id(&legacy, "receipt-legacy"));
-        assert!(receipt_value_matches_id(&v2, "receipt-v2"));
-        assert!(receipt_value_matches_id(&v2, "body-hash-123"));
-        assert!(receipt_value_matches_id(&nested, "nested-body-hash"));
+        assert!(receipt_value_matches_id(&nested, "nested-receipt"));
         assert!(!receipt_value_matches_id(&legacy, "missing"));
     }
 

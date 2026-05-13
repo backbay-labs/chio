@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 /// Direction of a message flowing through the proxy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,8 +48,13 @@ pub struct MessageInterceptor {
     capability_checker: Option<Box<dyn CapabilityChecker>>,
     /// Attestation mode controlling how signing failures are handled.
     attestation_mode: AcpAttestationMode,
-    /// Session-scoped capability context captured from successful live-path checks.
-    live_capability_contexts: std::sync::Mutex<HashMap<String, AcpCapabilityAuditContext>>,
+    /// Capability context captured from successful live-path checks.
+    ///
+    /// Pending contexts are queued by `pending:<session_id>` until ACP
+    /// tool-call events expose `toolCallId`; active contexts then move to
+    /// `tool:<session_id>:<tool_call_id>` so interleaved calls cannot overwrite
+    /// each other's authorization.
+    live_capability_contexts: std::sync::Mutex<HashMap<String, VecDeque<AcpCapabilityAuditContext>>>,
 }
 
 impl MessageInterceptor {
@@ -343,10 +348,17 @@ impl MessageInterceptor {
             .and_then(|p| serde_json::from_value::<SessionUpdateNotification>(p.clone()).ok());
 
         if let Some(ref notif) = notification {
-            let capability_context = self.lookup_capability_context(&notif.session_id);
             let update = parse_session_update(&notif.update);
             match update {
                 SessionUpdate::ToolCall(ref event) => {
+                    let capability_context =
+                        self.take_next_capability_context(&notif.session_id).inspect(|context| {
+                            self.remember_tool_capability_context(
+                                &notif.session_id,
+                                &event.tool_call_id,
+                                (*context).clone(),
+                            );
+                        });
                     let receipt = self.receipt_logger.log_tool_call(
                         &notif.session_id,
                         event,
@@ -363,13 +375,18 @@ impl MessageInterceptor {
                     ));
                 }
                 SessionUpdate::ToolCallUpdate(ref event) => {
+                    let capability_context =
+                        self.lookup_tool_capability_context(&notif.session_id, &event.tool_call_id);
                     if let Some(receipt) = self.receipt_logger.log_tool_call_update(
                         &notif.session_id,
                         event,
                         capability_context.as_ref(),
                     ) {
                         if should_clear_capability_context(&receipt.status) {
-                            self.clear_capability_context(&notif.session_id);
+                            self.clear_tool_capability_context(
+                                &notif.session_id,
+                                &event.tool_call_id,
+                            );
                         }
                         tracing::info!(
                             tool_call_id = %receipt.tool_call_id,
@@ -418,6 +435,7 @@ impl MessageInterceptor {
                     capability_id,
                     enforcement_mode: AcpEnforcementMode::CryptographicallyEnforced,
                     authorization_receipt_id: verdict.receipt_id,
+                    authorization_request_id: verdict.receipt_request_id,
                 })
             }
             Ok(verdict) => {
@@ -433,22 +451,75 @@ impl MessageInterceptor {
 
     fn remember_capability_context(&self, session_id: &str, context: AcpCapabilityAuditContext) {
         if let Ok(mut contexts) = self.live_capability_contexts.lock() {
-            contexts.insert(session_id.to_string(), context);
+            contexts
+                .entry(pending_capability_context_key(session_id))
+                .or_default()
+                .push_back(context);
         }
     }
 
-    fn lookup_capability_context(&self, session_id: &str) -> Option<AcpCapabilityAuditContext> {
+    fn take_next_capability_context(&self, session_id: &str) -> Option<AcpCapabilityAuditContext> {
+        let Ok(mut contexts) = self.live_capability_contexts.lock() else {
+            return None;
+        };
+        let key = pending_capability_context_key(session_id);
+        let next = contexts.get_mut(&key).and_then(VecDeque::pop_front);
+        if contexts.get(&key).is_some_and(VecDeque::is_empty) {
+            contexts.remove(&key);
+        }
+        next
+    }
+
+    fn remember_tool_capability_context(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+        context: AcpCapabilityAuditContext,
+    ) {
+        if let Ok(mut contexts) = self.live_capability_contexts.lock() {
+            contexts.insert(
+                tool_capability_context_key(session_id, tool_call_id),
+                VecDeque::from([context]),
+            );
+        }
+    }
+
+    fn lookup_tool_capability_context(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+    ) -> Option<AcpCapabilityAuditContext> {
         self.live_capability_contexts
             .lock()
             .ok()
-            .and_then(|contexts| contexts.get(session_id).cloned())
+            .and_then(|contexts| {
+                contexts
+                    .get(&tool_capability_context_key(session_id, tool_call_id))
+                    .and_then(|queue| queue.front().cloned())
+            })
     }
 
     fn clear_capability_context(&self, session_id: &str) {
         if let Ok(mut contexts) = self.live_capability_contexts.lock() {
-            contexts.remove(session_id);
+            let pending_key = pending_capability_context_key(session_id);
+            let tool_prefix = format!("tool:{session_id}:");
+            contexts.retain(|key, _| key != &pending_key && !key.starts_with(&tool_prefix));
         }
     }
+
+    fn clear_tool_capability_context(&self, session_id: &str, tool_call_id: &str) {
+        if let Ok(mut contexts) = self.live_capability_contexts.lock() {
+            contexts.remove(&tool_capability_context_key(session_id, tool_call_id));
+        }
+    }
+}
+
+fn pending_capability_context_key(session_id: &str) -> String {
+    format!("pending:{session_id}")
+}
+
+fn tool_capability_context_key(session_id: &str, tool_call_id: &str) -> String {
+    format!("tool:{session_id}:{tool_call_id}")
 }
 
 fn extract_capability_token(params: &Value) -> Option<String> {

@@ -176,6 +176,7 @@ impl OperatorReportQuery {
             // When multi-tenant surfaces are introduced the caller
             // layer must populate this from the authenticated context.
             tenant: None,
+            read_boundary: Some(crate::evidence_export::ReceiptReadBoundary::AdminAll),
         }
     }
 

@@ -25,14 +25,9 @@ use chio_workflow::receipt::{VendorSignatureRequirement, WorkflowReceipt};
 use serde::{Deserialize, Serialize};
 
 pub const PROOF_PACKAGE_SCHEMA: &str = "chio.chiodos.proof-package.v1";
-pub const VERIFIER_REPORT_SCHEMA_V1: &str = "chio.chiodos.verifier-report.v1";
-pub const VERIFIER_REPORT_SCHEMA_V2: &str = "chio.chiodos.verifier-report.v2";
-pub const VERIFIER_REPORT_SCHEMA: &str = VERIFIER_REPORT_SCHEMA_V2;
+pub const VERIFIER_REPORT_SCHEMA: &str = "chio.chiodos.verifier-report.v1";
 pub const TRUSTED_ISSUER_REGISTRY_SCHEMA: &str = "chio.chiodos.trusted-issuer-registry.v1";
-pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V1: &str = "chio.chiodos.verifier-trust-bundle.v1";
-pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V2: &str = "chio.chiodos.verifier-trust-bundle.v2";
-pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V3: &str = "chio.chiodos.verifier-trust-bundle.v3";
-pub const VERIFIER_TRUST_BUNDLE_SCHEMA: &str = VERIFIER_TRUST_BUNDLE_SCHEMA_V3;
+pub const VERIFIER_TRUST_BUNDLE_SCHEMA: &str = "chio.chiodos.verifier-trust-bundle.v1";
 pub const REVOCATION_CHECKPOINT_SCHEMA: &str = "chio.chiodos.revocation-checkpoint.v1";
 pub const VERIFICATION_CONTEXT_SCHEMA: &str = "chio.chiodos.verification-context.v1";
 pub const WORKFLOW_INTERSECTION_SCHEMA: &str = "chio.chiodos-workflow-intersection.v1";
@@ -327,15 +322,7 @@ impl ChiodosVerifierTrustBundle {
         document: ChiodosVerifierTrustBundleDocument,
     ) -> Result<Self, ChiodosPackageError> {
         let document_sha256 = canonical_sha256(&document)?;
-        if document.schema == VERIFIER_TRUST_BUNDLE_SCHEMA_V1
-            || document.schema == VERIFIER_TRUST_BUNDLE_SCHEMA_V2
-        {
-            return Err(ChiodosPackageError::TrustBundle(
-                "historical verifier trust bundle is parse-only and cannot satisfy strict Chiodos verification"
-                    .to_string(),
-            ));
-        }
-        if document.schema != VERIFIER_TRUST_BUNDLE_SCHEMA_V3 {
+        if document.schema != VERIFIER_TRUST_BUNDLE_SCHEMA {
             return Err(ChiodosPackageError::TrustBundle(format!(
                 "verifier trust bundle schema {} is unsupported",
                 document.schema

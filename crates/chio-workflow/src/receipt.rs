@@ -10,8 +10,6 @@ use serde::{Deserialize, Serialize};
 
 /// Schema identifier for workflow receipts.
 pub const WORKFLOW_RECEIPT_SCHEMA: &str = "chio.workflow-receipt.v1";
-/// Schema identifier for workflow receipts with Chiodos cross-vendor linkage.
-pub const WORKFLOW_RECEIPT_SCHEMA_V2: &str = "chio.workflow-receipt.v2";
 
 /// A signed receipt for a complete skill/workflow execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]

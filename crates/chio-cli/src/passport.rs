@@ -597,6 +597,7 @@ fn build_attestation_evidence(
         since,
         until,
         tenant: None,
+        read_boundary: Some(chio_kernel::ReceiptReadBoundary::AdminAll),
     })?;
 
     if bundle.tool_receipts.is_empty() {

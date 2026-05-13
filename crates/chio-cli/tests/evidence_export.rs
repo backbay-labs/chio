@@ -178,6 +178,7 @@ fn export_fixture_package(receipt_db_path: &Path, output_dir: &Path) {
         .arg(receipt_db_path)
         .arg("evidence")
         .arg("export")
+        .arg("--admin-all")
         .arg("--output")
         .arg(output_dir)
         .output()
@@ -297,6 +298,7 @@ capabilities:
         .arg(&receipt_db_path)
         .arg("evidence")
         .arg("export")
+        .arg("--admin-all")
         .arg("--output")
         .arg(&output_dir)
         .arg("--policy-file")
@@ -391,6 +393,7 @@ fn evidence_export_require_proofs_fails_when_receipts_are_uncheckpointed() {
         .arg(&receipt_db_path)
         .arg("evidence")
         .arg("export")
+        .arg("--admin-all")
         .arg("--output")
         .arg(&output_dir)
         .arg("--require-proofs")
@@ -463,6 +466,7 @@ fn evidence_export_with_signed_federation_policy_roundtrips() {
         .arg(&receipt_db_path)
         .arg("evidence")
         .arg("export")
+        .arg("--admin-all")
         .arg("--output")
         .arg(&output_dir)
         .arg("--federation-policy")
@@ -570,6 +574,7 @@ fn evidence_import_roundtrip_surfaces_imported_trust_without_rewriting_local_his
         .arg(&source_receipt_db_path)
         .arg("evidence")
         .arg("export")
+        .arg("--admin-all")
         .arg("--output")
         .arg(&output_dir)
         .arg("--federation-policy")
@@ -689,6 +694,7 @@ fn evidence_export_rejects_scope_outside_federation_policy() {
         .arg(&receipt_db_path)
         .arg("evidence")
         .arg("export")
+        .arg("--admin-all")
         .arg("--output")
         .arg(&output_dir)
         .arg("--federation-policy")
@@ -793,6 +799,7 @@ fn evidence_export_supports_remote_trust_control_with_federation_policy() {
             service_token,
             "evidence",
             "export",
+            "--admin-all",
             "--output",
             output_dir.to_str().expect("output dir"),
             "--federation-policy",

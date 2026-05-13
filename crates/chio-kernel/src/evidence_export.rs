@@ -30,6 +30,29 @@ pub struct EvidenceExportQuery {
     /// tenant claim; callers MUST NOT let the agent choose this value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant: Option<String>,
+    /// Explicit read boundary for receipt export. Local exports must not infer
+    /// admin scope from an omitted tenant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_boundary: Option<ReceiptReadBoundary>,
+}
+
+/// Explicit receipt read boundary for export and report surfaces.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum ReceiptReadBoundary {
+    /// Operator has explicit administrative access to all receipt rows.
+    AdminAll,
+    /// Operator is scoped to a single authenticated tenant.
+    TenantScoped { tenant: String },
+}
+
+impl ReceiptReadBoundary {
+    #[must_use]
+    pub fn tenant_scoped(tenant: impl Into<String>) -> Self {
+        Self::TenantScoped {
+            tenant: tenant.into(),
+        }
+    }
 }
 
 /// Coverage mode for child receipts in an export bundle.
@@ -238,10 +261,14 @@ pub enum EvidenceExportError {
 
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("receipt read boundary error: {0}")]
+    ReadBoundary(String),
 }
 
 impl EvidenceExportQuery {
     pub fn as_receipt_query(&self, cursor: Option<u64>) -> ReceiptQuery {
+        let tenant_filter = self.effective_tenant_filter();
         ReceiptQuery {
             capability_id: self.capability_id.clone(),
             tool_server: None,
@@ -254,7 +281,69 @@ impl EvidenceExportQuery {
             cursor,
             limit: crate::MAX_QUERY_LIMIT,
             agent_subject: self.agent_subject.clone(),
-            tenant_filter: self.tenant.clone(),
+            tenant_filter,
+        }
+    }
+
+    #[must_use]
+    pub fn admin_all() -> Self {
+        Self {
+            read_boundary: Some(ReceiptReadBoundary::AdminAll),
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn tenant_scoped(tenant: impl Into<String>) -> Self {
+        let tenant = tenant.into();
+        Self {
+            tenant: Some(tenant.clone()),
+            read_boundary: Some(ReceiptReadBoundary::TenantScoped { tenant }),
+            ..Self::default()
+        }
+    }
+
+    pub fn validate_read_boundary(&self) -> Result<(), EvidenceExportError> {
+        match &self.read_boundary {
+            Some(ReceiptReadBoundary::AdminAll) => Ok(()),
+            Some(ReceiptReadBoundary::TenantScoped { tenant }) => {
+                let tenant = tenant.trim();
+                if tenant.is_empty() {
+                    return Err(EvidenceExportError::ReadBoundary(
+                        "tenant-scoped evidence export requires a non-empty tenant".to_string(),
+                    ));
+                }
+                if self
+                    .tenant
+                    .as_deref()
+                    .is_some_and(|query_tenant| query_tenant != tenant)
+                {
+                    return Err(EvidenceExportError::ReadBoundary(
+                        "tenant-scoped evidence export tenant does not match query tenant"
+                            .to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            None => Err(EvidenceExportError::ReadBoundary(
+                "evidence export requires an explicit receipt read boundary".to_string(),
+            )),
+        }
+    }
+
+    #[must_use]
+    pub fn normalized_for_read_boundary(&self) -> Self {
+        let mut normalized = self.clone();
+        if let Some(ReceiptReadBoundary::TenantScoped { tenant }) = &self.read_boundary {
+            normalized.tenant = Some(tenant.clone());
+        }
+        normalized
+    }
+
+    fn effective_tenant_filter(&self) -> Option<String> {
+        match &self.read_boundary {
+            Some(ReceiptReadBoundary::TenantScoped { tenant }) => Some(tenant.clone()),
+            _ => self.tenant.clone(),
         }
     }
 
