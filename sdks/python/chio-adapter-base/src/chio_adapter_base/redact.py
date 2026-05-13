@@ -264,6 +264,8 @@ def build_alias_map(
     sig_positional_names: Sequence[str],
     table_slots: Sequence[str],
     protected_fields: Sequence[str],
+    *,
+    allow_ambiguous_cycling: bool = True,
 ) -> dict[str, str]:
     """Map wrapper sig names to canonical names for a per-tool table.
 
@@ -280,6 +282,15 @@ def build_alias_map(
        detected, fall back to a "claim canonicals in declaration order
        and route the unmatched wrapper-names to the unclaimed
        canonicals" algorithm. This is the v0.3 index-collision guard.
+
+    ``allow_ambiguous_cycling`` (default ``True``) controls the
+    swap-detected fail-closed cycling. When ``True`` (chio-default
+    tools), the cycling fires so an extra unmatched wrapper-name still
+    redacts under a protected canonical. When ``False`` (custom-policy
+    tools that are NOT in :data:`DEFAULT_TOOL_POSITIONAL_NAMES`), the
+    cycling is suppressed: unmatched wrapper-names without a free
+    canonical stay self-aliased, preserving the "redact only named
+    fields" custom-policy contract.
 
     Closes deferred ID 3229853017 (``def write(body, path)`` previously
     aliased ``body`` to ``path`` index-wise; correct routing is
@@ -337,6 +348,7 @@ def build_alias_map(
         swap_ambiguous = (
             len(swap_unclaimed_wrappers) > len(swap_unclaimed_canonicals)
             and len(protected_fields) > 0
+            and allow_ambiguous_cycling
         )
     swap_cycle = list(protected_fields)
     swap_cycle_idx = 0
@@ -448,6 +460,15 @@ def bind_and_redact(
         if positional_table is not None
         else DEFAULT_TOOL_POSITIONAL_NAMES
     )
+    # Ambiguous-fail-closed cycling (kwonly Pass B + build_alias_map
+    # swap-ambiguous branch) is gated to chio-default tools only. For
+    # those tools we know the canonical slot names with high confidence
+    # and can safely over-redact ambiguous extra wrappers. For custom
+    # tools (not in the in-tree default table) the user's RedactionPolicy
+    # is the source of truth for which fields are sensitive; redacting
+    # extra fields beyond ``policy.body_fields[tool_name]`` would break
+    # the custom-policy "redact only named fields" contract.
+    allow_ambiguous_cycling = tool_name in DEFAULT_TOOL_POSITIONAL_NAMES
 
     sig = _signature_or_none(fn)
     # When drop_self is set we also strip the first positional value from
@@ -632,6 +653,7 @@ def bind_and_redact(
                 extended_positional_names,
                 table.get(tool_name, ()),
                 protected_fields_for_tool_pre,
+                allow_ambiguous_cycling=allow_ambiguous_cycling,
             )
             # Walk kwonly names too: any kwonly that did not get an
             # alias from the positional pass routes to the next unclaimed
@@ -692,16 +714,24 @@ def bind_and_redact(
                         _alias_fb[sn] = canonical
                         already_canonical_protected_fb.add(canonical)
                         break
-            elif unclaimed_kwonlys_fb and protected_fields_for_tool_pre:
+            elif (
+                unclaimed_kwonlys_fb
+                and protected_fields_for_tool_pre
+                and allow_ambiguous_cycling
+            ):
                 # Ambiguous: more kwonly aliases than free canonicals.
                 # Fail-closed by cycling each unclaimed kwonly through
-                # the protected list.
+                # the protected list. Gated to chio-default tools only;
+                # custom-policy tools fall through to the self-alias
+                # branch below so only explicitly-named fields redact.
                 cycle_fb = list(protected_fields_for_tool_pre)
                 for i, sn in enumerate(unclaimed_kwonlys_fb):
                     _alias_fb[sn] = cycle_fb[i % len(cycle_fb)]
             else:
-                # No protected canonicals at all. Leave unclaimed
-                # kwonlys as self-aliases so they pass through raw.
+                # No protected canonicals at all (or custom-policy tool
+                # with ambiguous cycling suppressed). Leave unclaimed
+                # kwonlys as self-aliases so they pass through raw and
+                # only their literal-named protected siblings redact.
                 for sn in unclaimed_kwonlys_fb:
                     _alias_fb[sn] = sn
             fallback_kwarg_alias = _alias_fb
@@ -796,6 +826,7 @@ def bind_and_redact(
         fixed_positional_names,
         table_slots_for_tool,
         protected_fields_for_tool,
+        allow_ambiguous_cycling=allow_ambiguous_cycling,
     )
 
     # Also walk KEYWORD_ONLY params: TaskFlow / decorator wrappers shaped
@@ -897,13 +928,25 @@ def bind_and_redact(
                     sig_to_canonical[kw_name] = canonical
                     already_canonical_protected.add(canonical)
                     break
-        elif unclaimed_kwonlys and protected_fields_for_tool:
+        elif (
+            unclaimed_kwonlys
+            and protected_fields_for_tool
+            and allow_ambiguous_cycling
+        ):
             # Ambiguous: more kwonly aliases than free canonicals. Any
             # of them could carry the secret. Fail-closed by routing
             # each to a protected canonical (cycling so every kwonly
             # gets redacted). Independent merge-conflict redaction
             # downstream keeps the wire shape so callers see one stub
             # per kwarg.
+            #
+            # Gated to chio-default tools only: for custom-policy tools
+            # (not in DEFAULT_TOOL_POSITIONAL_NAMES) the user has
+            # explicitly named which fields to redact, so the cycling
+            # over-redacts and breaks the custom-policy contract. Such
+            # tools fall through to the no-op below: unclaimed kwonlys
+            # stay self-aliased and only the explicitly-named protected
+            # fields get redacted.
             cycle = list(protected_fields_for_tool)
             for i, kw_name in enumerate(unclaimed_kwonlys):
                 sig_to_canonical[kw_name] = cycle[i % len(cycle)]
