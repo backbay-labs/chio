@@ -85,7 +85,7 @@ The `chio-acp-*` namespace is owned by Zed's ACP. Do not propose other crates wi
 2. Are `chio-temporal` and `chio-airflow` production-deployed or speculative? Affects whether to deprioritize dedicated orchestrator bridges with confidence. (Wave 3 partial answer: both exist with real LOC counts and clean activity-level interceptor patterns; production deployment unknown without telemetry.)
 3. Should `DirectoryProvider` be a new crate or live in `chio-federation`? (Wave 2 answer: new `chio-directory` leaf crate; see [08](08-agntcy-acp-bridge-spec.md) and [17](17-agntcy-revisited.md).)
 4. Cedar adoption: greenfield-only first guard, or migrate an existing guard as proof? (Wave 2 answer: Option A' = greenfield + two flagship ports `McpToolGuard` and `EgressAllowlistGuard`; see [10](10-cedar-first-guard.md).)
-5. Wave A vocabulary changes (`EventPublish` / `EventConsume`) require a `chio-manifest` schema bump. (Wave 2 answer: additive v1 to v2 bump, fail-closed only after new manifest-ceiling negotiation is designed; see [09](09-event-action-schema.md) and [18](18-decision-packet.md).)
+5. Wave A vocabulary changes (`EventPublish` / `EventConsume`) are now folded into current `chio.manifest.v1` planning because Chio is unreleased. (Wave 2 follow-up: keep fail-closed validation, remove pre-release compatibility negotiation, and use [09](09-event-action-schema.md) plus [18](18-decision-packet.md) only as historical inputs.)
 
 ## Files
 

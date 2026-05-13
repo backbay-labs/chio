@@ -2,7 +2,7 @@
 
 > **Historical research note (PR 652):** Use [00-overview-v2.md](00-overview-v2.md) and [18-decision-packet.md](18-decision-packet.md) for planning. This file remains research input, not an implementation ticket.
 >
-> **Erratum (PR 652 review):** `args_schema` below is design shorthand for typed input constraints. Current workflow manifests use `input_contract` / `output_contract`, and the exact manifest-v2 constraint shape is deferred to [18-decision-packet.md](18-decision-packet.md).
+> **Erratum (PR 652 review):** `args_schema` below is design shorthand for typed input constraints. Current workflow manifests use `input_contract` / `output_contract`, and the event-action constraint shape is folded into current v1 planning in [18-decision-packet.md](18-decision-packet.md).
 
 ## TL;DR verdict
 

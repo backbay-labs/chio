@@ -1,6 +1,8 @@
 # 14 - Voice Agent Bridges (LiveKit, Pipecat, Vapi, Retell)
 
-> Task E3. Coordinates with X1 (receipt schema v3) on `human_principal` and
+> **Historical research note (PR 652):** This file remains research input, not an implementation ticket.
+>
+> Task E3. Coordinates with current v1 receipt-kind semantics on `human_principal` and
 > call-context receipt fields, and with X2 (latency audit) on the sub-200ms
 > verdict budget. Code paths are cited repo-relative.
 

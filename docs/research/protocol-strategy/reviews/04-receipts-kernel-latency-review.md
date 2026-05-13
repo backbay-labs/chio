@@ -1,7 +1,7 @@
 # Review 04 - Receipts, Kernel, Latency Cluster (docs 09, 15, 16)
 
 > Reviewer scope: consistency review and codebase grounding for docs 09
-> (event-action schema), 15 (receipt schema v3), 16 (latency budget audit),
+> (event-action schema), 15 (current v1 receipt-kind semantics), 16 (latency budget audit),
 > with cross-references into 00-overview-v2, 12, 13, 14. All citations
 > verified against a local checkout.
 
@@ -206,12 +206,10 @@ points are semantic:
 
 7. **Manifest schema version is `chio.manifest.v1`** at line 20, exactly as
    doc 09 claims. `validate_manifest` enforces equality at line 237-239.
-   `deny_unknown_fields` is on `ToolManifest` at line 24. A v2 schema would
-   reject on v1 verifiers as `UnsupportedSchema(...)`. Doc 09's negotiation
-   posture is sound but **requires a new manifest-ceiling negotiation
-   feature.** `chio.capabilities.v1` does not currently carry a
-   `max_manifest_schema` - this is net-new and worth calling out in doc 09
-   line 208.
+   `deny_unknown_fields` is on `ToolManifest` at line 24. PR 652 later folded
+   event-action planning into current v1 manifest work because Chio is
+   unreleased, so there is no pre-release manifest compatibility negotiation
+   to add before implementation.
 
 8. **HTTP path 3-signs + 1-verify count is correct.** Each cited location
    performs a sign or verify:

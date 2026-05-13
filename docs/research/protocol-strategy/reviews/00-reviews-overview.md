@@ -12,7 +12,7 @@
 > - **#8 three-ACPs warning** restored in [00-overview-v2](../00-overview-v2.md); doc 02 `chio-bridge-acp` references covered by erratum at top of doc 02.
 > - **#9 em dashes** removed from both overview docs (verified zero across all 26 docs in this directory).
 > - **#10 AGNTCY ACP archival** captured in [17](../17-agntcy-revisited.md); doc 08 marked SUPERSEDED; doc 02 has erratum; build queue updated in both overviews.
-> - **#11 PR 652 follow-up grounding** captured in [18](../18-decision-packet.md): `policy_version` / `manifest_id` are not current receipt fields, `args_schema` is design shorthand rather than current `SkillStep` shape, and manifest-v2 negotiation needs new manifest-ceiling plumbing.
+> - **#11 PR 652 follow-up grounding** captured in [18](../18-decision-packet.md): `policy_version` / `manifest_id` are not current receipt fields, `args_schema` is design shorthand rather than current `SkillStep` shape, and manifest event-action planning is folded into current v1 manifest work before release.
 
 ## Context
 

@@ -387,7 +387,7 @@ Per doc 04: every engine decision contributes `engine_id: "cedar"`,
 `decision_id: String`. Matched policy IDs come from
 `response.diagnostics().reason()` as `Vec<PolicyId>`.
 
-Coordinate with X1 (receipt schema v3): X1's `extensions` is a typed
+Coordinate with current v1 receipt-kind semantics: `extensions` is a typed
 namespace map. Reserve `policy.cedar`:
 
 ```json
