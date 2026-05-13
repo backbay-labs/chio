@@ -314,6 +314,33 @@ def build_alias_map(
                 break
 
     # Pass 2: route unmatched wrapper-names.
+    #
+    # Pre-compute the swap-detected ambiguity check: when the swap-aware
+    # branch is in play and there are MORE unmatched wrapper-names than
+    # unclaimed protected canonicals, any of the wrappers could carry
+    # the secret. Fail-closed by cycling through the protected list so
+    # every unmatched wrapper-name redacts to a protected canonical
+    # (mirrors the kwonly Pass B ambiguous-fail-closed semantics in
+    # ``bind_and_redact`` and closes PR #679 P2 3231057188:
+    # ``def write_file(label, body, path)`` greedily gave the only
+    # protected slot to ``label`` and left the secret in ``body`` raw).
+    swap_unclaimed_wrappers: list[str] = []
+    swap_unclaimed_canonicals: list[str] = []
+    swap_ambiguous = False
+    if swap_detected:
+        swap_unclaimed_wrappers = [
+            sn for sn in sig_positional_names if sn not in sig_to_canonical
+        ]
+        swap_unclaimed_canonicals = [
+            c for c in protected_fields if c not in claimed_canonicals
+        ]
+        swap_ambiguous = (
+            len(swap_unclaimed_wrappers) > len(swap_unclaimed_canonicals)
+            and len(protected_fields) > 0
+        )
+    swap_cycle = list(protected_fields)
+    swap_cycle_idx = 0
+
     for idx, sig_name in enumerate(sig_positional_names):
         if sig_name in sig_to_canonical:
             continue
@@ -335,9 +362,17 @@ def build_alias_map(
                     continue
             sig_to_canonical[sig_name] = sig_name
             continue
-        # Swap-detected branch: route by next-unclaimed-protected.
-        # This is the v0.3 collision guard for ``def write(body,
-        # path)`` and similar shapes (closes deferred ID 3229853017).
+        # Swap-detected branch: route by next-unclaimed-protected. When
+        # ambiguous (more unmatched wrappers than free canonicals),
+        # fail-closed by cycling through the protected list so every
+        # unmatched wrapper-name aliases to a protected canonical.
+        # (Closes PR #679 P2 3231057188 + deferred ID 3229853017.)
+        if swap_ambiguous:
+            sig_to_canonical[sig_name] = swap_cycle[
+                swap_cycle_idx % len(swap_cycle)
+            ]
+            swap_cycle_idx += 1
+            continue
         nxt = next(
             (c for c in protected_fields if c not in claimed_canonicals),
             None,
@@ -600,35 +635,74 @@ def bind_and_redact(
             )
             # Walk kwonly names too: any kwonly that did not get an
             # alias from the positional pass routes to the next unclaimed
-            # protected canonical.
+            # protected canonical. Apply the same ambiguous-fail-closed
+            # semantics the non-fallback kwonly Pass B uses (Closes PR
+            # #679 P2 3231057181: ``def write_file(path, *, label, body)``
+            # called with extra positional + body kwarg leaked because
+            # the greedy build_alias_map run gave the only canonical to
+            # ``label`` while ``body`` stayed self-aliased).
             kwonly_names_fb = tuple(
                 p.name
                 for p in sig.parameters.values()
                 if p.kind is inspect.Parameter.KEYWORD_ONLY
             )
-            _claimed_fb = set(_alias_fb.values())
+            # Drop any greedy aliases build_alias_map handed to
+            # KWONLY-derived slot names so the dedicated kwonly logic
+            # owns their routing (mirrors non-fallback Pass A/B
+            # ownership). Self-canonical kwonlys (name itself in table
+            # OR protected) are preserved as self-aliases.
+            self_canonical_fb_kwonlys: list[str] = []
             for sn in kwonly_names_fb:
-                if sn in _alias_fb:
-                    continue
                 if (
                     sn in table.get(tool_name, ())
                     or sn in protected_fields_for_tool_pre
                 ):
+                    self_canonical_fb_kwonlys.append(sn)
                     _alias_fb[sn] = sn
-                    _claimed_fb.add(sn)
-                    continue
-                nxt = next(
-                    (
-                        c
-                        for c in protected_fields_for_tool_pre
-                        if c not in _claimed_fb
-                    ),
-                    None,
-                )
-                if nxt is not None:
-                    _alias_fb[sn] = nxt
-                    _claimed_fb.add(nxt)
-                else:
+                elif sn in _alias_fb:
+                    # Wrapper alias kwonly: discard the greedy mapping
+                    # so the ambiguity check below decides where it
+                    # routes.
+                    _alias_fb.pop(sn, None)
+            already_canonical_protected_fb: set[str] = {
+                canonical
+                for canonical in _alias_fb.values()
+                if canonical in protected_fields_for_tool_pre
+            }
+            unclaimed_kwonlys_fb: list[str] = [
+                sn
+                for sn in kwonly_names_fb
+                if sn not in self_canonical_fb_kwonlys
+                and sn not in _alias_fb
+            ]
+            unclaimed_canonicals_fb: list[str] = [
+                canonical
+                for canonical in protected_fields_for_tool_pre
+                if canonical not in already_canonical_protected_fb
+            ]
+            if unclaimed_kwonlys_fb and len(unclaimed_kwonlys_fb) <= len(
+                unclaimed_canonicals_fb
+            ):
+                # Unambiguous: 1:1 (or surjective) mapping exists.
+                # Greedy declaration-order routing.
+                for sn in unclaimed_kwonlys_fb:
+                    for canonical in unclaimed_canonicals_fb:
+                        if canonical in already_canonical_protected_fb:
+                            continue
+                        _alias_fb[sn] = canonical
+                        already_canonical_protected_fb.add(canonical)
+                        break
+            elif unclaimed_kwonlys_fb and protected_fields_for_tool_pre:
+                # Ambiguous: more kwonly aliases than free canonicals.
+                # Fail-closed by cycling each unclaimed kwonly through
+                # the protected list.
+                cycle_fb = list(protected_fields_for_tool_pre)
+                for i, sn in enumerate(unclaimed_kwonlys_fb):
+                    _alias_fb[sn] = cycle_fb[i % len(cycle_fb)]
+            else:
+                # No protected canonicals at all. Leave unclaimed
+                # kwonlys as self-aliases so they pass through raw.
+                for sn in unclaimed_kwonlys_fb:
                     _alias_fb[sn] = sn
             fallback_kwarg_alias = _alias_fb
 
@@ -747,12 +821,18 @@ def bind_and_redact(
     # 3230955382: ``def write_file(path, *rest, body)`` with kwarg body
     # leaked because the broad ``has_var_positional`` guard skipped the
     # aliasing pass entirely.)
+    # Only a variadic parameter whose name is an actual PROTECTED
+    # canonical suppresses kwonly aliasing. Earlier versions also fired
+    # the guard when ``*name`` matched any table slot (protected or
+    # not), which over-broadly skipped aliasing for shapes like
+    # ``def write_file(*path, body)`` -- ``path`` is in the chio
+    # ``("path", "content")`` table but is NOT a protected field, so
+    # the kwonly ``body`` should still alias to ``content`` and got
+    # forwarded raw instead. (Closes PR #679 P2 3231057186 +
+    # 3231057261.)
     var_positional_is_protected_canonical = any(
         p.kind is inspect.Parameter.VAR_POSITIONAL
-        and (
-            p.name in protected_fields_for_tool
-            or p.name in table_slots_for_tool
-        )
+        and p.name in protected_fields_for_tool
         for p in sig.parameters.values()
     )
     if protected_fields_for_tool and not var_positional_is_protected_canonical:
@@ -833,6 +913,22 @@ def bind_and_redact(
     # when the wrapper renamed the param (closes PR #666 P1
     # 3229550950).
     fixed_named: dict[str, Any] = {}
+    # Track positional-arg collisions: two or more fixed params routed
+    # to the same protected canonical (e.g. swap-detected ambiguous case
+    # where ``def write_file(label, body, path)`` aliases both ``label``
+    # and ``body`` to ``content``). When this happens, ``fixed_named``
+    # collapses both values to one slot and the redacted byte_count is
+    # whichever wrote last. The rebuild below redacts each colliding
+    # positional INDEPENDENTLY so each stub reflects its own value's
+    # byte_count (mirrors the kwarg-collision logic further down).
+    canonical_arg_counts: dict[str, int] = {}
+    for name in bound.arguments:
+        if name in (var_keyword_param, var_positional_param):
+            continue
+        canonical_name = sig_to_canonical.get(name, name)
+        canonical_arg_counts[canonical_name] = (
+            canonical_arg_counts.get(canonical_name, 0) + 1
+        )
     for name, value in bound.arguments.items():
         if name in (var_keyword_param, var_positional_param):
             continue
@@ -966,6 +1062,22 @@ def bind_and_redact(
             # name itself). This routes alias-renamed slots like
             # ``body`` -> ``content`` to the correct redaction.
             canonical_name = sig_to_canonical.get(sig_name, sig_name)
+            if (
+                canonical_name in protected_fields_for_tool
+                and canonical_arg_counts.get(canonical_name, 0) > 1
+            ):
+                # Multiple fixed positionals share this canonical:
+                # redact each value independently so each stub
+                # reflects its own byte_count. Closes PR #679 P2
+                # 3231057188 byte-count regression for ambiguous
+                # swap-detected aliasing.
+                single_redacted = _redact_named(
+                    {canonical_name: value},
+                    tool_name=tool_name,
+                    policy=effective_policy,
+                )
+                rebuilt_args.append(single_redacted[canonical_name])
+                continue
             if canonical_name in redacted_fixed:
                 rebuilt_args.append(redacted_fixed[canonical_name])
                 continue
@@ -1269,5 +1381,6 @@ __all__ = [
     "RedactArgs",
     "RedactionPolicy",
     "bind_and_redact",
+    "build_alias_map",
     "redact_args",
 ]

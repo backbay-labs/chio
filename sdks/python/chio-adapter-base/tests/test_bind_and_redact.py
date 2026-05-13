@@ -1713,3 +1713,130 @@ def test_typeerror_fallback_protected_var_positional_distinct_lengths_strict() -
     assert args[1] == {"omitted": True, "byte_count": 17}
     assert args[2] == {"omitted": True, "byte_count": 64}
     assert kwargs["path"] == "/tmp/x"
+
+
+def test_typeerror_fallback_extra_positional_with_kwonly_label_and_body() -> None:
+    """Regression for PR #679 P2 3231057181.
+
+    ``def write_file(path, *, label, body)`` invoked with one extra
+    positional plus both kwonly kwargs supplied (``write_file('/tmp',
+    'EXTRA', label='safe', body='PROD_SECRET')``). ``bind_partial``
+    raises TypeError, the fallback runs, and the receipt is still
+    emitted. The previous TypeError-fallback build_alias_map run
+    greedily aliased ``label`` -> ``content`` and left ``body`` as
+    self-aliased so ``body='PROD_SECRET'`` forwarded raw. The fix
+    applies ambiguous-fail-closed to the fallback's kwonly aliasing
+    pass, mirroring the non-fallback Pass-B semantics. Distinct byte
+    lengths (5 / 4 / 11) so a future regression cannot hide behind a
+    coincidentally-matching ``byte_count``.
+    """
+
+    def write_file(path: str, *, label: str, body: str) -> None:
+        del path, label, body
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("/tmp", "EXTRA"),
+        {"label": "safe", "body": "PROD_SECRET"},
+        tool_name="chio_file_write",
+    )
+    # Positional overflow ``EXTRA`` lands in the kwonly-derived slot
+    # ``label`` (sig_positional_names + kwonly_protected_slots).
+    assert args[0] == "/tmp"
+    assert args[1] == {"omitted": True, "byte_count": len(b"EXTRA")}
+    assert kwargs["label"] == {"omitted": True, "byte_count": len(b"safe")}
+    assert kwargs["body"] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET"),
+    }
+
+
+def test_signature_path_var_positional_named_after_unprotected_table_slot() -> None:
+    """Regression for PR #679 P2 3231057186 + 3231057261.
+
+    ``def write_file(*path, body)`` invoked with the protected body as
+    a kwarg. ``*path`` is named after the chio-default ``("path",
+    "content")`` table slot ``path`` but ``path`` is NOT a protected
+    field. The earlier guard treated ANY VAR_POSITIONAL whose name was
+    in the table as a "protected canonical" and skipped the kwonly
+    aliasing pass entirely, leaving ``body='PROD_SECRET_DISTINCT'``
+    forwarded raw. Only an ACTUAL protected canonical should suppress
+    aliasing. Distinct byte length (24) so a future regression cannot
+    coincidentally match a matching ``byte_count`` from an unrelated
+    redaction.
+    """
+
+    def write_file(*path: str, body: str) -> None:
+        del path, body
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("/tmp/x",),
+        {"body": "PROD_SECRET_DISTINCT_24!"},
+        tool_name="chio_file_write",
+    )
+    assert args == ["/tmp/x"]
+    assert kwargs["body"] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET_DISTINCT_24!"),
+    }
+
+
+def test_signature_path_swap_detected_ambiguous_fixed_aliases_redact_all() -> None:
+    """Regression for PR #679 P2 3231057188.
+
+    ``def write_file(label, body, path)`` invoked positionally. The
+    swap-detected branch (``path`` at sig idx 2 vs table idx 0) used
+    to greedily assign the only unclaimed protected canonical
+    (``content``) to the first-declared unmatched wrapper-name
+    (``label``), leaving ``body`` self-aliased so ``body='PROD_SECRET
+    _SWAP_BODY'`` forwarded raw at args[1]. The fix mirrors the kwonly
+    Pass-B ambiguous-fail-closed: when more unmatched wrappers than
+    free canonicals, cycle every unmatched wrapper through the
+    protected list. Both args must redact and each stub must report
+    ITS OWN byte_count (label: 6 bytes, body: 22 bytes) so a future
+    byte-count regression can't hide.
+    """
+
+    def write_file(label: str, body: str, path: str) -> None:
+        del label, body, path
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("LABEL!", "PROD_SECRET_SWAP_BODY!", "/tmp"),
+        {},
+        tool_name="chio_file_write",
+    )
+    assert kwargs == {}
+    assert args[0] == {"omitted": True, "byte_count": len(b"LABEL!")}
+    assert args[1] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET_SWAP_BODY!"),
+    }
+    assert args[2] == "/tmp"
+
+
+def test_build_alias_map_is_importable_from_top_level() -> None:
+    """Regression for PR #679 Cursor Bugbot Low 3231024465.
+
+    ``build_alias_map`` is a public helper (no underscore prefix) and
+    is advertised in the PR description as exposing the wrapper-name
+    -> canonical-name routing algorithm. It must be re-exported from
+    the top-level ``chio_adapter_base`` namespace so wildcard imports
+    and tooling-generated API docs surface it.
+    """
+
+    import chio_adapter_base
+
+    assert "build_alias_map" in chio_adapter_base.__all__
+    assert hasattr(chio_adapter_base, "build_alias_map")
+    # Smoke-test the exposed callable on the swap-detection scenario it
+    # was extracted to handle.
+    routing = chio_adapter_base.build_alias_map(
+        ("body", "path"),
+        ("path", "content"),
+        ("content",),
+    )
+    # Pass-1 self-canonical: ``path`` claims its slot. Pass-2 swap-
+    # detected: ``body`` routes to unclaimed protected canonical.
+    assert routing == {"path": "path", "body": "content"}
