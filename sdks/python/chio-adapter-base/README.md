@@ -55,13 +55,15 @@ canonical entry point for this pattern when the wrapper sees the
 tool call as `(*args, **kwargs)` rather than as a pre-named dict.
 
 **Post-tool-call prose.** Send raw args to `evaluate_tool_call`, then
-redact at the receipt-write boundary (see
-`make_post_tool_call` in `sdks/python/chio-hermes/src/chio_hermes/hooks.py`).
-Policy sees real content, so rules like "block if `content` contains
-`API_KEY`" are expressible. The trade-off: secrets flow through the
-sidecar, so the sidecar's own logging path must redact too
-(`chio-api-protect` handles this server-side via `redact_args` on the
-receipt-store path). This pattern only makes sense when the sidecar
+redact at the receipt-write boundary. The chio-hermes Python plugin
+redacts via `redact_args` in its `make_post_tool_call` hook
+(`sdks/python/chio-hermes/src/chio_hermes/hooks.py`) before writing to
+its session-local JSONL audit log. Policy sees real content, so rules
+like "block if `content` contains `API_KEY`" are expressible. The
+trade-off: secrets flow through the sidecar, so the sidecar's own
+logging path is a separate concern handled in the sidecar's own crate
+(the Rust HTTP proxy `chio-api-protect` does not import the Python
+`redact_args` helper). This pattern only makes sense when the sidecar
 shares a trust boundary with the agent process, which is the case in
 chio-hermes (the plugin runs inside the Hermes process and the
 sidecar is a localhost HTTP listener mounted by the same operator).
