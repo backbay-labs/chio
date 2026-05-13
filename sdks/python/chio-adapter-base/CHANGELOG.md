@@ -7,44 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-05-12
+## [0.2.0]
 
-First non-pre-release publish. Hardens `bind_and_redact` against the
-6-axis edge-case combinatoric surfaced during chio-prefect's
-`_task_parameters` collapse onto the helper, and tightens the
-`positional_table` contract. See `ADAPTER-MIGRATION.md` for the
-adapter-author migration recipe and `docs/integrations/CHIO-ADAPTER-BASE.md`
-for the higher-level rationale.
+`bind_and_redact` shape hardening + 6-axis coverage matrix. The
+helper now subsumes every wire shape that was bouncing between
+sibling adapters during the v0.2 batch (PRs #664-#675); the prefect
+canary collapse in `chio-prefect 0.1.2` exercises the helper's API
+surface against a real adapter so future shape additions land once,
+in `chio-adapter-base`. See `ADAPTER-MIGRATION.md` for the
+adapter-author migration recipe and
+`docs/integrations/CHIO-ADAPTER-BASE.md` for the higher-level
+rationale.
+
+> Note: the canonical changelog narrative for the helper hardening
+> lives in PR #679's commit on this same file; this entry is the
+> docs-PR view of the same release. If the two ever drift, treat
+> the in-package CHANGELOG that landed via PR #679 as authoritative.
 
 ### Added
-- `bind_and_redact` now handles four previously-deferred edge cells:
-  - keyword-only parameters whose name collides with a protected field
-    alias (e.g. `def write(*, content)` where `content` is a body
-    field) are redacted in the keyword slot rather than silently
-    forwarded.
-  - The `TypeError` fallback path (raised by `inspect.Signature.bind`
-    on duplicate-name positional + keyword) preserves the merged dict
-    shape so downstream callers see the same keys they would have seen
-    on a successful bind, with the secret-bearing positional value
-    redacted under its derived parameter name.
-  - Alias collision guard: if two positional names in the table map to
-    the same parameter (mis-configured table), the helper rejects the
-    table at call time rather than silently dropping the duplicate.
-  - Pure `VAR_POSITIONAL` signatures (`def f(*content)`) where the
-    table declares a named slot for the variadic position now redact
-    each variadic value under the table's slot name.
-- `DEFAULT_TOOL_POSITIONAL_NAMES` is re-exported from the top-level
-  `chio_adapter_base` package so adapters do not have to grep into the
-  submodule for the chio-default table.
+- `chio_adapter_base.redact.build_alias_map` public helper exposing
+  the wrapper-name -> canonical-name routing algorithm so adapters
+  with bespoke shapes can build a parallel alias map without
+  duplicating the implementation. Callable via the submodule path;
+  not re-exported from the top-level `chio_adapter_base` package
+  (promote on demand once a second adapter call site appears).
+- 26 new regression tests (115 -> 141) plus a 6-axis coverage matrix
+  comment block at the top of `tests/test_bind_and_redact.py`
+  mapping every cell to one or more named tests.
 
 ### Changed
-- **Breaking note for adapters that pass a custom `positional_table`:**
-  the custom table now explicitly REPLACES the chio default rather
-  than implicitly extending it. v0.1.x silently merged the caller's
-  table on top of `DEFAULT_TOOL_POSITIONAL_NAMES`; v0.2.0 treats the
-  caller's table as authoritative. Adapters that relied on the
-  implicit extend behaviour must now explicitly merge the chio
-  default into their table:
+- `bind_and_redact` keyword-only (kwonly) alias pass now treats a
+  kwonly param whose name matches a protected canonical (e.g.
+  `def fn(*, body)` for a policy that protects `body`) as
+  self-canonical. Previously kwonly aliasing could rebind such a
+  param onto a different unclaimed slot, silently corrupting the
+  redaction.
+- Index-based positional aliasing now applies a name-position
+  collision guard. When a wrapper shape such as `def write(body,
+  path)` is registered for a tool whose canonical table is
+  `("path", "content")`, the helper detects that `path` lives at a
+  different wrapper-index than table-index and routes the
+  unmatched `body` to the next-unclaimed protected canonical
+  (`content`) instead of aliasing onto the same-index unprotected
+  slot. The collision is detected and re-routed; matched and
+  unmatched names are redacted independently rather than being
+  rejected.
+- `TypeError` fallback path (raised by `inspect.Signature.bind` on
+  arity mismatch / duplicate-name positional + keyword) now
+  preserves the wrapper's canonical alias map so kwargs still
+  redact under the wrapper's renamed names. Previously the
+  fallback used literal name matching only, which leaked when the
+  wrapper renamed a protected slot. Closes the alias-collision
+  data-loss path documented in PR #679 (the "C1 fix").
+- `_is_pure_forwarder` no longer treats a `def upload(*payload)`
+  shape as a forwarder when `payload` matches a protected field
+  for the current tool. The signature path runs instead so each
+  variadic value redacts under the canonical name.
+- VAR_POSITIONAL extras for `def fn(path, *rest, **kw)`-shape
+  wrappers now redact under the canonical protected slot when a
+  kwarg has already supplied that slot. This is the
+  merge-conflict semantics for the variadic case (closes deferred
+  IDs 3229566280 and 3229515822).
+
+### Breaking
+- `positional_table` argument is now LOCKED as REPLACES-the-default
+  semantics (current behavior). Callers that previously relied on
+  the chio-default table being merged with their custom override
+  must merge it themselves:
 
   ```python
   from chio_adapter_base.redact import DEFAULT_TOOL_POSITIONAL_NAMES
@@ -57,8 +86,20 @@ for the higher-level rationale.
                   positional_table=my_table)
   ```
 
-  See `ADAPTER-MIGRATION.md` section 5 for the migration recipe and
+  In practice no external consumer relies on extends semantics
+  (the per-tool override was always read as REPLACE in the v0.1.x
+  helper); this is documented as breaking for completeness. See
+  `ADAPTER-MIGRATION.md` section 5 for the migration recipe and
   test assertions to add when collapsing a local helper.
+
+### Notes
+- Wire shape: `bind_and_redact` returns
+  `(redacted_args, redacted_kwargs)` under canonical /
+  wrapper-named buckets. The synthetic `__var_kw_spillover__` key
+  for positional-only spillover collisions remains the
+  prefect-local wire shape; chio-prefect 0.1.2's `_legacy_envelope`
+  shim keeps it emitting for v0.2 compat. v0.4 will deprecate the
+  synthetic key with a one-release migration window.
 
 ### Migration from 0.1.x
 See `ADAPTER-MIGRATION.md`. Most adapters that already pin
@@ -66,7 +107,7 @@ See `ADAPTER-MIGRATION.md`. Most adapters that already pin
 code change beyond bumping the floor to `>=0.2.0,<0.3`. Adapters
 with a local helper (the chio-prefect `_task_parameters` shape)
 should collapse to `bind_and_redact` plus a thin envelope shim;
-chio-prefect's PR-1 collapse is the canonical worked example.
+chio-prefect 0.1.2 (PR #679) is the canonical worked example.
 
 ## [0.1.1]
 

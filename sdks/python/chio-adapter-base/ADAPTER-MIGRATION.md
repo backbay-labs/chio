@@ -13,16 +13,42 @@ are bumping the floor from `0.1.x` to `0.2.0`.
 
 ## 1. What changed in 0.2.0
 
-`bind_and_redact` is hardened against four edge cells that
-chio-prefect's `_task_parameters` collapse exposed: keyword-only
-protected aliases, `TypeError` fallback shape preservation, an
-alias-collision guard against mis-configured `positional_table`
-inputs, and pure `VAR_POSITIONAL` signatures with a named table
-slot. The chio-default positional-name table
-(`DEFAULT_TOOL_POSITIONAL_NAMES`) is now re-exported from the
-top-level package. The `positional_table` argument's contract has
-also changed: a caller-supplied table now REPLACES the chio default
-rather than implicitly extending it (see Section 5).
+`bind_and_redact` is hardened against the wire shapes that
+chio-prefect's `_task_parameters` collapse and the v0.2 sibling-PR
+batch (#664-#675) exposed:
+
+1. **Keyword-only self-canonical pass**: a kwonly param whose name
+   matches a protected canonical (e.g. `def fn(*, body)` for a
+   policy that protects `body`) is now treated as self-canonical;
+   previously kwonly aliasing could rebind it onto a different
+   unclaimed slot and silently corrupt the redaction.
+2. **Index-based positional aliasing with name-position collision
+   guard**: for a wrapper such as `def write(body, path)` against a
+   tool table `("path", "content")`, the helper detects the
+   wrapper-index vs table-index collision on `path` and routes the
+   unmatched `body` to the next-unclaimed protected canonical
+   (`content`) instead of aliasing onto the same-index unprotected
+   slot. Matched and unmatched names are redacted independently.
+3. **TypeError fallback preserves the canonical alias map** so
+   kwargs still redact under wrapper-renamed names when
+   `inspect.Signature.bind` raises (closes the alias-collision
+   data-loss path; "C1 fix" in PR #679).
+4. **`_is_pure_forwarder` no longer captures `def upload(*payload)`**
+   when `payload` matches a protected field; the signature path runs
+   instead so each variadic value redacts under the canonical name.
+5. **VAR_POSITIONAL extras for `def fn(path, *rest, **kw)`-shape
+   wrappers** now redact under the canonical protected slot when a
+   kwarg has already supplied that slot (closes deferred IDs
+   3229566280 and 3229515822).
+
+A new public helper `chio_adapter_base.redact.build_alias_map`
+exposes the wrapper-name -> canonical-name routing algorithm so
+adapters with bespoke shapes can build a parallel alias map without
+duplicating the implementation. It lives at the submodule path; the
+top-level `chio_adapter_base` package does not re-export it (yet).
+
+The `positional_table` argument's contract is also LOCKED as
+REPLACES-the-default semantics (see Section 5).
 
 ## 2. If your adapter calls `bind_and_redact`
 
@@ -42,6 +68,15 @@ What you need to do:
    ]
    ```
 
+   Note: `chio-adapter-base 0.2.0` is published as part of v0.3
+   PR-1 (PR #679); chio-prefect bumps to this floor in its 0.1.2
+   release alongside the same PR. Other adapters that only call
+   `redact_args` and have no exposure to the v0.2.0
+   `bind_and_redact` edge cells can stay on
+   `chio-adapter-base>=0.1.0,<0.2` until they touch their wrappers
+   next; the `redact_args` call sites are byte-identical across
+   0.1.x and 0.2.0.
+
 2. **If you pass a custom `positional_table`,** read Section 5 of
    this guide. The semantic change there is the only behaviour
    change a caller can hit without intentionally exercising one of
@@ -55,11 +90,17 @@ What you need to do:
 4. **(Optional, recommended) add a regression test for the new
    edge cells** if your adapter wraps any of these signature
    shapes:
-   - `def f(*, content)` (keyword-only protected alias).
-   - Custom tools that previously triggered `bind_partial` to
-     raise `TypeError` for a duplicate-name positional + keyword.
-   - `def f(*content)` (pure `VAR_POSITIONAL` with a named slot
-     in your `positional_table`).
+   - `def fn(*, body)` (kwonly param whose name matches a
+     protected canonical).
+   - `def write(body, path)` against a tool table that orders
+     them differently (`("path", "content")`).
+   - Custom tools that previously triggered
+     `inspect.Signature.bind` to raise `TypeError` (arity
+     mismatch / duplicate-name positional + keyword).
+   - `def upload(*payload)` where `payload` matches a protected
+     field for the current tool.
+   - `def fn(path, *rest, **kw)` where a kwarg has already
+     supplied a protected slot.
 
    Section 6 lists the assertion shape to use.
 
@@ -138,10 +179,18 @@ Recipe:
    old helper produced for at least one representative tool call
    per signature shape your adapter wraps.
 
-The chio-prefect collapse will land as PR-1 of the
-`chio-adapter-base` v0.3 release; once merged, link to the
-relevant commit here for the worked example. (TODO: PR-1 commit
-SHA and chio-prefect link, fill in once PR-1 merges.)
+The chio-prefect collapse lands as PR-1 of the
+`chio-adapter-base` v0.3 release: see
+[PR #679](https://github.com/bb-connor/arc/pull/679) for the
+helper hardening + prefect canary collapse; the post-merge
+worked example lives at
+`sdks/python/chio-prefect/src/chio_prefect/decorators.py`'s
+`_legacy_envelope` shim, which preserves the prefect-specific
+`parameters["args"]` / `parameters["kwargs"]` envelope plus the
+`__var_kw_spillover__` synthetic key against `bind_and_redact`'s
+`(redacted_args, redacted_kwargs)` return shape. PR URLs are
+stable across rebases; commit SHAs are not, so cite the PR rather
+than a specific SHA.
 
 ## 5. Custom `positional_table` semantic change: extends -> replaces
 
@@ -230,25 +279,41 @@ is the same across all of them:
    }
    ```
 
-2. **Keyword-only alias** (new in 0.2.0): assert that
-   `f(*, content)` calls redact `content` even when it arrives
-   as a kwarg.
+2. **Keyword-only self-canonical** (new in 0.2.0): assert that
+   `def fn(*, body)` against a policy that protects `body`
+   redacts the `body` kwarg in place rather than re-binding it
+   onto a different unclaimed slot.
 
-3. **Merge-conflict TypeError fallback** (new in 0.2.0): assert
-   that a duplicate-name positional + kwarg call still produces
-   a redacted output dict containing the protected field.
+3. **Index-collision re-routing** (new in 0.2.0): assert that
+   for `def write(body, path)` against a tool whose canonical
+   table is `("path", "content")`, the wrapper's `body`
+   positional value redacts under `content` (the next-unclaimed
+   protected canonical) while `path` is preserved.
 
-4. **Pure `VAR_POSITIONAL` with named slot** (new in 0.2.0):
-   assert that `f(*content)` against a `positional_table` that
-   declares `("content",)` redacts each variadic value.
+4. **TypeError fallback canonical alias preservation** (new in
+   0.2.0): assert that a duplicate-name positional + kwarg call
+   that triggers the `TypeError` fallback still produces a
+   redacted output that maps wrapper-renamed kwargs back onto
+   their canonical protected slots.
 
-5. **Custom `positional_table` replace semantic** (new in
+5. **`_is_pure_forwarder` excludes protected variadic name**
+   (new in 0.2.0): assert that `def upload(*payload)` against a
+   policy that protects `payload` redacts each variadic value
+   (does NOT pass-through as a forwarder).
+
+6. **VAR_POSITIONAL extras with kwarg-supplied slot** (new in
+   0.2.0): for `def fn(path, *rest, **kw)`, assert that when
+   `kw` already supplies a protected slot (e.g. `body=`), the
+   variadic extras still redact under the canonical protected
+   slot (closes deferred IDs 3229566280 / 3229515822).
+
+7. **Custom `positional_table` replace semantic** (new in
    0.2.0): assert that a custom table NOT containing
    `chio_file_write` does not redact `chio_file_write` calls
    under that table (proves replace, not extend, is in
    effect).
 
-6. **Byte-count invariant**: for every redacted field, assert
+8. **Byte-count invariant**: for every redacted field, assert
    `byte_count == len(value.encode("utf-8"))` (or
    `len(value)` for `bytes` / `bytearray`).
 

@@ -2,11 +2,9 @@
 
 Shared security and receipt primitives for the Chio Python adapter family.
 
-> **Status: scaffold only.** Phase 1 of the extraction defines the public
-> API and ships a smoke-test for the import surface. Phase 2 ports the
-> implementations from `chio-hermes` and migrates the first sibling adapter.
-> See `.planning/chio-adapter-base/PLAN.md` in the chio repository for the
-> full plan.
+> **Status: shipping.** The first non-pre-release publish on PyPI is
+> `0.2.0`; see `CHANGELOG.md` for the breaking notes and
+> `ADAPTER-MIGRATION.md` for the adapter-author migration recipe.
 
 ## Why this package exists
 
@@ -36,7 +34,7 @@ adapter's deployment topology.
 
 | Pattern | Where redact runs | Sidecar sees | `parameter_hash` uniqueness | When to use | Who uses it (today) |
 | --- | --- | --- | --- | --- | --- |
-| **Pre-evaluation** | In the wrapper, BEFORE `ChioClient.evaluate_tool_call` | Stub `{"omitted": true, "byte_count": N}` only | Uniform across all calls to the same tool; correlate with `path` + `tool_call_id` + `byte_count` | Sidecar runs out-of-process (different trust boundary); operator policy is path-based, not content-based; defense-in-depth requires zero secrets on the sidecar wire | chio-langchain, chio-llamaindex, chio-crewai, chio-iac, chio-airflow, chio-ray, chio-temporal, chio-langgraph, chio-dagster, chio-prefect, chio-autogen, chio-streaming |
+| **Pre-evaluation** | In the wrapper, BEFORE `ChioClient.evaluate_tool_call` | Non-body fields verbatim (path, command, ...) plus the body-field stub `{"omitted": true, "byte_count": N}` | Hash varies with the preserved non-body fields and `byte_count`; deterministic given `(tool_name, path, byte_count)`; use `tool_call_id` for per-call provenance | Sidecar runs out-of-process (different trust boundary); operator policy is path-based, not content-based; defense-in-depth requires zero body bytes on the sidecar wire | chio-langchain, chio-llamaindex, chio-crewai, chio-iac, chio-airflow, chio-ray, chio-temporal, chio-langgraph, chio-dagster, chio-prefect, chio-autogen, chio-streaming |
 | **Post-tool-call** | In a `post_tool_call` / receipt-write hook, AFTER the sidecar verdict | Raw payload (so policy can make content-based decisions) | Unique per call (sidecar hashes the real bytes) | Sidecar runs in-process or in the same trust boundary as the agent; policy needs to inspect content (e.g. "deny if `content` matches a secret pattern"); audit trail wants per-call provenance | chio-hermes |
 
 **Pre-evaluation prose.** Redact args BEFORE handing them to
@@ -65,27 +63,36 @@ sidecar is a localhost HTTP listener mounted by the same operator).
 
 ### Decision tree: which pattern fits your adapter
 
-Walk these top-down; the first "yes" picks your pattern.
+The tree picks BOTH a pattern (pre-evaluation vs post-tool-call) and a
+helper (`redact_args` vs `bind_and_redact`). Walk Q1 first; the answer
+constrains Q2.
 
 1. **Does your adapter run agent code in a separate process from the
    Chio sidecar (separate container, separate VM, separate trust
    boundary)?** -> Yes: **pre-evaluation**. The on-the-wire trust
-   boundary makes secrets-on-the-wire the dominant risk; redact before
-   the sidecar sees them. (This is every adapter in the table above
-   except chio-hermes.)
-2. **Does your adapter's policy need to make decisions based on field
-   content (e.g. "deny `chio_file_write` if `content` contains
-   credential-shaped strings")?** -> Yes: **post-tool-call**. The
-   policy must see the real bytes, so redaction has to happen
-   downstream of the verdict. Accept the trust-boundary cost.
-3. **Does your wrapper see the tool call as a pre-named `dict`
-   (i.e. `{"path": ..., "content": ...}` already), or does it see
-   `(*args, **kwargs)`?** -> Pre-named dict: call `redact_args`
-   directly. `(*args, **kwargs)`: call `bind_and_redact`, which
-   binds positional values to parameter names first, then runs
-   redaction over the named view, then rebuilds the original wire
-   shape so positional values stay positional and keyword values
-   stay keyword.
+   boundary makes body-bytes-on-the-wire the dominant risk; redact
+   before the sidecar sees them. (This is every adapter in the table
+   above except chio-hermes.) Skip Q2 and go to Q3 for helper
+   selection.
+2. **(Only if Q1 was NO.) Does your adapter's policy need to make
+   decisions based on field content (e.g. "deny `chio_file_write` if
+   `content` contains credential-shaped strings")?** -> Yes:
+   **post-tool-call**. The policy must see the real bytes, so
+   redaction has to happen downstream of the verdict. The shared
+   trust boundary you confirmed in Q1 makes the cost acceptable.
+   No: **pre-evaluation** is fine; defense-in-depth is still cheap
+   when the trust boundary is shared. (If you answered YES to Q1,
+   content-aware policy is incompatible with pre-evaluation; either
+   redesign the policy to be path-based or move it server-side onto
+   the same trust boundary as the agent.)
+3. **(Helper selection.) Does your wrapper see the tool call as a
+   pre-named `dict` (i.e. `{"path": ..., "content": ...}` already),
+   or does it see `(*args, **kwargs)`?** -> Pre-named dict: call
+   `redact_args` directly. `(*args, **kwargs)`: call
+   `bind_and_redact`, which binds positional values to parameter
+   names first, then runs redaction over the named view, then
+   rebuilds the original wire shape so positional values stay
+   positional and keyword values stay keyword.
 4. **Are you adding the first redaction call to a brand-new
    adapter?** -> Default to **pre-evaluation** with `bind_and_redact`.
    It is the more conservative choice (defense-in-depth), and the
@@ -134,15 +141,21 @@ from chio_adapter_base import sanitised_env, ReceiptBuffer, redact_args
 
 ## Migration story
 
-| step | release                                                   | what changes                                                  |
-|------|-----------------------------------------------------------|----------------------------------------------------------------|
-| 1    | `chio-adapter-base 0.1.0`                                 | this package ships with all seven primitives                   |
-| 2    | `chio-hermes 0.1.1` (canary)                              | `chio-hermes` re-exports the primitives from this package      |
-| 3    | `chio-langchain 0.2.0`, `chio-llamaindex 0.2.0`, ...      | sibling adapters add `redact_args` to their tool wrappers      |
-| 4    | `chio-iac 0.2.0`, `chio-airflow 0.2.0`                    | adapters with subprocess paths adopt `BoundedSubprocess`       |
-| 5    | `chio-hermes 0.2.0`                                       | `chio-hermes` deletes the inline copies and the re-export shim |
+The "Where to redact" comparison table, the decision tree, and the
+helper selection above subsume the original step-by-step migration
+plan. The current floor-pin matrix is:
 
-Sibling adapters pin `chio-adapter-base>=0.1.0,<0.2`.
+- Adapters that already adopted `bind_and_redact` and want the v0.2.0
+  helper hardening (today: `chio-prefect 0.1.2` per PR #679) pin
+  `chio-adapter-base>=0.2.0,<0.3`.
+- Adapters that only call `redact_args` and have no exposure to the
+  v0.2.0 `bind_and_redact` edge cells stay on
+  `chio-adapter-base>=0.1.0,<0.2` until they touch their wrappers
+  next; the call sites are byte-identical across 0.1.x and 0.2.0.
+
+`docs/integrations/CHIO-ADAPTER-BASE.md` Section 4 carries the
+current per-adapter pin table. `ADAPTER-MIGRATION.md` is the
+adapter-author recipe for bumping a floor pin from 0.1.x to 0.2.0.
 
 ## Design notes
 

@@ -396,6 +396,15 @@ All adapters share the `chio-sdk-python` core client and the canonical
 JSON / signed-receipt contract, so swapping host frameworks does not
 move the trust boundary.
 
+The shared security and receipt primitives that every Chio Python
+adapter depends on (per-tool argument redaction, subprocess
+environment scrubbing, git argv hardening, bounded subprocess
+capture, receipt buffering, forbidden-path output filtering, shell
+argv escape checks) are extracted into `chio-adapter-base`. See
+[`docs/integrations/CHIO-ADAPTER-BASE.md`](CHIO-ADAPTER-BASE.md)
+for the integration overview and the chio-hermes precedent
+reconciliation (post-tool-call vs pre-evaluation redaction).
+
 ## 6. Future work
 
 Tracked separately, not blocking v0.1.0:

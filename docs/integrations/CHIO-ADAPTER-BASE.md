@@ -22,7 +22,7 @@ were originally invented in `chio-hermes` (per-tool argument
 redaction, subprocess environment scrubbing, git argv hardening,
 bounded subprocess capture, receipt buffering and JSONL append,
 forbidden-path output filtering, shell argv escape checks) into a
-single tested package so the eleven sibling adapters can converge
+single tested package so the twelve sibling adapters can converge
 on one implementation.
 
 Without `chio-adapter-base`, each adapter that wraps a host
@@ -169,15 +169,17 @@ The current floor pin matrix (as of `chio-adapter-base 0.2.0`):
 | [`chio-autogen`](../../sdks/python/chio-autogen/) | `>=0.1.0,<0.2` | `redact_args` |
 | [`chio-streaming`](../../sdks/python/chio-streaming/) | `>=0.1.0,<0.2` | `redact_args` |
 
-The migration of every floor pin to `>=0.2.0,<0.3` is not part of
-the v0.3 critical path; it bundles into a separate v0.2.x cleanup
-hotfix PR after v0.3 publishes. See the v0.3 FINAL-PLAN
-(`.planning/chio-adapter-base-v0.3/FINAL-PLAN.md` Section 8) for
-the sequencing rationale.
+chio-prefect bumps to `>=0.2.0,<0.3` as part of v0.3 PR-1 (the
+prefect canary collapse onto `bind_and_redact` exercises the v0.2.0
+helper hardening). The migration of the OTHER adapters' floor pins
+is not part of the v0.3 critical path; those bumps bundle into a
+separate v0.2.x cleanup hotfix PR after v0.3 publishes. See the v0.3
+FINAL-PLAN (`.planning/chio-adapter-base-v0.3/FINAL-PLAN.md`
+Section 8) for the sequencing rationale.
 
 ## 5. chio-hermes precedent reconciliation
 
-The eleven sibling adapters redact pre-evaluation. chio-hermes
+The twelve sibling adapters redact pre-evaluation. chio-hermes
 redacts post-tool-call. Both are valid; the choice depends on
 where the sidecar trust boundary sits relative to the agent
 process.
@@ -197,13 +199,13 @@ The short version:
   redaction at the receipt-write boundary using
   `redact_args(tool_name, dict(args or {}),
   policy=_DEFAULT_REDACTION_POLICY)`.
-- The eleven sibling adapters run agent code in a separate
+- The twelve sibling adapters run agent code in a separate
   process from the sidecar (separate container, separate VM,
   separate trust boundary). On-the-wire trust favours
   pre-evaluation: `redact_args` (or `bind_and_redact` when the
   wrapper sees `(*args, **kwargs)`) runs in the wrapper before
   `ChioClient.evaluate_tool_call` is called, so the sidecar
-  never sees the real bytes.
+  never sees the body bytes.
 
 Both paths use the same `chio_adapter_base.redact` module; only
 the call site differs. Choose based on your sidecar deployment

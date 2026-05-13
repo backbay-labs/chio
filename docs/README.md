@@ -66,6 +66,14 @@ Entry points and maps for the Chio protocol documentation.
 - [Economic Layer](guides/ECONOMIC-LAYER.md)
 - [Web Backend Quickstart](guides/WEB_BACKEND_QUICKSTART.md)
 
+## Integrations
+
+- [Hermes Integration](integrations/HERMES.md) - wire Chio into the Hermes Agent via MCP server (Path A) or the native `chio-hermes` plugin (Path B)
+- [chio-adapter-base Integration](integrations/CHIO-ADAPTER-BASE.md) - shared security and receipt primitives that every Chio Python adapter depends on; pre-evaluation vs post-tool-call redaction reconciliation, per-adapter pin matrix
+- [Choosing the Redaction Boundary](integrations/CHOOSING_REDACTION_BOUNDARY.md) - decision tree for picking between pre-evaluation and post-tool-call redaction (and the matching helper)
+- [Adapter Migration Guide](integrations/MIGRATION_GUIDE.md) - docs-tree mirror of the in-package adapter-author migration recipe for `chio-adapter-base 0.1.x` -> `0.2.0`
+- [chio-adapter-base 0.2.0 Release Notes](integrations/RELEASE_NOTES_v0.2.0.md) - what shipped in `bind_and_redact` shape hardening + 6-axis coverage matrix
+
 ## Conformance
 
 - [Conformance Suite (Standalone Consumer Guide)](conformance.md) - external-implementer flow for the Chio cross-language conformance harness (`cargo install chio-conformance`, `chio conformance fetch-peers`, `chio conformance run`)
