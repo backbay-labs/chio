@@ -531,9 +531,21 @@ def _legacy_envelope(
                         # ``byte_count`` with the length of the stub repr,
                         # corrupting the audit trail. (Closes PR #680
                         # CursorM 3231239987 / P2 3231244182.)
+                        #
+                        # Match the exact stub fingerprint
+                        # ``{"omitted": True, "byte_count": int}`` (no
+                        # other keys) rather than just ``omitted is True``
+                        # so a user dict that happens to carry an
+                        # ``omitted`` flag plus real secrets does NOT slip
+                        # through unredacted. Closes PR #679 P2
+                        # 3231314233.
                         if (
                             isinstance(overflow_value, dict)
+                            and len(overflow_value) == 2
                             and overflow_value.get("omitted") is True
+                            and isinstance(
+                                overflow_value.get("byte_count"), int
+                            )
                         ):
                             continue
                         for canonical in protected_for_tool:

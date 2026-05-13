@@ -1044,3 +1044,69 @@ class TestArityOverflowFailClosed:
         assert params["args"][1]["byte_count"] != len(
             repr({"omitted": True, "byte_count": len(secret)})
         )
+
+    def test_user_dict_with_omitted_key_still_redacted(self) -> None:
+        """Regression for PR #679 P2 3231314233.
+
+        The interval-5 stub-skip guard checked only
+        ``isinstance(value, dict) and value.get("omitted") is True`` so
+        a user-supplied dict that happened to carry an ``omitted: True``
+        flag plus real secrets slipped through the overflow loop
+        unredacted. Tighten the guard to match the exact stub
+        fingerprint (``omitted is True`` AND a numeric ``byte_count`` AND
+        no other keys); user dicts with extra keys must continue to be
+        redacted via the protected canonical.
+        """
+        from chio_prefect.decorators import _task_parameters
+
+        def write(path: str) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        # User-supplied overflow positional that LOOKS like a stub (has
+        # ``omitted: True``) but carries an additional secret-bearing
+        # field. The guard MUST NOT skip this; the value must be
+        # redacted under the protected canonical.
+        user_dict = {"omitted": True, "user_field": "PROD_SECRET=abc123"}
+        params = _task_parameters(
+            ("/tmp", user_dict),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        import json
+
+        forwarded = json.dumps(params)
+        assert "PROD_SECRET" not in forwarded
+        # The overflow positional must be a fresh stub whose
+        # ``byte_count`` reflects the original user dict (its repr),
+        # not a passthrough of the user dict.
+        assert isinstance(params["args"][1], dict)
+        assert params["args"][1].get("omitted") is True
+        assert "user_field" not in params["args"][1]
+
+    def test_legit_stub_still_skipped_post_tightening(self) -> None:
+        """Companion to ``test_user_dict_with_omitted_key_still_redacted``:
+        an exact stub fingerprint
+        ``{"omitted": True, "byte_count": <int>}`` must continue to be
+        skipped so the kwonly-protected double-redaction regression
+        (3231244182) stays closed.
+        """
+        from chio_prefect.decorators import _task_parameters
+
+        def write(path: str) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        legit_stub = {"omitted": True, "byte_count": 42}
+        params = _task_parameters(
+            ("/tmp", legit_stub),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+        # The exact stub passes through unchanged (byte_count preserved).
+        assert params["args"][1] == {"omitted": True, "byte_count": 42}
