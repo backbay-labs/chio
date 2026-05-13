@@ -408,7 +408,7 @@ wheels = [
 
 [[package]]
 name = "chio-adapter-base"
-version = "0.1.1"
+version = "0.2.0"
 source = { directory = "../chio-adapter-base" }
 dependencies = [
     { name = "chio-sdk-python" },
@@ -427,7 +427,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "chio-prefect"
-version = "0.1.1"
+version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "chio-adapter-base" },
