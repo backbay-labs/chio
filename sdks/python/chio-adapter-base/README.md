@@ -27,39 +27,75 @@ package so the family can converge on one implementation.
 ## Where to redact: pre-evaluation vs post-tool-call
 
 There are two valid places to redact tool args, and they trade off
-defense-in-depth against per-call forensics:
+defense-in-depth against per-call forensics. The comparison table
+below is the single source of truth; the prose underneath expands on
+each row, and the decision tree at the end picks one given an
+adapter's deployment topology.
 
-**Pre-evaluation (the chio-langchain/llamaindex/crewai/iac/airflow/ray/
-temporal/langgraph/dagster/prefect pattern):** redact args BEFORE handing
-them to `ChioClient.evaluate_tool_call`. Pros: the sidecar (and its
-receipt log) never see secrets; defense-in-depth assumes the sidecar
-itself may be compromised or run in a less-trusted process. Cons: the
-sidecar's policy can't make decisions based on field content (e.g., "block
-if content contains 'API_KEY'"); the signed `parameter_hash` in the
-receipt is uniform across all chio_file_write calls (cannot distinguish
-which file was written). Use byte_count + path + tool_call_id together
-for forensic correlation.
+### Comparison: pre-evaluation vs post-tool-call
 
-**Post-tool-call (the chio-hermes pattern):** send raw args to
-`evaluate_tool_call`, then redact at the receipt-write boundary
-(`make_post_tool_call` in chio-hermes hooks.py). Pros: policy sees real
-content; parameter_hash is unique per call. Cons: secrets flow through
-the sidecar (must trust it); the sidecar's own logging must redact too
-(chio-api-protect handles this server-side via `redact_args` on the
-receipt-store path).
+| Pattern | Where redact runs | Sidecar sees | `parameter_hash` uniqueness | When to use | Who uses it (today) |
+| --- | --- | --- | --- | --- | --- |
+| **Pre-evaluation** | In the wrapper, BEFORE `ChioClient.evaluate_tool_call` | Stub `{"omitted": true, "byte_count": N}` only | Uniform across all calls to the same tool; correlate with `path` + `tool_call_id` + `byte_count` | Sidecar runs out-of-process (different trust boundary); operator policy is path-based, not content-based; defense-in-depth requires zero secrets on the sidecar wire | chio-langchain, chio-llamaindex, chio-crewai, chio-iac, chio-airflow, chio-ray, chio-temporal, chio-langgraph, chio-dagster, chio-prefect, chio-autogen, chio-streaming |
+| **Post-tool-call** | In a `post_tool_call` / receipt-write hook, AFTER the sidecar verdict | Raw payload (so policy can make content-based decisions) | Unique per call (sidecar hashes the real bytes) | Sidecar runs in-process or in the same trust boundary as the agent; policy needs to inspect content (e.g. "deny if `content` matches a secret pattern"); audit trail wants per-call provenance | chio-hermes |
 
-**Picking one:** chio-hermes embeds the sidecar in-process so the trust
-boundary is different; the 9 sibling adapters run agent code in a
-separate process from the sidecar, so the on-the-wire trust boundary
-favors pre-evaluation. Both are valid; choose based on your sidecar
-deployment topology.
+**Pre-evaluation prose.** Redact args BEFORE handing them to
+`ChioClient.evaluate_tool_call`. The sidecar (and its receipt log)
+never see secrets, so a compromised sidecar cannot exfiltrate
+`chio_file_write.content` body bytes. The trade-off is that the
+signed `parameter_hash` in the receipt is uniform across all
+`chio_file_write` calls (it hashes a fixed stub plus the path), so
+forensic correlation has to use `byte_count + path + tool_call_id`
+together rather than a single hash field. The `bind_and_redact`
+helper (added in 0.1.1, hardened in 0.2.0) is the canonical entry
+point for this pattern when the wrapper sees the tool call as
+`(*args, **kwargs)` rather than as a pre-named dict.
 
-The `bind_and_redact` helper (added in 0.1.1) is the canonical entry
-point for the pre-evaluation pattern when the wrapper sees the tool call
-as ``(*args, **kwargs)`` rather than as a pre-named dict. Sibling
-adapters that previously hand-rolled inline ``_build_redacted_parameters``
-/ ``_redact_method_call`` / ``_task_parameters`` helpers can swap them
-for an import.
+**Post-tool-call prose.** Send raw args to `evaluate_tool_call`, then
+redact at the receipt-write boundary (see
+`make_post_tool_call` in `sdks/python/chio-hermes/src/chio_hermes/hooks.py`).
+Policy sees real content, so rules like "block if `content` contains
+`API_KEY`" are expressible. The trade-off: secrets flow through the
+sidecar, so the sidecar's own logging path must redact too
+(`chio-api-protect` handles this server-side via `redact_args` on the
+receipt-store path). This pattern only makes sense when the sidecar
+shares a trust boundary with the agent process, which is the case in
+chio-hermes (the plugin runs inside the Hermes process and the
+sidecar is a localhost HTTP listener mounted by the same operator).
+
+### Decision tree: which pattern fits your adapter
+
+Walk these top-down; the first "yes" picks your pattern.
+
+1. **Does your adapter run agent code in a separate process from the
+   Chio sidecar (separate container, separate VM, separate trust
+   boundary)?** -> Yes: **pre-evaluation**. The on-the-wire trust
+   boundary makes secrets-on-the-wire the dominant risk; redact before
+   the sidecar sees them. (This is every adapter in the table above
+   except chio-hermes.)
+2. **Does your adapter's policy need to make decisions based on field
+   content (e.g. "deny `chio_file_write` if `content` contains
+   credential-shaped strings")?** -> Yes: **post-tool-call**. The
+   policy must see the real bytes, so redaction has to happen
+   downstream of the verdict. Accept the trust-boundary cost.
+3. **Does your wrapper see the tool call as a pre-named `dict`
+   (i.e. `{"path": ..., "content": ...}` already), or does it see
+   `(*args, **kwargs)`?** -> Pre-named dict: call `redact_args`
+   directly. `(*args, **kwargs)`: call `bind_and_redact`, which
+   binds positional values to parameter names first, then runs
+   redaction over the named view, then rebuilds the original wire
+   shape so positional values stay positional and keyword values
+   stay keyword.
+4. **Are you adding the first redaction call to a brand-new
+   adapter?** -> Default to **pre-evaluation** with `bind_and_redact`.
+   It is the more conservative choice (defense-in-depth), and the
+   decision can be revisited if the policy needs content-aware rules
+   later.
+
+The chio-hermes precedent is documented in
+`docs/integrations/CHIO-ADAPTER-BASE.md` (this file's
+"chio-hermes precedent reconciliation" section); the migration
+mechanics for adapter authors live in `ADAPTER-MIGRATION.md`.
 
 ## Public API
 
