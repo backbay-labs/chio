@@ -25,12 +25,6 @@ rationale.
 > the in-package CHANGELOG that landed via PR #679 as authoritative.
 
 ### Added
-- `chio_adapter_base.redact.build_alias_map` public helper exposing
-  the wrapper-name -> canonical-name routing algorithm so adapters
-  with bespoke shapes can build a parallel alias map without
-  duplicating the implementation. Callable via the submodule path;
-  not re-exported from the top-level `chio_adapter_base` package
-  (promote on demand once a second adapter call site appears).
 - 26 new regression tests (115 -> 141) plus a 6-axis coverage matrix
   comment block at the top of `tests/test_bind_and_redact.py`
   mapping every cell to one or more named tests.
@@ -69,11 +63,13 @@ rationale.
   merge-conflict semantics for the variadic case (closes deferred
   IDs 3229566280 and 3229515822).
 
-### Breaking
-- `positional_table` argument is now LOCKED as REPLACES-the-default
-  semantics (current behavior). Callers that previously relied on
-  the chio-default table being merged with their custom override
-  must merge it themselves:
+### Documentation
+- `positional_table` argument is now explicitly documented as
+  REPLACES-the-default semantics; this matches the behaviour that
+  already shipped in v0.1.1 (the per-tool override was always read
+  as REPLACE in the v0.1.x helper). No code-level behaviour change.
+  Callers that want the chio-default table to coexist with a custom
+  override must merge it themselves:
 
   ```python
   from chio_adapter_base.redact import DEFAULT_TOOL_POSITIONAL_NAMES
@@ -86,11 +82,8 @@ rationale.
                   positional_table=my_table)
   ```
 
-  In practice no external consumer relies on extends semantics
-  (the per-tool override was always read as REPLACE in the v0.1.x
-  helper); this is documented as breaking for completeness. See
-  `ADAPTER-MIGRATION.md` section 5 for the migration recipe and
-  test assertions to add when collapsing a local helper.
+  See `ADAPTER-MIGRATION.md` section 5 for the recipe and the test
+  assertions to add when collapsing a local helper.
 
 ### Notes
 - Wire shape: `bind_and_redact` returns

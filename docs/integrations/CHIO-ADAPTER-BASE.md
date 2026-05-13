@@ -61,23 +61,32 @@ prefixes (`AWS_*`, `OPENAI_*`, `ANTHROPIC_*`, `GH_*`, `VAULT_*`,
 
 ### `harden_git_argv` (`security.py`)
 
-Force `git commit` to run with `--no-verify` (pre-commit /
+Inject `--no-verify` into `git commit` argv (pre-commit /
 commit-msg / prepare-commit-msg hooks execute repo-local scripts;
 treating them as inert would let an attacker who controls the
 repo escalate from "model can call git_commit" to arbitrary code
-execution) and reject other dangerous git argv shapes (e.g.
-`git push --force` to a non-mirror remote). Source:
-`security.py`.
+execution). Specifically: locate the `commit` subcommand, insert
+`--no-verify` immediately after it if not already present, and
+reject any explicit `--verify` (raised as `PermissionError`)
+because that would override the hardening. The helper is scoped
+to `git commit`; non-commit invocations are returned unchanged.
+Other dangerous shapes (e.g. `git push --force`) are out of scope
+for this helper. Source: `security.py`.
 
 ### `BoundedSubprocess` (`security.py`)
 
 Synchronous and async subprocess runner that caps each pipe at a
-per-stream byte limit (default 1 MiB). When the cap is hit the
-child is killed and the result envelope carries
-`output_truncated: True`. Without this cap, a `yes` or large
-`git diff` would buffer until OOM. Returns a
-`BoundedSubprocessResult` with stdout, stderr, return code,
-duration, and the truncation flag. Source: `security.py`.
+per-stream byte limit (default 1 MiB). When the cap is reached,
+additional output is discarded (not preserved) and the result
+envelope carries `output_truncated: True`; the subprocess itself
+continues running until it exits normally or trips the timeout.
+The reader threads keep draining past the cap so the producer
+never blocks on a full pipe (a blocked pipe would otherwise stall
+`wait()` and surface as a timeout instead of as truncation).
+Without this cap, a `yes` or large `git diff` would buffer until
+OOM. Returns a `BoundedSubprocessResult` dataclass with fields
+`argv`, `returncode`, `stdout`, `stderr`, `output_truncated`, and
+`timed_out`. Source: `security.py`.
 
 ### `ReceiptBuffer` (`receipts.py`)
 
@@ -133,14 +142,18 @@ axes:
 5. **Policy**: `chio_default()`, custom matching, custom
    non-matching.
 6. **`positional_table` override**: `None` (use chio default),
-   custom (REPLACES default per the v0.2.0 contract).
+   custom (REPLACES default; v0.3 explicitly documents the
+   REPLACE semantic that v0.1.1 already shipped).
 
 The chio-default positional-name table
 (`DEFAULT_TOOL_POSITIONAL_NAMES`) covers `chio_file_write` and
 `chio_file_edit` (the two body-bearing tools in the chio-default
-policy). Adapters with custom tools pass their own table; in
-v0.2.0 the custom table REPLACES the default rather than implicit
-extension (see `ADAPTER-MIGRATION.md` section 5 for the recipe).
+policy). Adapters with custom tools pass their own table; that
+custom table REPLACES the default rather than extending it (this
+is the behaviour that shipped in v0.1.1 and that v0.3 now
+explicitly documents). See `ADAPTER-MIGRATION.md` section 5 for
+the merge recipe when both the chio-default tools and custom
+tools need coverage from a single table.
 
 The helper preserves wire shape: positional values stay
 positional in the rebuilt `args`, keyword values stay keyword in

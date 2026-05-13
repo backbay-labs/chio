@@ -41,14 +41,15 @@ batch (#664-#675) exposed:
    kwarg has already supplied that slot (closes deferred IDs
    3229566280 and 3229515822).
 
-A new public helper `chio_adapter_base.redact.build_alias_map`
-exposes the wrapper-name -> canonical-name routing algorithm so
-adapters with bespoke shapes can build a parallel alias map without
-duplicating the implementation. It lives at the submodule path; the
-top-level `chio_adapter_base` package does not re-export it (yet).
+The wrapper-name -> canonical-name alias routing remains an
+internal implementation detail of `bind_and_redact`; there is no
+public `build_alias_map` helper to call. Adapters that want
+custom routing should pass a `positional_table` and rely on
+`bind_and_redact` to apply the alias logic.
 
-The `positional_table` argument's contract is also LOCKED as
-REPLACES-the-default semantics (see Section 5).
+The `positional_table` argument's contract is also explicitly
+documented as REPLACES-the-default semantics (see Section 5);
+this matches the behaviour that already shipped in v0.1.1.
 
 ## 2. If your adapter calls `bind_and_redact`
 
@@ -192,28 +193,20 @@ worked example lives at
 stable across rebases; commit SHAs are not, so cite the PR rather
 than a specific SHA.
 
-## 5. Custom `positional_table` semantic change: extends -> replaces
+## 5. Custom `positional_table` semantic clarification (REPLACES)
 
-This is the one behaviour change in 0.2.0 that a passive caller
-can hit. v0.1.x silently merged the caller's `positional_table`
-on top of `DEFAULT_TOOL_POSITIONAL_NAMES`. v0.2.0 treats the
-caller's table as authoritative; the chio default is no longer
-merged in implicitly.
+There is no code-level semantic change here: v0.1.1 already
+treated a caller-supplied `positional_table` as REPLACES-the-default
+(the chio-default table is not merged in implicitly). v0.3
+explicitly documents this so adapter authors do not have to read
+the source to confirm.
 
-Why the change: implicit extension hides the contract. An adapter
-that wants to redefine the positional ordering for `chio_file_write`
-(for example, exposing `(content, path)` instead of `(path, content)`
-because the wrapper's signature is in that order) cannot do so
-without `replace`. Implicit extend also makes it harder to audit
-what an adapter actually redacts; reading the call site no longer
-tells you the full table.
-
-### Migration recipe
-
-If your adapter only declares custom tools (no overlap with
-chio-default tool names), no code change is needed -- but add the
-chio-default merge anyway as a defensive measure in case a future
-chio-default tool name overlaps with yours:
+No code migration is required. The clarification is purely
+documentary: be aware that a custom `positional_table` fully
+replaces `DEFAULT_TOOL_POSITIONAL_NAMES` rather than extending it.
+If your adapter declares custom tools and you also want the
+chio-default entries (`chio_file_write`, `chio_file_edit`) to keep
+working, merge the default in explicitly:
 
 ```python
 from chio_adapter_base.redact import (
@@ -240,9 +233,8 @@ for `chio_file_write` or `chio_file_edit`, the `replace` semantic
 is what you wanted; document the override locally and do nothing
 else.
 
-If you cannot tell from your call site whether the implicit
-extend was load-bearing, audit by grepping for
-`positional_table=` in your adapter and inspecting each call's
+If you want to audit existing call sites, grep for
+`positional_table=` in your adapter and inspect each call's
 table contents:
 
 ```bash
@@ -251,7 +243,8 @@ grep -rn 'positional_table=' src/
 
 For each hit, if the table contains a chio-default tool name
 (`chio_file_write`, `chio_file_edit`), the override is
-intentional. If it contains only adapter-specific tool names,
+intentional. If it contains only adapter-specific tool names and
+you also want the chio-default entries to apply for those tools,
 add the spread shown above.
 
 ## 6. Testing your migration

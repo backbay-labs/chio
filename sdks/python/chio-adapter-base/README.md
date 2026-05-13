@@ -39,15 +39,20 @@ adapter's deployment topology.
 
 **Pre-evaluation prose.** Redact args BEFORE handing them to
 `ChioClient.evaluate_tool_call`. The sidecar (and its receipt log)
-never see secrets, so a compromised sidecar cannot exfiltrate
-`chio_file_write.content` body bytes. The trade-off is that the
-signed `parameter_hash` in the receipt is uniform across all
-`chio_file_write` calls (it hashes a fixed stub plus the path), so
-forensic correlation has to use `byte_count + path + tool_call_id`
-together rather than a single hash field. The `bind_and_redact`
-helper (added in 0.1.1, hardened in 0.2.0) is the canonical entry
-point for this pattern when the wrapper sees the tool call as
-`(*args, **kwargs)` rather than as a pre-named dict.
+see the redacted-stub for protected fields only
+(`chio_file_write.content`, `chio_file_edit.patch`); other
+parameters such as `path` pass through verbatim, so a compromised
+sidecar cannot exfiltrate body bytes but can still see file paths.
+The signed `parameter_hash` in the receipt is uniform across calls
+only for the redacted slot's byte count; the hash still varies with
+the preserved non-body fields (path, command, ...) and with
+`byte_count` itself, so two calls that write different bodies of
+different sizes to the same path produce different hashes. Forensic
+correlation uses `path + byte_count + tool_call_id` together rather
+than expecting per-call uniqueness from a single hash field. The
+`bind_and_redact` helper (added in 0.1.1, hardened in 0.2.0) is the
+canonical entry point for this pattern when the wrapper sees the
+tool call as `(*args, **kwargs)` rather than as a pre-named dict.
 
 **Post-tool-call prose.** Send raw args to `evaluate_tool_call`, then
 redact at the receipt-write boundary (see
