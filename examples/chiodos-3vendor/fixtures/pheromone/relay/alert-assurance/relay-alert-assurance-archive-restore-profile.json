@@ -1,0 +1,11 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-archive-restore-profile.v1",
+  "localKernelId": "did:chio:buyer-kernel",
+  "profileId": "relay-archive-restore-profile",
+  "maxPackageCount": 8,
+  "requireGenerationContinuity": true,
+  "requirePhysicalReadback": true,
+  "requireRetentionHandoffReady": true,
+  "issuedAtUnixMs": 1766000000000,
+  "expiresAtUnixMs": 1766000900000
+}

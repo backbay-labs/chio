@@ -378,21 +378,18 @@ fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> Result<(), 
         .to_ascii_lowercase();
 
     if lower.ends_with(".tar.gz") || lower.ends_with(".tgz") {
-        let archive_file = fs::File::open(archive).map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to open archive `{}`: {error}",
-                archive.display(),
-            ))
-        })?;
-        let decompressed = flate2::read::GzDecoder::new(archive_file);
-        let mut tar = tar::Archive::new(decompressed);
-        tar.unpack(dest).map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to extract `{}` into `{}`: {error}",
-                archive.display(),
-                dest.display(),
-            ))
-        })?;
+        let entries = crate::archive::read_tar_gz_file(
+            archive,
+            "Chio conformance archive",
+            crate::archive::SafeArchiveLimits {
+                max_compressed_bytes: 128 * 1024 * 1024,
+                max_member_bytes: 128 * 1024 * 1024,
+                max_total_bytes: 512 * 1024 * 1024,
+                max_member_count: 4096,
+                max_decompression_ratio: 200,
+            },
+        )?;
+        crate::archive::write_entries_to_existing_dir(dest, "Chio conformance archive", &entries)?;
         Ok(())
     } else if lower.ends_with(".zip") {
         Err(CliError::cli_other_error(format!(
@@ -450,6 +447,27 @@ mod conformance_error_tests {
         }
     }
 
+    fn write_test_tar_gz(path: &Path, entries: &[(&str, &[u8])]) {
+        let file = fs::File::create(path).unwrap();
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        for (name, bytes) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(u64::try_from(bytes.len()).unwrap());
+            header.set_mode(0o600);
+            header.set_uid(0);
+            header.set_gid(0);
+            header.set_mtime(0);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, *name, std::io::Cursor::new(*bytes))
+                .unwrap();
+        }
+        builder.finish().unwrap();
+        let encoder = builder.into_inner().unwrap();
+        encoder.finish().unwrap();
+    }
+
     #[test]
     fn invalid_report_format_uses_cli_registry_domain() {
         let err = match parse_report_format(Some("xml")) {
@@ -466,6 +484,64 @@ mod conformance_error_tests {
             Err(err) => err,
         };
         assert_cli_error(err, "unsupported --peer value");
+    }
+
+    #[test]
+    fn conformance_archive_hardening_extracts_regular_nested_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("peer.tar.gz");
+        let dest = temp.path().join("extract");
+        fs::create_dir_all(&dest).unwrap();
+        write_test_tar_gz(&archive, &[("bin/peer", b"peer-binary")]);
+
+        extract_archive(&archive, &dest, "https://example.invalid/peer.tar.gz").unwrap();
+
+        assert_eq!(fs::read(dest.join("bin/peer")).unwrap(), b"peer-binary");
+    }
+
+    #[test]
+    fn conformance_archive_hardening_rejects_backslash_member() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("peer.tar.gz");
+        let dest = temp.path().join("extract");
+        fs::create_dir_all(&dest).unwrap();
+        write_test_tar_gz(&archive, &[("bad\\path", b"owned")]);
+
+        let err = match extract_archive(&archive, &dest, "https://example.invalid/peer.tar.gz") {
+            Ok(()) => panic!("expected backslash archive to fail"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("not portable"), "{err}");
+        assert!(!temp.path().join("escape").exists());
+    }
+
+    #[test]
+    fn conformance_archive_hardening_rejects_symlink_member() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("peer.tar.gz");
+        let file = fs::File::create(&archive).unwrap();
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_size(0);
+        header.set_mode(0o777);
+        header.set_link_name("../escape").unwrap();
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "bin/peer", std::io::empty())
+            .unwrap();
+        builder.finish().unwrap();
+        let encoder = builder.into_inner().unwrap();
+        encoder.finish().unwrap();
+        let dest = temp.path().join("extract");
+        fs::create_dir_all(&dest).unwrap();
+
+        let err = match extract_archive(&archive, &dest, "https://example.invalid/peer.tar.gz") {
+            Ok(()) => panic!("expected symlink archive to fail"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("non-regular"), "{err}");
     }
 
     #[test]

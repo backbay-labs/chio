@@ -17,8 +17,9 @@ use chio_pheromone::{
 use chio_pheromone_relay::{
     deliver_due_batches, evaluate_relay_alert_acknowledgement, evaluate_relay_alert_delivery,
     evaluate_relay_alert_handoff, evaluate_relay_alerts,
-    generate_relay_alert_assurance_archive_report, generate_relay_alert_assurance_closeout_report,
-    generate_relay_alert_assurance_package,
+    generate_relay_alert_assurance_archive_report,
+    generate_relay_alert_assurance_archive_restore_drill_report,
+    generate_relay_alert_assurance_closeout_report, generate_relay_alert_assurance_package,
     generate_relay_alert_assurance_physical_archive_drill_report,
     generate_relay_alert_assurance_recovery_drill_report,
     generate_relay_alert_assurance_replay_report,
@@ -38,7 +39,8 @@ use chio_pheromone_relay::{
     PheromoneRelayService, RelayAlertAcknowledgementInput,
     RelayAlertAssuranceArchiveBundleCandidate, RelayAlertAssuranceArchiveInput,
     RelayAlertAssuranceArchivePackageBuildInput, RelayAlertAssuranceArchivePackageVerifyInput,
-    RelayAlertAssuranceArchiveProfileDocument, RelayAlertAssuranceCloseoutInput,
+    RelayAlertAssuranceArchiveProfileDocument, RelayAlertAssuranceArchiveRestoreDrillInput,
+    RelayAlertAssuranceArchiveRestoreProfileDocument, RelayAlertAssuranceCloseoutInput,
     RelayAlertAssuranceCloseoutProfileDocument, RelayAlertAssuranceExportBuildInput,
     RelayAlertAssuranceInput, RelayAlertAssurancePhysicalArchiveDrillInput,
     RelayAlertAssurancePhysicalArchiveEvidence, RelayAlertAssuranceRecoveryDrillInput,
@@ -47,7 +49,7 @@ use chio_pheromone_relay::{
     RelayAlertAssuranceRetentionInput, RelayAlertAssuranceRetentionProfileDocument,
     RelayAlertAssuranceRetentionRule, RelayAlertAssuranceTrustedArchivePackager,
     RelayAlertAssuranceTrustedArchivePackagersDocument, RelayAlertAssuranceTrustedExporter,
-    RelayAlertAssuranceTrustedExportersDocument, RelayAlertDeliveryDriftInputV2,
+    RelayAlertAssuranceTrustedExportersDocument, RelayAlertCheck, RelayAlertDeliveryDriftInputV2,
     RelayAlertDeliveryEvidence, RelayAlertDeliveryInput, RelayAlertDeliveryProfileDocument,
     RelayAlertDeliveryReceiver, RelayAlertDeliveryStatus, RelayAlertEvaluationInput,
     RelayAlertHandoffDriftInput, RelayAlertHandoffEscalation, RelayAlertHandoffInput,
@@ -66,6 +68,8 @@ use chio_pheromone_relay::{
     PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_DRILL_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_CLOSEOUT_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_CLOSEOUT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_EXPORT_MANIFEST_SCHEMA,
@@ -2367,6 +2371,88 @@ fn trusted_archive_packagers(
     }
 }
 
+fn archive_restore_profile() -> RelayAlertAssuranceArchiveRestoreProfileDocument {
+    RelayAlertAssuranceArchiveRestoreProfileDocument {
+        schema: PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_PROFILE_SCHEMA.to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        profile_id: "relay-archive-restore-profile".to_string(),
+        max_package_count: 8,
+        require_generation_continuity: true,
+        require_physical_readback: true,
+        require_retention_handoff_ready: true,
+        issued_at_unix_ms: NOW - 1_000,
+        expires_at_unix_ms: NOW + 900_000,
+    }
+}
+
+fn restore_package_report(
+    generation: u64,
+    previous_package_manifest_sha256: Option<String>,
+) -> chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport {
+    chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport {
+        schema: PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_REPORT_SCHEMA.to_string(),
+        accepted: true,
+        code: "accepted".to_string(),
+        local_kernel_id: "did:chio:buyer-kernel".to_string(),
+        generated_at_unix_ms: NOW + generation,
+        package_id: format!("relay-archive-package-{generation}"),
+        package_generation: generation,
+        previous_package_manifest_sha256,
+        package_manifest_sha256: format!("{generation:064x}"),
+        source_archive_report_sha256: "a".repeat(64),
+        source_closeout_report_sha256: "b".repeat(64),
+        package_member_count: 4,
+        package_total_byte_count: 1024,
+        bundle_count: 1,
+        trusted_packager_verified: true,
+        nested_exporter_verified: true,
+        source_reports_matched: true,
+        closeout_ready_verified: true,
+        total_byte_count_matched: true,
+        extractable: true,
+        checks: vec![RelayAlertCheck {
+            code: "accepted".to_string(),
+            accepted: true,
+            detail: "test package report".to_string(),
+        }],
+    }
+}
+
+fn physical_drill_for_package(
+    package_report: &chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport,
+) -> chio_pheromone_relay::RelayAlertAssurancePhysicalArchiveDrillReport {
+    chio_pheromone_relay::RelayAlertAssurancePhysicalArchiveDrillReport {
+        schema: PHEROMONE_RELAY_ALERT_ASSURANCE_PHYSICAL_ARCHIVE_DRILL_REPORT_SCHEMA.to_string(),
+        accepted: true,
+        code: "accepted".to_string(),
+        local_kernel_id: package_report.local_kernel_id.clone(),
+        generated_at_unix_ms: NOW + 20_000,
+        evidence_id: format!("physical-{}", package_report.package_generation),
+        package_id: package_report.package_id.clone(),
+        package_report_sha256: canonical_digest(package_report),
+        sampled_member_count: 1,
+        checks: vec![],
+    }
+}
+
+fn handoff_for_package(
+    package_report: &chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport,
+) -> chio_pheromone_relay::RelayAlertAssuranceRetentionHandoffReport {
+    chio_pheromone_relay::RelayAlertAssuranceRetentionHandoffReport {
+        schema: PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_REPORT_SCHEMA.to_string(),
+        accepted: true,
+        code: "accepted".to_string(),
+        local_kernel_id: package_report.local_kernel_id.clone(),
+        generated_at_unix_ms: NOW + 20_000,
+        evidence_id: format!("handoff-{}", package_report.package_generation),
+        package_id: package_report.package_id.clone(),
+        package_report_sha256: canonical_digest(package_report),
+        target_system_alias: "retention-vault".to_string(),
+        ready_for_operator_handoff: true,
+        checks: vec![],
+    }
+}
+
 fn archive_profile_for_export() -> RelayAlertAssuranceArchiveProfileDocument {
     RelayAlertAssuranceArchiveProfileDocument {
         schema: PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PROFILE_SCHEMA.to_string(),
@@ -2597,6 +2683,8 @@ fn relay_alert_assurance_archive_package_signs_and_verifies_selected_bundles() {
             package_id: "relay-alert-assurance-archive-package-001",
             packager_id: "relay-archive-packager",
             packager_key_id: "relay-archive-packager-key-1",
+            package_generation: 1,
+            previous_package_report: None,
             signing_key: &packager,
             bundles: &[candidate_a, candidate_b],
             trusted_exporters: &trusted_exporters,
@@ -2657,6 +2745,10 @@ fn relay_alert_assurance_archive_package_signs_and_verifies_selected_bundles() {
         report.source_closeout_report_sha256,
         canonical_digest(&closeout)
     );
+    assert_eq!(report.package_generation, 1);
+    assert!(report.source_reports_matched);
+    assert!(report.closeout_ready_verified);
+    assert!(report.total_byte_count_matched);
 }
 
 #[test]
@@ -2693,6 +2785,8 @@ fn relay_alert_assurance_archive_package_rejects_untrusted_and_unsafe_inputs() {
             package_id: "relay-alert-assurance-archive-package-negative",
             packager_id: "relay-archive-packager",
             packager_key_id: "relay-archive-packager-key-1",
+            package_generation: 1,
+            previous_package_report: None,
             signing_key: &packager,
             bundles: std::slice::from_ref(&candidate),
             trusted_exporters: &trusted_exporters,
@@ -2729,6 +2823,66 @@ fn relay_alert_assurance_archive_package_rejects_untrusted_and_unsafe_inputs() {
     )
     .unwrap_err();
     assert_eq!(err.code(), "archive_package_invalid");
+}
+
+#[test]
+fn relay_alert_assurance_archive_hardening_tracks_generations_and_restore_readiness() {
+    let first = restore_package_report(1, None);
+    let second = restore_package_report(2, Some(first.package_manifest_sha256.clone()));
+    let physical = vec![
+        physical_drill_for_package(&first),
+        physical_drill_for_package(&second),
+    ];
+    let handoff = vec![handoff_for_package(&first), handoff_for_package(&second)];
+
+    let report = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: &[first.clone(), second.clone()],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        report.schema,
+        PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_DRILL_REPORT_SCHEMA
+    );
+    assert!(report.accepted);
+    assert_eq!(report.package_count, 2);
+    assert_eq!(report.latest_package_generation, 2);
+    assert_eq!(report.quarantine_count, 0);
+}
+
+#[test]
+fn relay_alert_assurance_archive_hardening_blocks_generation_gap() {
+    let first = restore_package_report(1, None);
+    let third = restore_package_report(3, Some(first.package_manifest_sha256.clone()));
+    let physical = vec![
+        physical_drill_for_package(&first),
+        physical_drill_for_package(&third),
+    ];
+    let handoff = vec![handoff_for_package(&first), handoff_for_package(&third)];
+
+    let report = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: &[first, third],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!report.accepted);
+    assert_eq!(report.code, "restore_blocked");
+    assert!(report
+        .packages
+        .iter()
+        .any(|package| package.code == "generation_gap"));
 }
 
 #[test]

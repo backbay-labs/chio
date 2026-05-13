@@ -4,6 +4,7 @@ import {
   fetchRelayAlertAssuranceArchiveExtractionReport,
   fetchRelayAlertAssuranceArchivePackageReport,
   fetchRelayAlertAssuranceArchiveReport,
+  fetchRelayAlertAssuranceArchiveRestoreDrillReport,
   fetchRelayAlertAssuranceCloseoutReport,
   fetchRelayAlertAssuranceExportReport,
   fetchRelayAlertAssurancePackage,
@@ -16,6 +17,7 @@ import type {
   RelayAlertAssuranceArchiveExtractionReport,
   RelayAlertAssuranceArchivePackageReport,
   RelayAlertAssuranceArchiveReport,
+  RelayAlertAssuranceArchiveRestoreDrillReport,
   RelayAlertAssuranceCloseoutReport,
   RelayAlertAssuranceExportReport,
   RelayAlertAssurancePackage,
@@ -45,6 +47,7 @@ export function RelayAlertAssuranceSummary() {
     closeoutReport: RelayAlertAssuranceCloseoutReport | null
     archivePackageReport: RelayAlertAssuranceArchivePackageReport | null
     extractionReport: RelayAlertAssuranceArchiveExtractionReport | null
+    restoreReport: RelayAlertAssuranceArchiveRestoreDrillReport | null
     physicalArchiveReport: RelayAlertAssurancePhysicalArchiveDrillReport | null
     retentionHandoffReport: RelayAlertAssuranceRetentionHandoffReport | null
   }>({
@@ -56,6 +59,7 @@ export function RelayAlertAssuranceSummary() {
     closeoutReport: null,
     archivePackageReport: null,
     extractionReport: null,
+    restoreReport: null,
     physicalArchiveReport: null,
     retentionHandoffReport: null,
   })
@@ -73,6 +77,7 @@ export function RelayAlertAssuranceSummary() {
       fetchRelayAlertAssuranceCloseoutReport(),
       fetchRelayAlertAssuranceArchivePackageReport(),
       fetchRelayAlertAssuranceArchiveExtractionReport(),
+      fetchRelayAlertAssuranceArchiveRestoreDrillReport(),
       fetchRelayAlertAssurancePhysicalArchiveDrillReport(),
       fetchRelayAlertAssuranceRetentionHandoffReport(),
     ])
@@ -85,6 +90,7 @@ export function RelayAlertAssuranceSummary() {
         closeoutResult,
         archivePackageResult,
         extractionResult,
+        restoreResult,
         physicalArchiveResult,
         retentionHandoffResult,
       ]) => {
@@ -98,6 +104,7 @@ export function RelayAlertAssuranceSummary() {
             closeoutReport: closeoutResult.status === 'fulfilled' ? closeoutResult.value : null,
             archivePackageReport: archivePackageResult.status === 'fulfilled' ? archivePackageResult.value : null,
             extractionReport: extractionResult.status === 'fulfilled' ? extractionResult.value : null,
+            restoreReport: restoreResult.status === 'fulfilled' ? restoreResult.value : null,
             physicalArchiveReport: physicalArchiveResult.status === 'fulfilled' ? physicalArchiveResult.value : null,
             retentionHandoffReport: retentionHandoffResult.status === 'fulfilled' ? retentionHandoffResult.value : null,
           })
@@ -115,6 +122,7 @@ export function RelayAlertAssuranceSummary() {
             closeoutReport: null,
             archivePackageReport: null,
             extractionReport: null,
+            restoreReport: null,
             physicalArchiveReport: null,
             retentionHandoffReport: null,
           })
@@ -159,6 +167,9 @@ export function RelayAlertAssuranceSummary() {
   const extractionStatus = state.extractionReport?.accepted
     ? 'safe'
     : (state.extractionReport?.code ?? 'unknown')
+  const restoreStatus = state.restoreReport?.accepted
+    ? 'ready'
+    : (state.restoreReport?.code ?? 'unknown')
   const physicalStatus = state.physicalArchiveReport?.accepted
     ? 'readback'
     : (state.physicalArchiveReport?.code ?? 'unknown')
@@ -234,9 +245,14 @@ export function RelayAlertAssuranceSummary() {
           <strong className="operator-card-value">{archivePackageStatus}</strong>
           <div className="operator-card-metrics">
             <span>extraction {extractionStatus}</span>
-            <span>{state.archivePackageReport?.packageMemberCount ?? 0} members</span>
+            <span>generation {state.archivePackageReport?.packageGeneration ?? 'unknown'}</span>
           </div>
           <div className="operator-card-metrics">
+            <span>restore {restoreStatus}</span>
+            <span>{state.restoreReport?.quarantineCount ?? 0} quarantine</span>
+          </div>
+          <div className="operator-card-metrics">
+            <span>{state.archivePackageReport?.packageMemberCount ?? 0} members</span>
             <span>readback {physicalStatus}</span>
             <span>handoff {handoffStatus}</span>
           </div>
