@@ -6,6 +6,7 @@ import {
   fetchRelayAlertAssuranceArchiveReport,
   fetchRelayAlertAssuranceArchiveRestoreDrillReport,
   fetchRelayAlertAssuranceCloseoutReport,
+  fetchRelayAlertAssuranceExternalRetentionReviewReport,
   fetchRelayAlertAssuranceExportReport,
   fetchRelayAlertAssurancePackage,
   fetchRelayAlertAssurancePhysicalArchiveDrillReport,
@@ -19,6 +20,7 @@ import type {
   RelayAlertAssuranceArchiveReport,
   RelayAlertAssuranceArchiveRestoreDrillReport,
   RelayAlertAssuranceCloseoutReport,
+  RelayAlertAssuranceExternalRetentionReviewReport,
   RelayAlertAssuranceExportReport,
   RelayAlertAssurancePackage,
   RelayAlertAssurancePhysicalArchiveDrillReport,
@@ -50,6 +52,7 @@ export function RelayAlertAssuranceSummary() {
     restoreReport: RelayAlertAssuranceArchiveRestoreDrillReport | null
     physicalArchiveReport: RelayAlertAssurancePhysicalArchiveDrillReport | null
     retentionHandoffReport: RelayAlertAssuranceRetentionHandoffReport | null
+    externalRetentionReport: RelayAlertAssuranceExternalRetentionReviewReport | null
   }>({
     packageReport: null,
     exportReport: null,
@@ -62,6 +65,7 @@ export function RelayAlertAssuranceSummary() {
     restoreReport: null,
     physicalArchiveReport: null,
     retentionHandoffReport: null,
+    externalRetentionReport: null,
   })
   const [loading, setLoading] = useState(true)
 
@@ -80,6 +84,7 @@ export function RelayAlertAssuranceSummary() {
       fetchRelayAlertAssuranceArchiveRestoreDrillReport(),
       fetchRelayAlertAssurancePhysicalArchiveDrillReport(),
       fetchRelayAlertAssuranceRetentionHandoffReport(),
+      fetchRelayAlertAssuranceExternalRetentionReviewReport(),
     ])
       .then(([
         packageResult,
@@ -93,6 +98,7 @@ export function RelayAlertAssuranceSummary() {
         restoreResult,
         physicalArchiveResult,
         retentionHandoffResult,
+        externalRetentionResult,
       ]) => {
         if (!cancelled) {
           setState({
@@ -107,6 +113,8 @@ export function RelayAlertAssuranceSummary() {
             restoreReport: restoreResult.status === 'fulfilled' ? restoreResult.value : null,
             physicalArchiveReport: physicalArchiveResult.status === 'fulfilled' ? physicalArchiveResult.value : null,
             retentionHandoffReport: retentionHandoffResult.status === 'fulfilled' ? retentionHandoffResult.value : null,
+            externalRetentionReport:
+              externalRetentionResult.status === 'fulfilled' ? externalRetentionResult.value : null,
           })
           setLoading(false)
         }
@@ -125,6 +133,7 @@ export function RelayAlertAssuranceSummary() {
             restoreReport: null,
             physicalArchiveReport: null,
             retentionHandoffReport: null,
+            externalRetentionReport: null,
           })
           setLoading(false)
         }
@@ -176,6 +185,9 @@ export function RelayAlertAssuranceSummary() {
   const handoffStatus = state.retentionHandoffReport?.accepted
     ? 'ready'
     : (state.retentionHandoffReport?.code ?? 'unknown')
+  const externalRetentionStatus = state.externalRetentionReport?.accepted
+    ? 'ready'
+    : (state.externalRetentionReport?.code ?? 'unknown')
 
   return (
     <section className="operator-summary relay-alert-assurance" aria-label="Relay alert assurance">
@@ -255,6 +267,23 @@ export function RelayAlertAssuranceSummary() {
             <span>{state.archivePackageReport?.packageMemberCount ?? 0} members</span>
             <span>readback {physicalStatus}</span>
             <span>handoff {handoffStatus}</span>
+          </div>
+        </article>
+
+        <article className="operator-card">
+          <span className="operator-card-label">External Retention</span>
+          <strong className="operator-card-value">{externalRetentionStatus}</strong>
+          <div className="operator-card-metrics">
+            <span>
+              {state.externalRetentionReport?.readyCount ?? 0}/
+              {state.externalRetentionReport?.packageCount ?? 0} ready
+            </span>
+            <span>latest generation {state.externalRetentionReport?.latestPackageGeneration ?? 'unknown'}</span>
+          </div>
+          <div className="operator-card-metrics">
+            <span>{state.externalRetentionReport?.quarantineCount ?? 0} quarantine</span>
+            <span>{state.externalRetentionReport?.driftCount ?? 0} drift</span>
+            <span>{state.externalRetentionReport?.insufficientSampleCount ?? 0} insufficient sample</span>
           </div>
         </article>
       </div>

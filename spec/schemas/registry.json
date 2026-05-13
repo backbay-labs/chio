@@ -590,6 +590,24 @@
       "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-retention-handoff-report.schema.json"
     },
     {
+      "schema": "chio.pheromone.relay-alert-assurance-external-retention-profile.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_external_retention_profile",
+      "introducedBy": "chiodos-relay-alert-assurance-external-retention/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-external-retention-profile.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-external-retention-review-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_external_retention_review_report",
+      "introducedBy": "chiodos-relay-alert-assurance-external-retention/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-external-retention-review-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-external-retention-negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_external_retention_negative_fixture_corpus",
+      "introducedBy": "chiodos-relay-alert-assurance-external-retention/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-external-retention-negative-fixture-corpus.schema.json"
+    },
+    {
       "schema": "chio.pheromone.relay-alert-assurance-archive-package-negative-fixture-corpus.v1",
       "artifactKind": "chiodos_pheromone_relay_alert_assurance_archive_package_negative_fixture_corpus",
       "introducedBy": "chiodos-relay-alert-assurance-archive-package/v1",

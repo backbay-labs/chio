@@ -2122,6 +2122,84 @@ mod cli_entrypoint_tests {
             "relay",
             "alert",
             "assurance",
+            "retention",
+            "external-review",
+            "--package-dir",
+            "archive-packages",
+            "--source-report-dir",
+            "archive-source-reports",
+            "--trusted-packagers",
+            "trusted-archive-packagers.json",
+            "--trusted-exporters",
+            "trusted-exporters.json",
+            "--profile",
+            "relay-alert-assurance-external-retention-profile.json",
+            "--since-unix-ms",
+            "1766000000000",
+            "--until-unix-ms",
+            "1766000200000",
+            "--now-unix-ms",
+            "1766000100000",
+            "--report",
+            "relay-alert-assurance-external-retention-review-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Alert {
+                                        command:
+                                            ChiodosPheromoneRelayAlertCommands::Assurance {
+                                                command:
+                                                    ChiodosPheromoneRelayAlertAssuranceCommands::Retention {
+                                                        command:
+                                                            ChiodosPheromoneRelayAlertAssuranceRetentionCommands::ExternalReview {
+                                                                package_dir,
+                                                                source_report_dir,
+                                                                profile,
+                                                                report,
+                                                                ..
+                                                            },
+                                                    },
+                                            },
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(package_dir, std::path::PathBuf::from("archive-packages"));
+                assert_eq!(
+                    source_report_dir,
+                    std::path::PathBuf::from("archive-source-reports")
+                );
+                assert_eq!(
+                    profile,
+                    std::path::PathBuf::from(
+                        "relay-alert-assurance-external-retention-profile.json"
+                    )
+                );
+                assert_eq!(
+                    report,
+                    std::path::PathBuf::from(
+                        "relay-alert-assurance-external-retention-review-report.json"
+                    )
+                );
+            }
+            _ => panic!(
+                "expected chiodos pheromone relay alert assurance retention external-review subcommand"
+            ),
+        }
+
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "alert",
+            "assurance",
             "archive",
             "restore-drill",
             "review",

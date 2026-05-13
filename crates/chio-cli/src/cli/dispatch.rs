@@ -2803,6 +2803,27 @@ fn main() {
                                         &report,
                                     ),
                                 },
+                                ChiodosPheromoneRelayAlertAssuranceRetentionCommands::ExternalReview {
+                                    package_dir,
+                                    source_report_dir,
+                                    trusted_packagers,
+                                    trusted_exporters,
+                                    profile,
+                                    since_unix_ms,
+                                    until_unix_ms,
+                                    now_unix_ms,
+                                    report,
+                                } => cmd_chiodos_pheromone_relay_alert_assurance_retention_external_review(
+                                    &package_dir,
+                                    &source_report_dir,
+                                    &trusted_packagers,
+                                    &trusted_exporters,
+                                    &profile,
+                                    since_unix_ms,
+                                    until_unix_ms,
+                                    now_unix_ms,
+                                    &report,
+                                ),
                             },
                             ChiodosPheromoneRelayAlertAssuranceCommands::RecoveryDrill {
                                 bundle_dir,
@@ -5011,6 +5032,75 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_retention_handoff_review(
         report,
         &handoff,
         "Chiodos relay alert assurance retention handoff report",
+    )
+}
+
+fn cmd_chiodos_pheromone_relay_alert_assurance_retention_external_review(
+    package_dir: &Path,
+    source_report_dir: &Path,
+    trusted_packagers: &Path,
+    trusted_exporters: &Path,
+    profile: &Path,
+    since_unix_ms: u64,
+    until_unix_ms: u64,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let package_reports = read_archive_restore_package_reports(
+        package_dir,
+        source_report_dir,
+        trusted_packagers,
+        trusted_exporters,
+        now_unix_ms,
+    )?;
+    let restore_drill_reports: Vec<
+        chio_pheromone_relay::RelayAlertAssuranceArchiveRestoreDrillReport,
+    > = read_relay_report_documents(
+        source_report_dir,
+        chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_DRILL_REPORT_SCHEMA,
+        "Chiodos relay alert assurance archive restore drill report",
+    )?;
+    let physical_drill_reports: Vec<
+        chio_pheromone_relay::RelayAlertAssurancePhysicalArchiveDrillReport,
+    > = read_relay_report_documents(
+        source_report_dir,
+        chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_PHYSICAL_ARCHIVE_DRILL_REPORT_SCHEMA,
+        "Chiodos relay alert assurance physical archive drill report",
+    )?;
+    let retention_handoff_reports: Vec<
+        chio_pheromone_relay::RelayAlertAssuranceRetentionHandoffReport,
+    > = read_relay_report_documents(
+        source_report_dir,
+        chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_REPORT_SCHEMA,
+        "Chiodos relay alert assurance retention handoff report",
+    )?;
+    let profile: chio_pheromone_relay::RelayAlertAssuranceExternalRetentionProfileDocument =
+        read_json_file(
+            profile,
+            "Chiodos relay alert assurance external retention profile",
+        )?;
+    let review =
+        chio_pheromone_relay::generate_relay_alert_assurance_external_retention_review_report(
+            chio_pheromone_relay::RelayAlertAssuranceExternalRetentionReviewInput {
+                package_reports: &package_reports,
+                restore_drill_reports: &restore_drill_reports,
+                physical_drill_reports: &physical_drill_reports,
+                retention_handoff_reports: &retention_handoff_reports,
+                profile: &profile,
+                since_unix_ms,
+                until_unix_ms,
+                now_unix_ms,
+            },
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos relay alert assurance external retention review: {error}"
+            ))
+        })?;
+    write_pretty_json(
+        report,
+        &review,
+        "Chiodos relay alert assurance external retention review report",
     )
 }
 

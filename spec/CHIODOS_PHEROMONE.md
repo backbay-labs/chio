@@ -656,3 +656,9 @@ guard against silent format drift.
   do not authorize deletion, moving, uploading, notification delivery,
   policy mutation, dynamic trust, new transports, settlement, hidden
   predicates, VC Data Integrity BBS, zkVM, or FROST.
+- External retention review is local evidence aggregation over archive
+  package, restore drill, physical readback, and retention handoff
+  reports. It may say a selected generation set is ready for
+  operator-managed review, blocked, stale, insufficient, drifted, or
+  quarantined. It must not claim external custody or call retention
+  systems.

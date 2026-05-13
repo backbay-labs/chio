@@ -1631,6 +1631,45 @@ enum ChiodosPheromoneRelayAlertAssuranceRetentionCommands {
         #[command(subcommand)]
         command: ChiodosPheromoneRelayAlertAssuranceRetentionHandoffCommands,
     },
+
+    /// Review local evidence for operator-managed external retention readiness.
+    ExternalReview {
+        /// Directory containing archive packages or archive package report JSON files.
+        #[arg(long, value_name = "DIR")]
+        package_dir: PathBuf,
+
+        /// Directory containing source archive, closeout, restore, physical, and handoff reports.
+        #[arg(long, value_name = "DIR")]
+        source_report_dir: PathBuf,
+
+        /// Trusted archive packager profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_packagers: PathBuf,
+
+        /// Trusted exporter profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_exporters: PathBuf,
+
+        /// External retention review profile JSON.
+        #[arg(long, value_name = "PATH")]
+        profile: PathBuf,
+
+        /// Start of review window in Unix milliseconds.
+        #[arg(long)]
+        since_unix_ms: u64,
+
+        /// End of review window in Unix milliseconds.
+        #[arg(long)]
+        until_unix_ms: u64,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for external retention review report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
