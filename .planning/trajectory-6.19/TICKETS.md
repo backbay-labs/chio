@@ -59,3 +59,9 @@ Status: completed
 Add CI path triggers, run final gates, open PR, resolve all review threads, merge, and rerun archive-hardening and archive-package gates on `main`.
 
 Status: in progress
+
+Notes:
+
+- Local final gates passed and draft PR #680 was opened against `codex/chiodos-6-18-archive-package-extraction` while 6.18 remains unmerged.
+- PR review threads were empty when checked after opening.
+- GitHub Actions did not start jobs because repository billing or spending limit prevented runner execution, so merge and post-merge `main` reruns remain blocked.
