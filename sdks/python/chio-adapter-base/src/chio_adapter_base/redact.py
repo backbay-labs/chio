@@ -1324,10 +1324,24 @@ def _table_fallback_redact(
         if skip_kwarg_filled_slots
         else []
     )
+    # Track which canonicals have already been claimed by a non-sentinel
+    # named_from_positional entry. Two distinct wrapper slot names can
+    # collide on the same canonical (e.g. ``def write_file(label, body,
+    # path)`` for chio_file_write whose alias map sends both ``label``
+    # and ``body`` to canonical ``content``). Without per-position
+    # routing the second slot's bare-name entry would survive in
+    # named_from_positional but the canonical-keyed redact view would
+    # drop one slot, and the rebuild would KeyError when looking up the
+    # missing wrapper-name. Mirror the overflow path: route the
+    # colliding slots through the sentinel/per-position redact pass so
+    # each value gets its own redacted record. (Closes PR #679 Cursor
+    # High 3231129174 + P2 3231134970.)
+    canonicals_claimed: set[str] = set()
     for idx, value in enumerate(args):
         if idx < len(slot_sequence):
             slot = slot_sequence[idx]
-            slot_to_canonical[slot] = _slot_canonical(slot)
+            canonical_for_slot = _slot_canonical(slot)
+            slot_to_canonical[slot] = canonical_for_slot
             # When the slot_sequence contains repeated names (the
             # variadic-padding case ``extended_positional_names ==
             # ("content", "content", "content")`` for ``def
@@ -1339,12 +1353,26 @@ def _table_fallback_redact(
             # overflow path so each value redacts and rebuilds
             # independently. (Closes Cursor Bugbot Medium 3230918235 on
             # PR #679.)
-            if slot in named_from_positional:
+            #
+            # Distinct slot names can also collide on the SAME canonical
+            # when the alias map fans two wrappers onto one protected
+            # field (the ``def write_file(label, body, path)`` shape for
+            # chio_file_write under the ambiguous-fail-closed cycling).
+            # The bare-slot dict entry survives, but the canonical-keyed
+            # redact view drops one of the two slots, and the rebuild
+            # KeyErrors on the missing wrapper-name. Route the colliding
+            # slot through the sentinel path too so every position keeps
+            # its own redacted record.
+            if (
+                slot in named_from_positional
+                or canonical_for_slot in canonicals_claimed
+            ):
                 sentinel_key = f"__overflow_{idx}__{slot}"
                 named_from_positional[sentinel_key] = value
                 positional_to_slot.append(sentinel_key)
                 continue
             named_from_positional[slot] = value
+            canonicals_claimed.add(canonical_for_slot)
             positional_to_slot.append(slot)
             continue
         if overflow_pos_idx < len(overflow_slots):

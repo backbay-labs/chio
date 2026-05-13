@@ -1816,6 +1816,46 @@ def test_signature_path_swap_detected_ambiguous_fixed_aliases_redact_all() -> No
     assert args[2] == "/tmp"
 
 
+def test_typeerror_fallback_colliding_positional_aliases_redact_independently() -> None:
+    """Regression for PR #679 Cursor High 3231129174 + P2 3231134970.
+
+    ``def write_file(label, body, path)`` invoked positionally AND with
+    ``path='/tmp'`` as a kwarg triggers ``bind_partial`` TypeError
+    (``path`` duplicated across positional + kwarg). The TypeError
+    fallback builds an ambiguous-fail-closed alias map sending BOTH
+    ``label`` and ``body`` to canonical ``content``. Earlier versions
+    keyed the canonical-redact view by canonical name, so the second
+    slot silently overwrote the first in the dict view, and the
+    rebuild ``KeyError``-crashed when looking up the missing wrapper-
+    name.
+
+    The fix mirrors the overflow path: detect that two wrapper slot
+    names collide on the same canonical and route the second slot
+    through a per-position sentinel so each value redacts and rebuilds
+    independently. Both stubs must report DISTINCT byte_counts
+    (4 != 11) so a future regression that re-uses one slot's record
+    for both positions cannot hide.
+    """
+
+    def write_file(label: str, body: str, path: str) -> None:
+        del label, body, path
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("safe", "PROD_SECRET", "/tmp"),
+        {"path": "/tmp"},
+        tool_name="chio_file_write",
+    )
+    assert kwargs == {"path": "/tmp"}
+    assert args[0] == {"omitted": True, "byte_count": len(b"safe")}
+    assert args[1] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    assert args[2] == "/tmp"
+    # Distinct byte counts guard the per-position keying: if a future
+    # regression collapses the two slots onto a single canonical record
+    # again, both args[0] and args[1] would report the same byte_count.
+    assert args[0]["byte_count"] != args[1]["byte_count"]
+
+
 def test_build_alias_map_is_importable_from_top_level() -> None:
     """Regression for PR #679 Cursor Bugbot Low 3231024465.
 

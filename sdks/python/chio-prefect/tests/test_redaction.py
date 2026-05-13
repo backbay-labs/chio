@@ -931,3 +931,79 @@ class TestVarPositionalNamedAfterBodyField:
             "omitted": True,
             "byte_count": len(b"SECRET_2"),
         }
+
+
+class TestArityOverflowFailClosed:
+    """Regression for PR #679 P2 3231181763.
+
+    A fixed-signature wrapper (no VAR_POSITIONAL) invoked with MORE
+    positional values than the signature accepts triggers
+    ``bind_partial`` TypeError. The bare ``bind_and_redact`` fallback
+    table redacts only up to the wrapper's last named slot and forwards
+    the rest raw. Pre-v0.3 prefect's ``_task_parameters`` instead
+    dropped the overflow positionals so an arity-invalid call could
+    never silently leak. The interval-3 shim delegated to
+    ``bind_and_redact`` and lost that fail-closed behaviour. This
+    re-establishes it: overflow values are redacted under each
+    protected canonical so the receipt audit log records "a secret was
+    attempted at position N" without crossing the wire.
+    """
+
+    def test_arity_overflow_positional_redacted_via_table(self) -> None:
+        from chio_prefect.decorators import _task_parameters
+
+        def write(path: str, content: str) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/tmp", "SECRET1", "SECRET2"),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        import json
+
+        forwarded = json.dumps(params)
+        assert "SECRET" not in forwarded
+        assert params["args"][0] == "/tmp"
+        # The signature's named ``content`` slot still redacts.
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"SECRET1"),
+        }
+        # Overflow position 2 redacts via the protected canonical so no
+        # raw secret crosses the wire.
+        assert params["args"][2] == {
+            "omitted": True,
+            "byte_count": len(b"SECRET2"),
+        }
+        assert params["kwargs"] == {}
+
+    def test_arity_overflow_with_var_positional_passes_through(
+        self,
+    ) -> None:
+        # Sanity check: a VAR_POSITIONAL wrapper is NOT treated as
+        # arity-overflow because all extras land in *args by design.
+        # Existing pass-through semantics are preserved.
+        from typing import Any
+
+        from chio_prefect.decorators import _task_parameters
+
+        def write(*args: Any, **kwargs: Any) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/tmp/x", "PROD_SECRET=abc123", "trailing-1", "trailing-2"),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        # Trailing args remain raw (not arity overflow; they fill *args).
+        assert params["args"][2] == "trailing-1"
+        assert params["args"][3] == "trailing-2"

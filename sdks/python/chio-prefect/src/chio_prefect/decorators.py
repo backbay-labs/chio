@@ -22,6 +22,7 @@ from typing import Any, TypeVar, cast, overload
 from chio_adapter_base.redact import (
     RedactionPolicy,
     bind_and_redact,
+    redact_args,
 )
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
@@ -470,6 +471,67 @@ def _legacy_envelope(
         tool_name=tool_name,
         policy=policy,
     )
+    # Arity-overflow fail-closed redaction. The bare ``bind_and_redact``
+    # fallback table forwards positional values past the wrapper's last
+    # named slot raw (``# Extras beyond the table entry stay positional
+    # and raw.``). Pre-v0.3 prefect's ``_task_parameters`` instead
+    # dropped overflow positionals entirely so an arity-invalid call
+    # such as ``write('/tmp', 'SECRET1', 'SECRET2')`` against
+    # ``def write(path, content)`` could never leak ``SECRET2`` on the
+    # wire. Re-establish that fail-closed contract here, but preserve
+    # the audit trail by REDACTING the overflow values under each
+    # protected canonical instead of dropping them. A future receipt
+    # consumer can see "a secret was attempted at position N" without
+    # the raw bytes ever crossing the wire. (Closes PR #679 P2
+    # 3231181763.)
+    redacted_arg_list = list(redacted_args)
+    if fn is not None and len(redacted_arg_list) > 0:
+        try:
+            overflow_sig = inspect.signature(fn)
+        except (TypeError, ValueError):
+            overflow_sig = None
+        if overflow_sig is not None:
+            has_var_positional = any(
+                p.kind is inspect.Parameter.VAR_POSITIONAL
+                for p in overflow_sig.parameters.values()
+            )
+            if not has_var_positional:
+                fixed_positional_arity = sum(
+                    1
+                    for p in overflow_sig.parameters.values()
+                    if p.kind
+                    in (
+                        inspect.Parameter.POSITIONAL_ONLY,
+                        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    )
+                )
+                protected_for_tool = policy.body_fields.get(tool_name) or ()
+                if (
+                    protected_for_tool
+                    and len(redacted_arg_list) > fixed_positional_arity
+                ):
+                    # Redact each overflow position under every protected
+                    # canonical so a value that would have matched any
+                    # protected slot fails closed. The first canonical
+                    # that yields a redaction wins; if none redact (the
+                    # value is genuinely non-secret and overflow is just
+                    # the caller's mistake) the raw value still rides
+                    # along.
+                    for overflow_idx in range(
+                        fixed_positional_arity, len(redacted_arg_list)
+                    ):
+                        overflow_value = redacted_arg_list[overflow_idx]
+                        for canonical in protected_for_tool:
+                            single = redact_args(
+                                tool_name,
+                                {canonical: overflow_value},
+                                policy=policy,
+                            )
+                            redacted_one = single[canonical]
+                            if redacted_one is not overflow_value:
+                                redacted_arg_list[overflow_idx] = redacted_one
+                                break
+    redacted_args = tuple(redacted_arg_list)
     # Detect the positional-only-spillover collision: the fn signature
     # has a positional-only param whose name appears as a kwarg AND
     # there is a VAR_KEYWORD spillover param. In that case prefect's
