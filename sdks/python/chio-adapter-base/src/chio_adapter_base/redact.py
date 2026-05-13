@@ -196,8 +196,13 @@ def _signature_or_none(fn: Callable[..., Any] | None) -> inspect.Signature | Non
         return None
 
 
-def _is_pure_forwarder(sig: inspect.Signature) -> bool:
-    """``True`` iff the signature has no fixed (named) parameters.
+def _is_pure_forwarder(
+    sig: inspect.Signature,
+    *,
+    protected_fields: tuple[str, ...] = (),
+) -> bool:
+    """``True`` iff the signature has no fixed (named) parameters AND no
+    VAR_POSITIONAL whose name is itself a protected field.
 
     Covers ``(*args, **kwargs)``, ``(*args)``-only, ``(**kwargs)``-only,
     and the empty signature ``()``. Any of these carries no positional
@@ -205,12 +210,24 @@ def _is_pure_forwarder(sig: inspect.Signature) -> bool:
     table fallback. Even an empty signature is treated as a forwarder so
     we surface the table mapping rather than silently dropping the
     parameters on a duplicate-name TypeError.
+
+    Exception: ``def upload(*payload)`` where ``payload`` is a protected
+    field for the current tool. The variadic name carries the wire
+    intent, so the signature path runs (not the table fallback) so each
+    extra is redacted under that name. Without this, the table fallback
+    would map ``args[0]`` to the table's slot 0 (often ``path``) and
+    miss the redaction entirely.
     """
     for param in sig.parameters.values():
         if param.kind in (
             inspect.Parameter.POSITIONAL_ONLY,
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
             inspect.Parameter.KEYWORD_ONLY,
+        ):
+            return False
+        if (
+            param.kind is inspect.Parameter.VAR_POSITIONAL
+            and param.name in protected_fields
         ):
             return False
     return True
@@ -241,6 +258,97 @@ def _redact_named(
 ) -> dict[str, Any]:
     """Apply ``policy`` to a name-keyed mapping; thin wrapper for clarity."""
     return redact_args(tool_name, parameters, policy=policy)
+
+
+def build_alias_map(
+    sig_positional_names: Sequence[str],
+    table_slots: Sequence[str],
+    protected_fields: Sequence[str],
+) -> dict[str, str]:
+    """Map wrapper sig names to canonical names for a per-tool table.
+
+    The two semantic guarantees:
+
+    1. A wrapper-name that itself matches a canonical (either in the
+       per-tool table or in the policy's protected fields) routes to
+       itself - the wrapper named the slot canonically, no aliasing
+       needed (and aliasing would corrupt the wire shape).
+    2. For unmatched wrapper-names we use index-based routing onto the
+       same-index table slot, EXCEPT when a name-position swap is
+       detected (a wrapper-name that IS a canonical but at a different
+       index than where it appears in the table). When swap is
+       detected, fall back to a "claim canonicals in declaration order
+       and route the unmatched wrapper-names to the unclaimed
+       canonicals" algorithm. This is the v0.3 index-collision guard.
+
+    Closes deferred ID 3229853017 (``def write(body, path)`` previously
+    aliased ``body`` to ``path`` index-wise; correct routing is
+    ``body`` -> ``content`` since ``path`` is claimed at idx 1 by the
+    swap-aware Pass 1).
+    """
+    sig_to_canonical: dict[str, str] = {}
+    claimed_canonicals: set[str] = set()
+    table_slots_set = set(table_slots)
+    protected_set = set(protected_fields)
+
+    # Pass 1: self-canonical wrapper-names claim their slots.
+    for sig_name in sig_positional_names:
+        if sig_name in table_slots_set or sig_name in protected_set:
+            sig_to_canonical[sig_name] = sig_name
+            claimed_canonicals.add(sig_name)
+
+    # Detect a name-position swap: a wrapper-name that IS a canonical
+    # but appears at a different index than where the same name lives
+    # in the table_slots. When swap is detected, prefer the
+    # "next-unclaimed-protected" routing so the wrapper's NAMING
+    # intent (not positional alignment) drives the alias map.
+    swap_detected = False
+    for idx, sig_name in enumerate(sig_positional_names):
+        if sig_name in table_slots_set:
+            try:
+                table_idx = table_slots.index(sig_name)
+            except ValueError:
+                continue
+            if table_idx != idx:
+                swap_detected = True
+                break
+
+    # Pass 2: route unmatched wrapper-names.
+    for idx, sig_name in enumerate(sig_positional_names):
+        if sig_name in sig_to_canonical:
+            continue
+        if not swap_detected:
+            # No swap: index-based routing (backward compat with the
+            # v0.2 behaviour). If the same-index table slot is
+            # protected and unclaimed, route the wrapper-name onto it
+            # (so ``def my_writer(p, b)`` for chio_file_write maps b
+            # at idx 1 to ``content``). Otherwise leave the
+            # wrapper-name as-is.
+            if idx < len(table_slots):
+                same_index_slot = table_slots[idx]
+                if (
+                    same_index_slot in protected_set
+                    and same_index_slot not in claimed_canonicals
+                ):
+                    sig_to_canonical[sig_name] = same_index_slot
+                    claimed_canonicals.add(same_index_slot)
+                    continue
+            sig_to_canonical[sig_name] = sig_name
+            continue
+        # Swap-detected branch: route by next-unclaimed-protected.
+        # This is the v0.3 collision guard for ``def write(body,
+        # path)`` and similar shapes (closes deferred ID 3229853017).
+        nxt = next(
+            (c for c in protected_fields if c not in claimed_canonicals),
+            None,
+        )
+        if nxt is not None:
+            sig_to_canonical[sig_name] = nxt
+            claimed_canonicals.add(nxt)
+        else:
+            sig_to_canonical[sig_name] = sig_name
+
+    return sig_to_canonical
 
 
 def bind_and_redact(
@@ -325,7 +433,16 @@ def bind_and_redact(
         has_receiver = True
         bind_args = bind_args[1:]
 
-    use_table_fallback = sig is None or _is_pure_forwarder(sig)
+    # Protected fields for this tool (canonical names declared by the
+    # policy). Pass into the forwarder check so variadic-only signatures
+    # whose ``*name`` is a protected field still take the signature path
+    # (and therefore the named-variadic redaction).
+    protected_fields_for_tool_pre: tuple[str, ...] = (
+        effective_policy.body_fields.get(tool_name) or ()
+    )
+    use_table_fallback = sig is None or _is_pure_forwarder(
+        sig, protected_fields=protected_fields_for_tool_pre
+    )
     # When True, the table is the ONLY source of positional ordering
     # (pure forwarder / non-introspectable / fn=None). Positional args
     # consume table slots not already filled by kwargs. When False, the
@@ -343,6 +460,7 @@ def bind_and_redact(
     # custom-tool fixed signatures too. (See bot comment 3229135384.)
     bound: inspect.BoundArguments | None = None
     fallback_table: Mapping[str, tuple[str, ...]] = table
+    fallback_kwarg_alias: Mapping[str, str] | None = None
     if not use_table_fallback:
         assert sig is not None
         try:
@@ -372,6 +490,66 @@ def bind_and_redact(
                     **table,
                     tool_name: sig_positional_names,
                 }
+            # Build a wrapper-name -> canonical alias map keyed off the
+            # SAME index-aware routing the non-fallback path uses, so
+            # kwargs supplied under a wrapper-renamed alias (e.g.
+            # ``body=`` for a tool whose protected canonical is
+            # ``content``) still redact correctly even when bind_partial
+            # blew up. Without this, a TypeError-fallback for a renamed
+            # signature would only redact kwargs whose name literally
+            # appears in the policy's body_fields.
+            #
+            # Build the alias map by routing non-canonical wrapper-names
+            # to unclaimed protected canonicals - mirrors the algorithm
+            # used on the non-fallback path so both paths share semantic
+            # behaviour. "Canonical" here is the table from the
+            # CALLER-or-default ``positional_table`` for this tool (NOT
+            # the signature-derived fallback_table, which by definition
+            # uses wrapper names): a wrapper-name is "canonical" if it
+            # appears in that table for this tool.
+            # Mirror the alias-map algorithm used on the non-fallback
+            # path so semantics match. Use the CALLER-or-default table
+            # for the canonical lookup (NOT the signature-derived
+            # fallback_table; that table by definition uses wrapper
+            # names).
+            _alias_fb = build_alias_map(
+                sig_positional_names,
+                table.get(tool_name, ()),
+                protected_fields_for_tool_pre,
+            )
+            # Walk kwonly names too: any kwonly that did not get an
+            # alias from the positional pass routes to the next unclaimed
+            # protected canonical.
+            kwonly_names_fb = tuple(
+                p.name
+                for p in sig.parameters.values()
+                if p.kind is inspect.Parameter.KEYWORD_ONLY
+            )
+            _claimed_fb = set(_alias_fb.values())
+            for sn in kwonly_names_fb:
+                if sn in _alias_fb:
+                    continue
+                if (
+                    sn in table.get(tool_name, ())
+                    or sn in protected_fields_for_tool_pre
+                ):
+                    _alias_fb[sn] = sn
+                    _claimed_fb.add(sn)
+                    continue
+                nxt = next(
+                    (
+                        c
+                        for c in protected_fields_for_tool_pre
+                        if c not in _claimed_fb
+                    ),
+                    None,
+                )
+                if nxt is not None:
+                    _alias_fb[sn] = nxt
+                    _claimed_fb.add(nxt)
+                else:
+                    _alias_fb[sn] = sn
+            fallback_kwarg_alias = _alias_fb
 
     if use_table_fallback:
         fb_args, fb_kwargs = _table_fallback_redact(
@@ -381,6 +559,7 @@ def bind_and_redact(
             policy=effective_policy,
             table=fallback_table,
             skip_kwarg_filled_slots=fallback_skips_kwarg_filled_slots,
+            kwarg_alias_map=fallback_kwarg_alias,
         )
         if has_receiver:
             fb_args.insert(0, receiver_value)
@@ -427,17 +606,42 @@ def bind_and_redact(
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
         )
     ]
-    sig_to_canonical: dict[str, str] = {}
-    for idx, sig_name in enumerate(fixed_positional_names):
-        if sig_name in table_slots_for_tool:
-            # Wrapper uses a canonical name; redact by name as-is.
-            sig_to_canonical[sig_name] = sig_name
-        elif idx < len(table_slots_for_tool):
-            # Wrapper alias for the slot at this index; route via the
-            # canonical name so the policy lookup matches.
-            sig_to_canonical[sig_name] = table_slots_for_tool[idx]
-        else:
-            sig_to_canonical[sig_name] = sig_name
+    # Build alias map by ROUTING to protected canonical names, not by
+    # same-index table-slot lookup.
+    #
+    # Earlier versions aliased a non-canonical wrapper-name at index N
+    # to ``table_slots_for_tool[N]`` regardless of whether that slot was
+    # itself protected. That breaks ``def write(body, path)`` for
+    # chio_file_write whose table is ``("path", "content")``: ``body``
+    # would be aliased to ``path`` (idx 0), but ``path`` is NOT a
+    # protected field; the redactor would never look it up and
+    # ``content`` would never get its alias either. The correct binding
+    # is ``body`` -> ``content`` (the unclaimed protected canonical).
+    #
+    # Algorithm:
+    #   1. Pass 1 - any wrapper-name that already matches a canonical
+    #      slot (whether or not the slot is itself protected) is mapped
+    #      to itself. These slots become "claimed" by the wrapper.
+    #   2. Pass 2 - for every remaining wrapper-name, route to the
+    #      next unclaimed protected canonical (one of
+    #      ``policy.body_fields[tool_name]`` not yet used as an alias
+    #      target). If no protected canonical is free, leave the name
+    #      as-is.
+    #
+    # The wrapper's positional ORDER is preserved (Pass 2 walks the
+    # remaining names in declaration order and routes to protected
+    # canonicals in their declared order). For the common one-protected
+    # case (chio_file_write has a single protected field ``content``)
+    # the only remaining wrapper-name binds to it; for tools with
+    # multiple protected fields the ordering still gives a stable map.
+    protected_fields_for_tool: tuple[str, ...] = (
+        effective_policy.body_fields.get(tool_name) or ()
+    )
+    sig_to_canonical: dict[str, str] = build_alias_map(
+        fixed_positional_names,
+        table_slots_for_tool,
+        protected_fields_for_tool,
+    )
 
     # Also walk KEYWORD_ONLY params: TaskFlow / decorator wrappers shaped
     # like ``def write_file(path, *, body)`` keep the protected body in a
@@ -449,9 +653,7 @@ def bind_and_redact(
     # the param's name is already canonical we leave it; otherwise we
     # alias it to the first protected field that has not yet been claimed
     # by a fixed positional or another keyword-only param.
-    protected_fields_for_alias: tuple[str, ...] = (
-        effective_policy.body_fields.get(tool_name) or ()
-    )
+    #
     # The kwonly aliasing pass is intentionally narrow. A VAR_POSITIONAL
     # parameter can itself be the body (e.g. ``def writer(*content, path)``
     # for chio_file_write), so when the signature has a VAR_POSITIONAL we
@@ -462,30 +664,42 @@ def bind_and_redact(
         p.kind is inspect.Parameter.VAR_POSITIONAL
         for p in sig.parameters.values()
     )
-    if protected_fields_for_alias and not has_var_positional:
+    if protected_fields_for_tool and not has_var_positional:
         already_canonical_protected: set[str] = {
             canonical
             for canonical in sig_to_canonical.values()
-            if canonical in protected_fields_for_alias
+            if canonical in protected_fields_for_tool
         }
-        for param in sig.parameters.values():
-            if param.kind is not inspect.Parameter.KEYWORD_ONLY:
-                continue
+        # Pass A: every kwonly that is itself canonical (in the table
+        # OR matches a protected field name directly) is "self-
+        # canonical" and claims its slot. This guards against false
+        # aliasing for shapes like ``def fn(*, body)`` where the
+        # wrapper IS naming the canonical body field; aliasing would
+        # be a no-op. It also covers ``def fn(*, label, body)`` for a
+        # custom-policy tool where ``body`` IS the protected
+        # canonical: leaving label unaliased and body self-canonical.
+        kwonly_params = [
+            p
+            for p in sig.parameters.values()
+            if p.kind is inspect.Parameter.KEYWORD_ONLY
+        ]
+        for param in kwonly_params:
             kw_name = param.name
-            if kw_name in table_slots_for_tool:
-                # Wrapper used a canonical slot name as the kwonly param;
-                # redact by name as-is (whether or not the slot is itself
-                # protected). Aliasing here would redirect a canonical
-                # non-protected slot like ``path`` onto a protected slot
-                # and silently redact a non-secret value.
+            if (
+                kw_name in table_slots_for_tool
+                or kw_name in protected_fields_for_tool
+            ):
                 sig_to_canonical[kw_name] = kw_name
-                if kw_name in protected_fields_for_alias:
+                if kw_name in protected_fields_for_tool:
                     already_canonical_protected.add(kw_name)
+        # Pass B: any remaining kwonly is a wrapper alias for a
+        # protected field. Bind to the first unclaimed protected
+        # canonical.
+        for param in kwonly_params:
+            kw_name = param.name
+            if kw_name in sig_to_canonical:
                 continue
-            # Wrapper used a non-canonical kwonly alias for a protected
-            # field. Bind it to the first protected field that has not
-            # yet been claimed by a fixed positional.
-            for canonical in protected_fields_for_alias:
+            for canonical in protected_fields_for_tool:
                 if canonical in already_canonical_protected:
                     continue
                 sig_to_canonical[kw_name] = canonical
@@ -511,9 +725,6 @@ def bind_and_redact(
     # This covers wrappers like ``def write_file(*content, path)``
     # where ``*content`` is itself the protected field name. (See
     # bot comments 3229375712 and 3229301707/3229301713.)
-    protected_fields_for_tool: tuple[str, ...] = (
-        effective_policy.body_fields.get(tool_name) or ()
-    )
     redacted_var_positional_by_name: tuple[Any, ...] | None = None
     if (
         var_positional_param is not None
@@ -556,30 +767,64 @@ def bind_and_redact(
     # redacts ``rest[0]`` as ``content`` for chio_file_write.
     table_slots: tuple[str, ...] = table_slots_for_tool
     filled_slot_names: set[str] = set()
+    # Slots filled by a fixed positional binding (NOT kwarg). Extras
+    # past the fixed cardinality should NOT overflow into these because
+    # the fixed binding already consumed the slot for redaction; they
+    # surface raw (documented limitation - extras past the fixed
+    # cardinality have no name when no free slot exists).
+    fixed_positional_filled_slots: set[str] = set()
     for idx in range(min(len(fixed_positional_names), len(bind_args))):
         if idx < len(table_slots):
             filled_slot_names.add(table_slots[idx])
+            fixed_positional_filled_slots.add(table_slots[idx])
+    # Slots filled ONLY by kwarg (eligible for overflow merge-conflict
+    # redaction of VAR_POSITIONAL extras).
+    kwarg_filled_slots: set[str] = set()
     # Also account for any kwarg whose wrapper-name aliases a table
     # slot via the canonical map (so ``body=`` for a ``("path","content")``
     # tool fills the ``content`` slot just like ``content=`` would).
     for kwarg_name in kwargs:
         if kwarg_name in table_slots:
             filled_slot_names.add(kwarg_name)
+            kwarg_filled_slots.add(kwarg_name)
         canonical_kw = sig_to_canonical.get(kwarg_name)
         if canonical_kw is not None and canonical_kw in table_slots:
             filled_slot_names.add(canonical_kw)
+            kwarg_filled_slots.add(canonical_kw)
     free_slot_iter = iter(
         slot for slot in table_slots if slot not in filled_slot_names
     )
     var_positional_extras: dict[int, Any] = {}
     if var_positional_param is not None and table_slots:
         fixed_positional_cardinality = len(fixed_positional_names)
+        # Once free table slots are exhausted, fall back onto the
+        # PROTECTED canonical slots that were filled by a KWARG (not by
+        # a fixed positional binding). The merge-conflict semantics
+        # apply: redact the positional and the kwarg independently.
+        # This is the VAR_POSITIONAL counterpart of the pure-forwarder
+        # overflow path (closes deferred ID 3229566280: ``def fn(path,
+        # *rest, **kw)`` called with ``("/tmp/x", "PROD_SECRET")`` and
+        # ``content=KW_SECRET`` must redact rest[0] independently).
+        # Slots filled by a fixed positional binding already had
+        # redaction applied at the fixed-positional path; extras stay
+        # raw (preserving the "extras past the table stay raw"
+        # contract).
+        overflow_protected_slots = [
+            slot
+            for slot in table_slots
+            if slot in kwarg_filled_slots
+            and slot not in fixed_positional_filled_slots
+            and slot in protected_fields_for_tool
+        ]
+        overflow_iter = iter(overflow_protected_slots)
         for idx, value in enumerate(bind_args):
             if idx < fixed_positional_cardinality:
                 continue
             slot_name = next(free_slot_iter, None)
             if slot_name is None:
-                break
+                slot_name = next(overflow_iter, None)
+                if slot_name is None:
+                    break
             redacted_extra = _redact_named(
                 {slot_name: value},
                 tool_name=tool_name,
@@ -661,6 +906,7 @@ def _table_fallback_redact(
     policy: RedactionPolicy,
     table: Mapping[str, tuple[str, ...]],
     skip_kwarg_filled_slots: bool = False,
+    kwarg_alias_map: Mapping[str, str] | None = None,
 ) -> tuple[list[Any], dict[str, Any]]:
     """Shared positional-name table redaction used by every fallback path.
 
@@ -679,21 +925,57 @@ def _table_fallback_redact(
       ``proxy("PROD_SECRET", path="/tmp/x")`` needs - the positional
       value is the ``content`` slot, not the already-consumed ``path``
       slot (closes PR #666 P1 3229550957).
+
+    ``kwarg_alias_map`` carries wrapper-name -> canonical-name routing
+    derived from the failed bind's signature. When set, kwarg redaction
+    runs against canonical names so a wrapper alias such as ``body=``
+    on a tool whose protected slot is ``content`` still redacts. Without
+    the alias map, a TypeError fallback for a renamed signature would
+    only redact kwargs whose name literally matches a policy field.
     """
     positional_names = table.get(tool_name, ())
-    redacted_kwargs = _redact_named(
-        kwargs, tool_name=tool_name, policy=policy
-    )
+    # Resolve a wrapper-name -> canonical-name mapping. Without an alias
+    # map, names are their own canonical (the table is already
+    # canonical). With an alias map, wrapper-renamed slots redact via
+    # the canonical name and re-emit under the wrapper name.
+    def _to_canonical(name: str) -> str:
+        if kwarg_alias_map is None:
+            return name
+        return kwarg_alias_map.get(name, name)
+
+    if kwarg_alias_map:
+        # Redact kwargs under canonical names so wrapper aliases still
+        # match the policy keys, then re-emit results under the wrapper
+        # names so the wire shape stays identical.
+        canonical_view: dict[str, Any] = {}
+        canonical_to_alias: dict[str, str] = {}
+        for k, v in kwargs.items():
+            canonical = _to_canonical(k)
+            canonical_view[canonical] = v
+            canonical_to_alias[canonical] = k
+        redacted_canonical = _redact_named(
+            canonical_view, tool_name=tool_name, policy=policy
+        )
+        redacted_kwargs: dict[str, Any] = {
+            canonical_to_alias[c]: v for c, v in redacted_canonical.items()
+        }
+    else:
+        redacted_kwargs = _redact_named(
+            kwargs, tool_name=tool_name, policy=policy
+        )
     if not positional_names:
         # No name information at all. Forward args raw; kwargs were
         # redacted already.
         return list(args), redacted_kwargs
 
     if skip_kwarg_filled_slots:
+        # Map kwarg keys through the alias to compare against canonical
+        # slot names declared in the table. Without aliasing, the kwarg
+        # keys ARE canonical (because `positional_names` for the no-alias
+        # path comes from the chio-default canonical table).
+        kwarg_canonicals = {_to_canonical(k) for k in kwargs}
         filled_by_kwarg: set[str] = {
-            kwarg_name
-            for kwarg_name in kwargs
-            if kwarg_name in positional_names
+            slot for slot in positional_names if slot in kwarg_canonicals
         }
         slot_sequence: list[str] = [
             slot for slot in positional_names if slot not in filled_by_kwarg
@@ -702,8 +984,19 @@ def _table_fallback_redact(
         slot_sequence = list(positional_names)
         filled_by_kwarg = set()
 
+    # When an alias map is in play, the positional_names entries are
+    # WRAPPER names (e.g. ``("path", "body")``); redact under canonical
+    # names by mapping each slot through the alias. Without an alias
+    # map, the slot IS its canonical name (chio-default table) and the
+    # mapping is identity.
+    def _slot_canonical(slot_name: str) -> str:
+        return _to_canonical(slot_name)
+
     named_from_positional: dict[str, Any] = {}
     positional_to_slot: list[str | None] = []
+    # Track wrapper-slot-name -> canonical so the redact pass keys by
+    # canonical and the rebuild looks values up by wrapper-slot-name.
+    slot_to_canonical: dict[str, str] = {}
     # When skip_kwarg_filled_slots is set, positional args that overflow
     # the free-slot sequence may still belong to a protected canonical
     # slot the kwarg already named. Pure-forwarder duplicate-slot calls
@@ -722,12 +1015,14 @@ def _table_fallback_redact(
     for idx, value in enumerate(args):
         if idx < len(slot_sequence):
             slot = slot_sequence[idx]
+            slot_to_canonical[slot] = _slot_canonical(slot)
             named_from_positional[slot] = value
             positional_to_slot.append(slot)
             continue
         if overflow_pos_idx < len(overflow_slots):
             slot = overflow_slots[overflow_pos_idx]
             overflow_pos_idx += 1
+            slot_to_canonical[slot] = _slot_canonical(slot)
             # Redact this positional under the duplicate canonical slot
             # name independently of the kwarg redaction below. We feed it
             # through a private key so it does not collide with the
@@ -743,31 +1038,44 @@ def _table_fallback_redact(
     # Build a name-keyed view for redaction. For the overflow sentinels
     # we substitute the real slot name during the redact pass so the
     # policy lookup matches; the rebuild step then uses the sentinel to
-    # locate the redacted value back in the dict.
+    # locate the redacted value back in the dict. Slot names are mapped
+    # through ``_slot_canonical`` so wrapper-renamed slots redact via
+    # the canonical name.
     redact_view: dict[str, Any] = {}
     sentinel_to_slot: dict[str, str] = {}
     for key, value in named_from_positional.items():
         if key.startswith("__overflow_"):
             slot = key.rsplit("__", 1)[-1]
             sentinel_to_slot[key] = slot
+            canonical_slot = _slot_canonical(slot)
             # Redact each overflow value independently by giving it its
             # own keyed entry under the canonical slot name; we run the
             # redact pass per overflow so values do not overwrite each
             # other in the dict view.
             single_redacted = _redact_named(
-                {slot: value}, tool_name=tool_name, policy=policy
+                {canonical_slot: value}, tool_name=tool_name, policy=policy
             )
-            redact_view[key] = single_redacted[slot]
+            redact_view[key] = single_redacted[canonical_slot]
         else:
             redact_view[key] = value
-    # Redact the non-overflow named slots in one pass (preserves the
-    # existing semantics for the no-overflow case).
-    non_overflow_view = {
-        k: v for k, v in redact_view.items() if k not in sentinel_to_slot
-    }
-    redacted_named = _redact_named(
+    # Redact the non-overflow named slots in one pass. Each slot's
+    # value is keyed by the slot's canonical name so the policy lookup
+    # matches the protected canonical (e.g. ``content``) even when the
+    # wrapper renames the slot (e.g. ``body``).
+    non_overflow_view: dict[str, Any] = {}
+    canonical_to_slot: dict[str, str] = {}
+    for k, v in redact_view.items():
+        if k in sentinel_to_slot:
+            continue
+        canonical = slot_to_canonical.get(k, k)
+        non_overflow_view[canonical] = v
+        canonical_to_slot[canonical] = k
+    redacted_canonical_named = _redact_named(
         non_overflow_view, tool_name=tool_name, policy=policy
     )
+    redacted_named: dict[str, Any] = {
+        canonical_to_slot[c]: v for c, v in redacted_canonical_named.items()
+    }
     # Re-inject the per-overflow redacted values; they were redacted
     # individually above so the policy already applied.
     for sentinel_key in sentinel_to_slot:

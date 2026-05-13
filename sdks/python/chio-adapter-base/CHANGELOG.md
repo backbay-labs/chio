@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0]
+
+`bind_and_redact` shape hardening + 6-axis coverage matrix. The helper
+now subsumes every wire shape that was bouncing between sibling
+adapters during the v0.2 batch (PRs #664-#675); the prefect canary
+collapse in `chio-prefect 0.1.2` exercises the helper's API surface
+against a real adapter so future shape additions land once, in
+`chio-adapter-base`.
+
+### Added
+- `chio_adapter_base.redact.build_alias_map` public helper exposing
+  the wrapper-name -> canonical-name routing algorithm so adapters
+  with bespoke shapes can build a parallel alias map without
+  duplicating the implementation.
+- 26 new regression tests (115 -> 141) plus a 6-axis coverage matrix
+  comment block at the top of `tests/test_bind_and_redact.py` mapping
+  every cell to one or more named tests. Each new test docstring
+  cites the `Closes deferred ID <bot-comment-id>` it covers; the IDs
+  trace back to the v2 review tables in
+  `.planning/chio-adapter-redact-batch/REVIEW-v2-interval-{3,4}.md`.
+
+### Changed
+- `bind_and_redact` keyword-only (kwonly) alias pass now treats a
+  kwonly param whose name matches a protected canonical (e.g.
+  `def fn(*, body)` for a policy that protects `body`) as
+  self-canonical. Previously kwonly aliasing could rebind such a
+  param onto a different unclaimed slot, silently corrupting the
+  redaction.
+- Index-based positional aliasing now applies a name-position
+  collision guard. When a wrapper shape such as `def write(body,
+  path)` is registered for a tool whose canonical table is
+  `("path", "content")`, the helper detects that `path` lives at a
+  different wrapper-index than table-index and routes the unmatched
+  `body` to the next-unclaimed protected canonical (`content`)
+  instead of aliasing onto the same-index unprotected slot.
+- TypeError fallback path (arity mismatch / duplicate-keyword) now
+  preserves the wrapper's canonical alias map so kwargs still redact
+  under the wrapper's renamed names; previously the fallback used
+  literal name matching only, which leaked when the wrapper renamed
+  a protected slot.
+- `_is_pure_forwarder` no longer treats a `def upload(*payload)`
+  shape as a forwarder when `payload` matches a protected field
+  for the current tool. The signature path runs instead so each
+  variadic value redacts under the canonical name.
+- VAR_POSITIONAL extras for `def fn(path, *rest, **kw)`-shape
+  wrappers now redact under the canonical protected slot when a
+  kwarg has already supplied that slot. This is the merge-conflict
+  semantics for the variadic case (closes deferred IDs 3229566280
+  and 3229515822).
+
+### Breaking
+- `positional_table` argument is now LOCKED as REPLACES-the-default
+  semantics (current behavior). Callers that previously relied on
+  the chio-default table being merged with their custom override
+  must merge it themselves: `positional_table={**DEFAULT_TOOL_POSITIONAL_NAMES, **my_table}`.
+  In practice no external consumer relies on extends semantics
+  (the per-tool override was always read as REPLACE in the v0.1.x
+  helper); this is documented as breaking for completeness.
+
+### Notes
+- Wire shape: `bind_and_redact` returns
+  `(redacted_args, redacted_kwargs)` under canonical / wrapper-named
+  buckets. The synthetic `__var_kw_spillover__` key for
+  positional-only spillover collisions remains the prefect-local
+  wire shape; chio-prefect 0.1.2's `_legacy_envelope` shim keeps it
+  emitting for v0.2 compat. v0.4 will deprecate the synthetic key
+  with a one-release migration window.
+
 ## [0.1.1]
 
 - feat: add `bind_and_redact` helper plus `DEFAULT_TOOL_POSITIONAL_NAMES`

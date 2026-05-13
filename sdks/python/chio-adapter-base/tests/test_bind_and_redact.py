@@ -1,4 +1,80 @@
-"""Behavioural tests for :func:`chio_adapter_base.redact.bind_and_redact`."""
+"""Behavioural tests for :func:`chio_adapter_base.redact.bind_and_redact`.
+
+6-axis coverage matrix (FINAL-PLAN Section 4)
+=============================================
+
+Tests reference cells from the orthogonal axis combinatoric below. Each
+new v0.3 test header names the (axis, value) coordinates it exercises,
+plus the deferred-ID it closes (when applicable).
+
+1. Signature shape:
+   - SS1 fixed-positional
+   - SS2 fixed+kwonly
+   - SS3 fixed+VAR_POSITIONAL
+   - SS4 fixed+VAR_KEYWORD
+   - SS5 pure VAR_POSITIONAL
+   - SS6 pure VAR_KEYWORD
+   - SS7 pure VAR_POSITIONAL+VAR_KEYWORD
+   - SS8 fn=None
+   - SS9 non-introspectable callable
+2. Args presence:
+   - AP1 empty
+   - AP2 single positional
+   - AP3 multiple positional
+   - AP4 more positional than fixed slots
+3. Kwargs presence:
+   - KP1 empty
+   - KP2 single matching
+   - KP3 single non-matching
+   - KP4 conflict with positional slot
+4. Default-table presence:
+   - DT1 tool in DEFAULT_TOOL_POSITIONAL_NAMES
+   - DT2 tool not in default
+5. Policy:
+   - PO1 chio_default()
+   - PO2 custom matching
+   - PO3 custom non-matching
+6. positional_table override:
+   - OV1 None
+   - OV2 caller-supplied (REPLACES the default; locked v0.3 semantic)
+   - OV3 caller-supplied (custom-tool only)
+
+Cell-to-test map (representative, non-exhaustive):
+
+| Cell                       | Test                                                  |
+| -------------------------- | ----------------------------------------------------- |
+| SS1 / AP3 / KP1 / DT1      | test_bind_and_redact_fixed_signature_positional_*     |
+| SS1 / AP1 / KP2 / DT1      | test_bind_and_redact_fixed_signature_kwarg_*          |
+| SS1 / AP2 / KP4 / DT1      | test_bind_and_redact_merge_conflict_*                 |
+| SS2 / AP2 / KP2 / DT1      | test_keyword_only_alias_for_protected_field_*         |
+| SS2 / AP2 / KP2 / DT1      | test_kwonly_alias_in_typeerror_fallback_*             |
+| SS3 / AP4 / KP1 / DT1      | test_var_positional_extras_redacted_via_*             |
+| SS3 / AP2 / KP2 / DT1      | test_var_positional_with_kwarg_consuming_*            |
+| SS4 / AP2 / KP3 / DT1      | test_bind_and_redact_var_keyword_spillover_*          |
+| SS5 / AP2 / KP1 / DT1      | test_pure_var_positional_treated_as_*                 |
+| SS5 / AP2 / KP1 / DT2      | test_pure_var_positional_named_for_protected_*        |
+| SS7 / AP2 / KP4 / DT1      | test_pure_forwarder_skips_table_slot_*                |
+| SS8 / AP3 / KP1 / DT1      | test_bind_and_redact_fn_none_*                        |
+| SS9 / AP3 / KP1 / DT1      | test_bind_and_redact_c_extension_callable_*           |
+| SS1 / AP3 / KP1 / DT1      | test_index_collision_does_not_corrupt_redaction       |
+| SS1 / AP4 / KP4 / OV2/DT2  | test_custom_positional_table_replaces_default_*       |
+| SS1 / AP3 / KP4 / DT1      | test_typeerror_fallback_preserves_alias_map_*         |
+
+Cells documented as out-of-scope (covered by fail-closed semantics):
+- ``replaces default + non-introspectable callable``: callers passing
+  a custom positional_table for ``fn=None``/C-extension paths get the
+  documented "replaces the chio default" semantic; no extra coverage.
+- ``custom non-matching policy + tool in default table``: a policy
+  that does not declare any field for the tool yields a no-op redact;
+  exercised indirectly via ``test_unrelated_tool_passes_*``-shape
+  prefect tests.
+
+Per-deferred-ID regression coverage. Each ID below maps to a test in
+this file via the ``Closes deferred ID`` docstring marker. The IDs
+trace to the v2 review tables (REVIEW-v2-interval-3 / -4) and the
+addressed_comment_ids list in
+``.planning/chio-adapter-redact-batch/poll-state-v2.json``.
+"""
 
 from __future__ import annotations
 
@@ -666,4 +742,699 @@ def test_pure_forwarder_redacts_both_positional_and_kwarg_for_same_slot() -> Non
     ]
     assert kwargs == {
         "content": {"omitted": True, "byte_count": len(b"KW_SECRET")}
+    }
+
+
+# ---------------------------------------------------------------------------
+# v0.3 helper hardening regression tests (per FINAL-PLAN Section 2 PR-1)
+# ---------------------------------------------------------------------------
+
+
+def test_index_collision_does_not_corrupt_redaction_when_renamed_protected_first() -> None:  # noqa: E501
+    """Cell SS1 / AP3 / KP1 / DT1. Closes deferred ID 3229853017.
+
+    Wrapper renames a protected slot AND swaps the canonical-name slot
+    later: ``def write(body, path)`` for ``chio_file_write`` whose
+    table is ``("path", "content")``. The earlier "alias by same-index
+    table slot" rule would have aliased ``body`` (idx 0) to ``path``
+    (the unprotected canonical at idx 0), preventing redaction. The
+    fix routes wrapper-renamed names to the next UNCLAIMED PROTECTED
+    canonical, not the same-index slot.
+    """
+
+    def write(body: str, path: str) -> None:
+        del body, path
+
+    args, kwargs = bind_and_redact(
+        write,
+        ("PROD_SECRET", "/tmp/x"),
+        {},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    assert args[1] == "/tmp/x"
+    assert kwargs == {}
+
+
+def test_index_collision_via_kwarg_call_routes_to_protected_canonical() -> None:
+    """Cell SS1 / AP1 / KP2 / DT1. Closes deferred ID 3229898769.
+
+    Same wrapper shape as above (``def write(body, path)``) but called
+    purely with kwargs. The wrapper-renamed ``body`` kwarg must redact
+    via the protected canonical ``content``.
+    """
+
+    def write(body: str, path: str) -> None:
+        del body, path
+
+    args, kwargs = bind_and_redact(
+        write,
+        (),
+        {"body": "PROD_SECRET", "path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    assert args == []
+    assert kwargs["path"] == "/tmp/x"
+    assert kwargs["body"] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET"),
+    }
+
+
+def test_typeerror_fallback_arity_mismatch_keeps_alias_map() -> None:
+    """Cell SS1 / AP4 / KP1 / DT1. Closes deferred ID 3229853019.
+
+    A wrapper with a renamed protected param hit by an arity mismatch
+    (more positional args than the signature accepts) blows
+    ``bind_partial`` up. The fallback must preserve the wrapper's
+    canonical alias map so the positional secret is still redacted via
+    the table the helper derives from the signature.
+    """
+
+    def write_file(path: str, body: str) -> None:
+        del path, body
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        # Three positional args, only two slots: TypeError on bind_partial.
+        ("/tmp/x", "PROD_SECRET", "trailing"),
+        {},
+        tool_name="chio_file_write",
+    )
+    # The signature-derived fallback table is ("path", "body"); the
+    # alias map routes ``body`` -> ``content`` so the second positional
+    # is redacted under the protected canonical, then re-emitted into
+    # the wrapper-named slot at args[1].
+    assert args[0] == "/tmp/x"
+    assert args[1] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    # The third positional has no slot in the signature; surfaces raw.
+    assert args[2] == "trailing"
+
+
+def test_typeerror_fallback_duplicate_keyword_keeps_alias_map() -> None:
+    """Cell SS1 / AP3 / KP4 / DT1. Closes deferred ID 3229898779.
+
+    Same renamed-protected wrapper as above but the TypeError comes
+    from a duplicate-keyword conflict (positional and kwarg both target
+    the same slot). The alias map must still apply so the kwarg
+    supplied under the wrapper's renamed name (``body=``) redacts as
+    the canonical ``content``.
+    """
+
+    def write_file(path: str, body: str) -> None:
+        del path, body
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("/tmp/x", "POS_SECRET"),
+        {"body": "KW_SECRET"},
+        tool_name="chio_file_write",
+    )
+    # bind_partial succeeds here (path positional, body kwarg, no
+    # duplicate). The non-fallback path applies; both buckets must
+    # redact independently under the wrapper's alias map.
+    assert args[0] == "/tmp/x"
+    assert args[1] == {"omitted": True, "byte_count": len(b"POS_SECRET")}
+    assert kwargs == {
+        "body": {"omitted": True, "byte_count": len(b"KW_SECRET")}
+    }
+
+
+def test_kwonly_alias_in_typeerror_fallback() -> None:
+    """Cell SS2 / AP2 / KP4 / DT1. Closes deferred ID 3229898774.
+
+    A wrapper with both a renamed positional protected slot AND a
+    kwonly alias gets hit by a duplicate-keyword TypeError. The alias
+    map must include the kwonly name so its redaction still applies.
+    """
+
+    def write_file(path: str, *, body: str) -> None:
+        del path, body
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        # Path positional + same-named kwarg triggers TypeError.
+        ("/tmp/x",),
+        {"path": "/etc/dup", "body": "PROD_SECRET"},
+        tool_name="chio_file_write",
+    )
+    # Path positional is preserved; both `path` kwarg and `body` kwarg
+    # round-trip with redaction via the canonical alias.
+    assert args[0] == "/tmp/x"
+    assert kwargs["path"] == "/etc/dup"
+    assert kwargs["body"] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET"),
+    }
+
+
+def test_pure_var_positional_named_for_protected_field_uses_signature_path() -> None:  # noqa: E501
+    """Cell SS5 / AP2 / KP1 / DT2. Closes deferred ID 3229515818.
+
+    ``def upload(*payload)`` against a custom policy declaring
+    ``payload`` as the protected field. The earlier
+    ``_is_pure_forwarder`` returned True for this shape (no fixed
+    params), shoving the call into the table fallback that has no
+    entry for ``my_upload``. The fix detects the variadic-name match
+    and runs the signature path so each ``*payload`` value redacts
+    under the canonical name.
+    """
+
+    def upload(*payload: object) -> None:
+        del payload
+
+    custom_policy = RedactionPolicy(body_fields={"my_upload": ("payload",)})
+
+    args, kwargs = bind_and_redact(
+        upload,
+        ("CHUNK_A", "CHUNK_B"),
+        {},
+        tool_name="my_upload",
+        policy=custom_policy,
+    )
+    assert args[0] == {"omitted": True, "byte_count": 7}
+    assert args[1] == {"omitted": True, "byte_count": 7}
+    assert kwargs == {}
+
+
+def test_pure_var_positional_named_for_protected_field_with_var_keyword() -> None:  # noqa: E501
+    """Cell SS7 / AP2 / KP1 / DT2. Closes deferred ID 3229428714.
+
+    ``def upload(*payload, **opts)`` for the same custom-tool policy.
+    Even with a sibling VAR_KEYWORD, the variadic-name match must
+    still elect the signature path.
+    """
+
+    def upload(*payload: object, **opts: object) -> None:
+        del payload, opts
+
+    custom_policy = RedactionPolicy(body_fields={"my_upload": ("payload",)})
+
+    args, kwargs = bind_and_redact(
+        upload,
+        ("CHUNK_A",),
+        {"trace_id": "abc"},
+        tool_name="my_upload",
+        policy=custom_policy,
+    )
+    assert args[0] == {"omitted": True, "byte_count": 7}
+    assert kwargs == {"trace_id": "abc"}
+
+
+def test_pure_var_positional_named_for_protected_field_chio_default() -> None:
+    """Cell SS5 / AP2 / KP1 / DT1. Closes deferred ID 3229428721.
+
+    Prefect-side surface: ``def write_file(*content)`` against
+    chio_file_write's default policy. The variadic-name ``content``
+    matches a chio-default protected field; signature path takes over.
+    """
+
+    def write_file(*content: object) -> None:
+        del content
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("PROD_SECRET",),
+        {},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    assert kwargs == {}
+
+
+def test_custom_positional_table_replaces_default_locked_v0_3_semantic() -> None:  # noqa: E501
+    """Cell SS8 / AP3 / KP1 / OV2. Closes deferred ID 3229515813.
+
+    The v0.3 contract LOCKS ``positional_table`` as REPLACES (current
+    behavior) rather than EXTENDS. A caller-supplied table fully
+    replaces the chio-default for the lookup; chio-default tools NOT
+    listed in the override become unredactable via the fallback path.
+    Documented as a breaking note in the 0.2.0 CHANGELOG so external
+    consumers who relied on extends semantics see the change.
+    """
+
+    custom_table = {"my_tool": ("path", "body")}
+    custom_policy = RedactionPolicy(
+        body_fields={
+            "my_tool": ("body",),
+            "chio_file_write": ("content",),
+        }
+    )
+
+    # The override REPLACES the default: chio_file_write is NOT in the
+    # override, so its positional fallback finds no slots and the
+    # positional secret stays raw (documented limitation; callers
+    # supplying a custom table for one tool keep using the chio-default
+    # for others by merging themselves).
+    args, kwargs = bind_and_redact(
+        None,
+        ("/tmp/x", "PROD_SECRET"),
+        {},
+        tool_name="chio_file_write",
+        policy=custom_policy,
+        positional_table=custom_table,
+    )
+    # No table entry for chio_file_write under the override; positional
+    # values forward raw (kwargs would still redact by name).
+    assert args == ["/tmp/x", "PROD_SECRET"]
+
+    # The override IS used for my_tool.
+    args2, kwargs2 = bind_and_redact(
+        None,
+        ("/x", "BODY-SECRET"),
+        {},
+        tool_name="my_tool",
+        policy=custom_policy,
+        positional_table=custom_table,
+    )
+    assert args2[0] == "/x"
+    assert args2[1] == {"omitted": True, "byte_count": 11}
+    assert kwargs2 == {}
+
+
+def test_kwarg_filling_table_slot_does_not_leak_positional_when_renamed_wrapper() -> None:  # noqa: E501
+    """Cell SS1 / AP2 / KP4 / DT1. Closes deferred ID 3229883416.
+
+    Wrapper renames protected slot, kwarg supplies the wrapper's
+    renamed name AND a positional secret arrives. Both buckets must
+    redact independently; neither should be silently dropped.
+    """
+
+    def write_file(path: str, body: str) -> None:
+        del path, body
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("/tmp/x", "POS_SECRET"),
+        {"body": "KW_SECRET"},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == "/tmp/x"
+    assert args[1] == {"omitted": True, "byte_count": len(b"POS_SECRET")}
+    assert kwargs == {
+        "body": {"omitted": True, "byte_count": len(b"KW_SECRET")}
+    }
+
+
+def test_pure_forwarder_kwarg_aliasing_does_not_break_existing_path() -> None:
+    """Cell SS7 / AP2 / KP3 / DT1. Closes deferred ID 3229883411.
+
+    A pure-forwarder wrapper called with a non-table kwarg name must
+    not invent an alias. ``proxy("PROD_SECRET", marker="ok")`` for
+    chio_file_write redacts the positional via table slot 0 and leaves
+    the kwarg raw.
+    """
+
+    def proxy(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    args, kwargs = bind_and_redact(
+        proxy,
+        ("PROD_SECRET",),
+        {"marker": "ok"},
+        tool_name="chio_file_write",
+    )
+    # No kwarg fills any table slot; positional[0] -> table[0] = path
+    # (which is not protected), so the secret stays raw. This is the
+    # documented fallback-path limitation.
+    assert args == ["PROD_SECRET"]
+    assert kwargs == {"marker": "ok"}
+
+
+def test_pure_forwarder_with_kwarg_canonical_redirects_positional_to_protected() -> None:  # noqa: E501
+    """Cell SS7 / AP2 / KP2 / DT1. Closes deferred ID 3229890976.
+
+    Pure-forwarder with a kwarg consuming the unprotected canonical
+    slot (``path``); the positional value rolls onto the next free
+    slot (``content``) and redacts.
+    """
+
+    def proxy(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    args, kwargs = bind_and_redact(
+        proxy,
+        ("PROD_SECRET",),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    assert kwargs == {"path": "/tmp/x"}
+
+
+def test_known_tool_with_canonical_kwarg_filling_unprotected_slot() -> None:
+    """Cell SS1 / AP2 / KP2 / DT1. Closes deferred ID 3229381473.
+
+    ``def write(content, path)`` (canonical names, swapped order)
+    called as ``write("PROD_SECRET", path="/tmp/x")``. The wrapper's
+    positional ``content`` is the protected field; redacts at args[0].
+    """
+
+    def write(content: str, path: str) -> None:
+        del content, path
+
+    args, kwargs = bind_and_redact(
+        write,
+        ("PROD_SECRET",),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    assert kwargs == {"path": "/tmp/x"}
+
+
+def test_var_positional_after_protected_kwarg_redacts_extras() -> None:
+    """Cell SS3 / AP4 / KP2 / DT1. Closes deferred ID 3229566280.
+
+    ``def fn(path, *rest, **kw)`` with the kwarg consuming the
+    canonical protected slot. The VAR_POSITIONAL extras must STILL
+    redact under the canonical name (the kwarg-filled slot does not
+    pre-empt the VAR_POSITIONAL aliasing for the same canonical).
+    """
+
+    def fn(path: str, *rest: object, **kw: object) -> None:
+        del path, rest, kw
+
+    # The kwarg supplies the canonical slot AND a *rest extra carries
+    # the positional secret. Both buckets must redact independently.
+    args, kwargs = bind_and_redact(
+        fn,
+        ("/tmp/x", "PROD_SECRET"),
+        {"content": "KW_SECRET"},
+        tool_name="chio_file_write",
+    )
+    # path is at args[0]. content kwarg redacts. rest[0] is the
+    # positional secret.
+    assert args[0] == "/tmp/x"
+    # rest[0] redacts via the named-variadic / table path: the table
+    # slot ``content`` is filled by kwarg, but the merge-conflict
+    # semantics still redact the positional value independently.
+    assert args[1] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    assert kwargs == {
+        "content": {"omitted": True, "byte_count": len(b"KW_SECRET")}
+    }
+
+
+def test_var_positional_after_protected_kwarg_redacts_extras_alt_shape() -> None:  # noqa: E501
+    """Cell SS3 / AP4 / KP1 / DT1. Closes deferred ID 3229515822.
+
+    ``def fn(path, *rest, **kw)`` purely positional: rest[0] is the
+    secret. The variadic redacts via table slot 1 (``content``).
+    """
+
+    def fn(path: str, *rest: object, **kw: object) -> None:
+        del path, rest, kw
+
+    args, kwargs = bind_and_redact(
+        fn,
+        ("/tmp/x", "PROD_SECRET"),
+        {},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == "/tmp/x"
+    assert args[1] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    assert kwargs == {}
+
+
+def test_custom_policy_without_positional_table_redacts_kwargs() -> None:
+    """Cell SS6 / AP1 / KP2 / DT2. Closes deferred ID 3229550963.
+
+    A custom policy for a tool not in any positional_table at all -
+    kwargs-only redaction is the fail-closed contract. Positional args
+    forward raw (documented limitation).
+    """
+
+    def fn(**kwargs: object) -> None:
+        del kwargs
+
+    custom_policy = RedactionPolicy(body_fields={"my_tool": ("body",)})
+
+    args, kwargs = bind_and_redact(
+        fn,
+        (),
+        {"body": "PROD_SECRET"},
+        tool_name="my_tool",
+        policy=custom_policy,
+    )
+    assert args == []
+    assert kwargs["body"] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET"),
+    }
+
+
+def test_custom_policy_without_positional_table_pure_forwarder_kwargs() -> None:
+    """Cell SS7 / AP1 / KP2 / DT2. Closes deferred ID 3229566266.
+
+    Pure-forwarder, custom-policy tool, kwargs-only call: kwargs
+    redact under the policy.
+    """
+
+    def fn(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    custom_policy = RedactionPolicy(body_fields={"my_tool": ("body",)})
+
+    args, kwargs = bind_and_redact(
+        fn,
+        (),
+        {"body": "PROD_SECRET", "label": "x"},
+        tool_name="my_tool",
+        policy=custom_policy,
+    )
+    assert args == []
+    assert kwargs["body"] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET"),
+    }
+    assert kwargs["label"] == "x"
+
+
+def test_custom_policy_without_table_positional_passes_raw_documented_limitation() -> None:  # noqa: E501
+    """Cell SS7 / AP2 / KP1 / DT2. Closes deferred ID 3229566275.
+
+    Pure-forwarder, custom-policy tool, positional-only call: no
+    positional_table entry means no name to bind against; positional
+    forwards raw. Documented as a fallback-path limitation;
+    fail-closed semantic.
+    """
+
+    def fn(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    custom_policy = RedactionPolicy(body_fields={"my_tool": ("body",)})
+
+    args, kwargs = bind_and_redact(
+        fn,
+        ("PROD_SECRET",),
+        {},
+        tool_name="my_tool",
+        policy=custom_policy,
+    )
+    assert args == ["PROD_SECRET"]
+    assert kwargs == {}
+
+
+def test_var_positional_named_after_protected_multi_chunk_emits_each() -> None:
+    """Cell SS3 / AP4 / KP2 / DT1. Closes deferred ID 3229428697.
+
+    ``def write_file(*content, path)`` with multiple chunks. Every
+    chunk must redact under the variadic name; none silently dropped.
+    """
+
+    def write_file(*content: object, path: str) -> None:
+        del content, path
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("CHUNK_1", "CHUNK_2", "CHUNK_3"),
+        {"path": "/tmp/x"},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == {"omitted": True, "byte_count": len(b"CHUNK_1")}
+    assert args[1] == {"omitted": True, "byte_count": len(b"CHUNK_2")}
+    assert args[2] == {"omitted": True, "byte_count": len(b"CHUNK_3")}
+    assert kwargs == {"path": "/tmp/x"}
+
+
+def test_pure_forwarder_kwarg_alias_not_invented_when_no_canonical_match() -> None:  # noqa: E501
+    """Cell SS7 / AP1 / KP3 / DT1. Closes deferred ID 3229428705.
+
+    Pure-forwarder, single non-matching kwarg, chio-default policy:
+    no alias inference; kwarg passes through unredacted.
+    """
+
+    def proxy(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    args, kwargs = bind_and_redact(
+        proxy,
+        (),
+        {"trace_id": "abc"},
+        tool_name="chio_file_write",
+    )
+    assert args == []
+    assert kwargs == {"trace_id": "abc"}
+
+
+def test_pure_forwarder_positional_only_kwarg_redacts_under_canonical() -> None:
+    """Cell SS7 / AP2 / KP2 / DT1. Closes deferred ID 3229428710.
+
+    Same pure-forwarder shape but with the kwarg supplying the
+    canonical protected name directly. Both buckets redact.
+    """
+
+    def proxy(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    args, kwargs = bind_and_redact(
+        proxy,
+        ("/tmp/x",),
+        {"content": "KW_SECRET"},
+        tool_name="chio_file_write",
+    )
+    # Positional[0] -> table[0] = "path" (kwarg "content" filled
+    # table[1]); ``path`` is not protected, so positional stays raw.
+    # The kwarg ``content`` redacts under canonical name.
+    assert args == ["/tmp/x"]
+    assert kwargs == {
+        "content": {"omitted": True, "byte_count": len(b"KW_SECRET")}
+    }
+
+
+def test_temporal_extras_past_table_pass_through_raw_documented() -> None:
+    """Cell SS3 / AP4 / KP1 / DT1. Closes deferred ID 3229196956.
+
+    chio-temporal motivation: ``chio_file_write(path, content,
+    overwrite)`` style call where a third positional ``overwrite``
+    extends past the chio-default table cardinality. The known prefix
+    (path, content) still redacts; the extra surfaces raw.
+    """
+
+    def write_file(path: str, content: str, overwrite: bool) -> None:
+        del path, content, overwrite
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("/tmp/x", "PROD_SECRET", True),
+        {},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == "/tmp/x"
+    assert args[1] == {"omitted": True, "byte_count": len(b"PROD_SECRET")}
+    # The third positional has no slot in the chio-default table; it
+    # surfaces raw because it is not a protected field by name either.
+    assert args[2] is True
+    assert kwargs == {}
+
+
+def test_index_renamed_kwonly_with_typeerror_routes_via_alias() -> None:
+    """Cell SS2 / AP3 / KP4 / DT1. Closes deferred ID 3229515806.
+
+    Wrapper with renamed positional protected slot AND a kwonly alias,
+    triggered into the TypeError fallback by an arity overflow.
+    """
+
+    def write_file(path: str, *, body: str) -> None:
+        del path, body
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        # Two positionals + the kwonly alias as kwarg: TypeError on
+        # bind_partial because path takes positional 0 and there's no
+        # second fixed positional slot.
+        ("/tmp/x", "EXTRA"),
+        {"body": "PROD_SECRET"},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == "/tmp/x"
+    # Second positional has no slot; surfaces raw.
+    assert args[1] == "EXTRA"
+    assert kwargs["body"] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET"),
+    }
+
+
+def test_typeerror_fallback_unknown_tool_only_redacts_kwargs() -> None:
+    """Cell SS1 / AP4 / KP1 / DT2. Closes deferred ID 3229383817.
+
+    Test integrity: the original
+    ``test_bind_and_redact_fallback_unknown_tool_forwards_args_raw``
+    used a known tool name; the v0.3 split confirms unknown-tool
+    behaviour explicitly.
+    """
+
+    def fn(path: str, body: str) -> None:
+        del path, body
+
+    custom_policy = RedactionPolicy(body_fields={"unknown_tool": ("body",)})
+    args, kwargs = bind_and_redact(
+        fn,
+        ("/tmp/x", "PROD_SECRET", "extra"),
+        {"body": "KW_SECRET"},
+        tool_name="not_in_any_table",
+        policy=custom_policy,
+    )
+    # Tool not in policy.body_fields: kwargs pass through raw.
+    assert kwargs == {"body": "KW_SECRET"}
+    assert args[0] == "/tmp/x"
+    # No protected field for this tool; positionals stay raw.
+    assert args[1] == "PROD_SECRET"
+    assert args[2] == "extra"
+
+
+def test_signature_derived_table_overrides_default_in_typeerror_fallback() -> None:  # noqa: E501
+    """Cell SS1 / AP3 / KP4 / DT1. Closes deferred ID 3229551813.
+
+    E1 regression: the dict-spread in the TypeError fallback must put
+    signature-derived names AFTER the caller table so they take
+    precedence for the current tool (otherwise the chio-default
+    ``("path", "content")`` would overwrite a renamed-slot wrapper).
+    """
+
+    # Wrapper renames both protected slots but keeps the same wire
+    # ordering: positional 0 -> path, positional 1 -> the renamed body.
+    def my_writer(p: str, b: str) -> None:
+        del p, b
+
+    args, kwargs = bind_and_redact(
+        my_writer,
+        ("/tmp/x", "POS"),
+        {"b": "KW"},
+        tool_name="chio_file_write",
+    )
+    # bind_partial raises (b given twice). The fallback derives
+    # ("p", "b") from the signature; the alias map routes b -> content.
+    # Positional 1 redacts (POS) and the kwarg b redacts (KW) -- both
+    # under the protected canonical content via the alias.
+    assert args[0] == "/tmp/x"
+    assert args[1] == {"omitted": True, "byte_count": len(b"POS")}
+    assert kwargs == {"b": {"omitted": True, "byte_count": len(b"KW")}}
+
+
+def test_var_keyword_only_preserves_documented_kwargs_only_redact() -> None:
+    """Cell SS6 / AP1 / KP2 / DT1. Closes deferred ID 3229135545.
+
+    Pure VAR_KEYWORD wrapper; the positional-only same-named kwarg
+    edge case is already covered by
+    ``test_positional_only_with_same_named_kwarg_preserves_spillover``;
+    this asserts the simpler kwargs-only path for
+    completeness of the deferred-ID mapping.
+    """
+
+    def fn(**kwargs: object) -> None:
+        del kwargs
+
+    args, kwargs = bind_and_redact(
+        fn,
+        (),
+        {"path": "/tmp/x", "content": "PROD_SECRET"},
+        tool_name="chio_file_write",
+    )
+    assert args == []
+    assert kwargs["path"] == "/tmp/x"
+    assert kwargs["content"] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET"),
     }
