@@ -4,6 +4,7 @@
 // then stores them in the kernel's ReceiptStore and triggers Merkle
 // checkpoints at the configured batch size.
 
+use std::collections::BTreeSet;
 use std::sync::Mutex;
 
 use chio_core::crypto::Keypair;
@@ -27,6 +28,7 @@ pub struct KernelReceiptSigner {
     checkpoint_seq: Mutex<u64>,
     batch_start_seq: Mutex<u64>,
     current_seq: Mutex<u64>,
+    consumed_authorization_receipts: Mutex<BTreeSet<String>>,
 }
 
 impl KernelReceiptSigner {
@@ -45,6 +47,7 @@ impl KernelReceiptSigner {
             checkpoint_seq: Mutex::new(0),
             batch_start_seq: Mutex::new(0),
             current_seq: Mutex::new(0),
+            consumed_authorization_receipts: Mutex::new(BTreeSet::new()),
         }
     }
 
@@ -147,6 +150,34 @@ impl KernelReceiptSigner {
         if stored_request_id != Some(authorization_request_id) {
             return Err(ReceiptSignError::SigningFailed(
                 "authorization receipt request id mismatch".to_string(),
+            ));
+        }
+        let receipt_context = authorization_receipt
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("receipt_context"));
+        let stored_session_id = receipt_context
+            .and_then(|context| context.get("session_id"))
+            .and_then(serde_json::Value::as_str);
+        if stored_session_id != Some(entry.session_id.as_str()) {
+            return Err(ReceiptSignError::SigningFailed(
+                "authorization receipt session id mismatch".to_string(),
+            ));
+        }
+        let stored_tool_call_id = receipt_context
+            .and_then(|context| context.get("tool_call_id"))
+            .and_then(serde_json::Value::as_str);
+        if stored_tool_call_id != Some(entry.tool_call_id.as_str()) {
+            return Err(ReceiptSignError::SigningFailed(
+                "authorization receipt tool call id mismatch".to_string(),
+            ));
+        }
+        let mut consumed = self.consumed_authorization_receipts.lock().map_err(|e| {
+            ReceiptSignError::SigningFailed(format!("authorization consumption lock poisoned: {e}"))
+        })?;
+        if !consumed.insert(authorization_receipt_id.to_string()) {
+            return Err(ReceiptSignError::SigningFailed(
+                "authorization receipt already consumed".to_string(),
             ));
         }
         Ok(())

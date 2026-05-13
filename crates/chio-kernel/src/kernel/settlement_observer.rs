@@ -81,9 +81,7 @@ impl SettlementObserverStatus {
 /// external receipts that pre-date the kernel canonical shape.
 #[must_use]
 pub fn build_observation(receipt: &ChioReceipt) -> Option<SettlementObservation> {
-    use chio_core::receipt::Decision;
-
-    if !matches!(receipt.decision, Decision::Allow) {
+    if !receipt.is_allowed() {
         return None;
     }
 

@@ -50,6 +50,7 @@ if ! command -v tinygo &> /dev/null; then
 fi
 
 tinygo build \
+    -tags=chio_guard_generated \
     -target=wasip2 \
     -no-debug \
     --wit-package dist/chio-guard-go.wasm \

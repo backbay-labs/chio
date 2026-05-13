@@ -1261,6 +1261,8 @@ pub struct BehavioralFeedReceiptRow {
     pub tool_server: String,
     pub tool_name: String,
     pub decision: Decision,
+    #[serde(default)]
+    pub authorized: bool,
     pub settlement_status: SettlementStatus,
     pub reconciliation_state: SettlementReconciliationState,
     pub action_required: bool,
@@ -1733,6 +1735,7 @@ mod tests {
             tool_server: "meter".to_string(),
             tool_name: "bill".to_string(),
             decision: Decision::Allow,
+            authorized: true,
             settlement_status: SettlementStatus::Settled,
             reconciliation_state: SettlementReconciliationState::Reconciled,
             action_required: false,

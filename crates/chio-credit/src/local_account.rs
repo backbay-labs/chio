@@ -7,8 +7,8 @@
 //! - The receipt's signature MUST verify against its embedded kernel
 //!   key. Otherwise [`CreditEvaluatorError::SignatureInvalid`] is
 //!   returned.
-//! - Only `Decision::Allow` receipts are eligible for minting. Deny,
-//!   Cancelled, and Incomplete receipts return `Ok(None)`.
+//! - Only semantically authorized receipts are eligible for minting. Deny,
+//!   Cancelled, Incomplete, trace, and advisory receipts return `Ok(None)`.
 //! - The price is read from the receipt's
 //!   [`FinancialReceiptMetadata`]. If the metadata is absent or the
 //!   `cost_charged` is zero, the result is `Ok(None)`. This is the
@@ -25,7 +25,7 @@ use crate::crypto::{sha256_hex, sign_canonical_with_backend, SigningBackend};
 use crate::hook::{
     CreditEvaluatorError, CreditEvaluatorHook, IouEnvelope, IouEnvelopeBody, IOU_ENVELOPE_SCHEMA,
 };
-use crate::receipt::{ChioReceipt, Decision};
+use crate::receipt::ChioReceipt;
 
 /// Deterministic IOU id derivation from the originating receipt id.
 ///
@@ -72,9 +72,10 @@ impl<B: SigningBackend> CreditEvaluatorHook for LocalCreditAccount<B> {
             });
         }
 
-        // Only allow decisions are eligible. Deny / Cancelled /
-        // Incomplete receipts are valid receipts but mint zero IOUs.
-        if !matches!(receipt.decision, Decision::Allow) {
+        // Only mediated/prevent allow receipts are eligible. Trace or
+        // advisory observations may preserve a legacy-shaped decision slot,
+        // but they must never mint IOUs.
+        if !receipt.is_allowed() {
             return Ok(None);
         }
 

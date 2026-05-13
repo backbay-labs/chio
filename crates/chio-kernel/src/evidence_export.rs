@@ -357,6 +357,12 @@ impl EvidenceExportQuery {
 
     #[must_use]
     pub fn child_receipt_scope(&self) -> EvidenceChildReceiptScope {
+        if matches!(
+            self.read_boundary,
+            Some(ReceiptReadBoundary::TenantScoped { .. })
+        ) {
+            return EvidenceChildReceiptScope::OmittedNoJoinPath;
+        }
         if self.has_subject_or_capability_scope() {
             if self.has_time_window() {
                 EvidenceChildReceiptScope::TimeWindowContextOnly
@@ -509,6 +515,14 @@ mod tests {
             }
             .child_receipt_scope(),
             EvidenceChildReceiptScope::TimeWindowContextOnly
+        );
+    }
+
+    #[test]
+    fn tenant_scoped_evidence_export_omits_child_receipts_without_join_path() {
+        assert_eq!(
+            EvidenceExportQuery::tenant_scoped("tenant-a").child_receipt_scope(),
+            EvidenceChildReceiptScope::OmittedNoJoinPath
         );
     }
 

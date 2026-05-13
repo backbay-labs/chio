@@ -463,7 +463,14 @@ impl MessageInterceptor {
             return None;
         };
         let key = pending_capability_context_key(session_id);
-        let next = contexts.get_mut(&key).and_then(VecDeque::pop_front);
+        let next = match contexts.get_mut(&key).map(|queue| queue.len()) {
+            Some(1) => contexts.get_mut(&key).and_then(VecDeque::pop_front),
+            Some(_) => {
+                contexts.remove(&key);
+                None
+            }
+            None => None,
+        };
         if contexts.get(&key).is_some_and(VecDeque::is_empty) {
             contexts.remove(&key);
         }

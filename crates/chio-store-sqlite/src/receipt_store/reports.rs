@@ -2698,6 +2698,7 @@ impl SqliteReceiptStore {
             reconciliation_state,
         );
         let budget_authority = receipt.financial_budget_authority_metadata();
+        let authorized = receipt.is_allowed();
 
         Ok(BehavioralFeedReceiptRow {
             receipt_id: receipt.id,
@@ -2714,6 +2715,7 @@ impl SqliteReceiptStore {
             tool_server: receipt.tool_server,
             tool_name: receipt.tool_name,
             decision: receipt.decision,
+            authorized,
             settlement_status,
             reconciliation_state,
             action_required,

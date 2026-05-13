@@ -638,6 +638,44 @@ mod tests {
     }
 
     #[test]
+    fn tenant_scoped_evidence_export_omits_child_receipts_without_tenant_join() {
+        let path = unique_db_path("evidence-export-tenant-child");
+        let store = SqliteReceiptStore::open(&path).unwrap();
+        store.with_strict_tenant_isolation(true);
+        store
+            .append_chio_receipt_returning_seq(&receipt_with_ts_and_tenant(
+                "rcpt-a",
+                "cap-a",
+                100,
+                Some("tenant-a"),
+            ))
+            .unwrap();
+        store
+            .append_chio_receipt_returning_seq(&receipt_with_ts_and_tenant(
+                "rcpt-b",
+                "cap-b",
+                100,
+                Some("tenant-b"),
+            ))
+            .unwrap();
+        store
+            .append_child_receipt(&child_receipt_with_ts("child-tenant-unknown", 100))
+            .unwrap();
+
+        let bundle = store
+            .build_evidence_export_bundle(&EvidenceExportQuery::tenant_scoped("tenant-a"))
+            .unwrap();
+
+        assert_eq!(
+            bundle.child_receipt_scope,
+            EvidenceChildReceiptScope::OmittedNoJoinPath
+        );
+        assert!(bundle.child_receipts.is_empty());
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn omits_child_receipts_for_capability_scoped_export_without_time_window() {
         let path = unique_db_path("evidence-export-scope");
         let store = SqliteReceiptStore::open(&path).unwrap();
