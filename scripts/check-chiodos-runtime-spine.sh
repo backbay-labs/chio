@@ -258,6 +258,7 @@ JSON
 python3 - "$tmpdir/scenario.json" <<'PY'
 import hashlib
 import json
+import base64
 import sys
 
 path = sys.argv[1]
@@ -523,7 +524,11 @@ PY
     --now-unix-ms 1800000001000 \
     --out-dir "$tmpdir/loopback-out"
   validate_schema "$SCHEMA_DIR/runtime-workflow-run-report.schema.json" \
-    "$tmpdir/loopback-out/workflow-run-report.json"
+    "$tmpdir/loopback-out/runtime-run-report.json"
+  validate_schema "$SCHEMA_DIR/buyer-attestation-packet.schema.json" \
+    "$tmpdir/loopback-out/buyer-attestation-packet.json"
+  validate_schema "$SCHEMA_DIR/proof-package.schema.json" \
+    "$tmpdir/loopback-out/proof-package.json"
   validate_schema "$SCHEMA_DIR/runtime-proof-regeneration-report.schema.json" \
     "$tmpdir/loopback-out/proof-regeneration-report.json"
   validate_schema "$SCHEMA_DIR/runtime-evidence-manifest.schema.json" \
@@ -533,23 +538,40 @@ PY
   validate_schema "$SCHEMA_DIR/runtime-proof-parity-report.schema.json" \
     "$tmpdir/loopback-out/runtime-proof-parity-report.json"
   cargo run -p chio-cli --bin chio -- chiodos verify \
-    --package "$tmpdir/loopback-out/buyer-auditor-proof-package.json" \
+    --package "$tmpdir/loopback-out/proof-package.json" \
     --trust-bundle "$tmpdir/loopback-out/verifier-trust-bundle.json" \
     --context "$tmpdir/loopback-out/verification-context.json" \
     --report "$tmpdir/loopback-out/verifier-report-rerun.json"
-  python3 - "$tmpdir/loopback-out/workflow-run-report.json" \
+  cargo run -p chio-cli --bin chio -- chiodos buyer package \
+    --run-output "$tmpdir/loopback-out" \
+    --out "$tmpdir/loopback-out/buyer-review-package.json"
+  validate_schema "$SCHEMA_DIR/buyer-attestation-review-package.schema.json" \
+    "$tmpdir/loopback-out/buyer-review-package.json"
+  cargo run -p chio-cli --bin chio -- chiodos buyer verify \
+    --package "$tmpdir/loopback-out/buyer-review-package.json" \
+    --trust-bundle "$tmpdir/loopback-out/verifier-trust-bundle.json" \
+    --context "$tmpdir/loopback-out/verification-context.json" \
+    --report "$tmpdir/loopback-out/buyer-review-report.json"
+  validate_schema "$SCHEMA_DIR/buyer-attestation-review-report.schema.json" \
+    "$tmpdir/loopback-out/buyer-review-report.json"
+  python3 - "$tmpdir/loopback-out/runtime-run-report.json" \
     "$tmpdir/loopback-out/proof-regeneration-report.json" \
     "$tmpdir/loopback-out/runtime-proof-parity-report.json" \
     "$tmpdir/loopback-out/runtime-evidence-manifest.json" \
-    "$tmpdir/loopback-out/runtime-proof-regeneration-input.json" <<'PY'
+    "$tmpdir/loopback-out/runtime-proof-regeneration-input.json" \
+    "$tmpdir/loopback-out/buyer-review-report.json" \
+    "$tmpdir/loopback-out/proof-package.json" <<'PY'
 import hashlib
 import json
+import base64
 import sys
 workflow = json.load(open(sys.argv[1], "r", encoding="utf-8"))
 proof = json.load(open(sys.argv[2], "r", encoding="utf-8"))
 parity = json.load(open(sys.argv[3], "r", encoding="utf-8"))
 manifest = json.load(open(sys.argv[4], "r", encoding="utf-8"))
 proof_input = json.load(open(sys.argv[5], "r", encoding="utf-8"))
+buyer_review = json.load(open(sys.argv[6], "r", encoding="utf-8"))
+proof_package = json.load(open(sys.argv[7], "r", encoding="utf-8"))
 if not workflow.get("accepted"):
     raise SystemExit("runtime workflow report was not accepted")
 if not workflow.get("stepEvidence"):
@@ -568,6 +590,8 @@ if "runtime_kernel_receipts.captured" not in proof.get("checks", []):
     raise SystemExit("runtime proof regeneration did not capture live kernel receipts")
 if "runtime_kernel_receipts.fixture_compatibility_path" in proof.get("checks", []):
     raise SystemExit("runtime proof regeneration used fixture compatibility path")
+if "runtime_treaty_buyer_closure.bound" not in proof.get("checks", []):
+    raise SystemExit("runtime proof regeneration did not bind treaty buyer closure")
 if not parity.get("accepted"):
     raise SystemExit(f"runtime proof parity was not accepted: {parity.get('failureCode')}")
 required_parity_fields = {
@@ -589,6 +613,36 @@ if proof_input.get("workflowRunReportSha256") != manifest.get("workflowRunReport
     raise SystemExit("runtime proof regeneration input did not bind workflow report hash")
 if proof_input.get("sourceRecords") != proof.get("sourceRecords"):
     raise SystemExit("runtime proof regeneration input source records did not match proof report")
+if not buyer_review.get("accepted"):
+    raise SystemExit(f"buyer review rejected runtime closure: {buyer_review.get('failureCode')}")
+required_buyer_checks = {
+    "chiodos_buyer_review.runtime_reports_bound",
+    "chiodos_buyer_review.strict_dsse_treaty_bound",
+    "chiodos_buyer_review.proof_verifier_accepted",
+}
+seen_buyer_checks = {
+    check.get("code")
+    for check in buyer_review.get("checks", [])
+    if check.get("passed")
+}
+missing_buyer_checks = required_buyer_checks - seen_buyer_checks
+if missing_buyer_checks:
+    raise SystemExit(f"buyer review skipped closure checks: {sorted(missing_buyer_checks)}")
+has_treaty_dsse = False
+for envelope in proof_package.get("bilateralEnvelopes", []):
+    payload = envelope.get("payload")
+    if not payload:
+        continue
+    statement = json.loads(base64.b64decode(payload).decode("utf-8"))
+    predicate = statement.get("predicate", {})
+    treaty_binding_ref = predicate.get("treaty_binding_ref") or predicate.get("treatyBindingRef")
+    consistency_model = predicate.get("consistency_model") or predicate.get("consistencyModel")
+    if treaty_binding_ref:
+        has_treaty_dsse = True
+        if consistency_model != "totally_ordered":
+            raise SystemExit("treaty DSSE did not carry ordered consistency")
+if not has_treaty_dsse:
+    raise SystemExit("proof package did not carry a treaty-bound bilateral DSSE")
 for path in workflow.get("evidencePaths", []):
     if path in {"regenerated-proof-package.json", "pheromone-deposit.json"}:
         raise SystemExit(f"placeholder aggregate evidence path survived: {path}")

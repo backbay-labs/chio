@@ -8,6 +8,7 @@
     "schema",
     "treatyId",
     "participantKernelIds",
+    "participantPublicKeys",
     "ladderManifestSha256s",
     "allowedActionClasses",
     "issuedAtUnixMs",
@@ -22,6 +23,12 @@
       "type": "array",
       "minItems": 2,
       "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "participantPublicKeys": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
       "uniqueItems": true
     },
     "ladderManifestSha256s": {

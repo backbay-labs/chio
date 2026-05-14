@@ -43,13 +43,25 @@ run_schema() {
   bash "$repo_root/scripts/check-chiodos-treaty-buyer-hero-loop.sh" --schema-only
 }
 
+run_runtime_admission_test() {
+  cargo test -p chio-chiodos-runtime "$1" --test runtime_admission
+}
+
+run_runtime_negative_matrix() {
+  run_runtime_admission_test kernel_hook_denies_cross_boundary_request_when_treaty_store_evidence_missing
+  run_runtime_admission_test treaty_runtime_hook_denies_missing_lineage_evidence_ref
+  run_runtime_admission_test treaty_runtime_hook_denies_missing_bilateral_invocation_evidence_ref
+  run_runtime_admission_test treaty_runtime_hook_denies_unverified_lineage_bundle_before_dispatch
+  run_runtime_admission_test treaty_runtime_hook_denies_stale_continuation_before_dispatch
+  run_runtime_admission_test treaty_runtime_hook_denies_replayed_continuation
+  run_runtime_admission_test treaty_runtime_hook_denies_request_smuggled_trust_root
+  run_runtime_admission_test treaty_runtime_hook_denies_request_smuggled_dynamic_trust
+  run_runtime_admission_test treaty_cross_boundary_admission_rejects_unverified_or_forged_intersection
+}
+
 run_runtime() {
-  cargo test -p chio-chiodos-runtime \
-    sqlite_runtime_orchestration_store_persists_treaty_evidence_idempotently \
-    --test runtime_admission
-  cargo test -p chio-chiodos-runtime \
-    kernel_hook_denies_cross_boundary_request_when_treaty_store_evidence_missing \
-    --test runtime_admission
+  run_runtime_admission_test sqlite_runtime_orchestration_store_persists_treaty_evidence_idempotently
+  run_runtime_negative_matrix
 }
 
 run_dsse() {
@@ -74,12 +86,9 @@ run_buyer() {
 
 run_negative() {
   bash "$repo_root/scripts/check-chiodos-treaty-buyer-hero-loop.sh" --negative-only
-  cargo test -p chio-chiodos-runtime \
-    buyer_review_package_rejects_missing_strict_dsse_envelope \
-    --test runtime_admission
-  cargo test -p chio-chiodos-runtime \
-    buyer_review_package_rejects_non_strict_dsse_envelope \
-    --test runtime_admission
+  run_runtime_negative_matrix
+  run_runtime_admission_test buyer_review_package_rejects_missing_strict_dsse_envelope
+  run_runtime_admission_test buyer_review_package_rejects_non_strict_dsse_envelope
 }
 
 case "$MODE" in

@@ -586,6 +586,10 @@ pub fn runtime_vendor_keypair(step_index: usize) -> Result<Keypair, ChiodosPacka
     Ok(Keypair::from_seed(&vendor.seed))
 }
 
+pub fn runtime_buyer_keypair() -> Keypair {
+    Keypair::from_seed(&BUYER_SEED)
+}
+
 pub fn runtime_vendor_binding(
     step_index: usize,
 ) -> Result<(&'static str, &'static str, &'static str), ChiodosPackageError> {

@@ -66,9 +66,9 @@ use sha2::{Digest, Sha256};
 use crate::bilateral::BilateralCoSigningError;
 use crate::bilateral_dsse::{
     receipt_subject_name, verify_chiodos_dsse_envelope, verify_dsse_envelope, BilateralPredicate,
-    DsseEnvelope, DsseStatement, Keyid, TreatyBindingRef, PAYLOAD_TYPE_IN_TOTO,
-    PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL, PREDICATE_TYPE_CHIODOS_BILATERAL,
-    STATEMENT_TYPE_V1, VALID_CROSS_ORG_VISIBILITY,
+    CapabilityLeaseRef, DsseEnvelope, DsseStatement, GovernanceReceiptRef, Keyid, TreatyBindingRef,
+    PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL,
+    PREDICATE_TYPE_CHIODOS_BILATERAL, STATEMENT_TYPE_V1, VALID_CROSS_ORG_VISIBILITY,
 };
 use crate::trust_establishment::LadderManifestRef;
 
@@ -80,9 +80,9 @@ use crate::trust_establishment::LadderManifestRef;
 /// Each exposed variant maps verbatim to a spec §7.1 code (the `Display`
 /// impl emits the code itself); kernels that surface verifier output in
 /// receipts SHOULD log the code as the canonical value. Strict CHIODOS
-/// consistency errors for `totally-ordered` and `quorum-required`
-/// predicates are intentionally not exposed by this signature-slice
-/// verifier because those modes fail earlier as `predicate.schema_invalid`.
+/// ordered and quorum consistency claims are accepted only by strict
+/// treaty-bound Chiodos predicates that carry matching treaty refs and an
+/// explicit consistency anchor.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum VerifierError {
     /// `dsse.malformed` - envelope JSON is not parseable, payloadType
@@ -493,7 +493,12 @@ pub struct StrictChiodosVerifierConfig<'a, 'b> {
 /// bilateral DSSE envelope.
 pub struct TreatyBoundBilateralDsseReview<'a> {
     pub expected_treaty_binding: &'a TreatyBindingRef,
-    pub signer_public_keys: Option<&'a BTreeMap<String, PublicKey>>,
+    pub expected_subject_name: &'a str,
+    pub expected_subject_sha256: &'a str,
+    pub expected_capability_lease_ref: &'a CapabilityLeaseRef,
+    pub expected_governance_receipt_ref: &'a GovernanceReceiptRef,
+    pub expected_consistency_anchor: &'a str,
+    pub signer_public_keys: &'a BTreeMap<String, PublicKey>,
 }
 
 // ---------------------------------------------------------------------------
@@ -518,7 +523,7 @@ pub fn verify_treaty_bound_chiodos_bilateral_invocation(
     }
     require_unique_review_signature_keyids(envelope)?;
 
-    validate_treaty_binding_ref_for_review(review.expected_treaty_binding, "expected", false)?;
+    validate_treaty_binding_ref_for_review(review.expected_treaty_binding, "expected", true)?;
 
     let (statement, statement_bytes) = envelope.decode_statement().map_err(map_bilateral_error)?;
     let canonical_statement_bytes = statement.canonical_bytes().map_err(map_bilateral_error)?;
@@ -558,6 +563,7 @@ pub fn verify_treaty_bound_chiodos_bilateral_invocation(
                 .to_string(),
         ));
     }
+    validate_predicate_operational_refs_match_treaty(pred, treaty_binding)?;
     if pred.tool_server_a.kernel_id != review.expected_treaty_binding.signer_kernel_ids[0]
         || pred.tool_server_b.kernel_id != review.expected_treaty_binding.signer_kernel_ids[1]
     {
@@ -570,25 +576,86 @@ pub fn verify_treaty_bound_chiodos_bilateral_invocation(
             "strict treaty DSSE consistency model does not match treaty binding".to_string(),
         ));
     }
-
-    if let Some(signer_public_keys) = review.signer_public_keys {
-        if !signer_public_keys.is_empty() {
-            let signer_a_id = &review.expected_treaty_binding.signer_kernel_ids[0];
-            let signer_b_id = &review.expected_treaty_binding.signer_kernel_ids[1];
-            let signer_a_public_key = signer_public_keys.get(signer_a_id).ok_or_else(|| {
-                VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
-                    "strict treaty DSSE missing public key for signer {signer_a_id:?}"
-                ))
-            })?;
-            let signer_b_public_key = signer_public_keys.get(signer_b_id).ok_or_else(|| {
-                VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
-                    "strict treaty DSSE missing public key for signer {signer_b_id:?}"
-                ))
-            })?;
-            verify_chiodos_dsse_envelope(envelope, signer_a_public_key, signer_b_public_key)
-                .map_err(map_bilateral_error)?;
-        }
+    if !is_sha256_hex(review.expected_subject_sha256) {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE expected subject digest is not a lowercase SHA-256".to_string(),
+        ));
     }
+    let subject = &statement.subject[0];
+    if subject.name != review.expected_subject_name {
+        return Err(VerifierError::SubjectDigestMismatch(format!(
+            "strict treaty DSSE subject name {} != expected {}",
+            subject.name, review.expected_subject_name
+        )));
+    }
+    if subject.digest.sha256 != review.expected_subject_sha256 {
+        return Err(VerifierError::SubjectDigestMismatch(format!(
+            "strict treaty DSSE subject digest {} != expected {}",
+            subject.digest.sha256, review.expected_subject_sha256
+        )));
+    }
+    let lease_ref = pred.capability_lease_ref.as_ref().ok_or_else(|| {
+        VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE missing capability_lease_ref".to_string(),
+        )
+    })?;
+    if lease_ref != review.expected_capability_lease_ref {
+        return Err(VerifierError::CapabilityLeaseExpiredOrUnknown(
+            "strict treaty DSSE capability_lease_ref does not match package lease".to_string(),
+        ));
+    }
+    let governance_ref = pred.governance_receipt_ref.as_ref().ok_or_else(|| {
+        VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE missing governance_receipt_ref".to_string(),
+        )
+    })?;
+    if governance_ref != review.expected_governance_receipt_ref {
+        return Err(VerifierError::GovernanceReceiptRequiredMissing(
+            "strict treaty DSSE governance_receipt_ref does not match package governance receipt"
+                .to_string(),
+        ));
+    }
+    if review.expected_consistency_anchor.trim().is_empty() {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE expected consistency anchor is empty".to_string(),
+        ));
+    }
+    if pred.consistency_anchor.as_deref() != Some(review.expected_consistency_anchor) {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE consistency_anchor does not match runtime step evidence"
+                .to_string(),
+        ));
+    }
+    if matches!(
+        pred.consistency_model.as_str(),
+        "totally_ordered" | "quorum_required"
+    ) && pred.consistency_anchor.as_deref().is_none_or(str::is_empty)
+    {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE ordered consistency requires consistency_anchor".to_string(),
+        ));
+    }
+
+    let signer_a_id = &review.expected_treaty_binding.signer_kernel_ids[0];
+    let signer_b_id = &review.expected_treaty_binding.signer_kernel_ids[1];
+    let signer_a_public_key = review.signer_public_keys.get(signer_a_id).ok_or_else(|| {
+        VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
+            "strict treaty DSSE missing public key for signer {signer_a_id:?}"
+        ))
+    })?;
+    let signer_b_public_key = review.signer_public_keys.get(signer_b_id).ok_or_else(|| {
+        VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
+            "strict treaty DSSE missing public key for signer {signer_b_id:?}"
+        ))
+    })?;
+    if signer_a_public_key == signer_b_public_key {
+        return Err(VerifierError::DsseMalformed(
+            "strict treaty DSSE signer keys must represent independent Org A and Org B passports"
+                .to_string(),
+        ));
+    }
+    verify_chiodos_dsse_envelope(envelope, signer_a_public_key, signer_b_public_key)
+        .map_err(map_bilateral_error)?;
 
     Ok(statement)
 }
@@ -686,9 +753,77 @@ fn treaty_binding_refs_equal(left: &TreatyBindingRef, right: &TreatyBindingRef) 
         && left.outcome_sha256 == right.outcome_sha256
         && left.local_receipt_sha256 == right.local_receipt_sha256
         && left.remote_receipt_sha256 == right.remote_receipt_sha256
-        && (right.lease_refs.is_empty() || left.lease_refs == right.lease_refs)
-        && (right.governance_refs.is_empty() || left.governance_refs == right.governance_refs)
+        && left.lease_refs == right.lease_refs
+        && left.governance_refs == right.governance_refs
         && left.signer_kernel_ids == right.signer_kernel_ids
+}
+
+fn validate_predicate_operational_refs_match_treaty(
+    pred: &BilateralPredicate,
+    treaty: &TreatyBindingRef,
+) -> Result<(), VerifierError> {
+    let tool_args_hash = pred.tool_args_hash.as_ref().ok_or_else(|| {
+        VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE missing tool_args_hash".to_string(),
+        )
+    })?;
+    if treaty.request_sha256 != tool_args_hash.value {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE request_sha256 does not match tool_args_hash".to_string(),
+        ));
+    }
+    if treaty.signer_kernel_ids
+        != [
+            pred.tool_server_a.kernel_id.clone(),
+            pred.tool_server_b.kernel_id.clone(),
+        ]
+    {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE signer_kernel_ids do not match authenticated predicate kernels"
+                .to_string(),
+        ));
+    }
+    let lease_ref = pred.capability_lease_ref.as_ref().ok_or_else(|| {
+        VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE missing capability_lease_ref".to_string(),
+        )
+    })?;
+    if treaty.lease_refs != [lease_ref.lease_id.clone()] {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE lease_refs do not match capability_lease_ref".to_string(),
+        ));
+    }
+    let governance_ref = pred.governance_receipt_ref.as_ref().ok_or_else(|| {
+        VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE missing governance_receipt_ref".to_string(),
+        )
+    })?;
+    if treaty.governance_refs != [governance_ref.receipt_id.clone()] {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE governance_refs do not match governance_receipt_ref".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_treaty_receipt_refs_match_resolved_receipt(
+    treaty: &TreatyBindingRef,
+    receipt: &ChioReceipt,
+    receipt_sha256: &str,
+) -> Result<(), VerifierError> {
+    if treaty.outcome_sha256 != receipt.content_hash {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE outcome_sha256 does not match resolved receipt content_hash"
+                .to_string(),
+        ));
+    }
+    if treaty.remote_receipt_sha256 != receipt_sha256 {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE remote_receipt_sha256 does not match resolved receipt hash"
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 pub fn verify_chiodos_bilateral_invocation(
@@ -866,6 +1001,7 @@ pub fn verify_chiodos_bilateral_invocation(
             subject.digest.sha256, want_hex
         )));
     }
+    let resolved_receipt_sha256 = receipt_canonical_digest_hex(&resolved_receipt)?;
 
     let summary = pred.policy_evaluation_summary.as_ref().ok_or_else(|| {
         VerifierError::PolicyVerdictDisagreement(
@@ -1003,13 +1139,61 @@ pub fn verify_chiodos_bilateral_invocation(
         }
     };
 
-    if pred.consistency_model != crate::bilateral_dsse::DEFAULT_CONSISTENCY_MODEL {
-        return Err(VerifierError::PredicateSchemaInvalid(format!(
-            "consistency_model {:?} is not supported",
-            pred.consistency_model
-        )));
+    if let Some(treaty) = pred.treaty_binding_ref.as_ref() {
+        validate_treaty_binding_ref_for_review(treaty, "predicate", true)?;
+        validate_predicate_operational_refs_match_treaty(pred, treaty)?;
+        validate_treaty_receipt_refs_match_resolved_receipt(
+            treaty,
+            &resolved_receipt,
+            &resolved_receipt_sha256,
+        )?;
+        if let Some(resolved_governance_receipt) = resolved_governance_receipt.as_ref() {
+            if treaty.governance_refs != [resolved_governance_receipt.receipt_id.clone()] {
+                return Err(VerifierError::PredicateSchemaInvalid(
+                    "strict treaty DSSE governance_refs do not match resolved governance receipt"
+                        .to_string(),
+                ));
+            }
+        }
+        if treaty.lease_refs != [resolved_lease.lease_id.clone()] {
+            return Err(VerifierError::PredicateSchemaInvalid(
+                "strict treaty DSSE lease_refs do not match resolved lease".to_string(),
+            ));
+        }
     }
 
+    if pred.consistency_model != crate::bilateral_dsse::DEFAULT_CONSISTENCY_MODEL {
+        let Some(treaty) = pred.treaty_binding_ref.as_ref() else {
+            return Err(VerifierError::PredicateSchemaInvalid(format!(
+                "consistency_model {:?} is not supported",
+                pred.consistency_model
+            )));
+        };
+        if treaty.consistency_model != pred.consistency_model {
+            return Err(VerifierError::PredicateSchemaInvalid(
+                "strict treaty DSSE consistency_model does not match treaty_binding_ref"
+                    .to_string(),
+            ));
+        }
+        if !matches!(
+            pred.consistency_model.as_str(),
+            "crdt_commutative" | "totally_ordered" | "single_kernel" | "quorum_required"
+        ) {
+            return Err(VerifierError::PredicateSchemaInvalid(format!(
+                "consistency_model {:?} is not supported",
+                pred.consistency_model
+            )));
+        }
+        if matches!(
+            pred.consistency_model.as_str(),
+            "totally_ordered" | "quorum_required"
+        ) && pred.consistency_anchor.as_deref().is_none_or(str::is_empty)
+        {
+            return Err(VerifierError::PredicateSchemaInvalid(
+                "strict treaty DSSE ordered consistency requires consistency_anchor".to_string(),
+            ));
+        }
+    }
     Ok(VerifiedBilateralCoSignInvocation {
         statement,
         resolved_receipt,
@@ -1577,6 +1761,14 @@ fn validate_hash_record(
     Ok(())
 }
 
+fn receipt_canonical_digest_hex(receipt: &ChioReceipt) -> Result<String, VerifierError> {
+    let canonical = canonical_json_bytes(receipt)
+        .map_err(|e| VerifierError::SubjectDigestMismatch(format!("canonical-json: {e}")))?;
+    let mut hasher = Sha256::new();
+    hasher.update(&canonical);
+    Ok(hex::encode(hasher.finalize()))
+}
+
 fn is_sha256_hex(value: &str) -> bool {
     value.len() == 64
         && value
@@ -1594,9 +1786,9 @@ fn is_sha256_hex(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::bilateral_dsse::{
-        pae, sign_chiodos_dsse_envelope, sign_dsse_envelope_full, BilateralPredicateExtensions,
-        CapabilityLeaseRef, GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary,
-        PolicyVerdict, PAYLOAD_TYPE_IN_TOTO,
+        pae, receipt_subject_name, sign_chiodos_dsse_envelope, sign_dsse_envelope_full,
+        BilateralPredicateExtensions, CapabilityLeaseRef, GovernanceReceiptRef, HashRecord,
+        PolicyEvaluationSummary, PolicyVerdict, PAYLOAD_TYPE_IN_TOTO,
     };
     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
     use base64::Engine as _;
@@ -1654,6 +1846,92 @@ mod tests {
             cross_org_visibility: None,
             treaty_binding_ref: None,
         }
+    }
+
+    fn treaty_bound_extensions(
+        receipt: &ChioReceipt,
+        now_ms: u64,
+        governance_digest: String,
+    ) -> BilateralPredicateExtensions {
+        BilateralPredicateExtensions {
+            capability_lease_ref: Some(CapabilityLeaseRef {
+                lease_id: "lease-c2-happy".to_string(),
+                issuer: "did:chio:org-a".to_string(),
+                expires_at_unix_ms: now_ms + 60_000,
+                scope_digest: None,
+            }),
+            policy_evaluation_summary: Some(PolicyEvaluationSummary {
+                server_a_verdict: PolicyVerdict {
+                    verdict: "allow".to_string(),
+                    policy_id: "policy.org-a".to_string(),
+                    policy_version: "v1".to_string(),
+                    rationale_code: None,
+                },
+                server_b_verdict: PolicyVerdict {
+                    verdict: "allow".to_string(),
+                    policy_id: "policy.org-b".to_string(),
+                    policy_version: "v1".to_string(),
+                    rationale_code: None,
+                },
+                joint_disposition: Some("allow".to_string()),
+            }),
+            governance_receipt_ref: Some(GovernanceReceiptRef {
+                receipt_id: "gov-1".to_string(),
+                kernel_id: "did:chio:governance".to_string(),
+                digest: HashRecord {
+                    alg: "sha256".to_string(),
+                    value: governance_digest,
+                },
+            }),
+            consistency_anchor: Some("anchor-live".to_string()),
+            consistency_model: Some("totally_ordered".to_string()),
+            cross_org_visibility: Some("treaty_only".to_string()),
+            treaty_binding_ref: Some(TreatyBindingRef {
+                treaty_id: "treaty-buyer-vendor".to_string(),
+                treaty_scope_sha256: "1".repeat(64),
+                ladder_intersection_sha256: "2".repeat(64),
+                admission_report_sha256: "3".repeat(64),
+                continuation_sha256: "4".repeat(64),
+                lineage_bundle_sha256: "5".repeat(64),
+                action_class_id: "workflow.destructive.vendor_call".to_string(),
+                consistency_model: "totally_ordered".to_string(),
+                request_sha256: receipt.action.parameter_hash.clone(),
+                outcome_sha256: receipt.content_hash.clone(),
+                local_receipt_sha256: "8".repeat(64),
+                remote_receipt_sha256: receipt_canonical_digest_hex(receipt).unwrap(),
+                lease_refs: vec!["lease-c2-happy".to_string()],
+                governance_refs: vec!["gov-1".to_string()],
+                signer_kernel_ids: vec!["did:chio:org-a".to_string(), "did:chio:org-b".to_string()],
+            }),
+        }
+    }
+
+    fn insert_fresh_ladder_peers(
+        peers: &mut PeerPinSet,
+        kp_a: &Keypair,
+        kp_b: &Keypair,
+        now_ms: u64,
+    ) {
+        peers.insert(PinnedPeer {
+            kernel_id: "did:chio:org-a".to_string(),
+            public_key: kp_a.public_key(),
+            ladder_manifest_ref: Some(crate::trust_establishment::LadderManifestRef {
+                manifest_id: "ladder:org-a:v1".to_string(),
+                sha256: "a".repeat(64),
+                issued_at_unix_ms: now_ms - 60_000,
+                expires_at_unix_ms: now_ms + 60_000,
+            }),
+        });
+        peers.insert(PinnedPeer {
+            kernel_id: "did:chio:org-b".to_string(),
+            public_key: kp_b.public_key(),
+            ladder_manifest_ref: Some(crate::trust_establishment::LadderManifestRef {
+                manifest_id: "ladder:org-b:v1".to_string(),
+                sha256: "b".repeat(64),
+                issued_at_unix_ms: now_ms - 60_000,
+                expires_at_unix_ms: now_ms + 60_000,
+            }),
+        });
     }
 
     fn fixture(
@@ -1766,6 +2044,59 @@ mod tests {
             .unwrap();
         envelope.signatures[0].sig = BASE64_STANDARD.encode(sig_a.to_bytes());
         envelope.signatures[1].sig = BASE64_STANDARD.encode(sig_b.to_bytes());
+    }
+
+    fn strict_chiodos_verifier_rejects_treaty_mutation(
+        mutate: impl FnOnce(&mut DsseStatement),
+    ) -> VerifierError {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+        let governance_json = r#"{"governance":"receipt"}"#.to_string();
+        let governance_digest = sha256_hex(governance_json.as_bytes());
+        let (
+            _slice_envelope,
+            receipt_store,
+            lease_registry,
+            mut governance_store,
+            oracle,
+            mut peers,
+        ) = fixture(&kp_a, &kp_b, &receipt, now_ms);
+        governance_store.insert(ResolvedGovernanceReceipt {
+            receipt_id: "gov-1".to_string(),
+            kernel_id: "did:chio:governance".to_string(),
+            canonical_json: governance_json,
+        });
+        insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
+        let mut envelope = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            treaty_bound_extensions(&receipt, now_ms, governance_digest),
+        )
+        .unwrap();
+        let (mut statement, _) = envelope.decode_statement().unwrap();
+        mutate(&mut statement);
+        let statement_bytes = statement.canonical_bytes().unwrap();
+        resign_envelope(&mut envelope, &kp_a, &kp_b, &statement_bytes);
+        let mut base = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+        base.action_classes
+            .insert("file_read".to_string(), ActionClassKind::ReceiptBacked);
+
+        verify_chiodos_bilateral_invocation(&envelope, &StrictChiodosVerifierConfig { base: &base })
+            .unwrap_err()
     }
 
     #[test]
@@ -2053,6 +2384,384 @@ mod tests {
         .unwrap_err();
         assert_eq!(err.code(), "predicate.schema_invalid");
         assert!(err.to_string().contains("tool_args_hash"));
+    }
+
+    #[test]
+    fn strict_chiodos_verifier_binds_treaty_request_hash_to_tool_args() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+        let governance_json = r#"{"governance":"receipt"}"#.to_string();
+        let governance_digest = sha256_hex(governance_json.as_bytes());
+        let (
+            _slice_envelope,
+            receipt_store,
+            lease_registry,
+            mut governance_store,
+            oracle,
+            mut peers,
+        ) = fixture(&kp_a, &kp_b, &receipt, now_ms);
+        governance_store.insert(ResolvedGovernanceReceipt {
+            receipt_id: "gov-1".to_string(),
+            kernel_id: "did:chio:governance".to_string(),
+            canonical_json: governance_json,
+        });
+        insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
+        let mut envelope = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            treaty_bound_extensions(&receipt, now_ms, governance_digest),
+        )
+        .unwrap();
+        let (mut statement, _) = envelope.decode_statement().unwrap();
+        statement
+            .predicate
+            .treaty_binding_ref
+            .as_mut()
+            .unwrap()
+            .request_sha256 = "6".repeat(64);
+        let statement_bytes = statement.canonical_bytes().unwrap();
+        resign_envelope(&mut envelope, &kp_a, &kp_b, &statement_bytes);
+        let mut base = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+        base.action_classes
+            .insert("file_read".to_string(), ActionClassKind::ReceiptBacked);
+
+        let err = verify_chiodos_bilateral_invocation(
+            &envelope,
+            &StrictChiodosVerifierConfig { base: &base },
+        )
+        .unwrap_err();
+        assert_eq!(err.code(), "predicate.schema_invalid");
+        assert!(err.to_string().contains("request_sha256"));
+    }
+
+    #[test]
+    fn strict_chiodos_verifier_binds_treaty_outcome_hash_to_resolved_receipt() {
+        let err = strict_chiodos_verifier_rejects_treaty_mutation(|statement| {
+            statement
+                .predicate
+                .treaty_binding_ref
+                .as_mut()
+                .unwrap()
+                .outcome_sha256 = "7".repeat(64);
+        });
+        assert_eq!(err.code(), "predicate.schema_invalid");
+        assert!(err.to_string().contains("outcome_sha256"));
+    }
+
+    #[test]
+    fn strict_chiodos_verifier_binds_treaty_remote_receipt_hash_to_resolved_receipt() {
+        let err = strict_chiodos_verifier_rejects_treaty_mutation(|statement| {
+            statement
+                .predicate
+                .treaty_binding_ref
+                .as_mut()
+                .unwrap()
+                .remote_receipt_sha256 = "9".repeat(64);
+        });
+        assert_eq!(err.code(), "predicate.schema_invalid");
+        assert!(err.to_string().contains("remote_receipt_sha256"));
+    }
+
+    #[test]
+    fn strict_chiodos_verifier_accepts_treaty_ordered_consistency() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+        let governance_json = r#"{"governance":"receipt"}"#.to_string();
+        let governance_digest = sha256_hex(governance_json.as_bytes());
+        let (
+            _slice_envelope,
+            receipt_store,
+            lease_registry,
+            mut governance_store,
+            oracle,
+            mut peers,
+        ) = fixture(&kp_a, &kp_b, &receipt, now_ms);
+        governance_store.insert(ResolvedGovernanceReceipt {
+            receipt_id: "gov-1".to_string(),
+            kernel_id: "did:chio:governance".to_string(),
+            canonical_json: governance_json,
+        });
+        insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
+        let envelope = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            treaty_bound_extensions(&receipt, now_ms, governance_digest),
+        )
+        .unwrap();
+        let mut base = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+        base.action_classes
+            .insert("file_read".to_string(), ActionClassKind::ReceiptBacked);
+
+        let verified = verify_chiodos_bilateral_invocation(
+            &envelope,
+            &StrictChiodosVerifierConfig { base: &base },
+        )
+        .unwrap();
+
+        assert_eq!(verified.resolved_receipt.id, receipt.id);
+        assert_eq!(
+            verified.statement.predicate.consistency_model,
+            "totally_ordered"
+        );
+        assert!(verified.statement.predicate.treaty_binding_ref.is_some());
+    }
+
+    #[test]
+    fn strict_chiodos_treaty_review_binds_live_material() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+        let governance_digest = sha256_hex(br#"{"governance":"receipt"}"#);
+        let envelope = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            treaty_bound_extensions(&receipt, now_ms, governance_digest),
+        )
+        .unwrap();
+        let (statement, _) = envelope.decode_statement().unwrap();
+        let expected_treaty_binding = statement.predicate.treaty_binding_ref.clone().unwrap();
+        let expected_subject_name = receipt_subject_name(&receipt.id);
+        let expected_subject_sha256 = chio_core_types::crypto::sha256_hex(
+            &chio_core_types::crypto::canonical_json_bytes(&receipt.body()).unwrap(),
+        );
+        let expected_capability_lease_ref =
+            statement.predicate.capability_lease_ref.clone().unwrap();
+        let expected_governance_receipt_ref =
+            statement.predicate.governance_receipt_ref.clone().unwrap();
+        let mut signer_public_keys = BTreeMap::new();
+        signer_public_keys.insert("did:chio:org-a".to_string(), kp_a.public_key());
+        signer_public_keys.insert("did:chio:org-b".to_string(), kp_b.public_key());
+
+        let accepted = TreatyBoundBilateralDsseReview {
+            expected_treaty_binding: &expected_treaty_binding,
+            expected_subject_name: &expected_subject_name,
+            expected_subject_sha256: &expected_subject_sha256,
+            expected_capability_lease_ref: &expected_capability_lease_ref,
+            expected_governance_receipt_ref: &expected_governance_receipt_ref,
+            expected_consistency_anchor: "anchor-live",
+            signer_public_keys: &signer_public_keys,
+        };
+        verify_treaty_bound_chiodos_bilateral_invocation(&envelope, &accepted).unwrap();
+
+        let wrong_anchor = TreatyBoundBilateralDsseReview {
+            expected_treaty_binding: &expected_treaty_binding,
+            expected_subject_name: &expected_subject_name,
+            expected_subject_sha256: &expected_subject_sha256,
+            expected_capability_lease_ref: &expected_capability_lease_ref,
+            expected_governance_receipt_ref: &expected_governance_receipt_ref,
+            expected_consistency_anchor: "anchor-other",
+            signer_public_keys: &signer_public_keys,
+        };
+        assert_eq!(
+            verify_treaty_bound_chiodos_bilateral_invocation(&envelope, &wrong_anchor)
+                .unwrap_err()
+                .code(),
+            "predicate.schema_invalid"
+        );
+
+        let mut wrong_lease = expected_capability_lease_ref.clone();
+        wrong_lease.issuer = "did:chio:attacker".to_string();
+        let wrong_lease_review = TreatyBoundBilateralDsseReview {
+            expected_treaty_binding: &expected_treaty_binding,
+            expected_subject_name: &expected_subject_name,
+            expected_subject_sha256: &expected_subject_sha256,
+            expected_capability_lease_ref: &wrong_lease,
+            expected_governance_receipt_ref: &expected_governance_receipt_ref,
+            expected_consistency_anchor: "anchor-live",
+            signer_public_keys: &signer_public_keys,
+        };
+        assert_eq!(
+            verify_treaty_bound_chiodos_bilateral_invocation(&envelope, &wrong_lease_review)
+                .unwrap_err()
+                .code(),
+            "capability.lease_expired_or_unknown"
+        );
+
+        let mut wrong_governance = expected_governance_receipt_ref.clone();
+        wrong_governance.digest.value = "0".repeat(64);
+        let wrong_governance_review = TreatyBoundBilateralDsseReview {
+            expected_treaty_binding: &expected_treaty_binding,
+            expected_subject_name: &expected_subject_name,
+            expected_subject_sha256: &expected_subject_sha256,
+            expected_capability_lease_ref: &expected_capability_lease_ref,
+            expected_governance_receipt_ref: &wrong_governance,
+            expected_consistency_anchor: "anchor-live",
+            signer_public_keys: &signer_public_keys,
+        };
+        assert_eq!(
+            verify_treaty_bound_chiodos_bilateral_invocation(&envelope, &wrong_governance_review)
+                .unwrap_err()
+                .code(),
+            "governance.receipt_required_missing"
+        );
+
+        let wrong_subject_sha256 = "0".repeat(64);
+        let wrong_subject_review = TreatyBoundBilateralDsseReview {
+            expected_treaty_binding: &expected_treaty_binding,
+            expected_subject_name: &expected_subject_name,
+            expected_subject_sha256: &wrong_subject_sha256,
+            expected_capability_lease_ref: &expected_capability_lease_ref,
+            expected_governance_receipt_ref: &expected_governance_receipt_ref,
+            expected_consistency_anchor: "anchor-live",
+            signer_public_keys: &signer_public_keys,
+        };
+        assert_eq!(
+            verify_treaty_bound_chiodos_bilateral_invocation(&envelope, &wrong_subject_review)
+                .unwrap_err()
+                .code(),
+            "subject.digest_mismatch"
+        );
+    }
+
+    #[test]
+    fn strict_chiodos_verifier_binds_treaty_signers_to_authenticated_peers() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+        let governance_json = r#"{"governance":"receipt"}"#.to_string();
+        let governance_digest = sha256_hex(governance_json.as_bytes());
+        let (
+            _slice_envelope,
+            receipt_store,
+            lease_registry,
+            mut governance_store,
+            oracle,
+            mut peers,
+        ) = fixture(&kp_a, &kp_b, &receipt, now_ms);
+        governance_store.insert(ResolvedGovernanceReceipt {
+            receipt_id: "gov-1".to_string(),
+            kernel_id: "did:chio:governance".to_string(),
+            canonical_json: governance_json,
+        });
+        insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
+        let mut envelope = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            treaty_bound_extensions(&receipt, now_ms, governance_digest),
+        )
+        .unwrap();
+        let (mut statement, _) = envelope.decode_statement().unwrap();
+        statement
+            .predicate
+            .treaty_binding_ref
+            .as_mut()
+            .unwrap()
+            .signer_kernel_ids[0] = "did:chio:attacker".to_string();
+        let statement_bytes = statement.canonical_bytes().unwrap();
+        resign_envelope(&mut envelope, &kp_a, &kp_b, &statement_bytes);
+        let mut base = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+        base.action_classes
+            .insert("file_read".to_string(), ActionClassKind::ReceiptBacked);
+
+        let err = verify_chiodos_bilateral_invocation(
+            &envelope,
+            &StrictChiodosVerifierConfig { base: &base },
+        )
+        .unwrap_err();
+        assert_eq!(err.code(), "predicate.schema_invalid");
+        assert!(err.to_string().contains("signer_kernel_ids"));
+    }
+
+    #[test]
+    fn strict_chiodos_verifier_rejects_treaty_without_ordered_anchor() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+        let governance_json = r#"{"governance":"receipt"}"#.to_string();
+        let governance_digest = sha256_hex(governance_json.as_bytes());
+        let (
+            _slice_envelope,
+            receipt_store,
+            lease_registry,
+            mut governance_store,
+            oracle,
+            mut peers,
+        ) = fixture(&kp_a, &kp_b, &receipt, now_ms);
+        governance_store.insert(ResolvedGovernanceReceipt {
+            receipt_id: "gov-1".to_string(),
+            kernel_id: "did:chio:governance".to_string(),
+            canonical_json: governance_json,
+        });
+        insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
+        let mut ext = treaty_bound_extensions(&receipt, now_ms, governance_digest);
+        ext.consistency_anchor = None;
+        let envelope = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            ext,
+        )
+        .unwrap();
+        let mut base = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+        base.action_classes
+            .insert("file_read".to_string(), ActionClassKind::ReceiptBacked);
+
+        let err = verify_chiodos_bilateral_invocation(
+            &envelope,
+            &StrictChiodosVerifierConfig { base: &base },
+        )
+        .unwrap_err();
+        assert_eq!(err.code(), "predicate.schema_invalid");
+        assert!(err.to_string().contains("consistency_anchor"));
     }
 
     #[test]

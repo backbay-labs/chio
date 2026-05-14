@@ -126,7 +126,7 @@ eb69d5277d37053ab8a8e1606c94f9b208ab37d56848da1536315d8a7161d755  spec/schemas/c
 efa89b2a0d2589ab0b6840534bb67312634c267fd5fec7d1faaa11b1f02da602  spec/schemas/chio-wire/v1/trust-control/terminate.schema.json
 0867f22e4d258fb0d3ca5dba0d930cf9edacff01df5d822a60ee5e1449620aa1  spec/schemas/chiodos/v1/authority-profile.schema.json
 a9875e15ccac9a633ae13850d081326beff6595f1c665209a43dfb70c843ae37  spec/schemas/chiodos/v1/bilateral-invocation.schema.json
-66e767afb212ddde6581f7b0f1375598b96490b432bffb1611c945891ae1b4f3  spec/schemas/chiodos/v1/buyer-attestation-packet.schema.json
+2676bba198bda2b1d0bcea11608271b280e0f2618623f9a357227323b533c1d8  spec/schemas/chiodos/v1/buyer-attestation-packet.schema.json
 798cc89474b966dec93d51975cc09d9e926da64b3e5a1da5df5e30fb65bc49d3  spec/schemas/chiodos/v1/buyer-attestation-review-package.schema.json
 99616cf783ce49b417889dda529c48c848d98b729fa6c3693dbde3284a9fc391  spec/schemas/chiodos/v1/buyer-attestation-review-report.schema.json
 ad66e612384b3f8bb75a20baa3c365f49251ad783dab8aba1e42ff01bcf306ed  spec/schemas/chiodos/v1/buyer-attestation-verification-report.schema.json
@@ -184,7 +184,7 @@ c650373b6e5a9d78cf17a558b3a3121762a4bd75c7f599056f1da3a9972a06fd  spec/schemas/c
 67c0b1634a3b76737df680f8290675301b7f96a1b9026eef760cde90f08642aa  spec/schemas/chiodos/v1/selective-disclosure-proof.schema.json
 8688bcf5ae08af4dabdeb6f234e792def288d358f4f2a1d9686049203f85a346  spec/schemas/chiodos/v1/treaty-negative-fixture-corpus.schema.json
 d51684a1fcb99fd21fd253b2bf4ff29b49edefef17248fdd6babb54476784c07  spec/schemas/chiodos/v1/treaty-runtime-negative-fixture-corpus.schema.json
-c10653109c7e514b72179f49e64e357ed528eda54042a82c2c5ecc5988c58060  spec/schemas/chiodos/v1/treaty-scope.schema.json
+16ddc4fff49f8bd1b50c7d79ebc2d916f70abd4dfbff89f6aab93c0c080ca73d  spec/schemas/chiodos/v1/treaty-scope.schema.json
 58d5e3eb2c5930f4d3584cb5cef3c72b95864ff7f41ccb8ed6cae7ecc3e74a2a  spec/schemas/chiodos/v1/trusted-issuer-registry.schema.json
 6d9a8e7cdfd831b32b988ddd0b98aca60b59b783e4402d2e82f3b7395cbc231e  spec/schemas/chiodos/v1/verification-context.schema.json
 4eee47efcf6809aaf06331771a7f4a75690f28aa3b94bb21d6be42da87501238  spec/schemas/chiodos/v1/verifier-report.schema.json

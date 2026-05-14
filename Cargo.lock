@@ -2766,9 +2766,11 @@ dependencies = [
 name = "chio-chiodos-runtime"
 version = "0.1.0"
 dependencies = [
+ "chio-chiodos",
  "chio-core-types",
  "chio-federation",
  "chio-kernel",
+ "chiodos-three-vendor-example",
  "rusqlite",
  "serde",
  "serde_json",

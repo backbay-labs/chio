@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use chio_core_types::crypto::{canonical_json_bytes, sha256_hex, Keypair};
+use chio_core_types::receipt::ChioReceipt;
 use chio_core_types::{PublicKey, SignedExportEnvelope};
 use chio_kernel::{
     KernelError, RuntimeAdmissionContext as KernelRuntimeAdmissionContext,
@@ -111,9 +112,19 @@ pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "chiodos_buyer_packet_settlement_claimed",
     "chiodos_buyer_packet_source_missing",
     "chiodos_buyer_review_artifact_hash_mismatch",
+    "chiodos_buyer_review_artifact_path_mismatch",
+    "chiodos_buyer_review_duplicate_artifact_path",
     "chiodos_buyer_review_duplicate_artifact_role",
     "chiodos_buyer_review_missing_artifact_role",
+    "chiodos_buyer_review_missing_treaty_dsse_binding",
+    "chiodos_buyer_review_non_strict_dsse",
     "chiodos_buyer_review_packet_hash_mismatch",
+    "chiodos_buyer_review_proof_package_incomplete",
+    "chiodos_buyer_review_proof_package_mismatch",
+    "chiodos_buyer_review_runtime_report_mismatch",
+    "chiodos_buyer_review_strict_dsse_binding_mismatch",
+    "chiodos_buyer_review_strict_dsse_signature_invalid",
+    "chiodos_buyer_review_strict_dsse_signer_mismatch",
     "chiodos_buyer_review_verifier_report_rejected",
     "chiodos_ladder_alias_conflict",
     "chiodos_ladder_consistency_mismatch",
@@ -367,6 +378,7 @@ pub struct TreatyScope {
     pub schema: String,
     pub treaty_id: String,
     pub participant_kernel_ids: Vec<String>,
+    pub participant_public_keys: Vec<PublicKey>,
     pub ladder_manifest_sha256s: Vec<String>,
     pub allowed_action_classes: Vec<String>,
     pub issued_at_unix_ms: u64,
@@ -494,6 +506,7 @@ pub struct BuyerAttestationPacket {
     pub continuation_sha256: String,
     pub receipt_lineage_statement_sha256: String,
     pub bilateral_invocation_sha256: String,
+    pub bilateral_dsse_sha256: String,
     pub workflow_receipt_sha256: String,
     pub proof_package_sha256: String,
     pub verifier_report_sha256: String,
@@ -529,6 +542,18 @@ pub struct BuyerAttestationReviewArtifactRef {
     pub relative_path: String,
     pub artifact_sha256: String,
     pub byte_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuyerAttestationReviewSource {
+    pub role: String,
+    pub relative_path: String,
+    pub bytes: Vec<u8>,
+}
+
+pub struct BuyerAttestationReviewTrustContext<'a> {
+    pub verifier_trust_bundle: &'a serde_json::Value,
+    pub verification_context: &'a serde_json::Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1137,6 +1162,14 @@ pub trait RuntimeAdmissionStore: Send + Sync {
         Ok(())
     }
 
+    fn release_treaty_continuation(
+        &self,
+        _continuation_id: &str,
+        _admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        Ok(())
+    }
+
     fn runtime_trust_floor(
         &self,
         verifier_id: &str,
@@ -1272,6 +1305,18 @@ impl RuntimeAdmissionStore for InMemoryRuntimeAdmissionStore {
                 detail: format!("treaty continuation {continuation_id} was already consumed"),
             });
         }
+        Ok(())
+    }
+
+    fn release_treaty_continuation(
+        &self,
+        continuation_id: &str,
+        _admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        let mut consumed = self.consumed_treaty_continuations.lock().map_err(|_| {
+            ChiodosRuntimeError::Store("runtime treaty continuation store is poisoned".to_string())
+        })?;
+        consumed.remove(continuation_id);
         Ok(())
     }
 
@@ -1531,6 +1576,19 @@ impl RuntimeAdmissionStore for JsonRuntimeAdmissionStore {
         state
             .consumed_treaty_continuation_ids
             .push(continuation_id.to_string());
+        Self::validate_state(&state)?;
+        self.persist_state(&state)
+    }
+
+    fn release_treaty_continuation(
+        &self,
+        continuation_id: &str,
+        _admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        let mut state = self.lock_state()?;
+        state
+            .consumed_treaty_continuation_ids
+            .retain(|consumed| consumed != continuation_id);
         Self::validate_state(&state)?;
         self.persist_state(&state)
     }
@@ -2508,6 +2566,21 @@ impl RuntimeAdmissionStore for SqliteRuntimeOrchestrationStore {
         Ok(())
     }
 
+    fn release_treaty_continuation(
+        &self,
+        continuation_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        let connection = self.lock_connection()?;
+        connection
+            .execute(
+                "DELETE FROM runtime_consumed_treaty_continuations WHERE continuation_id = ?1 AND admission_id = ?2",
+                params![continuation_id, admission_id],
+            )
+            .map_err(sqlite_error)?;
+        Ok(())
+    }
+
     fn runtime_trust_floor(
         &self,
         verifier_id: &str,
@@ -3021,6 +3094,7 @@ pub fn treaty_scope_semantic_intersection_sha256(
     canonical_sha256(&serde_json::json!({
         "treatyId": scope.treaty_id,
         "participantKernelIds": scope.participant_kernel_ids,
+        "participantPublicKeys": scope.participant_public_keys,
         "ladderManifestSha256s": scope.ladder_manifest_sha256s,
         "allowedActionClasses": scope.allowed_action_classes,
         "revocationEpochSha256": scope.revocation_epoch_sha256,
@@ -3049,6 +3123,26 @@ pub fn receipt_lineage_statement_sha256(
     statement: &ReceiptLineageStatement,
 ) -> Result<String, ChiodosRuntimeError> {
     canonical_sha256(statement)
+}
+
+pub fn bilateral_invocation_binding_sha256(
+    invocation: &BilateralInvocation,
+) -> Result<String, ChiodosRuntimeError> {
+    canonical_sha256(&serde_json::json!({
+        "schema": &invocation.schema,
+        "invocationId": &invocation.invocation_id,
+        "treatyId": &invocation.treaty_id,
+        "ladderIntersectionSha256": &invocation.ladder_intersection_sha256,
+        "continuationSha256": &invocation.continuation_sha256,
+        "actionClassId": &invocation.action_class_id,
+        "consistencyModel": &invocation.consistency_model,
+        "capabilityId": &invocation.capability_id,
+        "requestSha256": &invocation.request_sha256,
+        "outcomeSha256": &invocation.outcome_sha256,
+        "localReceiptSha256": &invocation.local_receipt_sha256,
+        "remoteReceiptSha256": &invocation.remote_receipt_sha256,
+        "signerKernelIds": &invocation.signer_kernel_ids
+    }))
 }
 
 pub fn buyer_attestation_packet_sha256(
@@ -3172,6 +3266,12 @@ pub fn validate_treaty_scope(scope: &TreatyScope) -> Result<(), ChiodosRuntimeEr
             "treaty scope must bind one ladder manifest hash per participant",
         );
     }
+    if scope.participant_kernel_ids.len() != scope.participant_public_keys.len() {
+        return rejected(
+            "chiodos_treaty_missing_participant",
+            "treaty scope must bind one public key per participant",
+        );
+    }
     let mut participants = BTreeSet::new();
     for participant in &scope.participant_kernel_ids {
         validate_non_empty(participant, "treaty_scope_empty_participant")?;
@@ -3179,6 +3279,15 @@ pub fn validate_treaty_scope(scope: &TreatyScope) -> Result<(), ChiodosRuntimeEr
             return rejected(
                 "treaty_scope_duplicate_participant",
                 "treaty scope contains duplicate participant kernel",
+            );
+        }
+    }
+    let mut public_keys = BTreeSet::new();
+    for public_key in &scope.participant_public_keys {
+        if !public_keys.insert(public_key.to_hex()) {
+            return rejected(
+                "treaty_scope_duplicate_participant_key",
+                "treaty scope contains duplicate participant public key",
             );
         }
     }
@@ -3613,6 +3722,7 @@ pub fn verify_buyer_attestation_packet(
     validate_cross_kernel_continuation(continuation)?;
     validate_cross_boundary_admission_report(admission)?;
     validate_bilateral_invocation(bilateral)?;
+    let bilateral_invocation_sha256 = bilateral_invocation_binding_sha256(bilateral)?;
     let mut checks = vec!["chiodos_buyer.packet_valid".to_string()];
     if packet.settlement_claimed {
         return Ok(buyer_packet_rejection_report(
@@ -3631,6 +3741,7 @@ pub fn verify_buyer_attestation_packet(
     if receipt_lineage_statement_sha256(lineage)? != packet.receipt_lineage_statement_sha256
         || canonical_sha256(continuation)? != packet.continuation_sha256
         || canonical_sha256(admission)? != packet.cross_boundary_admission_report_sha256
+        || bilateral_invocation_sha256 != packet.bilateral_invocation_sha256
         || lineage.continuation_sha256 != packet.continuation_sha256
         || lineage.bilateral_invocation_sha256 != packet.bilateral_invocation_sha256
         || bilateral.continuation_sha256 != packet.continuation_sha256
@@ -3642,14 +3753,14 @@ pub fn verify_buyer_attestation_packet(
         || bilateral.action_class_id != admission.action_class_id
         || admission.treaty_scope_sha256 != packet.treaty_scope_sha256
         || admission.ladder_intersection_sha256 != packet.ladder_intersection_sha256
-        || !has_verified_evidence(
+        || verified_evidence_missing_or_mismatch(
             admission,
             "receipt_lineage",
             &packet.receipt_lineage_statement_sha256,
         )
-        || !has_verified_evidence(
+        || verified_evidence_missing_or_mismatch(
             admission,
-            "bilateral_dsse",
+            "bilateral_invocation",
             &packet.bilateral_invocation_sha256,
         )
         || !admission.accepted
@@ -3670,21 +3781,40 @@ pub fn verify_buyer_attestation_packet(
     })
 }
 
-fn has_verified_evidence(
+fn verified_evidence_missing_or_mismatch(
     admission: &CrossBoundaryAdmissionReport,
     evidence_class: &str,
     artifact_sha256: &str,
 ) -> bool {
-    admission.verified_evidence.iter().any(|evidence| {
-        evidence.evidence_class == evidence_class
-            && evidence.artifact_sha256 == artifact_sha256
-            && evidence.verified
-    })
+    let mut refs = admission
+        .verified_evidence
+        .iter()
+        .filter(|evidence| evidence.evidence_class == evidence_class);
+    let Some(evidence) = refs.next() else {
+        return true;
+    };
+    refs.next().is_some() || evidence.artifact_sha256 != artifact_sha256 || !evidence.verified
 }
 
 pub fn verify_buyer_attestation_review_package(
     package: &BuyerAttestationReviewPackage,
-    sources_by_role: &BTreeMap<String, Vec<u8>>,
+    sources: &[BuyerAttestationReviewSource],
+) -> Result<BuyerAttestationReviewReport, ChiodosRuntimeError> {
+    verify_buyer_attestation_review_package_internal(package, sources, None)
+}
+
+pub fn verify_buyer_attestation_review_package_with_trust(
+    package: &BuyerAttestationReviewPackage,
+    sources: &[BuyerAttestationReviewSource],
+    trust_context: &BuyerAttestationReviewTrustContext<'_>,
+) -> Result<BuyerAttestationReviewReport, ChiodosRuntimeError> {
+    verify_buyer_attestation_review_package_internal(package, sources, Some(trust_context))
+}
+
+fn verify_buyer_attestation_review_package_internal(
+    package: &BuyerAttestationReviewPackage,
+    sources: &[BuyerAttestationReviewSource],
+    trust_context: Option<&BuyerAttestationReviewTrustContext<'_>>,
 ) -> Result<BuyerAttestationReviewReport, ChiodosRuntimeError> {
     validate_buyer_attestation_review_package(package)?;
     let mut checks = vec![buyer_review_check(
@@ -3697,6 +3827,74 @@ pub fn verify_buyer_attestation_review_package(
         "buyer review package structure is valid",
     )];
     let refs_by_role = review_refs_by_role(package)?;
+    let mut source_bytes_by_role = BTreeMap::new();
+    let mut source_paths = BTreeSet::new();
+    for source in sources {
+        validate_non_empty(&source.role, "buyer_review_artifact_empty_role")?;
+        validate_relative_evidence_path(
+            &source.relative_path,
+            "buyer_review_artifact_unsafe_path",
+        )?;
+        if !source_paths.insert(source.relative_path.clone()) {
+            return Ok(buyer_review_rejection_report(
+                package,
+                "chiodos_buyer_review_duplicate_artifact_path",
+                checks,
+            ));
+        }
+        let Some(artifact_ref) = refs_by_role.get(&source.role) else {
+            return Ok(buyer_review_rejection_report(
+                package,
+                "chiodos_buyer_review_missing_artifact_role",
+                checks,
+            ));
+        };
+        if artifact_ref.relative_path != source.relative_path {
+            checks.push(buyer_review_check(
+                "chiodos_buyer_review.artifact_path_bound",
+                false,
+                "error",
+                &source.role,
+                Some(artifact_ref.relative_path.clone()),
+                Some(source.relative_path.clone()),
+                "artifact bytes were supplied from a path outside the package manifest binding",
+            ));
+            return Ok(buyer_review_rejection_report(
+                package,
+                "chiodos_buyer_review_artifact_path_mismatch",
+                checks,
+            ));
+        }
+        let observed = sha256_hex(&source.bytes);
+        if observed != artifact_ref.artifact_sha256
+            || source.bytes.len() as u64 != artifact_ref.byte_count
+        {
+            checks.push(buyer_review_check(
+                "chiodos_buyer_review.artifact_hash_bound",
+                false,
+                "error",
+                &source.role,
+                Some(artifact_ref.artifact_sha256.clone()),
+                Some(observed),
+                "artifact bytes did not match the package manifest",
+            ));
+            return Ok(buyer_review_rejection_report(
+                package,
+                "chiodos_buyer_review_artifact_hash_mismatch",
+                checks,
+            ));
+        }
+        if source_bytes_by_role
+            .insert(source.role.clone(), source.bytes.clone())
+            .is_some()
+        {
+            return Ok(buyer_review_rejection_report(
+                package,
+                "chiodos_buyer_review_duplicate_artifact_role",
+                checks,
+            ));
+        }
+    }
     for role in BUYER_REVIEW_REQUIRED_ROLES {
         let Some(artifact_ref) = refs_by_role.get(*role) else {
             return Ok(buyer_review_rejection_report(
@@ -3705,23 +3903,21 @@ pub fn verify_buyer_attestation_review_package(
                 checks,
             ));
         };
-        let Some(bytes) = sources_by_role.get(*role) else {
+        let Some(bytes) = source_bytes_by_role.get(*role) else {
             return Ok(buyer_review_rejection_report(
                 package,
                 "chiodos_buyer_review_missing_artifact_role",
                 checks,
             ));
         };
-        let observed = sha256_hex(bytes);
-        if observed != artifact_ref.artifact_sha256 || bytes.len() as u64 != artifact_ref.byte_count
-        {
+        if bytes.len() as u64 != artifact_ref.byte_count {
             checks.push(buyer_review_check(
                 "chiodos_buyer_review.artifact_hash_bound",
                 false,
                 "error",
                 role,
                 Some(artifact_ref.artifact_sha256.clone()),
-                Some(observed),
+                Some(sha256_hex(bytes)),
                 "artifact bytes did not match the package manifest",
             ));
             return Ok(buyer_review_rejection_report(
@@ -3742,20 +3938,21 @@ pub fn verify_buyer_attestation_review_package(
     ));
 
     let packet: BuyerAttestationPacket =
-        parse_review_json(sources_by_role, "buyer_attestation_packet")?;
+        parse_review_json(&source_bytes_by_role, "buyer_attestation_packet")?;
     let lineage: ReceiptLineageStatement =
-        parse_review_json(sources_by_role, "receipt_lineage_statement")?;
+        parse_review_json(&source_bytes_by_role, "receipt_lineage_statement")?;
     let lineage_bundle: ReceiptLineageBundle =
-        parse_review_json(sources_by_role, "receipt_lineage_bundle")?;
+        parse_review_json(&source_bytes_by_role, "receipt_lineage_bundle")?;
     let continuation: CrossKernelContinuation =
-        parse_review_json(sources_by_role, "cross_kernel_continuation")?;
+        parse_review_json(&source_bytes_by_role, "cross_kernel_continuation")?;
     let admission: CrossBoundaryAdmissionReport =
-        parse_review_json(sources_by_role, "cross_boundary_admission_report")?;
+        parse_review_json(&source_bytes_by_role, "cross_boundary_admission_report")?;
     let bilateral: BilateralInvocation =
-        parse_review_json(sources_by_role, "bilateral_invocation")?;
+        parse_review_json(&source_bytes_by_role, "bilateral_invocation")?;
     let bilateral_dsse: chio_federation::DsseEnvelope =
-        parse_review_json(sources_by_role, "bilateral_dsse_envelope")?;
-    let proof_package: serde_json::Value = parse_review_json(sources_by_role, "proof_package")?;
+        parse_review_json(&source_bytes_by_role, "bilateral_dsse_envelope")?;
+    let proof_package: serde_json::Value =
+        parse_review_json(&source_bytes_by_role, "proof_package")?;
     if packet.packet_id != package.packet_id || packet.buyer_id != package.buyer_id {
         return Ok(buyer_review_rejection_report(
             package,
@@ -3779,6 +3976,20 @@ pub fn verify_buyer_attestation_review_package(
         None,
         "receipt lineage bundle closed over verified edges",
     ));
+    if let Err(code) =
+        verify_buyer_review_lineage_binding(&packet, &lineage, &lineage_bundle, &bilateral)
+    {
+        return Ok(buyer_review_rejection_report(package, code, checks));
+    }
+    checks.push(buyer_review_check(
+        "chiodos_buyer_review.lineage_bundle_bound",
+        true,
+        "info",
+        "receipt_lineage_bundle",
+        None,
+        None,
+        "receipt lineage bundle root, leaf, and statement hash matched the buyer packet",
+    ));
     let packet_report =
         verify_buyer_attestation_packet(&packet, &lineage, &continuation, &admission, &bilateral)?;
     if !packet_report.accepted {
@@ -3801,8 +4012,17 @@ pub fn verify_buyer_attestation_review_package(
         "buyer packet bindings matched hydrated treaty evidence",
     ));
     let workflow_receipt: serde_json::Value =
-        parse_review_json(sources_by_role, "workflow_receipt")?;
-    let verifier_report: serde_json::Value = parse_review_json(sources_by_role, "verifier_report")?;
+        parse_review_json(&source_bytes_by_role, "workflow_receipt")?;
+    let verifier_report: serde_json::Value =
+        parse_review_json(&source_bytes_by_role, "verifier_report")?;
+    let proof_regeneration_report: RuntimeProofRegenerationReport =
+        parse_review_json(&source_bytes_by_role, "proof_regeneration_report")?;
+    let runtime_run_report: RuntimeWorkflowRunReport =
+        parse_review_json(&source_bytes_by_role, "runtime_run_report")?;
+    let runtime_evidence_manifest: RuntimeEvidenceManifest =
+        parse_review_json(&source_bytes_by_role, "runtime_evidence_manifest")?;
+    let proof_regeneration_input: RuntimeProofRegenerationInput =
+        parse_review_json(&source_bytes_by_role, "proof_regeneration_input")?;
     let workflow_sha256 = canonical_sha256(&workflow_receipt)?;
     let proof_sha256 = canonical_sha256(&proof_package)?;
     let verifier_sha256 = canonical_sha256(&verifier_report)?;
@@ -3816,7 +4036,74 @@ pub fn verify_buyer_attestation_review_package(
             checks,
         ));
     }
-    let signer_public_keys = match buyer_review_signer_public_keys_from_proof_package(
+    let bilateral_dsse_sha256 = canonical_sha256(&bilateral_dsse)?;
+    if bilateral_dsse_sha256 != packet.bilateral_dsse_sha256 {
+        return Ok(buyer_review_rejection_report(
+            package,
+            "chiodos_buyer_review_packet_hash_mismatch",
+            checks,
+        ));
+    }
+    if let Err(code) = verify_buyer_review_proof_package(
+        &proof_package,
+        &workflow_receipt,
+        &workflow_sha256,
+        &bilateral_dsse_sha256,
+    ) {
+        return Ok(buyer_review_rejection_report(package, code, checks));
+    }
+    checks.push(buyer_review_check(
+        "chiodos_buyer_review.proof_package_hydrated",
+        true,
+        "info",
+        "proof_package",
+        None,
+        None,
+        "proof package carried the hydrated workflow receipt and bilateral DSSE envelope",
+    ));
+    let Some(trust_context) = trust_context else {
+        return Ok(buyer_review_rejection_report(
+            package,
+            "chiodos_buyer_review_strict_dsse_signer_mismatch",
+            checks,
+        ));
+    };
+    let trust_bundle_sha256 = canonical_sha256(trust_context.verifier_trust_bundle)
+        .map_err(|_| ChiodosRuntimeError::Canonical("verifier trust bundle".to_string()))?;
+    let verification_context_sha256 = canonical_sha256(trust_context.verification_context)
+        .map_err(|_| ChiodosRuntimeError::Canonical("verification context".to_string()))?;
+    let runtime_step = match verify_buyer_review_runtime_reports(BuyerReviewRuntimeReportContext {
+        runtime_run_report: &runtime_run_report,
+        proof_regeneration_report: &proof_regeneration_report,
+        packet: &packet,
+        bilateral: &bilateral,
+        proof_package: &proof_package,
+        workflow_receipt: &workflow_receipt,
+        runtime_evidence_manifest: &runtime_evidence_manifest,
+        proof_regeneration_input: &proof_regeneration_input,
+        proof_sha256: &proof_sha256,
+        verifier_sha256: &verifier_sha256,
+        workflow_sha256: &workflow_sha256,
+        bilateral_dsse_sha256: &bilateral_dsse_sha256,
+        trust_bundle_sha256: &trust_bundle_sha256,
+        verification_context_sha256: &verification_context_sha256,
+        artifact_refs: &package.artifacts,
+    }) {
+        Ok(step) => step,
+        Err(code) => return Ok(buyer_review_rejection_report(package, code, checks)),
+    };
+    checks.push(buyer_review_check(
+        "chiodos_buyer_review.runtime_reports_bound",
+        true,
+        "info",
+        "runtime_run_report",
+        None,
+        None,
+        "runtime run and proof regeneration reports bound the hydrated proof artifacts",
+    ));
+    let signer_public_keys = match buyer_review_signer_public_keys_from_trust_bundle(
+        trust_context.verifier_trust_bundle,
+        &verifier_report,
         &proof_package,
         &bilateral.signer_kernel_ids,
     ) {
@@ -3830,21 +4117,16 @@ pub fn verify_buyer_attestation_review_package(
         }
         Err(code) => return Ok(buyer_review_rejection_report(package, code, checks)),
     };
-    let dsse_ref = refs_by_role.get("bilateral_dsse_envelope").ok_or_else(|| {
-        ChiodosRuntimeError::Rejected {
-            code: "chiodos_buyer_review_missing_artifact_role",
-            detail: "buyer review package missing strict bilateral DSSE envelope".to_string(),
-        }
-    })?;
-    if let Err(code) = verify_buyer_review_strict_dsse(
-        &bilateral_dsse,
-        dsse_ref,
-        &packet,
-        &lineage_bundle,
-        &admission,
-        &bilateral,
-        Some(&signer_public_keys),
-    ) {
+    let strict_dsse_context = BuyerReviewStrictDsseContext {
+        packet: &packet,
+        lineage_bundle: &lineage_bundle,
+        admission: &admission,
+        bilateral: &bilateral,
+        proof_package: &proof_package,
+        runtime_step: &runtime_step,
+        signer_public_keys: &signer_public_keys,
+    };
+    if let Err(code) = verify_buyer_review_strict_dsse(&bilateral_dsse, &strict_dsse_context) {
         return Ok(buyer_review_rejection_report(package, code, checks));
     }
     checks.push(buyer_review_check(
@@ -3856,16 +4138,19 @@ pub fn verify_buyer_attestation_review_package(
         None,
         "strict Chiodos DSSE predicate carried treaty runtime bindings",
     ));
-    if verifier_report
-        .get("accepted")
-        .and_then(|value| value.as_bool())
-        != Some(true)
-    {
-        return Ok(buyer_review_rejection_report(
-            package,
-            "chiodos_buyer_review_verifier_report_rejected",
-            checks,
-        ));
+    if let Err(code) = verify_buyer_review_existing_verifier(
+        &verifier_report,
+        &BuyerReviewExistingVerifierContext {
+            proof_package: &proof_package,
+            verifier_trust_bundle: trust_context.verifier_trust_bundle,
+            verification_context: trust_context.verification_context,
+            proof_sha256: &proof_sha256,
+            trust_bundle_sha256: &trust_bundle_sha256,
+            verification_context_sha256: &verification_context_sha256,
+            verifier_sha256: &verifier_sha256,
+        },
+    ) {
+        return Ok(buyer_review_rejection_report(package, code, checks));
     }
     checks.push(buyer_review_check(
         "chiodos_buyer_review.proof_verifier_accepted",
@@ -3876,8 +4161,6 @@ pub fn verify_buyer_attestation_review_package(
         None,
         "verifier report accepted the regenerated proof package",
     ));
-    let _runtime_run_report: serde_json::Value =
-        parse_review_json(sources_by_role, "runtime_run_report")?;
     Ok(BuyerAttestationReviewReport {
         schema: CHIODOS_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA.to_string(),
         package_id: package.package_id.clone(),
@@ -3886,6 +4169,512 @@ pub fn verify_buyer_attestation_review_package(
         failure_code: None,
         checks,
     })
+}
+
+fn verify_buyer_review_lineage_binding(
+    packet: &BuyerAttestationPacket,
+    lineage: &ReceiptLineageStatement,
+    lineage_bundle: &ReceiptLineageBundle,
+    bilateral: &BilateralInvocation,
+) -> Result<(), &'static str> {
+    let lineage_sha256 =
+        canonical_sha256(lineage).map_err(|_| "chiodos_buyer_review_packet_hash_mismatch")?;
+    if lineage_sha256 != packet.receipt_lineage_statement_sha256 {
+        return Err("chiodos_buyer_review_packet_hash_mismatch");
+    }
+    let bilateral_invocation_sha256 = bilateral_invocation_binding_sha256(bilateral)
+        .map_err(|_| "chiodos_treaty_bilateral_mismatch")?;
+    if bilateral_invocation_sha256 != packet.bilateral_invocation_sha256
+        || lineage.bilateral_invocation_sha256 != packet.bilateral_invocation_sha256
+    {
+        return Err("chiodos_treaty_bilateral_mismatch");
+    }
+    let mut bundle_contains_packet_statement = false;
+    for statement in &lineage_bundle.statements {
+        let statement_sha256 =
+            canonical_sha256(statement).map_err(|_| "chiodos_lineage_bundle_incomplete")?;
+        if statement_sha256 == packet.receipt_lineage_statement_sha256 {
+            bundle_contains_packet_statement = true;
+            break;
+        }
+    }
+    if !bundle_contains_packet_statement {
+        return Err("chiodos_lineage_bundle_incomplete");
+    }
+    if lineage_bundle.root_receipt_sha256 != bilateral.local_receipt_sha256
+        || lineage_bundle.leaf_receipt_sha256 != bilateral.remote_receipt_sha256
+    {
+        return Err("chiodos_treaty_bilateral_mismatch");
+    }
+    Ok(())
+}
+
+fn verify_buyer_review_proof_package(
+    proof_package: &serde_json::Value,
+    workflow_receipt: &serde_json::Value,
+    workflow_sha256: &str,
+    bilateral_dsse_sha256: &str,
+) -> Result<(), &'static str> {
+    if proof_package
+        .get("schema")
+        .and_then(serde_json::Value::as_str)
+        != Some("chio.chiodos.proof-package.v1")
+    {
+        return Err("chiodos_buyer_review_proof_package_incomplete");
+    }
+    for field in [
+        "toolReceipts",
+        "bilateralEnvelopes",
+        "capabilityLeases",
+        "leaseScopeBindings",
+        "peerLadderBindings",
+        "vendorKeys",
+    ] {
+        let Some(values) = proof_package
+            .get(field)
+            .and_then(serde_json::Value::as_array)
+        else {
+            return Err("chiodos_buyer_review_proof_package_incomplete");
+        };
+        if values.is_empty() {
+            return Err("chiodos_buyer_review_proof_package_incomplete");
+        }
+    }
+    if !proof_package
+        .get("selectiveDisclosureProof")
+        .is_some_and(serde_json::Value::is_object)
+        || !proof_package
+            .get("workflowIntersection")
+            .is_some_and(serde_json::Value::is_object)
+    {
+        return Err("chiodos_buyer_review_proof_package_incomplete");
+    }
+    let Some(embedded_workflow_receipt) = proof_package.get("workflowReceipt") else {
+        return Err("chiodos_buyer_review_proof_package_incomplete");
+    };
+    if embedded_workflow_receipt != workflow_receipt {
+        return Err("chiodos_buyer_review_proof_package_mismatch");
+    }
+    let embedded_workflow_sha256 = canonical_sha256(embedded_workflow_receipt)
+        .map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?;
+    if embedded_workflow_sha256 != workflow_sha256 {
+        return Err("chiodos_buyer_review_proof_package_mismatch");
+    }
+    if proof_package.get("treatyBilateralEnvelopes").is_some() {
+        return Err("chiodos_buyer_review_proof_package_mismatch");
+    }
+    let bilateral_envelopes = proof_package
+        .get("bilateralEnvelopes")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("chiodos_buyer_review_proof_package_incomplete")?;
+    let mut contains_hydrated_envelope = false;
+    for envelope in bilateral_envelopes {
+        let envelope_sha256 = canonical_sha256(envelope)
+            .map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?;
+        if envelope_sha256 == bilateral_dsse_sha256 {
+            contains_hydrated_envelope = true;
+            break;
+        }
+    }
+    if !contains_hydrated_envelope {
+        return Err("chiodos_buyer_review_proof_package_mismatch");
+    }
+    Ok(())
+}
+
+fn verify_buyer_review_existing_verifier(
+    verifier_report: &serde_json::Value,
+    context: &BuyerReviewExistingVerifierContext<'_>,
+) -> Result<(), &'static str> {
+    if verifier_report
+        .get("packageSha256")
+        .and_then(serde_json::Value::as_str)
+        != Some(context.proof_sha256)
+        || verifier_report
+            .get("trustBundleSha256")
+            .and_then(serde_json::Value::as_str)
+            != Some(context.trust_bundle_sha256)
+        || verifier_report
+            .get("contextSha256")
+            .and_then(serde_json::Value::as_str)
+            != Some(context.verification_context_sha256)
+        || verifier_report
+            .get("accepted")
+            .and_then(serde_json::Value::as_bool)
+            != Some(true)
+    {
+        return Err("chiodos_buyer_review_verifier_report_rejected");
+    }
+    let proof_package_json = serde_json::to_string(context.proof_package)
+        .map_err(|_| "chiodos_buyer_review_verifier_report_rejected")?;
+    let verifier_trust_bundle_json = serde_json::to_string(context.verifier_trust_bundle)
+        .map_err(|_| "chiodos_buyer_review_verifier_report_rejected")?;
+    let verification_context_json = serde_json::to_string(context.verification_context)
+        .map_err(|_| "chiodos_buyer_review_verifier_report_rejected")?;
+    let typed_package = chio_chiodos::proof_package_from_json(&proof_package_json)
+        .map_err(|_| "chiodos_buyer_review_verifier_report_rejected")?;
+    let typed_trust_bundle =
+        chio_chiodos::verifier_trust_bundle_from_json(&verifier_trust_bundle_json)
+            .map_err(|_| "chiodos_buyer_review_verifier_report_rejected")?;
+    let typed_context = chio_chiodos::verification_context_from_json(&verification_context_json)
+        .map_err(|_| "chiodos_buyer_review_verifier_report_rejected")?;
+    let expected_report =
+        chio_chiodos::verify_package_report(&typed_package, &typed_trust_bundle, &typed_context);
+    if !expected_report.accepted {
+        return Err("chiodos_buyer_review_verifier_report_rejected");
+    }
+    if expected_report.package_sha256 != context.proof_sha256
+        || expected_report.trust_bundle_sha256.as_deref() != Some(context.trust_bundle_sha256)
+        || expected_report.context_sha256.as_deref() != Some(context.verification_context_sha256)
+    {
+        return Err("chiodos_buyer_review_verifier_report_rejected");
+    }
+    let expected_sha256 = canonical_sha256(&expected_report)
+        .map_err(|_| "chiodos_buyer_review_verifier_report_rejected")?;
+    if expected_sha256 != context.verifier_sha256 {
+        return Err("chiodos_buyer_review_verifier_report_rejected");
+    }
+    Ok(())
+}
+
+struct BuyerReviewExistingVerifierContext<'a> {
+    proof_package: &'a serde_json::Value,
+    verifier_trust_bundle: &'a serde_json::Value,
+    verification_context: &'a serde_json::Value,
+    proof_sha256: &'a str,
+    trust_bundle_sha256: &'a str,
+    verification_context_sha256: &'a str,
+    verifier_sha256: &'a str,
+}
+
+struct BuyerReviewRuntimeReportContext<'a> {
+    runtime_run_report: &'a RuntimeWorkflowRunReport,
+    proof_regeneration_report: &'a RuntimeProofRegenerationReport,
+    packet: &'a BuyerAttestationPacket,
+    bilateral: &'a BilateralInvocation,
+    proof_package: &'a serde_json::Value,
+    workflow_receipt: &'a serde_json::Value,
+    runtime_evidence_manifest: &'a RuntimeEvidenceManifest,
+    proof_regeneration_input: &'a RuntimeProofRegenerationInput,
+    proof_sha256: &'a str,
+    verifier_sha256: &'a str,
+    workflow_sha256: &'a str,
+    bilateral_dsse_sha256: &'a str,
+    trust_bundle_sha256: &'a str,
+    verification_context_sha256: &'a str,
+    artifact_refs: &'a [BuyerAttestationReviewArtifactRef],
+}
+
+fn verify_buyer_review_runtime_reports(
+    context: BuyerReviewRuntimeReportContext<'_>,
+) -> Result<RuntimeStepEvidence, &'static str> {
+    let BuyerReviewRuntimeReportContext {
+        runtime_run_report,
+        proof_regeneration_report,
+        packet,
+        bilateral,
+        proof_package,
+        workflow_receipt,
+        runtime_evidence_manifest,
+        proof_regeneration_input,
+        proof_sha256,
+        verifier_sha256,
+        workflow_sha256,
+        bilateral_dsse_sha256,
+        trust_bundle_sha256,
+        verification_context_sha256,
+        artifact_refs,
+    } = context;
+    if validate_runtime_workflow_run_report(runtime_run_report).is_err()
+        || validate_runtime_proof_regeneration_report(proof_regeneration_report).is_err()
+        || validate_runtime_evidence_manifest(runtime_evidence_manifest).is_err()
+        || validate_runtime_proof_regeneration_input(proof_regeneration_input).is_err()
+        || !runtime_run_report.accepted
+        || !proof_regeneration_report.accepted
+    {
+        return Err("chiodos_buyer_review_runtime_report_mismatch");
+    }
+    let proof_regeneration_sha256 = canonical_sha256(proof_regeneration_report)
+        .map_err(|_| "chiodos_buyer_review_runtime_report_mismatch")?;
+    let runtime_run_sha256 = canonical_sha256(runtime_run_report)
+        .map_err(|_| "chiodos_buyer_review_runtime_report_mismatch")?;
+    let manifest_sha256 = canonical_sha256(runtime_evidence_manifest)
+        .map_err(|_| "chiodos_buyer_review_runtime_report_mismatch")?;
+    if runtime_run_report
+        .proof_regeneration_report_sha256
+        .as_deref()
+        != Some(proof_regeneration_sha256.as_str())
+        || runtime_run_report.run_id != proof_regeneration_report.run_id
+        || runtime_evidence_manifest.run_id != runtime_run_report.run_id
+        || runtime_evidence_manifest.workflow_run_report_sha256 != runtime_run_sha256
+        || runtime_evidence_manifest.proof_regeneration_report_sha256 != proof_regeneration_sha256
+        || proof_regeneration_input.run_id != runtime_run_report.run_id
+        || proof_regeneration_input.evidence_manifest_sha256 != manifest_sha256
+        || proof_regeneration_input.workflow_run_report_sha256 != runtime_run_sha256
+        || proof_regeneration_input.source_records != proof_regeneration_report.source_records
+        || runtime_run_report.admission_report_sha256
+            != packet.cross_boundary_admission_report_sha256
+        || proof_regeneration_input.admission_report_sha256
+            != packet.cross_boundary_admission_report_sha256
+        || proof_regeneration_input.trust_bundle_sha256 != trust_bundle_sha256
+        || proof_regeneration_input.verification_context_sha256 != verification_context_sha256
+        || proof_regeneration_report.proof_package_sha256.as_deref() != Some(proof_sha256)
+        || proof_regeneration_report.verifier_report_sha256.as_deref() != Some(verifier_sha256)
+        || proof_regeneration_report.workflow_receipt_sha256.as_deref() != Some(workflow_sha256)
+    {
+        return Err("chiodos_buyer_review_runtime_report_mismatch");
+    }
+    verify_runtime_evidence_manifest_artifacts(runtime_evidence_manifest, artifact_refs)?;
+    let Some(step) = runtime_run_report
+        .step_evidence
+        .iter()
+        .find(|step| step.bilateral_dsse_sha256 == bilateral_dsse_sha256)
+    else {
+        return Err("chiodos_buyer_review_runtime_report_mismatch");
+    };
+    if step.lease_id.is_none() || step.governance_receipt_id.is_none() {
+        return Err("chiodos_buyer_review_runtime_report_mismatch");
+    }
+    if step.admission_report_sha256 != packet.cross_boundary_admission_report_sha256
+        || step.tool_receipt_sha256 != bilateral.remote_receipt_sha256
+        || step.parent_receipt_sha256.as_deref() != Some(bilateral.local_receipt_sha256.as_str())
+        || step.output_sha256 != bilateral.outcome_sha256
+    {
+        return Err("chiodos_buyer_review_runtime_report_mismatch");
+    }
+    if !proof_package_contains_canonical_hash(
+        proof_package,
+        "toolReceipts",
+        &step.tool_receipt_sha256,
+    ) && !proof_package_array_contains_field(
+        proof_package,
+        "toolReceipts",
+        "receiptSha256",
+        &step.tool_receipt_sha256,
+    ) {
+        return Err("chiodos_buyer_review_proof_package_mismatch");
+    }
+    if !workflow_receipt_contains_step_hash(workflow_receipt, &step.workflow_step_sha256)? {
+        return Err("chiodos_buyer_review_runtime_report_mismatch");
+    }
+    if !proof_package_array_contains_field(
+        proof_package,
+        "capabilityLeases",
+        "leaseId",
+        step.lease_id
+            .as_deref()
+            .ok_or("chiodos_buyer_review_runtime_report_mismatch")?,
+    ) || !proof_package_array_contains_field(
+        proof_package,
+        "governanceReceipts",
+        "receiptId",
+        step.governance_receipt_id
+            .as_deref()
+            .ok_or("chiodos_buyer_review_runtime_report_mismatch")?,
+    ) {
+        return Err("chiodos_buyer_review_proof_package_mismatch");
+    }
+    let source_record_matches = proof_regeneration_report
+        .source_records
+        .iter()
+        .any(|record| {
+            record.step_index == step.step_index
+                && record.admission_report_sha256 == step.admission_report_sha256
+                && record.tool_receipt_sha256 == step.tool_receipt_sha256
+                && record.bilateral_dsse_sha256 == step.bilateral_dsse_sha256
+                && record.workflow_step_sha256 == step.workflow_step_sha256
+        });
+    if !source_record_matches {
+        return Err("chiodos_buyer_review_runtime_report_mismatch");
+    }
+    Ok(step.clone())
+}
+
+fn verify_runtime_evidence_manifest_artifacts(
+    manifest: &RuntimeEvidenceManifest,
+    artifact_refs: &[BuyerAttestationReviewArtifactRef],
+) -> Result<(), &'static str> {
+    for role in [
+        "bilateral_dsse_envelope",
+        "workflow_receipt",
+        "proof_package",
+        "verifier_report",
+        "proof_regeneration_report",
+        "runtime_run_report",
+    ] {
+        let Some(artifact) = artifact_refs.iter().find(|artifact| artifact.role == role) else {
+            return Err("chiodos_buyer_review_runtime_report_mismatch");
+        };
+        let Some(entry) = manifest.entries.iter().find(|entry| entry.role == role) else {
+            return Err("chiodos_buyer_review_runtime_report_mismatch");
+        };
+        if entry.path != artifact.relative_path
+            || entry.sha256 != artifact.artifact_sha256
+            || entry.byte_count != artifact.byte_count
+        {
+            return Err("chiodos_buyer_review_runtime_report_mismatch");
+        }
+    }
+    Ok(())
+}
+
+fn proof_package_contains_canonical_hash(
+    proof_package: &serde_json::Value,
+    array_field: &str,
+    expected_sha256: &str,
+) -> bool {
+    proof_package
+        .get(array_field)
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|values| {
+            values
+                .iter()
+                .any(|value| canonical_sha256(value).is_ok_and(|hash| hash == expected_sha256))
+        })
+}
+
+fn proof_package_array_contains_field(
+    proof_package: &serde_json::Value,
+    array_field: &str,
+    field: &str,
+    expected: &str,
+) -> bool {
+    proof_package
+        .get(array_field)
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|values| {
+            values.iter().any(|value| {
+                value
+                    .get(field)
+                    .or_else(|| value.get("body").and_then(|body| body.get(field)))
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|actual| actual == expected)
+            })
+        })
+}
+
+fn workflow_receipt_contains_step_hash(
+    workflow_receipt: &serde_json::Value,
+    expected_sha256: &str,
+) -> Result<bool, &'static str> {
+    let Some(steps) = workflow_receipt
+        .get("steps")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return Ok(workflow_receipt
+            .get("workflowStepSha256")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|hash| hash == expected_sha256));
+    };
+    for step in steps {
+        let hash =
+            canonical_sha256(step).map_err(|_| "chiodos_buyer_review_runtime_report_mismatch")?;
+        if hash == expected_sha256 {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn proof_package_receipt_subject(
+    proof_package: &serde_json::Value,
+    receipt_sha256: &str,
+) -> Result<(String, String), &'static str> {
+    let receipts = proof_package
+        .get("toolReceipts")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("chiodos_buyer_review_proof_package_incomplete")?;
+    for receipt_value in receipts {
+        let Ok(actual_sha256) = canonical_sha256(receipt_value) else {
+            return Err("chiodos_buyer_review_proof_package_mismatch");
+        };
+        if actual_sha256 != receipt_sha256 {
+            continue;
+        }
+        let receipt: ChioReceipt = serde_json::from_value(receipt_value.clone())
+            .map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?;
+        let subject_sha256 = canonical_sha256(&receipt.body())
+            .map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?;
+        return Ok((
+            chio_federation::receipt_subject_name(&receipt.id),
+            subject_sha256,
+        ));
+    }
+    Err("chiodos_buyer_review_proof_package_mismatch")
+}
+
+fn proof_package_capability_lease_ref(
+    proof_package: &serde_json::Value,
+    lease_id: &str,
+) -> Result<chio_federation::CapabilityLeaseRef, &'static str> {
+    let leases = proof_package
+        .get("capabilityLeases")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("chiodos_buyer_review_proof_package_incomplete")?;
+    for lease in leases {
+        let body = lease.get("body").unwrap_or(lease);
+        if body.get("leaseId").and_then(serde_json::Value::as_str) != Some(lease_id) {
+            continue;
+        }
+        let issuer = body
+            .get("issuer")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("chiodos_buyer_review_proof_package_mismatch")?;
+        let expires_at_unix_ms = body
+            .get("expiresAtUnixMs")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or("chiodos_buyer_review_proof_package_mismatch")?;
+        let scope_digest = body
+            .get("scopeDigest")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("chiodos_buyer_review_proof_package_mismatch")?;
+        return Ok(chio_federation::CapabilityLeaseRef {
+            lease_id: lease_id.to_string(),
+            issuer: issuer.to_string(),
+            expires_at_unix_ms,
+            scope_digest: Some(chio_federation::HashRecord {
+                alg: "sha256".to_string(),
+                value: scope_digest.to_string(),
+            }),
+        });
+    }
+    Err("chiodos_buyer_review_proof_package_mismatch")
+}
+
+fn proof_package_governance_receipt_ref(
+    proof_package: &serde_json::Value,
+    receipt_id: &str,
+) -> Result<chio_federation::GovernanceReceiptRef, &'static str> {
+    let receipts = proof_package
+        .get("governanceReceipts")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("chiodos_buyer_review_proof_package_incomplete")?;
+    for receipt in receipts {
+        let body = receipt.get("body").unwrap_or(receipt);
+        if body.get("receiptId").and_then(serde_json::Value::as_str) != Some(receipt_id) {
+            continue;
+        }
+        let kernel_id = body
+            .get("authorizingKernel")
+            .or_else(|| body.get("kernelId"))
+            .and_then(serde_json::Value::as_str)
+            .ok_or("chiodos_buyer_review_proof_package_mismatch")?;
+        let digest = if let Some(digest) = receipt.get("digest").and_then(serde_json::Value::as_str)
+        {
+            digest.to_string()
+        } else {
+            canonical_sha256(receipt).map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?
+        };
+        return Ok(chio_federation::GovernanceReceiptRef {
+            receipt_id: receipt_id.to_string(),
+            kernel_id: kernel_id.to_string(),
+            digest: chio_federation::HashRecord {
+                alg: "sha256".to_string(),
+                value: digest,
+            },
+        });
+    }
+    Err("chiodos_buyer_review_proof_package_mismatch")
 }
 
 pub fn verify_receipt_lineage_bundle(
@@ -3939,14 +4728,19 @@ pub fn verify_receipt_lineage_bundle(
     Ok(true)
 }
 
+struct BuyerReviewStrictDsseContext<'a> {
+    packet: &'a BuyerAttestationPacket,
+    lineage_bundle: &'a ReceiptLineageBundle,
+    admission: &'a CrossBoundaryAdmissionReport,
+    bilateral: &'a BilateralInvocation,
+    proof_package: &'a serde_json::Value,
+    runtime_step: &'a RuntimeStepEvidence,
+    signer_public_keys: &'a BTreeMap<String, PublicKey>,
+}
+
 fn verify_buyer_review_strict_dsse(
     envelope: &chio_federation::DsseEnvelope,
-    _artifact_ref: &BuyerAttestationReviewArtifactRef,
-    packet: &BuyerAttestationPacket,
-    lineage_bundle: &ReceiptLineageBundle,
-    admission: &CrossBoundaryAdmissionReport,
-    bilateral: &BilateralInvocation,
-    signer_public_keys: Option<&BTreeMap<String, PublicKey>>,
+    context: &BuyerReviewStrictDsseContext<'_>,
 ) -> Result<(), &'static str> {
     let Ok((statement, _)) = envelope.decode_statement() else {
         return Err("chiodos_buyer_review_non_strict_dsse");
@@ -3954,41 +4748,92 @@ fn verify_buyer_review_strict_dsse(
     if statement.predicate_type != chio_federation::PREDICATE_TYPE_CHIODOS_BILATERAL {
         return Err("chiodos_buyer_review_non_strict_dsse");
     }
-    let lineage_bundle_sha256 = match canonical_sha256(lineage_bundle) {
+    let lineage_bundle_sha256 = match canonical_sha256(context.lineage_bundle) {
         Ok(hash) => hash,
         Err(_) => return Err("chiodos_buyer_review_lineage_hash_mismatch"),
     };
     let expected_treaty_binding = chio_federation::TreatyBindingRef {
-        treaty_id: admission.treaty_id.clone(),
-        treaty_scope_sha256: packet.treaty_scope_sha256.clone(),
-        ladder_intersection_sha256: packet.ladder_intersection_sha256.clone(),
-        admission_report_sha256: packet.cross_boundary_admission_report_sha256.clone(),
-        continuation_sha256: packet.continuation_sha256.clone(),
+        treaty_id: context.admission.treaty_id.clone(),
+        treaty_scope_sha256: context.packet.treaty_scope_sha256.clone(),
+        ladder_intersection_sha256: context.packet.ladder_intersection_sha256.clone(),
+        admission_report_sha256: context
+            .packet
+            .cross_boundary_admission_report_sha256
+            .clone(),
+        continuation_sha256: context.packet.continuation_sha256.clone(),
         lineage_bundle_sha256,
-        action_class_id: admission.action_class_id.clone(),
-        consistency_model: admission.consistency_model.clone(),
-        request_sha256: bilateral.request_sha256.clone(),
-        outcome_sha256: bilateral.outcome_sha256.clone(),
-        local_receipt_sha256: bilateral.local_receipt_sha256.clone(),
-        remote_receipt_sha256: bilateral.remote_receipt_sha256.clone(),
-        lease_refs: Vec::new(),
-        governance_refs: Vec::new(),
-        signer_kernel_ids: bilateral.signer_kernel_ids.clone(),
+        action_class_id: context.admission.action_class_id.clone(),
+        consistency_model: context.admission.consistency_model.clone(),
+        request_sha256: context.bilateral.request_sha256.clone(),
+        outcome_sha256: context.bilateral.outcome_sha256.clone(),
+        local_receipt_sha256: context.bilateral.local_receipt_sha256.clone(),
+        remote_receipt_sha256: context.bilateral.remote_receipt_sha256.clone(),
+        lease_refs: vec![context
+            .runtime_step
+            .lease_id
+            .clone()
+            .ok_or("chiodos_buyer_review_runtime_report_mismatch")?],
+        governance_refs: vec![context
+            .runtime_step
+            .governance_receipt_id
+            .clone()
+            .ok_or("chiodos_buyer_review_runtime_report_mismatch")?],
+        signer_kernel_ids: context.bilateral.signer_kernel_ids.clone(),
     };
+    let (expected_subject_name, expected_subject_sha256) = proof_package_receipt_subject(
+        context.proof_package,
+        &context.runtime_step.tool_receipt_sha256,
+    )?;
+    let lease_id = context
+        .runtime_step
+        .lease_id
+        .as_deref()
+        .ok_or("chiodos_buyer_review_runtime_report_mismatch")?;
+    let expected_capability_lease_ref =
+        proof_package_capability_lease_ref(context.proof_package, lease_id)?;
+    let governance_receipt_id = context
+        .runtime_step
+        .governance_receipt_id
+        .as_deref()
+        .ok_or("chiodos_buyer_review_runtime_report_mismatch")?;
+    let expected_governance_receipt_ref =
+        proof_package_governance_receipt_ref(context.proof_package, governance_receipt_id)?;
     let review = chio_federation::TreatyBoundBilateralDsseReview {
         expected_treaty_binding: &expected_treaty_binding,
-        signer_public_keys,
+        expected_subject_name: &expected_subject_name,
+        expected_subject_sha256: &expected_subject_sha256,
+        expected_capability_lease_ref: &expected_capability_lease_ref,
+        expected_governance_receipt_ref: &expected_governance_receipt_ref,
+        expected_consistency_anchor: &context.runtime_step.consistency_anchor,
+        signer_public_keys: context.signer_public_keys,
     };
     chio_federation::verify_treaty_bound_chiodos_bilateral_invocation(envelope, &review)
         .map(|_| ())
         .map_err(|error| buyer_review_strict_dsse_error_code(&error))
 }
 
-fn buyer_review_signer_public_keys_from_proof_package(
+fn buyer_review_signer_public_keys_from_trust_bundle(
+    verifier_trust_bundle: &serde_json::Value,
+    verifier_report: &serde_json::Value,
     proof_package: &serde_json::Value,
     signer_kernel_ids: &[String],
 ) -> Result<Option<BTreeMap<String, PublicKey>>, &'static str> {
-    let Some(bindings) = proof_package
+    let trust_bundle_sha256 = canonical_sha256(verifier_trust_bundle)
+        .map_err(|_| "chiodos_buyer_review_strict_dsse_signer_mismatch")?;
+    if verifier_report
+        .get("trustBundleSha256")
+        .and_then(serde_json::Value::as_str)
+        != Some(trust_bundle_sha256.as_str())
+    {
+        return Err("chiodos_buyer_review_strict_dsse_signer_mismatch");
+    }
+    let Some(trusted_peers) = verifier_trust_bundle
+        .get("peers")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return Ok(None);
+    };
+    let Some(proof_bindings) = proof_package
         .get("peerLadderBindings")
         .and_then(serde_json::Value::as_array)
     else {
@@ -3996,7 +4841,7 @@ fn buyer_review_signer_public_keys_from_proof_package(
     };
     let expected_signers: BTreeSet<&str> = signer_kernel_ids.iter().map(String::as_str).collect();
     let mut signer_public_keys = BTreeMap::new();
-    for binding in bindings {
+    for binding in trusted_peers {
         let Some(kernel_id) = binding.get("kernelId").and_then(serde_json::Value::as_str) else {
             continue;
         };
@@ -4013,6 +4858,24 @@ fn buyer_review_signer_public_keys_from_proof_package(
             .insert(kernel_id.to_string(), public_key)
             .is_some()
         {
+            return Err("chiodos_buyer_review_strict_dsse_signer_mismatch");
+        }
+    }
+    for binding in proof_bindings {
+        let Some(kernel_id) = binding.get("kernelId").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        if !expected_signers.contains(kernel_id) {
+            continue;
+        }
+        let Some(public_key_hex) = binding.get("publicKey").and_then(serde_json::Value::as_str)
+        else {
+            return Err("chiodos_buyer_review_strict_dsse_signer_mismatch");
+        };
+        let Some(trusted_key) = signer_public_keys.get(kernel_id) else {
+            return Err("chiodos_buyer_review_strict_dsse_signer_mismatch");
+        };
+        if trusted_key.to_hex() != public_key_hex {
             return Err("chiodos_buyer_review_strict_dsse_signer_mismatch");
         }
     }
@@ -5645,6 +6508,7 @@ where
                 Err(error) => return Err(KernelError::Internal(error.to_string())),
             }
         }
+        let mut treaty_continuation_id_to_consume = None;
         match treaty_ref_from_request(context.request) {
             Ok(Some(treaty_ref)) => match verify_treaty_reference_from_store(
                 &self.store,
@@ -5652,7 +6516,9 @@ where
                 &treaty_ref,
                 context.now_unix_secs.saturating_mul(1000),
             ) {
-                Ok(()) => {}
+                Ok(continuation_id) => {
+                    treaty_continuation_id_to_consume = continuation_id;
+                }
                 Err(ChiodosRuntimeError::Rejected { code, .. }) => {
                     return Ok(KernelRuntimeAdmissionDecision::deny(
                         "chiodos treaty-bound runtime admission denied",
@@ -5694,6 +6560,27 @@ where
                 ));
             }
         }
+        if let Some(continuation_id) = treaty_continuation_id_to_consume.as_deref() {
+            match self
+                .store
+                .consume_treaty_continuation(continuation_id, &admission_ref.admission_id)
+            {
+                Ok(()) => {}
+                Err(ChiodosRuntimeError::Rejected { code, .. }) => {
+                    return Ok(KernelRuntimeAdmissionDecision::deny(
+                        "chiodos treaty-bound runtime continuation replay denied",
+                        Some(serde_json::json!({
+                            "chiodos_runtime": {
+                                "admission_id": admission_ref.admission_id,
+                                "accepted": false,
+                                "failure_code": code
+                            }
+                        })),
+                    ));
+                }
+                Err(error) => return Err(KernelError::Internal(error.to_string())),
+            }
+        }
         let report = evaluate_runtime_admission(RuntimeAdmissionInput {
             profile: &self.profile,
             store: &self.store,
@@ -5712,6 +6599,11 @@ where
                 report.receipt_metadata,
             )))
         } else {
+            if let Some(continuation_id) = treaty_continuation_id_to_consume.as_deref() {
+                self.store
+                    .release_treaty_continuation(continuation_id, &admission_ref.admission_id)
+                    .map_err(|error| KernelError::Internal(error.to_string()))?;
+            }
             Ok(KernelRuntimeAdmissionDecision::deny(
                 "chiodos runtime admission denied",
                 Some(report.receipt_metadata),
@@ -5958,7 +6850,7 @@ fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
     admission_id: &str,
     treaty_ref: &TreatyReference,
     now_unix_ms: u64,
-) -> Result<(), ChiodosRuntimeError> {
+) -> Result<Option<String>, ChiodosRuntimeError> {
     let Some(bundle) = store.bundle(admission_id)? else {
         return rejected(
             "missing_admission_bundle",
@@ -5981,6 +6873,12 @@ fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
     }
     let treaty_scope: TreatyScope = serde_json::from_value(treaty_scope_record.raw_json)
         .map_err(|error| ChiodosRuntimeError::Json(error.to_string()))?;
+    if treaty_scope.trust_bundle_sha256 != bundle.trust_bundle_sha256 {
+        return rejected(
+            "chiodos_treaty_scope_hash_mismatch",
+            "treaty scope trust bundle hash does not match the verifier-owned admission bundle",
+        );
+    }
 
     let Some(intersection_record) =
         store.treaty_runtime_artifact("ladder_intersection", &treaty_ref.ladder_intersection_id)?
@@ -6013,7 +6911,7 @@ fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
         action
             .evidence_required
             .iter()
-            .any(|evidence| evidence == "bilateral_dsse")
+            .any(|evidence| evidence == "bilateral_invocation")
     });
 
     let continuation = treaty_ref
@@ -6079,12 +6977,13 @@ fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
             &treaty_ref.action_class_id,
             now_unix_ms,
         )?;
-        if let Some((lineage_bundle, lineage_bundle_sha256)) = lineage_bundle.as_ref() {
-            verify_lineage_bundle_evidence(lineage_bundle, continuation, continuation_sha256)?;
+        if let Some((lineage_bundle, _lineage_bundle_sha256)) = lineage_bundle.as_ref() {
+            let lineage_statement_sha256 =
+                verify_lineage_bundle_evidence(lineage_bundle, continuation, continuation_sha256)?;
             present_evidence.push("receipt_lineage".to_string());
             verified_evidence.push(CrossBoundaryEvidenceRef {
                 evidence_class: "receipt_lineage".to_string(),
-                artifact_sha256: lineage_bundle_sha256.clone(),
+                artifact_sha256: lineage_statement_sha256,
                 verified: true,
             });
         }
@@ -6094,21 +6993,29 @@ fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
                 .unwrap_or("totally_ordered");
             let treaty_evidence = TreatyEvidenceReview {
                 treaty_scope: &treaty_scope,
+                bundle: &bundle,
                 request: &bundle.binding,
                 action_class_id: &treaty_ref.action_class_id,
                 ladder_intersection_sha256: &treaty_ref.ladder_intersection_sha256,
                 consistency_model,
                 continuation_sha256,
             };
-            verify_bilateral_invocation_evidence(
+            let invocation_binding_sha256 = verify_bilateral_invocation_evidence(
                 invocation,
                 &treaty_evidence,
                 lineage_bundle.as_ref().map(|(bundle, _)| bundle),
             )?;
+            present_evidence.push("bilateral_invocation".to_string());
+            verified_evidence.push(CrossBoundaryEvidenceRef {
+                evidence_class: "bilateral_invocation".to_string(),
+                artifact_sha256: invocation_binding_sha256,
+                verified: true,
+            });
         }
-        if let Some((envelope, envelope_sha256)) = bilateral_dsse.as_ref() {
+        if let Some((envelope, _envelope_sha256)) = bilateral_dsse.as_ref() {
             let treaty_evidence = TreatyEvidenceReview {
                 treaty_scope: &treaty_scope,
+                bundle: &bundle,
                 request: &bundle.binding,
                 action_class_id: &treaty_ref.action_class_id,
                 ladder_intersection_sha256: &treaty_ref.ladder_intersection_sha256,
@@ -6125,12 +7032,6 @@ fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
                     .as_ref()
                     .map(|(invocation, _)| invocation),
             )?;
-            present_evidence.push("bilateral_dsse".to_string());
-            verified_evidence.push(CrossBoundaryEvidenceRef {
-                evidence_class: "bilateral_dsse".to_string(),
-                artifact_sha256: envelope_sha256.clone(),
-                verified: true,
-            });
         }
     } else if requires_lineage
         || requires_bilateral
@@ -6154,10 +7055,9 @@ fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
         now_unix_ms,
     })?;
     if report.accepted {
-        if let Some((continuation, _)) = continuation.as_ref() {
-            store.consume_treaty_continuation(&continuation.continuation_id, admission_id)?;
-        }
-        Ok(())
+        Ok(continuation
+            .as_ref()
+            .map(|(continuation, _)| continuation.continuation_id.clone()))
     } else {
         rejected(
             static_treaty_failure_code(report.failure_code.as_deref()),
@@ -6238,25 +7138,26 @@ fn verify_lineage_bundle_evidence(
     bundle: &ReceiptLineageBundle,
     continuation: &CrossKernelContinuation,
     continuation_sha256: &str,
-) -> Result<(), ChiodosRuntimeError> {
+) -> Result<String, ChiodosRuntimeError> {
     verify_receipt_lineage_bundle(bundle)?;
-    let matched = bundle.statements.iter().any(|statement| {
-        statement.continuation_sha256 == continuation_sha256
+    for statement in &bundle.statements {
+        if statement.continuation_sha256 == continuation_sha256
             && statement.source_kernel_id == continuation.source_kernel_id
             && statement.target_kernel_id == continuation.target_kernel_id
             && statement.parent_receipt_sha256 == continuation.parent_receipt_sha256
-    });
-    if !matched {
-        return rejected(
-            "chiodos_treaty_lineage_mismatch",
-            "receipt lineage bundle does not bind the referenced continuation",
-        );
+        {
+            return receipt_lineage_statement_sha256(statement);
+        }
     }
-    Ok(())
+    rejected(
+        "chiodos_treaty_lineage_mismatch",
+        "receipt lineage bundle does not bind the referenced continuation",
+    )
 }
 
 struct TreatyEvidenceReview<'a> {
     treaty_scope: &'a TreatyScope,
+    bundle: &'a RuntimeAdmissionBundle,
     request: &'a RuntimeRequestBinding,
     action_class_id: &'a str,
     ladder_intersection_sha256: &'a str,
@@ -6268,7 +7169,7 @@ fn verify_bilateral_invocation_evidence(
     invocation: &BilateralInvocation,
     review: &TreatyEvidenceReview<'_>,
     lineage_bundle: Option<&ReceiptLineageBundle>,
-) -> Result<(), ChiodosRuntimeError> {
+) -> Result<String, ChiodosRuntimeError> {
     validate_bilateral_invocation(invocation)?;
     if invocation.treaty_id != review.treaty_scope.treaty_id
         || invocation.ladder_intersection_sha256 != review.ladder_intersection_sha256
@@ -6291,12 +7192,14 @@ fn verify_bilateral_invocation_evidence(
             "bilateral invocation signer set does not match treaty participants",
         );
     }
+    let invocation_sha256 = bilateral_invocation_binding_sha256(invocation)?;
     if let Some(bundle) = lineage_bundle {
         if invocation.local_receipt_sha256 != bundle.root_receipt_sha256
             || invocation.remote_receipt_sha256 != bundle.leaf_receipt_sha256
             || !bundle.statements.iter().any(|statement| {
-                receipt_lineage_statement_sha256(statement)
-                    .is_ok_and(|hash| hash == invocation.lineage_statement_sha256)
+                statement.bilateral_invocation_sha256 == invocation_sha256
+                    && receipt_lineage_statement_sha256(statement)
+                        .is_ok_and(|hash| hash == invocation.lineage_statement_sha256)
             })
         {
             return rejected(
@@ -6305,7 +7208,7 @@ fn verify_bilateral_invocation_evidence(
             );
         }
     }
-    Ok(())
+    Ok(invocation_sha256)
 }
 
 fn verify_treaty_dsse_evidence(
@@ -6345,6 +7248,37 @@ fn verify_treaty_dsse_evidence(
             "bilateral DSSE treaty binding does not match the requested dispatch",
         );
     }
+    if statement
+        .predicate
+        .tool_args_hash
+        .as_ref()
+        .map(|hash| hash.value.as_str())
+        != Some(treaty.request_sha256.as_str())
+    {
+        return rejected(
+            "chiodos_treaty_dsse_binding_mismatch",
+            "bilateral DSSE tool argument hash does not match the treaty request binding",
+        );
+    }
+    if treaty.lease_refs != review.bundle.lease_id.iter().cloned().collect::<Vec<_>>() {
+        return rejected(
+            "chiodos_treaty_dsse_binding_mismatch",
+            "bilateral DSSE lease refs do not match the verifier-owned admission bundle",
+        );
+    }
+    if treaty.governance_refs
+        != review
+            .bundle
+            .governance_receipt_id
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+    {
+        return rejected(
+            "chiodos_treaty_dsse_binding_mismatch",
+            "bilateral DSSE governance refs do not match the verifier-owned admission bundle",
+        );
+    }
     let participants: BTreeSet<_> = review.treaty_scope.participant_kernel_ids.iter().collect();
     let signers: BTreeSet<_> = treaty.signer_kernel_ids.iter().collect();
     if participants != signers {
@@ -6353,6 +7287,25 @@ fn verify_treaty_dsse_evidence(
             "bilateral DSSE signer set does not match treaty participants",
         );
     }
+    let signer_a_public_key =
+        treaty_participant_public_key(review.treaty_scope, &treaty.signer_kernel_ids[0])?;
+    let signer_b_public_key =
+        treaty_participant_public_key(review.treaty_scope, &treaty.signer_kernel_ids[1])?;
+    if signer_a_public_key == signer_b_public_key {
+        return rejected(
+            "chiodos_treaty_unverified_required_evidence",
+            "bilateral DSSE signer public keys are not independent",
+        );
+    }
+    chio_federation::verify_chiodos_dsse_envelope(
+        envelope,
+        signer_a_public_key,
+        signer_b_public_key,
+    )
+    .map_err(|_| ChiodosRuntimeError::Rejected {
+        code: "chiodos_treaty_unverified_required_evidence",
+        detail: "bilateral DSSE signature verification failed".to_string(),
+    })?;
     if let Some((bundle, bundle_sha256)) = lineage_bundle {
         if treaty.lineage_bundle_sha256 != bundle_sha256.as_str()
             || treaty.local_receipt_sha256 != bundle.root_receipt_sha256
@@ -6378,6 +7331,29 @@ fn verify_treaty_dsse_evidence(
         }
     }
     Ok(())
+}
+
+fn treaty_participant_public_key<'a>(
+    treaty_scope: &'a TreatyScope,
+    kernel_id: &str,
+) -> Result<&'a PublicKey, ChiodosRuntimeError> {
+    let Some(index) = treaty_scope
+        .participant_kernel_ids
+        .iter()
+        .position(|participant| participant == kernel_id)
+    else {
+        return rejected(
+            "chiodos_treaty_missing_participant",
+            "treaty participant public key is missing",
+        );
+    };
+    treaty_scope
+        .participant_public_keys
+        .get(index)
+        .ok_or_else(|| ChiodosRuntimeError::Rejected {
+            code: "chiodos_treaty_missing_participant",
+            detail: "treaty participant public key is missing".to_string(),
+        })
 }
 
 fn static_treaty_failure_code(code: Option<&str>) -> &'static str {
@@ -6703,7 +7679,10 @@ const BUYER_REVIEW_REQUIRED_ROLES: &[&str] = &[
     "workflow_receipt",
     "proof_package",
     "verifier_report",
+    "proof_regeneration_report",
     "runtime_run_report",
+    "runtime_evidence_manifest",
+    "proof_regeneration_input",
 ];
 
 fn validate_receipt_lineage_bundle(
@@ -6739,22 +7718,17 @@ fn validate_buyer_attestation_review_package(
     validate_non_empty(&package.packet_id, "buyer_review_package_empty_packet")?;
     validate_non_empty(&package.buyer_id, "buyer_review_package_empty_buyer")?;
     let mut roles = BTreeSet::new();
+    let mut paths = BTreeSet::new();
     for artifact in &package.artifacts {
         validate_non_empty(&artifact.role, "buyer_review_artifact_empty_role")?;
         validate_non_empty(
             &artifact.relative_path,
             "buyer_review_artifact_empty_relative_path",
         )?;
-        if artifact.relative_path.starts_with('/')
-            || artifact.relative_path.contains('\\')
-            || artifact.relative_path.contains("..")
-            || artifact.relative_path.contains(':')
-        {
-            return rejected(
-                "buyer_review_artifact_unsafe_path",
-                "buyer review artifact paths must be portable relative paths",
-            );
-        }
+        validate_relative_evidence_path(
+            &artifact.relative_path,
+            "buyer_review_artifact_unsafe_path",
+        )?;
         ensure_sha256_hash(
             &artifact.artifact_sha256,
             "buyer_review_artifact_invalid_hash",
@@ -6769,6 +7743,12 @@ fn validate_buyer_attestation_review_package(
             return rejected(
                 "chiodos_buyer_review_duplicate_artifact_role",
                 "buyer review package contains duplicate artifact role",
+            );
+        }
+        if !paths.insert(artifact.relative_path.clone()) {
+            return rejected(
+                "chiodos_buyer_review_duplicate_artifact_path",
+                "buyer review package contains duplicate artifact path",
             );
         }
     }
@@ -6896,6 +7876,10 @@ fn validate_buyer_attestation_packet(
     ensure_sha256_hash(
         &packet.bilateral_invocation_sha256,
         "buyer_packet_invalid_bilateral_hash",
+    )?;
+    ensure_sha256_hash(
+        &packet.bilateral_dsse_sha256,
+        "buyer_packet_invalid_bilateral_dsse_hash",
     )?;
     ensure_sha256_hash(
         &packet.workflow_receipt_sha256,
