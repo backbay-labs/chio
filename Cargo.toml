@@ -82,6 +82,7 @@ members = [
     "crates/chio-governance",
     "crates/chio-chiodos",
     "crates/chio-chiodos-authority",
+    "crates/chio-chiodos-runtime",
     "crates/chio-pheromone",
     "crates/chio-pheromone-relay",
     "crates/chio-pheromone-runtime",

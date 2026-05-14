@@ -835,6 +835,488 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn chiodos_runtime_admit_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "runtime",
+            "admit",
+            "--request",
+            "request.json",
+            "--admission-profile",
+            "profile.json",
+            "--admission-bundle",
+            "bundle.json",
+            "--runtime-trust-input",
+            "runtime-trust.json",
+            "--trusted-verifiers",
+            "trusted-verifiers.json",
+            "--pheromone-query-report",
+            "pheromone-query.json",
+            "--runtime-pheromone-policy",
+            "runtime-policy.json",
+            "--runtime-peer-weights",
+            "peer-weights.json",
+            "--trust-floor-state",
+            "trust-floor.json",
+            "--store",
+            "store.json",
+            "--now-unix-ms",
+            "1800000001000",
+            "--report",
+            "report.json",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Runtime {
+                        command:
+                            ChiodosRuntimeCommands::Admit {
+                                request,
+                                admission_profile,
+                                admission_bundle,
+                                runtime_trust_input,
+                                trusted_verifiers,
+                                pheromone_query_report,
+                                runtime_pheromone_policy,
+                                runtime_peer_weights,
+                                trust_floor_state,
+                                store,
+                                now_unix_ms,
+                                report,
+                            },
+                    },
+            } => {
+                assert_eq!(request, std::path::PathBuf::from("request.json"));
+                assert_eq!(
+                    admission_profile,
+                    std::path::PathBuf::from("profile.json")
+                );
+                assert_eq!(admission_bundle, std::path::PathBuf::from("bundle.json"));
+                assert_eq!(
+                    runtime_trust_input,
+                    Some(std::path::PathBuf::from("runtime-trust.json"))
+                );
+                assert_eq!(
+                    trusted_verifiers,
+                    Some(std::path::PathBuf::from("trusted-verifiers.json"))
+                );
+                assert_eq!(
+                    pheromone_query_report,
+                    Some(std::path::PathBuf::from("pheromone-query.json"))
+                );
+                assert_eq!(
+                    runtime_pheromone_policy,
+                    Some(std::path::PathBuf::from("runtime-policy.json"))
+                );
+                assert_eq!(
+                    runtime_peer_weights,
+                    Some(std::path::PathBuf::from("peer-weights.json"))
+                );
+                assert_eq!(
+                    trust_floor_state,
+                    Some(std::path::PathBuf::from("trust-floor.json"))
+                );
+                assert_eq!(store, std::path::PathBuf::from("store.json"));
+                assert_eq!(now_unix_ms, 1_800_000_001_000);
+                assert_eq!(report, std::path::PathBuf::from("report.json"));
+            }
+            _ => panic!("expected chiodos runtime admit subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_treaty_verify_packet_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "treaty",
+            "verify-packet",
+            "--packet",
+            "packet.json",
+            "--lineage-statement",
+            "lineage.json",
+            "--continuation",
+            "continuation.json",
+            "--admission-report",
+            "admission.json",
+            "--bilateral-invocation",
+            "bilateral.json",
+            "--report",
+            "report.json",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Treaty {
+                        command:
+                            ChiodosTreatyCommands::VerifyPacket {
+                                packet,
+                                lineage_statement,
+                                continuation,
+                                admission_report,
+                                bilateral_invocation,
+                                report,
+                            },
+                    },
+            } => {
+                assert_eq!(packet, std::path::PathBuf::from("packet.json"));
+                assert_eq!(
+                    lineage_statement,
+                    std::path::PathBuf::from("lineage.json")
+                );
+                assert_eq!(continuation, std::path::PathBuf::from("continuation.json"));
+                assert_eq!(admission_report, std::path::PathBuf::from("admission.json"));
+                assert_eq!(
+                    bilateral_invocation,
+                    std::path::PathBuf::from("bilateral.json")
+                );
+                assert_eq!(report, std::path::PathBuf::from("report.json"));
+            }
+            _ => panic!("expected chiodos treaty verify-packet subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_buyer_verify_and_explain_subcommands_parse() {
+        let verify = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "buyer",
+            "verify",
+            "--package",
+            "review-package.json",
+            "--trust-bundle",
+            "trust.json",
+            "--context",
+            "context.json",
+            "--report",
+            "buyer-review-report.json",
+        ]);
+        assert!(verify.is_ok());
+
+        let explain = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "buyer",
+            "explain",
+            "--report",
+            "buyer-review-report.json",
+            "--format",
+            "text",
+            "--out",
+            "buyer-review.txt",
+        ]);
+        assert!(explain.is_ok());
+    }
+
+    #[test]
+    fn chiodos_runtime_policy_sign_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "runtime",
+            "policy",
+            "sign",
+            "--body",
+            "runtime-policy-body.json",
+            "--signing-seed-file",
+            "verifier.seed",
+            "--out",
+            "runtime-policy.json",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Runtime {
+                        command:
+                            ChiodosRuntimeCommands::Policy {
+                                command:
+                                    ChiodosRuntimePolicyCommands::Sign {
+                                        body,
+                                        signing_seed_file,
+                                        out,
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(body, std::path::PathBuf::from("runtime-policy-body.json"));
+                assert_eq!(signing_seed_file, std::path::PathBuf::from("verifier.seed"));
+                assert_eq!(out, std::path::PathBuf::from("runtime-policy.json"));
+            }
+            _ => panic!("expected chiodos runtime policy sign subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_runtime_pheromone_evaluate_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "runtime",
+            "pheromone",
+            "evaluate",
+            "--admission-bundle",
+            "bundle.json",
+            "--runtime-trust-input",
+            "runtime-trust.json",
+            "--trusted-verifiers",
+            "trusted-verifiers.json",
+            "--pheromone-query-report",
+            "pheromone-query.json",
+            "--runtime-pheromone-policy",
+            "runtime-policy.json",
+            "--runtime-peer-weights",
+            "peer-weights.json",
+            "--now-unix-ms",
+            "1800000001000",
+            "--report",
+            "decision.json",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Runtime {
+                        command:
+                            ChiodosRuntimeCommands::Pheromone {
+                                command:
+                                    ChiodosRuntimePheromoneCommands::Evaluate {
+                                        admission_bundle,
+                                        runtime_trust_input,
+                                        trusted_verifiers,
+                                        pheromone_query_report,
+                                        runtime_pheromone_policy,
+                                        runtime_peer_weights,
+                                        now_unix_ms,
+                                        report,
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(admission_bundle, std::path::PathBuf::from("bundle.json"));
+                assert_eq!(
+                    runtime_trust_input,
+                    std::path::PathBuf::from("runtime-trust.json")
+                );
+                assert_eq!(
+                    trusted_verifiers,
+                    std::path::PathBuf::from("trusted-verifiers.json")
+                );
+                assert_eq!(
+                    pheromone_query_report,
+                    std::path::PathBuf::from("pheromone-query.json")
+                );
+                assert_eq!(
+                    runtime_pheromone_policy,
+                    std::path::PathBuf::from("runtime-policy.json")
+                );
+                assert_eq!(
+                    runtime_peer_weights,
+                    std::path::PathBuf::from("peer-weights.json")
+                );
+                assert_eq!(now_unix_ms, 1_800_000_001_000);
+                assert_eq!(report, std::path::PathBuf::from("decision.json"));
+            }
+            _ => panic!("expected chiodos runtime pheromone evaluate subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_runtime_sign_trust_input_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "runtime",
+            "sign-trust-input",
+            "--body",
+            "runtime-trust-body.json",
+            "--signing-seed-file",
+            "verifier.seed",
+            "--out",
+            "runtime-trust.json",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Runtime {
+                        command:
+                            ChiodosRuntimeCommands::SignTrustInput {
+                                body,
+                                signing_seed_file,
+                                out,
+                            },
+                    },
+            } => {
+                assert_eq!(body, std::path::PathBuf::from("runtime-trust-body.json"));
+                assert_eq!(signing_seed_file, std::path::PathBuf::from("verifier.seed"));
+                assert_eq!(out, std::path::PathBuf::from("runtime-trust.json"));
+            }
+            _ => panic!("expected chiodos runtime sign-trust-input subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_runtime_run_loopback_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "runtime",
+            "run-loopback",
+            "--scenario",
+            "scenario.json",
+            "--store-dir",
+            "stores",
+            "--now-unix-ms",
+            "1800000001000",
+            "--out-dir",
+            "out",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Runtime {
+                        command:
+                            ChiodosRuntimeCommands::RunLoopback {
+                                scenario,
+                                store_dir,
+                                now_unix_ms,
+                                out_dir,
+                            },
+                    },
+            } => {
+                assert_eq!(scenario, std::path::PathBuf::from("scenario.json"));
+                assert_eq!(store_dir, std::path::PathBuf::from("stores"));
+                assert_eq!(now_unix_ms, 1_800_000_001_000);
+                assert_eq!(out_dir, std::path::PathBuf::from("out"));
+            }
+            _ => panic!("expected chiodos runtime run-loopback subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_runtime_orchestrate_run_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "runtime",
+            "orchestrate",
+            "run",
+            "--profile",
+            "profile.json",
+            "--run-contract",
+            "run-contract.json",
+            "--store",
+            "runtime.sqlite3",
+            "--evidence-dir",
+            "evidence",
+            "--now-unix-ms",
+            "1800000001000",
+            "--report",
+            "run-report.json",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Runtime {
+                        command:
+                            ChiodosRuntimeCommands::Orchestrate {
+                                command:
+                                    ChiodosRuntimeOrchestrateCommands::Run {
+                                        profile,
+                                        run_contract,
+                                        store,
+                                        evidence_dir,
+                                        now_unix_ms,
+                                        report,
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(profile, std::path::PathBuf::from("profile.json"));
+                assert_eq!(run_contract, std::path::PathBuf::from("run-contract.json"));
+                assert_eq!(store, std::path::PathBuf::from("runtime.sqlite3"));
+                assert_eq!(evidence_dir, std::path::PathBuf::from("evidence"));
+                assert_eq!(now_unix_ms, 1_800_000_001_000);
+                assert_eq!(report, std::path::PathBuf::from("run-report.json"));
+            }
+            _ => panic!("expected chiodos runtime orchestrate run subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_runtime_ops_tick_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "runtime",
+            "ops",
+            "tick",
+            "--supervisor-profile",
+            "supervisor.json",
+            "--store",
+            "runtime.sqlite3",
+            "--evidence-root",
+            "evidence",
+            "--owner-id",
+            "operator-a",
+            "--now-unix-ms",
+            "1800000001000",
+            "--max-runs",
+            "2",
+            "--report",
+            "tick-report.json",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Runtime {
+                        command:
+                            ChiodosRuntimeCommands::Ops {
+                                command:
+                                    ChiodosRuntimeOpsCommands::Tick {
+                                        supervisor_profile,
+                                        store,
+                                        evidence_root,
+                                        owner_id,
+                                        now_unix_ms,
+                                        max_runs,
+                                        report,
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(
+                    supervisor_profile,
+                    std::path::PathBuf::from("supervisor.json")
+                );
+                assert_eq!(store, std::path::PathBuf::from("runtime.sqlite3"));
+                assert_eq!(evidence_root, std::path::PathBuf::from("evidence"));
+                assert_eq!(owner_id, "operator-a");
+                assert_eq!(now_unix_ms, 1_800_000_001_000);
+                assert_eq!(max_runs, 2);
+                assert_eq!(report, std::path::PathBuf::from("tick-report.json"));
+            }
+            _ => panic!("expected chiodos runtime ops tick subcommand"),
+        }
+    }
+
+    #[test]
     fn chiodos_authority_issue_subcommand_parses() {
         let cli = Cli::try_parse_from([
             "chio",

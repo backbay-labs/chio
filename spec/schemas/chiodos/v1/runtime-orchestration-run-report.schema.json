@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime-orchestration-run-report.schema.json",
+  "title": "Chiodos Runtime Orchestration Run Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "runId", "accepted", "status", "generatedAtUnixMs", "profileSha256", "runContractSha256", "stepStates", "checks"],
+  "properties": {
+    "schema": { "const": "chio.chiodos.runtime-orchestration-run-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "accepted": { "type": "boolean" },
+    "failureCode": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "profileSha256": { "$ref": "#/$defs/sha256" },
+    "runContractSha256": { "$ref": "#/$defs/sha256" },
+    "workflowRunReportSha256": { "$ref": "#/$defs/sha256" },
+    "evidenceManifestSha256": { "$ref": "#/$defs/sha256" },
+    "proofRegenerationReportSha256": { "$ref": "#/$defs/sha256" },
+    "verifierReportSha256": { "$ref": "#/$defs/sha256" },
+    "stepStates": { "type": "array", "items": { "$ref": "#/$defs/stepState" } },
+    "checks": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "stepState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stepIndex", "admissionId", "state", "destructive"],
+      "properties": {
+        "stepIndex": { "type": "integer", "minimum": 0 },
+        "admissionId": { "type": "string", "minLength": 1 },
+        "state": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "destructive": { "type": "boolean" },
+        "admissionReportSha256": { "$ref": "#/$defs/sha256" },
+        "toolReceiptSha256": { "$ref": "#/$defs/sha256" },
+        "leaseId": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

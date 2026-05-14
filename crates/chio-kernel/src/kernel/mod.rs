@@ -27,6 +27,54 @@ pub type ServerId = String;
 /// pattern-match on the exact string without drifting.
 pub const EMERGENCY_STOP_DENY_REASON: &str = "kernel emergency stop active";
 
+/// Context passed to optional runtime admission hooks after capability,
+/// request matching, governed-admission, and guard checks pass, but before
+/// dispatch and federation co-signing side effects.
+pub struct RuntimeAdmissionContext<'a> {
+    pub request: &'a ToolCallRequest,
+    pub now_unix_secs: u64,
+    pub matched_grant_index: Option<usize>,
+    pub local_kernel_id: String,
+}
+
+/// Decision returned by a runtime admission hook.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuntimeAdmissionDecision {
+    pub allowed: bool,
+    pub reason: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+impl RuntimeAdmissionDecision {
+    #[must_use]
+    pub fn allow(metadata: Option<serde_json::Value>) -> Self {
+        Self {
+            allowed: true,
+            reason: None,
+            metadata,
+        }
+    }
+
+    #[must_use]
+    pub fn deny(reason: impl Into<String>, metadata: Option<serde_json::Value>) -> Self {
+        Self {
+            allowed: false,
+            reason: Some(reason.into()),
+            metadata,
+        }
+    }
+}
+
+/// Optional pre-dispatch admission hook for product-specific runtime gates.
+pub trait RuntimeAdmissionHook: Send + Sync {
+    fn name(&self) -> &str;
+
+    fn evaluate(
+        &self,
+        context: &RuntimeAdmissionContext<'_>,
+    ) -> Result<RuntimeAdmissionDecision, KernelError>;
+}
+
 // ---------------------------------------------------------------------------
 // Phase 1.5 multi-tenant receipt isolation.
 //
@@ -1271,6 +1319,7 @@ pub struct ChioKernel {
     receipt_store_write_lock: Mutex<()>,
     payment_adapter: Option<Box<dyn PaymentAdapter>>,
     price_oracle: Option<Box<dyn PriceOracle>>,
+    runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
     attestation_trust_policy: Option<AttestationTrustPolicy>,
     capability_crypto_floor: KernelCryptoFloor,
     /// How many receipts per Merkle checkpoint batch. Default: 100.
@@ -1811,6 +1860,7 @@ impl ChioKernel {
             receipt_store_write_lock: Mutex::new(()),
             payment_adapter: None,
             price_oracle: None,
+            runtime_admission_hook: None,
             attestation_trust_policy: None,
             capability_crypto_floor: KernelCryptoFloor::AllowClassical,
             checkpoint_batch_size,
@@ -2834,6 +2884,17 @@ impl ChioKernel {
         self.guards.push(guard);
     }
 
+    /// Install a product-specific runtime admission hook. The hook runs after
+    /// core authorization checks and guards, but before tool dispatch.
+    pub fn set_runtime_admission_hook(&mut self, hook: Arc<dyn RuntimeAdmissionHook>) {
+        self.runtime_admission_hook = Some(hook);
+    }
+
+    /// Remove the product-specific runtime admission hook.
+    pub fn clear_runtime_admission_hook(&mut self) {
+        self.runtime_admission_hook = None;
+    }
+
     /// Register a tool server connection.
     pub fn register_tool_server(&mut self, connection: Box<dyn ToolServerConnection>) {
         let id = connection.server_id().to_owned();
@@ -3687,6 +3748,43 @@ impl ChioKernel {
             );
         }
 
+        let runtime_admission =
+            self.run_runtime_admission_hook(request, now, Some(matched_grant_index));
+        let extra_metadata =
+            merge_metadata_objects(extra_metadata.clone(), runtime_admission.metadata.clone());
+        if !runtime_admission.allowed {
+            let msg = runtime_admission
+                .reason
+                .unwrap_or_else(|| "runtime admission denied".to_string());
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "runtime admission denied");
+            if let Some(ref charge) = charge_result {
+                let reverse = self.reverse_budget_charge(&cap.id, charge)?;
+                return self
+                    .build_runtime_admission_pre_execution_monetary_deny_response_with_metadata(
+                        request,
+                        &msg,
+                        now,
+                        charge,
+                        reverse.committed_cost_units_after,
+                        cap,
+                        self.merge_budget_receipt_metadata(
+                            extra_metadata,
+                            self.budget_execution_receipt_metadata(
+                                charge,
+                                Some(("reversed", &reverse)),
+                            ),
+                        ),
+                    );
+            }
+            return self.build_runtime_admission_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                Some(matched_grant_index),
+                extra_metadata,
+            );
+        }
+
         if let Err(reason) = self.admit_capability_budget(cap) {
             let msg = format!("sibling-sum budget admission failed: {reason}");
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
@@ -4193,6 +4291,41 @@ impl ChioKernel {
                 );
             }
             return self.build_deny_response(request, &msg, now, Some(matched_grant_index));
+        }
+
+        let runtime_admission =
+            self.run_runtime_admission_hook(request, now, Some(matched_grant_index));
+        if !runtime_admission.allowed {
+            let msg = runtime_admission
+                .reason
+                .unwrap_or_else(|| "runtime admission denied".to_string());
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "runtime admission denied (nested flow)");
+            if let Some(ref charge) = charge_result {
+                let reverse = self.reverse_budget_charge(&cap.id, charge)?;
+                return self
+                    .build_runtime_admission_pre_execution_monetary_deny_response_with_metadata(
+                        request,
+                        &msg,
+                        now,
+                        charge,
+                        reverse.committed_cost_units_after,
+                        cap,
+                        self.merge_budget_receipt_metadata(
+                            runtime_admission.metadata,
+                            self.budget_execution_receipt_metadata(
+                                charge,
+                                Some(("reversed", &reverse)),
+                            ),
+                        ),
+                    );
+            }
+            return self.build_runtime_admission_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                Some(matched_grant_index),
+                runtime_admission.metadata,
+            );
         }
 
         if let Err(reason) = self.admit_capability_budget(cap) {
@@ -6981,6 +7114,39 @@ impl ChioKernel {
         }
 
         Ok(())
+    }
+
+    fn run_runtime_admission_hook(
+        &self,
+        request: &ToolCallRequest,
+        now: u64,
+        matched_grant_index: Option<usize>,
+    ) -> RuntimeAdmissionDecision {
+        let Some(hook) = self.runtime_admission_hook.as_ref() else {
+            return RuntimeAdmissionDecision::allow(None);
+        };
+        let context = RuntimeAdmissionContext {
+            request,
+            now_unix_secs: now,
+            matched_grant_index,
+            local_kernel_id: self.federation_local_kernel_id(),
+        };
+        match hook.evaluate(&context) {
+            Ok(decision) => decision,
+            Err(error) => RuntimeAdmissionDecision::deny(
+                format!(
+                    "runtime admission hook \"{}\" error (fail-closed): {error}",
+                    hook.name()
+                ),
+                Some(serde_json::json!({
+                    "runtime_admission": {
+                        "hook": hook.name(),
+                        "accepted": false,
+                        "failure_code": "runtime_admission_hook_error"
+                    }
+                })),
+            ),
+        }
     }
 
     /// Forward the validated request and optionally report actual invocation cost.

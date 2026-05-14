@@ -66,8 +66,9 @@ use sha2::{Digest, Sha256};
 use crate::bilateral::BilateralCoSigningError;
 use crate::bilateral_dsse::{
     receipt_subject_name, verify_chiodos_dsse_envelope, verify_dsse_envelope, BilateralPredicate,
-    DsseEnvelope, DsseStatement, Keyid, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL,
-    PREDICATE_TYPE_CHIODOS_BILATERAL, STATEMENT_TYPE_V1, VALID_CROSS_ORG_VISIBILITY,
+    DsseEnvelope, DsseStatement, Keyid, TreatyBindingRef, PAYLOAD_TYPE_IN_TOTO,
+    PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL, PREDICATE_TYPE_CHIODOS_BILATERAL,
+    STATEMENT_TYPE_V1, VALID_CROSS_ORG_VISIBILITY,
 };
 use crate::trust_establishment::LadderManifestRef;
 
@@ -488,9 +489,207 @@ pub struct StrictChiodosVerifierConfig<'a, 'b> {
     pub base: &'a VerifierConfig<'b>,
 }
 
+/// Inputs for strict buyer-review verification of a treaty-bound Chiodos
+/// bilateral DSSE envelope.
+pub struct TreatyBoundBilateralDsseReview<'a> {
+    pub expected_treaty_binding: &'a TreatyBindingRef,
+    pub signer_public_keys: Option<&'a BTreeMap<String, PublicKey>>,
+}
+
 // ---------------------------------------------------------------------------
 // Partial local verifier (subset of spec §7 step list)
 // ---------------------------------------------------------------------------
+
+pub fn verify_treaty_bound_chiodos_bilateral_invocation(
+    envelope: &DsseEnvelope,
+    review: &TreatyBoundBilateralDsseReview<'_>,
+) -> Result<DsseStatement, VerifierError> {
+    if envelope.payload_type != PAYLOAD_TYPE_IN_TOTO {
+        return Err(VerifierError::DsseMalformed(format!(
+            "payloadType {:?} is not application/vnd.in-toto+json",
+            envelope.payload_type
+        )));
+    }
+    if envelope.signatures.len() != 2 {
+        return Err(VerifierError::DsseMalformed(format!(
+            "strict treaty DSSE expected exactly 2 signatures, got {}",
+            envelope.signatures.len()
+        )));
+    }
+    require_unique_review_signature_keyids(envelope)?;
+
+    validate_treaty_binding_ref_for_review(review.expected_treaty_binding, "expected", false)?;
+
+    let (statement, statement_bytes) = envelope.decode_statement().map_err(map_bilateral_error)?;
+    let canonical_statement_bytes = statement.canonical_bytes().map_err(map_bilateral_error)?;
+    if canonical_statement_bytes != statement_bytes {
+        return Err(VerifierError::StatementMalformed(
+            "strict treaty DSSE payload is not canonical JSON".to_string(),
+        ));
+    }
+    if statement.statement_type != STATEMENT_TYPE_V1 {
+        return Err(VerifierError::StatementSchemaInvalid(format!(
+            "_type {:?} is not {:?}",
+            statement.statement_type, STATEMENT_TYPE_V1
+        )));
+    }
+    if statement.predicate_type != PREDICATE_TYPE_CHIODOS_BILATERAL {
+        return Err(VerifierError::PredicateTypeUnrecognised(format!(
+            "predicateType {:?} is not strict Chiodos {:?}",
+            statement.predicate_type, PREDICATE_TYPE_CHIODOS_BILATERAL
+        )));
+    }
+    if statement.subject.len() != 1 {
+        return Err(VerifierError::StatementSchemaInvalid(format!(
+            "strict treaty DSSE must carry exactly 1 subject, got {}",
+            statement.subject.len()
+        )));
+    }
+    let pred = &statement.predicate;
+    let Some(treaty_binding) = pred.treaty_binding_ref.as_ref() else {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE missing treaty_binding_ref".to_string(),
+        ));
+    };
+    validate_treaty_binding_ref_for_review(treaty_binding, "predicate", true)?;
+    if !treaty_binding_refs_equal(treaty_binding, review.expected_treaty_binding) {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE treaty_binding_ref does not match expected buyer review binding"
+                .to_string(),
+        ));
+    }
+    if pred.tool_server_a.kernel_id != review.expected_treaty_binding.signer_kernel_ids[0]
+        || pred.tool_server_b.kernel_id != review.expected_treaty_binding.signer_kernel_ids[1]
+    {
+        return Err(VerifierError::PeerUnpinnedOrKeyidMismatch(
+            "strict treaty DSSE predicate signer kernels do not match treaty binding".to_string(),
+        ));
+    }
+    if pred.consistency_model != review.expected_treaty_binding.consistency_model {
+        return Err(VerifierError::PredicateSchemaInvalid(
+            "strict treaty DSSE consistency model does not match treaty binding".to_string(),
+        ));
+    }
+
+    if let Some(signer_public_keys) = review.signer_public_keys {
+        if !signer_public_keys.is_empty() {
+            let signer_a_id = &review.expected_treaty_binding.signer_kernel_ids[0];
+            let signer_b_id = &review.expected_treaty_binding.signer_kernel_ids[1];
+            let signer_a_public_key = signer_public_keys.get(signer_a_id).ok_or_else(|| {
+                VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
+                    "strict treaty DSSE missing public key for signer {signer_a_id:?}"
+                ))
+            })?;
+            let signer_b_public_key = signer_public_keys.get(signer_b_id).ok_or_else(|| {
+                VerifierError::PeerUnpinnedOrKeyidMismatch(format!(
+                    "strict treaty DSSE missing public key for signer {signer_b_id:?}"
+                ))
+            })?;
+            verify_chiodos_dsse_envelope(envelope, signer_a_public_key, signer_b_public_key)
+                .map_err(map_bilateral_error)?;
+        }
+    }
+
+    Ok(statement)
+}
+
+fn require_unique_review_signature_keyids(envelope: &DsseEnvelope) -> Result<(), VerifierError> {
+    let mut seen = HashSet::new();
+    for signature in &envelope.signatures {
+        if signature.keyid.is_empty() {
+            return Err(VerifierError::DsseMalformed(
+                "strict treaty DSSE signature keyid must be non-empty".to_string(),
+            ));
+        }
+        if !seen.insert(signature.keyid.as_str()) {
+            return Err(VerifierError::DsseMalformed(format!(
+                "strict treaty DSSE duplicate signature keyid {}",
+                signature.keyid
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_treaty_binding_ref_for_review(
+    treaty: &TreatyBindingRef,
+    label: &str,
+    require_operational_refs: bool,
+) -> Result<(), VerifierError> {
+    if treaty.treaty_id.is_empty()
+        || treaty.action_class_id.is_empty()
+        || treaty.consistency_model.is_empty()
+    {
+        return Err(VerifierError::PredicateSchemaInvalid(format!(
+            "{label} treaty_binding_ref treaty_id, action_class_id, and consistency_model must be non-empty"
+        )));
+    }
+    for (field, value) in [
+        ("treaty_scope_sha256", &treaty.treaty_scope_sha256),
+        (
+            "ladder_intersection_sha256",
+            &treaty.ladder_intersection_sha256,
+        ),
+        ("admission_report_sha256", &treaty.admission_report_sha256),
+        ("continuation_sha256", &treaty.continuation_sha256),
+        ("lineage_bundle_sha256", &treaty.lineage_bundle_sha256),
+        ("request_sha256", &treaty.request_sha256),
+        ("outcome_sha256", &treaty.outcome_sha256),
+        ("local_receipt_sha256", &treaty.local_receipt_sha256),
+        ("remote_receipt_sha256", &treaty.remote_receipt_sha256),
+    ] {
+        if !is_sha256_hex(value) {
+            return Err(VerifierError::PredicateSchemaInvalid(format!(
+                "{label} treaty_binding_ref.{field} must be 64 lowercase hex"
+            )));
+        }
+    }
+    if treaty.signer_kernel_ids.len() != 2 {
+        return Err(VerifierError::PredicateSchemaInvalid(format!(
+            "{label} treaty_binding_ref.signer_kernel_ids must contain exactly 2 signers"
+        )));
+    }
+    if treaty
+        .signer_kernel_ids
+        .iter()
+        .any(|signer| signer.is_empty())
+    {
+        return Err(VerifierError::PredicateSchemaInvalid(format!(
+            "{label} treaty_binding_ref.signer_kernel_ids must be non-empty"
+        )));
+    }
+    if treaty.signer_kernel_ids[0] == treaty.signer_kernel_ids[1] {
+        return Err(VerifierError::PredicateSchemaInvalid(format!(
+            "{label} treaty_binding_ref.signer_kernel_ids must be distinct"
+        )));
+    }
+    if require_operational_refs
+        && (treaty.lease_refs.is_empty() || treaty.governance_refs.is_empty())
+    {
+        return Err(VerifierError::PredicateSchemaInvalid(format!(
+            "{label} treaty_binding_ref lease_refs and governance_refs must be non-empty"
+        )));
+    }
+    Ok(())
+}
+
+fn treaty_binding_refs_equal(left: &TreatyBindingRef, right: &TreatyBindingRef) -> bool {
+    left.treaty_id == right.treaty_id
+        && left.treaty_scope_sha256 == right.treaty_scope_sha256
+        && left.ladder_intersection_sha256 == right.ladder_intersection_sha256
+        && left.admission_report_sha256 == right.admission_report_sha256
+        && left.continuation_sha256 == right.continuation_sha256
+        && left.lineage_bundle_sha256 == right.lineage_bundle_sha256
+        && left.action_class_id == right.action_class_id
+        && left.consistency_model == right.consistency_model
+        && left.request_sha256 == right.request_sha256
+        && left.outcome_sha256 == right.outcome_sha256
+        && left.local_receipt_sha256 == right.local_receipt_sha256
+        && left.remote_receipt_sha256 == right.remote_receipt_sha256
+        && (right.lease_refs.is_empty() || left.lease_refs == right.lease_refs)
+        && (right.governance_refs.is_empty() || left.governance_refs == right.governance_refs)
+        && left.signer_kernel_ids == right.signer_kernel_ids
+}
 
 pub fn verify_chiodos_bilateral_invocation(
     envelope: &DsseEnvelope,
@@ -1453,6 +1652,7 @@ mod tests {
             consistency_anchor: None,
             consistency_model: None,
             cross_org_visibility: None,
+            treaty_binding_ref: None,
         }
     }
 

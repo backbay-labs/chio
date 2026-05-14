@@ -1,0 +1,37 @@
+name: Chiodos Treaty-Bound Provenance
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-cli/**"
+      - "scripts/check-chiodos-treaty-bound-provenance.sh"
+      - "spec/schemas/chiodos/v1/*treaty*.schema.json"
+      - "spec/schemas/chiodos/v1/*ladder*.schema.json"
+      - "spec/schemas/chiodos/v1/*lineage*.schema.json"
+      - "spec/schemas/chiodos/v1/*attestation*.schema.json"
+      - "spec/schemas/chiodos/v1/*bilateral*.schema.json"
+      - "spec/schemas/chiodos/v1/cross-*.schema.json"
+      - "spec/schemas/registry.json"
+  push:
+    branches: ["main"]
+    paths:
+      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-cli/**"
+      - "scripts/check-chiodos-treaty-bound-provenance.sh"
+      - "spec/schemas/chiodos/v1/*treaty*.schema.json"
+      - "spec/schemas/chiodos/v1/*ladder*.schema.json"
+      - "spec/schemas/chiodos/v1/*lineage*.schema.json"
+      - "spec/schemas/chiodos/v1/*attestation*.schema.json"
+      - "spec/schemas/chiodos/v1/*bilateral*.schema.json"
+      - "spec/schemas/chiodos/v1/cross-*.schema.json"
+      - "spec/schemas/registry.json"
+
+jobs:
+  treaty-bound-provenance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run treaty-bound provenance gate
+        run: bash scripts/check-chiodos-treaty-bound-provenance.sh

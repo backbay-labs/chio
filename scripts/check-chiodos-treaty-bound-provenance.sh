@@ -1,0 +1,377 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="full"
+case "${1:-}" in
+  "")
+    ;;
+  "--schema-only")
+    MODE="schema-only"
+    ;;
+  "--negative-only")
+    MODE="negative-only"
+    ;;
+  *)
+    echo "usage: check-chiodos-treaty-bound-provenance.sh [--schema-only|--negative-only]" >&2
+    exit 2
+    ;;
+esac
+
+if [[ $# -gt 1 ]]; then
+  echo "usage: check-chiodos-treaty-bound-provenance.sh [--schema-only|--negative-only]" >&2
+  exit 2
+fi
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+schema_dir="$repo_root/spec/schemas/chiodos/v1"
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+validate_schema() {
+  cargo run -p chio-spec-validate -- "$1" "$2" >/dev/null
+}
+
+canonical_hash() {
+  python3 - "$1" <<'PY'
+import hashlib
+import json
+import sys
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    value = json.load(handle)
+payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+print(hashlib.sha256(payload).hexdigest())
+PY
+}
+
+write_common_fixtures() {
+  cat >"$tmpdir/buyer-ladder.json" <<'JSON'
+{
+  "schema": "chio.chiodos.governance-ladder-manifest.v1",
+  "manifestId": "ladder-kernel-buyer",
+  "kernelId": "kernel.buyer",
+  "issuer": "did:chio:kernel.buyer",
+  "keyId": "ladder-key-1",
+  "issuedAtUnixMs": 1800000000000,
+  "expiresAtUnixMs": 1800003600000,
+  "destructiveFloor": "receipt_backed",
+  "defaultUnknownMode": "deny",
+  "actionClasses": [
+    {
+      "actionClassId": "workflow.destructive.vendor_call",
+      "mode": "receipt_backed",
+      "destructive": true,
+      "consistencyModel": "totally_ordered",
+      "coSign": "bilateral_required",
+      "evidenceRequired": ["governance_receipt", "bilateral_dsse", "receipt_lineage"],
+      "aliases": []
+    }
+  ]
+}
+JSON
+  cat >"$tmpdir/vendor-ladder.json" <<'JSON'
+{
+  "schema": "chio.chiodos.governance-ladder-manifest.v1",
+  "manifestId": "ladder-kernel-vendor-b",
+  "kernelId": "kernel.vendor-b",
+  "issuer": "did:chio:kernel.vendor-b",
+  "keyId": "ladder-key-1",
+  "issuedAtUnixMs": 1800000000000,
+  "expiresAtUnixMs": 1800003600000,
+  "destructiveFloor": "receipt_backed",
+  "defaultUnknownMode": "deny",
+  "actionClasses": [
+    {
+      "actionClassId": "workflow.destructive.vendor_call",
+      "mode": "receipt_backed",
+      "destructive": true,
+      "consistencyModel": "totally_ordered",
+      "coSign": "bilateral_required",
+      "evidenceRequired": ["governance_receipt", "bilateral_dsse"],
+      "aliases": []
+    }
+  ]
+}
+JSON
+  local buyer_hash
+  buyer_hash="$(canonical_hash "$tmpdir/buyer-ladder.json")"
+  local vendor_hash
+  vendor_hash="$(canonical_hash "$tmpdir/vendor-ladder.json")"
+  cat >"$tmpdir/treaty-scope.json" <<JSON
+{
+  "schema": "chio.chiodos.treaty-scope.v1",
+  "treatyId": "treaty-buyer-vendor",
+  "participantKernelIds": ["kernel.buyer", "kernel.vendor-b"],
+  "ladderManifestSha256s": ["${buyer_hash}", "${vendor_hash}"],
+  "allowedActionClasses": ["workflow.destructive.vendor_call"],
+  "issuedAtUnixMs": 1800000000000,
+  "expiresAtUnixMs": 1800003600000,
+  "revocationEpochSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "trustBundleSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+}
+JSON
+  cat >"$tmpdir/continuation.json" <<'JSON'
+{
+  "schema": "chio.chiodos.cross-kernel-continuation.v1",
+  "continuationId": "continue-1",
+  "sourceKernelId": "kernel.buyer",
+  "targetKernelId": "kernel.vendor-b",
+  "parentReceiptSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "parentSessionAnchorSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+  "capabilityId": "cap-live-1",
+  "actionClassId": "workflow.destructive.vendor_call",
+  "audienceTool": "vendor-ledger.close_account",
+  "nonce": "nonce-1",
+  "issuedAtUnixMs": 1800000000000,
+  "expiresAtUnixMs": 1800003600000
+}
+JSON
+  local continuation_hash
+  continuation_hash="$(canonical_hash "$tmpdir/continuation.json")"
+  cat >"$tmpdir/lineage.json" <<JSON
+{
+  "schema": "chio.chiodos.receipt-lineage-statement.v1",
+  "statementId": "lineage-1",
+  "parentReceiptSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "childReceiptSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+  "continuationSha256": "${continuation_hash}",
+  "bilateralInvocationSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+  "evidenceClass": "verified",
+  "sourceKernelId": "kernel.buyer",
+  "targetKernelId": "kernel.vendor-b"
+}
+JSON
+  local lineage_hash
+  lineage_hash="$(canonical_hash "$tmpdir/lineage.json")"
+  cat >"$tmpdir/bilateral.json" <<JSON
+{
+  "schema": "chio.chiodos.bilateral-invocation.v1",
+  "invocationId": "invoke-1",
+  "treatyId": "treaty-buyer-vendor",
+  "ladderIntersectionSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "continuationSha256": "${continuation_hash}",
+  "lineageStatementSha256": "${lineage_hash}",
+  "actionClassId": "workflow.destructive.vendor_call",
+  "consistencyModel": "totally_ordered",
+  "capabilityId": "cap-live-1",
+  "requestSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "outcomeSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "localReceiptSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "remoteReceiptSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+  "signerKernelIds": ["kernel.buyer", "kernel.vendor-b"]
+}
+JSON
+  cat >"$tmpdir/packet.json" <<JSON
+{
+  "schema": "chio.chiodos.buyer-attestation-packet.v1",
+  "packetId": "buyer-packet-1",
+  "buyerId": "buyer.acme",
+  "capabilityId": "cap-live-1",
+  "treatyScopeSha256": "5555555555555555555555555555555555555555555555555555555555555555",
+  "ladderIntersectionSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "crossBoundaryAdmissionReportSha256": "7777777777777777777777777777777777777777777777777777777777777777",
+  "continuationSha256": "${continuation_hash}",
+  "receiptLineageStatementSha256": "${lineage_hash}",
+  "bilateralInvocationSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+  "workflowReceiptSha256": "8888888888888888888888888888888888888888888888888888888888888888",
+  "proofPackageSha256": "9999999999999999999999999999999999999999999999999999999999999999",
+  "verifierReportSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "budgetRefs": ["budget.reserve:local-demo"],
+  "settlementClaimed": false
+}
+JSON
+  python3 - "$tmpdir/lineage.json" "$tmpdir/lineage-asserted.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    value = json.load(handle)
+value["evidenceClass"] = "asserted"
+with open(sys.argv[2], "w", encoding="utf-8") as handle:
+    json.dump(value, handle, indent=2)
+    handle.write("\n")
+PY
+  cat >"$tmpdir/negative-corpus.json" <<'JSON'
+{
+  "schema": "chio.chiodos.treaty-negative-fixture-corpus.v1",
+  "cases": [
+    { "caseId": "missing-evidence", "expectedCode": "chiodos_treaty_missing_required_evidence" },
+    { "caseId": "asserted-lineage", "expectedCode": "chiodos_buyer_packet_lineage_not_verified" }
+  ]
+}
+JSON
+}
+
+write_packet_for_admission() {
+  local admission_path="$1"
+  local admission_hash
+  admission_hash="$(canonical_hash "$admission_path")"
+  local treaty_hash
+  treaty_hash="$(python3 - "$admission_path" <<'PY'
+import json
+import sys
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    print(json.load(handle)["treatyScopeSha256"])
+PY
+)"
+  local intersection_hash
+  intersection_hash="$(python3 - "$admission_path" <<'PY'
+import json
+import sys
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    print(json.load(handle)["ladderIntersectionSha256"])
+PY
+)"
+  local continuation_hash
+  continuation_hash="$(canonical_hash "$tmpdir/continuation.json")"
+  local lineage_hash
+  lineage_hash="$(canonical_hash "$tmpdir/lineage.json")"
+  cat >"$tmpdir/bilateral.json" <<JSON
+{
+  "schema": "chio.chiodos.bilateral-invocation.v1",
+  "invocationId": "invoke-1",
+  "treatyId": "treaty-buyer-vendor",
+  "ladderIntersectionSha256": "${intersection_hash}",
+  "continuationSha256": "${continuation_hash}",
+  "lineageStatementSha256": "${lineage_hash}",
+  "actionClassId": "workflow.destructive.vendor_call",
+  "consistencyModel": "totally_ordered",
+  "capabilityId": "cap-live-1",
+  "requestSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "outcomeSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "localReceiptSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "remoteReceiptSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+  "signerKernelIds": ["kernel.buyer", "kernel.vendor-b"]
+}
+JSON
+  cat >"$tmpdir/packet.json" <<JSON
+{
+  "schema": "chio.chiodos.buyer-attestation-packet.v1",
+  "packetId": "buyer-packet-1",
+  "buyerId": "buyer.acme",
+  "capabilityId": "cap-live-1",
+  "treatyScopeSha256": "${treaty_hash}",
+  "ladderIntersectionSha256": "${intersection_hash}",
+  "crossBoundaryAdmissionReportSha256": "${admission_hash}",
+  "continuationSha256": "${continuation_hash}",
+  "receiptLineageStatementSha256": "${lineage_hash}",
+  "bilateralInvocationSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+  "workflowReceiptSha256": "8888888888888888888888888888888888888888888888888888888888888888",
+  "proofPackageSha256": "9999999999999999999999999999999999999999999999999999999999999999",
+  "verifierReportSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "budgetRefs": ["budget.reserve:local-demo"],
+  "settlementClaimed": false
+}
+JSON
+}
+
+run_schema_flow() {
+  write_common_fixtures
+  validate_schema "$schema_dir/governance-ladder-manifest.schema.json" "$tmpdir/buyer-ladder.json"
+  validate_schema "$schema_dir/governance-ladder-manifest.schema.json" "$tmpdir/vendor-ladder.json"
+  validate_schema "$schema_dir/treaty-scope.schema.json" "$tmpdir/treaty-scope.json"
+  validate_schema "$schema_dir/cross-kernel-continuation.schema.json" "$tmpdir/continuation.json"
+  validate_schema "$schema_dir/receipt-lineage-statement.schema.json" "$tmpdir/lineage.json"
+  validate_schema "$schema_dir/bilateral-invocation.schema.json" "$tmpdir/bilateral.json"
+  validate_schema "$schema_dir/buyer-attestation-packet.schema.json" "$tmpdir/packet.json"
+  validate_schema "$schema_dir/treaty-negative-fixture-corpus.schema.json" "$tmpdir/negative-corpus.json"
+}
+
+run_positive_flow() {
+  write_common_fixtures
+  cargo run -p chio-cli -- chiodos treaty intersect \
+    --treaty-scope "$tmpdir/treaty-scope.json" \
+    --manifest "$tmpdir/buyer-ladder.json" \
+    --manifest "$tmpdir/vendor-ladder.json" \
+    --now-unix-ms 1800000010000 \
+    --report "$tmpdir/intersection.json" >/dev/null
+  validate_schema "$schema_dir/ladder-intersection.schema.json" "$tmpdir/intersection.json"
+  local intersection_hash
+  intersection_hash="$(canonical_hash "$tmpdir/intersection.json")"
+  local lineage_hash
+  lineage_hash="$(canonical_hash "$tmpdir/lineage.json")"
+  cargo run -p chio-cli -- chiodos treaty admit \
+    --treaty-scope "$tmpdir/treaty-scope.json" \
+    --ladder-intersection "$tmpdir/intersection.json" \
+    --expected-ladder-intersection-sha256 "$intersection_hash" \
+    --action-class-id "workflow.destructive.vendor_call" \
+    --evidence governance_receipt=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd \
+    --evidence bilateral_dsse=4444444444444444444444444444444444444444444444444444444444444444 \
+    --evidence receipt_lineage="$lineage_hash" \
+    --now-unix-ms 1800000010000 \
+    --report "$tmpdir/admission.json" >/dev/null
+  validate_schema "$schema_dir/cross-boundary-admission-report.schema.json" "$tmpdir/admission.json"
+  grep -q '"accepted": true' "$tmpdir/admission.json"
+  write_packet_for_admission "$tmpdir/admission.json"
+  validate_schema "$schema_dir/bilateral-invocation.schema.json" "$tmpdir/bilateral.json"
+  validate_schema "$schema_dir/buyer-attestation-packet.schema.json" "$tmpdir/packet.json"
+  cargo run -p chio-cli -- chiodos treaty verify-packet \
+    --packet "$tmpdir/packet.json" \
+    --lineage-statement "$tmpdir/lineage.json" \
+    --continuation "$tmpdir/continuation.json" \
+    --admission-report "$tmpdir/admission.json" \
+    --bilateral-invocation "$tmpdir/bilateral.json" \
+    --report "$tmpdir/packet-report.json" >/dev/null
+  validate_schema "$schema_dir/buyer-attestation-verification-report.schema.json" "$tmpdir/packet-report.json"
+  grep -q '"accepted": true' "$tmpdir/packet-report.json"
+}
+
+run_negative_flow() {
+  write_common_fixtures
+  cargo run -p chio-cli -- chiodos treaty intersect \
+    --treaty-scope "$tmpdir/treaty-scope.json" \
+    --manifest "$tmpdir/buyer-ladder.json" \
+    --manifest "$tmpdir/vendor-ladder.json" \
+    --now-unix-ms 1800000010000 \
+    --report "$tmpdir/intersection.json" >/dev/null
+  local intersection_hash
+  intersection_hash="$(canonical_hash "$tmpdir/intersection.json")"
+  local lineage_hash
+  lineage_hash="$(canonical_hash "$tmpdir/lineage.json")"
+  cargo run -p chio-cli -- chiodos treaty admit \
+    --treaty-scope "$tmpdir/treaty-scope.json" \
+    --ladder-intersection "$tmpdir/intersection.json" \
+    --expected-ladder-intersection-sha256 "$intersection_hash" \
+    --action-class-id "workflow.destructive.vendor_call" \
+    --evidence governance_receipt=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd \
+    --now-unix-ms 1800000010000 \
+    --report "$tmpdir/admission-negative.json" >/dev/null
+  validate_schema "$schema_dir/cross-boundary-admission-report.schema.json" "$tmpdir/admission-negative.json"
+  grep -q '"accepted": false' "$tmpdir/admission-negative.json"
+  grep -q '"failureCode": "chiodos_treaty_missing_required_evidence"' "$tmpdir/admission-negative.json"
+  cargo run -p chio-cli -- chiodos treaty admit \
+    --treaty-scope "$tmpdir/treaty-scope.json" \
+    --ladder-intersection "$tmpdir/intersection.json" \
+    --expected-ladder-intersection-sha256 "$intersection_hash" \
+    --action-class-id "workflow.destructive.vendor_call" \
+    --evidence governance_receipt=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd \
+    --evidence bilateral_dsse=4444444444444444444444444444444444444444444444444444444444444444 \
+    --evidence receipt_lineage="$lineage_hash" \
+    --now-unix-ms 1800000010000 \
+    --report "$tmpdir/admission.json" >/dev/null
+  write_packet_for_admission "$tmpdir/admission.json"
+  cargo run -p chio-cli -- chiodos treaty verify-packet \
+    --packet "$tmpdir/packet.json" \
+    --lineage-statement "$tmpdir/lineage-asserted.json" \
+    --continuation "$tmpdir/continuation.json" \
+    --admission-report "$tmpdir/admission.json" \
+    --bilateral-invocation "$tmpdir/bilateral.json" \
+    --report "$tmpdir/packet-negative.json" >/dev/null
+  validate_schema "$schema_dir/buyer-attestation-verification-report.schema.json" "$tmpdir/packet-negative.json"
+  grep -q '"accepted": false' "$tmpdir/packet-negative.json"
+  grep -q '"failureCode": "chiodos_buyer_packet_lineage_not_verified"' "$tmpdir/packet-negative.json"
+}
+
+case "$MODE" in
+  "schema-only")
+    run_schema_flow
+    ;;
+  "negative-only")
+    run_negative_flow
+    ;;
+  "full")
+    run_schema_flow
+    run_positive_flow
+    run_negative_flow
+    cargo test -p chio-chiodos-runtime treaty_ --test runtime_admission
+    cargo test -p chio-chiodos-runtime buyer_attestation --test runtime_admission
+    ;;
+esac

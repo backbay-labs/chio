@@ -1,0 +1,35 @@
+name: Chiodos Runtime Ops Hardening
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-kernel/**"
+      - "examples/chiodos-3vendor/**"
+      - "spec/schemas/chiodos/**"
+      - "spec/schemas/registry.json"
+      - "spec/schemas/MANIFEST.sha256"
+      - "scripts/check-chiodos-runtime-ops-hardening.sh"
+      - ".github/workflows/chiodos-runtime-ops-hardening.yml"
+  pull_request:
+    paths:
+      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-kernel/**"
+      - "examples/chiodos-3vendor/**"
+      - "spec/schemas/chiodos/**"
+      - "spec/schemas/registry.json"
+      - "spec/schemas/MANIFEST.sha256"
+      - "scripts/check-chiodos-runtime-ops-hardening.sh"
+      - ".github/workflows/chiodos-runtime-ops-hardening.yml"
+
+jobs:
+  runtime-ops-hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Chiodos runtime ops gate
+        run: bash scripts/check-chiodos-runtime-ops-hardening.sh

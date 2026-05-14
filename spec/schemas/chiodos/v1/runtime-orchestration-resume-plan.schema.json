@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime-orchestration-resume-plan.schema.json",
+  "title": "Chiodos Runtime Orchestration Resume Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "runId", "accepted", "generatedAtUnixMs", "reusableStepIndices", "blocked", "checks"],
+  "properties": {
+    "schema": { "const": "chio.chiodos.runtime-orchestration-resume-plan.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "accepted": { "type": "boolean" },
+    "failureCode": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "nextStepIndex": { "type": "integer", "minimum": 0 },
+    "reusableStepIndices": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+    "blocked": { "type": "boolean" },
+    "checks": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  }
+}

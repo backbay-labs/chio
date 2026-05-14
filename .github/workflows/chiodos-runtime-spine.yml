@@ -1,0 +1,48 @@
+name: chiodos-runtime-spine
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-chiodos/**"
+      - "crates/chio-chiodos-authority/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-kernel/**"
+      - "crates/chio-pheromone-runtime/**"
+      - "examples/chiodos-3vendor/**"
+      - "scripts/check-chiodos-runtime-spine.sh"
+      - "spec/schemas/chiodos/**"
+      - "spec/schemas/registry.json"
+      - ".github/workflows/chiodos-runtime-spine.yml"
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chiodos-runtime-spine-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  runtime-spine-gate:
+    name: runtime-spine-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Chiodos runtime-spine gate
+        run: bash scripts/check-chiodos-runtime-spine.sh

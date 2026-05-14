@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime-supervisor-profile.schema.json",
+  "title": "Chiodos Runtime Supervisor Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "profileId", "localKernelId", "issuedAtUnixMs", "expiresAtUnixMs", "maxConcurrentRuns", "runLeaseTtlMs", "staleRunAfterMs", "evidenceRequiredRoles", "failClosedOn"],
+  "properties": {
+    "schema": { "const": "chio.chiodos.runtime-supervisor-profile.v1" },
+    "profileId": { "type": "string", "minLength": 1 },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+    "maxConcurrentRuns": { "type": "integer", "minimum": 1 },
+    "runLeaseTtlMs": { "type": "integer", "minimum": 1 },
+    "staleRunAfterMs": { "type": "integer", "minimum": 1 },
+    "evidenceRequiredRoles": { "type": "array", "items": { "$ref": "#/$defs/code" } },
+    "failClosedOn": { "type": "array", "items": { "$ref": "#/$defs/code" } }
+  },
+  "$defs": { "code": { "type": "string", "pattern": "^[a-z0-9_]+$" } }
+}

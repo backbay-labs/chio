@@ -1,0 +1,31 @@
+name: Chiodos Runtime Orchestration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-kernel/**"
+      - "examples/chiodos-3vendor/**"
+      - "spec/schemas/chiodos/**"
+      - "scripts/check-chiodos-runtime-orchestration.sh"
+      - ".github/workflows/chiodos-runtime-orchestration.yml"
+  pull_request:
+    paths:
+      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-kernel/**"
+      - "examples/chiodos-3vendor/**"
+      - "spec/schemas/chiodos/**"
+      - "scripts/check-chiodos-runtime-orchestration.sh"
+      - ".github/workflows/chiodos-runtime-orchestration.yml"
+
+jobs:
+  runtime-orchestration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run Chiodos runtime orchestration gate
+        run: bash scripts/check-chiodos-runtime-orchestration.sh

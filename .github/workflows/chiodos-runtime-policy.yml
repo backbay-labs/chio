@@ -1,0 +1,31 @@
+name: Chiodos Runtime Policy
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-kernel/**"
+      - "scripts/check-chiodos-runtime-policy.sh"
+      - "scripts/check-chiodos-runtime-spine.sh"
+      - "spec/schemas/chiodos/**"
+      - "spec/schemas/registry.json"
+  push:
+    branches: [main]
+    paths:
+      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-kernel/**"
+      - "scripts/check-chiodos-runtime-policy.sh"
+      - "scripts/check-chiodos-runtime-spine.sh"
+      - "spec/schemas/chiodos/**"
+      - "spec/schemas/registry.json"
+
+jobs:
+  runtime-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run Chiodos runtime policy gate
+        run: bash scripts/check-chiodos-runtime-policy.sh

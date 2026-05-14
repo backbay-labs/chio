@@ -201,6 +201,8 @@ pub struct BilateralPredicate {
     pub governance_receipt_ref: Option<GovernanceReceiptRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub consistency_anchor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub treaty_binding_ref: Option<TreatyBindingRef>,
 }
 
 /// Capability lease reference, per spec §5 (`capability_lease_ref`).
@@ -286,6 +288,26 @@ pub struct GovernanceReceiptRef {
     pub kernel_id: String,
     /// SHA-256 of the canonical-JSON of the resolved receipt body.
     pub digest: HashRecord,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct TreatyBindingRef {
+    pub treaty_id: String,
+    pub treaty_scope_sha256: String,
+    pub ladder_intersection_sha256: String,
+    pub admission_report_sha256: String,
+    pub continuation_sha256: String,
+    pub lineage_bundle_sha256: String,
+    pub action_class_id: String,
+    pub consistency_model: String,
+    pub request_sha256: String,
+    pub outcome_sha256: String,
+    pub local_receipt_sha256: String,
+    pub remote_receipt_sha256: String,
+    pub lease_refs: Vec<String>,
+    pub governance_refs: Vec<String>,
+    pub signer_kernel_ids: Vec<String>,
 }
 
 /// In-toto Statement carried inside the DSSE envelope's `payload` (after
@@ -439,6 +461,7 @@ pub fn build_predicate(
         policy_evaluation_summary: None,
         governance_receipt_ref: None,
         consistency_anchor: None,
+        treaty_binding_ref: None,
     })
 }
 
@@ -460,6 +483,9 @@ pub struct BilateralPredicateExtensions {
     /// Override `cross_org_visibility`. None =
     /// `DEFAULT_CROSS_ORG_VISIBILITY` (`federated`).
     pub cross_org_visibility: Option<String>,
+    /// Treaty-bound runtime evidence. Required by treaty-mode verifiers,
+    /// optional for non-treaty strict Chiodos DSSE.
+    pub treaty_binding_ref: Option<TreatyBindingRef>,
 }
 
 pub fn build_predicate_full(
@@ -481,6 +507,7 @@ pub fn build_predicate_full(
     predicate.policy_evaluation_summary = extensions.policy_evaluation_summary;
     predicate.governance_receipt_ref = extensions.governance_receipt_ref;
     predicate.consistency_anchor = extensions.consistency_anchor;
+    predicate.treaty_binding_ref = extensions.treaty_binding_ref;
     Ok(predicate)
 }
 
@@ -538,6 +565,7 @@ pub fn build_chiodos_predicate(
         policy_evaluation_summary: Some(policy_evaluation_summary),
         governance_receipt_ref: extensions.governance_receipt_ref,
         consistency_anchor: extensions.consistency_anchor,
+        treaty_binding_ref: extensions.treaty_binding_ref,
     })
 }
 
@@ -1098,6 +1126,12 @@ fn validate_signature_slice_predicate(
                 .to_string(),
         ));
     }
+    if pred.treaty_binding_ref.is_some() {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: treaty_binding_ref is not part of the signature-slice profile"
+                .to_string(),
+        ));
+    }
     if pred.receipt_canonical_json.is_none() {
         return Err(BilateralCoSigningError::CanonicalJson(
             "predicate.schema_invalid: receipt_canonical_json is required".to_string(),
@@ -1141,6 +1175,85 @@ fn validate_signature_slice_predicate(
             "predicate.schema_invalid: cross_org_visibility {:?} is unsupported",
             pred.cross_org_visibility
         )));
+    }
+    if let Some(treaty) = pred.treaty_binding_ref.as_ref() {
+        validate_treaty_binding_ref(treaty)?;
+    }
+    Ok(())
+}
+
+fn validate_treaty_binding_ref(treaty: &TreatyBindingRef) -> Result<(), BilateralCoSigningError> {
+    require_non_empty_schema_string("treaty_binding_ref.treaty_id", &treaty.treaty_id)?;
+    require_non_empty_schema_string(
+        "treaty_binding_ref.action_class_id",
+        &treaty.action_class_id,
+    )?;
+    require_non_empty_schema_string(
+        "treaty_binding_ref.consistency_model",
+        &treaty.consistency_model,
+    )?;
+    for (field, value) in [
+        (
+            "treaty_binding_ref.treaty_scope_sha256",
+            &treaty.treaty_scope_sha256,
+        ),
+        (
+            "treaty_binding_ref.ladder_intersection_sha256",
+            &treaty.ladder_intersection_sha256,
+        ),
+        (
+            "treaty_binding_ref.admission_report_sha256",
+            &treaty.admission_report_sha256,
+        ),
+        (
+            "treaty_binding_ref.continuation_sha256",
+            &treaty.continuation_sha256,
+        ),
+        (
+            "treaty_binding_ref.lineage_bundle_sha256",
+            &treaty.lineage_bundle_sha256,
+        ),
+        ("treaty_binding_ref.request_sha256", &treaty.request_sha256),
+        ("treaty_binding_ref.outcome_sha256", &treaty.outcome_sha256),
+        (
+            "treaty_binding_ref.local_receipt_sha256",
+            &treaty.local_receipt_sha256,
+        ),
+        (
+            "treaty_binding_ref.remote_receipt_sha256",
+            &treaty.remote_receipt_sha256,
+        ),
+    ] {
+        if !is_sha256_hex(value) {
+            return Err(BilateralCoSigningError::CanonicalJson(format!(
+                "predicate.schema_invalid: {field} must be 64 lowercase hex"
+            )));
+        }
+    }
+    if treaty.signer_kernel_ids.len() != 2
+        || treaty.signer_kernel_ids[0] == treaty.signer_kernel_ids[1]
+    {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: treaty_binding_ref.signer_kernel_ids must contain two independent kernels"
+                .to_string(),
+        ));
+    }
+    if treaty
+        .lease_refs
+        .iter()
+        .any(|value| value.trim().is_empty())
+        || treaty
+            .governance_refs
+            .iter()
+            .any(|value| value.trim().is_empty())
+        || treaty
+            .signer_kernel_ids
+            .iter()
+            .any(|value| value.trim().is_empty())
+    {
+        return Err(BilateralCoSigningError::CanonicalJson(
+            "predicate.schema_invalid: treaty_binding_ref contains an empty ref".to_string(),
+        ));
     }
     Ok(())
 }
@@ -1379,6 +1492,79 @@ mod tests {
     }
 
     #[test]
+    fn strict_chiodos_signer_binds_treaty_runtime_refs() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let envelope = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "kernel.org-a",
+            "kernel.org-b",
+            "file_read",
+            1_734_000_000_000,
+            BilateralPredicateExtensions {
+                capability_lease_ref: Some(CapabilityLeaseRef {
+                    lease_id: "lease-bilateral".to_string(),
+                    issuer: "kernel.org-a".to_string(),
+                    expires_at_unix_ms: 1_734_000_060_000,
+                    scope_digest: None,
+                }),
+                policy_evaluation_summary: Some(PolicyEvaluationSummary {
+                    server_a_verdict: PolicyVerdict {
+                        verdict: "allow".to_string(),
+                        policy_id: "policy-a".to_string(),
+                        policy_version: "v1".to_string(),
+                        rationale_code: None,
+                    },
+                    server_b_verdict: PolicyVerdict {
+                        verdict: "allow".to_string(),
+                        policy_id: "policy-b".to_string(),
+                        policy_version: "v1".to_string(),
+                        rationale_code: None,
+                    },
+                    joint_disposition: Some("allow".to_string()),
+                }),
+                governance_receipt_ref: None,
+                consistency_anchor: Some("anchor-live".to_string()),
+                consistency_model: Some("totally_ordered".to_string()),
+                cross_org_visibility: Some("treaty_only".to_string()),
+                treaty_binding_ref: Some(TreatyBindingRef {
+                    treaty_id: "treaty-buyer-vendor".to_string(),
+                    treaty_scope_sha256: "1".repeat(64),
+                    ladder_intersection_sha256: "2".repeat(64),
+                    admission_report_sha256: "3".repeat(64),
+                    continuation_sha256: "4".repeat(64),
+                    lineage_bundle_sha256: "5".repeat(64),
+                    action_class_id: "workflow.destructive.vendor_call".to_string(),
+                    consistency_model: "totally_ordered".to_string(),
+                    request_sha256: "6".repeat(64),
+                    outcome_sha256: "7".repeat(64),
+                    local_receipt_sha256: "8".repeat(64),
+                    remote_receipt_sha256: "9".repeat(64),
+                    lease_refs: vec!["lease-bilateral".to_string()],
+                    governance_refs: vec!["gov-receipt-1".to_string()],
+                    signer_kernel_ids: vec!["kernel.org-a".to_string(), "kernel.org-b".to_string()],
+                }),
+            },
+        )
+        .expect("strict Chiodos treaty DSSE signs");
+        let statement =
+            verify_chiodos_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+                .expect("strict Chiodos treaty DSSE verifies");
+        let treaty = statement
+            .predicate
+            .treaty_binding_ref
+            .expect("strict treaty DSSE must carry treaty binding");
+        assert_eq!(treaty.treaty_id, "treaty-buyer-vendor");
+        assert_eq!(
+            treaty.signer_kernel_ids,
+            vec!["kernel.org-a", "kernel.org-b"]
+        );
+    }
+
+    #[test]
     fn strict_chiodos_signer_rejects_identical_signer_keys() {
         let kp = Keypair::generate();
         let receipt = sample_receipt(&kp);
@@ -1416,6 +1602,7 @@ mod tests {
                 consistency_anchor: None,
                 consistency_model: None,
                 cross_org_visibility: None,
+                treaty_binding_ref: None,
             },
         )
         .expect_err("strict Chiodos DSSE needs two independent signer keys");
@@ -1461,6 +1648,7 @@ mod tests {
                 consistency_anchor: None,
                 consistency_model: None,
                 cross_org_visibility: None,
+                treaty_binding_ref: None,
             },
         )
         .unwrap();

@@ -2408,6 +2408,317 @@ fn main() {
                     ),
                 },
             },
+            ChiodosCommands::Runtime { command } => match command {
+                ChiodosRuntimeCommands::Admit {
+                    request,
+                    admission_profile,
+                    admission_bundle,
+                    runtime_trust_input,
+                    trusted_verifiers,
+                    pheromone_query_report,
+                    runtime_pheromone_policy,
+                    runtime_peer_weights,
+                    trust_floor_state,
+                    store,
+                    now_unix_ms,
+                    report,
+                } => cmd_chiodos_runtime_admit(
+                    &request,
+                    &admission_profile,
+                    &admission_bundle,
+                    runtime_trust_input.as_deref(),
+                    trusted_verifiers.as_deref(),
+                    pheromone_query_report.as_deref(),
+                    runtime_pheromone_policy.as_deref(),
+                    runtime_peer_weights.as_deref(),
+                    trust_floor_state.as_deref(),
+                    &store,
+                    now_unix_ms,
+                    &report,
+                ),
+                ChiodosRuntimeCommands::SignTrustInput {
+                    body,
+                    signing_seed_file,
+                    out,
+                } => cmd_chiodos_runtime_sign_trust_input(&body, &signing_seed_file, &out),
+                ChiodosRuntimeCommands::Policy { command } => match command {
+                    ChiodosRuntimePolicyCommands::Sign {
+                        body,
+                        signing_seed_file,
+                        out,
+                    } => cmd_chiodos_runtime_sign_policy(&body, &signing_seed_file, &out),
+                },
+                ChiodosRuntimeCommands::PeerWeights { command } => match command {
+                    ChiodosRuntimePeerWeightsCommands::Sign {
+                        body,
+                        signing_seed_file,
+                        out,
+                    } => cmd_chiodos_runtime_sign_peer_weights(&body, &signing_seed_file, &out),
+                },
+                ChiodosRuntimeCommands::Pheromone { command } => match command {
+                    ChiodosRuntimePheromoneCommands::Evaluate {
+                        admission_bundle,
+                        runtime_trust_input,
+                        trusted_verifiers,
+                        pheromone_query_report,
+                        runtime_pheromone_policy,
+                        runtime_peer_weights,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chiodos_runtime_pheromone_evaluate(
+                        &admission_bundle,
+                        &runtime_trust_input,
+                        &trusted_verifiers,
+                        &pheromone_query_report,
+                        &runtime_pheromone_policy,
+                        &runtime_peer_weights,
+                        now_unix_ms,
+                        &report,
+                    ),
+                },
+                ChiodosRuntimeCommands::Orchestrate { command } => match command {
+                    ChiodosRuntimeOrchestrateCommands::Lint { profile, report } => {
+                        cmd_chiodos_runtime_orchestrate_lint(&profile, &report)
+                    }
+                    ChiodosRuntimeOrchestrateCommands::Plan {
+                        profile,
+                        run_contract,
+                        store,
+                        evidence_dir,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chiodos_runtime_orchestrate_plan(
+                        &profile,
+                        &run_contract,
+                        &store,
+                        &evidence_dir,
+                        now_unix_ms,
+                        &report,
+                    ),
+                    ChiodosRuntimeOrchestrateCommands::Run {
+                        profile,
+                        run_contract,
+                        store,
+                        evidence_dir,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chiodos_runtime_orchestrate_run(
+                        &profile,
+                        &run_contract,
+                        &store,
+                        &evidence_dir,
+                        now_unix_ms,
+                        &report,
+                    ),
+                    ChiodosRuntimeOrchestrateCommands::Resume {
+                        profile,
+                        resume_plan,
+                        store,
+                        evidence_dir,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chiodos_runtime_orchestrate_resume(
+                        &profile,
+                        &resume_plan,
+                        &store,
+                        &evidence_dir,
+                        now_unix_ms,
+                        &report,
+                    ),
+                    ChiodosRuntimeOrchestrateCommands::Status {
+                        profile,
+                        store,
+                        evidence_dir,
+                        report,
+                    } => cmd_chiodos_runtime_orchestrate_status(
+                        &profile,
+                        &store,
+                        &evidence_dir,
+                        &report,
+                    ),
+                    ChiodosRuntimeOrchestrateCommands::Drift {
+                        profile,
+                        runs_dir,
+                        since_unix_ms,
+                        until_unix_ms,
+                        report,
+                    } => cmd_chiodos_runtime_orchestrate_drift(
+                        &profile,
+                        &runs_dir,
+                        since_unix_ms,
+                        until_unix_ms,
+                        &report,
+                    ),
+                },
+                ChiodosRuntimeCommands::Ops { command } => match command {
+                    ChiodosRuntimeOpsCommands::Supervise {
+                        supervisor_profile,
+                        store,
+                        evidence_root,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chiodos_runtime_ops_status(
+                        &supervisor_profile,
+                        &store,
+                        &evidence_root,
+                        Some(now_unix_ms),
+                        &report,
+                    ),
+                    ChiodosRuntimeOpsCommands::Tick {
+                        supervisor_profile,
+                        store,
+                        evidence_root,
+                        owner_id,
+                        now_unix_ms,
+                        max_runs,
+                        report,
+                    } => cmd_chiodos_runtime_ops_tick(
+                        &supervisor_profile,
+                        &store,
+                        &evidence_root,
+                        &owner_id,
+                        now_unix_ms,
+                        max_runs,
+                        &report,
+                    ),
+                    ChiodosRuntimeOpsCommands::Status {
+                        supervisor_profile,
+                        store,
+                        evidence_root,
+                        report,
+                    } => cmd_chiodos_runtime_ops_status(
+                        &supervisor_profile,
+                        &store,
+                        &evidence_root,
+                        None,
+                        &report,
+                    ),
+                    ChiodosRuntimeOpsCommands::RecoveryDrill {
+                        supervisor_profile,
+                        run_id,
+                        store,
+                        evidence_root,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chiodos_runtime_ops_recovery_drill(
+                        &supervisor_profile,
+                        &run_id,
+                        &store,
+                        &evidence_root,
+                        now_unix_ms,
+                        &report,
+                    ),
+                    ChiodosRuntimeOpsCommands::EvidenceHealth {
+                        supervisor_profile,
+                        run_id,
+                        store,
+                        evidence_root,
+                        report,
+                    } => cmd_chiodos_runtime_ops_evidence_health(
+                        &supervisor_profile,
+                        &run_id,
+                        &store,
+                        &evidence_root,
+                        &report,
+                    ),
+                    ChiodosRuntimeOpsCommands::ProviderHealth {
+                        supervisor_profile,
+                        provider_bindings,
+                        report,
+                    } => cmd_chiodos_runtime_ops_provider_health(
+                        &supervisor_profile,
+                        &provider_bindings,
+                        &report,
+                    ),
+                    ChiodosRuntimeOpsCommands::Retention { command } => match command {
+                        ChiodosRuntimeOpsRetentionCommands::Plan {
+                            retention_profile,
+                            store,
+                            evidence_root,
+                            now_unix_ms,
+                            report,
+                        } => cmd_chiodos_runtime_ops_retention_plan(
+                            &retention_profile,
+                            &store,
+                            &evidence_root,
+                            now_unix_ms,
+                            &report,
+                        ),
+                    },
+                },
+                ChiodosRuntimeCommands::RunLoopback {
+                    scenario,
+                    store_dir,
+                    now_unix_ms,
+                    out_dir,
+                } => cmd_chiodos_runtime_run_loopback(
+                    &scenario,
+                    &store_dir,
+                    now_unix_ms,
+                    &out_dir,
+                ),
+            },
+            ChiodosCommands::Treaty { command } => match command {
+                ChiodosTreatyCommands::Intersect {
+                    treaty_scope,
+                    manifest,
+                    now_unix_ms,
+                    report,
+                } => cmd_chiodos_treaty_intersect(
+                    &treaty_scope,
+                    &manifest,
+                    now_unix_ms,
+                    &report,
+                ),
+                ChiodosTreatyCommands::Admit {
+                    treaty_scope,
+                    ladder_intersection,
+                    expected_ladder_intersection_sha256,
+                    action_class_id,
+                    evidence,
+                    now_unix_ms,
+                    report,
+                } => cmd_chiodos_treaty_admit(
+                    &treaty_scope,
+                    &ladder_intersection,
+                    &expected_ladder_intersection_sha256,
+                    &action_class_id,
+                    &evidence,
+                    now_unix_ms,
+                    &report,
+                ),
+                ChiodosTreatyCommands::VerifyPacket {
+                    packet,
+                    lineage_statement,
+                    continuation,
+                    admission_report,
+                    bilateral_invocation,
+                    report,
+                } => cmd_chiodos_treaty_verify_packet(
+                    &packet,
+                    &lineage_statement,
+                    &continuation,
+                    &admission_report,
+                    &bilateral_invocation,
+                    &report,
+                ),
+            },
+            ChiodosCommands::Buyer { command } => match command {
+                ChiodosBuyerCommands::Package { run_output, out } => {
+                    cmd_chiodos_buyer_package(&run_output, &out)
+                }
+                ChiodosBuyerCommands::Verify {
+                    package,
+                    trust_bundle,
+                    context,
+                    report,
+                } => cmd_chiodos_buyer_verify(&package, &trust_bundle, &context, &report),
+                ChiodosBuyerCommands::Explain {
+                    report,
+                    format,
+                    out,
+                } => cmd_chiodos_buyer_explain(&report, &format, &out),
+            },
             ChiodosCommands::Pheromone { command } => match command {
                 ChiodosPheromoneCommands::Receive {
                     batch,
@@ -3281,6 +3592,2938 @@ fn cmd_chiodos_verify(
             "Chiodos verify rejected package: {failure}"
         )))
     }
+}
+
+fn cmd_chiodos_treaty_intersect(
+    treaty_scope_path: &Path,
+    manifest_paths: &[PathBuf],
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    if manifest_paths.is_empty() {
+        return Err(CliError::cli_other_error(
+            "Chiodos treaty intersect requires at least one --manifest",
+        ));
+    }
+    let treaty_scope_json = read_utf8_json_file(treaty_scope_path, "Chiodos treaty scope")?;
+    let treaty_scope = chio_chiodos_runtime::treaty_scope_from_json(&treaty_scope_json)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos treaty scope: {error}")))?;
+    let mut manifests = Vec::new();
+    for manifest_path in manifest_paths {
+        let manifest_json =
+            read_utf8_json_file(manifest_path, "Chiodos governance ladder manifest")?;
+        manifests.push(
+            chio_chiodos_runtime::governance_ladder_manifest_from_json(&manifest_json).map_err(
+                |error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos governance ladder manifest: {error}"
+                    ))
+                },
+            )?,
+        );
+    }
+    let intersection =
+        chio_chiodos_runtime::compute_ladder_intersection(&treaty_scope, &manifests, now_unix_ms)
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos treaty intersection: {error}"))
+            })?;
+    let json = chio_chiodos_runtime::ladder_intersection_json(&intersection)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos treaty intersection: {error}")))?;
+    write_json_string(report, &format!("{json}\n"))
+}
+
+fn cmd_chiodos_treaty_admit(
+    treaty_scope_path: &Path,
+    ladder_intersection_path: &Path,
+    expected_ladder_intersection_sha256: &str,
+    action_class_id: &str,
+    evidence: &[String],
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let treaty_scope_json = read_utf8_json_file(treaty_scope_path, "Chiodos treaty scope")?;
+    let treaty_scope = chio_chiodos_runtime::treaty_scope_from_json(&treaty_scope_json)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos treaty scope: {error}")))?;
+    let intersection_json =
+        read_utf8_json_file(ladder_intersection_path, "Chiodos ladder intersection")?;
+    let ladder_intersection =
+        chio_chiodos_runtime::ladder_intersection_from_json(&intersection_json).map_err(
+            |error| CliError::cli_other_error(format!("Chiodos ladder intersection: {error}")),
+        )?;
+    let verified_evidence = evidence
+        .iter()
+        .map(|item| {
+            let Some((evidence_class, artifact_sha256)) = item.split_once('=') else {
+                return Err(CliError::cli_other_error(
+                    "Chiodos treaty evidence must use evidence_class=artifact_sha256",
+                ));
+            };
+            Ok(chio_chiodos_runtime::CrossBoundaryEvidenceRef {
+                evidence_class: evidence_class.to_string(),
+                artifact_sha256: artifact_sha256.to_string(),
+                verified: true,
+            })
+        })
+        .collect::<Result<Vec<_>, CliError>>()?;
+    let admission = chio_chiodos_runtime::evaluate_cross_boundary_admission(
+        chio_chiodos_runtime::CrossBoundaryAdmissionInput {
+            treaty_scope: &treaty_scope,
+            ladder_intersection: &ladder_intersection,
+            expected_ladder_intersection_sha256: Some(expected_ladder_intersection_sha256.to_string()),
+            action_class_id,
+            present_evidence: verified_evidence
+                .iter()
+                .map(|item| item.evidence_class.clone())
+                .collect(),
+            verified_evidence,
+            now_unix_ms,
+        },
+    )
+    .map_err(|error| CliError::cli_other_error(format!("Chiodos treaty admission: {error}")))?;
+    let json = chio_chiodos_runtime::cross_boundary_admission_report_json(&admission)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos treaty admission: {error}")))?;
+    write_json_string(report, &format!("{json}\n"))
+}
+
+fn cmd_chiodos_treaty_verify_packet(
+    packet_path: &Path,
+    lineage_statement_path: &Path,
+    continuation_path: &Path,
+    admission_report_path: &Path,
+    bilateral_invocation_path: &Path,
+    report: &Path,
+) -> Result<(), CliError> {
+    let packet_json = read_utf8_json_file(packet_path, "Chiodos buyer attestation packet")?;
+    let packet = chio_chiodos_runtime::buyer_attestation_packet_from_json(&packet_json).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos buyer attestation packet: {error}")),
+    )?;
+    let lineage_json =
+        read_utf8_json_file(lineage_statement_path, "Chiodos receipt lineage statement")?;
+    let lineage =
+        chio_chiodos_runtime::receipt_lineage_statement_from_json(&lineage_json).map_err(
+            |error| {
+                CliError::cli_other_error(format!("Chiodos receipt lineage statement: {error}"))
+            },
+        )?;
+    let continuation_json =
+        read_utf8_json_file(continuation_path, "Chiodos cross-kernel continuation")?;
+    let continuation: chio_chiodos_runtime::CrossKernelContinuation =
+        serde_json::from_str(&continuation_json).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos cross-kernel continuation: {error}"))
+        })?;
+    let admission_json =
+        read_utf8_json_file(admission_report_path, "Chiodos cross-boundary admission report")?;
+    let admission: chio_chiodos_runtime::CrossBoundaryAdmissionReport =
+        serde_json::from_str(&admission_json).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos cross-boundary admission report: {error}"
+            ))
+        })?;
+    let bilateral_json =
+        read_utf8_json_file(bilateral_invocation_path, "Chiodos bilateral invocation")?;
+    let bilateral: chio_chiodos_runtime::BilateralInvocation =
+        serde_json::from_str(&bilateral_json).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos bilateral invocation: {error}"))
+        })?;
+    let verification = chio_chiodos_runtime::verify_buyer_attestation_packet(
+        &packet,
+        &lineage,
+        &continuation,
+        &admission,
+        &bilateral,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos buyer attestation verification: {error}"))
+    })?;
+    let json = chio_chiodos_runtime::buyer_attestation_verification_report_json(&verification)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos buyer attestation verification: {error}"))
+        })?;
+    write_json_string(report, &format!("{json}\n"))
+}
+
+const BUYER_REVIEW_ARTIFACT_FILES: &[(&str, &str)] = &[
+    ("buyer_attestation_packet", "buyer-attestation-packet.json"),
+    ("receipt_lineage_statement", "receipt-lineage-statement.json"),
+    ("receipt_lineage_bundle", "receipt-lineage-bundle.json"),
+    ("cross_kernel_continuation", "cross-kernel-continuation.json"),
+    (
+        "cross_boundary_admission_report",
+        "cross-boundary-admission-report.json",
+    ),
+    ("bilateral_invocation", "bilateral-invocation.json"),
+    ("bilateral_dsse_envelope", "bilateral-dsse-envelope.json"),
+    ("workflow_receipt", "workflow-receipt.json"),
+    ("proof_package", "proof-package.json"),
+    ("verifier_report", "verifier-report.json"),
+    ("runtime_run_report", "runtime-run-report.json"),
+];
+
+fn cmd_chiodos_buyer_package(run_output: &Path, out: &Path) -> Result<(), CliError> {
+    let mut artifacts = Vec::new();
+    let mut packet_json = None;
+    for (role, relative_path) in BUYER_REVIEW_ARTIFACT_FILES {
+        validate_runtime_relative_path(relative_path)?;
+        let path = run_output.join(relative_path);
+        let bytes = fs::read(&path).map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to read Chiodos buyer review artifact {}: {error}",
+                path.display()
+            ))
+        })?;
+        if *role == "buyer_attestation_packet" {
+            packet_json = Some(String::from_utf8(bytes.clone()).map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos buyer attestation packet {} is not UTF-8 JSON: {error}",
+                    path.display()
+                ))
+            })?);
+        }
+        let byte_count = u64::try_from(bytes.len()).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos buyer artifact byte count: {error}"))
+        })?;
+        artifacts.push(chio_chiodos_runtime::BuyerAttestationReviewArtifactRef {
+            role: (*role).to_string(),
+            relative_path: (*relative_path).to_string(),
+            artifact_sha256: chio_core::sha256_hex(&bytes),
+            byte_count,
+        });
+    }
+    let packet_json = packet_json.ok_or_else(|| {
+        CliError::cli_other_error("Chiodos buyer package is missing buyer packet artifact")
+    })?;
+    let packet = chio_chiodos_runtime::buyer_attestation_packet_from_json(&packet_json).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos buyer attestation packet: {error}")),
+    )?;
+    let package = chio_chiodos_runtime::BuyerAttestationReviewPackage {
+        schema: chio_chiodos_runtime::CHIODOS_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA.to_string(),
+        package_id: format!("buyer-review:{}", packet.packet_id),
+        packet_id: packet.packet_id,
+        buyer_id: packet.buyer_id,
+        generated_at_unix_ms: 0,
+        artifacts,
+    };
+    let json = serde_json::to_string_pretty(&package)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos buyer package JSON: {error}")))?;
+    write_json_string(out, &format!("{json}\n"))
+}
+
+fn cmd_chiodos_buyer_verify(
+    package_path: &Path,
+    trust_bundle_path: &Path,
+    context_path: &Path,
+    report_path: &Path,
+) -> Result<(), CliError> {
+    let package_json = read_utf8_json_file(package_path, "Chiodos buyer review package")?;
+    let package = chio_chiodos_runtime::buyer_attestation_review_package_from_json(&package_json)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos buyer review package: {error}")))?;
+    let base_dir = package_path.parent().unwrap_or_else(|| Path::new("."));
+    let sources = read_buyer_review_sources(base_dir, &package)?;
+    let mut report =
+        chio_chiodos_runtime::verify_buyer_attestation_review_package(&package, &sources)
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos buyer review verification: {error}"))
+            })?;
+    if report.accepted {
+        let proof_package_bytes = sources.get("proof_package").ok_or_else(|| {
+            CliError::cli_other_error("Chiodos buyer package is missing proof_package artifact")
+        })?;
+        let proof_package_json = std::str::from_utf8(proof_package_bytes).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos buyer proof package artifact is not UTF-8 JSON: {error}"
+            ))
+        })?;
+        let proof_package = chio_chiodos::proof_package_from_json(proof_package_json)
+            .map_err(|error| CliError::cli_other_error(format!("Chiodos package parse: {error}")))?;
+        let trust_bundle_json =
+            read_utf8_json_file(trust_bundle_path, "Chiodos verifier trust bundle")?;
+        let trust_bundle = chio_chiodos::verifier_trust_bundle_from_json(&trust_bundle_json)
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos trust bundle parse: {error}"))
+            })?;
+        let context_json = read_utf8_json_file(context_path, "Chiodos verification context")?;
+        let context = chio_chiodos::verification_context_from_json(&context_json)
+            .map_err(|error| CliError::cli_other_error(format!("Chiodos context parse: {error}")))?;
+        let verifier_report =
+            chio_chiodos::verify_package_report(&proof_package, &trust_bundle, &context);
+        if verifier_report.accepted {
+            report
+                .checks
+                .push(chio_chiodos_runtime::BuyerAttestationReviewCheck {
+                    code: "chiodos_buyer_review.existing_verifier_replayed".to_string(),
+                    passed: true,
+                    severity: "info".to_string(),
+                    artifact_role: "proof_package".to_string(),
+                    expected_sha256: None,
+                    observed_sha256: None,
+                    message: "existing Chiodos verifier accepted the bundled proof package"
+                        .to_string(),
+                });
+        } else {
+            report.accepted = false;
+            report.failure_code = Some("chiodos_buyer_review_verifier_report_rejected".to_string());
+            report
+                .checks
+                .push(chio_chiodos_runtime::BuyerAttestationReviewCheck {
+                    code: "chiodos_buyer_review.existing_verifier_replayed".to_string(),
+                    passed: false,
+                    severity: "error".to_string(),
+                    artifact_role: "proof_package".to_string(),
+                    expected_sha256: None,
+                    observed_sha256: None,
+                    message: "existing Chiodos verifier rejected the bundled proof package"
+                        .to_string(),
+                });
+        }
+    }
+    let json = chio_chiodos_runtime::buyer_attestation_review_report_json(&report).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos buyer review report: {error}")),
+    )?;
+    write_json_string(report_path, &format!("{json}\n"))?;
+    if report.accepted {
+        Ok(())
+    } else {
+        Err(CliError::cli_other_error(format!(
+            "Chiodos buyer verification rejected package: {}",
+            report
+                .failure_code
+                .as_deref()
+                .unwrap_or("unknown_buyer_review_rejection")
+        )))
+    }
+}
+
+fn cmd_chiodos_buyer_explain(report_path: &Path, format: &str, out: &Path) -> Result<(), CliError> {
+    let report_json = read_utf8_json_file(report_path, "Chiodos buyer review report")?;
+    let report: chio_chiodos_runtime::BuyerAttestationReviewReport =
+        serde_json::from_str(&report_json).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos buyer review report: {error}"))
+        })?;
+    let verification_state = buyer_review_verification_state(&report);
+    match format {
+        "json" => {
+            let explanation = serde_json::json!({
+                "schema": "chio.chiodos.buyer-attestation-explanation.v1",
+                "packageId": report.package_id,
+                "packetId": report.packet_id,
+                "accepted": report.accepted,
+                "verificationState": verification_state,
+                "failureCode": report.failure_code,
+                "checks": report.checks,
+            });
+            let json = serde_json::to_string_pretty(&explanation).map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos buyer explanation: {error}"))
+            })?;
+            write_json_string(out, &format!("{json}\n"))
+        }
+        "text" => {
+            let mut text = String::new();
+            text.push_str(&format!("Buyer review package: {}\n", report.package_id));
+            text.push_str(&format!("Packet: {}\n", report.packet_id));
+            text.push_str(&format!("Accepted: {}\n", report.accepted));
+            text.push_str(&format!("Verification state: {verification_state}\n"));
+            if let Some(code) = report.failure_code.as_deref() {
+                text.push_str(&format!("Failure code: {code}\n"));
+            }
+            text.push_str("Checks:\n");
+            for check in &report.checks {
+                text.push_str(&format!(
+                    "- [{}] {} ({}) - {}\n",
+                    if check.passed { "pass" } else { "fail" },
+                    check.code,
+                    check.artifact_role,
+                    check.message
+                ));
+            }
+            write_json_string(out, &text)
+        }
+        other => Err(CliError::cli_other_error(format!(
+            "unknown Chiodos buyer explain format {other}"
+        ))),
+    }
+}
+
+fn buyer_review_verification_state(
+    report: &chio_chiodos_runtime::BuyerAttestationReviewReport,
+) -> &'static str {
+    if report.failure_code.as_deref().is_some_and(|code| {
+        code.contains("unsupported_claim")
+            || code.contains("settlement_claim")
+            || code.contains("hidden_predicate")
+            || code.contains("dynamic_trust")
+    }) || report.checks.iter().any(|check| {
+        !check.passed
+            && (check.code.contains("unsupported_claim")
+                || check.code.contains("settlement_claim")
+                || check.code.contains("hidden_predicate")
+                || check.code.contains("dynamic_trust"))
+    }) {
+        return "unsupported_claim";
+    }
+    if !report.accepted {
+        return "rejected";
+    }
+    if report
+        .checks
+        .iter()
+        .any(|check| !check.passed && check.code.contains("fixture"))
+    {
+        return "fixture_only";
+    }
+    let has_strict_dsse = report.checks.iter().any(|check| {
+        check.passed && check.code == "chiodos_buyer_review.strict_dsse_treaty_bound"
+    });
+    let proof_accepted = report.checks.iter().any(|check| {
+        check.passed && check.code == "chiodos_buyer_review.proof_verifier_accepted"
+    });
+    let existing_verifier_replayed = report.checks.iter().any(|check| {
+        check.passed && check.code == "chiodos_buyer_review.existing_verifier_replayed"
+    });
+    if has_strict_dsse && proof_accepted && existing_verifier_replayed {
+        "strict_verified"
+    } else {
+        "hash_only"
+    }
+}
+
+fn read_buyer_review_sources(
+    base_dir: &Path,
+    package: &chio_chiodos_runtime::BuyerAttestationReviewPackage,
+) -> Result<std::collections::BTreeMap<String, Vec<u8>>, CliError> {
+    let mut sources = std::collections::BTreeMap::new();
+    for artifact in &package.artifacts {
+        validate_runtime_relative_path(&artifact.relative_path)?;
+        let path = base_dir.join(&artifact.relative_path);
+        let bytes = fs::read(&path).map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to read Chiodos buyer review artifact {}: {error}",
+                path.display()
+            ))
+        })?;
+        if sources.insert(artifact.role.clone(), bytes).is_some() {
+            return Err(CliError::cli_other_error(format!(
+                "duplicate Chiodos buyer artifact role {}",
+                artifact.role
+            )));
+        }
+    }
+    Ok(sources)
+}
+
+fn cmd_chiodos_runtime_sign_trust_input(
+    body: &Path,
+    signing_seed_file: &Path,
+    out: &Path,
+) -> Result<(), CliError> {
+    let body: chio_chiodos_runtime::RuntimeVerifierTrustBundleV4 =
+        serde_json::from_str(&read_utf8_json_file(
+            body,
+            "Chiodos runtime trust input body",
+        )?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime trust input body parse: {error}"))
+        })?;
+    let seed_hex = read_utf8_json_file(signing_seed_file, "Chiodos runtime trust signing seed")?;
+    let keypair = Keypair::from_seed_hex(seed_hex.trim()).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime trust signing seed: {error}"))
+    })?;
+    let signed = chio_core::receipt::SignedExportEnvelope::sign(body, &keypair).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime trust input signing: {error}"))
+    })?;
+    write_pretty_json(out, &signed, "Chiodos runtime trust input")
+}
+
+fn cmd_chiodos_runtime_sign_policy(
+    body: &Path,
+    signing_seed_file: &Path,
+    out: &Path,
+) -> Result<(), CliError> {
+    let body: chio_chiodos_runtime::RuntimePheromonePolicy =
+        serde_json::from_str(&read_utf8_json_file(
+            body,
+            "Chiodos runtime pheromone policy body",
+        )?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime pheromone policy parse: {error}"))
+        })?;
+    let seed_hex = read_utf8_json_file(signing_seed_file, "Chiodos runtime policy signing seed")?;
+    let keypair = Keypair::from_seed_hex(seed_hex.trim()).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime policy signing seed: {error}"))
+    })?;
+    let signed = chio_core::receipt::SignedExportEnvelope::sign(body, &keypair).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime pheromone policy signing: {error}"))
+    })?;
+    write_pretty_json(out, &signed, "Chiodos runtime pheromone policy")
+}
+
+fn cmd_chiodos_runtime_sign_peer_weights(
+    body: &Path,
+    signing_seed_file: &Path,
+    out: &Path,
+) -> Result<(), CliError> {
+    let body: chio_chiodos_runtime::RuntimePeerWeights =
+        serde_json::from_str(&read_utf8_json_file(
+            body,
+            "Chiodos runtime peer weights body",
+        )?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime peer weights parse: {error}"))
+        })?;
+    let seed_hex =
+        read_utf8_json_file(signing_seed_file, "Chiodos runtime peer weights signing seed")?;
+    let keypair = Keypair::from_seed_hex(seed_hex.trim()).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "Chiodos runtime peer weights signing seed: {error}"
+        ))
+    })?;
+    let signed = chio_core::receipt::SignedExportEnvelope::sign(body, &keypair).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime peer weights signing: {error}"))
+    })?;
+    write_pretty_json(out, &signed, "Chiodos runtime peer weights")
+}
+
+fn cmd_chiodos_runtime_admit(
+    request: &Path,
+    admission_profile: &Path,
+    admission_bundle: &Path,
+    runtime_trust_input: Option<&Path>,
+    trusted_verifiers: Option<&Path>,
+    pheromone_query_report: Option<&Path>,
+    runtime_pheromone_policy: Option<&Path>,
+    runtime_peer_weights: Option<&Path>,
+    trust_floor_state: Option<&Path>,
+    store: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let profile = chio_chiodos_runtime::runtime_admission_profile_from_json(&read_utf8_json_file(
+        admission_profile,
+        "Chiodos runtime admission profile",
+    )?)
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime admission profile parse: {error}"))
+    })?;
+    let bundle = chio_chiodos_runtime::runtime_admission_bundle_from_json(&read_utf8_json_file(
+        admission_bundle,
+        "Chiodos runtime admission bundle",
+    )?)
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime admission bundle parse: {error}"))
+    })?;
+    let request = chio_chiodos_runtime::runtime_request_binding_from_json(&read_utf8_json_file(
+        request,
+        "Chiodos runtime request binding",
+    )?)
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime request binding parse: {error}"))
+    })?;
+    let runtime_trust_input = runtime_trust_input
+        .map(|path| {
+            chio_chiodos_runtime::signed_runtime_verifier_trust_bundle_from_json(
+                &read_utf8_json_file(path, "Chiodos runtime trust input")?,
+            )
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos runtime trust input parse: {error}"))
+            })
+        })
+        .transpose()?;
+    let trusted_verifiers = trusted_verifiers
+        .map(|path| {
+            chio_chiodos_runtime::runtime_trusted_verifier_keys_from_json(&read_utf8_json_file(
+                path,
+                "Chiodos runtime trusted verifiers",
+            )?)
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos runtime trusted verifiers parse: {error}"))
+            })
+        })
+        .transpose()?;
+    if runtime_trust_input.is_some() != trusted_verifiers.is_some() {
+        return Err(CliError::cli_other_error(
+            "Chiodos runtime strict trust requires both --runtime-trust-input and --trusted-verifiers"
+                .to_string(),
+        ));
+    }
+    let trusted_verifier_keys = trusted_verifiers
+        .as_ref()
+        .map_or(&[][..], |document| document.verifier_keys.as_slice());
+    let pheromone_advisory = pheromone_query_report
+        .map(|path| {
+            chio_chiodos_runtime::runtime_pheromone_advisory_from_query_report_json(
+                &read_utf8_json_file(path, "Chiodos pheromone query report")?,
+            )
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos pheromone advisory parse: {error}"))
+            })
+        })
+        .transpose()?;
+    let runtime_pheromone_policy = runtime_pheromone_policy
+        .map(|path| {
+            chio_chiodos_runtime::signed_runtime_pheromone_policy_from_json(&read_utf8_json_file(
+                path,
+                "Chiodos runtime pheromone policy",
+            )?)
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime pheromone policy parse: {error}"
+                ))
+            })
+        })
+        .transpose()?;
+    let runtime_peer_weights = runtime_peer_weights
+        .map(|path| {
+            chio_chiodos_runtime::signed_runtime_peer_weights_from_json(&read_utf8_json_file(
+                path,
+                "Chiodos runtime peer weights",
+            )?)
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime peer weights parse: {error}"
+                ))
+            })
+        })
+        .transpose()?;
+    let store_path = trust_floor_state.unwrap_or(store);
+    let store = chio_chiodos_runtime::JsonRuntimeAdmissionStore::open(store_path).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime admission store open: {error}"))
+    })?;
+    let admission_id = bundle.admission_id.clone();
+    store.insert_bundle(bundle).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime admission store update: {error}"))
+    })?;
+    let admission_report =
+        chio_chiodos_runtime::evaluate_runtime_admission(chio_chiodos_runtime::RuntimeAdmissionInput {
+            profile: &profile,
+            store: &store,
+            admission_id: &admission_id,
+            request: &request,
+            runtime_trust_input: runtime_trust_input.as_ref(),
+            trusted_verifier_keys,
+            pheromone_advisory: pheromone_advisory.as_ref(),
+            runtime_pheromone_policy: runtime_pheromone_policy.as_ref(),
+            runtime_peer_weights: runtime_peer_weights.as_ref(),
+            now_unix_ms,
+        })
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime admission evaluation: {error}"))
+        })?;
+    write_pretty_json(report, &admission_report, "Chiodos runtime admission report")?;
+    if admission_report.accepted {
+        Ok(())
+    } else {
+        Err(CliError::cli_other_error(format!(
+            "Chiodos runtime admission rejected request: {}",
+            admission_report
+                .failure_code
+                .as_deref()
+                .unwrap_or("unknown_runtime_admission_failure")
+        )))
+    }
+}
+
+fn cmd_chiodos_runtime_pheromone_evaluate(
+    admission_bundle: &Path,
+    runtime_trust_input: &Path,
+    trusted_verifiers: &Path,
+    pheromone_query_report: &Path,
+    runtime_pheromone_policy: &Path,
+    runtime_peer_weights: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let bundle = chio_chiodos_runtime::runtime_admission_bundle_from_json(&read_utf8_json_file(
+        admission_bundle,
+        "Chiodos runtime admission bundle",
+    )?)
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime admission bundle parse: {error}"))
+    })?;
+    let profile = chio_chiodos_runtime::RuntimeAdmissionProfile {
+        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_ADMISSION_PROFILE_SCHEMA.to_string(),
+        profile_id: "policy-evaluate".to_string(),
+        local_kernel_id: bundle.binding.host_kernel_id.clone(),
+        verifier_id: "policy-evaluate".to_string(),
+        issued_at_unix_ms: now_unix_ms.saturating_sub(1),
+        expires_at_unix_ms: now_unix_ms.saturating_add(1),
+    };
+    let runtime_trust_input =
+        chio_chiodos_runtime::signed_runtime_verifier_trust_bundle_from_json(
+            &read_utf8_json_file(runtime_trust_input, "Chiodos runtime trust input")?,
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime trust input parse: {error}"))
+        })?;
+    let trusted_verifiers =
+        chio_chiodos_runtime::runtime_trusted_verifier_keys_from_json(&read_utf8_json_file(
+            trusted_verifiers,
+            "Chiodos runtime trusted verifiers",
+        )?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime trusted verifiers parse: {error}"))
+        })?;
+    let advisory = chio_chiodos_runtime::runtime_pheromone_advisory_from_query_report_json(
+        &read_utf8_json_file(pheromone_query_report, "Chiodos pheromone query report")?,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos pheromone advisory parse: {error}"))
+    })?;
+    let policy = chio_chiodos_runtime::signed_runtime_pheromone_policy_from_json(
+        &read_utf8_json_file(runtime_pheromone_policy, "Chiodos runtime pheromone policy")?,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime pheromone policy parse: {error}"))
+    })?;
+    let weights = chio_chiodos_runtime::signed_runtime_peer_weights_from_json(
+        &read_utf8_json_file(runtime_peer_weights, "Chiodos runtime peer weights")?,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime peer weights parse: {error}"))
+    })?;
+    let store = chio_chiodos_runtime::InMemoryRuntimeAdmissionStore::new();
+    store.insert_bundle(bundle.clone()).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime policy store update: {error}"))
+    })?;
+    let report_value = chio_chiodos_runtime::evaluate_runtime_admission(
+        chio_chiodos_runtime::RuntimeAdmissionInput {
+            profile: &profile,
+            store: &store,
+            admission_id: &bundle.admission_id,
+            request: &bundle.binding,
+            runtime_trust_input: Some(&runtime_trust_input),
+            trusted_verifier_keys: &trusted_verifiers.verifier_keys,
+            pheromone_advisory: Some(&advisory),
+            runtime_pheromone_policy: Some(&policy),
+            runtime_peer_weights: Some(&weights),
+            now_unix_ms,
+        },
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime pheromone evaluation: {error}"))
+    })?;
+    let decision = report_value.pheromone_policy_decision.ok_or_else(|| {
+        CliError::cli_other_error("Chiodos runtime pheromone evaluation produced no decision")
+    })?;
+    write_pretty_json(report, &decision, "Chiodos runtime pheromone policy decision")
+}
+
+fn cmd_chiodos_runtime_orchestrate_lint(profile: &Path, report: &Path) -> Result<(), CliError> {
+    let profile = load_runtime_orchestration_profile(profile)?;
+    let profile_sha256 =
+        chio_chiodos_runtime::runtime_orchestration_profile_sha256(&profile).map_err(
+            |error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime orchestration profile hash: {error}"
+                ))
+            },
+        )?;
+    let report_value = chio_chiodos_runtime::RuntimeOrchestrationStatusReport {
+        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA
+            .to_string(),
+        accepted: true,
+        generated_at_unix_ms: profile.issued_at_unix_ms,
+        profile_sha256: profile_sha256.clone(),
+        store_backend: "profile_lint".to_string(),
+        store_path_sha256: profile_sha256,
+        run_counts: std::collections::BTreeMap::new(),
+        consumed_lease_count: 0,
+        trust_floor_count: 0,
+        latest_failure_code: None,
+        evidence_sink_healthy: true,
+        ready: true,
+        degraded: false,
+    };
+    write_pretty_json(
+        report,
+        &report_value,
+        "Chiodos runtime orchestration lint report",
+    )
+}
+
+fn cmd_chiodos_runtime_orchestrate_plan(
+    profile: &Path,
+    run_contract: &Path,
+    store: &Path,
+    evidence_dir: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let profile = load_runtime_orchestration_profile(profile)?;
+    let run_contract = load_runtime_run_contract(run_contract)?;
+    let _store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
+    )?;
+    ensure_runtime_evidence_dir(evidence_dir)?;
+    let plan = chio_chiodos_runtime::build_runtime_orchestration_plan(
+        &profile,
+        &run_contract,
+        now_unix_ms,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime orchestration plan: {error}"))
+    })?;
+    write_pretty_json(report, &plan, "Chiodos runtime orchestration plan")
+}
+
+fn cmd_chiodos_runtime_orchestrate_run(
+    profile: &Path,
+    run_contract: &Path,
+    store: &Path,
+    evidence_dir: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let profile = load_runtime_orchestration_profile(profile)?;
+    let run_contract = load_runtime_run_contract(run_contract)?;
+    let profile_sha256 =
+        chio_chiodos_runtime::runtime_orchestration_profile_sha256(&profile).map_err(
+            |error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime orchestration profile hash: {error}"
+                ))
+            },
+        )?;
+    let run_contract_sha256 =
+        chio_chiodos_runtime::runtime_run_contract_sha256(&run_contract).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime run contract hash: {error}"))
+        })?;
+    let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
+    )?;
+    ensure_runtime_evidence_dir(evidence_dir)?;
+    let evidence = load_runtime_orchestration_evidence(evidence_dir)?;
+    let mut accepted = evidence.proof_regeneration_report.accepted;
+    let mut failure_code = evidence.proof_regeneration_report.failure_code.clone();
+    if profile_sha256 != run_contract.profile_sha256 {
+        accepted = false;
+        failure_code = Some("runtime_orchestration_profile_hash_mismatch".to_string());
+    }
+    let status = if accepted {
+        "proof_accepted"
+    } else {
+        "terminal_failure"
+    };
+    store
+        .record_run_state(&run_contract.run_id, status, failure_code.as_deref(), now_unix_ms)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime orchestration run state: {error}"))
+        })?;
+    let mut step_states = Vec::new();
+    for step in evidence.workflow_run_report.step_evidence {
+        let state = chio_chiodos_runtime::RuntimeOrchestrationStepState {
+            step_index: step.step_index,
+            admission_id: step.admission_id,
+            state: status.to_string(),
+            destructive: step.destructive,
+            admission_report_sha256: Some(step.admission_report_sha256),
+            tool_receipt_sha256: Some(step.tool_receipt_sha256),
+            lease_id: step.lease_id,
+        };
+        store
+            .record_run_step_state(&run_contract.run_id, state.clone())
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime orchestration step state: {error}"
+                ))
+            })?;
+        step_states.push(state);
+    }
+    for entry in &evidence.manifest.entries {
+        store
+            .record_evidence_artifact(&run_contract.run_id, entry, now_unix_ms)
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime orchestration evidence artifact: {error}"
+                ))
+            })?;
+    }
+    let report_value = chio_chiodos_runtime::RuntimeOrchestrationRunReport {
+        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA.to_string(),
+        run_id: run_contract.run_id,
+        accepted,
+        failure_code,
+        status: status.to_string(),
+        generated_at_unix_ms: now_unix_ms,
+        profile_sha256,
+        run_contract_sha256,
+        workflow_run_report_sha256: Some(evidence.workflow_report_sha256),
+        evidence_manifest_sha256: Some(evidence.manifest_sha256),
+        proof_regeneration_report_sha256: Some(evidence.proof_report_sha256),
+        verifier_report_sha256: Some(evidence.verifier_report_sha256),
+        step_states,
+        checks: vec![
+            "runtime_orchestration.evidence_sink_loaded".to_string(),
+            "runtime_orchestration.proof_regeneration_bound".to_string(),
+        ],
+    };
+    write_pretty_json(
+        report,
+        &report_value,
+        "Chiodos runtime orchestration run report",
+    )
+}
+
+fn cmd_chiodos_runtime_orchestrate_resume(
+    profile: &Path,
+    resume_plan: &Path,
+    store: &Path,
+    evidence_dir: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let _profile = load_runtime_orchestration_profile(profile)?;
+    let input: chio_chiodos_runtime::RuntimeOrchestrationResumePlan =
+        serde_json::from_str(&read_utf8_json_file(
+            resume_plan,
+            "Chiodos runtime orchestration resume plan",
+        )?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos runtime orchestration resume plan parse: {error}"
+            ))
+        })?;
+    let _store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
+    )?;
+    ensure_runtime_evidence_dir(evidence_dir)?;
+    let resolved = chio_chiodos_runtime::RuntimeOrchestrationResumePlan {
+        generated_at_unix_ms: now_unix_ms,
+        checks: {
+            let mut checks = input.checks;
+            checks.push("runtime_orchestration.resume_inputs_loaded".to_string());
+            checks
+        },
+        ..input
+    };
+    write_pretty_json(
+        report,
+        &resolved,
+        "Chiodos runtime orchestration resume report",
+    )
+}
+
+fn cmd_chiodos_runtime_orchestrate_status(
+    profile: &Path,
+    store: &Path,
+    evidence_dir: &Path,
+    report: &Path,
+) -> Result<(), CliError> {
+    let profile = load_runtime_orchestration_profile(profile)?;
+    let profile_sha256 =
+        chio_chiodos_runtime::runtime_orchestration_profile_sha256(&profile).map_err(
+            |error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime orchestration profile hash: {error}"
+                ))
+            },
+        )?;
+    let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
+    )?;
+    let report_value = store
+        .status_report(
+            &profile.profile_id,
+            profile_sha256,
+            profile.issued_at_unix_ms,
+            evidence_dir.is_dir(),
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime orchestration status: {error}"))
+        })?;
+    write_pretty_json(
+        report,
+        &report_value,
+        "Chiodos runtime orchestration status report",
+    )
+}
+
+fn cmd_chiodos_runtime_orchestrate_drift(
+    profile: &Path,
+    runs_dir: &Path,
+    since_unix_ms: u64,
+    until_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let _profile = load_runtime_orchestration_profile(profile)?;
+    if since_unix_ms > until_unix_ms {
+        return Err(CliError::cli_other_error(
+            "Chiodos runtime drift since-unix-ms must not exceed until-unix-ms".to_string(),
+        ));
+    }
+    let run_dirs = sorted_child_dirs(runs_dir)?;
+    if run_dirs.len() < 2 {
+        return Err(CliError::cli_other_error(
+            "Chiodos runtime drift requires at least two run directories".to_string(),
+        ));
+    }
+    let baseline = load_runtime_orchestration_evidence(&run_dirs[0])?;
+    let candidate = load_runtime_orchestration_evidence(&run_dirs[1])?;
+    let drift = chio_chiodos_runtime::generate_runtime_proof_drift_report(
+        &baseline.manifest,
+        &candidate.manifest,
+        &baseline.proof_regeneration_report,
+        &candidate.proof_regeneration_report,
+        until_unix_ms,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime proof drift report: {error}"))
+    })?;
+    write_pretty_json(report, &drift, "Chiodos runtime proof drift report")
+}
+
+struct RuntimeOrchestrationEvidence {
+    workflow_run_report: chio_chiodos_runtime::RuntimeWorkflowRunReport,
+    proof_regeneration_report: chio_chiodos_runtime::RuntimeProofRegenerationReport,
+    manifest: chio_chiodos_runtime::RuntimeEvidenceManifest,
+    workflow_report_sha256: String,
+    proof_report_sha256: String,
+    manifest_sha256: String,
+    verifier_report_sha256: String,
+}
+
+fn load_runtime_orchestration_profile(
+    path: &Path,
+) -> Result<chio_chiodos_runtime::RuntimeOrchestrationProfile, CliError> {
+    let profile = chio_chiodos_runtime::runtime_orchestration_profile_from_json(
+        &read_utf8_json_file(path, "Chiodos runtime orchestration profile")?,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime orchestration profile: {error}"))
+    })?;
+    chio_chiodos_runtime::validate_runtime_orchestration_profile(&profile).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime orchestration profile: {error}"))
+    })?;
+    Ok(profile)
+}
+
+fn load_runtime_run_contract(
+    path: &Path,
+) -> Result<chio_chiodos_runtime::RuntimeRunContract, CliError> {
+    let contract = chio_chiodos_runtime::runtime_run_contract_from_json(&read_utf8_json_file(
+        path,
+        "Chiodos runtime run contract",
+    )?)
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime run contract: {error}"))
+    })?;
+    chio_chiodos_runtime::validate_runtime_run_contract(&contract).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime run contract: {error}"))
+    })?;
+    Ok(contract)
+}
+
+fn ensure_runtime_evidence_dir(evidence_dir: &Path) -> Result<(), CliError> {
+    fs::create_dir_all(evidence_dir).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to create Chiodos runtime evidence directory {}: {error}",
+            evidence_dir.display()
+        ))
+    })
+}
+
+fn load_runtime_orchestration_evidence(
+    evidence_dir: &Path,
+) -> Result<RuntimeOrchestrationEvidence, CliError> {
+    let workflow_report_path = evidence_dir.join("workflow-run-report.json");
+    let proof_report_path = evidence_dir.join("proof-regeneration-report.json");
+    let manifest_path = evidence_dir.join("runtime-evidence-manifest.json");
+    let verifier_report_path = evidence_dir.join("verifier-report.json");
+    let workflow_json = read_utf8_json_file(&workflow_report_path, "Chiodos runtime workflow report")?;
+    let proof_json = read_utf8_json_file(&proof_report_path, "Chiodos runtime proof report")?;
+    let manifest_json =
+        read_utf8_json_file(&manifest_path, "Chiodos runtime evidence manifest")?;
+    let verifier_json = read_utf8_json_file(&verifier_report_path, "Chiodos verifier report")?;
+    let workflow_run_report: chio_chiodos_runtime::RuntimeWorkflowRunReport =
+        serde_json::from_str(&workflow_json).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime workflow report: {error}"))
+        })?;
+    let proof_regeneration_report: chio_chiodos_runtime::RuntimeProofRegenerationReport =
+        serde_json::from_str(&proof_json).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime proof report: {error}"))
+        })?;
+    let manifest: chio_chiodos_runtime::RuntimeEvidenceManifest =
+        serde_json::from_str(&manifest_json).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime evidence manifest: {error}"))
+        })?;
+    chio_chiodos_runtime::validate_runtime_workflow_run_report(&workflow_run_report).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos runtime workflow report: {error}")),
+    )?;
+    chio_chiodos_runtime::validate_runtime_proof_regeneration_report(&proof_regeneration_report)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime proof report: {error}"))
+        })?;
+    chio_chiodos_runtime::validate_runtime_evidence_manifest(&manifest).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime evidence manifest: {error}"))
+    })?;
+    Ok(RuntimeOrchestrationEvidence {
+        workflow_run_report,
+        proof_regeneration_report,
+        manifest,
+        workflow_report_sha256: chio_core::sha256_hex(workflow_json.as_bytes()),
+        proof_report_sha256: chio_core::sha256_hex(proof_json.as_bytes()),
+        manifest_sha256: chio_core::sha256_hex(manifest_json.as_bytes()),
+        verifier_report_sha256: chio_core::sha256_hex(verifier_json.as_bytes()),
+    })
+}
+
+fn sorted_child_dirs(path: &Path) -> Result<Vec<PathBuf>, CliError> {
+    let mut dirs = Vec::new();
+    for entry in fs::read_dir(path).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to read Chiodos runtime runs directory {}: {error}",
+            path.display()
+        ))
+    })? {
+        let entry = entry.map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to read Chiodos runtime runs directory entry: {error}"
+            ))
+        })?;
+        if entry.path().is_dir() {
+            dirs.push(entry.path());
+        }
+    }
+    dirs.sort();
+    Ok(dirs)
+}
+
+fn cmd_chiodos_runtime_ops_tick(
+    supervisor_profile: &Path,
+    store: &Path,
+    evidence_root: &Path,
+    owner_id: &str,
+    now_unix_ms: u64,
+    max_runs: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let profile = load_runtime_supervisor_profile(supervisor_profile)?;
+    ensure_runtime_evidence_dir(evidence_root)?;
+    let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos runtime ops store: {error}")),
+    )?;
+    let tick = store
+        .scheduler_tick_report(&profile, owner_id, now_unix_ms, max_runs)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime scheduler tick: {error}"))
+        })?;
+    write_pretty_json(report, &tick, "Chiodos runtime scheduler tick report")
+}
+
+fn cmd_chiodos_runtime_ops_status(
+    supervisor_profile: &Path,
+    store: &Path,
+    evidence_root: &Path,
+    now_unix_ms: Option<u64>,
+    report: &Path,
+) -> Result<(), CliError> {
+    let profile = load_runtime_supervisor_profile(supervisor_profile)?;
+    let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos runtime ops store: {error}")),
+    )?;
+    let generated_at = now_unix_ms.unwrap_or(profile.issued_at_unix_ms);
+    let status = store
+        .ops_status_report(&profile, generated_at, evidence_root.is_dir(), true)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos runtime ops status: {error}")))?;
+    write_pretty_json(report, &status, "Chiodos runtime ops status report")
+}
+
+fn cmd_chiodos_runtime_ops_recovery_drill(
+    supervisor_profile: &Path,
+    run_id: &str,
+    store: &Path,
+    evidence_root: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let _profile = load_runtime_supervisor_profile(supervisor_profile)?;
+    ensure_runtime_evidence_dir(evidence_root)?;
+    let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos runtime ops store: {error}")),
+    )?;
+    let drill = store.recovery_drill_report(run_id, now_unix_ms).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime recovery drill: {error}"))
+    })?;
+    write_pretty_json(report, &drill, "Chiodos runtime recovery drill report")
+}
+
+fn cmd_chiodos_runtime_ops_evidence_health(
+    supervisor_profile: &Path,
+    run_id: &str,
+    store: &Path,
+    evidence_root: &Path,
+    report: &Path,
+) -> Result<(), CliError> {
+    let profile = load_runtime_supervisor_profile(supervisor_profile)?;
+    let _store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos runtime ops store: {error}")),
+    )?;
+    let run_root = evidence_root.join(run_id);
+    let evidence_dir = if run_root.is_dir() {
+        run_root
+    } else {
+        evidence_root.to_path_buf()
+    };
+    let manifest_json = read_utf8_json_file(
+        &evidence_dir.join("runtime-evidence-manifest.json"),
+        "Chiodos runtime evidence manifest",
+    )?;
+    let manifest: chio_chiodos_runtime::RuntimeEvidenceManifest =
+        serde_json::from_str(&manifest_json).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime evidence manifest: {error}"))
+        })?;
+    let health = chio_chiodos_runtime::generate_runtime_evidence_sink_health_report(
+        run_id,
+        &evidence_dir,
+        &manifest,
+        &profile.evidence_required_roles,
+        profile.issued_at_unix_ms,
+        true,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime evidence health: {error}"))
+    })?;
+    write_pretty_json(report, &health, "Chiodos runtime evidence health report")
+}
+
+fn cmd_chiodos_runtime_ops_provider_health(
+    supervisor_profile: &Path,
+    provider_bindings: &Path,
+    report: &Path,
+) -> Result<(), CliError> {
+    let profile = load_runtime_supervisor_profile(supervisor_profile)?;
+    let bindings =
+        chio_chiodos_runtime::runtime_provider_bindings_from_json(&read_utf8_json_file(
+            provider_bindings,
+            "Chiodos runtime provider bindings",
+        )?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime provider bindings: {error}"))
+        })?;
+    let health = chio_chiodos_runtime::generate_runtime_provider_health_report(
+        &profile,
+        &bindings,
+        profile.issued_at_unix_ms,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime provider health: {error}"))
+    })?;
+    write_pretty_json(report, &health, "Chiodos runtime provider health report")
+}
+
+fn cmd_chiodos_runtime_ops_retention_plan(
+    retention_profile: &Path,
+    store: &Path,
+    evidence_root: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let profile =
+        chio_chiodos_runtime::runtime_artifact_retention_profile_from_json(&read_utf8_json_file(
+            retention_profile,
+            "Chiodos runtime artifact retention profile",
+        )?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime artifact retention profile: {error}"))
+        })?;
+    let _store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
+        |error| CliError::cli_other_error(format!("Chiodos runtime ops store: {error}")),
+    )?;
+    ensure_runtime_evidence_dir(evidence_root)?;
+    let run_ids = sorted_child_dirs(evidence_root)?
+        .into_iter()
+        .filter_map(|path| path.file_name().map(|name| name.to_string_lossy().to_string()))
+        .collect::<Vec<_>>();
+    let plan =
+        chio_chiodos_runtime::generate_runtime_artifact_retention_plan(&profile, &run_ids, now_unix_ms)
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos runtime retention plan: {error}"))
+            })?;
+    write_pretty_json(report, &plan, "Chiodos runtime retention plan")
+}
+
+fn load_runtime_supervisor_profile(
+    path: &Path,
+) -> Result<chio_chiodos_runtime::RuntimeSupervisorProfile, CliError> {
+    let profile = chio_chiodos_runtime::runtime_supervisor_profile_from_json(&read_utf8_json_file(
+        path,
+        "Chiodos runtime supervisor profile",
+    )?)
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime supervisor profile: {error}"))
+    })?;
+    chio_chiodos_runtime::validate_runtime_supervisor_profile(&profile).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime supervisor profile: {error}"))
+    })?;
+    Ok(profile)
+}
+
+fn cmd_chiodos_runtime_run_loopback(
+    scenario: &Path,
+    store_dir: &Path,
+    now_unix_ms: u64,
+    out_dir: &Path,
+) -> Result<(), CliError> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct RuntimeLoopbackScenario {
+        run_id: String,
+        #[serde(default)]
+        admission_profile: Option<chio_chiodos_runtime::RuntimeAdmissionProfile>,
+        #[serde(default)]
+        admission_bundle: Option<chio_chiodos_runtime::RuntimeAdmissionBundle>,
+        #[serde(default)]
+        request: Option<chio_chiodos_runtime::RuntimeRequestBinding>,
+        #[serde(default)]
+        steps: Vec<RuntimeLoopbackStep>,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct RuntimeLoopbackStep {
+        admission_profile: chio_chiodos_runtime::RuntimeAdmissionProfile,
+        admission_bundle: chio_chiodos_runtime::RuntimeAdmissionBundle,
+        request: chio_chiodos_runtime::RuntimeRequestBinding,
+        #[serde(default)]
+        arguments: Option<serde_json::Value>,
+    }
+
+    struct RuntimeLoopbackToolServer {
+        id: String,
+        tool_name: String,
+        step_index: usize,
+    }
+
+    #[async_trait::async_trait]
+    impl chio_kernel::ToolServerConnection for RuntimeLoopbackToolServer {
+        fn server_id(&self) -> &str {
+            &self.id
+        }
+
+        fn tool_names(&self) -> Vec<String> {
+            vec![self.tool_name.clone()]
+        }
+
+        async fn invoke(
+            &self,
+            tool_name: &str,
+            arguments: serde_json::Value,
+            _nested_flow_bridge: Option<&mut dyn chio_kernel::NestedFlowBridge>,
+        ) -> Result<serde_json::Value, chio_kernel::KernelError> {
+            if tool_name != self.tool_name {
+                return Err(chio_kernel::KernelError::ToolServerError(format!(
+                    "runtime loopback tool {tool_name} is not registered on {}",
+                    self.id
+                )));
+            }
+            Ok(serde_json::json!({
+                "stepIndex": self.step_index,
+                "serverId": self.id,
+                "toolName": tool_name,
+                "arguments": arguments,
+                "runtimeReceiptSource": "chio_kernel_live_loopback"
+            }))
+        }
+    }
+
+    fn runtime_loopback_capability(
+        issuer: &chio_core::Keypair,
+        subject: &chio_core::Keypair,
+        capability_id: &str,
+        server_id: &str,
+        tool_name: &str,
+    ) -> Result<chio_core::capability::CapabilityToken, CliError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos runtime loopback clock: {error}"))
+            })?
+            .as_secs();
+        let scope = chio_core::capability::ChioScope {
+            grants: vec![chio_core::capability::ToolGrant {
+                server_id: server_id.to_string(),
+                tool_name: tool_name.to_string(),
+                operations: vec![chio_core::capability::Operation::Invoke],
+                constraints: Vec::new(),
+                max_invocations: None,
+                max_cost_per_invocation: None,
+                max_total_cost: None,
+                dpop_required: None,
+            }],
+            ..Default::default()
+        };
+        let body = chio_core::capability::CapabilityTokenBody {
+            id: capability_id.to_string(),
+            issuer: issuer.public_key(),
+            subject: subject.public_key(),
+            scope,
+            issued_at: now.saturating_sub(60),
+            expires_at: now.saturating_add(600),
+            delegation_chain: Vec::new(),
+        };
+        chio_core::capability::CapabilityToken::sign(body, issuer).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime loopback capability signing: {error}"))
+        })
+    }
+
+    fn execute_runtime_loopback_step(
+        step_index: usize,
+        step: &RuntimeLoopbackStep,
+        arguments: serde_json::Value,
+    ) -> Result<chio_core::receipt::ChioReceipt, CliError> {
+        let (expected_kernel_id, expected_server_id, expected_tool_name) =
+            chiodos_three_vendor_example::runtime_vendor_binding(step_index).map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos runtime loopback vendor binding: {error}"))
+            })?;
+        if step.request.server_id != expected_server_id || step.request.tool_name != expected_tool_name
+        {
+            return Err(CliError::cli_other_error(format!(
+                "Chiodos runtime loopback step {} targets {}:{} but expected {}:{}",
+                step_index,
+                step.request.server_id,
+                step.request.tool_name,
+                expected_server_id,
+                expected_tool_name
+            )));
+        }
+        if step.request.host_kernel_id != expected_kernel_id {
+            return Err(CliError::cli_other_error(format!(
+                "Chiodos runtime loopback step {} host kernel {} does not match {}",
+                step_index, step.request.host_kernel_id, expected_kernel_id
+            )));
+        }
+        let actual_args_sha256 =
+            chio_chiodos_runtime::tool_args_sha256(&arguments).map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback argument hash for step {}: {error}",
+                    step_index
+                ))
+            })?;
+        if actual_args_sha256 != step.request.tool_args_sha256 {
+            return Err(CliError::cli_other_error(format!(
+                "Chiodos runtime loopback step {} arguments hash {} does not match request {}",
+                step_index, actual_args_sha256, step.request.tool_args_sha256
+            )));
+        }
+        let vendor_key =
+            chiodos_three_vendor_example::runtime_vendor_keypair(step_index).map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos runtime loopback vendor key: {error}"))
+            })?;
+        let agent_key = chio_core::Keypair::generate();
+        let capability = runtime_loopback_capability(
+            &vendor_key,
+            &agent_key,
+            &step.request.capability_id,
+            &step.request.server_id,
+            &step.request.tool_name,
+        )?;
+        let mut kernel = ChioKernel::new(chio_kernel::KernelConfig {
+            keypair: vendor_key.clone(),
+            ca_public_keys: vec![vendor_key.public_key()],
+            max_delegation_depth: 5,
+            policy_hash: format!("chiodos-runtime-loopback-policy:{}", step_index),
+            allow_sampling: false,
+            allow_sampling_tool_use: false,
+            allow_elicitation: false,
+            max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
+            max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
+            require_web3_evidence: false,
+            checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
+            retention_config: None,
+        });
+        kernel.set_federation_local_kernel_id(step.request.host_kernel_id.clone());
+        let receipt_store_path = std::env::temp_dir().join(format!(
+            "chio-runtime-loopback-{}-{}.sqlite3",
+            std::process::id(),
+            step_index
+        ));
+        if receipt_store_path.exists() {
+            fs::remove_file(&receipt_store_path).map_err(|error| {
+                CliError::cli_io_error(format!(
+                    "failed to clear Chiodos runtime loopback receipt store {}: {error}",
+                    receipt_store_path.display()
+                ))
+            })?;
+        }
+        let receipt_store = chio_store_sqlite::SqliteReceiptStore::open(&receipt_store_path)
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback receipt store open: {error}"
+                ))
+            })?;
+        kernel.set_receipt_store(Box::new(receipt_store));
+        if let Some(origin_kernel_id) = step.request.origin_kernel_id.as_deref() {
+            let origin_key = chio_core::Keypair::generate();
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime loopback federation clock: {error}"
+                    ))
+                })?
+                .as_secs();
+            let trust = chio_federation::KernelTrustExchange::new(
+                &step.request.host_kernel_id,
+                vendor_key.clone(),
+            )
+            .with_trusted_peer(origin_kernel_id, origin_key.public_key());
+            let envelope = chio_federation::PeerHandshakeEnvelope::sign(
+                origin_kernel_id,
+                &step.request.host_kernel_id,
+                &format!("loopback-origin-nonce-{step_index}"),
+                now_secs,
+                &origin_key,
+            )
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback peer handshake signing: {error}"
+                ))
+            })?;
+            let peer = trust
+                .accept_envelope(&envelope, origin_kernel_id, now_secs)
+                .map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime loopback peer pinning: {error}"
+                    ))
+                })?;
+            kernel = kernel.with_federation_peers(vec![peer]);
+            kernel.set_federation_cosigner(std::sync::Arc::new(
+                chio_federation::InProcessCoSigner::new(
+                    origin_kernel_id,
+                    origin_key,
+                    vendor_key.public_key(),
+                ),
+            ));
+        }
+        let hook_store = chio_chiodos_runtime::InMemoryRuntimeAdmissionStore::new();
+        hook_store
+            .insert_bundle(step.admission_bundle.clone())
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback hook store update: {error}"
+                ))
+            })?;
+        let chiodos_treaty = if step.request.origin_kernel_id.is_some() {
+            Some(insert_runtime_loopback_treaty_context(
+                &hook_store,
+                step_index,
+                step,
+                &vendor_key,
+                &arguments,
+            )?)
+        } else {
+            None
+        };
+        kernel.set_runtime_admission_hook(std::sync::Arc::new(
+            chio_chiodos_runtime::ChiodosRuntimeAdmissionHook::new(
+                step.admission_profile.clone(),
+                hook_store,
+            ),
+        ));
+        kernel.register_tool_server(Box::new(RuntimeLoopbackToolServer {
+            id: step.request.server_id.clone(),
+            tool_name: step.request.tool_name.clone(),
+            step_index,
+        }));
+        let bundle_sha256 =
+            chio_chiodos_runtime::runtime_admission_bundle_sha256(&step.admission_bundle).map_err(
+                |error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime loopback bundle hash for step {}: {error}",
+                        step_index
+                    ))
+                },
+            )?;
+        let governed_intent = chio_core::capability::GovernedTransactionIntent {
+            id: format!("intent:chiodos-runtime-loopback:{}", step_index),
+            server_id: step.request.server_id.clone(),
+            tool_name: step.request.tool_name.clone(),
+            purpose: "Chiodos live runtime loopback proof regeneration".to_string(),
+            max_amount: None,
+            commerce: None,
+            metered_billing: None,
+            runtime_attestation: None,
+            call_chain: None,
+            autonomy: None,
+            context: Some(if let Some(chiodos_treaty) = chiodos_treaty {
+                serde_json::json!({
+                    "chiodosAdmission": {
+                        "admissionId": step.admission_bundle.admission_id,
+                        "bundleSha256": bundle_sha256
+                    },
+                    "chiodosTreaty": chiodos_treaty
+                })
+            } else {
+                serde_json::json!({
+                "chiodosAdmission": {
+                    "admissionId": step.admission_bundle.admission_id,
+                    "bundleSha256": bundle_sha256
+                }
+                })
+            }),
+        };
+        let request = KernelToolCallRequest {
+            request_id: step.request.request_id.clone(),
+            capability,
+            tool_name: step.request.tool_name.clone(),
+            server_id: step.request.server_id.clone(),
+            agent_id: agent_key.public_key().to_hex(),
+            arguments,
+            dpop_proof: None,
+            governed_intent: Some(governed_intent),
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: step.request.origin_kernel_id.clone(),
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos runtime loopback executor: {error}"))
+            })?;
+        let response = runtime
+            .block_on(kernel.evaluate_tool_call(&request))
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback kernel evaluation step {}: {error}",
+                    step_index
+                ))
+            })?;
+        if !matches!(response.verdict, chio_kernel::Verdict::Allow) {
+            return Err(CliError::cli_other_error(format!(
+                "Chiodos runtime loopback kernel denied step {}: {}",
+                step_index,
+                response
+                    .reason
+                    .as_deref()
+                    .unwrap_or("unknown_runtime_loopback_denial")
+            )));
+        }
+        Ok(response.receipt)
+    }
+
+    fn insert_runtime_loopback_treaty_context(
+        hook_store: &chio_chiodos_runtime::InMemoryRuntimeAdmissionStore,
+        step_index: usize,
+        step: &RuntimeLoopbackStep,
+        vendor_key: &chio_core::Keypair,
+        arguments: &serde_json::Value,
+    ) -> Result<serde_json::Value, CliError> {
+        let source_kernel_id = step.request.origin_kernel_id.clone().ok_or_else(|| {
+            CliError::cli_other_error(
+                "Chiodos runtime loopback treaty context requires an origin kernel",
+            )
+        })?;
+        let target_kernel_id = step.request.host_kernel_id.clone();
+        let action_class_id = format!("workflow.cross_kernel.{}", step.request.tool_name);
+        let issued_at_unix_ms = 1_700_000_000_000_u64;
+        let expires_at_unix_ms = 1_900_000_000_000_u64;
+        let manifest_hashes = vec![
+            chio_core::sha256_hex(
+                format!("runtime-loopback:{source_kernel_id}:manifest").as_bytes(),
+            ),
+            chio_core::sha256_hex(
+                format!("runtime-loopback:{target_kernel_id}:manifest").as_bytes(),
+            ),
+        ];
+        let treaty_scope = chio_chiodos_runtime::TreatyScope {
+            schema: chio_chiodos_runtime::CHIODOS_TREATY_SCOPE_SCHEMA.to_string(),
+            treaty_id: format!("treaty:runtime-loopback:{step_index}"),
+            participant_kernel_ids: vec![source_kernel_id.clone(), target_kernel_id.clone()],
+            ladder_manifest_sha256s: manifest_hashes.clone(),
+            allowed_action_classes: vec![action_class_id.clone()],
+            issued_at_unix_ms,
+            expires_at_unix_ms,
+            revocation_epoch_sha256: chio_core::sha256_hex(
+                format!("runtime-loopback:{step_index}:revocations").as_bytes(),
+            ),
+            trust_bundle_sha256: step.admission_bundle.trust_bundle_sha256.clone(),
+        };
+        let treaty_scope_sha256 =
+            chio_chiodos_runtime::treaty_scope_sha256(&treaty_scope).map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback treaty scope hash: {error}"
+                ))
+            })?;
+        let mut participant_modes = std::collections::BTreeMap::new();
+        participant_modes.insert(source_kernel_id.clone(), "receipt_backed".to_string());
+        participant_modes.insert(target_kernel_id.clone(), "receipt_backed".to_string());
+        let ladder_intersection = chio_chiodos_runtime::LadderIntersection {
+            schema: chio_chiodos_runtime::CHIODOS_LADDER_INTERSECTION_SCHEMA.to_string(),
+            intersection_id: format!("intersection:runtime-loopback:{step_index}"),
+            treaty_id: treaty_scope.treaty_id.clone(),
+            participant_kernel_ids: treaty_scope.participant_kernel_ids.clone(),
+            ladder_manifest_sha256s: manifest_hashes,
+            generated_at_unix_ms: issued_at_unix_ms,
+            expires_at_unix_ms,
+            action_classes: vec![chio_chiodos_runtime::LadderIntersectionActionClass {
+                action_class_id: action_class_id.clone(),
+                mode: "receipt_backed".to_string(),
+                destructive: step.admission_bundle.destructive,
+                consistency_model: "totally_ordered".to_string(),
+                co_sign: "bilateral_required".to_string(),
+                evidence_required: vec!["receipt_lineage".to_string(), "bilateral_dsse".to_string()],
+                participant_modes,
+            }],
+        };
+        let ladder_intersection_sha256 =
+            chio_chiodos_runtime::ladder_intersection_sha256(&ladder_intersection).map_err(
+                |error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime loopback ladder intersection hash: {error}"
+                    ))
+                },
+            )?;
+        let parent_receipt_sha256 = chio_core::sha256_hex(
+            format!("runtime-loopback:{step_index}:parent-receipt").as_bytes(),
+        );
+        let child_receipt_sha256 = chio_core::sha256_hex(
+            format!("runtime-loopback:{step_index}:child-receipt").as_bytes(),
+        );
+        let continuation = chio_chiodos_runtime::CrossKernelContinuation {
+            schema: chio_chiodos_runtime::CHIODOS_CROSS_KERNEL_CONTINUATION_SCHEMA.to_string(),
+            continuation_id: format!("continuation:runtime-loopback:{step_index}"),
+            source_kernel_id: source_kernel_id.clone(),
+            target_kernel_id: target_kernel_id.clone(),
+            parent_receipt_sha256: parent_receipt_sha256.clone(),
+            parent_session_anchor_sha256: chio_core::sha256_hex(
+                format!("runtime-loopback:{step_index}:session-anchor").as_bytes(),
+            ),
+            capability_id: step.request.capability_id.clone(),
+            action_class_id: action_class_id.clone(),
+            audience_tool: format!("{}.{}", step.request.server_id, step.request.tool_name),
+            nonce: format!("runtime-loopback-continuation-nonce-{step_index}"),
+            issued_at_unix_ms,
+            expires_at_unix_ms,
+        };
+        let continuation_sha256 =
+            canonical_sha256_json(&continuation, "Chiodos runtime loopback continuation hash")?;
+        let lineage_statement = chio_chiodos_runtime::ReceiptLineageStatement {
+            schema: chio_chiodos_runtime::CHIODOS_RECEIPT_LINEAGE_STATEMENT_SCHEMA.to_string(),
+            statement_id: format!("lineage:runtime-loopback:{step_index}"),
+            parent_receipt_sha256: parent_receipt_sha256.clone(),
+            child_receipt_sha256: child_receipt_sha256.clone(),
+            continuation_sha256: continuation_sha256.clone(),
+            bilateral_invocation_sha256: chio_core::sha256_hex(
+                format!("runtime-loopback:{step_index}:bilateral-placeholder").as_bytes(),
+            ),
+            evidence_class: "verified".to_string(),
+            source_kernel_id: source_kernel_id.clone(),
+            target_kernel_id: target_kernel_id.clone(),
+        };
+        let lineage_statement_sha256 = canonical_sha256_json(
+            &lineage_statement,
+            "Chiodos runtime loopback lineage statement hash",
+        )?;
+        let lineage_bundle = chio_chiodos_runtime::ReceiptLineageBundle {
+            schema: chio_chiodos_runtime::CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
+            bundle_id: format!("lineage-bundle:runtime-loopback:{step_index}"),
+            root_receipt_sha256: parent_receipt_sha256.clone(),
+            leaf_receipt_sha256: child_receipt_sha256.clone(),
+            statements: vec![lineage_statement],
+        };
+        let lineage_bundle_sha256 =
+            canonical_sha256_json(&lineage_bundle, "Chiodos runtime loopback lineage bundle hash")?;
+        let outcome_sha256 = chio_core::sha256_hex(
+            format!("runtime-loopback:{step_index}:pre-dispatch-outcome").as_bytes(),
+        );
+        let bilateral_invocation = chio_chiodos_runtime::BilateralInvocation {
+            schema: chio_chiodos_runtime::CHIODOS_BILATERAL_INVOCATION_SCHEMA.to_string(),
+            invocation_id: format!("bilateral:runtime-loopback:{step_index}"),
+            treaty_id: treaty_scope.treaty_id.clone(),
+            ladder_intersection_sha256: ladder_intersection_sha256.clone(),
+            continuation_sha256: continuation_sha256.clone(),
+            lineage_statement_sha256,
+            action_class_id: action_class_id.clone(),
+            consistency_model: "totally_ordered".to_string(),
+            capability_id: step.request.capability_id.clone(),
+            request_sha256: step.request.tool_args_sha256.clone(),
+            outcome_sha256: outcome_sha256.clone(),
+            local_receipt_sha256: parent_receipt_sha256,
+            remote_receipt_sha256: child_receipt_sha256,
+            signer_kernel_ids: vec![source_kernel_id.clone(), target_kernel_id.clone()],
+        };
+        let bilateral_invocation_sha256 = canonical_sha256_json(
+            &bilateral_invocation,
+            "Chiodos runtime loopback bilateral invocation hash",
+        )?;
+        let receipt = chio_core::receipt::ChioReceipt::sign(
+            chio_core::receipt::ChioReceiptBody {
+                id: bilateral_invocation.invocation_id.clone(),
+                timestamp: issued_at_unix_ms / 1000,
+                capability_id: step.request.capability_id.clone(),
+                tool_server: step.request.server_id.clone(),
+                tool_name: step.request.tool_name.clone(),
+                action: chio_core::receipt::ToolCallAction::from_parameters(arguments.clone())
+                    .map_err(|error| {
+                        CliError::cli_other_error(format!(
+                            "Chiodos runtime loopback treaty DSSE receipt action: {error}"
+                        ))
+                    })?,
+                decision: chio_core::receipt::Decision::Allow,
+                content_hash: outcome_sha256.clone(),
+                policy_hash: "chiodos-runtime-loopback-treaty-policy".to_string(),
+                evidence: Vec::new(),
+                metadata: None,
+                trust_level: chio_core::receipt::TrustLevel::default(),
+                tenant_id: None,
+                kernel_key: vendor_key.public_key(),
+            },
+            vendor_key,
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos runtime loopback treaty receipt signing: {error}"
+            ))
+        })?;
+        let origin_key = chio_core::Keypair::generate();
+        let bilateral_dsse = chio_federation::sign_chiodos_dsse_envelope(
+            &receipt,
+            &origin_key,
+            vendor_key,
+            &source_kernel_id,
+            &target_kernel_id,
+            &step.request.tool_name,
+            issued_at_unix_ms,
+            chio_federation::BilateralPredicateExtensions {
+                capability_lease_ref: step.admission_bundle.lease_id.as_ref().map(|lease_id| {
+                    chio_federation::CapabilityLeaseRef {
+                        lease_id: lease_id.clone(),
+                        issuer: source_kernel_id.clone(),
+                        expires_at_unix_ms,
+                        scope_digest: None,
+                    }
+                }),
+                policy_evaluation_summary: None,
+                governance_receipt_ref: step.admission_bundle.governance_receipt_id.as_ref().map(
+                    |receipt_id| chio_federation::GovernanceReceiptRef {
+                        receipt_id: receipt_id.clone(),
+                        kernel_id: source_kernel_id.clone(),
+                        digest: chio_federation::HashRecord {
+                            alg: "sha256".to_string(),
+                            value: chio_core::sha256_hex(receipt_id.as_bytes()),
+                        },
+                    },
+                ),
+                consistency_anchor: Some(format!(
+                    "chiodos:runtime-loopback:treaty:{step_index}"
+                )),
+                consistency_model: Some("totally_ordered".to_string()),
+                cross_org_visibility: Some("treaty_only".to_string()),
+                treaty_binding_ref: Some(chio_federation::TreatyBindingRef {
+                    treaty_id: treaty_scope.treaty_id.clone(),
+                    treaty_scope_sha256: treaty_scope_sha256.clone(),
+                    ladder_intersection_sha256: ladder_intersection_sha256.clone(),
+                    admission_report_sha256: chio_core::sha256_hex(
+                        format!("runtime-loopback:{step_index}:admission-report").as_bytes(),
+                    ),
+                    continuation_sha256: continuation_sha256.clone(),
+                    lineage_bundle_sha256: lineage_bundle_sha256.clone(),
+                    action_class_id: action_class_id.clone(),
+                    consistency_model: "totally_ordered".to_string(),
+                    request_sha256: step.request.tool_args_sha256.clone(),
+                    outcome_sha256,
+                    local_receipt_sha256: bilateral_invocation.local_receipt_sha256.clone(),
+                    remote_receipt_sha256: bilateral_invocation.remote_receipt_sha256.clone(),
+                    lease_refs: step.admission_bundle.lease_id.iter().cloned().collect(),
+                    governance_refs: step
+                        .admission_bundle
+                        .governance_receipt_id
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    signer_kernel_ids: vec![source_kernel_id.clone(), target_kernel_id.clone()],
+                }),
+            },
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos runtime loopback treaty DSSE signing: {error}"
+            ))
+        })?;
+        let bilateral_dsse_id = format!("bilateral-dsse:runtime-loopback:{step_index}");
+        let bilateral_dsse_sha256 =
+            canonical_sha256_json(&bilateral_dsse, "Chiodos runtime loopback bilateral DSSE hash")?;
+
+        hook_store
+            .insert_treaty_runtime_artifact("treaty_scope", &treaty_scope.treaty_id, &treaty_scope)
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback treaty scope store: {error}"
+                ))
+            })?;
+        hook_store
+            .insert_treaty_runtime_artifact(
+                "ladder_intersection",
+                &ladder_intersection.intersection_id,
+                &ladder_intersection,
+            )
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback ladder intersection store: {error}"
+                ))
+            })?;
+        hook_store
+            .insert_treaty_runtime_artifact(
+                "cross_kernel_continuation",
+                &continuation.continuation_id,
+                &continuation,
+            )
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback continuation store: {error}"
+                ))
+            })?;
+        hook_store
+            .insert_treaty_runtime_artifact(
+                "receipt_lineage_bundle",
+                &lineage_bundle.bundle_id,
+                &lineage_bundle,
+            )
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback lineage bundle store: {error}"
+                ))
+            })?;
+        hook_store
+            .insert_treaty_runtime_artifact(
+                "bilateral_invocation",
+                &bilateral_invocation.invocation_id,
+                &bilateral_invocation,
+            )
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback bilateral invocation store: {error}"
+                ))
+            })?;
+        hook_store
+            .insert_treaty_runtime_artifact(
+                "bilateral_dsse_envelope",
+                &bilateral_dsse_id,
+                &bilateral_dsse,
+            )
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback bilateral DSSE store: {error}"
+                ))
+            })?;
+
+        Ok(serde_json::json!({
+            "treatyScopeId": treaty_scope.treaty_id,
+            "treatyScopeSha256": treaty_scope_sha256,
+            "ladderIntersectionId": ladder_intersection.intersection_id,
+            "ladderIntersectionSha256": ladder_intersection_sha256,
+            "actionClassId": action_class_id,
+            "crossKernelContinuation": {
+                "id": continuation.continuation_id,
+                "sha256": continuation_sha256
+            },
+            "receiptLineageBundle": {
+                "id": lineage_bundle.bundle_id,
+                "sha256": lineage_bundle_sha256
+            },
+            "bilateralInvocation": {
+                "id": bilateral_invocation.invocation_id,
+                "sha256": bilateral_invocation_sha256
+            },
+            "bilateralDsse": {
+                "id": bilateral_dsse_id,
+                "sha256": bilateral_dsse_sha256
+            }
+        }))
+    }
+
+    let scenario: RuntimeLoopbackScenario =
+        serde_json::from_str(&read_utf8_json_file(scenario, "Chiodos runtime loopback scenario")?)
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos runtime loopback scenario parse: {error}"))
+            })?;
+    let steps = if scenario.steps.is_empty() {
+        let admission_profile = scenario.admission_profile.ok_or_else(|| {
+            CliError::cli_other_error(
+                "Chiodos runtime loopback scenario missing admissionProfile".to_string(),
+            )
+        })?;
+        let admission_bundle = scenario.admission_bundle.ok_or_else(|| {
+            CliError::cli_other_error(
+                "Chiodos runtime loopback scenario missing admissionBundle".to_string(),
+            )
+        })?;
+        let request = scenario.request.ok_or_else(|| {
+            CliError::cli_other_error("Chiodos runtime loopback scenario missing request".to_string())
+        })?;
+        vec![RuntimeLoopbackStep {
+            admission_profile,
+            admission_bundle,
+            request,
+            arguments: None,
+        }]
+    } else {
+        scenario.steps
+    };
+    fs::create_dir_all(store_dir).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to create Chiodos runtime store directory {}: {error}",
+            store_dir.display()
+        ))
+    })?;
+    fs::create_dir_all(out_dir).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to create Chiodos runtime output directory {}: {error}",
+            out_dir.display()
+        ))
+    })?;
+    let store_path = store_dir.join("admission-store.json");
+    let store = chio_chiodos_runtime::JsonRuntimeAdmissionStore::open(&store_path).map_err(
+        |error| {
+            CliError::cli_other_error(format!(
+                "Chiodos runtime loopback admission store open: {error}"
+            ))
+        },
+    )?;
+    let mut accepted = true;
+    let mut failure_code = None;
+    let mut evidence_paths = Vec::new();
+    let mut admission_hashes = Vec::new();
+    let mut step_evidence = Vec::new();
+    let mut source_records = Vec::new();
+    let mut evidence_manifest_entries = Vec::new();
+    let mut live_tool_receipts = Vec::new();
+    for (index, step) in steps.iter().enumerate() {
+        let admission_id = step.admission_bundle.admission_id.clone();
+        store
+            .insert_bundle(step.admission_bundle.clone())
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback admission store update: {error}"
+                ))
+            })?;
+        let admission_report = chio_chiodos_runtime::evaluate_runtime_admission(
+            chio_chiodos_runtime::RuntimeAdmissionInput {
+                profile: &step.admission_profile,
+                store: &store,
+                admission_id: &admission_id,
+                request: &step.request,
+                runtime_trust_input: None,
+                trusted_verifier_keys: &[],
+                pheromone_advisory: None,
+                runtime_pheromone_policy: None,
+                runtime_peer_weights: None,
+                now_unix_ms,
+            },
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime loopback admission: {error}"))
+        })?;
+        let suffix = if steps.len() == 1 {
+            String::new()
+        } else {
+            format!("-{}", index + 1)
+        };
+        let admission_report_name = format!("runtime-admission-report{suffix}.json");
+        let admission_json = chio_chiodos_runtime::runtime_admission_report_json(&admission_report)
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos runtime admission report JSON: {error}"))
+            })?;
+        let admission_artifact_hash = write_runtime_json_artifact_string(
+            out_dir,
+            "admission_report",
+            &admission_report_name,
+            &admission_json,
+            &mut evidence_manifest_entries,
+            &mut evidence_paths,
+        )?;
+        let admission_hash = chio_core::sha256_hex(admission_json.as_bytes());
+        if admission_artifact_hash.is_empty() {
+            return Err(CliError::cli_other_error(
+                "Chiodos runtime admission artifact hash was empty".to_string(),
+            ));
+        }
+        admission_hashes.push(admission_hash.clone());
+        if !admission_report.accepted {
+            accepted = false;
+            failure_code = admission_report.failure_code.clone();
+            break;
+        }
+        let arguments = step.arguments.clone().ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "Chiodos runtime accepted step {} did not carry executable arguments",
+                step.admission_bundle.step_index
+            ))
+        })?;
+        let receipt = execute_runtime_loopback_step(index, step, arguments)?;
+        live_tool_receipts.push(receipt);
+    }
+    let mut proof_package_sha256 = None;
+    let mut verifier_report_sha256 = None;
+    let mut workflow_receipt_sha256 = None;
+    let mut trust_bundle_sha256 = None;
+    let mut verification_context_sha256 = None;
+    let mut parity_report: Option<chio_chiodos_runtime::RuntimeProofParityReport> = None;
+    let mut proof_checks = vec!["runtime_source_records.bound".to_string()];
+
+    if accepted {
+        if live_tool_receipts.len() != steps.len() {
+            return Err(CliError::cli_other_error(format!(
+                "Chiodos runtime captured {} live receipts for {} accepted steps",
+                live_tool_receipts.len(),
+                steps.len()
+            )));
+        }
+        proof_checks.push("runtime_kernel_receipts.captured".to_string());
+        let package =
+            chiodos_three_vendor_example::proof_package_from_runtime_receipts(live_tool_receipts)
+                .map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime proof package build from live receipts: {error}"
+                    ))
+                })?;
+        let context = chiodos_three_vendor_example::verification_context();
+        let trust_bundle_document =
+            chiodos_three_vendor_example::verifier_trust_bundle_document_for_package(&package)
+                .map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime verifier trust bundle build: {error}"
+                    ))
+                })?;
+        let trust_bundle =
+            chio_chiodos::ChiodosVerifierTrustBundle::from_document(trust_bundle_document.clone())
+                .map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime verifier trust bundle parse: {error}"
+                    ))
+                })?;
+        let verifier_report = chio_chiodos::verify_package_report(&package, &trust_bundle, &context);
+
+        let package_json = chio_chiodos::package_json(&package).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime proof package JSON: {error}"))
+        })?;
+        write_runtime_json_artifact_string(
+            out_dir,
+            "proof_package",
+            "buyer-auditor-proof-package.json",
+            &package_json,
+            &mut evidence_manifest_entries,
+            &mut evidence_paths,
+        )?;
+        let trust_bundle_json =
+            chio_chiodos::verifier_trust_bundle_json(&trust_bundle_document).map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime verifier trust bundle JSON: {error}"
+                ))
+            })?;
+        write_runtime_json_artifact_string(
+            out_dir,
+            "verifier_trust_bundle",
+            "verifier-trust-bundle.json",
+            &trust_bundle_json,
+            &mut evidence_manifest_entries,
+            &mut evidence_paths,
+        )?;
+        let context_json = chio_chiodos::verification_context_json(&context).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime verification context JSON: {error}"))
+        })?;
+        write_runtime_json_artifact_string(
+            out_dir,
+            "verification_context",
+            "verification-context.json",
+            &context_json,
+            &mut evidence_manifest_entries,
+            &mut evidence_paths,
+        )?;
+        let verifier_report_json = chio_chiodos::report_json(&verifier_report).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime verifier report JSON: {error}"))
+        })?;
+        let verifier_report_artifact_sha256 = write_runtime_json_artifact_string(
+            out_dir,
+            "verifier_report",
+            "verifier-report.json",
+            &verifier_report_json,
+            &mut evidence_manifest_entries,
+            &mut evidence_paths,
+        )?;
+        write_runtime_json_artifact(
+            out_dir,
+            "workflow_receipt",
+            "workflow-receipt.json",
+            &package.workflow_receipt,
+            "Chiodos runtime workflow receipt JSON",
+            &mut evidence_manifest_entries,
+            &mut evidence_paths,
+        )?;
+
+        proof_package_sha256 = Some(verifier_report.package_sha256.clone());
+        verifier_report_sha256 = Some(canonical_sha256_json(
+            &verifier_report,
+            "Chiodos runtime verifier report canonical hash",
+        )?);
+        workflow_receipt_sha256 = Some(canonical_sha256_json(
+            &package.workflow_receipt,
+            "Chiodos runtime workflow receipt canonical hash",
+        )?);
+        trust_bundle_sha256 = Some(trust_bundle.document_sha256().to_string());
+        verification_context_sha256 =
+            Some(chio_chiodos::verification_context_sha256(&context).map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime verification context hash: {error}"
+                ))
+            })?);
+        if verifier_report_sha256.as_deref() != Some(verifier_report_artifact_sha256.as_str()) {
+            proof_checks.push("runtime_verifier_report.canonical_hash_recorded".to_string());
+        }
+
+        for (index, step) in package.workflow_receipt.steps.iter().enumerate() {
+            let tool_receipt_id = step.tool_receipt_id.as_ref().ok_or_else(|| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime workflow step {} missing tool receipt id",
+                    step.step_index
+                ))
+            })?;
+            let receipt = package
+                .tool_receipts
+                .iter()
+                .find(|receipt| receipt.id == *tool_receipt_id)
+                .ok_or_else(|| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime package missing tool receipt {}",
+                        tool_receipt_id
+                    ))
+                })?;
+            let envelope = package.bilateral_envelopes.get(index).ok_or_else(|| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime package missing DSSE envelope for step {}",
+                    step.step_index
+                ))
+            })?;
+            let receipt_name = format!("tool-receipt-{}.json", index + 1);
+            let dsse_name = format!("bilateral-dsse-{}.json", index + 1);
+            let workflow_step_name = format!("workflow-step-{}.json", index + 1);
+            let tool_receipt_sha256 = canonical_sha256_json(
+                receipt,
+                "Chiodos runtime tool receipt canonical hash",
+            )?;
+            let bilateral_dsse_sha256 = canonical_sha256_json(
+                envelope,
+                "Chiodos runtime bilateral DSSE canonical hash",
+            )?;
+            let workflow_step_sha256 = canonical_sha256_json(
+                step,
+                "Chiodos runtime workflow step canonical hash",
+            )?;
+            write_runtime_json_artifact(
+                out_dir,
+                "tool_receipt",
+                &receipt_name,
+                receipt,
+                "Chiodos runtime tool receipt JSON",
+                &mut evidence_manifest_entries,
+                &mut evidence_paths,
+            )?;
+            write_runtime_json_artifact(
+                out_dir,
+                "bilateral_dsse",
+                &dsse_name,
+                envelope,
+                "Chiodos runtime bilateral DSSE JSON",
+                &mut evidence_manifest_entries,
+                &mut evidence_paths,
+            )?;
+            write_runtime_json_artifact(
+                out_dir,
+                "workflow_step",
+                &workflow_step_name,
+                step,
+                "Chiodos runtime workflow step JSON",
+                &mut evidence_manifest_entries,
+                &mut evidence_paths,
+            )?;
+            let admission_report_sha256 = admission_hashes
+                .get(index)
+                .or_else(|| admission_hashes.last())
+                .cloned()
+                .ok_or_else(|| {
+                    CliError::cli_other_error(
+                        "Chiodos runtime proof generation missing admission report hash"
+                            .to_string(),
+                    )
+                })?;
+            step_evidence.push(chio_chiodos_runtime::RuntimeStepEvidence {
+                schema: chio_chiodos_runtime::CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
+                step_index: u64::try_from(step.step_index).map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime step index conversion failed: {error}"
+                    ))
+                })?,
+                admission_id: steps
+                    .get(index)
+                    .or_else(|| steps.last())
+                    .map(|runtime_step| runtime_step.admission_bundle.admission_id.clone())
+                    .ok_or_else(|| {
+                        CliError::cli_other_error(
+                            "Chiodos runtime proof generation missing admission id".to_string(),
+                        )
+                    })?,
+                admission_report_sha256: admission_report_sha256.clone(),
+                tool_receipt_id: tool_receipt_id.clone(),
+                tool_receipt_sha256: tool_receipt_sha256.clone(),
+                output_sha256: step.output_hash.clone().ok_or_else(|| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime workflow step {} missing output hash",
+                        step.step_index
+                    ))
+                })?,
+                bilateral_dsse_sha256: bilateral_dsse_sha256.clone(),
+                workflow_step_sha256: workflow_step_sha256.clone(),
+                parent_receipt_sha256: step.parent_receipt_sha256.clone(),
+                consistency_anchor: step.consistency_anchor.clone().ok_or_else(|| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime workflow step {} missing consistency anchor",
+                        step.step_index
+                    ))
+                })?,
+                destructive: step.destructive.unwrap_or(false),
+                lease_id: package
+                    .capability_leases
+                    .get(index)
+                    .map(|lease| lease.body.lease_id.clone()),
+                governance_receipt_id: step.governance_receipt_id.clone(),
+            });
+            source_records.push(chio_chiodos_runtime::RuntimeProofSourceRecord {
+                step_index: u64::try_from(step.step_index).map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime source step conversion failed: {error}"
+                    ))
+                })?,
+                admission_report_sha256,
+                tool_receipt_sha256,
+                bilateral_dsse_sha256,
+                workflow_step_sha256,
+            });
+        }
+
+        let static_package = chiodos_three_vendor_example::fixture_proof_package().map_err(
+            |error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos static three-vendor proof package: {error}"
+                ))
+            },
+        )?;
+        let static_report = chiodos_three_vendor_example::fixture_verifier_report().map_err(
+            |error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos static three-vendor verifier report: {error}"
+                ))
+            },
+        )?;
+        let (compared_fields, mismatches) =
+            runtime_proof_parity(&static_package, &package).map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos runtime proof parity: {error}"))
+            })?;
+        let parity_accepted = mismatches.is_empty() && verifier_report.accepted;
+        parity_report = Some(chio_chiodos_runtime::RuntimeProofParityReport {
+            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PROOF_PARITY_REPORT_SCHEMA.to_string(),
+            run_id: scenario.run_id.clone(),
+            accepted: parity_accepted,
+            failure_code: if parity_accepted {
+                None
+            } else {
+                Some("runtime_proof_semantic_parity_mismatch".to_string())
+            },
+            generated_at_unix_ms: now_unix_ms,
+            static_proof_package_sha256: chio_chiodos::package_sha256(&static_package).map_err(
+                |error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos static proof package hash: {error}"
+                    ))
+                },
+            )?,
+            runtime_proof_package_sha256: verifier_report.package_sha256.clone(),
+            static_verifier_report_sha256: canonical_sha256_json(
+                &static_report,
+                "Chiodos static verifier report canonical hash",
+            )?,
+            runtime_verifier_report_sha256: verifier_report_sha256.clone().ok_or_else(|| {
+                CliError::cli_other_error(
+                    "Chiodos runtime verifier report hash missing".to_string(),
+                )
+            })?,
+            compared_fields,
+            mismatches,
+        });
+
+        if verifier_report.accepted && parity_report.as_ref().is_some_and(|report| report.accepted)
+        {
+            proof_checks.push("runtime_semantic_proof_regeneration.verified".to_string());
+        } else {
+            accepted = false;
+            failure_code = if verifier_report.accepted {
+                Some("runtime_proof_semantic_parity_mismatch".to_string())
+            } else {
+                verifier_report
+                    .failure
+                    .as_ref()
+                    .map(|failure| failure.code.clone())
+                    .or_else(|| Some("runtime_proof_semantic_verifier_rejected".to_string()))
+            };
+        }
+    } else {
+        proof_checks.push("runtime_admission.denied".to_string());
+    }
+
+    let proof_regeneration_report =
+        chio_chiodos_runtime::RuntimeProofRegenerationReport {
+            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA
+                .to_string(),
+            run_id: scenario.run_id.clone(),
+            accepted,
+            failure_code: if accepted { None } else { failure_code.clone() },
+            generated_at_unix_ms: now_unix_ms,
+            proof_package_sha256,
+            verifier_report_sha256,
+            workflow_receipt_sha256,
+            source_records: source_records.clone(),
+            checks: proof_checks,
+        };
+    let proof_regeneration_json =
+        chio_chiodos_runtime::runtime_proof_regeneration_report_json(
+            &proof_regeneration_report,
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos runtime proof regeneration report: {error}"
+            ))
+        })?;
+    write_runtime_json_artifact_string(
+        out_dir,
+        "proof_regeneration_report",
+        "proof-regeneration-report.json",
+        &proof_regeneration_json,
+        &mut evidence_manifest_entries,
+        &mut evidence_paths,
+    )?;
+    let proof_regeneration_report_sha256 = canonical_sha256_json(
+        &proof_regeneration_report,
+        "Chiodos runtime proof regeneration report canonical hash",
+    )?;
+    if let Some(parity_report) = parity_report.as_ref() {
+        let parity_json = chio_chiodos_runtime::runtime_proof_parity_report_json(parity_report)
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime proof parity report: {error}"
+                ))
+            })?;
+        write_runtime_json_artifact_string(
+            out_dir,
+            "proof_parity_report",
+            "runtime-proof-parity-report.json",
+            &parity_json,
+            &mut evidence_manifest_entries,
+            &mut evidence_paths,
+        )?;
+    }
+    let workflow_report = chio_chiodos_runtime::RuntimeWorkflowRunReport {
+        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
+        run_id: scenario.run_id.clone(),
+        accepted,
+        failure_code,
+        generated_at_unix_ms: now_unix_ms,
+        admission_report_sha256: chio_core::sha256_hex(admission_hashes.join(":").as_bytes()),
+        evidence_paths: evidence_paths.clone(),
+        step_evidence,
+        proof_regeneration_report_sha256: Some(proof_regeneration_report_sha256.clone()),
+    };
+    let workflow_report_json =
+        chio_chiodos_runtime::runtime_workflow_run_report_json(&workflow_report).map_err(
+            |error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime workflow run report: {error}"
+                ))
+            },
+        )?;
+    write_runtime_json_artifact_string(
+        out_dir,
+        "workflow_run_report",
+        "workflow-run-report.json",
+        &workflow_report_json,
+        &mut evidence_manifest_entries,
+        &mut evidence_paths,
+    )?;
+    let workflow_run_report_sha256 = canonical_sha256_json(
+        &workflow_report,
+        "Chiodos runtime workflow run report canonical hash",
+    )?;
+    let manifest = chio_chiodos_runtime::RuntimeEvidenceManifest {
+        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        run_id: scenario.run_id.clone(),
+        generated_at_unix_ms: now_unix_ms,
+        workflow_run_report_sha256: workflow_run_report_sha256.clone(),
+        proof_regeneration_report_sha256: proof_regeneration_report_sha256.clone(),
+        entries: evidence_manifest_entries.clone(),
+    };
+    let manifest_json = chio_chiodos_runtime::runtime_evidence_manifest_json(&manifest).map_err(
+        |error| {
+            CliError::cli_other_error(format!("Chiodos runtime evidence manifest: {error}"))
+        },
+    )?;
+    write_runtime_json_artifact_string(
+        out_dir,
+        "runtime_evidence_manifest",
+        "runtime-evidence-manifest.json",
+        &manifest_json,
+        &mut evidence_manifest_entries,
+        &mut evidence_paths,
+    )?;
+    let evidence_manifest_sha256 = canonical_sha256_json(
+        &manifest,
+        "Chiodos runtime evidence manifest canonical hash",
+    )?;
+    if accepted {
+        let regeneration_input = chio_chiodos_runtime::RuntimeProofRegenerationInput {
+            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA
+                .to_string(),
+            run_id: scenario.run_id,
+            evidence_manifest_sha256,
+            workflow_run_report_sha256,
+            admission_report_sha256: chio_core::sha256_hex(admission_hashes.join(":").as_bytes()),
+            trust_bundle_sha256: trust_bundle_sha256.ok_or_else(|| {
+                CliError::cli_other_error(
+                    "Chiodos runtime proof input missing trust bundle hash".to_string(),
+                )
+            })?,
+            verification_context_sha256: verification_context_sha256.ok_or_else(|| {
+                CliError::cli_other_error(
+                    "Chiodos runtime proof input missing context hash".to_string(),
+                )
+            })?,
+            source_records,
+        };
+        let input_json =
+            chio_chiodos_runtime::runtime_proof_regeneration_input_json(&regeneration_input)
+                .map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime proof regeneration input: {error}"
+                    ))
+                })?;
+        write_runtime_json_artifact_string(
+            out_dir,
+            "proof_regeneration_input",
+            "runtime-proof-regeneration-input.json",
+            &input_json,
+            &mut evidence_manifest_entries,
+            &mut evidence_paths,
+        )?;
+    }
+    if workflow_report.accepted {
+        Ok(())
+    } else {
+        Err(CliError::cli_other_error(format!(
+            "Chiodos runtime loopback rejected request: {}",
+            workflow_report
+                .failure_code
+                .as_deref()
+                .unwrap_or("unknown_runtime_loopback_failure")
+        )))
+    }
+}
+
+fn write_runtime_json_artifact<T: serde::Serialize>(
+    out_dir: &Path,
+    role: &str,
+    relative_path: &str,
+    value: &T,
+    label: &str,
+    entries: &mut Vec<chio_chiodos_runtime::RuntimeEvidenceManifestEntry>,
+    evidence_paths: &mut Vec<String>,
+) -> Result<String, CliError> {
+    let json = serde_json::to_string_pretty(value)
+        .map_err(|error| CliError::cli_other_error(format!("{label}: {error}")))?;
+    write_runtime_json_artifact_string(out_dir, role, relative_path, &json, entries, evidence_paths)
+}
+
+fn write_runtime_json_artifact_string(
+    out_dir: &Path,
+    role: &str,
+    relative_path: &str,
+    json: &str,
+    entries: &mut Vec<chio_chiodos_runtime::RuntimeEvidenceManifestEntry>,
+    evidence_paths: &mut Vec<String>,
+) -> Result<String, CliError> {
+    validate_runtime_relative_path(relative_path)?;
+    let json_with_newline = format!("{json}\n");
+    let sha256 = chio_core::sha256_hex(json_with_newline.as_bytes());
+    let byte_count = u64::try_from(json_with_newline.len()).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime artifact byte count: {error}"))
+    })?;
+    write_json_string(&out_dir.join(relative_path), &json_with_newline)?;
+    entries.push(chio_chiodos_runtime::RuntimeEvidenceManifestEntry {
+        role: role.to_string(),
+        path: relative_path.to_string(),
+        sha256: sha256.clone(),
+        byte_count,
+    });
+    if !evidence_paths.iter().any(|path| path == relative_path) {
+        evidence_paths.push(relative_path.to_string());
+    }
+    Ok(sha256)
+}
+
+fn validate_runtime_relative_path(relative_path: &str) -> Result<(), CliError> {
+    if relative_path.trim() != relative_path
+        || relative_path.is_empty()
+        || relative_path.starts_with('/')
+        || relative_path.contains('\\')
+        || relative_path.contains(':')
+        || relative_path.contains("//")
+        || relative_path
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos runtime artifact path {relative_path:?} is not safe relative evidence"
+        )));
+    }
+    Ok(())
+}
+
+fn canonical_sha256_json<T: serde::Serialize>(value: &T, label: &str) -> Result<String, CliError> {
+    let bytes = chio_core_types::canonical::canonical_json_bytes(value)
+        .map_err(|error| CliError::cli_other_error(format!("{label}: {error}")))?;
+    Ok(chio_core::sha256_hex(&bytes))
+}
+
+fn runtime_proof_parity(
+    static_package: &chio_chiodos::ChiodosProofPackage,
+    runtime_package: &chio_chiodos::ChiodosProofPackage,
+) -> Result<
+    (
+        Vec<String>,
+        Vec<chio_chiodos_runtime::RuntimeProofParityMismatch>,
+    ),
+    CliError,
+> {
+    let compared_fields = vec![
+        "proof_claims".to_string(),
+        "workflow_id".to_string(),
+        "workflow_step_count".to_string(),
+        "workflow_step_semantics".to_string(),
+        "workflow_intersection_id".to_string(),
+        "workflow_step_class_bindings".to_string(),
+        "workflow_required_vendor_signers".to_string(),
+        "tool_receipt_targets".to_string(),
+        "tool_receipt_semantics".to_string(),
+        "bilateral_dsse_predicate_semantics".to_string(),
+        "lease_scope_semantics".to_string(),
+        "governance_authorization_presence".to_string(),
+        "destructive_step_flags".to_string(),
+    ];
+    let mut mismatches = Vec::new();
+    compare_runtime_proof_field(
+        "proof_claims",
+        &static_package.claims,
+        &runtime_package.claims,
+        &mut mismatches,
+    )?;
+    compare_runtime_proof_field(
+        "workflow_id",
+        &static_package.workflow_id,
+        &runtime_package.workflow_id,
+        &mut mismatches,
+    )?;
+    compare_runtime_proof_field(
+        "workflow_step_count",
+        &static_package.workflow_receipt.steps.len(),
+        &runtime_package.workflow_receipt.steps.len(),
+        &mut mismatches,
+    )?;
+    compare_runtime_proof_field(
+        "workflow_step_semantics",
+        &workflow_step_semantics(static_package),
+        &workflow_step_semantics(runtime_package),
+        &mut mismatches,
+    )?;
+    compare_runtime_proof_field(
+        "workflow_intersection_id",
+        &static_package.workflow_intersection.intersection_id,
+        &runtime_package.workflow_intersection.intersection_id,
+        &mut mismatches,
+    )?;
+    compare_runtime_proof_field(
+        "workflow_step_class_bindings",
+        &static_package.workflow_intersection.step_class_bindings,
+        &runtime_package.workflow_intersection.step_class_bindings,
+        &mut mismatches,
+    )?;
+    let static_signers: Vec<&str> = static_package
+        .workflow_intersection
+        .required_vendor_signers
+        .iter()
+        .map(|signer| signer.vendor_id.as_str())
+        .collect();
+    let runtime_signers: Vec<&str> = runtime_package
+        .workflow_intersection
+        .required_vendor_signers
+        .iter()
+        .map(|signer| signer.vendor_id.as_str())
+        .collect();
+    compare_runtime_proof_field(
+        "workflow_required_vendor_signers",
+        &static_signers,
+        &runtime_signers,
+        &mut mismatches,
+    )?;
+    let static_receipt_targets: Vec<(&str, &str, &str)> = static_package
+        .tool_receipts
+        .iter()
+        .map(|receipt| {
+            (
+                receipt.capability_id.as_str(),
+                receipt.tool_server.as_str(),
+                receipt.tool_name.as_str(),
+            )
+        })
+        .collect();
+    let runtime_receipt_targets: Vec<(&str, &str, &str)> = runtime_package
+        .tool_receipts
+        .iter()
+        .map(|receipt| {
+            (
+                receipt.capability_id.as_str(),
+                receipt.tool_server.as_str(),
+                receipt.tool_name.as_str(),
+            )
+        })
+        .collect();
+    compare_runtime_proof_field(
+        "tool_receipt_targets",
+        &static_receipt_targets,
+        &runtime_receipt_targets,
+        &mut mismatches,
+    )?;
+    compare_runtime_proof_field(
+        "tool_receipt_semantics",
+        &tool_receipt_semantics(static_package),
+        &tool_receipt_semantics(runtime_package),
+        &mut mismatches,
+    )?;
+    compare_runtime_proof_field(
+        "bilateral_dsse_predicate_semantics",
+        &bilateral_dsse_predicate_semantics(static_package)?,
+        &bilateral_dsse_predicate_semantics(runtime_package)?,
+        &mut mismatches,
+    )?;
+    compare_runtime_proof_field(
+        "lease_scope_semantics",
+        &lease_scope_semantics(static_package),
+        &lease_scope_semantics(runtime_package),
+        &mut mismatches,
+    )?;
+    compare_runtime_proof_field(
+        "governance_authorization_presence",
+        &governance_authorization_presence(static_package),
+        &governance_authorization_presence(runtime_package),
+        &mut mismatches,
+    )?;
+    let static_destructive: Vec<Option<bool>> = static_package
+        .workflow_receipt
+        .steps
+        .iter()
+        .map(|step| step.destructive)
+        .collect();
+    let runtime_destructive: Vec<Option<bool>> = runtime_package
+        .workflow_receipt
+        .steps
+        .iter()
+        .map(|step| step.destructive)
+        .collect();
+    compare_runtime_proof_field(
+        "destructive_step_flags",
+        &static_destructive,
+        &runtime_destructive,
+        &mut mismatches,
+    )?;
+    Ok((compared_fields, mismatches))
+}
+
+#[derive(serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct WorkflowStepParityBinding {
+    step_index: usize,
+    server_id: String,
+    tool_name: String,
+    allowed: bool,
+    has_tool_receipt: bool,
+    has_output_hash: bool,
+    has_bilateral_dsse: bool,
+    has_governance_receipt: bool,
+    has_parent_receipt: bool,
+    has_consistency_anchor: bool,
+    destructive: Option<bool>,
+}
+
+#[derive(serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ToolReceiptParityBinding {
+    capability_id: String,
+    tool_server: String,
+    tool_name: String,
+    action_parameter_hash: String,
+    decision_allowed: bool,
+}
+
+#[derive(serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct BilateralDssePredicateParityBinding {
+    predicate_type: String,
+    tool_server_a: String,
+    tool_server_b: String,
+    tool_name: String,
+    co_sign: String,
+    consistency_model: String,
+    tool_args_hash: Option<String>,
+    has_capability_lease_ref: bool,
+    has_capability_lease_scope_digest: bool,
+    has_governance_receipt_ref: bool,
+    has_consistency_anchor: bool,
+    has_treaty_binding: bool,
+}
+
+#[derive(serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct LeaseScopeParityBinding {
+    workflow_id: String,
+    workflow_grant_id: String,
+    step_index: usize,
+    tool_name: String,
+    peer_kernel_id: String,
+    action_class_id: String,
+    subject: String,
+    action_class: String,
+    tool_args_hash: String,
+    destructive: bool,
+}
+
+fn workflow_step_semantics(
+    package: &chio_chiodos::ChiodosProofPackage,
+) -> Vec<WorkflowStepParityBinding> {
+    package
+        .workflow_receipt
+        .steps
+        .iter()
+        .map(|step| WorkflowStepParityBinding {
+            step_index: step.step_index,
+            server_id: step.server_id.clone(),
+            tool_name: step.tool_name.clone(),
+            allowed: step.allowed,
+            has_tool_receipt: step.tool_receipt_id.is_some(),
+            has_output_hash: step.output_hash.is_some(),
+            has_bilateral_dsse: step.bilateral_dsse_sha256.is_some(),
+            has_governance_receipt: step.governance_receipt_id.is_some(),
+            has_parent_receipt: step.parent_receipt_sha256.is_some(),
+            has_consistency_anchor: step.consistency_anchor.is_some(),
+            destructive: step.destructive,
+        })
+        .collect()
+}
+
+fn tool_receipt_semantics(
+    package: &chio_chiodos::ChiodosProofPackage,
+) -> Vec<ToolReceiptParityBinding> {
+    package
+        .tool_receipts
+        .iter()
+        .map(|receipt| ToolReceiptParityBinding {
+            capability_id: receipt.capability_id.clone(),
+            tool_server: receipt.tool_server.clone(),
+            tool_name: receipt.tool_name.clone(),
+            action_parameter_hash: receipt.action.parameter_hash.clone(),
+            decision_allowed: matches!(&receipt.decision, chio_core::receipt::Decision::Allow),
+        })
+        .collect()
+}
+
+fn bilateral_dsse_predicate_semantics(
+    package: &chio_chiodos::ChiodosProofPackage,
+) -> Result<Vec<BilateralDssePredicateParityBinding>, CliError> {
+    package
+        .bilateral_envelopes
+        .iter()
+        .map(|envelope| {
+            let (statement, _) = envelope.decode_statement().map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime parity DSSE statement decode: {error}"
+                ))
+            })?;
+            let predicate = statement.predicate;
+            Ok(BilateralDssePredicateParityBinding {
+                predicate_type: statement.predicate_type,
+                tool_server_a: predicate.tool_server_a.kernel_id,
+                tool_server_b: predicate.tool_server_b.kernel_id,
+                tool_name: predicate.tool_name,
+                co_sign: predicate.co_sign,
+                consistency_model: predicate.consistency_model,
+                tool_args_hash: predicate.tool_args_hash.map(|hash| hash.value),
+                has_capability_lease_ref: predicate.capability_lease_ref.is_some(),
+                has_capability_lease_scope_digest: predicate
+                    .capability_lease_ref
+                    .is_some_and(|lease| lease.scope_digest.is_some()),
+                has_governance_receipt_ref: predicate.governance_receipt_ref.is_some(),
+                has_consistency_anchor: predicate.consistency_anchor.is_some(),
+                has_treaty_binding: predicate.treaty_binding_ref.is_some(),
+            })
+        })
+        .collect()
+}
+
+fn lease_scope_semantics(
+    package: &chio_chiodos::ChiodosProofPackage,
+) -> Vec<LeaseScopeParityBinding> {
+    package
+        .lease_scope_bindings
+        .iter()
+        .map(|binding| LeaseScopeParityBinding {
+            workflow_id: binding.workflow_id.clone(),
+            workflow_grant_id: binding.workflow_grant_id.clone(),
+            step_index: binding.step_index,
+            tool_name: binding.tool_name.clone(),
+            peer_kernel_id: binding.peer_kernel_id.clone(),
+            action_class_id: binding.action_class_id.clone(),
+            subject: binding.subject.clone(),
+            action_class: format!("{:?}", binding.action_class),
+            tool_args_hash: binding.tool_args_hash.clone(),
+            destructive: binding.destructive,
+        })
+        .collect()
+}
+
+fn governance_authorization_presence(
+    package: &chio_chiodos::ChiodosProofPackage,
+) -> Vec<bool> {
+    package
+        .workflow_receipt
+        .steps
+        .iter()
+        .map(|step| step.governance_receipt_id.is_some())
+        .collect()
+}
+
+fn compare_runtime_proof_field<T: serde::Serialize + PartialEq>(
+    field: &str,
+    static_value: &T,
+    runtime_value: &T,
+    mismatches: &mut Vec<chio_chiodos_runtime::RuntimeProofParityMismatch>,
+) -> Result<(), CliError> {
+    if static_value != runtime_value {
+        mismatches.push(chio_chiodos_runtime::RuntimeProofParityMismatch {
+            field: field.to_string(),
+            static_value_sha256: canonical_sha256_json(
+                static_value,
+                "Chiodos runtime static parity field hash",
+            )?,
+            runtime_value_sha256: canonical_sha256_json(
+                runtime_value,
+                "Chiodos runtime regenerated parity field hash",
+            )?,
+        });
+    }
+    Ok(())
 }
 
 fn cmd_chiodos_pheromone_receive(

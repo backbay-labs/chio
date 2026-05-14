@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime-workflow-run-report.schema.json",
+  "title": "Chiodos Runtime Workflow Run Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "runId",
+    "accepted",
+    "generatedAtUnixMs",
+    "admissionReportSha256",
+    "evidencePaths",
+    "stepEvidence"
+  ],
+  "properties": {
+    "schema": { "const": "chio.chiodos.runtime-workflow-run-report.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "accepted": { "type": "boolean" },
+    "failureCode": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "admissionReportSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evidencePaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "stepEvidence": {
+      "type": "array",
+      "items": { "$ref": "runtime-step-evidence.schema.json" }
+    },
+    "proofRegenerationReportSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

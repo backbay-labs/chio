@@ -176,6 +176,300 @@
       "schemaFile": "spec/schemas/chiodos/v1/peer-pins.schema.json"
     },
     {
+      "schema": "chio.chiodos.runtime-admission-profile.v1",
+      "artifactKind": "chiodos_runtime_admission_profile",
+      "introducedBy": "chiodos-live-runtime-spine/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-admission-profile.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-admission-bundle.v1",
+      "artifactKind": "chiodos_runtime_admission_bundle",
+      "introducedBy": "chiodos-live-runtime-spine/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-admission-bundle.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.verifier-trust-bundle.v4",
+      "artifactKind": "chiodos_runtime_verifier_trust_bundle",
+      "introducedBy": "chiodos-live-runtime-spine/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-verifier-trust-bundle.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-trusted-verifiers.v1",
+      "artifactKind": "chiodos_runtime_trusted_verifiers",
+      "introducedBy": "chiodos-live-runtime-spine/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-trusted-verifiers.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-admission-report.v1",
+      "artifactKind": "chiodos_runtime_admission_report",
+      "introducedBy": "chiodos-live-runtime-spine/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-admission-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-pheromone-policy.v1",
+      "artifactKind": "chiodos_runtime_pheromone_policy",
+      "introducedBy": "chiodos-verifier-owned-runtime-policy/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-pheromone-policy.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-pheromone-policy-decision.v1",
+      "artifactKind": "chiodos_runtime_pheromone_policy_decision",
+      "introducedBy": "chiodos-verifier-owned-runtime-policy/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-pheromone-policy-decision.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-peer-weights.v1",
+      "artifactKind": "chiodos_runtime_peer_weights",
+      "introducedBy": "chiodos-verifier-owned-runtime-policy/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-peer-weights.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-trust-floor-state.v1",
+      "artifactKind": "chiodos_runtime_trust_floor_state",
+      "introducedBy": "chiodos-verifier-owned-runtime-policy/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-trust-floor-state.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-workflow-run-report.v1",
+      "artifactKind": "chiodos_runtime_workflow_run_report",
+      "introducedBy": "chiodos-live-runtime-spine/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-workflow-run-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-step-evidence.v1",
+      "artifactKind": "chiodos_runtime_step_evidence",
+      "introducedBy": "chiodos-live-runtime-proof-parity/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-step-evidence.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-evidence-manifest.v1",
+      "artifactKind": "chiodos_runtime_evidence_manifest",
+      "introducedBy": "chiodos-semantic-runtime-proof-regeneration/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-evidence-manifest.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-proof-regeneration-input.v1",
+      "artifactKind": "chiodos_runtime_proof_regeneration_input",
+      "introducedBy": "chiodos-semantic-runtime-proof-regeneration/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-proof-regeneration-input.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-proof-regeneration-report.v1",
+      "artifactKind": "chiodos_runtime_proof_regeneration_report",
+      "introducedBy": "chiodos-live-runtime-proof-parity/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-proof-regeneration-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-proof-parity-report.v1",
+      "artifactKind": "chiodos_runtime_proof_parity_report",
+      "introducedBy": "chiodos-semantic-runtime-proof-regeneration/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-proof-parity-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-orchestration-profile.v1",
+      "artifactKind": "chiodos_runtime_orchestration_profile",
+      "introducedBy": "chiodos-production-local-runtime-orchestration/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-orchestration-profile.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-run-contract.v1",
+      "artifactKind": "chiodos_runtime_run_contract",
+      "introducedBy": "chiodos-production-local-runtime-orchestration/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-run-contract.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-orchestration-plan.v1",
+      "artifactKind": "chiodos_runtime_orchestration_plan",
+      "introducedBy": "chiodos-production-local-runtime-orchestration/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-orchestration-plan.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-orchestration-run-report.v1",
+      "artifactKind": "chiodos_runtime_orchestration_run_report",
+      "introducedBy": "chiodos-production-local-runtime-orchestration/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-orchestration-run-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-orchestration-resume-plan.v1",
+      "artifactKind": "chiodos_runtime_orchestration_resume_plan",
+      "introducedBy": "chiodos-production-local-runtime-orchestration/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-orchestration-resume-plan.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-orchestration-status-report.v1",
+      "artifactKind": "chiodos_runtime_orchestration_status_report",
+      "introducedBy": "chiodos-production-local-runtime-orchestration/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-orchestration-status-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-proof-drift-report.v1",
+      "artifactKind": "chiodos_runtime_proof_drift_report",
+      "introducedBy": "chiodos-production-local-runtime-orchestration/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-proof-drift-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-orchestration-negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_runtime_orchestration_negative_fixture_corpus",
+      "introducedBy": "chiodos-production-local-runtime-orchestration/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-orchestration-negative-fixture-corpus.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-supervisor-profile.v1",
+      "artifactKind": "chiodos_runtime_supervisor_profile",
+      "introducedBy": "chiodos-runtime-operations-hardening/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-supervisor-profile.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-run-lease.v1",
+      "artifactKind": "chiodos_runtime_run_lease",
+      "introducedBy": "chiodos-runtime-operations-hardening/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-run-lease.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-scheduler-tick-report.v1",
+      "artifactKind": "chiodos_runtime_scheduler_tick_report",
+      "introducedBy": "chiodos-runtime-operations-hardening/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-scheduler-tick-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-evidence-sink-health-report.v1",
+      "artifactKind": "chiodos_runtime_evidence_sink_health_report",
+      "introducedBy": "chiodos-runtime-operations-hardening/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-evidence-sink-health-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-recovery-drill-report.v1",
+      "artifactKind": "chiodos_runtime_recovery_drill_report",
+      "introducedBy": "chiodos-runtime-operations-hardening/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-recovery-drill-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-artifact-retention-profile.v1",
+      "artifactKind": "chiodos_runtime_artifact_retention_profile",
+      "introducedBy": "chiodos-runtime-operations-hardening/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-artifact-retention-profile.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-artifact-retention-plan.v1",
+      "artifactKind": "chiodos_runtime_artifact_retention_plan",
+      "introducedBy": "chiodos-runtime-operations-hardening/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-artifact-retention-plan.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-provider-bindings.v1",
+      "artifactKind": "chiodos_runtime_provider_bindings",
+      "introducedBy": "chiodos-runtime-operations-hardening/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-provider-bindings.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-provider-health-report.v1",
+      "artifactKind": "chiodos_runtime_provider_health_report",
+      "introducedBy": "chiodos-runtime-operations-hardening/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-provider-health-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-ops-status-report.v1",
+      "artifactKind": "chiodos_runtime_ops_status_report",
+      "introducedBy": "chiodos-runtime-operations-hardening/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-ops-status-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-ops-negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_runtime_ops_negative_fixture_corpus",
+      "introducedBy": "chiodos-runtime-operations-hardening/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-ops-negative-fixture-corpus.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.runtime-failure-code-registry.v1",
+      "artifactKind": "chiodos_runtime_failure_code_registry",
+      "introducedBy": "chiodos-runtime-operations-hardening/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/runtime-failure-code-registry.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.governance-ladder-manifest.v1",
+      "artifactKind": "chiodos_governance_ladder_manifest",
+      "introducedBy": "chiodos-treaty-bound-provenance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/governance-ladder-manifest.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.treaty-scope.v1",
+      "artifactKind": "chiodos_treaty_scope",
+      "introducedBy": "chiodos-treaty-bound-provenance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/treaty-scope.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.ladder-intersection.v1",
+      "artifactKind": "chiodos_ladder_intersection",
+      "introducedBy": "chiodos-treaty-bound-provenance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/ladder-intersection.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.cross-kernel-continuation.v1",
+      "artifactKind": "chiodos_cross_kernel_continuation",
+      "introducedBy": "chiodos-treaty-bound-provenance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/cross-kernel-continuation.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.receipt-lineage-statement.v1",
+      "artifactKind": "chiodos_receipt_lineage_statement",
+      "introducedBy": "chiodos-treaty-bound-provenance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/receipt-lineage-statement.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.cross-boundary-admission-report.v1",
+      "artifactKind": "chiodos_cross_boundary_admission_report",
+      "introducedBy": "chiodos-treaty-bound-provenance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/cross-boundary-admission-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.bilateral-invocation.v1",
+      "artifactKind": "chiodos_bilateral_invocation",
+      "introducedBy": "chiodos-treaty-bound-provenance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/bilateral-invocation.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.buyer-attestation-packet.v1",
+      "artifactKind": "chiodos_buyer_attestation_packet",
+      "introducedBy": "chiodos-treaty-bound-provenance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/buyer-attestation-packet.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.buyer-attestation-verification-report.v1",
+      "artifactKind": "chiodos_buyer_attestation_verification_report",
+      "introducedBy": "chiodos-treaty-bound-provenance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/buyer-attestation-verification-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.receipt-lineage-bundle.v1",
+      "artifactKind": "chiodos_receipt_lineage_bundle",
+      "introducedBy": "chiodos-treaty-buyer-hero-loop/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/receipt-lineage-bundle.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.buyer-attestation-review-package.v1",
+      "artifactKind": "chiodos_buyer_attestation_review_package",
+      "introducedBy": "chiodos-treaty-buyer-hero-loop/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/buyer-attestation-review-package.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.buyer-attestation-review-report.v1",
+      "artifactKind": "chiodos_buyer_attestation_review_report",
+      "introducedBy": "chiodos-treaty-buyer-hero-loop/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/buyer-attestation-review-report.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.treaty-runtime-negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_treaty_runtime_negative_fixture_corpus",
+      "introducedBy": "chiodos-treaty-buyer-hero-loop/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/treaty-runtime-negative-fixture-corpus.schema.json"
+    },
+    {
+      "schema": "chio.chiodos.treaty-negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_treaty_negative_fixture_corpus",
+      "introducedBy": "chiodos-treaty-bound-provenance/v1",
+      "schemaFile": "spec/schemas/chiodos/v1/treaty-negative-fixture-corpus.schema.json"
+    },
+    {
       "schema": "chio.pheromone-deposit.v1",
       "artifactKind": "chiodos_pheromone_deposit",
       "introducedBy": "chiodos-pheromone-transit/v1",

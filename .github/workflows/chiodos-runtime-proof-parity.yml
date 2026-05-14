@@ -1,0 +1,35 @@
+name: Chiodos Runtime Proof Parity
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-kernel/**"
+      - "examples/chiodos-3vendor/**"
+      - "scripts/check-chiodos-runtime-proof-parity.sh"
+      - "scripts/check-chiodos-runtime-spine.sh"
+      - "spec/schemas/chiodos/**"
+      - "spec/schemas/registry.json"
+      - "spec/schemas/MANIFEST.sha256"
+  push:
+    branches: ["main"]
+    paths:
+      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-kernel/**"
+      - "examples/chiodos-3vendor/**"
+      - "scripts/check-chiodos-runtime-proof-parity.sh"
+      - "scripts/check-chiodos-runtime-spine.sh"
+      - "spec/schemas/chiodos/**"
+      - "spec/schemas/registry.json"
+      - "spec/schemas/MANIFEST.sha256"
+
+jobs:
+  runtime-proof-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: bash scripts/check-chiodos-runtime-proof-parity.sh

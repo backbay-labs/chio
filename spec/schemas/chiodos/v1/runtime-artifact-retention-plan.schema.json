@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime-artifact-retention-plan.schema.json",
+  "title": "Chiodos Runtime Artifact Retention Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "accepted", "generatedAtUnixMs", "retentionProfileSha256", "retainCount", "blockedCount", "quarantineCount", "expiringSoonCount", "eligibleForOperatorReviewCount", "candidateActions", "checks"],
+  "properties": {
+    "schema": { "const": "chio.chiodos.runtime-artifact-retention-plan.v1" },
+    "accepted": { "type": "boolean" },
+    "failureCode": { "$ref": "#/$defs/code" },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "retentionProfileSha256": { "$ref": "#/$defs/sha256" },
+    "retainCount": { "type": "integer", "minimum": 0 },
+    "blockedCount": { "type": "integer", "minimum": 0 },
+    "quarantineCount": { "type": "integer", "minimum": 0 },
+    "expiringSoonCount": { "type": "integer", "minimum": 0 },
+    "eligibleForOperatorReviewCount": { "type": "integer", "minimum": 0 },
+    "candidateActions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["runId", "action", "reasonCode"],
+        "properties": {
+          "runId": { "type": "string", "minLength": 1 },
+          "action": { "$ref": "#/$defs/code" },
+          "reasonCode": { "$ref": "#/$defs/code" }
+        }
+      }
+    },
+    "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "code": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "check": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$" }
+  }
+}

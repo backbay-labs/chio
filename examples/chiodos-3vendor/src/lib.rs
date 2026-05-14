@@ -35,12 +35,13 @@ use chio_core_types::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
 };
 use chio_federation::{
-    sign_chiodos_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
+    sign_chiodos_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef, DsseEnvelope,
     GovernanceReceiptRef, HashRecord, Keyid, LadderManifestRef, PolicyEvaluationSummary,
-    PolicyVerdict,
+    PolicyVerdict, PREDICATE_TYPE_CHIODOS_BILATERAL,
 };
 use chio_governance::{
-    CapabilityLeaseActionClass, GovernanceReceiptCaseKind, SignedGovernanceReceipt,
+    CapabilityLeaseActionClass, GovernanceReceiptCaseKind, SignedCapabilityLease,
+    SignedGovernanceReceipt,
 };
 use chio_selective_disclosure::{
     derive_selective_disclosure_proof, generate_bbs_keypair, project_workflow_receipt_body,
@@ -136,6 +137,19 @@ const VENDORS: [VendorFixture; 3] = [
     },
 ];
 
+#[derive(Debug, Clone)]
+pub struct RuntimeProofArtifact {
+    pub tool_receipt: ChioReceipt,
+    pub bilateral_envelope: DsseEnvelope,
+    pub workflow_step: StepRecord,
+}
+
+enum ProofPackageInput {
+    Fixture,
+    RuntimeReceipts(Vec<ChioReceipt>),
+    RuntimeArtifacts(Vec<RuntimeProofArtifact>),
+}
+
 fn canonical_sha256<T: Serialize>(value: &T) -> Result<String, ChiodosPackageError> {
     let bytes = canonical_json_bytes(value)
         .map_err(|error| ChiodosPackageError::Canonical(error.to_string()))?;
@@ -200,11 +214,6 @@ fn receipt_body(
     })
 }
 
-fn tool_receipt_step_hash(vendor: &VendorFixture) -> Result<String, ChiodosPackageError> {
-    let vendor_key = Keypair::from_seed(&vendor.seed);
-    canonical_sha256(&receipt_body(vendor, &vendor_key)?)
-}
-
 fn policy_summary(vendor: &VendorFixture) -> PolicyEvaluationSummary {
     let policy_version = "chiodos-ladder-v1".to_string();
     PolicyEvaluationSummary {
@@ -224,17 +233,27 @@ fn policy_summary(vendor: &VendorFixture) -> PolicyEvaluationSummary {
     }
 }
 
+fn action_class_for_vendor(vendor: &VendorFixture) -> CapabilityLeaseActionClass {
+    if vendor.destructive {
+        CapabilityLeaseActionClass::NarrowDestructive
+    } else {
+        CapabilityLeaseActionClass::DelegatedAction
+    }
+}
+
 fn issuance_step_request(
     vendor: &VendorFixture,
     step_index: usize,
     action_class: CapabilityLeaseActionClass,
     tool_args_hash: String,
+    step_sha256: Option<String>,
 ) -> Result<ChiodosIssuanceStepRequest, ChiodosPackageError> {
-    let step_sha256 = if vendor.destructive {
-        Some(tool_receipt_step_hash(vendor)?)
-    } else {
-        None
-    };
+    if vendor.destructive && step_sha256.is_none() {
+        return Err(ChiodosPackageError::Governance(format!(
+            "destructive vendor {} is missing step hash",
+            vendor.vendor_id
+        )));
+    }
     Ok(ChiodosIssuanceStepRequest {
         lease_id: vendor.lease_id.to_string(),
         step_index,
@@ -276,7 +295,7 @@ fn step_record(
             units: vendor.cost_units,
             currency: "USD".to_string(),
         }),
-        output_hash: Some(sha256_hex(vendor.output_label)),
+        output_hash: Some(receipt.content_hash.clone()),
         bilateral_dsse_sha256: Some(envelope_sha256.to_string()),
         governance_receipt_id,
         parent_receipt_sha256,
@@ -404,16 +423,17 @@ pub fn authority_issuance_request() -> Result<ChiodosIssuanceRequest, ChiodosPac
     for (index, vendor) in VENDORS.iter().enumerate() {
         let vendor_key = Keypair::from_seed(&vendor.seed);
         let body = receipt_body(vendor, &vendor_key)?;
-        let action_class = if vendor.destructive {
-            CapabilityLeaseActionClass::NarrowDestructive
-        } else {
-            CapabilityLeaseActionClass::DelegatedAction
-        };
+        let tool_args_hash = body.action.parameter_hash.clone();
+        let step_sha256 = vendor
+            .destructive
+            .then(|| canonical_sha256(&body))
+            .transpose()?;
         steps.push(issuance_step_request(
             vendor,
             index,
-            action_class,
-            body.action.parameter_hash,
+            action_class_for_vendor(vendor),
+            tool_args_hash,
+            step_sha256,
         )?);
     }
     Ok(issuance_request(steps))
@@ -516,17 +536,71 @@ pub fn verifier_trust_bundle() -> Result<ChiodosVerifierTrustBundle, ChiodosPack
 pub fn build_proof_package(
     selective_disclosure_proof: SelectiveDisclosureProof,
 ) -> Result<ChiodosProofPackage, ChiodosPackageError> {
-    let package = build_proof_package_unchecked(selective_disclosure_proof)?;
+    let package =
+        build_proof_package_unchecked(ProofPackageInput::Fixture, selective_disclosure_proof)?;
     ensure_disclosure_subject_matches_workflow(&package)?;
     Ok(package)
 }
 
 pub fn fresh_proof_package() -> Result<ChiodosProofPackage, ChiodosPackageError> {
     let context = verification_context();
-    let mut package = build_proof_package_unchecked(empty_disclosure_proof())?;
+    let mut package =
+        build_proof_package_unchecked(ProofPackageInput::Fixture, empty_disclosure_proof())?;
     package.selective_disclosure_proof =
         disclosure_proof_for_workflow(&package.workflow_receipt.body(), &context)?;
     Ok(package)
+}
+
+pub fn proof_package_from_runtime_receipts(
+    tool_receipts: Vec<ChioReceipt>,
+) -> Result<ChiodosProofPackage, ChiodosPackageError> {
+    let context = verification_context();
+    let mut package = build_proof_package_unchecked(
+        ProofPackageInput::RuntimeReceipts(tool_receipts),
+        empty_disclosure_proof(),
+    )?;
+    package.selective_disclosure_proof =
+        disclosure_proof_for_workflow(&package.workflow_receipt.body(), &context)?;
+    ensure_disclosure_subject_matches_workflow(&package)?;
+    Ok(package)
+}
+
+pub fn proof_package_from_runtime_artifacts(
+    runtime_artifacts: Vec<RuntimeProofArtifact>,
+) -> Result<ChiodosProofPackage, ChiodosPackageError> {
+    let context = verification_context();
+    let mut package = build_proof_package_unchecked(
+        ProofPackageInput::RuntimeArtifacts(runtime_artifacts),
+        empty_disclosure_proof(),
+    )?;
+    package.selective_disclosure_proof =
+        disclosure_proof_for_workflow(&package.workflow_receipt.body(), &context)?;
+    ensure_disclosure_subject_matches_workflow(&package)?;
+    Ok(package)
+}
+
+pub fn runtime_vendor_keypair(step_index: usize) -> Result<Keypair, ChiodosPackageError> {
+    let vendor = VENDORS.get(step_index).ok_or_else(|| {
+        ChiodosPackageError::Inconsistent(format!("unknown runtime vendor step {step_index}"))
+    })?;
+    Ok(Keypair::from_seed(&vendor.seed))
+}
+
+pub fn runtime_vendor_binding(
+    step_index: usize,
+) -> Result<(&'static str, &'static str, &'static str), ChiodosPackageError> {
+    let vendor = VENDORS.get(step_index).ok_or_else(|| {
+        ChiodosPackageError::Inconsistent(format!("unknown runtime vendor step {step_index}"))
+    })?;
+    Ok((vendor.kernel_id, vendor.server_id, vendor.tool_name))
+}
+
+pub fn fixture_proof_package() -> Result<ChiodosProofPackage, ChiodosPackageError> {
+    proof_package_from_json(include_str!("../fixtures/buyer-auditor-proof-package.json"))
+}
+
+pub fn fixture_verifier_report() -> Result<VerifierReport, ChiodosPackageError> {
+    verifier_report_from_json(include_str!("../fixtures/verifier-report.json"))
 }
 
 fn resign_workflow_receipt(package: &mut ChiodosProofPackage) -> Result<(), ChiodosPackageError> {
@@ -642,10 +716,242 @@ fn ensure_disclosure_subject_matches_workflow(
     Ok(())
 }
 
+fn validate_runtime_receipt_for_vendor(
+    receipt: &ChioReceipt,
+    vendor: &VendorFixture,
+    vendor_key: &Keypair,
+) -> Result<(), ChiodosPackageError> {
+    if receipt.tool_server.as_str() != vendor.server_id {
+        return Err(ChiodosPackageError::Inconsistent(format!(
+            "runtime receipt {} server {} does not match {}",
+            receipt.id, receipt.tool_server, vendor.server_id
+        )));
+    }
+    if receipt.tool_name.as_str() != vendor.tool_name {
+        return Err(ChiodosPackageError::Inconsistent(format!(
+            "runtime receipt {} tool {} does not match {}",
+            receipt.id, receipt.tool_name, vendor.tool_name
+        )));
+    }
+    if receipt.capability_id.as_str() != vendor.lease_id {
+        return Err(ChiodosPackageError::Inconsistent(format!(
+            "runtime receipt {} capability {} does not match {}",
+            receipt.id, receipt.capability_id, vendor.lease_id
+        )));
+    }
+    if !matches!(&receipt.decision, Decision::Allow) {
+        return Err(ChiodosPackageError::Inconsistent(format!(
+            "runtime receipt {} was not an allow receipt",
+            receipt.id
+        )));
+    }
+    let expected_public_key = vendor_key.public_key();
+    if receipt.kernel_key != expected_public_key {
+        return Err(ChiodosPackageError::Inconsistent(format!(
+            "runtime receipt {} key does not match {}",
+            receipt.id, vendor.kernel_id
+        )));
+    }
+    let verified = receipt
+        .verify_signature()
+        .map_err(|error| ChiodosPackageError::Inconsistent(error.to_string()))?;
+    if !verified {
+        return Err(ChiodosPackageError::Inconsistent(format!(
+            "runtime receipt {} signature is invalid",
+            receipt.id
+        )));
+    }
+    Ok(())
+}
+
+struct RuntimeIssuedMaterialValidation<'a> {
+    index: usize,
+    vendor: &'a VendorFixture,
+    receipt: &'a ChioReceipt,
+    envelope: &'a DsseEnvelope,
+    step: &'a StepRecord,
+    expected_parent_sha256: Option<&'a str>,
+    lease: &'a SignedCapabilityLease,
+    governance_receipt: Option<&'a SignedGovernanceReceipt>,
+}
+
+fn validate_runtime_artifact_for_issued_material(
+    validation: RuntimeIssuedMaterialValidation<'_>,
+) -> Result<(), ChiodosPackageError> {
+    let RuntimeIssuedMaterialValidation {
+        index,
+        vendor,
+        receipt,
+        envelope,
+        step,
+        expected_parent_sha256,
+        lease,
+        governance_receipt,
+    } = validation;
+
+    if step.step_index != index {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step index {} does not match position {}",
+            step.step_index, index
+        )));
+    }
+    if step.tool_receipt_id.as_deref() != Some(receipt.id.as_str()) {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step {} does not reference receipt {}",
+            index, receipt.id
+        )));
+    }
+    if step.server_id.as_str() != receipt.tool_server.as_str()
+        || step.server_id.as_str() != vendor.server_id
+    {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step {} server does not match receipt and fixture",
+            index
+        )));
+    }
+    if step.tool_name.as_str() != receipt.tool_name.as_str()
+        || step.tool_name.as_str() != vendor.tool_name
+    {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step {} tool does not match receipt and fixture",
+            index
+        )));
+    }
+    if step.output_hash.as_deref() != Some(receipt.content_hash.as_str()) {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step {} output hash does not match receipt",
+            index
+        )));
+    }
+    if step.destructive.unwrap_or(false) != vendor.destructive {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step {} destructive flag does not match fixture",
+            index
+        )));
+    }
+    let envelope_sha256 = canonical_sha256(envelope)?;
+    if step.bilateral_dsse_sha256.as_deref() != Some(envelope_sha256.as_str()) {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step {} DSSE hash does not match envelope",
+            index
+        )));
+    }
+    if step.parent_receipt_sha256.as_deref() != expected_parent_sha256 {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step {} parent hash does not match previous step",
+            index
+        )));
+    }
+
+    let (statement, _) = envelope
+        .decode_statement()
+        .map_err(|error| ChiodosPackageError::Federation(error.to_string()))?;
+    if statement.predicate_type != PREDICATE_TYPE_CHIODOS_BILATERAL {
+        return Err(ChiodosPackageError::Federation(format!(
+            "runtime step {} DSSE predicate type {} is not strict Chiodos",
+            index, statement.predicate_type
+        )));
+    }
+    let predicate = &statement.predicate;
+    if predicate.invocation_id.as_str() != receipt.id.as_str() {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step {} DSSE invocation does not match receipt",
+            index
+        )));
+    }
+    if predicate.tool_name.as_str() != receipt.tool_name.as_str() {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step {} DSSE tool does not match receipt",
+            index
+        )));
+    }
+    if predicate.tool_server_b.kernel_id.as_str() != vendor.kernel_id {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step {} DSSE peer kernel does not match fixture",
+            index
+        )));
+    }
+    if predicate
+        .tool_args_hash
+        .as_ref()
+        .map(|hash| hash.value.as_str())
+        != Some(receipt.action.parameter_hash.as_str())
+    {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step {} DSSE args hash does not match receipt",
+            index
+        )));
+    }
+    let lease_ref = predicate.capability_lease_ref.as_ref().ok_or_else(|| {
+        ChiodosPackageError::Workflow(format!("runtime step {} DSSE has no lease ref", index))
+    })?;
+    if lease_ref.lease_id.as_str() != lease.body.lease_id.as_str()
+        || lease_ref.issuer.as_str() != lease.body.issuer.as_str()
+        || lease_ref.expires_at_unix_ms != lease.body.expires_at_unix_ms
+        || lease_ref
+            .scope_digest
+            .as_ref()
+            .map(|hash| hash.value.as_str())
+            != Some(lease.body.scope_digest.as_str())
+    {
+        return Err(ChiodosPackageError::Workflow(format!(
+            "runtime step {} DSSE lease ref does not match issued lease",
+            index
+        )));
+    }
+
+    match (
+        governance_receipt,
+        predicate.governance_receipt_ref.as_ref(),
+    ) {
+        (Some(receipt), Some(predicate_ref)) => {
+            if step.governance_receipt_id.as_deref() != Some(receipt.body.receipt_id.as_str())
+                || predicate_ref.receipt_id.as_str() != receipt.body.receipt_id.as_str()
+            {
+                return Err(ChiodosPackageError::Workflow(format!(
+                    "runtime step {} governance ref does not match issued receipt",
+                    index
+                )));
+            }
+        }
+        (None, None) if step.governance_receipt_id.is_none() => {}
+        _ => {
+            return Err(ChiodosPackageError::Workflow(format!(
+                "runtime step {} governance material does not match issued receipt",
+                index
+            )));
+        }
+    }
+
+    Ok(())
+}
+
 fn build_proof_package_unchecked(
+    input: ProofPackageInput,
     selective_disclosure_proof: SelectiveDisclosureProof,
 ) -> Result<ChiodosProofPackage, ChiodosPackageError> {
     let buyer_key = Keypair::from_seed(&BUYER_SEED);
+    match &input {
+        ProofPackageInput::Fixture => {}
+        ProofPackageInput::RuntimeReceipts(receipts) => {
+            if receipts.len() != VENDORS.len() {
+                return Err(ChiodosPackageError::Inconsistent(format!(
+                    "runtime receipt count {} does not match vendor count {}",
+                    receipts.len(),
+                    VENDORS.len()
+                )));
+            }
+        }
+        ProofPackageInput::RuntimeArtifacts(artifacts) => {
+            if artifacts.len() != VENDORS.len() {
+                return Err(ChiodosPackageError::Inconsistent(format!(
+                    "runtime artifact count {} does not match vendor count {}",
+                    artifacts.len(),
+                    VENDORS.len()
+                )));
+            }
+        }
+    }
 
     let mut tool_receipts = Vec::new();
     let mut leases = Vec::new();
@@ -660,25 +966,54 @@ fn build_proof_package_unchecked(
         ladder_manifest_ref: buyer_ladder_ref(),
     }];
     let mut issuance_steps = Vec::new();
-    let mut prepared_receipts = Vec::new();
+    let mut prepared_artifacts = Vec::new();
 
     for (index, vendor) in VENDORS.iter().enumerate() {
         let vendor_key = Keypair::from_seed(&vendor.seed);
-        let receipt_body = receipt_body(vendor, &vendor_key)?;
-        let receipt = ChioReceipt::sign(receipt_body, &vendor_key)
-            .map_err(|error| ChiodosPackageError::Inconsistent(error.to_string()))?;
-        let action_class = if vendor.destructive {
-            CapabilityLeaseActionClass::NarrowDestructive
-        } else {
-            CapabilityLeaseActionClass::DelegatedAction
+        let (receipt, runtime_envelope, runtime_step) = match &input {
+            ProofPackageInput::Fixture => {
+                let receipt_body = receipt_body(vendor, &vendor_key)?;
+                let receipt = ChioReceipt::sign(receipt_body, &vendor_key)
+                    .map_err(|error| ChiodosPackageError::Inconsistent(error.to_string()))?;
+                (receipt, None, None)
+            }
+            ProofPackageInput::RuntimeReceipts(receipts) => {
+                let receipt = receipts.get(index).ok_or_else(|| {
+                    ChiodosPackageError::Inconsistent(format!(
+                        "runtime receipt for step {} is missing",
+                        index
+                    ))
+                })?;
+                validate_runtime_receipt_for_vendor(receipt, vendor, &vendor_key)?;
+                (receipt.clone(), None, None)
+            }
+            ProofPackageInput::RuntimeArtifacts(artifacts) => {
+                let artifact = artifacts.get(index).ok_or_else(|| {
+                    ChiodosPackageError::Inconsistent(format!(
+                        "runtime artifact for step {} is missing",
+                        index
+                    ))
+                })?;
+                validate_runtime_receipt_for_vendor(&artifact.tool_receipt, vendor, &vendor_key)?;
+                (
+                    artifact.tool_receipt.clone(),
+                    Some(artifact.bilateral_envelope.clone()),
+                    Some(artifact.workflow_step.clone()),
+                )
+            }
         };
+        let step_sha256 = vendor
+            .destructive
+            .then(|| canonical_sha256(&receipt.body()))
+            .transpose()?;
         issuance_steps.push(issuance_step_request(
             vendor,
             index,
-            action_class,
+            action_class_for_vendor(vendor),
             receipt.action.parameter_hash.clone(),
+            step_sha256,
         )?);
-        prepared_receipts.push((vendor, receipt));
+        prepared_artifacts.push((vendor, receipt, runtime_envelope, runtime_step));
 
         peer_bindings.push(PeerLadderBinding {
             kernel_id: vendor.kernel_id.to_string(),
@@ -714,7 +1049,9 @@ fn build_proof_package_unchecked(
         .collect::<std::collections::BTreeMap<_, _>>();
 
     let mut previous_step_sha256: Option<String> = None;
-    for (index, (vendor, receipt)) in prepared_receipts.into_iter().enumerate() {
+    for (index, (vendor, receipt, runtime_envelope, runtime_step)) in
+        prepared_artifacts.into_iter().enumerate()
+    {
         let vendor_key = Keypair::from_seed(&vendor.seed);
         let lease = leases_by_id.remove(vendor.lease_id).ok_or_else(|| {
             ChiodosPackageError::Governance(format!(
@@ -738,56 +1075,81 @@ fn build_proof_package_unchecked(
                 vendor.lease_id
             )));
         }
-        let governance_ref = if let Some(governance_receipt) = governance_receipt.as_ref() {
-            Some(GovernanceReceiptRef {
-                receipt_id: governance_receipt.body.receipt_id.clone(),
-                kernel_id: governance_receipt.body.authorizing_kernel.clone(),
-                digest: HashRecord {
-                    alg: "sha256".to_string(),
-                    value: signed_governance_digest(governance_receipt)?,
-                },
-            })
-        } else {
-            None
+        let (envelope, step) = match (runtime_envelope, runtime_step) {
+            (Some(envelope), Some(step)) => {
+                validate_runtime_artifact_for_issued_material(RuntimeIssuedMaterialValidation {
+                    index,
+                    vendor,
+                    receipt: &receipt,
+                    envelope: &envelope,
+                    step: &step,
+                    expected_parent_sha256: previous_step_sha256.as_deref(),
+                    lease: &lease,
+                    governance_receipt: governance_receipt.as_ref(),
+                })?;
+                (envelope, step)
+            }
+            (None, None) => {
+                let governance_ref = if let Some(governance_receipt) = governance_receipt.as_ref() {
+                    Some(GovernanceReceiptRef {
+                        receipt_id: governance_receipt.body.receipt_id.clone(),
+                        kernel_id: governance_receipt.body.authorizing_kernel.clone(),
+                        digest: HashRecord {
+                            alg: "sha256".to_string(),
+                            value: signed_governance_digest(governance_receipt)?,
+                        },
+                    })
+                } else {
+                    None
+                };
+                let extensions = BilateralPredicateExtensions {
+                    capability_lease_ref: Some(CapabilityLeaseRef {
+                        lease_id: lease.body.lease_id.clone(),
+                        issuer: lease.body.issuer.clone(),
+                        expires_at_unix_ms: lease.body.expires_at_unix_ms,
+                        scope_digest: Some(HashRecord {
+                            alg: "sha256".to_string(),
+                            value: lease.body.scope_digest.clone(),
+                        }),
+                    }),
+                    policy_evaluation_summary: Some(policy_summary(vendor)),
+                    governance_receipt_ref: governance_ref,
+                    consistency_anchor: Some(format!("chiodos:consistency:{WORKFLOW_ID}:{index}")),
+                    consistency_model: None,
+                    cross_org_visibility: None,
+                    treaty_binding_ref: None,
+                };
+                let envelope = sign_chiodos_dsse_envelope(
+                    &receipt,
+                    &buyer_key,
+                    &vendor_key,
+                    BUYER_KERNEL_ID,
+                    vendor.kernel_id,
+                    vendor.tool_name,
+                    GENERATED_AT_UNIX_MS,
+                    extensions,
+                )
+                .map_err(|error| ChiodosPackageError::Federation(error.to_string()))?;
+                let envelope_sha256 = canonical_sha256(&envelope)?;
+                let step = step_record(
+                    index,
+                    vendor,
+                    &receipt,
+                    &envelope_sha256,
+                    previous_step_sha256.clone(),
+                    governance_receipt
+                        .as_ref()
+                        .map(|receipt| receipt.body.receipt_id.clone()),
+                );
+                (envelope, step)
+            }
+            _ => {
+                return Err(ChiodosPackageError::Inconsistent(format!(
+                    "runtime artifact {} must include both DSSE envelope and workflow step",
+                    index
+                )));
+            }
         };
-        let extensions = BilateralPredicateExtensions {
-            capability_lease_ref: Some(CapabilityLeaseRef {
-                lease_id: lease.body.lease_id.clone(),
-                issuer: lease.body.issuer.clone(),
-                expires_at_unix_ms: lease.body.expires_at_unix_ms,
-                scope_digest: Some(HashRecord {
-                    alg: "sha256".to_string(),
-                    value: lease.body.scope_digest.clone(),
-                }),
-            }),
-            policy_evaluation_summary: Some(policy_summary(vendor)),
-            governance_receipt_ref: governance_ref,
-            consistency_anchor: Some(format!("chiodos:consistency:{WORKFLOW_ID}:{index}")),
-            consistency_model: None,
-            cross_org_visibility: None,
-        };
-        let envelope = sign_chiodos_dsse_envelope(
-            &receipt,
-            &buyer_key,
-            &vendor_key,
-            BUYER_KERNEL_ID,
-            vendor.kernel_id,
-            vendor.tool_name,
-            GENERATED_AT_UNIX_MS,
-            extensions,
-        )
-        .map_err(|error| ChiodosPackageError::Federation(error.to_string()))?;
-        let envelope_sha256 = canonical_sha256(&envelope)?;
-        let step = step_record(
-            index,
-            vendor,
-            &receipt,
-            &envelope_sha256,
-            previous_step_sha256.clone(),
-            governance_receipt
-                .as_ref()
-                .map(|receipt| receipt.body.receipt_id.clone()),
-        );
         previous_step_sha256 = Some(canonical_sha256(&step)?);
 
         tool_receipts.push(receipt);
@@ -898,6 +1260,31 @@ mod tests {
         ChiodosVerifierTrustBundle::from_document(document).expect("trust bundle parses")
     }
 
+    fn runtime_artifacts_from_package(package: &ChiodosProofPackage) -> Vec<RuntimeProofArtifact> {
+        package
+            .tool_receipts
+            .iter()
+            .cloned()
+            .zip(package.bilateral_envelopes.iter().cloned())
+            .zip(package.workflow_receipt.steps.iter().cloned())
+            .map(
+                |((tool_receipt, bilateral_envelope), workflow_step)| RuntimeProofArtifact {
+                    tool_receipt,
+                    bilateral_envelope,
+                    workflow_step,
+                },
+            )
+            .collect()
+    }
+
+    fn refresh_runtime_parent_chain(artifacts: &mut [RuntimeProofArtifact]) {
+        let mut parent = None;
+        for artifact in artifacts {
+            artifact.workflow_step.parent_receipt_sha256 = parent;
+            parent = Some(canonical_sha256(&artifact.workflow_step).expect("step hashes"));
+        }
+    }
+
     #[test]
     fn fresh_package_verifies() {
         let package = fresh_proof_package().expect("fresh package builds");
@@ -910,6 +1297,64 @@ mod tests {
             .checks
             .iter()
             .any(|check| check.code == "workflow.intersection"));
+    }
+
+    #[test]
+    fn runtime_artifact_package_uses_supplied_envelopes_and_steps() {
+        let baseline = fresh_proof_package().expect("fresh package builds");
+        let mut artifacts = runtime_artifacts_from_package(&baseline);
+        artifacts[0].bilateral_envelope.signatures.reverse();
+        let supplied_envelope_hash =
+            canonical_sha256(&artifacts[0].bilateral_envelope).expect("envelope hashes");
+        artifacts[0].workflow_step.bilateral_dsse_sha256 = Some(supplied_envelope_hash.clone());
+        artifacts[0].workflow_step.duration_ms = 77;
+        refresh_runtime_parent_chain(&mut artifacts);
+        let supplied_steps = canonical_string(
+            &artifacts
+                .iter()
+                .map(|artifact| &artifact.workflow_step)
+                .collect::<Vec<_>>(),
+        )
+        .expect("steps canonicalize");
+        let supplied_signature_order = artifacts[0].bilateral_envelope.signatures.clone();
+
+        let package = proof_package_from_runtime_artifacts(artifacts).expect("package builds");
+
+        assert_eq!(
+            package.bilateral_envelopes[0].signatures,
+            supplied_signature_order
+        );
+        assert_eq!(package.workflow_receipt.steps[0].duration_ms, 77);
+        assert_eq!(
+            package.workflow_receipt.steps[0]
+                .bilateral_dsse_sha256
+                .as_deref(),
+            Some(supplied_envelope_hash.as_str())
+        );
+        let packaged_steps =
+            canonical_string(&package.workflow_receipt.steps.iter().collect::<Vec<_>>())
+                .expect("steps canonicalize");
+        assert_eq!(packaged_steps, supplied_steps);
+
+        let trust_bundle_document =
+            verifier_trust_bundle_document_for_package(&package).expect("trust bundle builds");
+        let trust_bundle =
+            ChiodosVerifierTrustBundle::from_document(trust_bundle_document).unwrap();
+        let context = verification_context();
+        let report = verify_package(&package, &trust_bundle, &context)
+            .expect("runtime artifact package verifies");
+        assert!(report.accepted);
+    }
+
+    #[test]
+    fn runtime_artifact_package_rejects_step_dsse_hash_mismatch() {
+        let baseline = fresh_proof_package().expect("fresh package builds");
+        let mut artifacts = runtime_artifacts_from_package(&baseline);
+        artifacts[0].workflow_step.bilateral_dsse_sha256 = Some("0".repeat(64));
+
+        let error = proof_package_from_runtime_artifacts(artifacts).unwrap_err();
+
+        assert!(error.to_string().contains("DSSE hash"));
     }
 
     #[test]

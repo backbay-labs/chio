@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime-ops-status-report.schema.json",
+  "title": "Chiodos Runtime Ops Status Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "accepted", "generatedAtUnixMs", "supervisorProfileSha256", "runCounts", "activeLeaseCount", "staleLeaseCount", "consumedLeaseCount", "evidenceSinkHealthy", "providerHealthy", "ready", "degraded", "checks"],
+  "properties": {
+    "schema": { "const": "chio.chiodos.runtime-ops-status-report.v1" },
+    "accepted": { "type": "boolean" },
+    "failureCode": { "$ref": "#/$defs/code" },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "supervisorProfileSha256": { "$ref": "#/$defs/sha256" },
+    "runCounts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+    "activeLeaseCount": { "type": "integer", "minimum": 0 },
+    "staleLeaseCount": { "type": "integer", "minimum": 0 },
+    "consumedLeaseCount": { "type": "integer", "minimum": 0 },
+    "evidenceSinkHealthy": { "type": "boolean" },
+    "providerHealthy": { "type": "boolean" },
+    "ready": { "type": "boolean" },
+    "degraded": { "type": "boolean" },
+    "latestFailureCode": { "$ref": "#/$defs/code" },
+    "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "code": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "check": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$" }
+  }
+}

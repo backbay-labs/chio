@@ -808,10 +808,623 @@ enum ChiodosCommands {
         command: ChiodosAuthorityCommands,
     },
 
+    /// Evaluate local live-runtime Chiodos admission artifacts.
+    Runtime {
+        #[command(subcommand)]
+        command: ChiodosRuntimeCommands,
+    },
+
+    /// Verify treaty-bound cross-kernel Chiodos provenance artifacts.
+    Treaty {
+        #[command(subcommand)]
+        command: ChiodosTreatyCommands,
+    },
+
+    /// Package, verify, and explain buyer-facing Chiodos attestation evidence.
+    Buyer {
+        #[command(subcommand)]
+        command: ChiodosBuyerCommands,
+    },
+
     /// Receive and query local Chiodos pheromone artifacts.
     Pheromone {
         #[command(subcommand)]
         command: ChiodosPheromoneCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosBuyerCommands {
+    /// Build a buyer review package from a local runtime output directory.
+    Package {
+        /// Runtime output directory containing buyer review artifacts.
+        #[arg(long = "run-output", value_name = "DIR")]
+        run_output: PathBuf,
+
+        /// Output path for buyer attestation review package JSON.
+        #[arg(long, value_name = "PATH")]
+        out: PathBuf,
+    },
+
+    /// Verify a buyer review package against verifier-owned Chiodos inputs.
+    Verify {
+        /// Buyer attestation review package JSON.
+        #[arg(long = "package", value_name = "PATH")]
+        package: PathBuf,
+
+        /// Verifier-owned Chiodos trust bundle JSON.
+        #[arg(long = "trust-bundle", value_name = "PATH")]
+        trust_bundle: PathBuf,
+
+        /// Chiodos verifier context JSON.
+        #[arg(long, value_name = "PATH")]
+        context: PathBuf,
+
+        /// Output path for buyer attestation review report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Render a buyer review report as JSON or plain text.
+    Explain {
+        /// Buyer attestation review report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+
+        /// Explanation format.
+        #[arg(long, value_parser = ["json", "text"], default_value = "text")]
+        format: String,
+
+        /// Output path for explanation.
+        #[arg(long, value_name = "PATH")]
+        out: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosTreatyCommands {
+    /// Compute a local ladder intersection from verifier-owned treaty inputs.
+    Intersect {
+        /// Treaty scope JSON.
+        #[arg(long = "treaty-scope", value_name = "PATH")]
+        treaty_scope: PathBuf,
+
+        /// Governance ladder manifest JSON. Pass once per participant.
+        #[arg(long = "manifest", value_name = "PATH")]
+        manifest: Vec<PathBuf>,
+
+        /// Intersection generation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for ladder intersection JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Evaluate treaty-bound cross-boundary admission evidence.
+    Admit {
+        /// Treaty scope JSON.
+        #[arg(long = "treaty-scope", value_name = "PATH")]
+        treaty_scope: PathBuf,
+
+        /// Ladder intersection JSON.
+        #[arg(long = "ladder-intersection", value_name = "PATH")]
+        ladder_intersection: PathBuf,
+
+        /// Expected ladder intersection SHA-256 from verifier-owned computation.
+        #[arg(long = "expected-ladder-intersection-sha256")]
+        expected_ladder_intersection_sha256: String,
+
+        /// Action class id to admit.
+        #[arg(long = "action-class-id")]
+        action_class_id: String,
+
+        /// Verified evidence ref as evidence_class=artifact_sha256. Pass once per item.
+        #[arg(long = "evidence")]
+        evidence: Vec<String>,
+
+        /// Admission evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for cross-boundary admission report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Verify a buyer packet against receipt-lineage evidence.
+    VerifyPacket {
+        /// Buyer attestation packet JSON.
+        #[arg(long, value_name = "PATH")]
+        packet: PathBuf,
+
+        /// Receipt lineage statement JSON.
+        #[arg(long = "lineage-statement", value_name = "PATH")]
+        lineage_statement: PathBuf,
+
+        /// Cross-kernel continuation JSON.
+        #[arg(long, value_name = "PATH")]
+        continuation: PathBuf,
+
+        /// Cross-boundary admission report JSON.
+        #[arg(long = "admission-report", value_name = "PATH")]
+        admission_report: PathBuf,
+
+        /// Bilateral invocation JSON.
+        #[arg(long = "bilateral-invocation", value_name = "PATH")]
+        bilateral_invocation: PathBuf,
+
+        /// Output path for buyer attestation verification report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosRuntimeCommands {
+    /// Evaluate a runtime admission request against verifier-owned local state.
+    Admit {
+        /// Stable request binding JSON.
+        #[arg(long, value_name = "PATH")]
+        request: PathBuf,
+
+        /// Runtime admission profile JSON.
+        #[arg(long = "admission-profile", value_name = "PATH")]
+        admission_profile: PathBuf,
+
+        /// Runtime admission bundle JSON to pin into local admission state.
+        #[arg(long = "admission-bundle", value_name = "PATH")]
+        admission_bundle: PathBuf,
+
+        /// Signed strict runtime trust input JSON.
+        #[arg(long = "runtime-trust-input", value_name = "PATH")]
+        runtime_trust_input: Option<PathBuf>,
+
+        /// Caller-supplied trusted verifier keys JSON.
+        #[arg(long = "trusted-verifiers", value_name = "PATH")]
+        trusted_verifiers: Option<PathBuf>,
+
+        /// Existing pheromone query report to record as observe-only advice.
+        #[arg(long = "pheromone-query-report", value_name = "PATH")]
+        pheromone_query_report: Option<PathBuf>,
+
+        /// Signed verifier-owned runtime pheromone policy JSON.
+        #[arg(long = "runtime-pheromone-policy", value_name = "PATH")]
+        runtime_pheromone_policy: Option<PathBuf>,
+
+        /// Signed verifier-owned runtime peer weights JSON.
+        #[arg(long = "runtime-peer-weights", value_name = "PATH")]
+        runtime_peer_weights: Option<PathBuf>,
+
+        /// Durable trust-floor state path. Uses --store when omitted.
+        #[arg(long = "trust-floor-state", value_name = "PATH")]
+        trust_floor_state: Option<PathBuf>,
+
+        /// Durable local admission store JSON.
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        /// Admission evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for runtime admission report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Sign a strict runtime trust input from verifier-owned local material.
+    SignTrustInput {
+        /// Runtime trust input body JSON.
+        #[arg(long, value_name = "PATH")]
+        body: PathBuf,
+
+        /// Hex-encoded 32-byte Ed25519 signing seed file.
+        #[arg(long = "signing-seed-file", value_name = "PATH")]
+        signing_seed_file: PathBuf,
+
+        /// Output path for signed runtime trust input JSON.
+        #[arg(long, value_name = "PATH")]
+        out: PathBuf,
+    },
+
+    /// Sign verifier-owned runtime pheromone policy material.
+    Policy {
+        #[command(subcommand)]
+        command: ChiodosRuntimePolicyCommands,
+    },
+
+    /// Sign verifier-owned runtime peer weights material.
+    PeerWeights {
+        #[command(subcommand)]
+        command: ChiodosRuntimePeerWeightsCommands,
+    },
+
+    /// Evaluate runtime pheromone policy without mutating admission state.
+    Pheromone {
+        #[command(subcommand)]
+        command: ChiodosRuntimePheromoneCommands,
+    },
+
+    /// Run production local Chiodos runtime orchestration checks.
+    Orchestrate {
+        #[command(subcommand)]
+        command: ChiodosRuntimeOrchestrateCommands,
+    },
+
+    /// Run local Chiodos runtime operations supervision checks.
+    Ops {
+        #[command(subcommand)]
+        command: ChiodosRuntimeOpsCommands,
+    },
+
+    /// Generate a local loopback runtime scenario report.
+    RunLoopback {
+        /// Runtime loopback scenario JSON.
+        #[arg(long, value_name = "PATH")]
+        scenario: PathBuf,
+
+        /// Directory for local runtime stores.
+        #[arg(long = "store-dir", value_name = "PATH")]
+        store_dir: PathBuf,
+
+        /// Scenario evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output directory for generated runtime evidence.
+        #[arg(long = "out-dir", value_name = "PATH")]
+        out_dir: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosRuntimeOpsCommands {
+    /// Supervise local runtime operations and emit aggregate status.
+    Supervise {
+        #[arg(long = "supervisor-profile", value_name = "PATH")]
+        supervisor_profile: PathBuf,
+
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        #[arg(long = "evidence-root", value_name = "DIR")]
+        evidence_root: PathBuf,
+
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Run one bounded local scheduler tick.
+    Tick {
+        #[arg(long = "supervisor-profile", value_name = "PATH")]
+        supervisor_profile: PathBuf,
+
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        #[arg(long = "evidence-root", value_name = "DIR")]
+        evidence_root: PathBuf,
+
+        #[arg(long = "owner-id")]
+        owner_id: String,
+
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        #[arg(long = "max-runs")]
+        max_runs: u64,
+
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Summarize local runtime operations status.
+    Status {
+        #[arg(long = "supervisor-profile", value_name = "PATH")]
+        supervisor_profile: PathBuf,
+
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        #[arg(long = "evidence-root", value_name = "DIR")]
+        evidence_root: PathBuf,
+
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Dry-run local recovery classification for a runtime run.
+    RecoveryDrill {
+        #[arg(long = "supervisor-profile", value_name = "PATH")]
+        supervisor_profile: PathBuf,
+
+        #[arg(long = "run-id")]
+        run_id: String,
+
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        #[arg(long = "evidence-root", value_name = "DIR")]
+        evidence_root: PathBuf,
+
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Verify local runtime evidence sink health for one run.
+    EvidenceHealth {
+        #[arg(long = "supervisor-profile", value_name = "PATH")]
+        supervisor_profile: PathBuf,
+
+        #[arg(long = "run-id")]
+        run_id: String,
+
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        #[arg(long = "evidence-root", value_name = "DIR")]
+        evidence_root: PathBuf,
+
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Verify static local provider bindings.
+    ProviderHealth {
+        #[arg(long = "supervisor-profile", value_name = "PATH")]
+        supervisor_profile: PathBuf,
+
+        #[arg(long = "provider-bindings", value_name = "PATH")]
+        provider_bindings: PathBuf,
+
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Plan runtime artifact retention without mutating evidence.
+    Retention {
+        #[command(subcommand)]
+        command: ChiodosRuntimeOpsRetentionCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosRuntimeOpsRetentionCommands {
+    /// Plan dry-run runtime artifact retention.
+    Plan {
+        #[arg(long = "retention-profile", value_name = "PATH")]
+        retention_profile: PathBuf,
+
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        #[arg(long = "evidence-root", value_name = "DIR")]
+        evidence_root: PathBuf,
+
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosRuntimeOrchestrateCommands {
+    /// Validate a runtime orchestration profile.
+    Lint {
+        /// Runtime orchestration profile JSON.
+        #[arg(long, value_name = "PATH")]
+        profile: PathBuf,
+
+        /// Output path for schema-valid status report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Build a local runtime orchestration plan.
+    Plan {
+        /// Runtime orchestration profile JSON.
+        #[arg(long, value_name = "PATH")]
+        profile: PathBuf,
+
+        /// Runtime run contract JSON.
+        #[arg(long = "run-contract", value_name = "PATH")]
+        run_contract: PathBuf,
+
+        /// SQLite runtime orchestration store path.
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        /// Runtime evidence directory.
+        #[arg(long = "evidence-dir", value_name = "DIR")]
+        evidence_dir: PathBuf,
+
+        /// Plan time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for orchestration plan JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Record a local runtime orchestration run from verifier-accepted evidence.
+    Run {
+        /// Runtime orchestration profile JSON.
+        #[arg(long, value_name = "PATH")]
+        profile: PathBuf,
+
+        /// Runtime run contract JSON.
+        #[arg(long = "run-contract", value_name = "PATH")]
+        run_contract: PathBuf,
+
+        /// SQLite runtime orchestration store path.
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        /// Runtime evidence directory produced by run-loopback.
+        #[arg(long = "evidence-dir", value_name = "DIR")]
+        evidence_dir: PathBuf,
+
+        /// Run time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for orchestration run report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Build a local runtime orchestration resume plan.
+    Resume {
+        /// Runtime orchestration profile JSON.
+        #[arg(long, value_name = "PATH")]
+        profile: PathBuf,
+
+        /// Runtime orchestration resume plan input JSON.
+        #[arg(long = "resume-plan", value_name = "PATH")]
+        resume_plan: PathBuf,
+
+        /// SQLite runtime orchestration store path.
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        /// Runtime evidence directory.
+        #[arg(long = "evidence-dir", value_name = "DIR")]
+        evidence_dir: PathBuf,
+
+        /// Resume time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for resolved resume plan JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Summarize local runtime orchestration state.
+    Status {
+        /// Runtime orchestration profile JSON.
+        #[arg(long, value_name = "PATH")]
+        profile: PathBuf,
+
+        /// SQLite runtime orchestration store path.
+        #[arg(long, value_name = "PATH")]
+        store: PathBuf,
+
+        /// Runtime evidence directory.
+        #[arg(long = "evidence-dir", value_name = "DIR")]
+        evidence_dir: PathBuf,
+
+        /// Output path for status report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Compare repeated local runtime proof regeneration outputs.
+    Drift {
+        /// Runtime orchestration profile JSON.
+        #[arg(long, value_name = "PATH")]
+        profile: PathBuf,
+
+        /// Directory containing per-run runtime evidence directories.
+        #[arg(long = "runs-dir", value_name = "DIR")]
+        runs_dir: PathBuf,
+
+        /// Inclusive lower time bound in Unix milliseconds.
+        #[arg(long)]
+        since_unix_ms: u64,
+
+        /// Inclusive upper time bound in Unix milliseconds.
+        #[arg(long)]
+        until_unix_ms: u64,
+
+        /// Output path for proof drift report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosRuntimePolicyCommands {
+    /// Sign a runtime pheromone policy body.
+    Sign {
+        /// Runtime pheromone policy body JSON.
+        #[arg(long, value_name = "PATH")]
+        body: PathBuf,
+
+        /// Hex-encoded 32-byte Ed25519 signing seed file.
+        #[arg(long = "signing-seed-file", value_name = "PATH")]
+        signing_seed_file: PathBuf,
+
+        /// Output path for signed runtime pheromone policy JSON.
+        #[arg(long, value_name = "PATH")]
+        out: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosRuntimePeerWeightsCommands {
+    /// Sign a runtime peer weights body.
+    Sign {
+        /// Runtime peer weights body JSON.
+        #[arg(long, value_name = "PATH")]
+        body: PathBuf,
+
+        /// Hex-encoded 32-byte Ed25519 signing seed file.
+        #[arg(long = "signing-seed-file", value_name = "PATH")]
+        signing_seed_file: PathBuf,
+
+        /// Output path for signed runtime peer weights JSON.
+        #[arg(long, value_name = "PATH")]
+        out: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosRuntimePheromoneCommands {
+    /// Evaluate a signed runtime pheromone policy over a query report.
+    Evaluate {
+        /// Runtime admission bundle JSON for request binding.
+        #[arg(long = "admission-bundle", value_name = "PATH")]
+        admission_bundle: PathBuf,
+
+        /// Signed strict runtime trust input JSON.
+        #[arg(long = "runtime-trust-input", value_name = "PATH")]
+        runtime_trust_input: PathBuf,
+
+        /// Caller-supplied trusted verifier keys JSON.
+        #[arg(long = "trusted-verifiers", value_name = "PATH")]
+        trusted_verifiers: PathBuf,
+
+        /// Existing pheromone query report JSON.
+        #[arg(long = "pheromone-query-report", value_name = "PATH")]
+        pheromone_query_report: PathBuf,
+
+        /// Signed verifier-owned runtime pheromone policy JSON.
+        #[arg(long = "runtime-pheromone-policy", value_name = "PATH")]
+        runtime_pheromone_policy: PathBuf,
+
+        /// Signed verifier-owned runtime peer weights JSON.
+        #[arg(long = "runtime-peer-weights", value_name = "PATH")]
+        runtime_peer_weights: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for policy decision JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
     },
 }
 
