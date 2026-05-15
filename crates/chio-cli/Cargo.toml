@@ -22,8 +22,8 @@ chio-arena = { path = "../chio-arena" }
 chio-api-protect = { path = "../chio-api-protect" }
 chio-chiodos = { path = "../chio-chiodos" }
 chio-chiodos-authority = { path = "../chio-chiodos-authority" }
+chio-chiodos-loopback = { path = "../chio-chiodos-loopback" }
 chio-chiodos-runtime = { path = "../chio-chiodos-runtime" }
-chiodos-three-vendor-example = { path = "../../examples/chiodos-3vendor" }
 chio-control-plane = { path = "../chio-control-plane" }
 chio-acp-proxy = { path = "../chio-acp-proxy" }
 chio-core = { path = "../chio-core" }

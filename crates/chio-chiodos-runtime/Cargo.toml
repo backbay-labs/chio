@@ -22,7 +22,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-chiodos-three-vendor-example = { path = "../../examples/chiodos-3vendor" }
+chio-chiodos-loopback = { path = "../chio-chiodos-loopback" }
 tempfile = { workspace = true }
 
 [lints.clippy]

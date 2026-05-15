@@ -6240,6 +6240,18 @@ pub fn generate_runtime_proof_drift_report(
     let mut verifier_drifts = Vec::new();
 
     compare_semantic_field(
+        "baseline_manifest_proof_run_id",
+        &baseline_manifest.run_id,
+        &baseline_proof.run_id,
+        &mut semantic_drifts,
+    )?;
+    compare_semantic_field(
+        "candidate_manifest_proof_run_id",
+        &candidate_manifest.run_id,
+        &candidate_proof.run_id,
+        &mut semantic_drifts,
+    )?;
+    compare_semantic_field(
         "proof_package_sha256",
         &baseline_proof.proof_package_sha256,
         &candidate_proof.proof_package_sha256,
@@ -8601,8 +8613,7 @@ fn verify_continuation_evidence(
         || continuation.action_class_id != action_class_id
         || continuation.target_kernel_id != request.host_kernel_id
         || request.origin_kernel_id.as_deref() != Some(continuation.source_kernel_id.as_str())
-        || (continuation.audience_tool != audience
-            && continuation.audience_tool != request.tool_name)
+        || continuation.audience_tool != audience
         || !treaty_scope
             .participant_kernel_ids
             .iter()

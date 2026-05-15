@@ -91,7 +91,7 @@ JSON
 make_evidence_dir() {
   local dir="$1"
   local run_id="$2"
-  local proof_hash="${3:-9999999999999999999999999999999999999999999999999999999999999999}"
+  local proof_payload="${3:-runtime-proof-package-a}"
   local verifier_state="${4:-accepted}"
   mkdir -p "$dir"
   cat >"$dir/workflow-run-report.json" <<JSON
@@ -126,7 +126,7 @@ JSON
   "runId": "$run_id",
   "accepted": true,
   "generatedAtUnixMs": 1800000001000,
-  "proofPackageSha256": "$proof_hash",
+  "proofPackageSha256": "9999999999999999999999999999999999999999999999999999999999999999",
   "verifierReportSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "workflowReceiptSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "sourceRecords": [
@@ -152,24 +152,27 @@ JSON
     {
       "role": "proof_package",
       "path": "buyer-auditor-proof-package.json",
-      "sha256": "$proof_hash",
+      "sha256": "9999999999999999999999999999999999999999999999999999999999999999",
       "byteCount": 4096
     }
   ]
 }
 JSON
+  printf '{"payload":"%s"}\n' "$proof_payload" >"$dir/buyer-auditor-proof-package.json"
   cat >"$dir/verifier-report.json" <<'JSON'
 {}
 JSON
-  python3 - "$dir" "$proof_hash" "$verifier_state" <<'PY'
+  python3 - "$dir" "$verifier_state" <<'PY'
 import hashlib
 import json
 import pathlib
 import sys
 
 directory = pathlib.Path(sys.argv[1])
-proof_package_hash = sys.argv[2]
-verifier_state = sys.argv[3]
+verifier_state = sys.argv[2]
+proof_package_path = directory / "buyer-auditor-proof-package.json"
+proof_package_bytes = proof_package_path.read_bytes()
+proof_package_hash = hashlib.sha256(proof_package_bytes).hexdigest()
 
 def canonical_hash(value):
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
@@ -213,6 +216,7 @@ manifest["proofRegenerationReportSha256"] = proof_hash
 for entry in manifest["entries"]:
     if entry["role"] == "proof_package":
         entry["sha256"] = proof_package_hash
+        entry["byteCount"] = len(proof_package_bytes)
 write_json(manifest_path, manifest)
 PY
 }
@@ -298,7 +302,7 @@ run_drift_flow() {
 run_negative_flow() {
   mkdir -p "$tmpdir/negative-runs"
   make_evidence_dir "$tmpdir/negative-runs/run-a" "runtime-orchestration-a"
-  make_evidence_dir "$tmpdir/negative-runs/run-b" "runtime-orchestration-b" "8888888888888888888888888888888888888888888888888888888888888888"
+  make_evidence_dir "$tmpdir/negative-runs/run-b" "runtime-orchestration-b" "runtime-proof-package-b"
   cargo run -p chio-cli -- chiodos runtime orchestrate drift \
     --profile "$tmpdir/profile.json" \
     --runs-dir "$tmpdir/negative-runs" \
@@ -308,7 +312,69 @@ run_negative_flow() {
   grep -q '"accepted": false' "$tmpdir/negative-drift-report.json"
   grep -q '"failureCode": "runtime_proof_drift_detected"' "$tmpdir/negative-drift-report.json"
   validate_schema "$schema_dir/runtime-proof-drift-report.schema.json" "$tmpdir/negative-drift-report.json"
-  make_evidence_dir "$tmpdir/verifier-rejected-run" "runtime-orchestration-1" "9999999999999999999999999999999999999999999999999999999999999999" "rejected"
+  make_evidence_dir "$tmpdir/proof-missing-run" "runtime-orchestration-1"
+  rm "$tmpdir/proof-missing-run/buyer-auditor-proof-package.json"
+  cargo run -p chio-cli -- chiodos runtime orchestrate run \
+    --profile "$tmpdir/profile.json" \
+    --run-contract "$tmpdir/run-contract.json" \
+    --store "$tmpdir/runtime-proof-missing.sqlite3" \
+    --evidence-dir "$tmpdir/proof-missing-run" \
+    --now-unix-ms 1800000001000 \
+    --report "$tmpdir/proof-missing-run-report.json"
+  grep -q '"accepted": false' "$tmpdir/proof-missing-run-report.json"
+  grep -q '"failureCode": "runtime_orchestration_evidence_hash_mismatch"' "$tmpdir/proof-missing-run-report.json"
+  validate_schema "$schema_dir/runtime-orchestration-run-report.schema.json" "$tmpdir/proof-missing-run-report.json"
+  make_evidence_dir "$tmpdir/verifier-package-mismatch-run" "runtime-orchestration-1"
+  python3 - "$tmpdir/verifier-package-mismatch-run" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+directory = pathlib.Path(sys.argv[1])
+
+def canonical_hash(value):
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+def write_json(path, value):
+    path.write_text(json.dumps(value, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+
+verifier_path = directory / "verifier-report.json"
+verifier_report = json.loads(verifier_path.read_text(encoding="utf-8"))
+verifier_report["packageSha256"] = "0" * 64
+write_json(verifier_path, verifier_report)
+verifier_hash = canonical_hash(verifier_report)
+
+proof_path = directory / "proof-regeneration-report.json"
+proof_report = json.loads(proof_path.read_text(encoding="utf-8"))
+proof_report["verifierReportSha256"] = verifier_hash
+write_json(proof_path, proof_report)
+proof_hash = canonical_hash(proof_report)
+
+workflow_path = directory / "workflow-run-report.json"
+workflow_report = json.loads(workflow_path.read_text(encoding="utf-8"))
+workflow_report["proofRegenerationReportSha256"] = proof_hash
+write_json(workflow_path, workflow_report)
+workflow_hash = canonical_hash(workflow_report)
+
+manifest_path = directory / "runtime-evidence-manifest.json"
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+manifest["proofRegenerationReportSha256"] = proof_hash
+manifest["workflowRunReportSha256"] = workflow_hash
+write_json(manifest_path, manifest)
+PY
+  cargo run -p chio-cli -- chiodos runtime orchestrate run \
+    --profile "$tmpdir/profile.json" \
+    --run-contract "$tmpdir/run-contract.json" \
+    --store "$tmpdir/runtime-verifier-package-mismatch.sqlite3" \
+    --evidence-dir "$tmpdir/verifier-package-mismatch-run" \
+    --now-unix-ms 1800000001000 \
+    --report "$tmpdir/verifier-package-mismatch-run-report.json"
+  grep -q '"accepted": false' "$tmpdir/verifier-package-mismatch-run-report.json"
+  grep -q '"failureCode": "runtime_orchestration_evidence_hash_mismatch"' "$tmpdir/verifier-package-mismatch-run-report.json"
+  validate_schema "$schema_dir/runtime-orchestration-run-report.schema.json" "$tmpdir/verifier-package-mismatch-run-report.json"
+  make_evidence_dir "$tmpdir/verifier-rejected-run" "runtime-orchestration-1" "runtime-proof-package-a" "rejected"
   cargo run -p chio-cli -- chiodos runtime orchestrate run \
     --profile "$tmpdir/profile.json" \
     --run-contract "$tmpdir/run-contract.json" \

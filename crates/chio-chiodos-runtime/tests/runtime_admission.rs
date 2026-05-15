@@ -1684,6 +1684,43 @@ fn treaty_runtime_hook_denies_continuation_from_non_origin_source(
 }
 
 #[test]
+fn treaty_runtime_hook_denies_bare_tool_continuation_audience(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let store = SqliteRuntimeOrchestrationStore::open(dir.path().join("treaty-hook.sqlite3"))?;
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    let mut admission_bundle = bundle();
+    admission_bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    let bundle_hash = runtime_admission_bundle_sha256(&admission_bundle)?;
+    store.insert_bundle(admission_bundle)?;
+    let mut fixture = treaty_runtime_fixture()?;
+    fixture.continuation.audience_tool = "close_account".to_string();
+    fixture.continuation_sha256 = chio_core_types::crypto::sha256_hex(
+        &chio_core_types::crypto::canonical_json_bytes(&fixture.continuation)?,
+    );
+    insert_treaty_runtime_fixture(&store, &fixture)?;
+    let request = treaty_runtime_request(args, bundle_hash, treaty_runtime_context(&fixture))?;
+    let hook = allowing_policy_hook(store)?;
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+
+    assert!(!decision.allowed);
+    let metadata = decision
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert_eq!(
+        metadata["chiodos_runtime"]["failure_code"],
+        "chiodos_treaty_continuation_mismatch"
+    );
+    Ok(())
+}
+
+#[test]
 fn treaty_runtime_hook_denies_unverified_lineage_bundle_before_dispatch(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
@@ -2538,6 +2575,66 @@ fn runtime_proof_drift_report_normalizes_timestamped_report_artifacts(
             "timestampedReportArtifacts".to_string()
         ]
     );
+    Ok(())
+}
+
+#[test]
+fn runtime_proof_drift_report_rejects_manifest_proof_run_id_mismatch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let baseline_manifest = RuntimeEvidenceManifest {
+        schema: CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        run_id: "runtime-baseline".to_string(),
+        generated_at_unix_ms: 1_800_000_001_000,
+        workflow_run_report_sha256: "1".repeat(64),
+        proof_regeneration_report_sha256: "2".repeat(64),
+        entries: vec![RuntimeEvidenceManifestEntry {
+            role: "proof_package".to_string(),
+            path: "buyer-auditor-proof-package.json".to_string(),
+            sha256: "3".repeat(64),
+            byte_count: 4096,
+        }],
+    };
+    let mut candidate_manifest = baseline_manifest.clone();
+    candidate_manifest.run_id = "runtime-candidate".to_string();
+    let source = RuntimeProofSourceRecord {
+        step_index: 0,
+        admission_report_sha256: "5".repeat(64),
+        tool_receipt_sha256: "6".repeat(64),
+        bilateral_dsse_sha256: "7".repeat(64),
+        workflow_step_sha256: "8".repeat(64),
+    };
+    let proof = RuntimeProofRegenerationReport {
+        schema: CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA.to_string(),
+        run_id: "runtime-other".to_string(),
+        accepted: true,
+        failure_code: None,
+        generated_at_unix_ms: 1_800_000_001_000,
+        proof_package_sha256: Some("9".repeat(64)),
+        verifier_report_sha256: Some("a".repeat(64)),
+        workflow_receipt_sha256: Some("b".repeat(64)),
+        source_records: vec![source],
+        checks: vec!["runtime_semantic_proof_regeneration.verified".to_string()],
+    };
+    let mut candidate_proof = proof.clone();
+    candidate_proof.run_id = candidate_manifest.run_id.clone();
+
+    let report = chio_chiodos_runtime::generate_runtime_proof_drift_report(
+        &baseline_manifest,
+        &candidate_manifest,
+        &proof,
+        &candidate_proof,
+        1_800_000_002_000,
+    )?;
+
+    assert!(!report.accepted);
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_proof_drift_detected")
+    );
+    assert!(report
+        .semantic_drifts
+        .iter()
+        .any(|drift| drift.field == "baseline_manifest_proof_run_id"));
     Ok(())
 }
 
@@ -4767,12 +4864,12 @@ fn buyer_review_package_hydrates_required_artifacts_by_role(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (mut packet, mut lineage, mut continuation, mut admission, mut bilateral) =
         buyer_fixture()?;
-    let base_package = chiodos_three_vendor_example::fresh_proof_package()?;
+    let base_package = chio_chiodos_loopback::fresh_proof_package()?;
     let initial_proof_package: serde_json::Value =
-        serde_json::from_str(&chiodos_three_vendor_example::package_json(&base_package)?)?;
-    let verification_context_typed = chiodos_three_vendor_example::verification_context();
+        serde_json::from_str(&chio_chiodos_loopback::package_json(&base_package)?)?;
+    let verification_context_typed = chio_chiodos_loopback::verification_context();
     let verification_context: serde_json::Value = serde_json::from_str(
-        &chiodos_three_vendor_example::verification_context_json(&verification_context_typed)?,
+        &chio_chiodos_loopback::verification_context_json(&verification_context_typed)?,
     )?;
     let proof_step_index = 2usize;
     let receipt = &initial_proof_package["toolReceipts"][proof_step_index];
@@ -4823,7 +4920,7 @@ fn buyer_review_package_hydrates_required_artifacts_by_role(
         .to_string();
     let buyer_kernel_id = "did:chio:buyer-kernel";
     let (vendor_kernel_id, vendor_server_id, vendor_tool_name) =
-        chiodos_three_vendor_example::runtime_vendor_binding(proof_step_index)?;
+        chio_chiodos_loopback::runtime_vendor_binding(proof_step_index)?;
     packet.buyer_id = buyer_kernel_id.to_string();
     continuation.source_kernel_id = buyer_kernel_id.to_string();
     continuation.target_kernel_id = vendor_kernel_id.to_string();
@@ -4859,7 +4956,7 @@ fn buyer_review_package_hydrates_required_artifacts_by_role(
     };
     let receipt_typed = base_package.tool_receipts[proof_step_index].clone();
     let buyer_key = Keypair::from_seed(&[11; 32]);
-    let vendor_key = chiodos_three_vendor_example::runtime_vendor_keypair(proof_step_index)?;
+    let vendor_key = chio_chiodos_loopback::runtime_vendor_keypair(proof_step_index)?;
     let dsse_timestamp_unix_ms = verification_context
         .get("issuedAtUnixMs")
         .and_then(serde_json::Value::as_u64)
@@ -4941,7 +5038,7 @@ fn buyer_review_package_hydrates_required_artifacts_by_role(
         .zip(base_package.bilateral_envelopes.iter().cloned())
         .zip(base_package.workflow_receipt.steps.iter().cloned())
         .map(|((tool_receipt, bilateral_envelope), workflow_step)| {
-            chiodos_three_vendor_example::RuntimeProofArtifact {
+            chio_chiodos_loopback::RuntimeProofArtifact {
                 tool_receipt,
                 bilateral_envelope,
                 workflow_step,
@@ -4953,13 +5050,13 @@ fn buyer_review_package_hydrates_required_artifacts_by_role(
         .workflow_step
         .bilateral_dsse_sha256 = Some(bilateral_dsse_sha256);
     let typed_package =
-        chiodos_three_vendor_example::proof_package_from_runtime_artifacts(runtime_artifacts)?;
+        chio_chiodos_loopback::proof_package_from_runtime_artifacts(runtime_artifacts)?;
     let verifier_trust_bundle_document =
-        chiodos_three_vendor_example::verifier_trust_bundle_document_for_package(&typed_package)?;
+        chio_chiodos_loopback::verifier_trust_bundle_document_for_package(&typed_package)?;
     let proof_package: serde_json::Value =
-        serde_json::from_str(&chiodos_three_vendor_example::package_json(&typed_package)?)?;
+        serde_json::from_str(&chio_chiodos_loopback::package_json(&typed_package)?)?;
     let verifier_trust_bundle: serde_json::Value = serde_json::from_str(
-        &chiodos_three_vendor_example::verifier_trust_bundle_json(&verifier_trust_bundle_document)?,
+        &chio_chiodos_loopback::verifier_trust_bundle_json(&verifier_trust_bundle_document)?,
     )?;
     let typed_trust_bundle = chio_chiodos::verifier_trust_bundle_from_json(
         &serde_json::to_string(&verifier_trust_bundle)?,

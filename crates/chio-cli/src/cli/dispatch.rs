@@ -4844,6 +4844,9 @@ struct RuntimeOrchestrationEvidence {
     manifest: chio_chiodos_runtime::RuntimeEvidenceManifest,
     verifier_report_accepted: bool,
     verifier_report_failure_code: Option<String>,
+    proof_package_manifest_sha256: Option<String>,
+    proof_package_file_sha256: Option<String>,
+    verifier_report_package_sha256: Option<String>,
     workflow_report_sha256: String,
     proof_report_sha256: String,
     manifest_sha256: String,
@@ -4912,6 +4915,34 @@ fn validate_runtime_orchestration_evidence_binding(
         && evidence.proof_regeneration_report.proof_package_sha256.is_none()
     {
         return Some("runtime_orchestration_proof_package_missing".to_string());
+    }
+    if run_contract.proof_regeneration_required {
+        let Some(expected_proof_package_sha256) = evidence
+            .proof_regeneration_report
+            .proof_package_sha256
+            .as_deref()
+        else {
+            return Some("runtime_orchestration_proof_package_missing".to_string());
+        };
+        let Some(manifest_proof_package_sha256) = evidence.proof_package_manifest_sha256.as_deref()
+        else {
+            return Some("runtime_orchestration_proof_package_missing".to_string());
+        };
+        let Some(actual_proof_package_sha256) = evidence.proof_package_file_sha256.as_deref()
+        else {
+            return Some("runtime_orchestration_proof_package_missing".to_string());
+        };
+        let Some(verifier_report_package_sha256) =
+            evidence.verifier_report_package_sha256.as_deref()
+        else {
+            return Some("runtime_orchestration_proof_package_missing".to_string());
+        };
+        if manifest_proof_package_sha256 != expected_proof_package_sha256
+            || actual_proof_package_sha256 != expected_proof_package_sha256
+            || verifier_report_package_sha256 != expected_proof_package_sha256
+        {
+            return Some("runtime_orchestration_evidence_hash_mismatch".to_string());
+        }
     }
     None
 }
@@ -4992,6 +5023,10 @@ fn load_runtime_orchestration_evidence(
         .and_then(|failure| failure.get("code"))
         .and_then(serde_json::Value::as_str)
         .map(ToString::to_string);
+    let verifier_report_package_sha256 = verifier_report
+        .get("packageSha256")
+        .and_then(serde_json::Value::as_str)
+        .map(ToString::to_string);
     chio_chiodos_runtime::validate_runtime_workflow_run_report(&workflow_run_report).map_err(
         |error| CliError::cli_other_error(format!("Chiodos runtime workflow report: {error}")),
     )?;
@@ -5016,17 +5051,49 @@ fn load_runtime_orchestration_evidence(
     )?;
     let verifier_report_sha256 =
         canonical_sha256_json(&verifier_report, "Chiodos verifier report canonical hash")?;
+    let (proof_package_manifest_sha256, proof_package_file_sha256) =
+        load_runtime_orchestration_role_artifact_hashes(evidence_dir, &manifest, "proof_package")?
+            .map(|(manifest_sha256, file_sha256)| (Some(manifest_sha256), Some(file_sha256)))
+            .unwrap_or((None, None));
     Ok(RuntimeOrchestrationEvidence {
         workflow_run_report,
         proof_regeneration_report,
         manifest,
         verifier_report_accepted,
         verifier_report_failure_code,
+        proof_package_manifest_sha256,
+        proof_package_file_sha256,
+        verifier_report_package_sha256,
         workflow_report_sha256,
         proof_report_sha256,
         manifest_sha256,
         verifier_report_sha256,
     })
+}
+
+fn load_runtime_orchestration_role_artifact_hashes(
+    evidence_dir: &Path,
+    manifest: &chio_chiodos_runtime::RuntimeEvidenceManifest,
+    role: &str,
+) -> Result<Option<(String, String)>, CliError> {
+    let mut entries = manifest
+        .entries
+        .iter()
+        .filter(|entry| entry.role == role)
+        .collect::<Vec<_>>();
+    if entries.len() > 1 {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos runtime evidence manifest has duplicate {role} artifacts"
+        )));
+    }
+    let Some(entry) = entries.pop() else {
+        return Ok(None);
+    };
+    validate_runtime_relative_path(&entry.path)?;
+    let actual_sha256 = fs::read(evidence_dir.join(&entry.path))
+        .map(|bytes| chio_core::sha256_hex(&bytes))
+        .unwrap_or_else(|_| "0".repeat(64));
+    Ok(Some((entry.sha256.clone(), actual_sha256)))
 }
 
 fn sorted_child_dirs(path: &Path) -> Result<Vec<PathBuf>, CliError> {
@@ -5100,10 +5167,58 @@ fn cmd_chiodos_runtime_ops_status(
         })
         .transpose()?
         .unwrap_or(false);
+    let evidence_sink_healthy =
+        runtime_ops_status_evidence_sink_healthy(&profile, evidence_root, generated_at)?;
     let status = store
-        .ops_status_report(&profile, generated_at, evidence_root.is_dir(), provider_healthy)
+        .ops_status_report(&profile, generated_at, evidence_sink_healthy, provider_healthy)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos runtime ops status: {error}")))?;
     write_pretty_json(report, &status, "Chiodos runtime ops status report")
+}
+
+fn runtime_ops_status_evidence_sink_healthy(
+    profile: &chio_chiodos_runtime::RuntimeSupervisorProfile,
+    evidence_root: &Path,
+    now_unix_ms: u64,
+) -> Result<bool, CliError> {
+    if !evidence_root.is_dir() {
+        return Ok(false);
+    }
+    let run_dirs = sorted_child_dirs(evidence_root)?;
+    if run_dirs.is_empty() {
+        return Ok(true);
+    }
+    for run_dir in run_dirs {
+        let Some(run_id) = run_dir.file_name().and_then(|name| name.to_str()) else {
+            return Ok(false);
+        };
+        let manifest_json = match read_utf8_json_file(
+            &run_dir.join("runtime-evidence-manifest.json"),
+            "Chiodos runtime evidence manifest",
+        ) {
+            Ok(json) => json,
+            Err(_) => return Ok(false),
+        };
+        let manifest: chio_chiodos_runtime::RuntimeEvidenceManifest =
+            match serde_json::from_str(&manifest_json) {
+                Ok(manifest) => manifest,
+                Err(_) => return Ok(false),
+            };
+        let health = match chio_chiodos_runtime::generate_runtime_evidence_sink_health_report(
+            run_id,
+            &run_dir,
+            &manifest,
+            &profile.evidence_required_roles,
+            now_unix_ms,
+            true,
+        ) {
+            Ok(health) => health,
+            Err(_) => return Ok(false),
+        };
+        if !health.accepted {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn cmd_chiodos_runtime_ops_recovery_drill(
@@ -5547,7 +5662,7 @@ fn cmd_chiodos_runtime_run_loopback(
         now_unix_ms: u64,
     ) -> Result<RuntimeLoopbackExecution, CliError> {
         let (expected_kernel_id, expected_server_id, expected_tool_name) =
-            chiodos_three_vendor_example::runtime_vendor_binding(step_index).map_err(|error| {
+            chio_chiodos_loopback::runtime_vendor_binding(step_index).map_err(|error| {
                 CliError::cli_other_error(format!("Chiodos runtime loopback vendor binding: {error}"))
             })?;
         if step.request.server_id != expected_server_id || step.request.tool_name != expected_tool_name
@@ -5581,7 +5696,7 @@ fn cmd_chiodos_runtime_run_loopback(
             )));
         }
         let vendor_key =
-            chiodos_three_vendor_example::runtime_vendor_keypair(step_index).map_err(|error| {
+            chio_chiodos_loopback::runtime_vendor_keypair(step_index).map_err(|error| {
                 CliError::cli_other_error(format!("Chiodos runtime loopback vendor key: {error}"))
             })?;
         let agent_key = chio_core::Keypair::generate();
@@ -5630,7 +5745,7 @@ fn cmd_chiodos_runtime_run_loopback(
         kernel.set_receipt_store(Box::new(receipt_store));
         let peer_pin_now_unix_ms = unix_now_ms();
         if let Some(origin_kernel_id) = step.request.origin_kernel_id.as_deref() {
-            let origin_key = chiodos_three_vendor_example::runtime_buyer_keypair();
+            let origin_key = chio_chiodos_loopback::runtime_buyer_keypair();
             let now_secs = peer_pin_now_unix_ms / 1000;
             let trust = chio_federation::KernelTrustExchange::new(
                 &step.request.host_kernel_id,
@@ -5804,7 +5919,7 @@ fn cmd_chiodos_runtime_run_loopback(
         let action_class_id = format!("workflow.cross_kernel.{}", step.request.tool_name);
         let issued_at_unix_ms = 1_700_000_000_000_u64;
         let expires_at_unix_ms = 1_900_000_000_000_u64;
-        let origin_key = chiodos_three_vendor_example::runtime_buyer_keypair();
+        let origin_key = chio_chiodos_loopback::runtime_buyer_keypair();
         let manifest_hashes = vec![
             chio_core::sha256_hex(
                 format!("runtime-loopback:{source_kernel_id}:manifest").as_bytes(),
@@ -6396,9 +6511,9 @@ fn cmd_chiodos_runtime_run_loopback(
             governance_receipt,
             "Chiodos runtime buyer closure governance receipt digest",
         )?;
-        let buyer_key = chiodos_three_vendor_example::runtime_buyer_keypair();
+        let buyer_key = chio_chiodos_loopback::runtime_buyer_keypair();
         let vendor_key =
-            chiodos_three_vendor_example::runtime_vendor_keypair(step_index).map_err(|error| {
+            chio_chiodos_loopback::runtime_vendor_keypair(step_index).map_err(|error| {
                 CliError::cli_other_error(format!(
                     "Chiodos runtime buyer closure vendor key: {error}"
                 ))
@@ -6469,7 +6584,7 @@ fn cmd_chiodos_runtime_run_loopback(
             .zip(baseline_package.workflow_receipt.steps.iter().cloned())
             .map(
                 |((tool_receipt, bilateral_envelope), workflow_step)| {
-                    chiodos_three_vendor_example::RuntimeProofArtifact {
+                    chio_chiodos_loopback::RuntimeProofArtifact {
                         tool_receipt,
                         bilateral_envelope,
                         workflow_step,
@@ -6492,7 +6607,7 @@ fn cmd_chiodos_runtime_run_loopback(
                 "Chiodos runtime buyer closure workflow step hash",
             )?);
         }
-        let package = chiodos_three_vendor_example::proof_package_from_runtime_artifacts(
+        let package = chio_chiodos_loopback::proof_package_from_runtime_artifacts(
             runtime_artifacts,
         )
         .map_err(|error| {
@@ -6668,7 +6783,7 @@ fn cmd_chiodos_runtime_run_loopback(
             .collect::<Result<Vec<_>, _>>()?;
         proof_checks.push("runtime_kernel_receipts.captured".to_string());
         let baseline_package =
-            chiodos_three_vendor_example::proof_package_from_runtime_receipts(
+            chio_chiodos_loopback::proof_package_from_runtime_receipts(
                 live_tool_receipts.clone(),
             )
                 .map_err(|error| {
@@ -6737,9 +6852,9 @@ fn cmd_chiodos_runtime_run_loopback(
                     .to_string(),
             ));
         }
-        let context = chiodos_three_vendor_example::verification_context();
+        let context = chio_chiodos_loopback::verification_context();
         let trust_bundle_document =
-            chiodos_three_vendor_example::verifier_trust_bundle_document_for_package(&package)
+            chio_chiodos_loopback::verifier_trust_bundle_document_for_package(&package)
                 .map_err(|error| {
                     CliError::cli_other_error(format!(
                         "Chiodos runtime verifier trust bundle build: {error}"
@@ -7095,14 +7210,14 @@ fn cmd_chiodos_runtime_run_loopback(
             )?;
         }
 
-        let static_package = chiodos_three_vendor_example::fixture_proof_package().map_err(
+        let static_package = chio_chiodos_loopback::fixture_proof_package().map_err(
             |error| {
                 CliError::cli_other_error(format!(
                     "Chiodos static three-vendor proof package: {error}"
                 ))
             },
         )?;
-        let static_report = chiodos_three_vendor_example::fixture_verifier_report().map_err(
+        let static_report = chio_chiodos_loopback::fixture_verifier_report().map_err(
             |error| {
                 CliError::cli_other_error(format!(
                     "Chiodos static three-vendor verifier report: {error}"
@@ -7110,7 +7225,7 @@ fn cmd_chiodos_runtime_run_loopback(
             },
         )?;
         let parity_trust_bundle_document =
-            chiodos_three_vendor_example::verifier_trust_bundle_document_for_package(
+            chio_chiodos_loopback::verifier_trust_bundle_document_for_package(
                 &parity_package,
             )
             .map_err(|error| {

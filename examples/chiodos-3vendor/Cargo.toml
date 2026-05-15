@@ -16,6 +16,7 @@ name = "generate-chiodos-proof-package"
 path = "src/main.rs"
 
 [dependencies]
+chio-chiodos-loopback = { path = "../../crates/chio-chiodos-loopback" }
 chio-chiodos = { version = "0.1.0", path = "../../crates/chio-chiodos" }
 chio-chiodos-authority = { version = "0.1.0", path = "../../crates/chio-chiodos-authority" }
 chio-core-types = { version = "0.1.0", path = "../../crates/chio-core-types" }

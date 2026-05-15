@@ -190,6 +190,17 @@ run_status_flow() {
     --now-unix-ms 1800000001000 \
     --report "$tmpdir/status-report.json" >/dev/null
   validate_schema "$schema_dir/runtime-ops-status-report.schema.json" "$tmpdir/status-report.json"
+  cargo run -p chio-cli -- chiodos runtime ops status \
+    --supervisor-profile "$tmpdir/supervisor-profile.json" \
+    --store "$tmpdir/runtime.sqlite3" \
+    --evidence-root "$tmpdir/evidence-bad" \
+    --provider-bindings "$tmpdir/provider-bindings.json" \
+    --now-unix-ms 1800000001000 \
+    --report "$tmpdir/status-bad-report.json" >/dev/null
+  grep -q '"accepted": false' "$tmpdir/status-bad-report.json"
+  grep -q '"evidenceSinkHealthy": false' "$tmpdir/status-bad-report.json"
+  grep -q '"failureCode": "runtime_ops_status_degraded"' "$tmpdir/status-bad-report.json"
+  validate_schema "$schema_dir/runtime-ops-status-report.schema.json" "$tmpdir/status-bad-report.json"
 }
 
 run_recovery_flow() {
@@ -255,6 +266,16 @@ run_negative_flow() {
     --now-unix-ms 1800000001000 \
     --report "$tmpdir/evidence-health-bad.json" >/dev/null
   grep -q '"failureCode": "runtime_evidence_artifact_hash_mismatch"' "$tmpdir/evidence-health-bad.json"
+  cargo run -p chio-cli -- chiodos runtime ops status \
+    --supervisor-profile "$tmpdir/supervisor-profile.json" \
+    --store "$tmpdir/runtime.sqlite3" \
+    --evidence-root "$tmpdir/evidence-bad" \
+    --provider-bindings "$tmpdir/provider-bindings.json" \
+    --now-unix-ms 1800000001000 \
+    --report "$tmpdir/status-bad-report.json" >/dev/null
+  grep -q '"accepted": false' "$tmpdir/status-bad-report.json"
+  grep -q '"evidenceSinkHealthy": false' "$tmpdir/status-bad-report.json"
+  grep -q '"failureCode": "runtime_ops_status_degraded"' "$tmpdir/status-bad-report.json"
 }
 
 run_failure_code_flow() {
