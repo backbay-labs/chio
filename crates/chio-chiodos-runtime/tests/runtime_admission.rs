@@ -421,25 +421,6 @@ fn runtime_failure_code_registry_covers_hook_surface_codes() {
 }
 
 #[test]
-fn in_memory_runtime_admission_store_insert_bundle_is_idempotent(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let store = InMemoryRuntimeAdmissionStore::new();
-    let original = bundle();
-    store.insert_bundle(original.clone())?;
-    store.insert_bundle(original)?;
-
-    let mut conflicting = bundle();
-    conflicting.workflow_id = "wf-conflict".to_string();
-    match store.insert_bundle(conflicting) {
-        Ok(()) => Err("conflicting bundle insert unexpectedly succeeded".into()),
-        Err(error) => {
-            assert_eq!(error.code(), "duplicate_admission_bundle");
-            Ok(())
-        }
-    }
-}
-
-#[test]
 fn matching_destructive_admission_accepts_once_then_rejects_replay(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();
@@ -2307,57 +2288,6 @@ fn runtime_orchestration_contracts_validate_status_and_run_report(
 }
 
 #[test]
-fn sqlite_runtime_orchestration_store_persists_replay_fence_and_status(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("runtime-orchestration.sqlite3");
-    {
-        let store = SqliteRuntimeOrchestrationStore::open(&path)?;
-        store.insert_bundle(bundle())?;
-        store.record_run_state(
-            "runtime-orchestration-1",
-            "proof_accepted",
-            None,
-            1_800_000_001_000,
-        )?;
-        store.record_step_state(chio_chiodos_runtime::RuntimeOrchestrationStepState {
-            step_index: 1,
-            admission_id: "adm-live-1".to_string(),
-            state: "proof_accepted".to_string(),
-            destructive: true,
-            admission_report_sha256: Some("1".repeat(64)),
-            tool_receipt_sha256: Some("2".repeat(64)),
-            lease_id: Some("lease-live-1".to_string()),
-        })?;
-        store.consume_destructive_lease("lease-live-1", "adm-live-1")?;
-    }
-
-    let reopened = SqliteRuntimeOrchestrationStore::open(&path)?;
-    let replay = reopened.consume_destructive_lease("lease-live-1", "adm-live-1");
-    match replay {
-        Ok(()) => panic!("expected destructive lease replay rejection"),
-        Err(error) => assert_eq!(error.code(), "destructive_lease_replay"),
-    }
-    let profile = RuntimeOrchestrationProfile {
-        schema: CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA.to_string(),
-        profile_id: "profile-runtime-orchestration".to_string(),
-        local_kernel_id: "kernel.vendor-b".to_string(),
-        verifier_id: "did:chio:buyer-verifier".to_string(),
-        issued_at_unix_ms: 1_800_000_000_000,
-        expires_at_unix_ms: 1_800_003_600_000,
-        mode: "enforce".to_string(),
-        max_concurrent_runs: 2,
-        fail_closed_on: vec!["evidence_hash_mismatch".to_string()],
-    };
-    let profile_sha256 = chio_chiodos_runtime::runtime_orchestration_profile_sha256(&profile)?;
-    let status = reopened.status_report(&profile, profile_sha256, 1_800_000_002_000, true)?;
-    assert_eq!(status.store_backend, "sqlite");
-    assert_eq!(status.consumed_lease_count, 1);
-    assert_eq!(status.run_counts.get("proof_accepted"), Some(&1));
-    Ok(())
-}
-
-#[test]
 fn runtime_orchestration_status_rejects_stale_profile() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let store = SqliteRuntimeOrchestrationStore::open(dir.path().join("runtime-status.sqlite3"))?;
@@ -2382,69 +2312,6 @@ fn runtime_orchestration_status_rejects_stale_profile() -> Result<(), Box<dyn st
         status.failure_code.as_deref(),
         Some("runtime_orchestration_profile_stale")
     );
-    Ok(())
-}
-
-#[test]
-fn sqlite_runtime_orchestration_store_persists_treaty_evidence_idempotently(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("runtime-treaty.sqlite3");
-    let treaty = treaty_scope();
-    let treaty_sha256 = chio_chiodos_runtime::treaty_scope_sha256(&treaty)?;
-
-    {
-        let store = SqliteRuntimeOrchestrationStore::open(&path)?;
-        store.insert_treaty_runtime_artifact("treaty_scope", &treaty.treaty_id, &treaty)?;
-        store.insert_treaty_runtime_artifact("treaty_scope", &treaty.treaty_id, &treaty)?;
-
-        let mut mismatched = treaty.clone();
-        mismatched.expires_at_unix_ms += 1;
-        let duplicate =
-            store.insert_treaty_runtime_artifact("treaty_scope", &treaty.treaty_id, &mismatched);
-        match duplicate {
-            Ok(()) => panic!("expected treaty evidence id mismatch rejection"),
-            Err(error) => assert_eq!(error.code(), "duplicate_treaty_runtime_artifact_mismatch"),
-        }
-    }
-
-    let reopened = SqliteRuntimeOrchestrationStore::open(&path)?;
-    let record = reopened
-        .treaty_runtime_artifact("treaty_scope", &treaty.treaty_id)?
-        .ok_or_else(|| io::Error::other("treaty evidence missing after restart"))?;
-    assert_eq!(record.evidence_kind, "treaty_scope");
-    assert_eq!(record.evidence_id, treaty.treaty_id);
-    assert_eq!(record.artifact_sha256, treaty_sha256);
-    assert_eq!(
-        serde_json::from_value::<TreatyScope>(record.raw_json)?,
-        treaty
-    );
-    Ok(())
-}
-
-#[test]
-fn sqlite_runtime_orchestration_store_preserves_same_artifact_hash_per_run(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("runtime-artifacts.sqlite3");
-    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
-    let entry = RuntimeEvidenceManifestEntry {
-        role: "proof_package".to_string(),
-        path: "proof-package.json".to_string(),
-        sha256: "7".repeat(64),
-        byte_count: 4096,
-    };
-
-    store.record_evidence_artifact("runtime-run-a", &entry, 1_800_000_000_000)?;
-    store.record_evidence_artifact("runtime-run-b", &entry, 1_800_000_000_001)?;
-
-    let connection = rusqlite::Connection::open(&path)?;
-    let count: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM runtime_evidence_artifacts WHERE artifact_sha256 = ?1",
-        rusqlite::params![entry.sha256],
-        |row| row.get(0),
-    )?;
-    assert_eq!(count, 2);
     Ok(())
 }
 

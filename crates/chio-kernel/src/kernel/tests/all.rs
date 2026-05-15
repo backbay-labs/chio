@@ -1185,6 +1185,8 @@ struct V2DelegatedChildInput<'a> {
 fn make_v2_delegated_child(input: V2DelegatedChildInput<'_>) -> CapabilityToken {
     let parent_scope_hash = scope_hash(input.parent_scope).unwrap();
     let child_scope_hash = scope_hash(&input.child_scope).unwrap();
+    let issued_at = current_unix_timestamp();
+    let expires_at = issued_at.saturating_add(300).min(input.parent.expires_at);
     let proof = AttenuationProof {
         parent_scope_hash: parent_scope_hash.clone(),
         child_scope_hash,
@@ -1214,8 +1216,8 @@ fn make_v2_delegated_child(input: V2DelegatedChildInput<'_>) -> CapabilityToken 
                 issuer: input.kernel.config.keypair.public_key(),
                 subject: input.child_kp.public_key(),
                 scope: input.child_scope,
-                issued_at: current_unix_timestamp(),
-                expires_at: current_unix_timestamp() + 300,
+                issued_at,
+                expires_at,
                 delegation_chain: vec![link],
             },
             caveats: vec![],

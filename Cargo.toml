@@ -83,6 +83,7 @@ members = [
     "crates/chio-chiodos",
     "crates/chio-chiodos-authority",
     "crates/chio-chiodos-loopback",
+    "crates/chio-chiodos-runtime-harness",
     "crates/chio-chiodos-runtime",
     "crates/chio-pheromone",
     "crates/chio-pheromone-relay",

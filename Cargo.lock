@@ -2797,6 +2797,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-chiodos-runtime-harness"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chio-chiodos",
+ "chio-chiodos-loopback",
+ "chio-chiodos-runtime",
+ "chio-core",
+ "chio-core-types",
+ "chio-federation",
+ "chio-kernel",
+ "chio-store-sqlite",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "chio-cli"
 version = "0.1.0"
 dependencies = [
@@ -2813,6 +2832,7 @@ dependencies = [
  "chio-chiodos-authority",
  "chio-chiodos-loopback",
  "chio-chiodos-runtime",
+ "chio-chiodos-runtime-harness",
  "chio-conformance",
  "chio-control-plane",
  "chio-core",

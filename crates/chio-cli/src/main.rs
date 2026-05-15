@@ -2353,7 +2353,8 @@ mod cli_entrypoint_tests {
         let replay_now_unix_ms = 4_102_444_800_000;
         let wall_now_secs = unix_now_ms() / 1000;
 
-        let (issued_at, expires_at) = runtime_loopback_capability_window(replay_now_unix_ms);
+        let (issued_at, expires_at) =
+            chio_chiodos_runtime_harness::runtime_loopback_capability_window(replay_now_unix_ms);
 
         assert!(issued_at <= replay_now_unix_ms / 1000);
         assert!(expires_at > replay_now_unix_ms / 1000);

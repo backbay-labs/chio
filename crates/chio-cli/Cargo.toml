@@ -24,6 +24,7 @@ chio-chiodos = { path = "../chio-chiodos" }
 chio-chiodos-authority = { path = "../chio-chiodos-authority" }
 chio-chiodos-loopback = { path = "../chio-chiodos-loopback" }
 chio-chiodos-runtime = { path = "../chio-chiodos-runtime" }
+chio-chiodos-runtime-harness = { path = "../chio-chiodos-runtime-harness" }
 chio-control-plane = { path = "../chio-control-plane" }
 chio-acp-proxy = { path = "../chio-acp-proxy" }
 chio-core = { path = "../chio-core" }
