@@ -2541,11 +2541,13 @@ fn main() {
                         profile,
                         store,
                         evidence_dir,
+                        now_unix_ms,
                         report,
                     } => cmd_chiodos_runtime_orchestrate_status(
                         &profile,
                         &store,
                         &evidence_dir,
+                        now_unix_ms.unwrap_or_else(unix_now_ms),
                         &report,
                     ),
                     ChiodosRuntimeOrchestrateCommands::Drift {
@@ -2637,10 +2639,12 @@ fn main() {
                     ChiodosRuntimeOpsCommands::ProviderHealth {
                         supervisor_profile,
                         provider_bindings,
+                        now_unix_ms,
                         report,
                     } => cmd_chiodos_runtime_ops_provider_health(
                         &supervisor_profile,
                         &provider_bindings,
+                        now_unix_ms.unwrap_or_else(unix_now_ms),
                         &report,
                     ),
                     ChiodosRuntimeOpsCommands::Retention { command } => match command {
@@ -4733,6 +4737,7 @@ fn cmd_chiodos_runtime_orchestrate_status(
     profile: &Path,
     store: &Path,
     evidence_dir: &Path,
+    now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
     let profile = load_runtime_orchestration_profile(profile)?;
@@ -4749,9 +4754,9 @@ fn cmd_chiodos_runtime_orchestrate_status(
     )?;
     let report_value = store
         .status_report(
-            &profile.profile_id,
+            &profile,
             profile_sha256,
-            profile.issued_at_unix_ms,
+            now_unix_ms,
             evidence_dir.is_dir(),
         )
         .map_err(|error| {
@@ -5113,6 +5118,7 @@ fn cmd_chiodos_runtime_ops_evidence_health(
 fn cmd_chiodos_runtime_ops_provider_health(
     supervisor_profile: &Path,
     provider_bindings: &Path,
+    now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
     let profile = load_runtime_supervisor_profile(supervisor_profile)?;
@@ -5127,7 +5133,7 @@ fn cmd_chiodos_runtime_ops_provider_health(
     let health = chio_chiodos_runtime::generate_runtime_provider_health_report(
         &profile,
         &bindings,
-        profile.issued_at_unix_ms,
+        now_unix_ms,
     )
     .map_err(|error| {
         CliError::cli_other_error(format!("Chiodos runtime provider health: {error}"))
@@ -5564,12 +5570,12 @@ fn cmd_chiodos_runtime_run_loopback(
                 CliError::cli_other_error(format!(
                     "Chiodos runtime loopback receipt store open: {error}"
                 ))
-            })?;
+        })?;
         kernel.set_receipt_store(Box::new(receipt_store));
-        let live_now_unix_ms = unix_now_ms();
+        let peer_pin_now_unix_ms = unix_now_ms();
         if let Some(origin_kernel_id) = step.request.origin_kernel_id.as_deref() {
             let origin_key = chiodos_three_vendor_example::runtime_buyer_keypair();
-            let now_secs = live_now_unix_ms / 1000;
+            let now_secs = peer_pin_now_unix_ms / 1000;
             let trust = chio_federation::KernelTrustExchange::new(
                 &step.request.host_kernel_id,
                 vendor_key.clone(),
@@ -5623,7 +5629,7 @@ fn cmd_chiodos_runtime_run_loopback(
             None
         };
         let (signed_trust, trusted_keys, query_report, signed_policy, signed_weights) =
-            runtime_loopback_policy_inputs(step, live_now_unix_ms)?;
+            runtime_loopback_policy_inputs(step, now_unix_ms)?;
         kernel.set_runtime_admission_hook(std::sync::Arc::new(
             chio_chiodos_runtime::ChiodosRuntimeAdmissionHook::new(
                 step.admission_profile.clone(),
@@ -5631,7 +5637,8 @@ fn cmd_chiodos_runtime_run_loopback(
             )
             .with_runtime_trust_input(signed_trust, trusted_keys)
             .with_pheromone_query_report(query_report)
-            .with_runtime_pheromone_policy(signed_policy, signed_weights),
+            .with_runtime_pheromone_policy(signed_policy, signed_weights)
+            .with_fixed_now_unix_ms(now_unix_ms),
         ));
         kernel.register_tool_server(Box::new(RuntimeLoopbackToolServer {
             id: step.request.server_id.clone(),

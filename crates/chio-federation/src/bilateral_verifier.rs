@@ -806,6 +806,36 @@ fn validate_predicate_operational_refs_match_treaty(
     Ok(())
 }
 
+fn resolve_governance_receipt_ref(
+    store: &dyn GovernanceReceiptStore,
+    governance_ref: &GovernanceReceiptRef,
+) -> Result<ResolvedGovernanceReceipt, VerifierError> {
+    validate_hash_record(&governance_ref.digest, "governance_receipt_ref.digest")
+        .map_err(VerifierError::GovernanceReceiptRequiredMissing)?;
+    let resolved = store.resolve(&governance_ref.receipt_id).ok_or_else(|| {
+        VerifierError::GovernanceReceiptRequiredMissing(format!(
+            "receipt_id {:?} not resolvable in GovernanceReceiptStore",
+            governance_ref.receipt_id
+        ))
+    })?;
+    if resolved.kernel_id != governance_ref.kernel_id {
+        return Err(VerifierError::GovernanceReceiptRequiredMissing(format!(
+            "governance receipt kernel_id mismatch: store={:?} predicate={:?}",
+            resolved.kernel_id, governance_ref.kernel_id
+        )));
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(resolved.canonical_json.as_bytes());
+    let want = hex::encode(hasher.finalize());
+    if want != governance_ref.digest.value {
+        return Err(VerifierError::GovernanceReceiptRequiredMissing(format!(
+            "governance receipt digest mismatch: computed={} predicate={}",
+            want, governance_ref.digest.value
+        )));
+    }
+    Ok(resolved)
+}
+
 fn validate_treaty_receipt_refs_match_resolved_receipt(
     treaty: &TreatyBindingRef,
     receipt: &ChioReceipt,
@@ -1099,43 +1129,19 @@ pub fn verify_chiodos_bilateral_invocation(
             UnknownActionClassPolicy::DefaultRoutine => ActionClassKind::Routine,
         },
     };
-    let resolved_governance_receipt = match class {
+    let mut resolved_governance_receipt = match class {
         ActionClassKind::Routine => None,
         ActionClassKind::ReceiptBacked => {
-            let g = pred.governance_receipt_ref.as_ref().ok_or_else(|| {
+            let governance_ref = pred.governance_receipt_ref.as_ref().ok_or_else(|| {
                 VerifierError::GovernanceReceiptRequiredMissing(format!(
                     "tool_name {:?} is receipt-backed but predicate omits governance_receipt_ref",
                     pred.tool_name
                 ))
             })?;
-            validate_hash_record(&g.digest, "governance_receipt_ref.digest")
-                .map_err(VerifierError::GovernanceReceiptRequiredMissing)?;
-            let resolved = config
-                .base
-                .governance_receipt_store
-                .resolve(&g.receipt_id)
-                .ok_or_else(|| {
-                    VerifierError::GovernanceReceiptRequiredMissing(format!(
-                        "receipt_id {:?} not resolvable in GovernanceReceiptStore",
-                        g.receipt_id
-                    ))
-                })?;
-            if resolved.kernel_id != g.kernel_id {
-                return Err(VerifierError::GovernanceReceiptRequiredMissing(format!(
-                    "governance receipt kernel_id mismatch: store={:?} predicate={:?}",
-                    resolved.kernel_id, g.kernel_id
-                )));
-            }
-            let mut hasher = Sha256::new();
-            hasher.update(resolved.canonical_json.as_bytes());
-            let want = hex::encode(hasher.finalize());
-            if want != g.digest.value {
-                return Err(VerifierError::GovernanceReceiptRequiredMissing(format!(
-                    "governance receipt digest mismatch: computed={} predicate={}",
-                    want, g.digest.value
-                )));
-            }
-            Some(resolved)
+            Some(resolve_governance_receipt_ref(
+                config.base.governance_receipt_store,
+                governance_ref,
+            )?)
         }
     };
 
@@ -1147,6 +1153,17 @@ pub fn verify_chiodos_bilateral_invocation(
             &resolved_receipt,
             &resolved_receipt_sha256,
         )?;
+        if resolved_governance_receipt.is_none() {
+            let governance_ref = pred.governance_receipt_ref.as_ref().ok_or_else(|| {
+                VerifierError::PredicateSchemaInvalid(
+                    "strict treaty DSSE missing governance_receipt_ref".to_string(),
+                )
+            })?;
+            resolved_governance_receipt = Some(resolve_governance_receipt_ref(
+                config.base.governance_receipt_store,
+                governance_ref,
+            )?);
+        }
         if let Some(resolved_governance_receipt) = resolved_governance_receipt.as_ref() {
             if treaty.governance_refs != [resolved_governance_receipt.receipt_id.clone()] {
                 return Err(VerifierError::PredicateSchemaInvalid(
@@ -2532,6 +2549,46 @@ mod tests {
             "totally_ordered"
         );
         assert!(verified.statement.predicate.treaty_binding_ref.is_some());
+    }
+
+    #[test]
+    fn strict_chiodos_verifier_resolves_treaty_governance_refs_for_routine_class() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let now_ms = 1_734_000_000_000;
+        let governance_digest = sha256_hex(br#"{"governance":"receipt"}"#);
+        let (_slice_envelope, receipt_store, lease_registry, governance_store, oracle, mut peers) =
+            fixture(&kp_a, &kp_b, &receipt, now_ms);
+        insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
+        let envelope = sign_chiodos_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "did:chio:org-a",
+            "did:chio:org-b",
+            "file_read",
+            now_ms,
+            treaty_bound_extensions(&receipt, now_ms, governance_digest),
+        )
+        .unwrap();
+        let base = config(
+            &peers,
+            &receipt_store,
+            &lease_registry,
+            &governance_store,
+            &oracle,
+            now_ms,
+        );
+
+        let err = verify_chiodos_bilateral_invocation(
+            &envelope,
+            &StrictChiodosVerifierConfig { base: &base },
+        )
+        .unwrap_err();
+
+        assert_eq!(err.code(), "governance.receipt_required_missing");
+        assert!(err.to_string().contains("not resolvable"));
     }
 
     #[test]

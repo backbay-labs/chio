@@ -33,6 +33,7 @@ pub const EMERGENCY_STOP_DENY_REASON: &str = "kernel emergency stop active";
 pub struct RuntimeAdmissionContext<'a> {
     pub request: &'a ToolCallRequest,
     pub now_unix_secs: u64,
+    pub now_unix_ms: u64,
     pub matched_grant_index: Option<usize>,
     pub local_kernel_id: String,
 }
@@ -2631,7 +2632,8 @@ impl ChioKernel {
     /// this method should call it; until then, capability revocation is
     /// delegated to natural expiration.
     pub fn emergency_stop(&self, reason: &str) -> Result<(), KernelError> {
-        let now = current_unix_timestamp();
+        let now_unix_ms = current_unix_timestamp_ms();
+        let now = now_unix_ms / 1000;
         // Record the timestamp first so any concurrent reader that observes
         // `emergency_stopped == true` sees a non-zero `since` value.
         self.emergency_stopped_since.store(now, Ordering::SeqCst);
@@ -2949,7 +2951,8 @@ impl ChioKernel {
                 EMERGENCY_STOP_DENY_REASON.to_string(),
             ));
         }
-        let now = current_unix_timestamp();
+        let now_unix_ms = current_unix_timestamp_ms();
+        let now = now_unix_ms / 1000;
         self.verify_capability_full_pre_admit(capability, None, now)
             .map_err(KernelError::GuardDenied)?;
         self.check_revocation(capability)?;
@@ -3377,7 +3380,8 @@ impl ChioKernel {
             self.scope_receipt_tenant_id_for_request(&request.request_id, tenant_id.clone());
         let _tenant_scope = scope_receipt_tenant_id(tenant_id);
 
-        let now = current_unix_timestamp();
+        let now_unix_ms = current_unix_timestamp_ms();
+        let now = now_unix_ms / 1000;
 
         // Phase 1.4 emergency kill switch: every evaluate path checks the flag
         // before receipt negotiation, capability validation, guard evaluation,
@@ -3754,7 +3758,7 @@ impl ChioKernel {
         }
 
         let runtime_admission =
-            self.run_runtime_admission_hook(request, now, Some(matched_grant_index));
+            self.run_runtime_admission_hook(request, now, now_unix_ms, Some(matched_grant_index));
         let extra_metadata =
             merge_metadata_objects(extra_metadata.clone(), runtime_admission.metadata.clone());
         if !runtime_admission.allowed {
@@ -4018,7 +4022,8 @@ impl ChioKernel {
             self.scope_receipt_tenant_id_for_request(&request.request_id, tenant_id.clone());
         let _tenant_scope = scope_receipt_tenant_id(tenant_id);
 
-        let now = current_unix_timestamp();
+        let now_unix_ms = current_unix_timestamp_ms();
+        let now = now_unix_ms / 1000;
 
         // Phase 1.4 emergency kill switch: the nested-flow path also
         // deny-fast before receipt negotiation so sampling/elicitation-bearing
@@ -4301,7 +4306,7 @@ impl ChioKernel {
         }
 
         let runtime_admission =
-            self.run_runtime_admission_hook(request, now, Some(matched_grant_index));
+            self.run_runtime_admission_hook(request, now, now_unix_ms, Some(matched_grant_index));
         let runtime_admission_metadata = runtime_admission.metadata.clone();
         if !runtime_admission.allowed {
             let msg = runtime_admission
@@ -7149,6 +7154,7 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
         now: u64,
+        now_unix_ms: u64,
         matched_grant_index: Option<usize>,
     ) -> RuntimeAdmissionDecision {
         let Some(hook) = self.runtime_admission_hook.as_ref() else {
@@ -7173,6 +7179,7 @@ impl ChioKernel {
         let context = RuntimeAdmissionContext {
             request,
             now_unix_secs: now,
+            now_unix_ms,
             matched_grant_index,
             local_kernel_id: self.federation_local_kernel_id(),
         };
@@ -7540,6 +7547,13 @@ pub(crate) fn current_unix_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+pub(crate) fn current_unix_timestamp_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
         .unwrap_or(0)
 }
 

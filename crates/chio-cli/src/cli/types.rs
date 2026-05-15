@@ -1188,6 +1188,9 @@ enum ChiodosRuntimeOpsCommands {
         #[arg(long = "provider-bindings", value_name = "PATH")]
         provider_bindings: PathBuf,
 
+        #[arg(long)]
+        now_unix_ms: Option<u64>,
+
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },
@@ -1327,6 +1330,10 @@ enum ChiodosRuntimeOrchestrateCommands {
         /// Runtime evidence directory.
         #[arg(long = "evidence-dir", value_name = "DIR")]
         evidence_dir: PathBuf,
+
+        /// Status time in Unix milliseconds. Defaults to current wall time.
+        #[arg(long)]
+        now_unix_ms: Option<u64>,
 
         /// Output path for status report JSON.
         #[arg(long, value_name = "PATH")]

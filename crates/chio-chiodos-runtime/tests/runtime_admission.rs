@@ -11,19 +11,21 @@ use chio_chiodos_runtime::{
     CrossBoundaryEvidenceRef, CrossKernelContinuation, GovernanceLadderActionClass,
     GovernanceLadderManifest, InMemoryRuntimeAdmissionStore, ReceiptLineageBundle,
     ReceiptLineageStatement, RuntimeAdmissionBundle, RuntimeAdmissionInput,
-    RuntimeAdmissionProfile, RuntimeAdmissionStore, RuntimeEvidenceManifest,
-    RuntimeEvidenceManifestEntry, RuntimePeerWeight, RuntimePeerWeights, RuntimePheromoneAdvisory,
-    RuntimePheromonePolicy, RuntimePheromonePolicyRule, RuntimeProofParityReport,
-    RuntimeProofRegenerationInput, RuntimeProofRegenerationReport, RuntimeProofSourceRecord,
-    RuntimeProviderBinding, RuntimeProviderBindingsDocument, RuntimeRequestBinding,
-    RuntimeStepEvidence, RuntimeSupervisorProfile, RuntimeTrustedVerifierKey,
-    RuntimeVerifierTrustBundleV4, RuntimeWorkflowRunReport, SignedRuntimePheromoneQueryReport,
-    SqliteRuntimeOrchestrationStore, TreatyScope, CHIODOS_BILATERAL_INVOCATION_SCHEMA,
-    CHIODOS_BUYER_ATTESTATION_PACKET_SCHEMA, CHIODOS_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA,
+    RuntimeAdmissionProfile, RuntimeAdmissionStore, RuntimeArtifactRetentionProfile,
+    RuntimeEvidenceManifest, RuntimeEvidenceManifestEntry, RuntimeOrchestrationProfile,
+    RuntimePeerWeight, RuntimePeerWeights, RuntimePheromoneAdvisory, RuntimePheromonePolicy,
+    RuntimePheromonePolicyRule, RuntimeProofParityReport, RuntimeProofRegenerationInput,
+    RuntimeProofRegenerationReport, RuntimeProofSourceRecord, RuntimeProviderBinding,
+    RuntimeProviderBindingsDocument, RuntimeRequestBinding, RuntimeStepEvidence,
+    RuntimeSupervisorProfile, RuntimeTrustedVerifierKey, RuntimeVerifierTrustBundleV4,
+    RuntimeWorkflowRunReport, SignedRuntimePheromoneQueryReport, SqliteRuntimeOrchestrationStore,
+    TreatyScope, CHIODOS_BILATERAL_INVOCATION_SCHEMA, CHIODOS_BUYER_ATTESTATION_PACKET_SCHEMA,
+    CHIODOS_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA,
     CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA, CHIODOS_CROSS_KERNEL_CONTINUATION_SCHEMA,
     CHIODOS_GOVERNANCE_LADDER_MANIFEST_SCHEMA, CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA,
     CHIODOS_RECEIPT_LINEAGE_STATEMENT_SCHEMA, CHIODOS_RUNTIME_ADMISSION_BUNDLE_SCHEMA,
-    CHIODOS_RUNTIME_ADMISSION_PROFILE_SCHEMA, CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA,
+    CHIODOS_RUNTIME_ADMISSION_PROFILE_SCHEMA, CHIODOS_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA,
+    CHIODOS_RUNTIME_ARTIFACT_RETENTION_PROFILE_SCHEMA, CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA,
     CHIODOS_RUNTIME_FAILURE_CODES, CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA,
     CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA,
     CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA, CHIODOS_RUNTIME_PEER_WEIGHTS_SCHEMA,
@@ -1159,6 +1161,7 @@ fn kernel_hook_accepts_governed_context_reference_and_returns_receipt_metadata(
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1169,6 +1172,73 @@ fn kernel_hook_accepts_governed_context_reference_and_returns_receipt_metadata(
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
     assert_eq!(metadata["chiodos_runtime"]["admission_id"], "adm-live-1");
     assert_eq!(metadata["chiodos_runtime"]["accepted"], true);
+    Ok(())
+}
+
+#[test]
+fn kernel_hook_preserves_millisecond_admission_time() -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    let mut bundle = bundle();
+    bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    bundle.binding.origin_kernel_id = None;
+    let bundle_hash = runtime_admission_bundle_sha256(&bundle)?;
+    store.insert_bundle(bundle)?;
+
+    let cap = capability("cap-live-1")?;
+    let mut request = ToolCallRequest {
+        request_id: "req-live-destructive".to_string(),
+        capability: cap.clone(),
+        tool_name: "close_account".to_string(),
+        server_id: "vendor-ledger".to_string(),
+        agent_id: cap.subject.to_hex(),
+        arguments: args,
+        dpop_proof: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    request.governed_intent = Some(GovernedTransactionIntent {
+        id: "intent-live-1".to_string(),
+        server_id: "vendor-ledger".to_string(),
+        tool_name: "close_account".to_string(),
+        purpose: "close governed vendor account".to_string(),
+        max_amount: None,
+        commerce: None,
+        metered_billing: None,
+        runtime_attestation: None,
+        call_chain: None,
+        autonomy: None,
+        context: Some(serde_json::json!({
+            "chiodosAdmission": {
+                "admissionId": "adm-live-1",
+                "bundleSha256": bundle_hash
+            }
+        })),
+    });
+
+    let (signed_trust, trusted, advisory, signed_policy, signed_weights) =
+        signed_policy_inputs(0.10)?;
+    let mut expiring_profile = profile();
+    expiring_profile.expires_at_unix_ms = 1_800_000_001_500;
+    let hook = ChiodosRuntimeAdmissionHook::new(expiring_profile, store)
+        .with_runtime_trust_input(signed_trust, trusted)
+        .with_pheromone_query_report(advisory)
+        .with_runtime_pheromone_policy(signed_policy, signed_weights);
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_600,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+
+    assert!(!decision.allowed);
+    let metadata = decision
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert_eq!(metadata["chiodos_runtime"]["failure_code"], "stale_profile");
     Ok(())
 }
 
@@ -1206,6 +1276,7 @@ fn kernel_hook_bypasses_non_chiodos_request() -> Result<(), Box<dyn std::error::
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1262,6 +1333,7 @@ fn kernel_hook_denies_federated_runtime_request_without_treaty_context(
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1334,6 +1406,7 @@ fn kernel_hook_denies_cross_boundary_request_when_treaty_store_evidence_missing(
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1372,6 +1445,7 @@ fn treaty_runtime_hook_denies_missing_lineage_evidence_ref(
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1407,6 +1481,7 @@ fn treaty_runtime_hook_denies_request_smuggled_trust_root() -> Result<(), Box<dy
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1442,6 +1517,7 @@ fn treaty_runtime_hook_denies_request_smuggled_dynamic_trust(
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1480,6 +1556,7 @@ fn treaty_runtime_hook_denies_missing_bilateral_invocation_evidence_ref(
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1518,6 +1595,7 @@ fn treaty_runtime_hook_requires_signed_bilateral_evidence_before_verification(
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1552,6 +1630,7 @@ fn treaty_runtime_hook_denies_mismatched_continuation_hash(
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1588,6 +1667,7 @@ fn treaty_runtime_hook_denies_continuation_from_non_origin_source(
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1624,6 +1704,7 @@ fn treaty_runtime_hook_denies_unverified_lineage_bundle_before_dispatch(
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1668,6 +1749,52 @@ fn treaty_runtime_hook_denies_stale_continuation_before_dispatch(
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+
+    assert!(!decision.allowed);
+    let metadata = decision
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert_eq!(
+        metadata["chiodos_runtime"]["failure_code"],
+        "chiodos_treaty_continuation_stale"
+    );
+    Ok(())
+}
+
+#[test]
+fn treaty_runtime_hook_preserves_millisecond_time_for_continuation_staleness(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let store = SqliteRuntimeOrchestrationStore::open(dir.path().join("treaty-hook.sqlite3"))?;
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    let mut admission_bundle = bundle();
+    admission_bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    let bundle_hash = runtime_admission_bundle_sha256(&admission_bundle)?;
+    store.insert_bundle(admission_bundle)?;
+    let mut fixture = treaty_runtime_fixture()?;
+    fixture.continuation.expires_at_unix_ms = 1_800_000_001_500;
+    fixture.continuation_sha256 = chio_core_types::crypto::sha256_hex(
+        &chio_core_types::crypto::canonical_json_bytes(&fixture.continuation)?,
+    );
+    fixture.lineage_bundle.statements[0].continuation_sha256 = fixture.continuation_sha256.clone();
+    fixture.lineage_bundle_sha256 = chio_core_types::crypto::sha256_hex(
+        &chio_core_types::crypto::canonical_json_bytes(&fixture.lineage_bundle)?,
+    );
+    fixture.bilateral_invocation.continuation_sha256 = fixture.continuation_sha256.clone();
+    fixture.bilateral_invocation_sha256 = chio_core_types::crypto::sha256_hex(
+        &chio_core_types::crypto::canonical_json_bytes(&fixture.bilateral_invocation)?,
+    );
+    insert_treaty_runtime_fixture(&store, &fixture)?;
+    let request = treaty_runtime_request(args, bundle_hash, treaty_runtime_context(&fixture))?;
+    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_600,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1699,6 +1826,7 @@ fn treaty_runtime_hook_denies_replayed_continuation() -> Result<(), Box<dyn std:
     let context = RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     };
@@ -1741,6 +1869,7 @@ fn treaty_runtime_hook_releases_continuation_after_runtime_denial(
     let denied = hook.evaluate(&RuntimeAdmissionContext {
         request: &denied_request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1757,6 +1886,7 @@ fn treaty_runtime_hook_releases_continuation_after_runtime_denial(
     let allowed = hook.evaluate(&RuntimeAdmissionContext {
         request: &allowed_request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -1781,6 +1911,7 @@ fn treaty_runtime_hook_releases_reserved_state_after_kernel_abort(
     let context = RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     };
@@ -1852,6 +1983,7 @@ fn kernel_hook_uses_configured_runtime_policy_to_deny() -> Result<(), Box<dyn st
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
         local_kernel_id: "kernel.vendor-b".to_string(),
     })?;
@@ -2150,15 +2282,50 @@ fn sqlite_runtime_orchestration_store_persists_replay_fence_and_status(
         Ok(()) => panic!("expected destructive lease replay rejection"),
         Err(error) => assert_eq!(error.code(), "destructive_lease_replay"),
     }
-    let status = reopened.status_report(
-        "profile-runtime-orchestration",
-        "7".repeat(64),
-        1_800_000_002_000,
-        true,
-    )?;
+    let profile = RuntimeOrchestrationProfile {
+        schema: CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA.to_string(),
+        profile_id: "profile-runtime-orchestration".to_string(),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+        verifier_id: "did:chio:buyer-verifier".to_string(),
+        issued_at_unix_ms: 1_800_000_000_000,
+        expires_at_unix_ms: 1_800_003_600_000,
+        mode: "enforce".to_string(),
+        max_concurrent_runs: 2,
+        fail_closed_on: vec!["evidence_hash_mismatch".to_string()],
+    };
+    let profile_sha256 = chio_chiodos_runtime::runtime_orchestration_profile_sha256(&profile)?;
+    let status = reopened.status_report(&profile, profile_sha256, 1_800_000_002_000, true)?;
     assert_eq!(status.store_backend, "sqlite");
     assert_eq!(status.consumed_lease_count, 1);
     assert_eq!(status.run_counts.get("proof_accepted"), Some(&1));
+    Ok(())
+}
+
+#[test]
+fn runtime_orchestration_status_rejects_stale_profile() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let store = SqliteRuntimeOrchestrationStore::open(dir.path().join("runtime-status.sqlite3"))?;
+    let profile = RuntimeOrchestrationProfile {
+        schema: CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA.to_string(),
+        profile_id: "profile-runtime-orchestration".to_string(),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+        verifier_id: "did:chio:buyer-verifier".to_string(),
+        issued_at_unix_ms: 1_800_000_000_000,
+        expires_at_unix_ms: 1_800_000_001_000,
+        mode: "enforce".to_string(),
+        max_concurrent_runs: 2,
+        fail_closed_on: vec!["evidence_hash_mismatch".to_string()],
+    };
+    let profile_sha256 = chio_chiodos_runtime::runtime_orchestration_profile_sha256(&profile)?;
+
+    let status = store.status_report(&profile, profile_sha256, 1_800_000_001_000, true)?;
+
+    assert!(!status.accepted);
+    assert!(!status.ready);
+    assert_eq!(
+        status.failure_code.as_deref(),
+        Some("runtime_orchestration_profile_stale")
+    );
     Ok(())
 }
 
@@ -2537,6 +2704,69 @@ fn runtime_ops_provider_health_rejects_discovery_attempts() -> Result<(), Box<dy
         report.failure_code.as_deref(),
         Some("runtime_provider_discovery_not_allowed")
     );
+    Ok(())
+}
+
+#[test]
+fn runtime_ops_provider_health_rejects_stale_supervisor_profile(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let bindings = RuntimeProviderBindingsDocument {
+        schema: CHIODOS_RUNTIME_PROVIDER_BINDINGS_SCHEMA.to_string(),
+        bindings: vec![RuntimeProviderBinding {
+            provider_id: "provider-vendor-b".to_string(),
+            local_kernel_id: "kernel.vendor-b".to_string(),
+            server_id: "vendor-ledger".to_string(),
+            tool_name: "close_account".to_string(),
+            discovery_allowed: false,
+        }],
+    };
+    let mut profile = supervisor_profile();
+    profile.expires_at_unix_ms = 1_800_000_001_000;
+
+    let report = chio_chiodos_runtime::generate_runtime_provider_health_report(
+        &profile,
+        &bindings,
+        1_800_000_001_000,
+    )?;
+
+    assert!(!report.accepted);
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_provider_supervisor_profile_stale")
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_ops_retention_plan_rejects_stale_profile() -> Result<(), Box<dyn std::error::Error>> {
+    let profile = RuntimeArtifactRetentionProfile {
+        schema: CHIODOS_RUNTIME_ARTIFACT_RETENTION_PROFILE_SCHEMA.to_string(),
+        profile_id: "retention-runtime-local".to_string(),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+        issued_at_unix_ms: 1_800_000_000_000,
+        expires_at_unix_ms: 1_800_000_001_000,
+        min_retain_ms: 86_400_000,
+        destructive_hold_ms: 604_800_000,
+        legal_hold: false,
+        dry_run_only: true,
+    };
+
+    let report = chio_chiodos_runtime::generate_runtime_artifact_retention_plan(
+        &profile,
+        &["runtime-run-1".to_string()],
+        1_800_000_001_000,
+    )?;
+
+    assert_eq!(
+        report.schema,
+        CHIODOS_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA
+    );
+    assert!(!report.accepted);
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_retention_profile_stale")
+    );
+    assert!(report.candidate_actions.is_empty());
     Ok(())
 }
 
@@ -3020,6 +3250,67 @@ fn treaty_cross_boundary_admission_requires_intersection_and_evidence(
     assert!(accepted.accepted);
     assert_eq!(accepted.mode, "receipt_backed");
     assert_eq!(accepted.consistency_model, "totally_ordered");
+    Ok(())
+}
+
+#[test]
+fn treaty_cross_boundary_admission_rejects_future_ladder_intersection(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let buyer = treaty_manifest(
+        "kernel.buyer",
+        treaty_action_class(
+            "receipt_backed",
+            true,
+            "totally_ordered",
+            vec!["bilateral_invocation", "receipt_lineage"],
+        ),
+    );
+    let vendor = treaty_manifest(
+        "kernel.vendor-b",
+        treaty_action_class(
+            "receipt_backed",
+            true,
+            "totally_ordered",
+            vec!["bilateral_invocation", "receipt_lineage"],
+        ),
+    );
+    let mut treaty = treaty_scope();
+    treaty.ladder_manifest_sha256s = vec![
+        chio_chiodos_runtime::governance_ladder_manifest_sha256(&buyer)?,
+        chio_chiodos_runtime::governance_ladder_manifest_sha256(&vendor)?,
+    ];
+    let mut intersection =
+        compute_ladder_intersection(&treaty, &[buyer, vendor], 1_800_000_020_000)?;
+    intersection.generated_at_unix_ms = 1_800_000_020_000;
+    let expected_intersection_sha256 =
+        chio_chiodos_runtime::ladder_intersection_sha256(&intersection)?;
+
+    let denied = evaluate_cross_boundary_admission(CrossBoundaryAdmissionInput {
+        treaty_scope: &treaty,
+        ladder_intersection: &intersection,
+        expected_ladder_intersection_sha256: Some(expected_intersection_sha256),
+        action_class_id: "workflow.destructive.vendor_call",
+        present_evidence: vec![
+            "bilateral_invocation".to_string(),
+            "receipt_lineage".to_string(),
+        ],
+        verified_evidence: vec![
+            CrossBoundaryEvidenceRef {
+                evidence_class: "bilateral_invocation".to_string(),
+                artifact_sha256: "e".repeat(64),
+                verified: true,
+            },
+            CrossBoundaryEvidenceRef {
+                evidence_class: "receipt_lineage".to_string(),
+                artifact_sha256: "f".repeat(64),
+                verified: true,
+            },
+        ],
+        now_unix_ms: 1_800_000_010_000,
+    })?;
+
+    assert!(!denied.accepted);
+    assert_eq!(denied.failure_code.as_deref(), Some("chiodos_treaty_stale"));
     Ok(())
 }
 

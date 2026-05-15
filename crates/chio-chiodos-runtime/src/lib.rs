@@ -420,6 +420,7 @@ pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "runtime_provider_health_degraded",
     "runtime_provider_health_empty_degraded_id",
     "runtime_provider_health_invalid_bindings_hash",
+    "runtime_provider_supervisor_profile_stale",
     "runtime_recovery_accepted_blocked",
     "runtime_recovery_empty_run_id",
     "runtime_recovery_run_not_found",
@@ -437,6 +438,7 @@ pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "runtime_retention_mutation_not_allowed",
     "runtime_retention_plan_missing_failure_code",
     "runtime_retention_plan_unexpected_failure_code",
+    "runtime_retention_profile_stale",
     "runtime_run_contract_duplicate_admission_id",
     "runtime_run_contract_empty_admission_id",
     "runtime_run_contract_empty_evidence_sink",
@@ -3082,11 +3084,12 @@ impl SqliteRuntimeOrchestrationStore {
 
     pub fn status_report(
         &self,
-        profile_id: &str,
+        profile: &RuntimeOrchestrationProfile,
         profile_sha256: String,
         now_unix_ms: u64,
         evidence_sink_healthy: bool,
     ) -> Result<RuntimeOrchestrationStatusReport, ChiodosRuntimeError> {
+        validate_runtime_orchestration_profile(profile)?;
         let connection = self.lock_connection()?;
         let mut run_counts = BTreeMap::new();
         {
@@ -3113,12 +3116,20 @@ impl SqliteRuntimeOrchestrationStore {
             )
             .optional()
             .map_err(sqlite_error)?;
-        let degraded = !evidence_sink_healthy || latest_failure_code.is_some();
-        let failure_code = degraded.then(|| {
-            latest_failure_code
-                .clone()
-                .unwrap_or_else(|| "runtime_ops_status_degraded".to_string())
-        });
+        let profile_stale =
+            now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms;
+        let degraded = profile_stale || !evidence_sink_healthy || latest_failure_code.is_some();
+        let failure_code = if profile_stale {
+            Some("runtime_orchestration_profile_stale".to_string())
+        } else if degraded {
+            Some(
+                latest_failure_code
+                    .clone()
+                    .unwrap_or_else(|| "runtime_ops_status_degraded".to_string()),
+            )
+        } else {
+            None
+        };
         let report = RuntimeOrchestrationStatusReport {
             schema: CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA.to_string(),
             accepted: !degraded,
@@ -3132,7 +3143,7 @@ impl SqliteRuntimeOrchestrationStore {
             trust_floor_count,
             latest_failure_code,
             evidence_sink_healthy,
-            ready: !profile_id.trim().is_empty() && evidence_sink_healthy,
+            ready: !profile.profile_id.trim().is_empty() && !degraded,
             degraded,
         };
         validate_runtime_orchestration_status_report(&report)?;
@@ -4474,6 +4485,7 @@ pub fn evaluate_cross_boundary_admission(
         "chiodos_treaty.intersection_valid".to_string(),
     ];
     if input.now_unix_ms < input.treaty_scope.issued_at_unix_ms
+        || input.now_unix_ms < input.ladder_intersection.generated_at_unix_ms
         || input.now_unix_ms >= input.treaty_scope.expires_at_unix_ms
         || input.now_unix_ms >= input.ladder_intersection.expires_at_unix_ms
     {
@@ -6356,6 +6368,8 @@ pub fn generate_runtime_provider_health_report(
 ) -> Result<RuntimeProviderHealthReport, ChiodosRuntimeError> {
     validate_runtime_supervisor_profile(profile)?;
     validate_runtime_provider_bindings(bindings)?;
+    let profile_stale =
+        now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms;
     let mut degraded_provider_ids = Vec::new();
     for binding in &bindings.bindings {
         if binding.discovery_allowed {
@@ -6367,7 +6381,9 @@ pub fn generate_runtime_provider_health_report(
     }
     degraded_provider_ids.sort();
     degraded_provider_ids.dedup();
-    let failure_code = if bindings
+    let failure_code = if profile_stale {
+        Some("runtime_provider_supervisor_profile_stale".to_string())
+    } else if bindings
         .bindings
         .iter()
         .any(|binding| binding.discovery_allowed)
@@ -6401,6 +6417,24 @@ pub fn generate_runtime_artifact_retention_plan(
     now_unix_ms: u64,
 ) -> Result<RuntimeArtifactRetentionPlan, ChiodosRuntimeError> {
     validate_runtime_artifact_retention_profile(profile)?;
+    if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
+        let report = RuntimeArtifactRetentionPlan {
+            schema: CHIODOS_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA.to_string(),
+            accepted: false,
+            failure_code: Some("runtime_retention_profile_stale".to_string()),
+            generated_at_unix_ms: now_unix_ms,
+            retention_profile_sha256: canonical_sha256(profile)?,
+            retain_count: 0,
+            blocked_count: 0,
+            quarantine_count: 0,
+            expiring_soon_count: 0,
+            eligible_for_operator_review_count: 0,
+            candidate_actions: Vec::new(),
+            checks: vec!["runtime_ops.retention_profile_window".to_string()],
+        };
+        validate_runtime_artifact_retention_plan(&report)?;
+        return Ok(report);
+    }
     let mut candidate_actions = Vec::new();
     for run_id in run_ids {
         validate_non_empty(run_id, "runtime_retention_empty_run_id")?;
@@ -7708,6 +7742,7 @@ pub struct ChiodosRuntimeAdmissionHook<S> {
     pheromone_query_report: Option<SignedRuntimePheromoneQueryReport>,
     runtime_pheromone_policy: Option<SignedRuntimePheromonePolicy>,
     runtime_peer_weights: Option<SignedRuntimePeerWeights>,
+    fixed_now_unix_ms: Option<u64>,
 }
 
 impl<S> ChiodosRuntimeAdmissionHook<S> {
@@ -7721,6 +7756,7 @@ impl<S> ChiodosRuntimeAdmissionHook<S> {
             pheromone_query_report: None,
             runtime_pheromone_policy: None,
             runtime_peer_weights: None,
+            fixed_now_unix_ms: None,
         }
     }
 
@@ -7752,6 +7788,12 @@ impl<S> ChiodosRuntimeAdmissionHook<S> {
     ) -> Self {
         self.runtime_pheromone_policy = Some(policy);
         self.runtime_peer_weights = Some(peer_weights);
+        self
+    }
+
+    #[must_use]
+    pub fn with_fixed_now_unix_ms(mut self, now_unix_ms: u64) -> Self {
+        self.fixed_now_unix_ms = Some(now_unix_ms);
         self
     }
 }
@@ -7828,13 +7870,14 @@ where
                 Err(error) => return Err(KernelError::Internal(error.to_string())),
             }
         }
+        let admission_now_unix_ms = self.fixed_now_unix_ms.unwrap_or(context.now_unix_ms);
         let mut treaty_continuation_id_to_consume = None;
         match treaty_ref_from_request(context.request) {
             Ok(Some(treaty_ref)) => match verify_treaty_reference_from_store(
                 &self.store,
                 &admission_ref.admission_id,
                 &treaty_ref,
-                context.now_unix_secs.saturating_mul(1000),
+                admission_now_unix_ms,
             ) {
                 Ok(continuation_id) => {
                     treaty_continuation_id_to_consume = continuation_id;
@@ -7911,7 +7954,7 @@ where
             pheromone_query_report: self.pheromone_query_report.as_ref(),
             runtime_pheromone_policy: self.runtime_pheromone_policy.as_ref(),
             runtime_peer_weights: self.runtime_peer_weights.as_ref(),
-            now_unix_ms: context.now_unix_secs.saturating_mul(1000),
+            now_unix_ms: admission_now_unix_ms,
         }) {
             Ok(report) => report,
             Err(error) => {
