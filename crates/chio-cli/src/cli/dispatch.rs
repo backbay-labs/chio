@@ -5730,7 +5730,7 @@ fn cmd_chiodos_runtime_run_loopback(
         step_index: usize,
         step: &RuntimeLoopbackStep,
         vendor_key: &chio_core::Keypair,
-        _arguments: &serde_json::Value,
+        arguments: &serde_json::Value,
     ) -> Result<RuntimeLoopbackTreatyContext, CliError> {
         let source_kernel_id = step.request.origin_kernel_id.clone().ok_or_else(|| {
             CliError::cli_other_error(
@@ -5773,6 +5773,16 @@ fn cmd_chiodos_runtime_run_loopback(
         let mut participant_modes = std::collections::BTreeMap::new();
         participant_modes.insert(source_kernel_id.clone(), "receipt_backed".to_string());
         participant_modes.insert(target_kernel_id.clone(), "receipt_backed".to_string());
+        let requires_bilateral = step.admission_bundle.destructive
+            || step.admission_bundle.governance_receipt_id.is_some();
+        let evidence_required = if requires_bilateral {
+            vec![
+                "receipt_lineage".to_string(),
+                "bilateral_invocation".to_string(),
+            ]
+        } else {
+            vec!["receipt_lineage".to_string()]
+        };
         let ladder_intersection = chio_chiodos_runtime::LadderIntersection {
             schema: chio_chiodos_runtime::CHIODOS_LADDER_INTERSECTION_SCHEMA.to_string(),
             intersection_id: format!("intersection:runtime-loopback:{step_index}"),
@@ -5786,11 +5796,12 @@ fn cmd_chiodos_runtime_run_loopback(
                 mode: "receipt_backed".to_string(),
                 destructive: step.admission_bundle.destructive,
                 consistency_model: "totally_ordered".to_string(),
-                co_sign: "bilateral_required".to_string(),
-                evidence_required: vec![
-                    "receipt_lineage".to_string(),
-                    "bilateral_invocation".to_string(),
-                ],
+                co_sign: if requires_bilateral {
+                    "bilateral_required".to_string()
+                } else {
+                    "none".to_string()
+                },
+                evidence_required,
                 participant_modes,
             }],
         };
@@ -5805,9 +5816,45 @@ fn cmd_chiodos_runtime_run_loopback(
         let parent_receipt_sha256 = chio_core::sha256_hex(
             format!("runtime-loopback:{step_index}:parent-receipt").as_bytes(),
         );
-        let child_receipt_sha256 = chio_core::sha256_hex(
-            format!("runtime-loopback:{step_index}:child-receipt").as_bytes(),
+        let outcome_sha256 = chio_core::sha256_hex(
+            format!("runtime-loopback:{step_index}:pre-dispatch-outcome").as_bytes(),
         );
+        let action =
+            chio_core::receipt::ToolCallAction::from_parameters(arguments.clone()).map_err(
+                |error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime loopback receipt action hash: {error}"
+                    ))
+                },
+            )?;
+        let proof_receipt = chio_core::receipt::ChioReceipt::sign(
+            chio_core::receipt::ChioReceiptBody {
+                id: format!("runtime-loopback-receipt:{step_index}"),
+                timestamp: issued_at_unix_ms / 1000,
+                capability_id: step.request.capability_id.clone(),
+                tool_server: step.request.server_id.clone(),
+                tool_name: step.request.tool_name.clone(),
+                action,
+                decision: chio_core::receipt::Decision::Allow,
+                content_hash: outcome_sha256.clone(),
+                policy_hash: chio_core::sha256_hex(
+                    format!("runtime-loopback:{step_index}:policy").as_bytes(),
+                ),
+                evidence: Vec::new(),
+                metadata: None,
+                trust_level: chio_core::receipt::TrustLevel::Mediated,
+                tenant_id: None,
+                kernel_key: vendor_key.public_key(),
+            },
+            vendor_key,
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime loopback receipt signing: {error}"))
+        })?;
+        let child_receipt_sha256 = canonical_sha256_json(
+            &proof_receipt,
+            "Chiodos runtime loopback receipt canonical hash",
+        )?;
         let continuation = chio_chiodos_runtime::CrossKernelContinuation {
             schema: chio_chiodos_runtime::CHIODOS_CROSS_KERNEL_CONTINUATION_SCHEMA.to_string(),
             continuation_id: format!("continuation:runtime-loopback:{step_index}"),
@@ -5826,9 +5873,6 @@ fn cmd_chiodos_runtime_run_loopback(
         };
         let continuation_sha256 =
             canonical_sha256_json(&continuation, "Chiodos runtime loopback continuation hash")?;
-        let outcome_sha256 = chio_core::sha256_hex(
-            format!("runtime-loopback:{step_index}:pre-dispatch-outcome").as_bytes(),
-        );
         let mut bilateral_invocation = chio_chiodos_runtime::BilateralInvocation {
             schema: chio_chiodos_runtime::CHIODOS_BILATERAL_INVOCATION_SCHEMA.to_string(),
             invocation_id: format!("bilateral:runtime-loopback:{step_index}"),
@@ -5881,6 +5925,96 @@ fn cmd_chiodos_runtime_run_loopback(
         };
         let lineage_bundle_sha256 =
             canonical_sha256_json(&lineage_bundle, "Chiodos runtime loopback lineage bundle hash")?;
+        let bilateral_dsse = if requires_bilateral {
+            let lease_id = step.admission_bundle.lease_id.clone().ok_or_else(|| {
+                CliError::cli_other_error(
+                    "Chiodos runtime loopback treaty context requires a lease id".to_string(),
+                )
+            })?;
+            let governance_receipt_id =
+                step.admission_bundle
+                    .governance_receipt_id
+                    .clone()
+                    .ok_or_else(|| {
+                        CliError::cli_other_error(
+                            "Chiodos runtime loopback treaty context requires a governance receipt id"
+                                .to_string(),
+                        )
+                    })?;
+            let admission_report_sha256 = chio_core::sha256_hex(
+                format!(
+                    "runtime-loopback:{step_index}:{}:admission-report",
+                    step.admission_bundle.admission_id
+                )
+                .as_bytes(),
+            );
+            let envelope = chio_federation::sign_chiodos_dsse_envelope(
+                &proof_receipt,
+                &origin_key,
+                vendor_key,
+                &source_kernel_id,
+                &target_kernel_id,
+                &step.request.tool_name,
+                issued_at_unix_ms,
+                chio_federation::BilateralPredicateExtensions {
+                    capability_lease_ref: Some(chio_federation::CapabilityLeaseRef {
+                        lease_id: lease_id.clone(),
+                        issuer: source_kernel_id.clone(),
+                        expires_at_unix_ms,
+                        scope_digest: Some(chio_federation::HashRecord {
+                            alg: "sha256".to_string(),
+                            value: chio_core::sha256_hex(
+                                format!("runtime-loopback:{step_index}:lease-scope").as_bytes(),
+                            ),
+                        }),
+                    }),
+                    policy_evaluation_summary: Some(runtime_loopback_policy_summary(step)),
+                    governance_receipt_ref: Some(chio_federation::GovernanceReceiptRef {
+                        receipt_id: governance_receipt_id.clone(),
+                        kernel_id: source_kernel_id.clone(),
+                        digest: chio_federation::HashRecord {
+                            alg: "sha256".to_string(),
+                            value: chio_core::sha256_hex(
+                                format!("runtime-loopback:{step_index}:governance").as_bytes(),
+                            ),
+                        },
+                    }),
+                    consistency_anchor: Some(format!("chiodos:runtime-loopback:{step_index}")),
+                    consistency_model: Some("totally_ordered".to_string()),
+                    cross_org_visibility: None,
+                    treaty_binding_ref: Some(chio_federation::TreatyBindingRef {
+                        treaty_id: treaty_scope.treaty_id.clone(),
+                        treaty_scope_sha256: treaty_scope_sha256.clone(),
+                        ladder_intersection_sha256: ladder_intersection_sha256.clone(),
+                        admission_report_sha256,
+                        continuation_sha256: continuation_sha256.clone(),
+                        lineage_bundle_sha256: lineage_bundle_sha256.clone(),
+                        action_class_id: action_class_id.clone(),
+                        consistency_model: "totally_ordered".to_string(),
+                        request_sha256: bilateral_invocation.request_sha256.clone(),
+                        outcome_sha256: bilateral_invocation.outcome_sha256.clone(),
+                        local_receipt_sha256: bilateral_invocation.local_receipt_sha256.clone(),
+                        remote_receipt_sha256: bilateral_invocation.remote_receipt_sha256.clone(),
+                        lease_refs: vec![lease_id],
+                        governance_refs: vec![governance_receipt_id],
+                        signer_kernel_ids: bilateral_invocation.signer_kernel_ids.clone(),
+                    }),
+                },
+            )
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback bilateral DSSE signing: {error}"
+                ))
+            })?;
+            let envelope_id = format!("bilateral-dsse:runtime-loopback:{step_index}");
+            let envelope_sha256 = canonical_sha256_json(
+                &envelope,
+                "Chiodos runtime loopback bilateral DSSE hash",
+            )?;
+            Some((envelope_id, envelope_sha256, envelope))
+        } else {
+            None
+        };
         hook_store
             .insert_treaty_runtime_artifact("treaty_scope", &treaty_scope.treaty_id, &treaty_scope)
             .map_err(|error| {
@@ -5921,19 +6055,30 @@ fn cmd_chiodos_runtime_run_loopback(
                     "Chiodos runtime loopback lineage bundle store: {error}"
                 ))
             })?;
-        hook_store
-            .insert_treaty_runtime_artifact(
-                "bilateral_invocation",
-                &bilateral_invocation.invocation_id,
-                &bilateral_invocation,
-            )
-            .map_err(|error| {
-                CliError::cli_other_error(format!(
-                    "Chiodos runtime loopback bilateral invocation store: {error}"
-                ))
-            })?;
+        if requires_bilateral {
+            hook_store
+                .insert_treaty_runtime_artifact(
+                    "bilateral_invocation",
+                    &bilateral_invocation.invocation_id,
+                    &bilateral_invocation,
+                )
+                .map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime loopback bilateral invocation store: {error}"
+                    ))
+                })?;
+        }
+        if let Some((envelope_id, _envelope_sha256, envelope)) = bilateral_dsse.as_ref() {
+            hook_store
+                .insert_treaty_runtime_artifact("bilateral_dsse_envelope", envelope_id, envelope)
+                .map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime loopback bilateral DSSE store: {error}"
+                    ))
+                })?;
+        }
 
-        let intent_context = serde_json::json!({
+        let mut intent_context = serde_json::json!({
             "treatyScopeId": treaty_scope.treaty_id,
             "treatyScopeSha256": treaty_scope_sha256,
             "ladderIntersectionId": ladder_intersection.intersection_id,
@@ -5946,12 +6091,31 @@ fn cmd_chiodos_runtime_run_loopback(
             "receiptLineageBundle": {
                 "id": lineage_bundle.bundle_id,
                 "sha256": lineage_bundle_sha256
-            },
-            "bilateralInvocation": {
-                "id": bilateral_invocation.invocation_id,
-                "sha256": bilateral_invocation_sha256
             }
         });
+        if requires_bilateral {
+            let object = intent_context.as_object_mut().ok_or_else(|| {
+                CliError::cli_other_error(
+                    "Chiodos runtime loopback treaty context must be an object".to_string(),
+                )
+            })?;
+            object.insert(
+                "bilateralInvocation".to_string(),
+                serde_json::json!({
+                    "id": bilateral_invocation.invocation_id,
+                    "sha256": bilateral_invocation_sha256
+                }),
+            );
+            if let Some((envelope_id, envelope_sha256, _envelope)) = bilateral_dsse {
+                object.insert(
+                    "bilateralDsse".to_string(),
+                    serde_json::json!({
+                        "id": envelope_id,
+                        "sha256": envelope_sha256
+                    }),
+                );
+            }
+        }
         Ok(RuntimeLoopbackTreatyContext {
             treaty_scope,
             treaty_scope_sha256,
