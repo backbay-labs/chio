@@ -276,6 +276,16 @@ run_negative_flow() {
   grep -q '"accepted": false' "$tmpdir/status-bad-report.json"
   grep -q '"evidenceSinkHealthy": false' "$tmpdir/status-bad-report.json"
   grep -q '"failureCode": "runtime_ops_status_degraded"' "$tmpdir/status-bad-report.json"
+  if cargo run -p chio-cli -- chiodos runtime ops retention plan \
+    --retention-profile "$tmpdir/retention-profile.json" \
+    --store "$tmpdir/runtime.sqlite3" \
+    --evidence-root "$tmpdir/evidence-missing" \
+    --now-unix-ms 1800000001000 \
+    --report "$tmpdir/retention-missing-report.json" >/dev/null 2>"$tmpdir/retention-missing.err"; then
+    echo "retention planning unexpectedly accepted a missing evidence root" >&2
+    exit 1
+  fi
+  grep -q 'requires existing evidence root' "$tmpdir/retention-missing.err"
 }
 
 run_failure_code_flow() {

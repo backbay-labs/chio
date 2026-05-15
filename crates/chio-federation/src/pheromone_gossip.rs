@@ -33,6 +33,8 @@ pub enum PheromoneGossipError {
     BatchRecipientMismatch(String),
     #[error("batch_treaty_mismatch: {0}")]
     BatchTreatyMismatch(String),
+    #[error("batch_empty: {0}")]
+    BatchEmpty(String),
     #[error("authenticated_sender_mismatch: {0}")]
     AuthenticatedSenderMismatch(String),
     #[error("invalid_configuration: {0}")]
@@ -53,6 +55,7 @@ impl PheromoneGossipError {
             Self::UnknownPeer(_) => "unknown_peer",
             Self::BatchRecipientMismatch(_) => "batch_recipient_mismatch",
             Self::BatchTreatyMismatch(_) => "batch_treaty_mismatch",
+            Self::BatchEmpty(_) => "batch_empty",
             Self::AuthenticatedSenderMismatch(_) => "authenticated_sender_mismatch",
             Self::InvalidConfiguration(_) => "invalid_configuration",
             Self::QueuePoisoned => "queue_poisoned",
@@ -186,6 +189,11 @@ pub fn verify_pheromone_gossip_batch(
             "batch recipient {} does not match receiver {}",
             batch.recipient_kernel_id, context.recipient_kernel_id
         )));
+    }
+    if batch.frames.is_empty() {
+        return Err(PheromoneGossipError::BatchEmpty(
+            "batch contains no pheromone gossip frames".to_string(),
+        ));
     }
     for frame in &batch.frames {
         if frame.treaty_id != batch.treaty_id {

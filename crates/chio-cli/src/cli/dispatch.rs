@@ -2822,6 +2822,8 @@ fn main() {
                     ),
                     ChiodosPheromoneRelayCommands::Enqueue {
                         store,
+                        batch,
+                        transit_policy,
                         peer_directory,
                         peer_directory_state,
                         profile,
@@ -2830,6 +2832,8 @@ fn main() {
                         report,
                     } => cmd_chiodos_pheromone_relay_enqueue(
                         &store,
+                        &batch,
+                        &transit_policy,
                         peer_directory.as_deref(),
                         peer_directory_state.as_deref(),
                         profile.into(),
@@ -4396,6 +4400,7 @@ fn cmd_chiodos_runtime_admit(
             store: evaluation_store,
             admission_id: &admission_id,
             request: &request,
+            action_class_id: None,
             runtime_trust_input: runtime_trust_input.as_ref(),
             trusted_verifier_keys,
             pheromone_query_report: pheromone_query_report.as_ref(),
@@ -4490,6 +4495,7 @@ fn cmd_chiodos_runtime_pheromone_evaluate(
             store: &store,
             admission_id: &bundle.admission_id,
             request: &bundle.binding,
+            action_class_id: None,
             runtime_trust_input: Some(&runtime_trust_input),
             trusted_verifier_keys: &trusted_verifiers.verifier_keys,
             pheromone_query_report: Some(&query_report),
@@ -4846,11 +4852,18 @@ struct RuntimeOrchestrationEvidence {
     verifier_report_failure_code: Option<String>,
     proof_package_manifest_sha256: Option<String>,
     proof_package_file_sha256: Option<String>,
+    proof_package_canonical_sha256: Option<String>,
     verifier_report_package_sha256: Option<String>,
     workflow_report_sha256: String,
     proof_report_sha256: String,
     manifest_sha256: String,
     verifier_report_sha256: String,
+}
+
+struct RuntimeJsonArtifactHashes {
+    manifest_sha256: String,
+    file_sha256: String,
+    canonical_sha256: String,
 }
 
 fn validate_runtime_orchestration_evidence_binding(
@@ -4893,6 +4906,12 @@ fn validate_runtime_orchestration_evidence_binding(
     if actual_admission_ids != expected_admission_ids {
         return Some("runtime_orchestration_evidence_admission_mismatch".to_string());
     }
+    if !runtime_proof_source_records_match_steps(
+        &evidence.workflow_run_report.step_evidence,
+        &evidence.proof_regeneration_report.source_records,
+    ) {
+        return Some("runtime_orchestration_source_records_mismatch".to_string());
+    }
     if evidence.manifest.workflow_run_report_sha256 != evidence.workflow_report_sha256
         || evidence.manifest.proof_regeneration_report_sha256 != evidence.proof_report_sha256
         || evidence
@@ -4932,19 +4951,49 @@ fn validate_runtime_orchestration_evidence_binding(
         else {
             return Some("runtime_orchestration_proof_package_missing".to_string());
         };
+        let Some(canonical_proof_package_sha256) =
+            evidence.proof_package_canonical_sha256.as_deref()
+        else {
+            return Some("runtime_orchestration_proof_package_missing".to_string());
+        };
         let Some(verifier_report_package_sha256) =
             evidence.verifier_report_package_sha256.as_deref()
         else {
             return Some("runtime_orchestration_proof_package_missing".to_string());
         };
-        if manifest_proof_package_sha256 != expected_proof_package_sha256
-            || actual_proof_package_sha256 != expected_proof_package_sha256
+        if manifest_proof_package_sha256 != actual_proof_package_sha256
+            || canonical_proof_package_sha256 != expected_proof_package_sha256
             || verifier_report_package_sha256 != expected_proof_package_sha256
         {
             return Some("runtime_orchestration_evidence_hash_mismatch".to_string());
         }
     }
     None
+}
+
+fn runtime_proof_source_records_match_steps(
+    steps: &[chio_chiodos_runtime::RuntimeStepEvidence],
+    source_records: &[chio_chiodos_runtime::RuntimeProofSourceRecord],
+) -> bool {
+    if steps.len() != source_records.len() {
+        return false;
+    }
+    let mut records_by_step = std::collections::BTreeMap::new();
+    for record in source_records {
+        if records_by_step.insert(record.step_index, record).is_some() {
+            return false;
+        }
+    }
+    steps.iter().all(|step| {
+        records_by_step
+            .get(&step.step_index)
+            .is_some_and(|record| {
+                record.admission_report_sha256 == step.admission_report_sha256
+                    && record.tool_receipt_sha256 == step.tool_receipt_sha256
+                    && record.bilateral_dsse_sha256 == step.bilateral_dsse_sha256
+                    && record.workflow_step_sha256 == step.workflow_step_sha256
+            })
+    })
 }
 
 fn load_runtime_orchestration_profile(
@@ -5051,10 +5100,17 @@ fn load_runtime_orchestration_evidence(
     )?;
     let verifier_report_sha256 =
         canonical_sha256_json(&verifier_report, "Chiodos verifier report canonical hash")?;
-    let (proof_package_manifest_sha256, proof_package_file_sha256) =
-        load_runtime_orchestration_role_artifact_hashes(evidence_dir, &manifest, "proof_package")?
-            .map(|(manifest_sha256, file_sha256)| (Some(manifest_sha256), Some(file_sha256)))
-            .unwrap_or((None, None));
+    let proof_package_hashes =
+        load_runtime_orchestration_role_json_artifact_hashes(evidence_dir, &manifest, "proof_package")?;
+    let proof_package_manifest_sha256 = proof_package_hashes
+        .as_ref()
+        .map(|hashes| hashes.manifest_sha256.clone());
+    let proof_package_file_sha256 = proof_package_hashes
+        .as_ref()
+        .map(|hashes| hashes.file_sha256.clone());
+    let proof_package_canonical_sha256 = proof_package_hashes
+        .as_ref()
+        .map(|hashes| hashes.canonical_sha256.clone());
     Ok(RuntimeOrchestrationEvidence {
         workflow_run_report,
         proof_regeneration_report,
@@ -5063,6 +5119,7 @@ fn load_runtime_orchestration_evidence(
         verifier_report_failure_code,
         proof_package_manifest_sha256,
         proof_package_file_sha256,
+        proof_package_canonical_sha256,
         verifier_report_package_sha256,
         workflow_report_sha256,
         proof_report_sha256,
@@ -5071,11 +5128,11 @@ fn load_runtime_orchestration_evidence(
     })
 }
 
-fn load_runtime_orchestration_role_artifact_hashes(
+fn load_runtime_orchestration_role_json_artifact_hashes(
     evidence_dir: &Path,
     manifest: &chio_chiodos_runtime::RuntimeEvidenceManifest,
     role: &str,
-) -> Result<Option<(String, String)>, CliError> {
+) -> Result<Option<RuntimeJsonArtifactHashes>, CliError> {
     let mut entries = manifest
         .entries
         .iter()
@@ -5090,10 +5147,34 @@ fn load_runtime_orchestration_role_artifact_hashes(
         return Ok(None);
     };
     validate_runtime_relative_path(&entry.path)?;
-    let actual_sha256 = fs::read(evidence_dir.join(&entry.path))
-        .map(|bytes| chio_core::sha256_hex(&bytes))
-        .unwrap_or_else(|_| "0".repeat(64));
-    Ok(Some((entry.sha256.clone(), actual_sha256)))
+    let path = evidence_dir.join(&entry.path);
+    let bytes = fs::read(&path).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to read Chiodos runtime {role} artifact {}: {error}",
+            path.display()
+        ))
+    })?;
+    let byte_count = u64::try_from(bytes.len()).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime {role} artifact byte count: {error}"))
+    })?;
+    if byte_count != entry.byte_count {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos runtime evidence manifest byte count mismatch for {role}"
+        )));
+    }
+    let file_sha256 = chio_core::sha256_hex(&bytes);
+    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime {role} artifact JSON: {error}"))
+    })?;
+    let canonical_sha256 = canonical_sha256_json(
+        &value,
+        &format!("Chiodos runtime {role} artifact canonical hash"),
+    )?;
+    Ok(Some(RuntimeJsonArtifactHashes {
+        manifest_sha256: entry.sha256.clone(),
+        file_sha256,
+        canonical_sha256,
+    }))
 }
 
 fn sorted_child_dirs(path: &Path) -> Result<Vec<PathBuf>, CliError> {
@@ -5332,7 +5413,12 @@ fn cmd_chiodos_runtime_ops_retention_plan(
     let _store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
         |error| CliError::cli_other_error(format!("Chiodos runtime ops store: {error}")),
     )?;
-    ensure_runtime_evidence_dir(evidence_root)?;
+    if !evidence_root.is_dir() {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos runtime retention plan requires existing evidence root {}",
+            evidence_root.display()
+        )));
+    }
     let run_ids = sorted_child_dirs(evidence_root)?
         .into_iter()
         .filter_map(|path| path.file_name().map(|name| name.to_string_lossy().to_string()))
@@ -6707,6 +6793,7 @@ fn cmd_chiodos_runtime_run_loopback(
                 store: &store,
                 admission_id: &admission_id,
                 request: &step.request,
+                action_class_id: None,
                 runtime_trust_input: Some(&signed_trust),
                 trusted_verifier_keys: &trusted_keys,
                 pheromone_query_report: Some(&query_report),
@@ -8207,6 +8294,8 @@ fn cmd_chiodos_pheromone_relay_serve(
 
 fn cmd_chiodos_pheromone_relay_enqueue(
     store: &Path,
+    batch: &Path,
+    transit_policy: &Path,
     peer_directory: Option<&Path>,
     peer_directory_state: Option<&Path>,
     profile: chio_pheromone_relay::RelayProfile,
@@ -8214,7 +8303,7 @@ fn cmd_chiodos_pheromone_relay_enqueue(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
-    load_relay_peer_directory_from_paths(
+    let directory = load_relay_peer_directory_from_paths(
         peer_directory,
         peer_directory_state,
         now_unix_ms,
@@ -8222,11 +8311,56 @@ fn cmd_chiodos_pheromone_relay_enqueue(
         trusted_issuers,
         "Chiodos peer directory",
     )?;
+    let batch_json = read_utf8_json_file(batch, "Chiodos pheromone relay batch")?;
+    let batch: chio_federation::PheromoneGossipBatch = serde_json::from_str(&batch_json)
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay batch: {error}")))?;
+    let transit_policy_json =
+        read_utf8_json_file(transit_policy, "Chiodos pheromone relay transit policy")?;
+    let transit_policy: chio_federation::PheromoneTransitPolicy =
+        serde_json::from_str(&transit_policy_json).map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos relay transit policy: {error}"))
+        })?;
+    validate_relay_enqueue_batch(&directory, &batch, &transit_policy, now_unix_ms)?;
+    let peer_entry = directory.peer(&batch.recipient_kernel_id).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos relay enqueue peer directory: {error}"))
+    })?;
+    if !peer_entry
+        .treaty_subscriptions
+        .iter()
+        .any(|id| id == &batch.treaty_id)
+    {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos relay enqueue peer directory: {}",
+            chio_pheromone_relay::PheromoneRelayError::RelayProfileDenied(format!(
+                "peer {} is not subscribed to treaty {}",
+                batch.recipient_kernel_id, batch.treaty_id
+            ))
+        )));
+    }
+    if batch.frames.len() > peer_entry.max_batch_frames {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos relay enqueue peer directory: {}",
+            chio_pheromone_relay::PheromoneRelayError::RelayProfileDenied(format!(
+                "batch frame count {} exceeds peer bound {}",
+                batch.frames.len(),
+                peer_entry.max_batch_frames
+            ))
+        )));
+    }
     let relay_store = chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(
         |error| CliError::cli_other_error(format!("Chiodos pheromone relay store: {error}")),
     )?;
+    relay_store
+        .enqueue_batch(
+            directory.local_kernel_id(),
+            &batch.recipient_kernel_id,
+            &batch.treaty_id,
+            &batch,
+            now_unix_ms,
+        )
+        .map_err(|error| CliError::cli_other_error(format!("Chiodos relay enqueue: {error}")))?;
     let status = relay_store
-        .operator_report("local", now_unix_ms)
+        .operator_report(directory.local_kernel_id(), now_unix_ms)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos relay enqueue: {error}")))?;
     let json = serde_json::to_string_pretty(&status)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos relay report: {error}")))?;
@@ -8347,38 +8481,40 @@ fn cmd_chiodos_pheromone_relay_catchup(
     limit: usize,
     report: &Path,
 ) -> Result<(), CliError> {
-    let mut max_catchup_bytes = usize::MAX;
-    if let Some(state_path) = peer_directory_state {
-        let directory = load_relay_peer_directory_from_paths(
-            None,
-            Some(state_path),
-            now_unix_ms.unwrap_or_else(unix_now_ms),
-            profile,
-            trusted_issuers,
-            "Chiodos peer directory state",
-        )?;
-        let peer_entry = directory.peer(peer).map_err(|error| {
-            CliError::cli_other_error(format!("Chiodos catch-up peer directory: {error}"))
-        })?;
-        if !peer_entry.treaty_subscriptions.iter().any(|id| id == treaty) {
-            return Err(CliError::cli_other_error(format!(
-                "Chiodos catch-up peer directory: {}",
-                chio_pheromone_relay::PheromoneRelayError::CatchupDenied(format!(
-                    "peer {peer} is not subscribed to treaty {treaty}"
-                ))
-            )));
-        }
-        if limit > peer_entry.max_catchup_frames {
-            return Err(CliError::cli_other_error(format!(
-                "Chiodos catch-up peer directory: {}",
-                chio_pheromone_relay::PheromoneRelayError::CatchupDenied(format!(
-                    "requested limit {limit} exceeds peer bound {}",
-                    peer_entry.max_catchup_frames
-                ))
-            )));
-        }
-        max_catchup_bytes = peer_entry.max_catchup_bytes;
+    let state_path = peer_directory_state.ok_or_else(|| {
+        CliError::cli_other_error(
+            "Chiodos catch-up peer directory: --peer-directory-state is required".to_string(),
+        )
+    })?;
+    let directory = load_relay_peer_directory_from_paths(
+        None,
+        Some(state_path),
+        now_unix_ms.unwrap_or_else(unix_now_ms),
+        profile,
+        trusted_issuers,
+        "Chiodos peer directory state",
+    )?;
+    let peer_entry = directory.peer(peer).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos catch-up peer directory: {error}"))
+    })?;
+    if !peer_entry.treaty_subscriptions.iter().any(|id| id == treaty) {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos catch-up peer directory: {}",
+            chio_pheromone_relay::PheromoneRelayError::CatchupDenied(format!(
+                "peer {peer} is not subscribed to treaty {treaty}"
+            ))
+        )));
     }
+    if limit > peer_entry.max_catchup_frames {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos catch-up peer directory: {}",
+            chio_pheromone_relay::PheromoneRelayError::CatchupDenied(format!(
+                "requested limit {limit} exceeds peer bound {}",
+                peer_entry.max_catchup_frames
+            ))
+        )));
+    }
+    let max_catchup_bytes = peer_entry.max_catchup_bytes;
     let relay_store = chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(|error| {
         CliError::cli_other_error(format!("Chiodos pheromone relay store: {error}"))
     })?;
@@ -8388,7 +8524,7 @@ fn cmd_chiodos_pheromone_relay_catchup(
     let catchup = chio_pheromone_relay::CatchupResponse {
         schema: chio_pheromone_relay::PHEROMONE_CATCHUP_RESPONSE_SCHEMA.to_string(),
         accepted: true,
-        responder_kernel_id: "local".to_string(),
+        responder_kernel_id: directory.local_kernel_id().to_string(),
         requester_kernel_id: peer.to_string(),
         treaty_id: treaty.to_string(),
         frames,
@@ -8398,6 +8534,30 @@ fn cmd_chiodos_pheromone_relay_catchup(
     let json = serde_json::to_string_pretty(&catchup)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos catch-up report: {error}")))?;
     write_json_string(report, &format!("{json}\n"))
+}
+
+fn validate_relay_enqueue_batch(
+    directory: &chio_pheromone_relay::PeerDirectory,
+    batch: &chio_federation::PheromoneGossipBatch,
+    transit_policy: &chio_federation::PheromoneTransitPolicy,
+    now_unix_ms: u64,
+) -> Result<(), CliError> {
+    if batch.schema != chio_federation::PHEROMONE_GOSSIP_BATCH_SCHEMA {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos relay enqueue batch: unsupported schema {}",
+            batch.schema
+        )));
+    }
+    let verification_context = chio_federation::PheromoneGossipBatchVerificationContext {
+        now_unix_ms,
+        recipient_kernel_id: batch.recipient_kernel_id.clone(),
+        authenticated_sender_kernel_id: directory.local_kernel_id().to_string(),
+    };
+    chio_federation::verify_pheromone_gossip_batch(batch, transit_policy, &verification_context)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos relay enqueue batch: {error}"))
+        })?;
+    Ok(())
 }
 
 fn cmd_chiodos_pheromone_relay_status(store: &Path, report: &Path) -> Result<(), CliError> {

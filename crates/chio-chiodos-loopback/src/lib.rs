@@ -1182,7 +1182,7 @@ fn build_proof_package_unchecked(
             units: 550,
             currency: "USD".to_string(),
         }),
-        duration_ms: 42,
+        duration_ms: 42_000,
         kernel_key: buyer_key.public_key(),
     };
 

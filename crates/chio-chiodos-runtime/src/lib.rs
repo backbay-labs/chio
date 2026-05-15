@@ -1517,6 +1517,7 @@ pub struct RuntimeAdmissionInput<'a> {
     pub store: &'a dyn RuntimeAdmissionStore,
     pub admission_id: &'a str,
     pub request: &'a RuntimeRequestBinding,
+    pub action_class_id: Option<&'a str>,
     pub runtime_trust_input: Option<&'a SignedRuntimeVerifierTrustBundle>,
     pub trusted_verifier_keys: &'a [RuntimeTrustedVerifierKey],
     pub pheromone_query_report: Option<&'a SignedRuntimePheromoneQueryReport>,
@@ -7659,6 +7660,7 @@ pub fn evaluate_runtime_admission(
             runtime_trust_input: input.runtime_trust_input,
             trusted_verifier_keys: input.trusted_verifier_keys,
             bundle: &bundle,
+            action_class_id: input.action_class_id,
             now_unix_ms: input.now_unix_ms,
             checks: &mut checks,
         }) {
@@ -7945,30 +7947,34 @@ where
         }
         let admission_now_unix_ms = self.fixed_now_unix_ms.unwrap_or(context.now_unix_ms);
         let mut treaty_continuation_id_to_consume = None;
+        let mut runtime_action_class_id = None;
         match treaty_ref_from_request(context.request) {
-            Ok(Some(treaty_ref)) => match verify_treaty_reference_from_store(
-                &self.store,
-                &admission_ref.admission_id,
-                &treaty_ref,
-                admission_now_unix_ms,
-            ) {
-                Ok(continuation_id) => {
-                    treaty_continuation_id_to_consume = continuation_id;
+            Ok(Some(treaty_ref)) => {
+                runtime_action_class_id = Some(treaty_ref.action_class_id.clone());
+                match verify_treaty_reference_from_store(
+                    &self.store,
+                    &admission_ref.admission_id,
+                    &treaty_ref,
+                    admission_now_unix_ms,
+                ) {
+                    Ok(continuation_id) => {
+                        treaty_continuation_id_to_consume = continuation_id;
+                    }
+                    Err(ChiodosRuntimeError::Rejected { code, .. }) => {
+                        return Ok(KernelRuntimeAdmissionDecision::deny(
+                            "chiodos treaty-bound runtime admission denied",
+                            Some(serde_json::json!({
+                                "chiodos_runtime": {
+                                    "admission_id": admission_ref.admission_id,
+                                    "accepted": false,
+                                    "failure_code": code
+                                }
+                            })),
+                        ));
+                    }
+                    Err(error) => return Err(KernelError::Internal(error.to_string())),
                 }
-                Err(ChiodosRuntimeError::Rejected { code, .. }) => {
-                    return Ok(KernelRuntimeAdmissionDecision::deny(
-                        "chiodos treaty-bound runtime admission denied",
-                        Some(serde_json::json!({
-                            "chiodos_runtime": {
-                                "admission_id": admission_ref.admission_id,
-                                "accepted": false,
-                                "failure_code": code
-                            }
-                        })),
-                    ));
-                }
-                Err(error) => return Err(KernelError::Internal(error.to_string())),
-            },
+            }
             Ok(None) => {
                 if context.request.federated_origin_kernel_id.is_some() {
                     return Ok(KernelRuntimeAdmissionDecision::deny(
@@ -8022,6 +8028,7 @@ where
             store: &self.store,
             admission_id: &admission_ref.admission_id,
             request: &binding,
+            action_class_id: runtime_action_class_id.as_deref(),
             runtime_trust_input: self.runtime_trust_input.as_ref(),
             trusted_verifier_keys: &self.trusted_verifier_keys,
             pheromone_query_report: self.pheromone_query_report.as_ref(),
@@ -9858,6 +9865,7 @@ struct RuntimePolicyEvaluationInput<'a, 'b> {
     runtime_trust_input: Option<&'a SignedRuntimeVerifierTrustBundle>,
     trusted_verifier_keys: &'a [RuntimeTrustedVerifierKey],
     bundle: &'a RuntimeAdmissionBundle,
+    action_class_id: Option<&'a str>,
     now_unix_ms: u64,
     checks: &'b mut Vec<RuntimeAdmissionCheck>,
 }
@@ -10002,13 +10010,16 @@ fn evaluate_runtime_pheromone_policy(
         reason_code: "runtime_pheromone_policy_allow".to_string(),
     };
 
+    let action_class_id = input
+        .action_class_id
+        .unwrap_or(&input.bundle.binding.tool_name);
     for rule in &policy_body.rules {
         if rule.subject_class != advisory.subject_class
             || rule.subject_class_namespace != advisory.subject_class_namespace
         {
             continue;
         }
-        if rule.action_class_id != input.bundle.binding.tool_name && rule.action_class_id != "*" {
+        if rule.action_class_id != action_class_id && rule.action_class_id != "*" {
             continue;
         }
         let matched = match rule.direction.as_str() {

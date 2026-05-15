@@ -190,6 +190,29 @@ fn pheromone_batch_verifier_accepts_scoped_direct_batch() {
 }
 
 #[test]
+fn pheromone_batch_verifier_rejects_empty_batch() {
+    let batch = chio_federation::PheromoneGossipBatch {
+        schema: PHEROMONE_GOSSIP_BATCH_SCHEMA.to_string(),
+        recipient_kernel_id: "did:chio:buyer-kernel".to_string(),
+        treaty_id: "treaty:buyer-llamaworks:support-ops".to_string(),
+        frames: Vec::new(),
+        flushed_at_unix_ms: 1_700_000_000_500,
+    };
+
+    let err = verify_pheromone_gossip_batch(
+        &batch,
+        &policy(),
+        &PheromoneGossipBatchVerificationContext {
+            now_unix_ms: 1_700_000_000_500,
+            recipient_kernel_id: "did:chio:buyer-kernel".to_string(),
+            authenticated_sender_kernel_id: "did:chio:llamaworks".to_string(),
+        },
+    )
+    .expect_err("empty batch fails");
+    assert_eq!(err.code(), "batch_empty");
+}
+
+#[test]
 fn pheromone_batch_verifier_rejects_wrong_direct_sender() {
     let mut frame = PheromoneDepositGossip {
         schema: PHEROMONE_GOSSIP_SCHEMA.to_string(),

@@ -358,6 +358,109 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn chiodos_pheromone_relay_enqueue_requires_batch() {
+        let result = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "enqueue",
+            "--store",
+            "relay.sqlite3",
+            "--peer-directory",
+            "peer-directory.json",
+            "--now-unix-ms",
+            "1766000000500",
+            "--report",
+            "enqueue-report.json",
+        ]);
+        let error = match result {
+            Ok(_) => panic!("relay enqueue must require --batch"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn chiodos_pheromone_relay_enqueue_subcommand_parses() {
+        let cli = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "enqueue",
+            "--store",
+            "relay.sqlite3",
+            "--batch",
+            "gossip-batch.json",
+            "--transit-policy",
+            "transit-policy.json",
+            "--peer-directory",
+            "peer-directory.json",
+            "--now-unix-ms",
+            "1766000000500",
+            "--report",
+            "enqueue-report.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Chiodos {
+                command:
+                    ChiodosCommands::Pheromone {
+                        command:
+                            ChiodosPheromoneCommands::Relay {
+                                command:
+                                    ChiodosPheromoneRelayCommands::Enqueue {
+                                        store,
+                                        batch,
+                                        transit_policy,
+                                        report,
+                                        ..
+                                    },
+                            },
+                    },
+            } => {
+                assert_eq!(store, std::path::PathBuf::from("relay.sqlite3"));
+                assert_eq!(batch, std::path::PathBuf::from("gossip-batch.json"));
+                assert_eq!(
+                    transit_policy,
+                    std::path::PathBuf::from("transit-policy.json")
+                );
+                assert_eq!(report, std::path::PathBuf::from("enqueue-report.json"));
+            }
+            _ => panic!("expected chiodos pheromone relay enqueue subcommand"),
+        }
+    }
+
+    #[test]
+    fn chiodos_pheromone_relay_catchup_requires_peer_directory_state() {
+        let result = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "pheromone",
+            "relay",
+            "catchup",
+            "--store",
+            "relay.sqlite3",
+            "--peer",
+            "did:chio:buyer-kernel",
+            "--treaty",
+            "treaty:buyer-dataco:support-ops",
+            "--after-cursor",
+            "0",
+            "--limit",
+            "16",
+            "--report",
+            "catchup-response.json",
+        ]);
+        let error = match result {
+            Ok(_) => panic!("relay catchup must require --peer-directory-state"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
     fn chiodos_pheromone_relay_observe_subcommand_parses() {
         let cli = Cli::try_parse_from([
             "chio",

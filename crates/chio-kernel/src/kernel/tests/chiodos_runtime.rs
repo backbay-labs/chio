@@ -36,6 +36,18 @@ struct UrlElicitationBeforeSideEffectServer {
     stream_attempts: std::sync::Arc<AtomicU64>,
 }
 
+struct CancellationAfterSideEffectServer {
+    id: String,
+    tools: Vec<String>,
+    side_effects: std::sync::Arc<AtomicU64>,
+}
+
+struct IncompleteAfterSideEffectServer {
+    id: String,
+    tools: Vec<String>,
+    side_effects: std::sync::Arc<AtomicU64>,
+}
+
 impl RuntimeAdmissionHook for DenyingRuntimeAdmissionHook {
     fn name(&self) -> &str {
         "test-chiodos-admission"
@@ -169,6 +181,26 @@ impl UrlElicitationBeforeSideEffectServer {
     }
 }
 
+impl CancellationAfterSideEffectServer {
+    fn new(id: &str, tools: Vec<&str>, side_effects: std::sync::Arc<AtomicU64>) -> Self {
+        Self {
+            id: id.to_string(),
+            tools: tools.into_iter().map(String::from).collect(),
+            side_effects,
+        }
+    }
+}
+
+impl IncompleteAfterSideEffectServer {
+    fn new(id: &str, tools: Vec<&str>, side_effects: std::sync::Arc<AtomicU64>) -> Self {
+        Self {
+            id: id.to_string(),
+            tools: tools.into_iter().map(String::from).collect(),
+            side_effects,
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl ToolServerConnection for FailingAfterSideEffectServer {
     fn server_id(&self) -> &str {
@@ -223,6 +255,75 @@ impl ToolServerConnection for UrlElicitationBeforeSideEffectServer {
     ) -> Result<serde_json::Value, KernelError> {
         Err(KernelError::Internal(
             "unexpected invoke after URL elicitation".to_string(),
+        ))
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for CancellationAfterSideEffectServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        self.tools.clone()
+    }
+
+    async fn invoke_stream(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<Option<ToolServerStreamResult>, KernelError> {
+        self.side_effects.fetch_add(1, Ordering::SeqCst);
+        Err(KernelError::RequestCancelled {
+            request_id: "req-chiodos-runtime-cancelled".to_string().into(),
+            reason: "cancelled after possible dispatch side effect".to_string(),
+        })
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Err(KernelError::Internal(
+            "unexpected invoke after cancellation".to_string(),
+        ))
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for IncompleteAfterSideEffectServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        self.tools.clone()
+    }
+
+    async fn invoke_stream(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<Option<ToolServerStreamResult>, KernelError> {
+        self.side_effects.fetch_add(1, Ordering::SeqCst);
+        Err(KernelError::RequestIncomplete(
+            "incomplete after possible dispatch side effect".to_string(),
+        ))
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Err(KernelError::Internal(
+            "unexpected invoke after incomplete request".to_string(),
         ))
     }
 }
@@ -688,6 +789,179 @@ fn chiodos_runtime_admission_releases_reservations_on_pre_side_effect_dispatch_e
         releases.load(Ordering::SeqCst),
         1,
         "runtime reservations must be released when dispatch fails before a tool side effect"
+    );
+    Ok(())
+}
+
+#[test]
+fn chiodos_runtime_admission_retains_reservations_on_ambiguous_cancellation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let side_effects = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(CancellationAfterSideEffectServer::new(
+        "srv-chiodos-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&side_effects),
+    )));
+
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chiodos-runtime-cancelled",
+            admission_id: "adm-cancelled",
+            lease_id: "lease-cancelled",
+            continuation_id: Some("continuation-cancelled"),
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chiodos-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chiodos-runtime-cancelled",
+        &cap,
+        "destructive_update",
+        "srv-chiodos-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(side_effects.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        0,
+        "runtime reservations must stay consumed when cancellation does not prove absence of side effects"
+    );
+    Ok(())
+}
+
+#[test]
+fn chiodos_runtime_admission_retains_reservations_on_ambiguous_incomplete(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let side_effects = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(IncompleteAfterSideEffectServer::new(
+        "srv-chiodos-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&side_effects),
+    )));
+
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chiodos-runtime-incomplete",
+            admission_id: "adm-incomplete",
+            lease_id: "lease-incomplete",
+            continuation_id: Some("continuation-incomplete"),
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chiodos-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chiodos-runtime-incomplete",
+        &cap,
+        "destructive_update",
+        "srv-chiodos-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(side_effects.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        0,
+        "runtime reservations must stay consumed when incompletion does not prove absence of side effects"
+    );
+    Ok(())
+}
+
+#[test]
+fn chiodos_post_admission_drop_guard_retains_non_monetary_runtime_reservations(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chiodos-runtime-dropped",
+            admission_id: "adm-dropped",
+            lease_id: "lease-dropped",
+            continuation_id: Some("continuation-dropped"),
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chiodos-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chiodos-runtime-dropped",
+        &cap,
+        "destructive_update",
+        "srv-chiodos-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+    let metadata = serde_json::json!({
+        "chiodos_runtime": {
+            "admission_id": "adm-dropped",
+            "accepted": true,
+            "reserved_destructive_lease_id": "lease-dropped",
+            "reserved_treaty_continuation_id": "continuation-dropped",
+            "failure_code": null
+        }
+    });
+
+    drop(PostAdmissionDropGuard::new(
+        &kernel,
+        &request,
+        &cap,
+        Some(0),
+        None,
+        None,
+        Some(metadata),
+    ));
+
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        0,
+        "dropping a non-monetary post-admission future cannot prove absence of side effects"
     );
     Ok(())
 }

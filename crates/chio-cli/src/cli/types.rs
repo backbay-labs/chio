@@ -1630,6 +1630,14 @@ enum ChiodosPheromoneRelayCommands {
         #[arg(long, value_name = "PATH")]
         store: PathBuf,
 
+        /// Pheromone gossip batch JSON to queue for a subscribed peer.
+        #[arg(long, value_name = "PATH")]
+        batch: PathBuf,
+
+        /// Local transit policy JSON used to verify non-empty relay batches.
+        #[arg(long = "transit-policy", value_name = "PATH")]
+        transit_policy: PathBuf,
+
         /// Verifier-owned peer directory JSON.
         #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
         peer_directory: Option<PathBuf>,
@@ -1709,7 +1717,7 @@ enum ChiodosPheromoneRelayCommands {
         peer: String,
 
         /// Verifier-owned active peer-directory state JSON.
-        #[arg(long, value_name = "PATH")]
+        #[arg(long, value_name = "PATH", required = true)]
         peer_directory_state: Option<PathBuf>,
 
         /// Relay operational profile for state validation.
