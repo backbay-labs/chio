@@ -4627,7 +4627,14 @@ fn cmd_chiodos_runtime_orchestrate_run(
         |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
     )?;
     ensure_runtime_evidence_dir(evidence_dir)?;
-    let evidence = load_runtime_orchestration_evidence(evidence_dir)?;
+    let evidence =
+        chio_chiodos_runtime::load_runtime_orchestration_evidence(evidence_dir).map_err(
+            |error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime orchestration evidence: {error}"
+                ))
+            },
+        )?;
     let mut accepted = evidence.proof_regeneration_report.accepted;
     let mut failure_code = evidence.proof_regeneration_report.failure_code.clone();
     if evidence.proof_regeneration_report.accepted && !evidence.verifier_report_accepted {
@@ -4644,10 +4651,14 @@ fn cmd_chiodos_runtime_orchestrate_run(
     } else if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
         accepted = false;
         failure_code = Some("runtime_orchestration_profile_stale".to_string());
-    } else if let Some(code) = validate_runtime_orchestration_evidence_binding(&run_contract, &evidence)
+    } else if let Err(failure) =
+        chio_chiodos_runtime::validate_runtime_orchestration_evidence_binding(
+            &run_contract,
+            &evidence,
+        )
     {
         accepted = false;
-        failure_code = Some(code);
+        failure_code = Some(failure.code().to_string());
     }
     let status = if accepted {
         "proof_accepted"
@@ -4794,7 +4805,16 @@ fn cmd_chiodos_runtime_orchestrate_status(
         |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
     )?;
     let evidence_sink_healthy =
-        runtime_orchestration_evidence_sink_healthy(&profile, evidence_dir, now_unix_ms)?;
+        chio_chiodos_runtime::runtime_orchestration_evidence_sink_healthy(
+            &profile,
+            evidence_dir,
+            now_unix_ms,
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos runtime orchestration evidence health: {error}"
+            ))
+        })?;
     let report_value = store
         .status_report(
             &profile,
@@ -4833,7 +4853,14 @@ fn cmd_chiodos_runtime_orchestrate_drift(
         })?;
     let mut runs_in_window = Vec::new();
     for run_dir in sorted_child_dirs(runs_dir)? {
-        let evidence = load_runtime_orchestration_evidence(&run_dir)?;
+        let evidence =
+            chio_chiodos_runtime::load_runtime_orchestration_evidence(&run_dir).map_err(
+                |error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime orchestration evidence: {error}"
+                    ))
+                },
+            )?;
         if evidence.manifest.generated_at_unix_ms >= since_unix_ms
             && evidence.manifest.generated_at_unix_ms <= until_unix_ms
         {
@@ -4879,212 +4906,6 @@ fn cmd_chiodos_runtime_orchestrate_drift(
     write_pretty_json(report, &drift, "Chiodos runtime proof drift report")
 }
 
-struct RuntimeOrchestrationEvidence {
-    workflow_run_report: chio_chiodos_runtime::RuntimeWorkflowRunReport,
-    proof_regeneration_report: chio_chiodos_runtime::RuntimeProofRegenerationReport,
-    manifest: chio_chiodos_runtime::RuntimeEvidenceManifest,
-    verifier_report_accepted: bool,
-    verifier_report_failure_code: Option<String>,
-    proof_package_manifest_sha256: Option<String>,
-    proof_package_file_sha256: Option<String>,
-    proof_package_canonical_sha256: Option<String>,
-    verifier_report_package_sha256: Option<String>,
-    workflow_report_sha256: String,
-    proof_report_sha256: String,
-    manifest_sha256: String,
-    verifier_report_sha256: String,
-}
-
-struct RuntimeJsonArtifactHashes {
-    manifest_sha256: String,
-    file_sha256: String,
-    canonical_sha256: String,
-}
-
-fn validate_runtime_orchestration_evidence_binding(
-    run_contract: &chio_chiodos_runtime::RuntimeRunContract,
-    evidence: &RuntimeOrchestrationEvidence,
-) -> Option<String> {
-    if evidence.workflow_run_report.run_id != run_contract.run_id
-        || evidence.proof_regeneration_report.run_id != run_contract.run_id
-        || evidence.manifest.run_id != run_contract.run_id
-    {
-        return Some("runtime_orchestration_evidence_run_mismatch".to_string());
-    }
-    if !evidence.workflow_run_report.accepted {
-        return Some(
-            evidence
-                .workflow_run_report
-                .failure_code
-                .clone()
-                .unwrap_or_else(|| "runtime_orchestration_workflow_rejected".to_string()),
-        );
-    }
-    let expected_step_count = match usize::try_from(run_contract.expected_step_count) {
-        Ok(count) => count,
-        Err(_) => return Some("runtime_orchestration_step_count_mismatch".to_string()),
-    };
-    if evidence.workflow_run_report.step_evidence.len() != expected_step_count {
-        return Some("runtime_orchestration_step_count_mismatch".to_string());
-    }
-    let actual_admission_ids: Vec<&str> = evidence
-        .workflow_run_report
-        .step_evidence
-        .iter()
-        .map(|step| step.admission_id.as_str())
-        .collect();
-    let expected_admission_ids: Vec<&str> = run_contract
-        .admission_ids
-        .iter()
-        .map(String::as_str)
-        .collect();
-    if actual_admission_ids != expected_admission_ids {
-        return Some("runtime_orchestration_evidence_admission_mismatch".to_string());
-    }
-    if !runtime_proof_source_records_match_steps(
-        &evidence.workflow_run_report.step_evidence,
-        &evidence.proof_regeneration_report.source_records,
-    ) {
-        return Some("runtime_orchestration_source_records_mismatch".to_string());
-    }
-    if let Some(code) = validate_runtime_orchestration_evidence_integrity(evidence) {
-        return Some(code);
-    }
-    if run_contract.proof_regeneration_required
-        && evidence.proof_regeneration_report.proof_package_sha256.is_none()
-    {
-        return Some("runtime_orchestration_proof_package_missing".to_string());
-    }
-    None
-}
-
-fn validate_runtime_orchestration_evidence_integrity(
-    evidence: &RuntimeOrchestrationEvidence,
-) -> Option<String> {
-    if evidence.workflow_run_report.run_id != evidence.proof_regeneration_report.run_id
-        || evidence.workflow_run_report.run_id != evidence.manifest.run_id
-    {
-        return Some("runtime_orchestration_evidence_run_mismatch".to_string());
-    }
-    if evidence.manifest.workflow_run_report_sha256 != evidence.workflow_report_sha256
-        || evidence.manifest.proof_regeneration_report_sha256 != evidence.proof_report_sha256
-        || evidence
-            .workflow_run_report
-            .proof_regeneration_report_sha256
-            .as_deref()
-            != Some(evidence.proof_report_sha256.as_str())
-    {
-        return Some("runtime_orchestration_evidence_hash_mismatch".to_string());
-    }
-    if evidence
-        .proof_regeneration_report
-        .verifier_report_sha256
-        .as_deref()
-        != Some(evidence.verifier_report_sha256.as_str())
-    {
-        return Some("runtime_orchestration_evidence_hash_mismatch".to_string());
-    }
-    if evidence
-        .proof_regeneration_report
-        .proof_package_sha256
-        .is_some()
-    {
-        let Some(expected_proof_package_sha256) = evidence
-            .proof_regeneration_report
-            .proof_package_sha256
-            .as_deref()
-        else {
-            return Some("runtime_orchestration_proof_package_missing".to_string());
-        };
-        let Some(manifest_proof_package_sha256) = evidence.proof_package_manifest_sha256.as_deref()
-        else {
-            return Some("runtime_orchestration_proof_package_missing".to_string());
-        };
-        let Some(actual_proof_package_sha256) = evidence.proof_package_file_sha256.as_deref()
-        else {
-            return Some("runtime_orchestration_proof_package_missing".to_string());
-        };
-        let Some(canonical_proof_package_sha256) =
-            evidence.proof_package_canonical_sha256.as_deref()
-        else {
-            return Some("runtime_orchestration_proof_package_missing".to_string());
-        };
-        let Some(verifier_report_package_sha256) =
-            evidence.verifier_report_package_sha256.as_deref()
-        else {
-            return Some("runtime_orchestration_proof_package_missing".to_string());
-        };
-        if manifest_proof_package_sha256 != actual_proof_package_sha256
-            || canonical_proof_package_sha256 != expected_proof_package_sha256
-            || verifier_report_package_sha256 != expected_proof_package_sha256
-        {
-            return Some("runtime_orchestration_evidence_hash_mismatch".to_string());
-        }
-    }
-    None
-}
-
-fn runtime_orchestration_evidence_sink_healthy(
-    profile: &chio_chiodos_runtime::RuntimeOrchestrationProfile,
-    evidence_dir: &Path,
-    now_unix_ms: u64,
-) -> Result<bool, CliError> {
-    if !evidence_dir.is_dir() {
-        return Ok(false);
-    }
-    let evidence = match load_runtime_orchestration_evidence(evidence_dir) {
-        Ok(evidence) => evidence,
-        Err(_) => return Ok(false),
-    };
-    if !runtime_orchestration_evidence_is_fresh(profile, &evidence, now_unix_ms) {
-        return Ok(false);
-    }
-    Ok(validate_runtime_orchestration_evidence_integrity(&evidence).is_none())
-}
-
-fn runtime_orchestration_evidence_is_fresh(
-    profile: &chio_chiodos_runtime::RuntimeOrchestrationProfile,
-    evidence: &RuntimeOrchestrationEvidence,
-    now_unix_ms: u64,
-) -> bool {
-    [
-        evidence.workflow_run_report.generated_at_unix_ms,
-        evidence.proof_regeneration_report.generated_at_unix_ms,
-        evidence.manifest.generated_at_unix_ms,
-    ]
-    .into_iter()
-    .all(|generated_at_unix_ms| {
-        generated_at_unix_ms >= profile.issued_at_unix_ms
-            && generated_at_unix_ms < profile.expires_at_unix_ms
-            && generated_at_unix_ms <= now_unix_ms
-    })
-}
-
-fn runtime_proof_source_records_match_steps(
-    steps: &[chio_chiodos_runtime::RuntimeStepEvidence],
-    source_records: &[chio_chiodos_runtime::RuntimeProofSourceRecord],
-) -> bool {
-    if steps.len() != source_records.len() {
-        return false;
-    }
-    let mut records_by_step = std::collections::BTreeMap::new();
-    for record in source_records {
-        if records_by_step.insert(record.step_index, record).is_some() {
-            return false;
-        }
-    }
-    steps.iter().all(|step| {
-        records_by_step
-            .get(&step.step_index)
-            .is_some_and(|record| {
-                record.admission_report_sha256 == step.admission_report_sha256
-                    && record.tool_receipt_sha256 == step.tool_receipt_sha256
-                    && record.bilateral_dsse_sha256 == step.bilateral_dsse_sha256
-                    && record.workflow_step_sha256 == step.workflow_step_sha256
-            })
-    })
-}
-
 fn load_runtime_orchestration_profile(
     path: &Path,
 ) -> Result<chio_chiodos_runtime::RuntimeOrchestrationProfile, CliError> {
@@ -5123,147 +4944,6 @@ fn ensure_runtime_evidence_dir(evidence_dir: &Path) -> Result<(), CliError> {
             evidence_dir.display()
         ))
     })
-}
-
-fn load_runtime_orchestration_evidence(
-    evidence_dir: &Path,
-) -> Result<RuntimeOrchestrationEvidence, CliError> {
-    let workflow_report_path = evidence_dir.join("workflow-run-report.json");
-    let proof_report_path = evidence_dir.join("proof-regeneration-report.json");
-    let manifest_path = evidence_dir.join("runtime-evidence-manifest.json");
-    let verifier_report_path = evidence_dir.join("verifier-report.json");
-    let workflow_json = read_utf8_json_file(&workflow_report_path, "Chiodos runtime workflow report")?;
-    let proof_json = read_utf8_json_file(&proof_report_path, "Chiodos runtime proof report")?;
-    let manifest_json =
-        read_utf8_json_file(&manifest_path, "Chiodos runtime evidence manifest")?;
-    let verifier_json = read_utf8_json_file(&verifier_report_path, "Chiodos verifier report")?;
-    let workflow_run_report: chio_chiodos_runtime::RuntimeWorkflowRunReport =
-        serde_json::from_str(&workflow_json).map_err(|error| {
-            CliError::cli_other_error(format!("Chiodos runtime workflow report: {error}"))
-        })?;
-    let proof_regeneration_report: chio_chiodos_runtime::RuntimeProofRegenerationReport =
-        serde_json::from_str(&proof_json).map_err(|error| {
-            CliError::cli_other_error(format!("Chiodos runtime proof report: {error}"))
-        })?;
-    let manifest: chio_chiodos_runtime::RuntimeEvidenceManifest =
-        serde_json::from_str(&manifest_json).map_err(|error| {
-            CliError::cli_other_error(format!("Chiodos runtime evidence manifest: {error}"))
-        })?;
-    let verifier_report: serde_json::Value = serde_json::from_str(&verifier_json).map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos verifier report: {error}"))
-    })?;
-    let verifier_report_accepted = verifier_report
-        .get("accepted")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-    let verifier_report_failure_code = verifier_report
-        .get("failure")
-        .and_then(|failure| failure.get("code"))
-        .and_then(serde_json::Value::as_str)
-        .map(ToString::to_string);
-    let verifier_report_package_sha256 = verifier_report
-        .get("packageSha256")
-        .and_then(serde_json::Value::as_str)
-        .map(ToString::to_string);
-    chio_chiodos_runtime::validate_runtime_workflow_run_report(&workflow_run_report).map_err(
-        |error| CliError::cli_other_error(format!("Chiodos runtime workflow report: {error}")),
-    )?;
-    chio_chiodos_runtime::validate_runtime_proof_regeneration_report(&proof_regeneration_report)
-        .map_err(|error| {
-            CliError::cli_other_error(format!("Chiodos runtime proof report: {error}"))
-        })?;
-    chio_chiodos_runtime::validate_runtime_evidence_manifest(&manifest).map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos runtime evidence manifest: {error}"))
-    })?;
-    let workflow_report_sha256 = canonical_sha256_json(
-        &workflow_run_report,
-        "Chiodos runtime workflow report canonical hash",
-    )?;
-    let proof_report_sha256 = canonical_sha256_json(
-        &proof_regeneration_report,
-        "Chiodos runtime proof report canonical hash",
-    )?;
-    let manifest_sha256 = canonical_sha256_json(
-        &manifest,
-        "Chiodos runtime evidence manifest canonical hash",
-    )?;
-    let verifier_report_sha256 =
-        canonical_sha256_json(&verifier_report, "Chiodos verifier report canonical hash")?;
-    let proof_package_hashes =
-        load_runtime_orchestration_role_json_artifact_hashes(evidence_dir, &manifest, "proof_package")?;
-    let proof_package_manifest_sha256 = proof_package_hashes
-        .as_ref()
-        .map(|hashes| hashes.manifest_sha256.clone());
-    let proof_package_file_sha256 = proof_package_hashes
-        .as_ref()
-        .map(|hashes| hashes.file_sha256.clone());
-    let proof_package_canonical_sha256 = proof_package_hashes
-        .as_ref()
-        .map(|hashes| hashes.canonical_sha256.clone());
-    Ok(RuntimeOrchestrationEvidence {
-        workflow_run_report,
-        proof_regeneration_report,
-        manifest,
-        verifier_report_accepted,
-        verifier_report_failure_code,
-        proof_package_manifest_sha256,
-        proof_package_file_sha256,
-        proof_package_canonical_sha256,
-        verifier_report_package_sha256,
-        workflow_report_sha256,
-        proof_report_sha256,
-        manifest_sha256,
-        verifier_report_sha256,
-    })
-}
-
-fn load_runtime_orchestration_role_json_artifact_hashes(
-    evidence_dir: &Path,
-    manifest: &chio_chiodos_runtime::RuntimeEvidenceManifest,
-    role: &str,
-) -> Result<Option<RuntimeJsonArtifactHashes>, CliError> {
-    let mut entries = manifest
-        .entries
-        .iter()
-        .filter(|entry| entry.role == role)
-        .collect::<Vec<_>>();
-    if entries.len() > 1 {
-        return Err(CliError::cli_other_error(format!(
-            "Chiodos runtime evidence manifest has duplicate {role} artifacts"
-        )));
-    }
-    let Some(entry) = entries.pop() else {
-        return Ok(None);
-    };
-    validate_runtime_relative_path(&entry.path)?;
-    let path = evidence_dir.join(&entry.path);
-    let bytes = fs::read(&path).map_err(|error| {
-        CliError::cli_io_error(format!(
-            "failed to read Chiodos runtime {role} artifact {}: {error}",
-            path.display()
-        ))
-    })?;
-    let byte_count = u64::try_from(bytes.len()).map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos runtime {role} artifact byte count: {error}"))
-    })?;
-    if byte_count != entry.byte_count {
-        return Err(CliError::cli_other_error(format!(
-            "Chiodos runtime evidence manifest byte count mismatch for {role}"
-        )));
-    }
-    let file_sha256 = chio_core::sha256_hex(&bytes);
-    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos runtime {role} artifact JSON: {error}"))
-    })?;
-    let canonical_sha256 = canonical_sha256_json(
-        &value,
-        &format!("Chiodos runtime {role} artifact canonical hash"),
-    )?;
-    Ok(Some(RuntimeJsonArtifactHashes {
-        manifest_sha256: entry.sha256.clone(),
-        file_sha256,
-        canonical_sha256,
-    }))
 }
 
 #[cfg(test)]
@@ -5351,8 +5031,17 @@ mod chiodos_orchestration_cli_tests {
         let (proof_package_file_sha256, proof_package_canonical_sha256, proof_package_byte_count) =
             write_json_with_hashes(&dir.join("proof-package.json"), &proof_package)?;
         let verifier_report = serde_json::json!({
+            "schema": chio_chiodos::VERIFIER_REPORT_SCHEMA,
+            "packageSha256": proof_package_canonical_sha256.clone(),
+            "trustBundleSha256": fixed_hash('8'),
+            "contextSha256": fixed_hash('9'),
+            "revocationEpochHeight": 1,
             "accepted": true,
-            "packageSha256": proof_package_canonical_sha256
+            "checks": [{
+                "code": "runtime_verifier.accepted",
+                "name": "runtime verifier accepted",
+                "passed": true
+            }]
         });
         let verifier_report_sha256 =
             canonical_sha256_json(&verifier_report, "test verifier report hash")?;
