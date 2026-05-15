@@ -1761,12 +1761,13 @@ impl InMemoryRuntimeAdmissionStore {
         let mut bundles = self.bundles.lock().map_err(|_| {
             ChiodosRuntimeError::Store("runtime admission bundle store is poisoned".to_string())
         })?;
-        if bundles
-            .insert(bundle.admission_id.clone(), bundle)
-            .is_some()
-        {
+        if let Some(existing) = bundles.get(&bundle.admission_id) {
+            if existing == &bundle {
+                return Ok(());
+            }
             return Err(ChiodosRuntimeError::DuplicateAdmissionBundle);
         }
+        bundles.insert(bundle.admission_id.clone(), bundle);
         Ok(())
     }
 

@@ -27,9 +27,20 @@ on:
       - "spec/schemas/MANIFEST.sha256"
       - ".github/workflows/chiodos-runtime-proof-parity.yml"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: chiodos-runtime-proof-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   runtime-proof-parity:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

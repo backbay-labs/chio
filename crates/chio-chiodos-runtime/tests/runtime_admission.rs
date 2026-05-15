@@ -419,6 +419,25 @@ fn runtime_failure_code_registry_covers_hook_surface_codes() {
 }
 
 #[test]
+fn in_memory_runtime_admission_store_insert_bundle_is_idempotent(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let original = bundle();
+    store.insert_bundle(original.clone())?;
+    store.insert_bundle(original)?;
+
+    let mut conflicting = bundle();
+    conflicting.workflow_id = "wf-conflict".to_string();
+    match store.insert_bundle(conflicting) {
+        Ok(()) => Err("conflicting bundle insert unexpectedly succeeded".into()),
+        Err(error) => {
+            assert_eq!(error.code(), "duplicate_admission_bundle");
+            Ok(())
+        }
+    }
+}
+
+#[test]
 fn matching_destructive_admission_accepts_once_then_rejects_replay(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();
