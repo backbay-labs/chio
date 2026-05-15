@@ -2451,6 +2451,97 @@ fn runtime_proof_drift_report_rejects_manifest_hash_change(
 }
 
 #[test]
+fn runtime_proof_drift_report_normalizes_timestamped_report_artifacts(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut baseline_manifest = RuntimeEvidenceManifest {
+        schema: CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        run_id: "runtime-baseline".to_string(),
+        generated_at_unix_ms: 1_800_000_001_000,
+        workflow_run_report_sha256: "1".repeat(64),
+        proof_regeneration_report_sha256: "2".repeat(64),
+        entries: vec![
+            RuntimeEvidenceManifestEntry {
+                role: "proof_package".to_string(),
+                path: "buyer-auditor-proof-package.json".to_string(),
+                sha256: "3".repeat(64),
+                byte_count: 4096,
+            },
+            RuntimeEvidenceManifestEntry {
+                role: "runtime_run_report".to_string(),
+                path: "runtime-run-report.json".to_string(),
+                sha256: "4".repeat(64),
+                byte_count: 2048,
+            },
+            RuntimeEvidenceManifestEntry {
+                role: "workflow_run_report".to_string(),
+                path: "workflow-run-report.json".to_string(),
+                sha256: "5".repeat(64),
+                byte_count: 2048,
+            },
+            RuntimeEvidenceManifestEntry {
+                role: "proof_regeneration_report".to_string(),
+                path: "proof-regeneration-report.json".to_string(),
+                sha256: "6".repeat(64),
+                byte_count: 2048,
+            },
+        ],
+    };
+    baseline_manifest.workflow_run_report_sha256 = baseline_manifest.entries[1].sha256.clone();
+    baseline_manifest.proof_regeneration_report_sha256 =
+        baseline_manifest.entries[3].sha256.clone();
+    let mut candidate_manifest = baseline_manifest.clone();
+    candidate_manifest.run_id = "runtime-candidate".to_string();
+    candidate_manifest.generated_at_unix_ms = 1_800_000_002_000;
+    candidate_manifest.entries[1].sha256 = "7".repeat(64);
+    candidate_manifest.entries[2].sha256 = "8".repeat(64);
+    candidate_manifest.entries[3].sha256 = "9".repeat(64);
+    candidate_manifest.workflow_run_report_sha256 = candidate_manifest.entries[1].sha256.clone();
+    candidate_manifest.proof_regeneration_report_sha256 =
+        candidate_manifest.entries[3].sha256.clone();
+    let source = RuntimeProofSourceRecord {
+        step_index: 0,
+        admission_report_sha256: "a".repeat(64),
+        tool_receipt_sha256: "b".repeat(64),
+        bilateral_dsse_sha256: "c".repeat(64),
+        workflow_step_sha256: "d".repeat(64),
+    };
+    let proof = RuntimeProofRegenerationReport {
+        schema: CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA.to_string(),
+        run_id: "runtime-baseline".to_string(),
+        accepted: true,
+        failure_code: None,
+        generated_at_unix_ms: 1_800_000_001_000,
+        proof_package_sha256: Some("e".repeat(64)),
+        verifier_report_sha256: Some("f".repeat(64)),
+        workflow_receipt_sha256: Some("0".repeat(64)),
+        source_records: vec![source],
+        checks: vec!["runtime_semantic_proof_regeneration.verified".to_string()],
+    };
+    let mut candidate_proof = proof.clone();
+    candidate_proof.run_id = "runtime-candidate".to_string();
+    candidate_proof.generated_at_unix_ms = 1_800_000_002_000;
+
+    let report = chio_chiodos_runtime::generate_runtime_proof_drift_report(
+        &baseline_manifest,
+        &candidate_manifest,
+        &proof,
+        &candidate_proof,
+        1_800_000_003_000,
+    )?;
+
+    assert!(report.accepted, "{report:#?}");
+    assert!(report.artifact_drifts.is_empty(), "{report:#?}");
+    assert_eq!(
+        report.normalized_fields,
+        vec![
+            "generatedAtUnixMs".to_string(),
+            "timestampedReportArtifacts".to_string()
+        ]
+    );
+    Ok(())
+}
+
+#[test]
 fn runtime_ops_run_lease_blocks_competing_owner_and_allows_stale_takeover(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
@@ -2571,6 +2662,32 @@ fn runtime_ops_scheduler_tick_limits_claims_by_active_leases(
 
     assert!(report.accepted, "{report:#?}");
     assert_eq!(report.claimed_run_ids.len(), 1, "{report:#?}");
+    assert_eq!(report.skipped_run_count, 1, "{report:#?}");
+    assert!(report.expired_run_ids.is_empty(), "{report:#?}");
+    Ok(())
+}
+
+#[test]
+fn runtime_ops_scheduler_tick_excludes_active_leased_runs_before_claim_limit(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("runtime-ops-active-filter.sqlite3");
+    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
+    store.record_run_state("runtime-run-active", "pending", None, 1_800_000_000_000)?;
+    store.record_run_state("runtime-run-a", "pending", None, 1_800_000_000_001)?;
+    store.record_run_state("runtime-run-b", "pending", None, 1_800_000_000_002)?;
+    store.acquire_run_lease(
+        "runtime-run-active",
+        "operator-old",
+        1_800_000_001_000,
+        60_000,
+    )?;
+
+    let report =
+        store.scheduler_tick_report(&supervisor_profile(), "operator-a", 1_800_000_002_000, 2)?;
+
+    assert!(report.accepted, "{report:#?}");
+    assert_eq!(report.claimed_run_ids, vec!["runtime-run-a"], "{report:#?}");
     assert_eq!(report.skipped_run_count, 1, "{report:#?}");
     assert!(report.expired_run_ids.is_empty(), "{report:#?}");
     Ok(())

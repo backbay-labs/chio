@@ -5353,9 +5353,7 @@ fn cmd_chiodos_runtime_run_loopback(
         tool_name: &str,
         now_unix_ms: u64,
     ) -> Result<chio_core::capability::CapabilityToken, CliError> {
-        let scenario_now = now_unix_ms / 1000;
-        let issued_at = scenario_now.saturating_sub(60);
-        let expires_at = scenario_now.saturating_add(157_680_000);
+        let (issued_at, expires_at) = runtime_loopback_capability_window(now_unix_ms);
         let scope = chio_core::capability::ChioScope {
             grants: vec![chio_core::capability::ToolGrant {
                 server_id: server_id.to_string(),
@@ -7271,9 +7269,13 @@ fn cmd_chiodos_runtime_run_loopback(
         &mut evidence_manifest_entries,
         &mut evidence_paths,
     )?;
-    write_json_string(
-        &out_dir.join("workflow-run-report.json"),
-        &format!("{workflow_report_json}\n"),
+    write_runtime_json_artifact_string(
+        out_dir,
+        "workflow_run_report",
+        "workflow-run-report.json",
+        &workflow_report_json,
+        &mut evidence_manifest_entries,
+        &mut evidence_paths,
     )?;
     let workflow_run_report_sha256 = canonical_sha256_json(
         &workflow_report,
@@ -9836,6 +9838,15 @@ fn unix_now_ms() -> u64 {
             u64::try_from(millis).unwrap_or(u64::MAX)
         })
         .unwrap_or(0)
+}
+
+fn runtime_loopback_capability_window(now_unix_ms: u64) -> (u64, u64) {
+    let scenario_now = now_unix_ms / 1000;
+    let wall_now = unix_now_ms() / 1000;
+    (
+        scenario_now.min(wall_now).saturating_sub(60),
+        scenario_now.max(wall_now).saturating_add(157_680_000),
+    )
 }
 
 fn cmd_chiodos_authority_issue(

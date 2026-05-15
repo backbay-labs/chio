@@ -3349,10 +3349,16 @@ impl SqliteRuntimeOrchestrationStore {
         let mut statement = connection
             .prepare(
                 r#"
-                SELECT run_id
-                FROM runtime_runs
-                WHERE status IN ('pending', 'planned', 'proof_pending')
-                ORDER BY updated_at_unix_ms, run_id
+                SELECT runs.run_id
+                FROM runtime_runs runs
+                WHERE runs.status IN ('pending', 'planned', 'proof_pending')
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM runtime_run_leases leases
+                    WHERE leases.run_id = runs.run_id
+                      AND leases.state = 'active'
+                  )
+                ORDER BY runs.updated_at_unix_ms, runs.run_id
                 "#,
             )
             .map_err(sqlite_error)?;
@@ -6270,7 +6276,9 @@ pub fn generate_runtime_proof_drift_report(
             .collect();
     for (key, baseline_entry) in &baseline_entries {
         if let Some(candidate_entry) = candidate_entries.get(key) {
-            if baseline_entry.sha256 != candidate_entry.sha256 {
+            if baseline_entry.sha256 != candidate_entry.sha256
+                && !is_timestamped_runtime_report_artifact(baseline_entry)
+            {
                 artifact_drifts.push(RuntimeProofArtifactDrift {
                     role: baseline_entry.role.clone(),
                     path: baseline_entry.path.clone(),
@@ -6315,13 +6323,27 @@ pub fn generate_runtime_proof_drift_report(
         baseline_proof_regeneration_report_sha256: canonical_sha256(baseline_proof)?,
         candidate_proof_regeneration_report_sha256: canonical_sha256(candidate_proof)?,
         comparison_profile: "local-repeat-deterministic-v1".to_string(),
-        normalized_fields: vec!["generatedAtUnixMs".to_string()],
+        normalized_fields: vec![
+            "generatedAtUnixMs".to_string(),
+            "timestampedReportArtifacts".to_string(),
+        ],
         semantic_drifts,
         artifact_drifts,
         verifier_drifts,
     };
     validate_runtime_proof_drift_report(&report)?;
     Ok(report)
+}
+
+fn is_timestamped_runtime_report_artifact(entry: &RuntimeEvidenceManifestEntry) -> bool {
+    matches!(
+        (entry.role.as_str(), entry.path.as_str()),
+        (
+            "proof_regeneration_report",
+            "proof-regeneration-report.json"
+        ) | ("runtime_run_report", "runtime-run-report.json")
+            | ("workflow_run_report", "workflow-run-report.json")
+    )
 }
 
 pub fn generate_runtime_evidence_sink_health_report(

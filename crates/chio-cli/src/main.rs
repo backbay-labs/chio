@@ -2245,6 +2245,19 @@ mod cli_entrypoint_tests {
         Ok(())
     }
 
+    #[test]
+    fn chiodos_runtime_loopback_capability_window_covers_replay_and_wall_clock() {
+        let replay_now_unix_ms = 4_102_444_800_000;
+        let wall_now_secs = unix_now_ms() / 1000;
+
+        let (issued_at, expires_at) = runtime_loopback_capability_window(replay_now_unix_ms);
+
+        assert!(issued_at <= replay_now_unix_ms / 1000);
+        assert!(expires_at > replay_now_unix_ms / 1000);
+        assert!(issued_at <= wall_now_secs);
+        assert!(expires_at > wall_now_secs);
+    }
+
     fn render_error_json(error: &CliError) -> Result<serde_json::Value, Box<dyn Error>> {
         let mut output = Vec::new();
         write_cli_error(&mut output, error, true)?;

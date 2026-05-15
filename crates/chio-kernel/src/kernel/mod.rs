@@ -296,6 +296,13 @@ impl Drop for PostAdmissionDropGuard<'_> {
     }
 }
 
+fn dispatch_error_precedes_tool_side_effect(error: &KernelError) -> bool {
+    matches!(
+        error,
+        KernelError::ToolNotRegistered(_) | KernelError::UrlElicitationsRequired { .. }
+    )
+}
+
 /// Extract tenant_id from a session's authenticated auth context.
 ///
 /// Preference order:
@@ -3886,6 +3893,7 @@ impl ChioKernel {
                     charge_result.as_ref(),
                     payment_authorization.as_ref(),
                 )?;
+                self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
                 warn!(
                     request_id = %request.request_id,
                     reason = %redacted!(&error),
@@ -3959,6 +3967,9 @@ impl ChioKernel {
                     charge_result.as_ref(),
                     payment_authorization.as_ref(),
                 )?;
+                if dispatch_error_precedes_tool_side_effect(&e) {
+                    self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
+                }
                 let msg = e.to_string();
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool server error");
                 return self.build_deny_response_with_metadata(
@@ -4470,6 +4481,7 @@ impl ChioKernel {
                     charge_result.as_ref(),
                     payment_authorization.as_ref(),
                 )?;
+                self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
                 warn!(
                     request_id = %request.request_id,
                     reason = %redacted!(&error),
@@ -4549,6 +4561,11 @@ impl ChioKernel {
                     charge_result.as_ref(),
                     payment_authorization.as_ref(),
                 )?;
+                if dispatch_error_precedes_tool_side_effect(&error) {
+                    self.release_runtime_admission_reservations(
+                        runtime_admission_metadata.as_ref(),
+                    )?;
+                }
                 let msg = error.to_string();
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool server error");
                 return self.build_deny_response_with_metadata(

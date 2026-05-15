@@ -30,6 +30,12 @@ struct FailingAfterSideEffectServer {
     invocations: std::sync::Arc<AtomicU64>,
 }
 
+struct UrlElicitationBeforeSideEffectServer {
+    id: String,
+    tools: Vec<String>,
+    stream_attempts: std::sync::Arc<AtomicU64>,
+}
+
 impl RuntimeAdmissionHook for DenyingRuntimeAdmissionHook {
     fn name(&self) -> &str {
         "test-chiodos-admission"
@@ -153,6 +159,16 @@ impl FailingAfterSideEffectServer {
     }
 }
 
+impl UrlElicitationBeforeSideEffectServer {
+    fn new(id: &str, tools: Vec<&str>, stream_attempts: std::sync::Arc<AtomicU64>) -> Self {
+        Self {
+            id: id.to_string(),
+            tools: tools.into_iter().map(String::from).collect(),
+            stream_attempts,
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl ToolServerConnection for FailingAfterSideEffectServer {
     fn server_id(&self) -> &str {
@@ -172,6 +188,41 @@ impl ToolServerConnection for FailingAfterSideEffectServer {
         self.invocations.fetch_add(1, Ordering::SeqCst);
         Err(KernelError::Internal(
             "destructive side effect committed before transport failure".to_string(),
+        ))
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for UrlElicitationBeforeSideEffectServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        self.tools.clone()
+    }
+
+    async fn invoke_stream(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<Option<ToolServerStreamResult>, KernelError> {
+        self.stream_attempts.fetch_add(1, Ordering::SeqCst);
+        Err(KernelError::UrlElicitationsRequired {
+            message: "URL elicitation required before dispatch side effect".to_string(),
+            elicitations: Vec::new(),
+        })
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Err(KernelError::Internal(
+            "unexpected invoke after URL elicitation".to_string(),
         ))
     }
 }
@@ -577,6 +628,66 @@ fn chiodos_runtime_admission_does_not_release_destructive_lease_after_dispatch_f
     assert_eq!(
         metadata["chiodos_runtime"]["reserved_destructive_lease_id"],
         "lease-dispatch-error"
+    );
+    Ok(())
+}
+
+#[test]
+fn chiodos_runtime_admission_releases_reservations_on_pre_side_effect_dispatch_error(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
+        "srv-chiodos-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&stream_attempts),
+    )));
+
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chiodos-runtime-url-elicitation",
+            admission_id: "adm-url-elicitation",
+            lease_id: "lease-url-elicitation",
+            continuation_id: Some("continuation-url-elicitation"),
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chiodos-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chiodos-runtime-url-elicitation",
+        &cap,
+        "destructive_update",
+        "srv-chiodos-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let error = kernel
+        .evaluate_tool_call_blocking(&request)
+        .expect_err("URL elicitation must surface to the caller");
+
+    assert!(matches!(
+        error,
+        KernelError::UrlElicitationsRequired { .. }
+    ));
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(stream_attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        1,
+        "runtime reservations must be released when dispatch fails before a tool side effect"
     );
     Ok(())
 }
