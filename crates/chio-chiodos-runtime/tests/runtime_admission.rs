@@ -1173,6 +1173,49 @@ fn kernel_hook_accepts_governed_context_reference_and_returns_receipt_metadata(
 }
 
 #[test]
+fn kernel_hook_bypasses_non_chiodos_request() -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let cap = capability("cap-legacy-1")?;
+    let request = ToolCallRequest {
+        request_id: "req-legacy-tool".to_string(),
+        capability: cap.clone(),
+        tool_name: "read_status".to_string(),
+        server_id: "legacy-ledger".to_string(),
+        agent_id: cap.subject.to_hex(),
+        arguments: serde_json::json!({"record": "vendor-ledger-7"}),
+        dpop_proof: None,
+        governed_intent: Some(GovernedTransactionIntent {
+            id: "intent-legacy-1".to_string(),
+            server_id: "legacy-ledger".to_string(),
+            tool_name: "read_status".to_string(),
+            purpose: "ordinary non-Chiodos status read".to_string(),
+            max_amount: None,
+            commerce: None,
+            metered_billing: None,
+            runtime_attestation: None,
+            call_chain: None,
+            autonomy: None,
+            context: Some(serde_json::json!({"legacyTraceId": "trace-1"})),
+        }),
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        now_unix_secs: 1_800_000_001,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+
+    assert!(decision.allowed, "{decision:#?}");
+    assert!(decision.metadata.is_none(), "{decision:#?}");
+    Ok(())
+}
+
+#[test]
 fn kernel_hook_denies_federated_runtime_request_without_treaty_context(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();
@@ -1448,6 +1491,44 @@ fn treaty_runtime_hook_denies_missing_bilateral_invocation_evidence_ref(
     assert_eq!(
         metadata["chiodos_runtime"]["failure_code"],
         "chiodos_treaty_missing_required_evidence"
+    );
+    Ok(())
+}
+
+#[test]
+fn treaty_runtime_hook_requires_signed_bilateral_evidence_before_verification(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let store = SqliteRuntimeOrchestrationStore::open(dir.path().join("treaty-hook.sqlite3"))?;
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    let mut admission_bundle = bundle();
+    admission_bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    let bundle_hash = runtime_admission_bundle_sha256(&admission_bundle)?;
+    store.insert_bundle(admission_bundle)?;
+    let fixture = treaty_runtime_fixture()?;
+    insert_treaty_runtime_fixture(&store, &fixture)?;
+
+    let mut context = treaty_runtime_context(&fixture);
+    context
+        .as_object_mut()
+        .ok_or_else(|| io::Error::other("context object missing"))?
+        .remove("bilateralDsse");
+    let request = treaty_runtime_request(args, bundle_hash, context)?;
+    let hook = allowing_policy_hook(store)?;
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        now_unix_secs: 1_800_000_001,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+
+    assert!(!decision.allowed);
+    let metadata = decision
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert_eq!(
+        metadata["chiodos_runtime"]["failure_code"],
+        "chiodos_treaty_unverified_required_evidence"
     );
     Ok(())
 }
@@ -2300,6 +2381,31 @@ fn runtime_ops_scheduler_tick_claims_pending_runs_and_expires_stale_leases(
         .contains(&"runtime-run-b".to_string()));
     assert_eq!(report.skipped_run_count, 1);
     assert_eq!(report.expired_run_ids, vec!["runtime-run-expired"]);
+    Ok(())
+}
+
+#[test]
+fn runtime_ops_scheduler_tick_limits_claims_by_active_leases(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("runtime-ops-active-capacity.sqlite3");
+    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
+    store.record_run_state("runtime-run-a", "pending", None, 1_800_000_000_000)?;
+    store.record_run_state("runtime-run-b", "pending", None, 1_800_000_000_000)?;
+    store.acquire_run_lease(
+        "runtime-run-active",
+        "operator-old",
+        1_800_000_001_000,
+        60_000,
+    )?;
+
+    let report =
+        store.scheduler_tick_report(&supervisor_profile(), "operator-a", 1_800_000_002_000, 2)?;
+
+    assert!(report.accepted, "{report:#?}");
+    assert_eq!(report.claimed_run_ids.len(), 1, "{report:#?}");
+    assert_eq!(report.skipped_run_count, 1, "{report:#?}");
+    assert!(report.expired_run_ids.is_empty(), "{report:#?}");
     Ok(())
 }
 

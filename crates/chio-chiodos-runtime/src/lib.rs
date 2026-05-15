@@ -3018,7 +3018,13 @@ impl SqliteRuntimeOrchestrationStore {
                     )
                     .map_err(sqlite_error)?;
             }
-            let claim_limit = max_runs.min(profile.max_concurrent_runs);
+            let active_lease_count = {
+                let connection = self.lock_connection()?;
+                lease_count_by_state(&connection, "active")?
+            };
+            let claim_limit = max_runs
+                .min(profile.max_concurrent_runs)
+                .saturating_sub(active_lease_count);
             let pending_runs = self.pending_run_ids()?;
             skipped_run_count = pending_runs
                 .len()
@@ -7764,6 +7770,9 @@ where
     ) -> Result<KernelRuntimeAdmissionDecision, KernelError> {
         let admission_ref = match admission_ref_from_request(context.request) {
             Ok(reference) => reference,
+            Err(_) if !request_has_chiodos_runtime_context(context.request) => {
+                return Ok(KernelRuntimeAdmissionDecision::allow(None));
+            }
             Err(code) => {
                 let metadata = serde_json::json!({
                     "chiodos_runtime": {
@@ -8038,6 +8047,17 @@ fn admission_ref_from_request(
         admission_id: admission_id.to_string(),
         bundle_sha256,
     })
+}
+
+fn request_has_chiodos_runtime_context(request: &ToolCallRequest) -> bool {
+    request
+        .governed_intent
+        .as_ref()
+        .and_then(|intent| intent.context.as_ref())
+        .and_then(serde_json::Value::as_object)
+        .is_some_and(|context| {
+            context.contains_key("chiodosAdmission") || context.contains_key("chiodosTreaty")
+        })
 }
 
 fn treaty_ref_from_request(
@@ -8326,6 +8346,7 @@ fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
 
     let mut present_evidence = Vec::new();
     let mut verified_evidence = Vec::new();
+    let mut bilateral_invocation_sha256 = None;
     if let Some((continuation, continuation_sha256)) = continuation.as_ref() {
         verify_continuation_evidence(
             continuation,
@@ -8363,11 +8384,7 @@ fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
                 lineage_bundle.as_ref().map(|(bundle, _)| bundle),
             )?;
             present_evidence.push("bilateral_invocation".to_string());
-            verified_evidence.push(CrossBoundaryEvidenceRef {
-                evidence_class: "bilateral_invocation".to_string(),
-                artifact_sha256: invocation_binding_sha256,
-                verified: true,
-            });
+            bilateral_invocation_sha256 = Some(invocation_binding_sha256);
         }
         if let Some((envelope, _envelope_sha256)) = bilateral_dsse.as_ref() {
             let treaty_evidence = TreatyEvidenceReview {
@@ -8389,6 +8406,13 @@ fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
                     .as_ref()
                     .map(|(invocation, _)| invocation),
             )?;
+            if let Some(invocation_sha256) = bilateral_invocation_sha256.as_ref() {
+                verified_evidence.push(CrossBoundaryEvidenceRef {
+                    evidence_class: "bilateral_invocation".to_string(),
+                    artifact_sha256: invocation_sha256.clone(),
+                    verified: true,
+                });
+            }
         }
     } else if requires_lineage
         || requires_bilateral
