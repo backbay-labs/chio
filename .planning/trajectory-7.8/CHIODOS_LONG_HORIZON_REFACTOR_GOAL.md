@@ -2,7 +2,7 @@
 
 Use this plan after the Chiodos Orchestration/Treaty P2 Closure pass completes.
 
-Repo: `/Users/connor/.codex/worktrees/985a/arc`
+Repo: this repository
 PR: `https://github.com/bb-connor/arc/pull/683`
 Branch: `codex/chiodos-7-8-live-treaty-buyer-closure`
 
