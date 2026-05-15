@@ -15,6 +15,21 @@ struct LiveReceiptAllowingRuntimeAdmissionHook {
     calls: std::sync::Arc<AtomicU64>,
 }
 
+struct ReleaseTrackingRuntimeAdmissionHook {
+    calls: std::sync::Arc<AtomicU64>,
+    releases: std::sync::Arc<AtomicU64>,
+    expected_request_id: &'static str,
+    admission_id: &'static str,
+    lease_id: &'static str,
+    continuation_id: Option<&'static str>,
+}
+
+struct FailingAfterSideEffectServer {
+    id: String,
+    tools: Vec<String>,
+    invocations: std::sync::Arc<AtomicU64>,
+}
+
 impl RuntimeAdmissionHook for DenyingRuntimeAdmissionHook {
     fn name(&self) -> &str {
         "test-chiodos-admission"
@@ -82,6 +97,82 @@ impl RuntimeAdmissionHook for LiveReceiptAllowingRuntimeAdmissionHook {
                 "live_receipt_capture": true
             }
         }))))
+    }
+}
+
+impl RuntimeAdmissionHook for ReleaseTrackingRuntimeAdmissionHook {
+    fn name(&self) -> &str {
+        "test-chiodos-release-tracking-admission"
+    }
+
+    fn evaluate(
+        &self,
+        context: &RuntimeAdmissionContext<'_>,
+    ) -> Result<RuntimeAdmissionDecision, KernelError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        assert_eq!(context.request.request_id, self.expected_request_id);
+        assert_eq!(context.matched_grant_index, Some(0));
+        let mut metadata = serde_json::json!({
+            "chiodos_runtime": {
+                "admission_id": self.admission_id,
+                "accepted": true,
+                "reserved_destructive_lease_id": self.lease_id,
+                "failure_code": null
+            }
+        });
+        if let Some(continuation_id) = self.continuation_id {
+            metadata["chiodos_runtime"]["reserved_treaty_continuation_id"] =
+                serde_json::json!(continuation_id);
+        }
+        Ok(RuntimeAdmissionDecision::allow(Some(metadata)))
+    }
+
+    fn release_reserved(&self, metadata: &serde_json::Value) -> Result<(), KernelError> {
+        assert_eq!(
+            metadata["chiodos_runtime"]["reserved_destructive_lease_id"],
+            self.lease_id
+        );
+        if let Some(continuation_id) = self.continuation_id {
+            assert_eq!(
+                metadata["chiodos_runtime"]["reserved_treaty_continuation_id"],
+                continuation_id
+            );
+        }
+        self.releases.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+impl FailingAfterSideEffectServer {
+    fn new(id: &str, tools: Vec<&str>, invocations: std::sync::Arc<AtomicU64>) -> Self {
+        Self {
+            id: id.to_string(),
+            tools: tools.into_iter().map(String::from).collect(),
+            invocations,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for FailingAfterSideEffectServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        self.tools.clone()
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        self.invocations.fetch_add(1, Ordering::SeqCst);
+        Err(KernelError::Internal(
+            "destructive side effect committed before transport failure".to_string(),
+        ))
     }
 }
 
@@ -159,6 +250,69 @@ fn chiodos_runtime_admission_hook_denies_before_tool_dispatch_and_records_metada
     assert_eq!(
         metadata["chiodos_runtime"]["failure_code"],
         "test_runtime_deny"
+    );
+    Ok(())
+}
+
+#[test]
+fn chiodos_governed_request_without_runtime_hook_fails_closed(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-chiodos-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chiodos-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let mut request = make_request_with_arguments(
+        "req-chiodos-runtime-no-hook",
+        &cap,
+        "destructive_update",
+        "srv-chiodos-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+    request.governed_intent = Some(GovernedTransactionIntent {
+        id: "intent:chiodos:no-hook".to_string(),
+        server_id: request.server_id.clone(),
+        tool_name: request.tool_name.clone(),
+        purpose: "verify Chiodos admission fails closed without a hook".to_string(),
+        max_amount: None,
+        commerce: None,
+        metered_billing: None,
+        runtime_attestation: None,
+        call_chain: None,
+        autonomy: None,
+        context: Some(serde_json::json!({
+            "chiodosAdmission": {
+                "admissionId": "adm-no-hook",
+                "bundleSha256": "a".repeat(64)
+            }
+        })),
+    });
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    let metadata = response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
+    assert_eq!(metadata["chiodos_runtime"]["accepted"], false);
+    assert_eq!(
+        metadata["chiodos_runtime"]["failure_code"],
+        "runtime_admission_hook_missing"
     );
     Ok(())
 }
@@ -289,6 +443,162 @@ fn chiodos_runtime_admission_hook_allows_dispatch_and_records_metadata(
     assert_eq!(metadata["chiodos_runtime"]["admission_id"], "adm-allowed");
     assert_eq!(metadata["chiodos_runtime"]["accepted"], true);
     assert_eq!(metadata["chiodos_runtime"]["observe_only"], true);
+    Ok(())
+}
+
+#[test]
+fn chiodos_runtime_admission_does_not_release_destructive_lease_after_dispatch_failure(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(FailingAfterSideEffectServer::new(
+        "srv-chiodos-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chiodos-runtime-dispatch-error",
+            admission_id: "adm-dispatch-error",
+            lease_id: "lease-dispatch-error",
+            continuation_id: None,
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chiodos-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chiodos-runtime-dispatch-error",
+        &cap,
+        "destructive_update",
+        "srv-chiodos-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(invocations.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        0,
+        "destructive runtime leases must remain consumed after tool dispatch starts"
+    );
+    assert_eq!(
+        response.reason.as_deref(),
+        Some("internal error: destructive side effect committed before transport failure")
+    );
+    let metadata = response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
+    assert_eq!(metadata["chiodos_runtime"]["admission_id"], "adm-dispatch-error");
+    assert_eq!(metadata["chiodos_runtime"]["accepted"], true);
+    assert_eq!(
+        metadata["chiodos_runtime"]["reserved_destructive_lease_id"],
+        "lease-dispatch-error"
+    );
+    Ok(())
+}
+
+#[test]
+fn chiodos_runtime_admission_releases_reservations_on_pre_dispatch_budget_denial(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let SiblingSumMonetaryFixture {
+        mut kernel,
+        child_a,
+        child_b,
+        child_a_kp,
+        child_b_kp,
+        path: _path,
+    } = make_sibling_sum_monetary_fixture("chiodos-runtime-pre-dispatch-release");
+
+    let allow_response = kernel.evaluate_tool_call_blocking(&ToolCallRequest {
+        request_id: "req-chiodos-runtime-pre-dispatch-budget-allow".to_string(),
+        capability: child_a,
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: child_a_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    })?;
+    assert_eq!(
+        allow_response.verdict, Verdict::Allow,
+        "unexpected deny reason: {:?}",
+        allow_response.reason
+    );
+
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chiodos-runtime-pre-dispatch-budget-deny",
+            admission_id: "adm-pre-dispatch-budget-deny",
+            lease_id: "lease-pre-dispatch-budget-deny",
+            continuation_id: Some("continuation-pre-dispatch-budget-deny"),
+        },
+    ));
+
+    let deny_response = kernel.evaluate_tool_call_blocking(&ToolCallRequest {
+        request_id: "req-chiodos-runtime-pre-dispatch-budget-deny".to_string(),
+        capability: child_b,
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: child_b_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    })?;
+
+    assert_eq!(deny_response.verdict, Verdict::Deny);
+    assert!(deny_response.reason.as_deref().is_some_and(|reason| {
+        reason.contains("sibling-sum") || reason.contains("sibling sum")
+    }));
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        1,
+        "runtime reservations must be released before tool dispatch starts"
+    );
+    let metadata = deny_response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
+    assert_eq!(
+        metadata["chiodos_runtime"]["admission_id"],
+        "adm-pre-dispatch-budget-deny"
+    );
+    assert_eq!(
+        metadata["chiodos_runtime"]["reserved_destructive_lease_id"],
+        "lease-pre-dispatch-budget-deny"
+    );
+    assert_eq!(
+        metadata["chiodos_runtime"]["reserved_treaty_continuation_id"],
+        "continuation-pre-dispatch-budget-deny"
+    );
     Ok(())
 }
 

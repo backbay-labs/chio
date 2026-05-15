@@ -985,7 +985,7 @@ enum ChiodosRuntimeCommands {
         #[arg(long = "trusted-verifiers", value_name = "PATH")]
         trusted_verifiers: Option<PathBuf>,
 
-        /// Existing pheromone query report to record as observe-only advice.
+        /// Signed pheromone query report to record as observe-only advice.
         #[arg(long = "pheromone-query-report", value_name = "PATH")]
         pheromone_query_report: Option<PathBuf>,
 
@@ -1133,6 +1133,9 @@ enum ChiodosRuntimeOpsCommands {
 
         #[arg(long = "evidence-root", value_name = "DIR")]
         evidence_root: PathBuf,
+
+        #[arg(long)]
+        now_unix_ms: Option<u64>,
 
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
@@ -1374,6 +1377,17 @@ enum ChiodosRuntimePolicyCommands {
 
 #[derive(Subcommand)]
 enum ChiodosRuntimePeerWeightsCommands {
+    /// Compute the canonical hash of a runtime peer weights body.
+    Hash {
+        /// Runtime peer weights body JSON.
+        #[arg(long, value_name = "PATH")]
+        body: PathBuf,
+
+        /// Output path for the canonical hash.
+        #[arg(long, value_name = "PATH")]
+        out: PathBuf,
+    },
+
     /// Sign a runtime peer weights body.
     Sign {
         /// Runtime peer weights body JSON.
@@ -1392,6 +1406,21 @@ enum ChiodosRuntimePeerWeightsCommands {
 
 #[derive(Subcommand)]
 enum ChiodosRuntimePheromoneCommands {
+    /// Sign a pheromone query report for runtime admission.
+    SignQueryReport {
+        /// Pheromone query report body JSON.
+        #[arg(long, value_name = "PATH")]
+        body: PathBuf,
+
+        /// Hex seed file for the verifier signing key.
+        #[arg(long = "signing-seed-file", value_name = "PATH")]
+        signing_seed_file: PathBuf,
+
+        /// Output path for signed pheromone query report JSON.
+        #[arg(long, value_name = "PATH")]
+        out: PathBuf,
+    },
+
     /// Evaluate a signed runtime pheromone policy over a query report.
     Evaluate {
         /// Runtime admission bundle JSON for request binding.
@@ -1406,7 +1435,7 @@ enum ChiodosRuntimePheromoneCommands {
         #[arg(long = "trusted-verifiers", value_name = "PATH")]
         trusted_verifiers: PathBuf,
 
-        /// Existing pheromone query report JSON.
+        /// Signed pheromone query report JSON.
         #[arg(long = "pheromone-query-report", value_name = "PATH")]
         pheromone_query_report: PathBuf,
 

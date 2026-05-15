@@ -5,11 +5,22 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "accepted", "generatedAtUnixMs", "profileSha256", "storeBackend", "storePathSha256", "runCounts", "consumedLeaseCount", "trustFloorCount", "evidenceSinkHealthy", "ready", "degraded"],
+  "allOf": [
+    {
+      "if": { "properties": { "accepted": { "const": false } }, "required": ["accepted"] },
+      "then": { "required": ["failureCode"] }
+    },
+    {
+      "if": { "properties": { "accepted": { "const": true } }, "required": ["accepted"] },
+      "then": { "not": { "required": ["failureCode"] } }
+    }
+  ],
   "properties": {
     "schema": { "const": "chio.chiodos.runtime-orchestration-status-report.v1" },
     "accepted": { "type": "boolean" },
     "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
     "profileSha256": { "$ref": "#/$defs/sha256" },
+    "failureCode": { "type": "string", "minLength": 1 },
     "storeBackend": { "type": "string", "pattern": "^[a-z0-9_]+$" },
     "storePathSha256": { "$ref": "#/$defs/sha256" },
     "runCounts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },

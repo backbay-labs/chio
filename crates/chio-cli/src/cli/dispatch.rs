@@ -2449,6 +2449,9 @@ fn main() {
                     } => cmd_chiodos_runtime_sign_policy(&body, &signing_seed_file, &out),
                 },
                 ChiodosRuntimeCommands::PeerWeights { command } => match command {
+                    ChiodosRuntimePeerWeightsCommands::Hash { body, out } => {
+                        cmd_chiodos_runtime_peer_weights_hash(&body, &out)
+                    }
                     ChiodosRuntimePeerWeightsCommands::Sign {
                         body,
                         signing_seed_file,
@@ -2456,6 +2459,15 @@ fn main() {
                     } => cmd_chiodos_runtime_sign_peer_weights(&body, &signing_seed_file, &out),
                 },
                 ChiodosRuntimeCommands::Pheromone { command } => match command {
+                    ChiodosRuntimePheromoneCommands::SignQueryReport {
+                        body,
+                        signing_seed_file,
+                        out,
+                    } => cmd_chiodos_runtime_sign_pheromone_query_report(
+                        &body,
+                        &signing_seed_file,
+                        &out,
+                    ),
                     ChiodosRuntimePheromoneCommands::Evaluate {
                         admission_bundle,
                         runtime_trust_input,
@@ -2585,12 +2597,13 @@ fn main() {
                         supervisor_profile,
                         store,
                         evidence_root,
+                        now_unix_ms,
                         report,
                     } => cmd_chiodos_runtime_ops_status(
                         &supervisor_profile,
                         &store,
                         &evidence_root,
-                        None,
+                        now_unix_ms,
                         &report,
                     ),
                     ChiodosRuntimeOpsCommands::RecoveryDrill {
@@ -3772,8 +3785,36 @@ const BUYER_REVIEW_ARTIFACT_FILES: &[(&str, &str)] = &[
 ];
 
 fn cmd_chiodos_buyer_package(run_output: &Path, out: &Path) -> Result<(), CliError> {
+    let run_output_root = run_output.canonicalize().map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to canonicalize Chiodos buyer run output {}: {error}",
+            run_output.display()
+        ))
+    })?;
+    let out_parent = out.parent().unwrap_or_else(|| Path::new("."));
+    if !out_parent.as_os_str().is_empty() {
+        fs::create_dir_all(out_parent).map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to create Chiodos buyer package directory {}: {error}",
+                out_parent.display()
+            ))
+        })?;
+    }
+    let package_root = out_parent.canonicalize().map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to canonicalize Chiodos buyer package directory {}: {error}",
+            out_parent.display()
+        ))
+    })?;
+    if package_root != run_output_root {
+        return Err(CliError::cli_other_error(
+            "Chiodos buyer package --out must be written directly inside --run-output so artifact paths remain verifier-resolvable"
+                .to_string(),
+        ));
+    }
     let mut artifacts = Vec::new();
     let mut packet_json = None;
+    let mut generated_at_unix_ms = None;
     for (role, relative_path) in BUYER_REVIEW_ARTIFACT_FILES {
         validate_runtime_relative_path(relative_path)?;
         let path = run_output.join(relative_path);
@@ -3791,6 +3832,22 @@ fn cmd_chiodos_buyer_package(run_output: &Path, out: &Path) -> Result<(), CliErr
                 ))
             })?);
         }
+        if *role == "runtime_evidence_manifest" {
+            let manifest_json = String::from_utf8(bytes.clone()).map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime evidence manifest {} is not UTF-8 JSON: {error}",
+                    path.display()
+                ))
+            })?;
+            let manifest: chio_chiodos_runtime::RuntimeEvidenceManifest =
+                serde_json::from_str(&manifest_json).map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime evidence manifest {} parse: {error}",
+                        path.display()
+                    ))
+                })?;
+            generated_at_unix_ms = Some(manifest.generated_at_unix_ms);
+        }
         let byte_count = u64::try_from(bytes.len()).map_err(|error| {
             CliError::cli_other_error(format!("Chiodos buyer artifact byte count: {error}"))
         })?;
@@ -3807,12 +3864,15 @@ fn cmd_chiodos_buyer_package(run_output: &Path, out: &Path) -> Result<(), CliErr
     let packet = chio_chiodos_runtime::buyer_attestation_packet_from_json(&packet_json).map_err(
         |error| CliError::cli_other_error(format!("Chiodos buyer attestation packet: {error}")),
     )?;
+    let generated_at_unix_ms = generated_at_unix_ms.ok_or_else(|| {
+        CliError::cli_other_error("Chiodos buyer package is missing runtime evidence manifest")
+    })?;
     let package = chio_chiodos_runtime::BuyerAttestationReviewPackage {
         schema: chio_chiodos_runtime::CHIODOS_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA.to_string(),
         package_id: format!("buyer-review:{}", packet.packet_id),
         packet_id: packet.packet_id,
         buyer_id: packet.buyer_id,
-        generated_at_unix_ms: 0,
+        generated_at_unix_ms,
         artifacts,
     };
     let json = serde_json::to_string_pretty(&package)
@@ -4132,6 +4192,64 @@ fn cmd_chiodos_runtime_sign_peer_weights(
     write_pretty_json(out, &signed, "Chiodos runtime peer weights")
 }
 
+fn cmd_chiodos_runtime_sign_pheromone_query_report(
+    body: &Path,
+    signing_seed_file: &Path,
+    out: &Path,
+) -> Result<(), CliError> {
+    let body: serde_json::Value =
+        serde_json::from_str(&read_utf8_json_file(body, "Chiodos pheromone query report body")?)
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos pheromone query report body parse: {error}"
+                ))
+            })?;
+    chio_chiodos_runtime::runtime_pheromone_advisory_from_query_report_json(
+        &serde_json::to_string(&body).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos pheromone query report validation: {error}"
+            ))
+        })?,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "Chiodos pheromone query report validation: {error}"
+        ))
+    })?;
+    let seed_hex = read_utf8_json_file(
+        signing_seed_file,
+        "Chiodos pheromone query report signing seed",
+    )?;
+    let keypair = Keypair::from_seed_hex(seed_hex.trim()).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "Chiodos pheromone query report signing seed: {error}"
+        ))
+    })?;
+    let signed = chio_core::receipt::SignedExportEnvelope::sign(body, &keypair).map_err(
+        |error| {
+            CliError::cli_other_error(format!(
+                "Chiodos pheromone query report signing: {error}"
+            ))
+        },
+    )?;
+    write_pretty_json(out, &signed, "Chiodos pheromone query report")
+}
+
+fn cmd_chiodos_runtime_peer_weights_hash(body: &Path, out: &Path) -> Result<(), CliError> {
+    let body: chio_chiodos_runtime::RuntimePeerWeights =
+        serde_json::from_str(&read_utf8_json_file(
+            body,
+            "Chiodos runtime peer weights body",
+        )?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime peer weights parse: {error}"))
+        })?;
+    let hash = chio_chiodos_runtime::runtime_peer_weights_sha256(&body).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime peer weights hash: {error}"))
+    })?;
+    write_json_string(out, &format!("{hash}\n"))
+}
+
 fn cmd_chiodos_runtime_admit(
     request: &Path,
     admission_profile: &Path,
@@ -4197,13 +4315,15 @@ fn cmd_chiodos_runtime_admit(
     let trusted_verifier_keys = trusted_verifiers
         .as_ref()
         .map_or(&[][..], |document| document.verifier_keys.as_slice());
-    let pheromone_advisory = pheromone_query_report
+    let pheromone_query_report = pheromone_query_report
         .map(|path| {
-            chio_chiodos_runtime::runtime_pheromone_advisory_from_query_report_json(
+            chio_chiodos_runtime::signed_runtime_pheromone_query_report_from_json(
                 &read_utf8_json_file(path, "Chiodos pheromone query report")?,
             )
             .map_err(|error| {
-                CliError::cli_other_error(format!("Chiodos pheromone advisory parse: {error}"))
+                CliError::cli_other_error(format!(
+                    "Chiodos signed pheromone query report parse: {error}"
+                ))
             })
         })
         .transpose()?;
@@ -4268,7 +4388,7 @@ fn cmd_chiodos_runtime_admit(
             request: &request,
             runtime_trust_input: runtime_trust_input.as_ref(),
             trusted_verifier_keys,
-            pheromone_advisory: pheromone_advisory.as_ref(),
+            pheromone_query_report: pheromone_query_report.as_ref(),
             runtime_pheromone_policy: runtime_pheromone_policy.as_ref(),
             runtime_peer_weights: runtime_peer_weights.as_ref(),
             now_unix_ms,
@@ -4330,11 +4450,13 @@ fn cmd_chiodos_runtime_pheromone_evaluate(
         .map_err(|error| {
             CliError::cli_other_error(format!("Chiodos runtime trusted verifiers parse: {error}"))
         })?;
-    let advisory = chio_chiodos_runtime::runtime_pheromone_advisory_from_query_report_json(
+    let query_report = chio_chiodos_runtime::signed_runtime_pheromone_query_report_from_json(
         &read_utf8_json_file(pheromone_query_report, "Chiodos pheromone query report")?,
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos pheromone advisory parse: {error}"))
+        CliError::cli_other_error(format!(
+            "Chiodos signed pheromone query report parse: {error}"
+        ))
     })?;
     let policy = chio_chiodos_runtime::signed_runtime_pheromone_policy_from_json(
         &read_utf8_json_file(runtime_pheromone_policy, "Chiodos runtime pheromone policy")?,
@@ -4360,7 +4482,7 @@ fn cmd_chiodos_runtime_pheromone_evaluate(
             request: &bundle.binding,
             runtime_trust_input: Some(&runtime_trust_input),
             trusted_verifier_keys: &trusted_verifiers.verifier_keys,
-            pheromone_advisory: Some(&advisory),
+            pheromone_query_report: Some(&query_report),
             runtime_pheromone_policy: Some(&policy),
             runtime_peer_weights: Some(&weights),
             now_unix_ms,
@@ -4389,6 +4511,7 @@ fn cmd_chiodos_runtime_orchestrate_lint(profile: &Path, report: &Path) -> Result
         schema: chio_chiodos_runtime::CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA
             .to_string(),
         accepted: true,
+        failure_code: None,
         generated_at_unix_ms: profile.issued_at_unix_ms,
         profile_sha256: profile_sha256.clone(),
         store_backend: "profile_lint".to_string(),
@@ -4418,7 +4541,7 @@ fn cmd_chiodos_runtime_orchestrate_plan(
 ) -> Result<(), CliError> {
     let profile = load_runtime_orchestration_profile(profile)?;
     let run_contract = load_runtime_run_contract(run_contract)?;
-    let _store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
+    let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
         |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
     )?;
     ensure_runtime_evidence_dir(evidence_dir)?;
@@ -4430,6 +4553,35 @@ fn cmd_chiodos_runtime_orchestrate_plan(
     .map_err(|error| {
         CliError::cli_other_error(format!("Chiodos runtime orchestration plan: {error}"))
     })?;
+    if plan.accepted {
+        store
+            .record_run_state(&plan.run_id, "planned", None, now_unix_ms)
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime orchestration planned run state: {error}"
+                ))
+            })?;
+        for step in &plan.planned_steps {
+            store
+                .record_run_step_state(
+                    &plan.run_id,
+                    chio_chiodos_runtime::RuntimeOrchestrationStepState {
+                        step_index: step.step_index,
+                        admission_id: step.admission_id.clone(),
+                        state: step.state.clone(),
+                        destructive: false,
+                        admission_report_sha256: None,
+                        tool_receipt_sha256: None,
+                        lease_id: None,
+                    },
+                )
+                .map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime orchestration planned step state: {error}"
+                    ))
+                })?;
+        }
+    }
     write_pretty_json(report, &plan, "Chiodos runtime orchestration plan")
 }
 
@@ -4465,6 +4617,9 @@ fn cmd_chiodos_runtime_orchestrate_run(
     if profile_sha256 != run_contract.profile_sha256 {
         accepted = false;
         failure_code = Some("runtime_orchestration_profile_hash_mismatch".to_string());
+    } else if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
+        accepted = false;
+        failure_code = Some("runtime_orchestration_profile_stale".to_string());
     } else if let Some(code) = validate_runtime_orchestration_evidence_binding(&run_contract, &evidence)
     {
         accepted = false;
@@ -4622,14 +4777,28 @@ fn cmd_chiodos_runtime_orchestrate_drift(
             "Chiodos runtime drift since-unix-ms must not exceed until-unix-ms".to_string(),
         ));
     }
-    let run_dirs = sorted_child_dirs(runs_dir)?;
-    if run_dirs.len() < 2 {
+    let mut runs_in_window = Vec::new();
+    for run_dir in sorted_child_dirs(runs_dir)? {
+        let evidence = load_runtime_orchestration_evidence(&run_dir)?;
+        if evidence.manifest.generated_at_unix_ms >= since_unix_ms
+            && evidence.manifest.generated_at_unix_ms <= until_unix_ms
+        {
+            runs_in_window.push((evidence.manifest.generated_at_unix_ms, run_dir, evidence));
+        }
+    }
+    runs_in_window.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| left.1.cmp(&right.1))
+    });
+    if runs_in_window.len() < 2 {
         return Err(CliError::cli_other_error(
-            "Chiodos runtime drift requires at least two run directories".to_string(),
+            "Chiodos runtime drift requires at least two run directories inside the requested time window"
+                .to_string(),
         ));
     }
-    let baseline = load_runtime_orchestration_evidence(&run_dirs[0])?;
-    let candidate = load_runtime_orchestration_evidence(&run_dirs[1])?;
+    let (_, _, baseline) = runs_in_window.remove(0);
+    let (_, _, candidate) = runs_in_window.remove(0);
     let drift = chio_chiodos_runtime::generate_runtime_proof_drift_report(
         &baseline.manifest,
         &candidate.manifest,
@@ -4875,7 +5044,7 @@ fn cmd_chiodos_runtime_ops_status(
     let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
         |error| CliError::cli_other_error(format!("Chiodos runtime ops store: {error}")),
     )?;
-    let generated_at = now_unix_ms.unwrap_or(profile.issued_at_unix_ms);
+    let generated_at = now_unix_ms.unwrap_or_else(unix_now_ms);
     let status = store
         .ops_status_report(&profile, generated_at, evidence_root.is_dir(), true)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos runtime ops status: {error}")))?;
@@ -4912,12 +5081,13 @@ fn cmd_chiodos_runtime_ops_evidence_health(
     let _store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
         |error| CliError::cli_other_error(format!("Chiodos runtime ops store: {error}")),
     )?;
-    let run_root = evidence_root.join(run_id);
-    let evidence_dir = if run_root.is_dir() {
-        run_root
-    } else {
-        evidence_root.to_path_buf()
-    };
+    let evidence_dir = evidence_root.join(run_id);
+    if !evidence_dir.is_dir() {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos runtime evidence health requires evidence-root/run-id directory {}",
+            evidence_dir.display()
+        )));
+    }
     let manifest_json = read_utf8_json_file(
         &evidence_dir.join("runtime-evidence-manifest.json"),
         "Chiodos runtime evidence manifest",
@@ -5117,13 +5287,11 @@ fn cmd_chiodos_runtime_run_loopback(
         capability_id: &str,
         server_id: &str,
         tool_name: &str,
+        now_unix_ms: u64,
     ) -> Result<chio_core::capability::CapabilityToken, CliError> {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|error| {
-                CliError::cli_other_error(format!("Chiodos runtime loopback clock: {error}"))
-            })?
-            .as_secs();
+        let scenario_now = now_unix_ms / 1000;
+        let issued_at = scenario_now.saturating_sub(60);
+        let expires_at = scenario_now.saturating_add(157_680_000);
         let scope = chio_core::capability::ChioScope {
             grants: vec![chio_core::capability::ToolGrant {
                 server_id: server_id.to_string(),
@@ -5142,8 +5310,8 @@ fn cmd_chiodos_runtime_run_loopback(
             issuer: issuer.public_key(),
             subject: subject.public_key(),
             scope,
-            issued_at: now.saturating_sub(60),
-            expires_at: now.saturating_add(600),
+            issued_at,
+            expires_at,
             delegation_chain: Vec::new(),
         };
         chio_core::capability::CapabilityToken::sign(body, issuer).map_err(|error| {
@@ -5175,10 +5343,146 @@ fn cmd_chiodos_runtime_run_loopback(
         }
     }
 
+    type RuntimeLoopbackPolicyInputs = (
+        chio_chiodos_runtime::SignedRuntimeVerifierTrustBundle,
+        Vec<chio_chiodos_runtime::RuntimeTrustedVerifierKey>,
+        chio_chiodos_runtime::SignedRuntimePheromoneQueryReport,
+        chio_chiodos_runtime::SignedRuntimePheromonePolicy,
+        chio_chiodos_runtime::SignedRuntimePeerWeights,
+    );
+
+    fn runtime_loopback_policy_inputs(
+        step: &RuntimeLoopbackStep,
+        evaluation_now_unix_ms: u64,
+    ) -> Result<RuntimeLoopbackPolicyInputs, CliError> {
+        let verifier_key = chio_core::Keypair::from_seed(&[1_u8; 32]);
+        let verifier_id = step.admission_profile.verifier_id.clone();
+        let key_id = "verifier-key-1".to_string();
+        let issued_at_unix_ms = step.admission_profile.issued_at_unix_ms;
+        let expires_at_unix_ms = step.admission_profile.expires_at_unix_ms;
+        let trusted_keys = vec![chio_chiodos_runtime::RuntimeTrustedVerifierKey {
+            verifier_id: verifier_id.clone(),
+            key_id: key_id.clone(),
+            public_key: verifier_key.public_key(),
+            valid_from_unix_ms: issued_at_unix_ms,
+            valid_until_unix_ms: expires_at_unix_ms,
+            status: "active".to_string(),
+        }];
+        let trust_body = chio_chiodos_runtime::RuntimeVerifierTrustBundleV4 {
+            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA_V4
+                .to_string(),
+            verifier_id: verifier_id.clone(),
+            key_id: key_id.clone(),
+            version: 1,
+            previous_hash_sha256: None,
+            trust_bundle_sha256: step.admission_bundle.trust_bundle_sha256.clone(),
+            verification_context_sha256: step.admission_bundle.verification_context_sha256.clone(),
+            revocation_checkpoint_sha256: "d".repeat(64),
+            revocation_authority_roots: vec!["did:chio:revocation-authority".to_string()],
+            issued_at_unix_ms,
+            expires_at_unix_ms,
+        };
+        let signed_trust =
+            chio_core::receipt::SignedExportEnvelope::sign(trust_body, &verifier_key).map_err(
+                |error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime loopback trust signing: {error}"
+                    ))
+                },
+            )?;
+        let weights_body = chio_chiodos_runtime::RuntimePeerWeights {
+            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PEER_WEIGHTS_SCHEMA.to_string(),
+            verifier_id: verifier_id.clone(),
+            key_id: key_id.clone(),
+            reputation_epoch: 7,
+            issued_at_unix_ms,
+            expires_at_unix_ms,
+            weights: vec![chio_chiodos_runtime::RuntimePeerWeight {
+                peer_kernel_id: step.request.host_kernel_id.clone(),
+                weight: 1.0,
+            }],
+        };
+        let peer_weights_sha256 =
+            chio_chiodos_runtime::runtime_peer_weights_sha256(&weights_body).map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime loopback peer weights hash: {error}"
+                ))
+            })?;
+        let policy_body = chio_chiodos_runtime::RuntimePheromonePolicy {
+            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PHEROMONE_POLICY_SCHEMA.to_string(),
+            policy_id: "policy-runtime-loopback-risk".to_string(),
+            verifier_id: verifier_id.clone(),
+            key_id: key_id.clone(),
+            policy_version: 1,
+            mode: "enforce".to_string(),
+            issued_at_unix_ms,
+            expires_at_unix_ms,
+            allowed_reputation_epochs: vec![7],
+            max_query_report_age_ms: 60_000,
+            min_distinct_origin_pairs: 1,
+            runtime_trust_bundle_sha256: step.admission_bundle.trust_bundle_sha256.clone(),
+            peer_weights_sha256,
+            rules: vec![chio_chiodos_runtime::RuntimePheromonePolicyRule {
+                rule_id: "review-high-runtime-risk".to_string(),
+                subject_class: "workflow.destructive_step".to_string(),
+                subject_class_namespace: "chiodos.runtime".to_string(),
+                action_class_id: "*".to_string(),
+                direction: "deny_if_at_or_above".to_string(),
+                threshold_total_strength: 0.9,
+                effect: "require_review".to_string(),
+            }],
+        };
+        let signed_policy =
+            chio_core::receipt::SignedExportEnvelope::sign(policy_body, &verifier_key).map_err(
+                |error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime loopback policy signing: {error}"
+                    ))
+                },
+            )?;
+        let signed_weights =
+            chio_core::receipt::SignedExportEnvelope::sign(weights_body, &verifier_key).map_err(
+                |error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime loopback peer weights signing: {error}"
+                    ))
+                },
+            )?;
+        let query_report_body = serde_json::json!({
+            "schema": "chio.pheromone.query-report.v1",
+            "accepted": true,
+            "concentration": {
+                "subjectClass": "workflow.destructive_step",
+                "subjectClassNamespace": "chiodos.runtime",
+                "totalStrength": 0.1,
+                "distinctOriginPairs": 1,
+                "reputationEpoch": 7,
+                "evaluatedAtUnixMs": evaluation_now_unix_ms.saturating_sub(2_000)
+            }
+        });
+        let signed_query_report = chio_core::receipt::SignedExportEnvelope::sign(
+            query_report_body,
+            &verifier_key,
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos runtime loopback pheromone query report signing: {error}"
+            ))
+        })?;
+        Ok((
+            signed_trust,
+            trusted_keys,
+            signed_query_report,
+            signed_policy,
+            signed_weights,
+        ))
+    }
+
     fn execute_runtime_loopback_step(
         step_index: usize,
         step: &RuntimeLoopbackStep,
         arguments: serde_json::Value,
+        now_unix_ms: u64,
     ) -> Result<RuntimeLoopbackExecution, CliError> {
         let (expected_kernel_id, expected_server_id, expected_tool_name) =
             chiodos_three_vendor_example::runtime_vendor_binding(step_index).map_err(|error| {
@@ -5225,6 +5529,7 @@ fn cmd_chiodos_runtime_run_loopback(
             &step.request.capability_id,
             &step.request.server_id,
             &step.request.tool_name,
+            now_unix_ms,
         )?;
         let mut kernel = ChioKernel::new(chio_kernel::KernelConfig {
             keypair: vendor_key.clone(),
@@ -5261,16 +5566,10 @@ fn cmd_chiodos_runtime_run_loopback(
                 ))
             })?;
         kernel.set_receipt_store(Box::new(receipt_store));
+        let live_now_unix_ms = unix_now_ms();
         if let Some(origin_kernel_id) = step.request.origin_kernel_id.as_deref() {
             let origin_key = chiodos_three_vendor_example::runtime_buyer_keypair();
-            let now_secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|error| {
-                    CliError::cli_other_error(format!(
-                        "Chiodos runtime loopback federation clock: {error}"
-                    ))
-                })?
-                .as_secs();
+            let now_secs = live_now_unix_ms / 1000;
             let trust = chio_federation::KernelTrustExchange::new(
                 &step.request.host_kernel_id,
                 vendor_key.clone(),
@@ -5323,11 +5622,16 @@ fn cmd_chiodos_runtime_run_loopback(
         } else {
             None
         };
+        let (signed_trust, trusted_keys, query_report, signed_policy, signed_weights) =
+            runtime_loopback_policy_inputs(step, live_now_unix_ms)?;
         kernel.set_runtime_admission_hook(std::sync::Arc::new(
             chio_chiodos_runtime::ChiodosRuntimeAdmissionHook::new(
                 step.admission_profile.clone(),
                 hook_store,
-            ),
+            )
+            .with_runtime_trust_input(signed_trust, trusted_keys)
+            .with_pheromone_query_report(query_report)
+            .with_runtime_pheromone_policy(signed_policy, signed_weights),
         ));
         kernel.register_tool_server(Box::new(RuntimeLoopbackToolServer {
             id: step.request.server_id.clone(),
@@ -5399,8 +5703,15 @@ fn cmd_chiodos_runtime_run_loopback(
                 ))
             })?;
         if !matches!(response.verdict, chio_kernel::Verdict::Allow) {
+            let failure_code = response
+                .receipt
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.pointer("/chiodos_runtime/failure_code"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown_runtime_loopback_failure");
             return Err(CliError::cli_other_error(format!(
-                "Chiodos runtime loopback kernel denied step {}: {}",
+                "Chiodos runtime loopback kernel denied step {}: {} ({failure_code})",
                 step_index,
                 response
                     .reason
@@ -6046,17 +6357,19 @@ fn cmd_chiodos_runtime_run_loopback(
                     "Chiodos runtime loopback admission store update: {error}"
                 ))
             })?;
+        let (signed_trust, trusted_keys, query_report, signed_policy, signed_weights) =
+            runtime_loopback_policy_inputs(step, now_unix_ms)?;
         let admission_report = chio_chiodos_runtime::evaluate_runtime_admission(
             chio_chiodos_runtime::RuntimeAdmissionInput {
                 profile: &step.admission_profile,
                 store: &store,
                 admission_id: &admission_id,
                 request: &step.request,
-                runtime_trust_input: None,
-                trusted_verifier_keys: &[],
-                pheromone_advisory: None,
-                runtime_pheromone_policy: None,
-                runtime_peer_weights: None,
+                runtime_trust_input: Some(&signed_trust),
+                trusted_verifier_keys: &trusted_keys,
+                pheromone_query_report: Some(&query_report),
+                runtime_pheromone_policy: Some(&signed_policy),
+                runtime_peer_weights: Some(&signed_weights),
                 now_unix_ms,
             },
         )
@@ -6099,7 +6412,7 @@ fn cmd_chiodos_runtime_run_loopback(
                 step.admission_bundle.step_index
             ))
         })?;
-        let execution = execute_runtime_loopback_step(index, step, arguments)?;
+        let execution = execute_runtime_loopback_step(index, step, arguments, now_unix_ms)?;
         live_tool_receipts.push(execution.receipt);
         live_treaty_contexts.push(execution.treaty);
     }

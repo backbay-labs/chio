@@ -27,6 +27,7 @@ fi
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
 
 SCHEMA_DIR="$ROOT/spec/schemas/chiodos/v1"
+LOOPBACK_NOW_UNIX_MS=1766000001000
 tmpdir="$(mktemp -d)"
 trap 'if [[ "${CHIODOS_KEEP_TMP:-0}" == "1" ]]; then echo "kept tmpdir: $tmpdir" >&2; else rm -rf "$tmpdir"; fi' EXIT
 
@@ -341,6 +342,52 @@ cat >"$tmpdir/pheromone-query-report.json" <<'JSON'
 }
 JSON
 
+cat >"$tmpdir/runtime-peer-weights-body.json" <<'JSON'
+{
+  "schema": "chio.chiodos.runtime-peer-weights.v1",
+  "verifierId": "did:chio:buyer-verifier",
+  "keyId": "verifier-key-1",
+  "reputationEpoch": 7,
+  "issuedAtUnixMs": 1800000000000,
+  "expiresAtUnixMs": 1800003600000,
+  "weights": [
+    {
+      "peerKernelId": "kernel.vendor-b",
+      "weight": 1.0
+    }
+  ]
+}
+JSON
+
+cat >"$tmpdir/runtime-policy-body.json" <<'JSON'
+{
+  "schema": "chio.chiodos.runtime-pheromone-policy.v1",
+  "policyId": "policy-runtime-risk",
+  "verifierId": "did:chio:buyer-verifier",
+  "keyId": "verifier-key-1",
+  "policyVersion": 1,
+  "mode": "enforce",
+  "issuedAtUnixMs": 1800000000000,
+  "expiresAtUnixMs": 1800003600000,
+  "allowedReputationEpochs": [7],
+  "maxQueryReportAgeMs": 60000,
+  "minDistinctOriginPairs": 1,
+  "runtimeTrustBundleSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "peerWeightsSha256": "PEER_WEIGHTS_SHA256",
+  "rules": [
+    {
+      "ruleId": "review-high-runtime-risk",
+      "subjectClass": "workflow.destructive_step",
+      "subjectClassNamespace": "chiodos.runtime",
+      "actionClassId": "*",
+      "direction": "deny_if_at_or_above",
+      "thresholdTotalStrength": 0.9,
+      "effect": "require_review"
+    }
+  ]
+}
+JSON
+
 cat >"$tmpdir/runtime-step-evidence.json" <<'JSON'
 {
   "schema": "chio.chiodos.runtime-step-evidence.v1",
@@ -488,13 +535,43 @@ json.dump(trusted, open(sys.argv[2], "w", encoding="utf-8"), indent=2)
 PY
   validate_schema "$SCHEMA_DIR/runtime-trusted-verifiers.schema.json" \
     "$tmpdir/trusted-verifiers.json"
+  cargo run -p chio-cli --bin chio -- chiodos runtime peer-weights hash \
+    --body "$tmpdir/runtime-peer-weights-body.json" \
+    --out "$tmpdir/runtime-peer-weights.sha256"
+  python3 - "$tmpdir/runtime-policy-body.json" "$tmpdir/runtime-peer-weights.sha256" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+peer_hash = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8").strip()
+body = path.read_text(encoding="utf-8").replace("PEER_WEIGHTS_SHA256", peer_hash)
+path.write_text(body, encoding="utf-8")
+PY
+  cargo run -p chio-cli --bin chio -- chiodos runtime peer-weights sign \
+    --body "$tmpdir/runtime-peer-weights-body.json" \
+    --signing-seed-file "$tmpdir/verifier.seed" \
+    --out "$tmpdir/runtime-peer-weights.json"
+  cargo run -p chio-cli --bin chio -- chiodos runtime policy sign \
+    --body "$tmpdir/runtime-policy-body.json" \
+    --signing-seed-file "$tmpdir/verifier.seed" \
+    --out "$tmpdir/runtime-policy.json"
+  cargo run -p chio-cli --bin chio -- chiodos runtime pheromone sign-query-report \
+    --body "$tmpdir/pheromone-query-report.json" \
+    --signing-seed-file "$tmpdir/verifier.seed" \
+    --out "$tmpdir/pheromone-query-report.signed.json"
+  validate_schema "$SCHEMA_DIR/runtime-peer-weights.schema.json" \
+    "$tmpdir/runtime-peer-weights.json"
+  validate_schema "$SCHEMA_DIR/runtime-pheromone-policy.schema.json" \
+    "$tmpdir/runtime-policy.json"
   cargo run -p chio-cli --bin chio -- chiodos runtime admit \
     --request "$tmpdir/request.json" \
     --admission-profile "$tmpdir/profile.json" \
     --admission-bundle "$tmpdir/bundle.json" \
     --runtime-trust-input "$tmpdir/runtime-trust-input.json" \
     --trusted-verifiers "$tmpdir/trusted-verifiers.json" \
-    --pheromone-query-report "$tmpdir/pheromone-query-report.json" \
+    --pheromone-query-report "$tmpdir/pheromone-query-report.signed.json" \
+    --runtime-pheromone-policy "$tmpdir/runtime-policy.json" \
+    --runtime-peer-weights "$tmpdir/runtime-peer-weights.json" \
     --store "$tmpdir/admission-store.json" \
     --trust-floor-state "$tmpdir/runtime-trust-floor-live.json" \
     --now-unix-ms 1800000001000 \
@@ -540,7 +617,7 @@ PY
   cargo run -p chio-cli --bin chio -- chiodos runtime run-loopback \
     --scenario "$tmpdir/scenario.json" \
     --store-dir "$tmpdir/loopback-store" \
-    --now-unix-ms 1800000001000 \
+    --now-unix-ms "$LOOPBACK_NOW_UNIX_MS" \
     --out-dir "$tmpdir/loopback-out"
   validate_schema "$SCHEMA_DIR/runtime-workflow-run-report.schema.json" \
     "$tmpdir/loopback-out/runtime-run-report.json"
@@ -679,7 +756,9 @@ run_negative_checks() {
     --admission-bundle "$tmpdir/bundle.json" \
     --runtime-trust-input "$tmpdir/runtime-trust-input.json" \
     --trusted-verifiers "$tmpdir/trusted-verifiers.json" \
-    --pheromone-query-report "$tmpdir/pheromone-query-report.json" \
+    --pheromone-query-report "$tmpdir/pheromone-query-report.signed.json" \
+    --runtime-pheromone-policy "$tmpdir/runtime-policy.json" \
+    --runtime-peer-weights "$tmpdir/runtime-peer-weights.json" \
     --store "$tmpdir/admission-store.json" \
     --now-unix-ms 1800000002000 \
     --report "$tmpdir/replay-report.json"; then
@@ -710,7 +789,9 @@ PY
     --admission-bundle "$tmpdir/bundle.json" \
     --runtime-trust-input "$tmpdir/runtime-trust-input.json" \
     --trusted-verifiers "$tmpdir/trusted-verifiers.json" \
-    --pheromone-query-report "$tmpdir/pheromone-query-report.json" \
+    --pheromone-query-report "$tmpdir/pheromone-query-report.signed.json" \
+    --runtime-pheromone-policy "$tmpdir/runtime-policy.json" \
+    --runtime-peer-weights "$tmpdir/runtime-peer-weights.json" \
     --store "$tmpdir/mismatch-store.json" \
     --now-unix-ms 1800000001000 \
     --report "$tmpdir/mismatch-report.json"; then

@@ -30,6 +30,8 @@ pub enum PheromoneError {
     UnknownOriginAgent(String),
     #[error("replay_window_exceeded: {0}")]
     ReplayWindowExceeded(String),
+    #[error("deposit_from_future: {0}")]
+    DepositFromFuture(String),
     #[error("treaty_scope_violation: {0}")]
     TreatyScopeViolation(String),
     #[error("subject_class_unknown: {0}")]
@@ -70,6 +72,7 @@ impl PheromoneError {
             Self::KernelKeyUsedForDeposit => "kernel_key_used_for_deposit",
             Self::UnknownOriginAgent(_) => "unknown_origin_agent",
             Self::ReplayWindowExceeded(_) => "replay_window_exceeded",
+            Self::DepositFromFuture(_) => "deposit_from_future",
             Self::TreatyScopeViolation(_) => "treaty_scope_violation",
             Self::SubjectClassUnknown(_) => "subject_class_unknown",
             Self::ObservationCostCommitmentRequired(_) => "observation_cost_commitment_required",
@@ -484,6 +487,9 @@ fn validate_deposit_static(
         < context.now_unix_ms
     {
         return Err(PheromoneError::ReplayWindowExceeded(body.nonce.clone()));
+    }
+    if body.timestamp_unix_ms > context.now_unix_ms {
+        return Err(PheromoneError::DepositFromFuture(body.nonce.clone()));
     }
     Ok(())
 }

@@ -5,6 +5,16 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "baselineRunId", "candidateRunId", "accepted", "generatedAtUnixMs", "baselineManifestSha256", "candidateManifestSha256", "baselineProofRegenerationReportSha256", "candidateProofRegenerationReportSha256", "comparisonProfile", "normalizedFields", "semanticDrifts", "artifactDrifts", "verifierDrifts"],
+  "allOf": [
+    {
+      "if": { "properties": { "accepted": { "const": false } }, "required": ["accepted"] },
+      "then": { "required": ["failureCode"] }
+    },
+    {
+      "if": { "properties": { "accepted": { "const": true } }, "required": ["accepted"] },
+      "then": { "not": { "required": ["failureCode"] } }
+    }
+  ],
   "properties": {
     "schema": { "const": "chio.chiodos.runtime-proof-drift-report.v1" },
     "baselineRunId": { "type": "string", "minLength": 1 },

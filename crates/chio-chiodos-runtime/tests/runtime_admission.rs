@@ -17,14 +17,15 @@ use chio_chiodos_runtime::{
     RuntimeProofRegenerationInput, RuntimeProofRegenerationReport, RuntimeProofSourceRecord,
     RuntimeProviderBinding, RuntimeProviderBindingsDocument, RuntimeRequestBinding,
     RuntimeStepEvidence, RuntimeSupervisorProfile, RuntimeTrustedVerifierKey,
-    RuntimeVerifierTrustBundleV4, RuntimeWorkflowRunReport, SqliteRuntimeOrchestrationStore,
-    TreatyScope, CHIODOS_BILATERAL_INVOCATION_SCHEMA, CHIODOS_BUYER_ATTESTATION_PACKET_SCHEMA,
-    CHIODOS_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA,
+    RuntimeVerifierTrustBundleV4, RuntimeWorkflowRunReport, SignedRuntimePheromoneQueryReport,
+    SqliteRuntimeOrchestrationStore, TreatyScope, CHIODOS_BILATERAL_INVOCATION_SCHEMA,
+    CHIODOS_BUYER_ATTESTATION_PACKET_SCHEMA, CHIODOS_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA,
     CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA, CHIODOS_CROSS_KERNEL_CONTINUATION_SCHEMA,
     CHIODOS_GOVERNANCE_LADDER_MANIFEST_SCHEMA, CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA,
     CHIODOS_RECEIPT_LINEAGE_STATEMENT_SCHEMA, CHIODOS_RUNTIME_ADMISSION_BUNDLE_SCHEMA,
     CHIODOS_RUNTIME_ADMISSION_PROFILE_SCHEMA, CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA,
-    CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA, CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA,
+    CHIODOS_RUNTIME_FAILURE_CODES, CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA,
+    CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA,
     CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA, CHIODOS_RUNTIME_PEER_WEIGHTS_SCHEMA,
     CHIODOS_RUNTIME_PHEROMONE_POLICY_SCHEMA, CHIODOS_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA,
     CHIODOS_RUNTIME_PROOF_PARITY_REPORT_SCHEMA, CHIODOS_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA,
@@ -312,23 +313,130 @@ fn peer_weights() -> RuntimePeerWeights {
     }
 }
 
+type SignedPolicyInputs = (
+    SignedExportEnvelope<RuntimeVerifierTrustBundleV4>,
+    Vec<RuntimeTrustedVerifierKey>,
+    SignedRuntimePheromoneQueryReport,
+    SignedExportEnvelope<RuntimePheromonePolicy>,
+    SignedExportEnvelope<RuntimePeerWeights>,
+);
+
+fn query_report_body(advisory: RuntimePheromoneAdvisory) -> serde_json::Value {
+    serde_json::json!({
+        "schema": "chio.pheromone.query-report.v1",
+        "accepted": advisory.accepted,
+        "concentration": {
+            "subjectClass": advisory.subject_class,
+            "subjectClassNamespace": advisory.subject_class_namespace,
+            "totalStrength": advisory.total_strength,
+            "distinctOriginPairs": advisory.distinct_origin_pairs,
+            "reputationEpoch": advisory.reputation_epoch,
+            "evaluatedAtUnixMs": advisory.evaluated_at_unix_ms
+        }
+    })
+}
+
+fn signed_query_report(
+    advisory: RuntimePheromoneAdvisory,
+    verifier: &Keypair,
+) -> Result<SignedRuntimePheromoneQueryReport, Box<dyn std::error::Error>> {
+    Ok(SignedExportEnvelope::sign(
+        query_report_body(advisory),
+        verifier,
+    )?)
+}
+
+fn signed_policy_inputs(strength: f64) -> Result<SignedPolicyInputs, Box<dyn std::error::Error>> {
+    let verifier = Keypair::generate();
+    let signed_trust = SignedExportEnvelope::sign(trust_body(1, None), &verifier)?;
+    let weights = peer_weights();
+    let signed_policy =
+        SignedExportEnvelope::sign(policy(runtime_peer_weights_sha256(&weights)?), &verifier)?;
+    let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
+    let signed_query_report = signed_query_report(advisory(strength), &verifier)?;
+    Ok((
+        signed_trust,
+        trusted_keys(&verifier),
+        signed_query_report,
+        signed_policy,
+        signed_weights,
+    ))
+}
+
+fn allowing_policy_hook<S>(
+    store: S,
+) -> Result<ChiodosRuntimeAdmissionHook<S>, Box<dyn std::error::Error>> {
+    let (signed_trust, trusted, advisory, signed_policy, signed_weights) =
+        signed_policy_inputs(0.10)?;
+    Ok(ChiodosRuntimeAdmissionHook::new(profile(), store)
+        .with_runtime_trust_input(signed_trust, trusted)
+        .with_pheromone_query_report(advisory)
+        .with_runtime_pheromone_policy(signed_policy, signed_weights))
+}
+
+#[test]
+fn runtime_failure_code_registry_covers_hook_surface_codes() {
+    let registry: std::collections::BTreeSet<_> =
+        CHIODOS_RUNTIME_FAILURE_CODES.iter().copied().collect();
+    assert_eq!(registry.len(), CHIODOS_RUNTIME_FAILURE_CODES.len());
+
+    for code in [
+        "missing_governed_intent",
+        "missing_chiodos_admission_context",
+        "invalid_chiodos_admission_context",
+        "missing_admission_id",
+        "missing_chiodos_treaty_context",
+        "invalid_chiodos_treaty_context",
+        "request_smuggled_trust_root",
+        "request_smuggled_dynamic_trust",
+        "missing_treaty_scope_id",
+        "missing_treaty_scope_hash",
+        "missing_ladder_intersection_id",
+        "missing_ladder_intersection_hash",
+        "missing_action_class_id",
+        "invalid_chiodos_treaty_hash",
+        "invalid_chiodos_treaty_evidence_ref",
+        "missing_chiodos_treaty_evidence_ref",
+        "chiodos_treaty_missing_scope",
+        "chiodos_treaty_scope_hash_mismatch",
+        "chiodos_treaty_missing_intersection",
+        "unsupported_cross_kernel_continuation_schema",
+        "continuation_invalid_window",
+        "unsupported_receipt_lineage_statement_schema",
+        "receipt_lineage_invalid_evidence_class",
+        "chiodos_ladder_invalid_consistency_model",
+        "chiodos_ladder_invalid_cosign_mode",
+        "unsupported_runtime_step_evidence_schema",
+        "runtime_step_evidence_missing_admission_id",
+        "runtime_step_evidence_missing_consistency_anchor",
+        "runtime_step_evidence_missing_governance",
+    ] {
+        assert!(
+            registry.contains(code),
+            "runtime failure code registry missing {code}"
+        );
+    }
+}
+
 #[test]
 fn matching_destructive_admission_accepts_once_then_rejects_replay(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();
     let bundle = bundle();
     store.insert_bundle(bundle.clone())?;
+    let (signed_trust, trusted, advisory, signed_policy, signed_weights) =
+        signed_policy_inputs(0.10)?;
 
     let first = evaluate_runtime_admission(RuntimeAdmissionInput {
         profile: &profile(),
         store: &store,
         admission_id: "adm-live-1",
         request: &binding(),
-        runtime_trust_input: None,
-        trusted_verifier_keys: &[],
-        pheromone_advisory: None,
-        runtime_pheromone_policy: None,
-        runtime_peer_weights: None,
+        runtime_trust_input: Some(&signed_trust),
+        trusted_verifier_keys: &trusted,
+        pheromone_query_report: Some(&advisory),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
         now_unix_ms: 1_800_000_001_000,
     })?;
 
@@ -348,11 +456,11 @@ fn matching_destructive_admission_accepts_once_then_rejects_replay(
         store: &store,
         admission_id: "adm-live-1",
         request: &binding(),
-        runtime_trust_input: None,
-        trusted_verifier_keys: &[],
-        pheromone_advisory: None,
-        runtime_pheromone_policy: None,
-        runtime_peer_weights: None,
+        runtime_trust_input: Some(&signed_trust),
+        trusted_verifier_keys: &trusted,
+        pheromone_query_report: Some(&advisory),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
         now_unix_ms: 1_800_000_002_000,
     })?;
 
@@ -360,6 +468,33 @@ fn matching_destructive_admission_accepts_once_then_rejects_replay(
     assert_eq!(
         replay.failure_code.as_deref(),
         Some("destructive_lease_replay")
+    );
+    Ok(())
+}
+
+#[test]
+fn destructive_admission_requires_signed_pheromone_policy() -> Result<(), Box<dyn std::error::Error>>
+{
+    let store = InMemoryRuntimeAdmissionStore::new();
+    store.insert_bundle(bundle())?;
+
+    let rejected = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile(),
+        store: &store,
+        admission_id: "adm-live-1",
+        request: &binding(),
+        runtime_trust_input: None,
+        trusted_verifier_keys: &[],
+        pheromone_query_report: None,
+        runtime_pheromone_policy: None,
+        runtime_peer_weights: None,
+        now_unix_ms: 1_800_000_001_000,
+    })?;
+
+    assert!(!rejected.accepted);
+    assert_eq!(
+        rejected.failure_code.as_deref(),
+        Some("runtime_pheromone_required_for_destructive")
     );
     Ok(())
 }
@@ -393,6 +528,11 @@ fn strict_runtime_trust_input_binds_bundle_and_signer() -> Result<(), Box<dyn st
         valid_until_unix_ms: 1_800_003_600_000,
         status: "active".to_string(),
     }];
+    let weights = peer_weights();
+    let signed_policy =
+        SignedExportEnvelope::sign(policy(runtime_peer_weights_sha256(&weights)?), &verifier)?;
+    let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
+    let advisory = signed_query_report(advisory(0.10), &verifier)?;
 
     let accepted = evaluate_runtime_admission(RuntimeAdmissionInput {
         profile: &profile(),
@@ -401,9 +541,9 @@ fn strict_runtime_trust_input_binds_bundle_and_signer() -> Result<(), Box<dyn st
         request: &binding(),
         runtime_trust_input: Some(&signed_trust),
         trusted_verifier_keys: &trusted_keys,
-        pheromone_advisory: None,
-        runtime_pheromone_policy: None,
-        runtime_peer_weights: None,
+        pheromone_query_report: Some(&advisory),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
         now_unix_ms: 1_800_000_001_000,
     })?;
 
@@ -420,6 +560,11 @@ fn runtime_trust_floor_rejects_rollback_after_restart() -> Result<(), Box<dyn st
     let dir = tempfile::tempdir()?;
     let store_path = dir.path().join("runtime-store.json");
     let verifier = Keypair::generate();
+    let weights = peer_weights();
+    let signed_policy =
+        SignedExportEnvelope::sign(policy(runtime_peer_weights_sha256(&weights)?), &verifier)?;
+    let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
+    let runtime_advisory = signed_query_report(advisory(0.10), &verifier)?;
 
     {
         let store = chio_chiodos_runtime::JsonRuntimeAdmissionStore::open(&store_path)?;
@@ -436,9 +581,9 @@ fn runtime_trust_floor_rejects_rollback_after_restart() -> Result<(), Box<dyn st
             request: &binding(),
             runtime_trust_input: Some(&signed_v2),
             trusted_verifier_keys: &trusted_keys(&verifier),
-            pheromone_advisory: None,
-            runtime_pheromone_policy: None,
-            runtime_peer_weights: None,
+            pheromone_query_report: Some(&runtime_advisory),
+            runtime_pheromone_policy: Some(&signed_policy),
+            runtime_peer_weights: Some(&signed_weights),
             now_unix_ms: 1_800_000_001_000,
         })?;
         assert!(accepted.accepted);
@@ -457,9 +602,9 @@ fn runtime_trust_floor_rejects_rollback_after_restart() -> Result<(), Box<dyn st
         request: &binding(),
         runtime_trust_input: Some(&signed_v1),
         trusted_verifier_keys: &trusted_keys(&verifier),
-        pheromone_advisory: None,
-        runtime_pheromone_policy: None,
-        runtime_peer_weights: None,
+        pheromone_query_report: Some(&runtime_advisory),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
         now_unix_ms: 1_800_000_002_000,
     })?;
 
@@ -478,6 +623,12 @@ fn runtime_trust_floor_rejects_same_version_conflict_without_burning_lease(
     let store_path = dir.path().join("runtime-store.json");
     let store = chio_chiodos_runtime::JsonRuntimeAdmissionStore::open(&store_path)?;
     let verifier = Keypair::generate();
+    let weights = peer_weights();
+    let signed_policy =
+        SignedExportEnvelope::sign(policy(runtime_peer_weights_sha256(&weights)?), &verifier)?;
+    let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
+    let runtime_advisory = signed_query_report(advisory(0.10), &verifier)?;
+    let signed_trust_v1 = SignedExportEnvelope::sign(trust_body(1, None), &verifier)?;
 
     store.insert_bundle(bundle())?;
     let accepted = evaluate_runtime_admission(RuntimeAdmissionInput {
@@ -485,11 +636,11 @@ fn runtime_trust_floor_rejects_same_version_conflict_without_burning_lease(
         store: &store,
         admission_id: "adm-live-1",
         request: &binding(),
-        runtime_trust_input: Some(&SignedExportEnvelope::sign(trust_body(1, None), &verifier)?),
+        runtime_trust_input: Some(&signed_trust_v1),
         trusted_verifier_keys: &trusted_keys(&verifier),
-        pheromone_advisory: None,
-        runtime_pheromone_policy: None,
-        runtime_peer_weights: None,
+        pheromone_query_report: Some(&runtime_advisory),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
         now_unix_ms: 1_800_000_001_000,
     })?;
     assert!(accepted.accepted);
@@ -507,9 +658,9 @@ fn runtime_trust_floor_rejects_same_version_conflict_without_burning_lease(
         request: &binding(),
         runtime_trust_input: Some(&SignedExportEnvelope::sign(conflicting_trust, &verifier)?),
         trusted_verifier_keys: &trusted_keys(&verifier),
-        pheromone_advisory: None,
-        runtime_pheromone_policy: None,
-        runtime_peer_weights: None,
+        pheromone_query_report: Some(&runtime_advisory),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
         now_unix_ms: 1_800_000_002_000,
     })?;
 
@@ -524,11 +675,11 @@ fn runtime_trust_floor_rejects_same_version_conflict_without_burning_lease(
         store: &store,
         admission_id: "adm-live-conflict",
         request: &binding(),
-        runtime_trust_input: None,
-        trusted_verifier_keys: &[],
-        pheromone_advisory: None,
-        runtime_pheromone_policy: None,
-        runtime_peer_weights: None,
+        runtime_trust_input: Some(&signed_trust_v1),
+        trusted_verifier_keys: &trusted_keys(&verifier),
+        pheromone_query_report: Some(&runtime_advisory),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
         now_unix_ms: 1_800_000_003_000,
     })?;
     assert!(
@@ -543,6 +694,11 @@ fn runtime_trust_floor_store_error_releases_reserved_destructive_lease(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let store = TrustFloorFailingAdmissionStore::new();
     let verifier = Keypair::generate();
+    let weights = peer_weights();
+    let signed_policy =
+        SignedExportEnvelope::sign(policy(runtime_peer_weights_sha256(&weights)?), &verifier)?;
+    let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
+    let runtime_advisory = signed_query_report(advisory(0.10), &verifier)?;
     store.insert_bundle(bundle())?;
 
     let failed = evaluate_runtime_admission(RuntimeAdmissionInput {
@@ -552,9 +708,9 @@ fn runtime_trust_floor_store_error_releases_reserved_destructive_lease(
         request: &binding(),
         runtime_trust_input: Some(&SignedExportEnvelope::sign(trust_body(1, None), &verifier)?),
         trusted_verifier_keys: &trusted_keys(&verifier),
-        pheromone_advisory: None,
-        runtime_pheromone_policy: None,
-        runtime_peer_weights: None,
+        pheromone_query_report: Some(&runtime_advisory),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
         now_unix_ms: 1_800_000_001_000,
     });
     match failed {
@@ -562,22 +718,7 @@ fn runtime_trust_floor_store_error_releases_reserved_destructive_lease(
         Err(error) => assert_eq!(error.code(), "runtime_admission_store"),
     }
 
-    let retry_without_trust_update = evaluate_runtime_admission(RuntimeAdmissionInput {
-        profile: &profile(),
-        store: &store,
-        admission_id: "adm-live-1",
-        request: &binding(),
-        runtime_trust_input: None,
-        trusted_verifier_keys: &[],
-        pheromone_advisory: None,
-        runtime_pheromone_policy: None,
-        runtime_peer_weights: None,
-        now_unix_ms: 1_800_000_002_000,
-    })?;
-    assert!(
-        retry_without_trust_update.accepted,
-        "{retry_without_trust_update:#?}"
-    );
+    store.consume_destructive_lease("lease-live-1", "lease-probe-after-failure")?;
     Ok(())
 }
 
@@ -588,6 +729,11 @@ fn layered_store_keeps_trust_floor_separate_from_admission_state(
     let store_path = dir.path().join("runtime-store.json");
     let trust_floor_path = dir.path().join("runtime-trust-floor.json");
     let verifier = Keypair::generate();
+    let weights = peer_weights();
+    let signed_policy =
+        SignedExportEnvelope::sign(policy(runtime_peer_weights_sha256(&weights)?), &verifier)?;
+    let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
+    let runtime_advisory = signed_query_report(advisory(0.10), &verifier)?;
 
     {
         let admission_store = chio_chiodos_runtime::JsonRuntimeAdmissionStore::open(&store_path)?;
@@ -611,9 +757,9 @@ fn layered_store_keeps_trust_floor_separate_from_admission_state(
             request: &binding(),
             runtime_trust_input: Some(&signed_v2),
             trusted_verifier_keys: &trusted_keys(&verifier),
-            pheromone_advisory: None,
-            runtime_pheromone_policy: None,
-            runtime_peer_weights: None,
+            pheromone_query_report: Some(&runtime_advisory),
+            runtime_pheromone_policy: Some(&signed_policy),
+            runtime_peer_weights: Some(&signed_weights),
             now_unix_ms: 1_800_000_001_000,
         })?;
         assert!(accepted.accepted);
@@ -662,9 +808,9 @@ fn layered_store_keeps_trust_floor_separate_from_admission_state(
         request: &binding(),
         runtime_trust_input: Some(&signed_v1),
         trusted_verifier_keys: &trusted_keys(&verifier),
-        pheromone_advisory: None,
-        runtime_pheromone_policy: None,
-        runtime_peer_weights: None,
+        pheromone_query_report: Some(&runtime_advisory),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
         now_unix_ms: 1_800_000_002_000,
     })?;
 
@@ -692,6 +838,7 @@ fn signed_runtime_pheromone_policy_can_deny_before_dispatch(
         SignedExportEnvelope::sign(policy(runtime_peer_weights_sha256(&weights)?), &verifier)?;
     let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
 
+    let high_risk_query_report = signed_query_report(advisory(0.91), &verifier)?;
     let rejected = evaluate_runtime_admission(RuntimeAdmissionInput {
         profile: &profile(),
         store: &store,
@@ -699,7 +846,7 @@ fn signed_runtime_pheromone_policy_can_deny_before_dispatch(
         request: &binding(),
         runtime_trust_input: Some(&signed_trust),
         trusted_verifier_keys: &trusted_keys(&verifier),
-        pheromone_advisory: Some(&advisory(0.91)),
+        pheromone_query_report: Some(&high_risk_query_report),
         runtime_pheromone_policy: Some(&signed_policy),
         runtime_peer_weights: Some(&signed_weights),
         now_unix_ms: 1_800_000_001_000,
@@ -722,6 +869,45 @@ fn signed_runtime_pheromone_policy_can_deny_before_dispatch(
 }
 
 #[test]
+fn runtime_pheromone_policy_rejects_query_report_signed_by_other_key(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let mut admission_bundle = bundle();
+    admission_bundle.destructive = false;
+    admission_bundle.lease_id = None;
+    admission_bundle.governance_receipt_id = None;
+    store.insert_bundle(admission_bundle)?;
+    let verifier = Keypair::generate();
+    let attacker = Keypair::generate();
+    let signed_trust = SignedExportEnvelope::sign(trust_body(1, None), &verifier)?;
+    let weights = peer_weights();
+    let signed_policy =
+        SignedExportEnvelope::sign(policy(runtime_peer_weights_sha256(&weights)?), &verifier)?;
+    let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
+    let attacker_query_report = signed_query_report(advisory(0.10), &attacker)?;
+
+    let rejected = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile(),
+        store: &store,
+        admission_id: "adm-live-1",
+        request: &binding(),
+        runtime_trust_input: Some(&signed_trust),
+        trusted_verifier_keys: &trusted_keys(&verifier),
+        pheromone_query_report: Some(&attacker_query_report),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
+        now_unix_ms: 1_800_000_001_000,
+    })?;
+
+    assert!(!rejected.accepted);
+    assert_eq!(
+        rejected.failure_code.as_deref(),
+        Some("runtime_pheromone_policy_query_report_signer_mismatch")
+    );
+    Ok(())
+}
+
+#[test]
 fn runtime_pheromone_policy_enforces_distinct_origin_floor(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();
@@ -738,6 +924,7 @@ fn runtime_pheromone_policy_enforces_distinct_origin_floor(
     let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
     let mut low_origin_advisory = advisory(0.10);
     low_origin_advisory.distinct_origin_pairs = 0;
+    let low_origin_query_report = signed_query_report(low_origin_advisory, &verifier)?;
 
     let rejected = evaluate_runtime_admission(RuntimeAdmissionInput {
         profile: &profile(),
@@ -746,7 +933,7 @@ fn runtime_pheromone_policy_enforces_distinct_origin_floor(
         request: &binding(),
         runtime_trust_input: Some(&signed_trust),
         trusted_verifier_keys: &trusted_keys(&verifier),
-        pheromone_advisory: Some(&low_origin_advisory),
+        pheromone_query_report: Some(&low_origin_query_report),
         runtime_pheromone_policy: Some(&signed_policy),
         runtime_peer_weights: Some(&signed_weights),
         now_unix_ms: 1_800_000_001_000,
@@ -756,6 +943,46 @@ fn runtime_pheromone_policy_enforces_distinct_origin_floor(
     assert_eq!(
         rejected.failure_code.as_deref(),
         Some("runtime_pheromone_distinct_origin_floor")
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_pheromone_policy_rejects_future_dated_advisory() -> Result<(), Box<dyn std::error::Error>>
+{
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let mut admission_bundle = bundle();
+    admission_bundle.destructive = false;
+    admission_bundle.lease_id = None;
+    admission_bundle.governance_receipt_id = None;
+    store.insert_bundle(admission_bundle)?;
+    let verifier = Keypair::generate();
+    let signed_trust = SignedExportEnvelope::sign(trust_body(1, None), &verifier)?;
+    let weights = peer_weights();
+    let signed_policy =
+        SignedExportEnvelope::sign(policy(runtime_peer_weights_sha256(&weights)?), &verifier)?;
+    let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
+    let mut future_advisory = advisory(0.10);
+    future_advisory.evaluated_at_unix_ms = 1_800_000_002_000;
+    let future_query_report = signed_query_report(future_advisory, &verifier)?;
+
+    let rejected = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile(),
+        store: &store,
+        admission_id: "adm-live-1",
+        request: &binding(),
+        runtime_trust_input: Some(&signed_trust),
+        trusted_verifier_keys: &trusted_keys(&verifier),
+        pheromone_query_report: Some(&future_query_report),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
+        now_unix_ms: 1_800_000_001_000,
+    })?;
+
+    assert!(!rejected.accepted);
+    assert_eq!(
+        rejected.failure_code.as_deref(),
+        Some("runtime_pheromone_advisory_future_dated")
     );
     Ok(())
 }
@@ -789,16 +1016,18 @@ fn runtime_pheromone_query_report_parser_reads_snake_case_fields(
 fn signed_runtime_admission_report_detects_tampering() -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();
     store.insert_bundle(bundle())?;
+    let (signed_trust, trusted, advisory, signed_policy, signed_weights) =
+        signed_policy_inputs(0.10)?;
     let report = evaluate_runtime_admission(RuntimeAdmissionInput {
         profile: &profile(),
         store: &store,
         admission_id: "adm-live-1",
         request: &binding(),
-        runtime_trust_input: None,
-        trusted_verifier_keys: &[],
-        pheromone_advisory: None,
-        runtime_pheromone_policy: None,
-        runtime_peer_weights: None,
+        runtime_trust_input: Some(&signed_trust),
+        trusted_verifier_keys: &trusted,
+        pheromone_query_report: Some(&advisory),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
         now_unix_ms: 1_800_000_001_000,
     })?;
     let signer = Keypair::generate();
@@ -849,7 +1078,7 @@ fn strict_runtime_trust_input_rejects_bundle_hash_mismatch(
         request: &binding(),
         runtime_trust_input: Some(&signed_trust),
         trusted_verifier_keys: &trusted_keys,
-        pheromone_advisory: None,
+        pheromone_query_report: None,
         runtime_pheromone_policy: None,
         runtime_peer_weights: None,
         now_unix_ms: 1_800_000_001_000,
@@ -907,7 +1136,7 @@ fn kernel_hook_accepts_governed_context_reference_and_returns_receipt_metadata(
         })),
     });
 
-    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
@@ -967,7 +1196,7 @@ fn kernel_hook_denies_federated_runtime_request_without_treaty_context(
         })),
     });
 
-    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
@@ -1039,7 +1268,7 @@ fn kernel_hook_denies_cross_boundary_request_when_treaty_store_evidence_missing(
         })),
     });
 
-    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
@@ -1077,7 +1306,7 @@ fn treaty_runtime_hook_denies_missing_lineage_evidence_ref(
         .ok_or_else(|| io::Error::other("context object missing"))?
         .remove("receiptLineageBundle");
     let request = treaty_runtime_request(args, bundle_hash, context)?;
-    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
@@ -1112,7 +1341,7 @@ fn treaty_runtime_hook_denies_request_smuggled_trust_root() -> Result<(), Box<dy
     let mut context = treaty_runtime_context(&fixture);
     context["trustRoot"] = serde_json::json!({"issuer": "caller-smuggled"});
     let request = treaty_runtime_request(args, bundle_hash, context)?;
-    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
@@ -1147,7 +1376,7 @@ fn treaty_runtime_hook_denies_request_smuggled_dynamic_trust(
     let mut context = treaty_runtime_context(&fixture);
     context["dynamicTrust"] = serde_json::json!({"discovery": "caller-smuggled"});
     let request = treaty_runtime_request(args, bundle_hash, context)?;
-    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
@@ -1185,7 +1414,7 @@ fn treaty_runtime_hook_denies_missing_bilateral_invocation_evidence_ref(
         .ok_or_else(|| io::Error::other("context object missing"))?
         .remove("bilateralInvocation");
     let request = treaty_runtime_request(args, bundle_hash, context)?;
-    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
@@ -1219,7 +1448,7 @@ fn treaty_runtime_hook_denies_mismatched_continuation_hash(
     let mut context = treaty_runtime_context(&fixture);
     context["crossKernelContinuation"]["sha256"] = serde_json::Value::String("f".repeat(64));
     let request = treaty_runtime_request(args, bundle_hash, context)?;
-    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
@@ -1234,6 +1463,42 @@ fn treaty_runtime_hook_denies_mismatched_continuation_hash(
     assert_eq!(
         metadata["chiodos_runtime"]["failure_code"],
         "chiodos_treaty_continuation_hash_mismatch"
+    );
+    Ok(())
+}
+
+#[test]
+fn treaty_runtime_hook_denies_continuation_from_non_origin_source(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let store = SqliteRuntimeOrchestrationStore::open(dir.path().join("treaty-hook.sqlite3"))?;
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    let mut admission_bundle = bundle();
+    admission_bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    let bundle_hash = runtime_admission_bundle_sha256(&admission_bundle)?;
+    store.insert_bundle(admission_bundle)?;
+    let mut fixture = treaty_runtime_fixture()?;
+    fixture.continuation.source_kernel_id = "kernel.vendor-b".to_string();
+    fixture.continuation_sha256 = chio_core_types::crypto::sha256_hex(
+        &chio_core_types::crypto::canonical_json_bytes(&fixture.continuation)?,
+    );
+    insert_treaty_runtime_fixture(&store, &fixture)?;
+    let request = treaty_runtime_request(args, bundle_hash, treaty_runtime_context(&fixture))?;
+    let hook = allowing_policy_hook(store)?;
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        now_unix_secs: 1_800_000_001,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+
+    assert!(!decision.allowed);
+    let metadata = decision
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert_eq!(
+        metadata["chiodos_runtime"]["failure_code"],
+        "chiodos_treaty_continuation_mismatch"
     );
     Ok(())
 }
@@ -1255,7 +1520,7 @@ fn treaty_runtime_hook_denies_unverified_lineage_bundle_before_dispatch(
     );
     insert_treaty_runtime_fixture(&store, &fixture)?;
     let request = treaty_runtime_request(args, bundle_hash, treaty_runtime_context(&fixture))?;
-    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
@@ -1330,7 +1595,7 @@ fn treaty_runtime_hook_denies_replayed_continuation() -> Result<(), Box<dyn std:
     let fixture = treaty_runtime_fixture()?;
     insert_treaty_runtime_fixture(&store, &fixture)?;
     let request = treaty_runtime_request(args, bundle_hash, treaty_runtime_context(&fixture))?;
-    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let hook = allowing_policy_hook(store)?;
     let context = RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
@@ -1365,7 +1630,7 @@ fn treaty_runtime_hook_releases_continuation_after_runtime_denial(
     store.insert_bundle(admission_bundle)?;
     let fixture = treaty_runtime_fixture()?;
     insert_treaty_runtime_fixture(&store, &fixture)?;
-    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let hook = allowing_policy_hook(store)?;
     let treaty_context = treaty_runtime_context(&fixture);
 
     let denied_request = treaty_runtime_request(
@@ -1412,7 +1677,7 @@ fn treaty_runtime_hook_releases_reserved_state_after_kernel_abort(
     let fixture = treaty_runtime_fixture()?;
     insert_treaty_runtime_fixture(&store, &fixture)?;
     let request = treaty_runtime_request(args, bundle_hash, treaty_runtime_context(&fixture))?;
-    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let hook = allowing_policy_hook(store)?;
     let context = RuntimeAdmissionContext {
         request: &request,
         now_unix_secs: 1_800_000_001,
@@ -1479,9 +1744,10 @@ fn kernel_hook_uses_configured_runtime_policy_to_deny() -> Result<(), Box<dyn st
     let signed_policy =
         SignedExportEnvelope::sign(policy(runtime_peer_weights_sha256(&weights)?), &verifier)?;
     let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
+    let high_risk_query_report = signed_query_report(advisory(0.91), &verifier)?;
     let hook = ChiodosRuntimeAdmissionHook::new(profile(), store)
         .with_runtime_trust_input(signed_trust, trusted_keys(&verifier))
-        .with_pheromone_advisory(advisory(0.91))
+        .with_pheromone_query_report(high_risk_query_report)
         .with_runtime_pheromone_policy(signed_policy, signed_weights);
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
@@ -1717,6 +1983,7 @@ fn runtime_orchestration_contracts_validate_status_and_run_report(
     let status = chio_chiodos_runtime::RuntimeOrchestrationStatusReport {
         schema: CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA.to_string(),
         accepted: true,
+        failure_code: None,
         generated_at_unix_ms: 1_800_000_001_000,
         profile_sha256: profile_hash,
         store_backend: "sqlite".to_string(),
@@ -2079,6 +2346,45 @@ fn runtime_ops_evidence_health_detects_hash_mismatch() -> Result<(), Box<dyn std
     assert_eq!(
         report.artifact_hash_mismatches,
         vec!["workflow-run-report.json"]
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_ops_evidence_health_rejects_manifest_run_mismatch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    std::fs::write(
+        dir.path().join("workflow-run-report.json"),
+        b"{\"ok\":true}",
+    )?;
+    let manifest = RuntimeEvidenceManifest {
+        schema: CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        run_id: "runtime-run-other".to_string(),
+        generated_at_unix_ms: 1_800_000_000_000,
+        workflow_run_report_sha256: "1".repeat(64),
+        proof_regeneration_report_sha256: "2".repeat(64),
+        entries: vec![RuntimeEvidenceManifestEntry {
+            role: "workflow_run_report".to_string(),
+            path: "workflow-run-report.json".to_string(),
+            sha256: chio_core_types::crypto::sha256_hex(b"{\"ok\":true}"),
+            byte_count: 11,
+        }],
+    };
+
+    let report = chio_chiodos_runtime::generate_runtime_evidence_sink_health_report(
+        "runtime-run-health",
+        dir.path(),
+        &manifest,
+        &[],
+        1_800_000_000_000,
+        false,
+    )?;
+
+    assert!(!report.accepted);
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_evidence_manifest_run_mismatch")
     );
     Ok(())
 }
@@ -2589,6 +2895,61 @@ fn treaty_cross_boundary_admission_requires_intersection_and_evidence(
     assert!(accepted.accepted);
     assert_eq!(accepted.mode, "receipt_backed");
     assert_eq!(accepted.consistency_model, "totally_ordered");
+    Ok(())
+}
+
+#[test]
+fn treaty_cross_boundary_admission_injects_bilateral_requirement_for_cosign(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let buyer = treaty_manifest(
+        "kernel.buyer",
+        treaty_action_class(
+            "receipt_backed",
+            true,
+            "totally_ordered",
+            vec!["governance_receipt"],
+        ),
+    );
+    let vendor = treaty_manifest(
+        "kernel.vendor-b",
+        treaty_action_class(
+            "receipt_backed",
+            true,
+            "totally_ordered",
+            vec!["governance_receipt"],
+        ),
+    );
+    let mut treaty = treaty_scope();
+    treaty.ladder_manifest_sha256s = vec![
+        chio_chiodos_runtime::governance_ladder_manifest_sha256(&buyer)?,
+        chio_chiodos_runtime::governance_ladder_manifest_sha256(&vendor)?,
+    ];
+    let intersection = compute_ladder_intersection(&treaty, &[buyer, vendor], 1_800_000_010_000)?;
+    let expected_intersection_sha256 =
+        chio_chiodos_runtime::ladder_intersection_sha256(&intersection)?;
+
+    let denied = evaluate_cross_boundary_admission(CrossBoundaryAdmissionInput {
+        treaty_scope: &treaty,
+        ladder_intersection: &intersection,
+        expected_ladder_intersection_sha256: Some(expected_intersection_sha256),
+        action_class_id: "workflow.destructive.vendor_call",
+        present_evidence: vec!["governance_receipt".to_string()],
+        verified_evidence: vec![CrossBoundaryEvidenceRef {
+            evidence_class: "governance_receipt".to_string(),
+            artifact_sha256: "d".repeat(64),
+            verified: true,
+        }],
+        now_unix_ms: 1_800_000_010_000,
+    })?;
+
+    assert!(!denied.accepted);
+    assert_eq!(
+        denied.failure_code.as_deref(),
+        Some("chiodos_treaty_missing_required_evidence")
+    );
+    assert!(denied
+        .required_evidence
+        .contains(&"bilateral_invocation".to_string()));
     Ok(())
 }
 
@@ -3543,6 +3904,22 @@ fn buyer_review_sources_with_strict_dsse_and_verifier(
     let bilateral_dsse_sha256 = chio_core_types::crypto::sha256_hex(
         &chio_core_types::crypto::canonical_json_bytes(bilateral_dsse_envelope)?,
     );
+    let review_generated_at_unix_ms =
+        serde_json::from_value::<chio_federation::DsseEnvelope>(bilateral_dsse_envelope.clone())
+            .ok()
+            .and_then(|envelope| {
+                envelope
+                    .decode_statement()
+                    .ok()
+                    .map(|(statement, _)| statement.predicate.timestamp_unix_ms)
+            })
+            .unwrap_or_else(|| {
+                verification_context
+                    .get("issuedAtUnixMs")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(1_800_000_000_000)
+                    .saturating_add(10_000)
+            });
     packet.bilateral_dsse_sha256 = bilateral_dsse_sha256.clone();
     let lease_id = proof_package_lease_id_for_step(proof_package, step_index)
         .or_else(|| first_proof_array_field(proof_package, "capabilityLeases", "leaseId"))
@@ -3565,7 +3942,7 @@ fn buyer_review_sources_with_strict_dsse_and_verifier(
         run_id: "run-live-1".to_string(),
         accepted: true,
         failure_code: None,
-        generated_at_unix_ms: 1_800_000_010_000,
+        generated_at_unix_ms: review_generated_at_unix_ms,
         proof_package_sha256: Some(packet.proof_package_sha256.clone()),
         verifier_report_sha256: Some(packet.verifier_report_sha256.clone()),
         workflow_receipt_sha256: Some(packet.workflow_receipt_sha256.clone()),
@@ -3580,7 +3957,7 @@ fn buyer_review_sources_with_strict_dsse_and_verifier(
         run_id: "run-live-1".to_string(),
         accepted: true,
         failure_code: None,
-        generated_at_unix_ms: 1_800_000_010_000,
+        generated_at_unix_ms: review_generated_at_unix_ms,
         admission_report_sha256: packet.cross_boundary_admission_report_sha256.clone(),
         evidence_paths: vec![
             "bilateral-dsse-envelope.json".to_string(),
@@ -3610,7 +3987,7 @@ fn buyer_review_sources_with_strict_dsse_and_verifier(
     let runtime_evidence_manifest = RuntimeEvidenceManifest {
         schema: CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
         run_id: "run-live-1".to_string(),
-        generated_at_unix_ms: 1_800_000_010_000,
+        generated_at_unix_ms: review_generated_at_unix_ms,
         workflow_run_report_sha256: runtime_run_report_sha256.clone(),
         proof_regeneration_report_sha256: proof_regeneration_report_sha256.clone(),
         entries: vec![
@@ -3691,7 +4068,7 @@ fn buyer_review_sources_with_strict_dsse_and_verifier(
         package_id: "review-package-1".to_string(),
         packet_id: packet.packet_id.clone(),
         buyer_id: packet.buyer_id.clone(),
-        generated_at_unix_ms: 1_800_000_010_000,
+        generated_at_unix_ms: review_generated_at_unix_ms,
         artifacts,
     };
     Ok((package, sources, verifier_trust_bundle))
@@ -3733,8 +4110,8 @@ fn default_verification_context() -> serde_json::Value {
         "audience": "buyer-auditor-offline-verifier",
         "challenge": "refund-workflow-001-audit",
         "proofPurpose": "buyer-auditor-workflow-disclosure",
-        "issuedAtUnixMs": 1_765_999_995_000_i64,
-        "expiresAtUnixMs": 1_766_000_060_000_i64
+        "issuedAtUnixMs": 1_800_000_000_000_i64,
+        "expiresAtUnixMs": 1_800_003_600_000_i64
     })
 }
 
@@ -3905,6 +4282,11 @@ fn buyer_review_package_hydrates_required_artifacts_by_role(
     let receipt_typed = base_package.tool_receipts[proof_step_index].clone();
     let buyer_key = Keypair::from_seed(&[11; 32]);
     let vendor_key = chiodos_three_vendor_example::runtime_vendor_keypair(proof_step_index)?;
+    let dsse_timestamp_unix_ms = verification_context
+        .get("issuedAtUnixMs")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| io::Error::other("verification context missing issue time"))?
+        .saturating_add(10_000);
     let bilateral_dsse = sign_chiodos_dsse_envelope(
         &receipt_typed,
         &buyer_key,
@@ -3912,7 +4294,7 @@ fn buyer_review_package_hydrates_required_artifacts_by_role(
         buyer_kernel_id,
         vendor_kernel_id,
         &receipt_typed.tool_name,
-        1_800_000_010_000,
+        dsse_timestamp_unix_ms,
         BilateralPredicateExtensions {
             capability_lease_ref: Some(CapabilityLeaseRef {
                 lease_id: lease_id.clone(),
@@ -4039,6 +4421,22 @@ fn buyer_review_package_hydrates_required_artifacts_by_role(
         .checks
         .iter()
         .any(|check| check.code == "chiodos_buyer_review.proof_verifier_accepted"));
+
+    let mut timestamp_drift_package = package.clone();
+    timestamp_drift_package.generated_at_unix_ms = timestamp_drift_package
+        .generated_at_unix_ms
+        .saturating_sub(1);
+    let denied = verify_review_for_test_with_context(
+        &timestamp_drift_package,
+        &sources,
+        &verifier_trust_bundle,
+        &verification_context,
+    )?;
+    assert!(!denied.accepted);
+    assert_eq!(
+        denied.failure_code.as_deref(),
+        Some("chiodos_buyer_review_package_manifest_timestamp_mismatch")
+    );
 
     let mut tampered_sources = sources.clone();
     let verifier_source = tampered_sources

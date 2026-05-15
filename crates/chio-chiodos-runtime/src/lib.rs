@@ -107,6 +107,46 @@ pub const CHIODOS_TREATY_NEGATIVE_CORPUS_SCHEMA: &str =
 
 pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "admission_bundle_hash_mismatch",
+    "bilateral_invocation_duplicate_signer",
+    "bilateral_invocation_empty_action_class",
+    "bilateral_invocation_empty_capability",
+    "bilateral_invocation_empty_id",
+    "bilateral_invocation_empty_signer",
+    "bilateral_invocation_empty_treaty",
+    "bilateral_invocation_invalid_continuation_hash",
+    "bilateral_invocation_invalid_intersection_hash",
+    "bilateral_invocation_invalid_lineage_hash",
+    "bilateral_invocation_invalid_local_receipt_hash",
+    "bilateral_invocation_invalid_outcome_hash",
+    "bilateral_invocation_invalid_remote_receipt_hash",
+    "bilateral_invocation_invalid_request_hash",
+    "bilateral_invocation_signer_count_mismatch",
+    "buyer_packet_empty_buyer",
+    "buyer_packet_empty_capability",
+    "buyer_packet_empty_id",
+    "buyer_packet_invalid_admission_hash",
+    "buyer_packet_invalid_bilateral_dsse_hash",
+    "buyer_packet_invalid_bilateral_hash",
+    "buyer_packet_invalid_continuation_hash",
+    "buyer_packet_invalid_intersection_hash",
+    "buyer_packet_invalid_lineage_hash",
+    "buyer_packet_invalid_package_hash",
+    "buyer_packet_invalid_treaty_hash",
+    "buyer_packet_invalid_verifier_hash",
+    "buyer_packet_invalid_workflow_hash",
+    "buyer_review_artifact_empty_bytes",
+    "buyer_review_artifact_empty_relative_path",
+    "buyer_review_artifact_empty_role",
+    "buyer_review_artifact_invalid_hash",
+    "buyer_review_package_empty_buyer",
+    "buyer_review_package_empty_id",
+    "buyer_review_package_empty_packet",
+    "buyer_review_report_empty_package",
+    "buyer_review_report_empty_packet",
+    "buyer_review_report_missing_failure_code",
+    "buyer_verification_empty_packet",
+    "buyer_verification_invalid_state",
+    "buyer_verification_missing_failure_code",
     "chiodos_buyer_packet_hash_mismatch",
     "chiodos_buyer_packet_lineage_not_verified",
     "chiodos_buyer_packet_settlement_claimed",
@@ -115,13 +155,17 @@ pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "chiodos_buyer_review_artifact_path_mismatch",
     "chiodos_buyer_review_duplicate_artifact_path",
     "chiodos_buyer_review_duplicate_artifact_role",
+    "chiodos_buyer_review_lineage_hash_mismatch",
     "chiodos_buyer_review_missing_artifact_role",
     "chiodos_buyer_review_missing_treaty_dsse_binding",
     "chiodos_buyer_review_non_strict_dsse",
+    "chiodos_buyer_review_package_manifest_timestamp_mismatch",
+    "chiodos_buyer_review_package_stale",
     "chiodos_buyer_review_packet_hash_mismatch",
     "chiodos_buyer_review_proof_package_incomplete",
     "chiodos_buyer_review_proof_package_mismatch",
     "chiodos_buyer_review_runtime_report_mismatch",
+    "chiodos_buyer_review_runtime_timestamp_mismatch",
     "chiodos_buyer_review_strict_dsse_binding_mismatch",
     "chiodos_buyer_review_strict_dsse_signature_invalid",
     "chiodos_buyer_review_strict_dsse_signer_mismatch",
@@ -131,6 +175,8 @@ pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "chiodos_ladder_destructive_below_floor",
     "chiodos_ladder_destructive_crdt_not_allowed",
     "chiodos_ladder_duplicate_action_class",
+    "chiodos_ladder_invalid_consistency_model",
+    "chiodos_ladder_invalid_cosign_mode",
     "chiodos_ladder_invalid_mode",
     "chiodos_ladder_manifest_hash_mismatch",
     "chiodos_ladder_manifest_stale",
@@ -145,38 +191,371 @@ pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "chiodos_treaty_continuation_replay",
     "chiodos_treaty_continuation_stale",
     "chiodos_treaty_dsse_binding_mismatch",
-    "chiodos_treaty_missing_bilateral_evidence",
-    "chiodos_treaty_missing_continuation",
     "chiodos_treaty_intersection_mismatch",
     "chiodos_treaty_lineage_hash_mismatch",
     "chiodos_treaty_lineage_mismatch",
-    "chiodos_treaty_missing_required_evidence",
+    "chiodos_treaty_missing_bilateral_evidence",
+    "chiodos_treaty_missing_continuation",
+    "chiodos_treaty_missing_intersection",
     "chiodos_treaty_missing_intersection_binding",
     "chiodos_treaty_missing_participant",
+    "chiodos_treaty_missing_required_evidence",
+    "chiodos_treaty_missing_scope",
+    "chiodos_treaty_scope_hash_mismatch",
     "chiodos_treaty_stale",
     "chiodos_treaty_unverified_required_evidence",
-    "bilateral_invocation_duplicate_signer",
+    "continuation_empty_action_class",
+    "continuation_empty_audience",
+    "continuation_empty_capability",
+    "continuation_empty_id",
+    "continuation_empty_nonce",
+    "continuation_empty_source_kernel",
+    "continuation_empty_target_kernel",
+    "continuation_invalid_parent_hash",
+    "continuation_invalid_session_anchor_hash",
+    "continuation_invalid_window",
+    "cross_boundary_admission_empty_action_class",
+    "cross_boundary_admission_empty_treaty",
+    "cross_boundary_admission_invalid_evidence_class",
+    "cross_boundary_admission_invalid_evidence_hash",
+    "cross_boundary_admission_invalid_intersection_hash",
+    "cross_boundary_admission_invalid_treaty_hash",
+    "cross_boundary_admission_missing_failure_code",
     "destructive_lease_replay",
     "duplicate_admission_bundle_mismatch",
-    "runtime_evidence_artifact_hash_mismatch",
+    "duplicate_consumed_lease",
+    "duplicate_consumed_treaty_continuation",
+    "duplicate_runtime_trust_floor",
+    "duplicate_treaty_runtime_artifact_mismatch",
+    "duplicate_trusted_verifier_key",
+    "governance_ladder_action_empty_id",
+    "governance_ladder_destructive_missing_evidence",
+    "governance_ladder_duplicate_evidence",
+    "governance_ladder_empty_alias",
+    "governance_ladder_invalid_evidence_label",
+    "governance_ladder_manifest_empty_id",
+    "governance_ladder_manifest_empty_issuer",
+    "governance_ladder_manifest_empty_kernel",
+    "governance_ladder_manifest_empty_key",
+    "governance_ladder_manifest_invalid_window",
+    "governance_ladder_manifest_missing_action_classes",
+    "governance_ladder_manifest_unknown_default_not_deny",
+    "host_kernel_mismatch",
+    "invalid_chiodos_admission_context",
+    "invalid_chiodos_treaty_context",
+    "invalid_chiodos_treaty_evidence_ref",
+    "invalid_chiodos_treaty_hash",
+    "invalid_pheromone_query_report",
+    "ladder_intersection_empty_action_class",
+    "ladder_intersection_empty_id",
+    "ladder_intersection_empty_treaty",
+    "missing_action_class_id",
+    "missing_admission_bundle",
+    "missing_admission_id",
+    "missing_chiodos_admission_context",
+    "missing_chiodos_treaty_context",
+    "missing_chiodos_treaty_evidence_ref",
+    "missing_destructive_lease",
+    "missing_governance_receipt",
+    "missing_governed_intent",
+    "missing_ladder_intersection_hash",
+    "missing_ladder_intersection_id",
+    "missing_pheromone_concentration",
+    "missing_runtime_peer_weights",
+    "missing_runtime_pheromone_advisory",
+    "missing_runtime_pheromone_policy",
+    "missing_runtime_trust_input",
+    "missing_treaty_scope_hash",
+    "missing_treaty_scope_id",
+    "receipt_lineage_bundle_empty_id",
+    "receipt_lineage_bundle_invalid_leaf_hash",
+    "receipt_lineage_bundle_invalid_root_hash",
+    "receipt_lineage_empty_id",
+    "receipt_lineage_empty_source_kernel",
+    "receipt_lineage_empty_target_kernel",
+    "receipt_lineage_invalid_bilateral_hash",
+    "receipt_lineage_invalid_child_hash",
+    "receipt_lineage_invalid_continuation_hash",
+    "receipt_lineage_invalid_evidence_class",
+    "receipt_lineage_invalid_parent_hash",
+    "request_binding_mismatch",
+    "request_smuggled_dynamic_trust",
+    "request_smuggled_trust_root",
+    "runtime_admission_canonical",
     "runtime_evidence_artifact_byte_count_mismatch",
+    "runtime_evidence_artifact_hash_mismatch",
+    "runtime_evidence_health_empty_run_id",
+    "runtime_evidence_health_invalid_required_role",
+    "runtime_evidence_health_invalid_root_hash",
+    "runtime_evidence_manifest_duplicate_path",
+    "runtime_evidence_manifest_empty_role",
+    "runtime_evidence_manifest_invalid_artifact_hash",
+    "runtime_evidence_manifest_invalid_proof_report_hash",
+    "runtime_evidence_manifest_invalid_workflow_report_hash",
+    "runtime_evidence_manifest_missing_entries",
+    "runtime_evidence_manifest_run_mismatch",
     "runtime_evidence_missing_required_role",
     "runtime_evidence_sink_unavailable",
+    "runtime_ops_status_accepted_degraded",
     "runtime_ops_status_degraded",
+    "runtime_ops_status_invalid_profile_hash",
+    "runtime_ops_status_invalid_run_state",
+    "runtime_orchestration_plan_duplicate_step",
+    "runtime_orchestration_plan_empty_admission_id",
+    "runtime_orchestration_plan_empty_run_id",
+    "runtime_orchestration_plan_invalid_contract_hash",
+    "runtime_orchestration_plan_invalid_profile_hash",
+    "runtime_orchestration_plan_invalid_step_state",
+    "runtime_orchestration_plan_missing_failure_code",
+    "runtime_orchestration_plan_missing_steps",
+    "runtime_orchestration_plan_unexpected_failure_code",
+    "runtime_orchestration_profile_duplicate_fail_closed_code",
+    "runtime_orchestration_profile_empty_id",
+    "runtime_orchestration_profile_empty_kernel",
+    "runtime_orchestration_profile_empty_verifier",
+    "runtime_orchestration_profile_invalid_fail_closed_code",
+    "runtime_orchestration_profile_invalid_mode",
+    "runtime_orchestration_profile_invalid_window",
+    "runtime_orchestration_profile_stale",
+    "runtime_orchestration_profile_zero_concurrency",
+    "runtime_orchestration_resume_accepted_blocked",
+    "runtime_orchestration_resume_empty_run_id",
+    "runtime_orchestration_resume_missing_failure_code",
+    "runtime_orchestration_resume_unexpected_failure_code",
+    "runtime_orchestration_run_accepted_without_proof",
+    "runtime_orchestration_run_duplicate_step",
+    "runtime_orchestration_run_empty_id",
+    "runtime_orchestration_run_invalid_contract_hash",
+    "runtime_orchestration_run_invalid_manifest_hash",
+    "runtime_orchestration_run_invalid_profile_hash",
+    "runtime_orchestration_run_invalid_proof_hash",
+    "runtime_orchestration_run_invalid_status",
+    "runtime_orchestration_run_invalid_verifier_hash",
+    "runtime_orchestration_run_invalid_workflow_hash",
+    "runtime_orchestration_run_missing_accepted_hash",
+    "runtime_orchestration_run_missing_steps",
+    "runtime_orchestration_status_accepted_degraded",
+    "runtime_orchestration_status_invalid_profile_hash",
+    "runtime_orchestration_status_invalid_run_state",
+    "runtime_orchestration_status_invalid_store_backend",
+    "runtime_orchestration_status_invalid_store_hash",
+    "runtime_orchestration_step_empty_admission_id",
+    "runtime_orchestration_step_invalid_admission_hash",
+    "runtime_orchestration_step_invalid_receipt_hash",
+    "runtime_orchestration_step_invalid_state",
+    "runtime_orchestration_step_missing_destructive_lease",
+    "runtime_peer_weights_duplicate_peer",
+    "runtime_peer_weights_hash_failed",
+    "runtime_peer_weights_hash_mismatch",
+    "runtime_peer_weights_invalid",
+    "runtime_peer_weights_stale",
+    "runtime_peer_weights_untrusted",
+    "runtime_pheromone_advisory_future_dated",
+    "runtime_pheromone_advisory_not_observe_only",
+    "runtime_pheromone_advisory_rejected",
+    "runtime_pheromone_advisory_stale",
+    "runtime_pheromone_distinct_origin_floor",
+    "runtime_pheromone_policy_allow",
+    "runtime_pheromone_policy_deny",
+    "runtime_pheromone_policy_direction_unsupported",
+    "runtime_pheromone_policy_effect_unsupported",
+    "runtime_pheromone_policy_escalate",
+    "runtime_pheromone_policy_mode_unsupported",
+    "runtime_pheromone_policy_query_report_signer_mismatch",
+    "runtime_pheromone_policy_stale",
+    "runtime_pheromone_policy_trust_mismatch",
+    "runtime_pheromone_policy_untrusted",
+    "runtime_pheromone_policy_verifier_mismatch",
+    "runtime_pheromone_query_report_signature_invalid",
+    "runtime_pheromone_required_for_destructive",
+    "runtime_policy_hash_failed",
+    "runtime_proof_drift_accepted_with_drifts",
+    "runtime_proof_drift_detected",
+    "runtime_proof_drift_empty_artifact_role",
+    "runtime_proof_drift_empty_baseline",
+    "runtime_proof_drift_empty_candidate",
+    "runtime_proof_drift_empty_field",
+    "runtime_proof_drift_invalid_baseline_artifact_hash",
+    "runtime_proof_drift_invalid_baseline_manifest_hash",
+    "runtime_proof_drift_invalid_baseline_proof_hash",
+    "runtime_proof_drift_invalid_baseline_value_hash",
+    "runtime_proof_drift_invalid_candidate_artifact_hash",
+    "runtime_proof_drift_invalid_candidate_manifest_hash",
+    "runtime_proof_drift_invalid_candidate_proof_hash",
+    "runtime_proof_drift_invalid_candidate_value_hash",
+    "runtime_proof_drift_invalid_severity",
+    "runtime_proof_parity_accepted_with_mismatches",
+    "runtime_proof_parity_empty_mismatch_field",
+    "runtime_proof_parity_invalid_runtime_package_hash",
+    "runtime_proof_parity_invalid_runtime_report_hash",
+    "runtime_proof_parity_invalid_runtime_value_hash",
+    "runtime_proof_parity_invalid_static_package_hash",
+    "runtime_proof_parity_invalid_static_report_hash",
+    "runtime_proof_parity_invalid_static_value_hash",
+    "runtime_proof_parity_missing_compared_fields",
+    "runtime_proof_regeneration_duplicate_source_record",
+    "runtime_proof_regeneration_input_invalid_admission_hash",
+    "runtime_proof_regeneration_input_invalid_context_hash",
+    "runtime_proof_regeneration_input_invalid_manifest_hash",
+    "runtime_proof_regeneration_input_invalid_trust_bundle_hash",
+    "runtime_proof_regeneration_input_invalid_workflow_report_hash",
+    "runtime_proof_regeneration_input_missing_source_records",
+    "runtime_proof_regeneration_invalid_admission_hash",
+    "runtime_proof_regeneration_invalid_dsse_hash",
+    "runtime_proof_regeneration_invalid_package_hash",
+    "runtime_proof_regeneration_invalid_tool_receipt_hash",
+    "runtime_proof_regeneration_invalid_verifier_report_hash",
+    "runtime_proof_regeneration_invalid_workflow_receipt_hash",
+    "runtime_proof_regeneration_invalid_workflow_step_hash",
+    "runtime_proof_regeneration_missing_package_hash",
+    "runtime_proof_regeneration_missing_source_records",
+    "runtime_proof_regeneration_missing_verifier_report_hash",
+    "runtime_proof_regeneration_missing_workflow_receipt_hash",
     "runtime_provider_discovery_not_allowed",
+    "runtime_provider_duplicate_id",
+    "runtime_provider_empty_id",
+    "runtime_provider_empty_kernel",
+    "runtime_provider_empty_server",
+    "runtime_provider_empty_tool",
     "runtime_provider_health_degraded",
+    "runtime_provider_health_empty_degraded_id",
+    "runtime_provider_health_invalid_bindings_hash",
+    "runtime_recovery_accepted_blocked",
+    "runtime_recovery_empty_run_id",
     "runtime_recovery_run_not_found",
+    "runtime_reputation_epoch_mismatch",
+    "runtime_resume_destructive_repair_required",
     "runtime_retention_dry_run_only",
+    "runtime_retention_empty_kernel",
+    "runtime_retention_empty_profile_id",
+    "runtime_retention_empty_run_id",
+    "runtime_retention_invalid_action",
+    "runtime_retention_invalid_profile_hash",
+    "runtime_retention_invalid_reason",
+    "runtime_retention_invalid_window",
     "runtime_retention_legal_hold",
     "runtime_retention_mutation_not_allowed",
-    "runtime_resume_destructive_repair_required",
+    "runtime_retention_plan_missing_failure_code",
+    "runtime_retention_plan_unexpected_failure_code",
+    "runtime_run_contract_duplicate_admission_id",
+    "runtime_run_contract_empty_admission_id",
+    "runtime_run_contract_empty_evidence_sink",
+    "runtime_run_contract_empty_run_id",
+    "runtime_run_contract_empty_store",
+    "runtime_run_contract_empty_workflow",
+    "runtime_run_contract_invalid_profile_hash",
+    "runtime_run_contract_step_count_mismatch",
+    "runtime_run_contract_zero_steps",
+    "runtime_run_empty_id",
+    "runtime_run_invalid_status",
     "runtime_run_lease_conflict",
-    "runtime_run_stale_fencing_token",
+    "runtime_run_lease_empty_lease_id",
+    "runtime_run_lease_empty_owner",
+    "runtime_run_lease_empty_run_id",
     "runtime_run_lease_expired",
+    "runtime_run_lease_invalid_state",
+    "runtime_run_lease_invalid_time_order",
+    "runtime_run_lease_invalid_ttl",
+    "runtime_run_lease_missing",
+    "runtime_run_stale_fencing_token",
+    "runtime_scheduler_empty_owner",
+    "runtime_scheduler_empty_tick_id",
     "runtime_scheduler_profile_stale",
     "runtime_sqlite_integer_negative",
     "runtime_sqlite_integer_out_of_range",
-    "runtime_proof_drift_detected",
+    "runtime_step_evidence_invalid_admission_hash",
+    "runtime_step_evidence_invalid_dsse_hash",
+    "runtime_step_evidence_invalid_output_hash",
+    "runtime_step_evidence_invalid_parent_hash",
+    "runtime_step_evidence_invalid_tool_receipt_hash",
+    "runtime_step_evidence_invalid_workflow_step_hash",
+    "runtime_step_evidence_missing_admission_id",
+    "runtime_step_evidence_missing_consistency_anchor",
+    "runtime_step_evidence_missing_governance",
+    "runtime_supervisor_empty_kernel",
+    "runtime_supervisor_empty_profile_id",
+    "runtime_supervisor_invalid_fail_closed_code",
+    "runtime_supervisor_invalid_limits",
+    "runtime_supervisor_invalid_required_role",
+    "runtime_supervisor_invalid_window",
+    "runtime_treaty_artifact_empty_id",
+    "runtime_treaty_artifact_invalid_kind",
+    "runtime_trust_bundle_hash_mismatch",
+    "runtime_trust_context_hash_mismatch",
+    "runtime_trust_floor_version_zero",
+    "runtime_trust_hash_failed",
+    "runtime_trust_previous_hash_mismatch",
+    "runtime_trust_previous_hash_missing",
+    "runtime_trust_revocation_roots_missing",
+    "runtime_trust_rollback",
+    "runtime_trust_same_version_mismatch",
+    "runtime_trust_signature_invalid",
+    "runtime_trust_signer_inactive",
+    "runtime_trust_signer_stale",
+    "runtime_trust_signer_untrusted",
+    "runtime_trust_stale",
+    "runtime_trust_version_zero",
+    "runtime_workflow_duplicate_step_evidence",
+    "runtime_workflow_invalid_admission_report_hash",
+    "runtime_workflow_invalid_proof_regeneration_hash",
+    "runtime_workflow_missing_proof_regeneration_report",
+    "runtime_workflow_missing_step_evidence",
+    "signature_invalid",
+    "signer_inactive",
+    "signer_stale",
+    "signer_untrusted",
+    "stale_profile",
+    "treaty_scope_duplicate_participant",
+    "treaty_scope_duplicate_participant_key",
+    "treaty_scope_empty_action_class",
+    "treaty_scope_empty_id",
+    "treaty_scope_empty_participant",
+    "treaty_scope_invalid_revocation_epoch_hash",
+    "treaty_scope_invalid_trust_bundle_hash",
+    "unsupported_bilateral_invocation_schema",
+    "unsupported_bundle_schema",
+    "unsupported_buyer_attestation_packet_schema",
+    "unsupported_buyer_attestation_review_package_schema",
+    "unsupported_buyer_attestation_review_report_schema",
+    "unsupported_buyer_attestation_verification_report_schema",
+    "unsupported_cross_boundary_admission_report_schema",
+    "unsupported_cross_kernel_continuation_schema",
+    "unsupported_governance_ladder_manifest_schema",
+    "unsupported_ladder_intersection_schema",
+    "unsupported_pheromone_query_report_schema",
+    "unsupported_profile_schema",
+    "unsupported_receipt_lineage_bundle_schema",
+    "unsupported_receipt_lineage_statement_schema",
+    "unsupported_runtime_evidence_manifest_schema",
+    "unsupported_runtime_evidence_sink_health_report_schema",
+    "unsupported_runtime_ops_status_report_schema",
+    "unsupported_runtime_orchestration_plan_schema",
+    "unsupported_runtime_orchestration_profile_schema",
+    "unsupported_runtime_orchestration_resume_plan_schema",
+    "unsupported_runtime_orchestration_run_report_schema",
+    "unsupported_runtime_orchestration_status_report_schema",
+    "unsupported_runtime_peer_weights_schema",
+    "unsupported_runtime_pheromone_policy_schema",
+    "unsupported_runtime_proof_drift_report_schema",
+    "unsupported_runtime_proof_parity_report_schema",
+    "unsupported_runtime_proof_regeneration_input_schema",
+    "unsupported_runtime_proof_regeneration_report_schema",
+    "unsupported_runtime_provider_bindings_schema",
+    "unsupported_runtime_provider_health_report_schema",
+    "unsupported_runtime_recovery_drill_report_schema",
+    "unsupported_runtime_retention_plan_schema",
+    "unsupported_runtime_retention_profile_schema",
+    "unsupported_runtime_run_contract_schema",
+    "unsupported_runtime_run_lease_schema",
+    "unsupported_runtime_scheduler_tick_report_schema",
+    "unsupported_runtime_step_evidence_schema",
+    "unsupported_runtime_store_schema",
+    "unsupported_runtime_supervisor_profile_schema",
+    "unsupported_runtime_trust_floor_state_schema",
+    "unsupported_runtime_trust_schema",
+    "unsupported_runtime_workflow_report_schema",
+    "unsupported_treaty_scope_schema",
+    "unsupported_trusted_verifiers_schema",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -652,6 +1031,8 @@ pub struct RuntimePheromoneAdvisory {
     pub observe_only: bool,
 }
 
+pub type SignedRuntimePheromoneQueryReport = SignedExportEnvelope<serde_json::Value>;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeWorkflowRunReport {
@@ -888,6 +1269,8 @@ pub struct RuntimeOrchestrationResumePlan {
 pub struct RuntimeOrchestrationStatusReport {
     pub schema: String,
     pub accepted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_code: Option<String>,
     pub generated_at_unix_ms: u64,
     pub profile_sha256: String,
     pub store_backend: String,
@@ -1131,7 +1514,7 @@ pub struct RuntimeAdmissionInput<'a> {
     pub request: &'a RuntimeRequestBinding,
     pub runtime_trust_input: Option<&'a SignedRuntimeVerifierTrustBundle>,
     pub trusted_verifier_keys: &'a [RuntimeTrustedVerifierKey],
-    pub pheromone_advisory: Option<&'a RuntimePheromoneAdvisory>,
+    pub pheromone_query_report: Option<&'a SignedRuntimePheromoneQueryReport>,
     pub runtime_pheromone_policy: Option<&'a SignedRuntimePheromonePolicy>,
     pub runtime_peer_weights: Option<&'a SignedRuntimePeerWeights>,
     pub now_unix_ms: u64,
@@ -2610,23 +2993,27 @@ impl SqliteRuntimeOrchestrationStore {
             failure_code = Some("runtime_scheduler_profile_stale".to_string());
         } else {
             let now = sqlite_i64(now_unix_ms, "runtime scheduler tick timestamp")?;
+            let stale_before = sqlite_i64(
+                now_unix_ms.saturating_sub(profile.stale_run_after_ms),
+                "runtime scheduler stale heartbeat timestamp",
+            )?;
             {
                 let connection = self.lock_connection()?;
                 let mut statement = connection
                     .prepare(
-                        "SELECT run_id FROM runtime_run_leases WHERE state = 'active' AND expires_at_unix_ms <= ?1",
+                        "SELECT run_id FROM runtime_run_leases WHERE state = 'active' AND (expires_at_unix_ms <= ?1 OR heartbeat_at_unix_ms <= ?2)",
                     )
                     .map_err(sqlite_error)?;
                 let rows = statement
-                    .query_map(params![now], |row| row.get::<_, String>(0))
+                    .query_map(params![now, stale_before], |row| row.get::<_, String>(0))
                     .map_err(sqlite_error)?;
                 for row in rows {
                     expired_run_ids.push(row.map_err(sqlite_error)?);
                 }
                 connection
                     .execute(
-                        "UPDATE runtime_run_leases SET state = 'expired', reason_code = 'runtime_run_lease_expired' WHERE state = 'active' AND expires_at_unix_ms <= ?1",
-                        params![now],
+                        "UPDATE runtime_run_leases SET state = 'expired', reason_code = 'runtime_run_lease_expired' WHERE state = 'active' AND (expires_at_unix_ms <= ?1 OR heartbeat_at_unix_ms <= ?2)",
+                        params![now, stale_before],
                     )
                     .map_err(sqlite_error)?;
             }
@@ -2720,9 +3107,15 @@ impl SqliteRuntimeOrchestrationStore {
             .optional()
             .map_err(sqlite_error)?;
         let degraded = !evidence_sink_healthy || latest_failure_code.is_some();
+        let failure_code = degraded.then(|| {
+            latest_failure_code
+                .clone()
+                .unwrap_or_else(|| "runtime_ops_status_degraded".to_string())
+        });
         let report = RuntimeOrchestrationStatusReport {
             schema: CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA.to_string(),
             accepted: !degraded,
+            failure_code,
             generated_at_unix_ms: now_unix_ms,
             profile_sha256,
             store_backend: "sqlite".to_string(),
@@ -2855,7 +3248,8 @@ impl SqliteRuntimeOrchestrationStore {
         let run_counts = runtime_run_counts(&connection)?;
         let consumed_lease_count = query_count(&connection, "runtime_consumed_leases")?;
         let active_lease_count = lease_count_by_state(&connection, "active")?;
-        let stale_lease_count = stale_lease_count(&connection, now_unix_ms)?;
+        let stale_lease_count =
+            stale_lease_count(&connection, now_unix_ms, profile.stale_run_after_ms)?;
         let latest_failure_code: Option<String> = connection
             .query_row(
                 "SELECT failure_code FROM runtime_runs WHERE failure_code IS NOT NULL ORDER BY updated_at_unix_ms DESC LIMIT 1",
@@ -3355,7 +3749,26 @@ pub fn runtime_pheromone_advisory_from_query_report_json(
 ) -> Result<RuntimePheromoneAdvisory, ChiodosRuntimeError> {
     let value: serde_json::Value =
         serde_json::from_str(json).map_err(|error| ChiodosRuntimeError::Json(error.to_string()))?;
-    let canonical = canonical_json_bytes(&value)
+    runtime_pheromone_advisory_from_query_report_value(&value)
+}
+
+pub fn signed_runtime_pheromone_query_report_from_json(
+    json: &str,
+) -> Result<SignedRuntimePheromoneQueryReport, ChiodosRuntimeError> {
+    serde_json::from_str(json).map_err(|error| ChiodosRuntimeError::Json(error.to_string()))
+}
+
+pub fn signed_runtime_pheromone_query_report_json(
+    report: &SignedRuntimePheromoneQueryReport,
+) -> Result<String, ChiodosRuntimeError> {
+    serde_json::to_string_pretty(report)
+        .map_err(|error| ChiodosRuntimeError::Json(error.to_string()))
+}
+
+fn runtime_pheromone_advisory_from_query_report_value(
+    value: &serde_json::Value,
+) -> Result<RuntimePheromoneAdvisory, ChiodosRuntimeError> {
+    let canonical = canonical_json_bytes(value)
         .map_err(|error| ChiodosRuntimeError::Canonical(error.to_string()))?;
     let schema = value.get("schema").and_then(|item| item.as_str());
     if schema != Some("chio.pheromone.query-report.v1") {
@@ -4133,8 +4546,8 @@ pub fn evaluate_cross_boundary_admission(
         .iter()
         .map(|evidence| (evidence.evidence_class.as_str(), evidence))
         .collect();
-    let missing_required = action
-        .evidence_required
+    let required_evidence = required_evidence_for_action(action);
+    let missing_required = required_evidence
         .iter()
         .any(|required| !present.contains(required.as_str()));
     if missing_required {
@@ -4147,7 +4560,7 @@ pub fn evaluate_cross_boundary_admission(
             mode: action.mode.clone(),
             consistency_model: action.consistency_model.clone(),
             co_sign: action.co_sign.clone(),
-            required_evidence: action.evidence_required.clone(),
+            required_evidence,
             present_evidence: input.present_evidence,
             verified_evidence: input.verified_evidence,
             treaty_scope_sha256,
@@ -4156,7 +4569,7 @@ pub fn evaluate_cross_boundary_admission(
             checks,
         });
     }
-    let missing_verified = action.evidence_required.iter().any(|required| {
+    let missing_verified = required_evidence.iter().any(|required| {
         verified
             .get(required.as_str())
             .is_none_or(|evidence| !evidence.verified)
@@ -4171,7 +4584,7 @@ pub fn evaluate_cross_boundary_admission(
             mode: action.mode.clone(),
             consistency_model: action.consistency_model.clone(),
             co_sign: action.co_sign.clone(),
-            required_evidence: action.evidence_required.clone(),
+            required_evidence,
             present_evidence: input.present_evidence,
             verified_evidence: input.verified_evidence,
             treaty_scope_sha256,
@@ -4191,7 +4604,7 @@ pub fn evaluate_cross_boundary_admission(
         mode: action.mode.clone(),
         consistency_model: action.consistency_model.clone(),
         co_sign: action.co_sign.clone(),
-        required_evidence: action.evidence_required.clone(),
+        required_evidence,
         present_evidence: input.present_evidence,
         verified_evidence: input.verified_evidence,
         treaty_scope_sha256,
@@ -4199,6 +4612,18 @@ pub fn evaluate_cross_boundary_admission(
         expected_ladder_intersection_sha256: Some(expected_ladder_intersection_sha256),
         checks,
     })
+}
+
+fn required_evidence_for_action(action: &LadderIntersectionActionClass) -> Vec<String> {
+    let mut required = action.evidence_required.clone();
+    if action.co_sign == "bilateral_required"
+        && !required
+            .iter()
+            .any(|evidence| evidence == "bilateral_invocation")
+    {
+        required.push("bilateral_invocation".to_string());
+    }
+    required
 }
 
 pub fn validate_cross_boundary_admission_report(
@@ -4629,6 +5054,52 @@ fn verify_buyer_attestation_review_package_internal(
             checks,
         ));
     };
+    if package.generated_at_unix_ms != runtime_evidence_manifest.generated_at_unix_ms {
+        return Ok(buyer_review_rejection_report(
+            package,
+            "chiodos_buyer_review_package_manifest_timestamp_mismatch",
+            checks,
+        ));
+    }
+    checks.push(buyer_review_check(
+        "chiodos_buyer_review.package_manifest_timestamp_bound",
+        true,
+        "info",
+        "runtime_evidence_manifest",
+        None,
+        None,
+        "buyer review package timestamp matched the runtime evidence manifest",
+    ));
+    let Some((context_issued_at, context_expires_at)) =
+        buyer_review_verification_context_window(trust_context.verification_context)
+    else {
+        return Ok(buyer_review_rejection_report(
+            package,
+            "chiodos_buyer_review_package_stale",
+            checks,
+        ));
+    };
+    if package.generated_at_unix_ms < context_issued_at
+        || package.generated_at_unix_ms >= context_expires_at
+    {
+        return Ok(buyer_review_rejection_report(
+            package,
+            "chiodos_buyer_review_package_stale",
+            checks,
+        ));
+    }
+    checks.push(buyer_review_check(
+        "chiodos_buyer_review.package_fresh",
+        true,
+        "info",
+        "buyer_attestation_review_package",
+        None,
+        None,
+        &format!(
+            "buyer review package generated at {} inside verification context window {}..{}",
+            package.generated_at_unix_ms, context_issued_at, context_expires_at
+        ),
+    ));
     let trust_bundle_sha256 = canonical_sha256(trust_context.verifier_trust_bundle)
         .map_err(|_| ChiodosRuntimeError::Canonical("verifier trust bundle".to_string()))?;
     let verification_context_sha256 = canonical_sha256(trust_context.verification_context)
@@ -4686,6 +5157,7 @@ fn verify_buyer_attestation_review_package_internal(
         proof_package: &proof_package,
         runtime_step: &runtime_step,
         signer_public_keys: &signer_public_keys,
+        generated_at_unix_ms: package.generated_at_unix_ms,
     };
     if let Err(code) = verify_buyer_review_strict_dsse(&bilateral_dsse, &strict_dsse_context) {
         return Ok(buyer_review_rejection_report(package, code, checks));
@@ -4730,6 +5202,12 @@ fn verify_buyer_attestation_review_package_internal(
         failure_code: None,
         checks,
     })
+}
+
+fn buyer_review_verification_context_window(context: &serde_json::Value) -> Option<(u64, u64)> {
+    let issued_at = context.get("issuedAtUnixMs")?.as_u64()?;
+    let expires_at = context.get("expiresAtUnixMs")?.as_u64()?;
+    (expires_at > issued_at).then_some((issued_at, expires_at))
 }
 
 fn verify_buyer_review_lineage_binding(
@@ -4952,6 +5430,9 @@ fn verify_buyer_review_runtime_reports(
         || validate_runtime_proof_regeneration_input(proof_regeneration_input).is_err()
         || !runtime_run_report.accepted
         || !proof_regeneration_report.accepted
+        || runtime_run_report.generated_at_unix_ms != runtime_evidence_manifest.generated_at_unix_ms
+        || proof_regeneration_report.generated_at_unix_ms
+            != runtime_evidence_manifest.generated_at_unix_ms
     {
         return Err("chiodos_buyer_review_runtime_report_mismatch");
     }
@@ -5418,6 +5899,7 @@ struct BuyerReviewStrictDsseContext<'a> {
     proof_package: &'a serde_json::Value,
     runtime_step: &'a RuntimeStepEvidence,
     signer_public_keys: &'a BTreeMap<String, PublicKey>,
+    generated_at_unix_ms: u64,
 }
 
 fn verify_buyer_review_strict_dsse(
@@ -5429,6 +5911,9 @@ fn verify_buyer_review_strict_dsse(
     };
     if statement.predicate_type != chio_federation::PREDICATE_TYPE_CHIODOS_BILATERAL {
         return Err("chiodos_buyer_review_non_strict_dsse");
+    }
+    if statement.predicate.timestamp_unix_ms != context.generated_at_unix_ms {
+        return Err("chiodos_buyer_review_runtime_timestamp_mismatch");
     }
     let lineage_bundle_sha256 = match canonical_sha256(context.lineage_bundle) {
         Ok(hash) => hash,
@@ -5791,6 +6276,7 @@ pub fn generate_runtime_evidence_sink_health_report(
 ) -> Result<RuntimeEvidenceSinkHealthReport, ChiodosRuntimeError> {
     validate_non_empty(run_id, "runtime_evidence_health_empty_run_id")?;
     validate_runtime_evidence_manifest(manifest)?;
+    let manifest_run_mismatch = manifest.run_id != run_id;
     let mut missing_roles = Vec::new();
     for role in required_roles {
         validate_state_label(role, "runtime_evidence_health_invalid_required_role")?;
@@ -5822,7 +6308,9 @@ pub fn generate_runtime_evidence_sink_health_report(
     } else {
         (true, true)
     };
-    let failure_code = if !missing_roles.is_empty() {
+    let failure_code = if manifest_run_mismatch {
+        Some("runtime_evidence_manifest_run_mismatch".to_string())
+    } else if !missing_roles.is_empty() {
         Some("runtime_evidence_missing_required_role".to_string())
     } else if !missing_artifacts.is_empty() || !temp_write_ok || !atomic_rename_ok {
         Some("runtime_evidence_sink_unavailable".to_string())
@@ -6072,6 +6560,12 @@ pub fn validate_runtime_orchestration_plan(
             ),
         });
     }
+    validate_acceptance_failure_code(
+        plan.accepted,
+        plan.failure_code.as_deref(),
+        "runtime_orchestration_plan_missing_failure_code",
+        "runtime_orchestration_plan_unexpected_failure_code",
+    )?;
     validate_non_empty(&plan.run_id, "runtime_orchestration_plan_empty_run_id")?;
     ensure_sha256_hash(
         &plan.profile_sha256,
@@ -6176,11 +6670,38 @@ pub fn validate_runtime_orchestration_resume_plan(
             ),
         });
     }
+    validate_acceptance_failure_code(
+        plan.accepted,
+        plan.failure_code.as_deref(),
+        "runtime_orchestration_resume_missing_failure_code",
+        "runtime_orchestration_resume_unexpected_failure_code",
+    )?;
     validate_non_empty(&plan.run_id, "runtime_orchestration_resume_empty_run_id")?;
     if plan.accepted && plan.blocked {
         return Err(ChiodosRuntimeError::Rejected {
             code: "runtime_orchestration_resume_accepted_blocked",
             detail: "accepted runtime orchestration resume plan cannot be blocked".to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_acceptance_failure_code(
+    accepted: bool,
+    failure_code: Option<&str>,
+    missing_code: &'static str,
+    unexpected_code: &'static str,
+) -> Result<(), ChiodosRuntimeError> {
+    if accepted && failure_code.is_some() {
+        return Err(ChiodosRuntimeError::Rejected {
+            code: unexpected_code,
+            detail: "accepted runtime report cannot carry a failure code".to_string(),
+        });
+    }
+    if !accepted && failure_code.is_none() {
+        return Err(ChiodosRuntimeError::Rejected {
+            code: missing_code,
+            detail: "rejected runtime report must carry a failure code".to_string(),
         });
     }
     Ok(())
@@ -6213,6 +6734,12 @@ pub fn validate_runtime_orchestration_status_report(
     for status in report.run_counts.keys() {
         validate_state_label(status, "runtime_orchestration_status_invalid_run_state")?;
     }
+    validate_acceptance_failure_code(
+        report.accepted,
+        report.failure_code.as_deref(),
+        "runtime_orchestration_status_missing_failure_code",
+        "runtime_orchestration_status_unexpected_failure_code",
+    )?;
     if report.accepted && report.degraded {
         return Err(ChiodosRuntimeError::Rejected {
             code: "runtime_orchestration_status_accepted_degraded",
@@ -6276,6 +6803,12 @@ pub fn validate_runtime_proof_drift_report(
             "runtime_proof_drift_invalid_candidate_artifact_hash",
         )?;
     }
+    validate_acceptance_failure_code(
+        report.accepted,
+        report.failure_code.as_deref(),
+        "runtime_proof_drift_missing_failure_code",
+        "runtime_proof_drift_unexpected_failure_code",
+    )?;
     if report.accepted
         && (!report.semantic_drifts.is_empty()
             || !report.artifact_drifts.is_empty()
@@ -6309,7 +6842,10 @@ pub fn validate_runtime_supervisor_profile(
             detail: "runtime supervisor profile validity window is invalid".to_string(),
         });
     }
-    if profile.max_concurrent_runs == 0 || profile.run_lease_ttl_ms == 0 {
+    if profile.max_concurrent_runs == 0
+        || profile.run_lease_ttl_ms == 0
+        || profile.stale_run_after_ms == 0
+    {
         return Err(ChiodosRuntimeError::Rejected {
             code: "runtime_supervisor_invalid_limits",
             detail: "runtime supervisor profile limits must be positive".to_string(),
@@ -6363,12 +6899,12 @@ pub fn validate_runtime_scheduler_tick_report(
     }
     validate_non_empty(&report.tick_id, "runtime_scheduler_empty_tick_id")?;
     validate_non_empty(&report.owner_id, "runtime_scheduler_empty_owner")?;
-    if report.accepted && report.failure_code.is_some() {
-        return Err(ChiodosRuntimeError::Rejected {
-            code: "runtime_scheduler_accepted_with_failure_code",
-            detail: "accepted runtime scheduler tick cannot carry a failure code".to_string(),
-        });
-    }
+    validate_acceptance_failure_code(
+        report.accepted,
+        report.failure_code.as_deref(),
+        "runtime_scheduler_missing_failure_code",
+        "runtime_scheduler_accepted_with_failure_code",
+    )?;
     Ok(())
 }
 
@@ -6401,12 +6937,12 @@ pub fn validate_runtime_evidence_sink_health_report(
     {
         validate_relative_evidence_path(path, "runtime_evidence_health_invalid_path")?;
     }
-    if report.accepted && report.failure_code.is_some() {
-        return Err(ChiodosRuntimeError::Rejected {
-            code: "runtime_evidence_health_accepted_with_failure_code",
-            detail: "accepted runtime evidence health report cannot carry failure".to_string(),
-        });
-    }
+    validate_acceptance_failure_code(
+        report.accepted,
+        report.failure_code.as_deref(),
+        "runtime_evidence_health_missing_failure_code",
+        "runtime_evidence_health_accepted_with_failure_code",
+    )?;
     Ok(())
 }
 
@@ -6423,6 +6959,12 @@ pub fn validate_runtime_recovery_drill_report(
         });
     }
     validate_non_empty(&report.run_id, "runtime_recovery_empty_run_id")?;
+    validate_acceptance_failure_code(
+        report.accepted,
+        report.failure_code.as_deref(),
+        "runtime_recovery_missing_failure_code",
+        "runtime_recovery_unexpected_failure_code",
+    )?;
     if report.accepted && report.blocked {
         return Err(ChiodosRuntimeError::Rejected {
             code: "runtime_recovery_accepted_blocked",
@@ -6473,6 +7015,12 @@ pub fn validate_runtime_artifact_retention_plan(
             ),
         });
     }
+    validate_acceptance_failure_code(
+        plan.accepted,
+        plan.failure_code.as_deref(),
+        "runtime_retention_plan_missing_failure_code",
+        "runtime_retention_plan_unexpected_failure_code",
+    )?;
     ensure_sha256_hash(
         &plan.retention_profile_sha256,
         "runtime_retention_invalid_profile_hash",
@@ -6532,6 +7080,12 @@ pub fn validate_runtime_provider_health_report(
     for provider_id in &report.degraded_provider_ids {
         validate_non_empty(provider_id, "runtime_provider_health_empty_degraded_id")?;
     }
+    validate_acceptance_failure_code(
+        report.accepted,
+        report.failure_code.as_deref(),
+        "runtime_provider_health_missing_failure_code",
+        "runtime_provider_health_unexpected_failure_code",
+    )?;
     Ok(())
 }
 
@@ -6554,6 +7108,12 @@ pub fn validate_runtime_ops_status_report(
     for status in report.run_counts.keys() {
         validate_state_label(status, "runtime_ops_status_invalid_run_state")?;
     }
+    validate_acceptance_failure_code(
+        report.accepted,
+        report.failure_code.as_deref(),
+        "runtime_ops_status_missing_failure_code",
+        "runtime_ops_status_unexpected_failure_code",
+    )?;
     if report.accepted && report.degraded {
         return Err(ChiodosRuntimeError::Rejected {
             code: "runtime_ops_status_accepted_degraded",
@@ -6581,6 +7141,12 @@ pub fn validate_runtime_workflow_run_report(
             detail: "runtime workflow report admission report hash is not sha256 hex".to_string(),
         });
     }
+    validate_acceptance_failure_code(
+        report.accepted,
+        report.failure_code.as_deref(),
+        "runtime_workflow_missing_failure_code",
+        "runtime_workflow_unexpected_failure_code",
+    )?;
     if report.accepted && report.step_evidence.is_empty() {
         return Err(ChiodosRuntimeError::Rejected {
             code: "runtime_workflow_missing_step_evidence",
@@ -6715,6 +7281,12 @@ pub fn validate_runtime_proof_regeneration_report(
             ),
         });
     }
+    validate_acceptance_failure_code(
+        report.accepted,
+        report.failure_code.as_deref(),
+        "runtime_proof_regeneration_missing_failure_code",
+        "runtime_proof_regeneration_unexpected_failure_code",
+    )?;
     if report.accepted && report.source_records.is_empty() {
         return Err(ChiodosRuntimeError::Rejected {
             code: "runtime_proof_regeneration_missing_source_records",
@@ -6789,6 +7361,12 @@ pub fn validate_runtime_proof_parity_report(
     ensure_sha256_hash(
         &report.runtime_verifier_report_sha256,
         "runtime_proof_parity_invalid_runtime_report_hash",
+    )?;
+    validate_acceptance_failure_code(
+        report.accepted,
+        report.failure_code.as_deref(),
+        "runtime_proof_parity_missing_failure_code",
+        "runtime_proof_parity_unexpected_failure_code",
     )?;
     if report.compared_fields.is_empty() {
         return Err(ChiodosRuntimeError::Rejected {
@@ -6956,30 +7534,33 @@ pub fn evaluate_runtime_admission(
     }
     checks.push(passed("request.binding"));
 
-    let pheromone_advisory = input.pheromone_advisory.cloned();
+    if input.pheromone_query_report.is_some() {
+        checks.push(passed("pheromone.query_report_signed"));
+    }
+    let (policy_decision, pheromone_advisory) =
+        match evaluate_runtime_pheromone_policy(RuntimePolicyEvaluationInput {
+            policy: input.runtime_pheromone_policy,
+            peer_weights: input.runtime_peer_weights,
+            query_report: input.pheromone_query_report,
+            runtime_trust_input: input.runtime_trust_input,
+            trusted_verifier_keys: input.trusted_verifier_keys,
+            bundle: &bundle,
+            now_unix_ms: input.now_unix_ms,
+            checks: &mut checks,
+        }) {
+            Ok(result) => result,
+            Err(code) => {
+                return Ok(rejected_report_with_policy(
+                    input.admission_id,
+                    code,
+                    checks,
+                    None,
+                ));
+            }
+        };
     if pheromone_advisory.is_some() {
         checks.push(passed("pheromone.observe_only"));
     }
-    let policy_decision = match evaluate_runtime_pheromone_policy(RuntimePolicyEvaluationInput {
-        policy: input.runtime_pheromone_policy,
-        peer_weights: input.runtime_peer_weights,
-        advisory: input.pheromone_advisory,
-        runtime_trust_input: input.runtime_trust_input,
-        trusted_verifier_keys: input.trusted_verifier_keys,
-        bundle: &bundle,
-        now_unix_ms: input.now_unix_ms,
-        checks: &mut checks,
-    }) {
-        Ok(decision) => decision,
-        Err(code) => {
-            return Ok(rejected_report_with_policy(
-                input.admission_id,
-                code,
-                checks,
-                None,
-            ));
-        }
-    };
     if let Some(decision) = policy_decision.as_ref() {
         if decision.decision == "deny" {
             return Ok(rejected_report_with_policy(
@@ -7117,7 +7698,7 @@ pub struct ChiodosRuntimeAdmissionHook<S> {
     store: S,
     runtime_trust_input: Option<SignedRuntimeVerifierTrustBundle>,
     trusted_verifier_keys: Vec<RuntimeTrustedVerifierKey>,
-    pheromone_advisory: Option<RuntimePheromoneAdvisory>,
+    pheromone_query_report: Option<SignedRuntimePheromoneQueryReport>,
     runtime_pheromone_policy: Option<SignedRuntimePheromonePolicy>,
     runtime_peer_weights: Option<SignedRuntimePeerWeights>,
 }
@@ -7130,7 +7711,7 @@ impl<S> ChiodosRuntimeAdmissionHook<S> {
             store,
             runtime_trust_input: None,
             trusted_verifier_keys: Vec::new(),
-            pheromone_advisory: None,
+            pheromone_query_report: None,
             runtime_pheromone_policy: None,
             runtime_peer_weights: None,
         }
@@ -7148,8 +7729,11 @@ impl<S> ChiodosRuntimeAdmissionHook<S> {
     }
 
     #[must_use]
-    pub fn with_pheromone_advisory(mut self, advisory: RuntimePheromoneAdvisory) -> Self {
-        self.pheromone_advisory = Some(advisory);
+    pub fn with_pheromone_query_report(
+        mut self,
+        report: SignedRuntimePheromoneQueryReport,
+    ) -> Self {
+        self.pheromone_query_report = Some(report);
         self
     }
 
@@ -7314,7 +7898,7 @@ where
             request: &binding,
             runtime_trust_input: self.runtime_trust_input.as_ref(),
             trusted_verifier_keys: &self.trusted_verifier_keys,
-            pheromone_advisory: self.pheromone_advisory.as_ref(),
+            pheromone_query_report: self.pheromone_query_report.as_ref(),
             runtime_pheromone_policy: self.runtime_pheromone_policy.as_ref(),
             runtime_peer_weights: self.runtime_peer_weights.as_ref(),
             now_unix_ms: context.now_unix_secs.saturating_mul(1000),
@@ -7887,6 +8471,7 @@ fn verify_continuation_evidence(
     if continuation.capability_id != request.capability_id
         || continuation.action_class_id != action_class_id
         || continuation.target_kernel_id != request.host_kernel_id
+        || request.origin_kernel_id.as_deref() != Some(continuation.source_kernel_id.as_str())
         || (continuation.audience_tool != audience
             && continuation.audience_tool != request.tool_name)
         || !treaty_scope
@@ -7943,6 +8528,14 @@ fn verify_bilateral_invocation_evidence(
     lineage_bundle: Option<&ReceiptLineageBundle>,
 ) -> Result<String, ChiodosRuntimeError> {
     validate_bilateral_invocation(invocation)?;
+    if review.treaty_scope.participant_kernel_ids.len() != 2
+        || invocation.signer_kernel_ids.len() != 2
+    {
+        return rejected(
+            "chiodos_treaty_bilateral_mismatch",
+            "bilateral invocation requires exactly two treaty participants and signers",
+        );
+    }
     if invocation.treaty_id != review.treaty_scope.treaty_id
         || invocation.ladder_intersection_sha256 != review.ladder_intersection_sha256
         || invocation.continuation_sha256 != review.continuation_sha256
@@ -8053,6 +8646,13 @@ fn verify_treaty_dsse_evidence(
     }
     let participants: BTreeSet<_> = review.treaty_scope.participant_kernel_ids.iter().collect();
     let signers: BTreeSet<_> = treaty.signer_kernel_ids.iter().collect();
+    if review.treaty_scope.participant_kernel_ids.len() != 2 || treaty.signer_kernel_ids.len() != 2
+    {
+        return rejected(
+            "chiodos_treaty_dsse_binding_mismatch",
+            "bilateral DSSE evidence requires exactly two treaty participants and signers",
+        );
+    }
     if participants != signers {
         return rejected(
             "chiodos_treaty_dsse_binding_mismatch",
@@ -8421,10 +9021,10 @@ fn validate_bilateral_invocation(
         &invocation.remote_receipt_sha256,
         "bilateral_invocation_invalid_remote_receipt_hash",
     )?;
-    if invocation.signer_kernel_ids.len() < 2 {
+    if invocation.signer_kernel_ids.len() != 2 {
         return rejected(
-            "bilateral_invocation_missing_signer",
-            "bilateral invocation must include at least two kernel signers",
+            "bilateral_invocation_signer_count_mismatch",
+            "bilateral invocation must include exactly two kernel signers",
         );
     }
     let mut signers = BTreeSet::new();
@@ -8894,11 +9494,16 @@ fn lease_count_by_state(connection: &Connection, state: &str) -> Result<u64, Chi
 fn stale_lease_count(
     connection: &Connection,
     now_unix_ms: u64,
+    stale_run_after_ms: u64,
 ) -> Result<u64, ChiodosRuntimeError> {
+    let stale_before = now_unix_ms.saturating_sub(stale_run_after_ms);
     let count: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM runtime_run_leases WHERE state = 'active' AND expires_at_unix_ms <= ?1",
-            params![sqlite_i64(now_unix_ms, "runtime stale lease timestamp")?],
+            "SELECT COUNT(*) FROM runtime_run_leases WHERE state = 'active' AND (expires_at_unix_ms <= ?1 OR heartbeat_at_unix_ms <= ?2)",
+            params![
+                sqlite_i64(now_unix_ms, "runtime stale lease timestamp")?,
+                sqlite_i64(stale_before, "runtime stale heartbeat timestamp")?
+            ],
             |row| row.get(0),
         )
         .map_err(sqlite_error)?;
@@ -9109,7 +9714,7 @@ fn validate_runtime_trust_floor_transition(
 struct RuntimePolicyEvaluationInput<'a, 'b> {
     policy: Option<&'a SignedRuntimePheromonePolicy>,
     peer_weights: Option<&'a SignedRuntimePeerWeights>,
-    advisory: Option<&'a RuntimePheromoneAdvisory>,
+    query_report: Option<&'a SignedRuntimePheromoneQueryReport>,
     runtime_trust_input: Option<&'a SignedRuntimeVerifierTrustBundle>,
     trusted_verifier_keys: &'a [RuntimeTrustedVerifierKey],
     bundle: &'a RuntimeAdmissionBundle,
@@ -9119,9 +9724,20 @@ struct RuntimePolicyEvaluationInput<'a, 'b> {
 
 fn evaluate_runtime_pheromone_policy(
     input: RuntimePolicyEvaluationInput<'_, '_>,
-) -> Result<Option<RuntimePheromonePolicyDecision>, &'static str> {
+) -> Result<
+    (
+        Option<RuntimePheromonePolicyDecision>,
+        Option<RuntimePheromoneAdvisory>,
+    ),
+    &'static str,
+> {
+    if input.bundle.destructive
+        && (input.policy.is_none() || input.peer_weights.is_none() || input.query_report.is_none())
+    {
+        return Err("runtime_pheromone_required_for_destructive");
+    }
     match (input.policy, input.peer_weights) {
-        (None, None) => return Ok(None),
+        (None, None) => return Ok((None, None)),
         (Some(_), None) => return Err("missing_runtime_peer_weights"),
         (None, Some(_)) => return Err("missing_runtime_pheromone_policy"),
         (Some(_), Some(_)) => {}
@@ -9129,15 +9745,9 @@ fn evaluate_runtime_pheromone_policy(
     let Some(runtime_trust_input) = input.runtime_trust_input else {
         return Err("missing_runtime_trust_input");
     };
-    let Some(advisory) = input.advisory else {
+    let Some(query_report) = input.query_report else {
         return Err("missing_runtime_pheromone_advisory");
     };
-    if !advisory.observe_only {
-        return Err("runtime_pheromone_advisory_not_observe_only");
-    }
-    if !advisory.accepted {
-        return Err("runtime_pheromone_advisory_rejected");
-    }
 
     let policy = input.policy.ok_or("missing_runtime_pheromone_policy")?;
     let peer_weights = input.peer_weights.ok_or("missing_runtime_peer_weights")?;
@@ -9151,6 +9761,29 @@ fn evaluate_runtime_pheromone_policy(
     )
     .map_err(|_| "runtime_pheromone_policy_untrusted")?;
     input.checks.push(passed("runtime_policy.signature"));
+    if query_report.signer_key != policy.signer_key {
+        return Err("runtime_pheromone_policy_query_report_signer_mismatch");
+    }
+    if !query_report
+        .verify_signature()
+        .map_err(|_| "runtime_pheromone_query_report_signature_invalid")?
+    {
+        return Err("runtime_pheromone_query_report_signature_invalid");
+    }
+    input
+        .checks
+        .push(passed("runtime_pheromone_query_report.signature"));
+    let advisory = runtime_pheromone_advisory_from_query_report_value(&query_report.body)
+        .map_err(|_| "invalid_pheromone_query_report")?;
+    if !advisory.observe_only {
+        return Err("runtime_pheromone_advisory_not_observe_only");
+    }
+    if !advisory.accepted {
+        return Err("runtime_pheromone_advisory_rejected");
+    }
+    if advisory.evaluated_at_unix_ms > input.now_unix_ms {
+        return Err("runtime_pheromone_advisory_future_dated");
+    }
     validate_signed_verifier_material(
         &peer_weights.body.verifier_id,
         &peer_weights.body.key_id,
@@ -9258,7 +9891,7 @@ fn evaluate_runtime_pheromone_policy(
         }
         break;
     }
-    Ok(Some(decision))
+    Ok((Some(decision), Some(advisory)))
 }
 
 fn validate_peer_weights(weights: &RuntimePeerWeights) -> Result<(), &'static str> {

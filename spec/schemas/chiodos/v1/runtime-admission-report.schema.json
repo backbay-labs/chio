@@ -11,6 +11,16 @@
     "checks",
     "receiptMetadata"
   ],
+  "allOf": [
+    {
+      "if": { "properties": { "accepted": { "const": false } }, "required": ["accepted"] },
+      "then": { "required": ["failureCode"] }
+    },
+    {
+      "if": { "properties": { "accepted": { "const": true } }, "required": ["accepted"] },
+      "then": { "not": { "required": ["failureCode"] } }
+    }
+  ],
   "properties": {
     "schema": { "const": "chio.chiodos.runtime-admission-report.v1" },
     "admissionId": { "type": "string", "minLength": 1 },

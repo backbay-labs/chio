@@ -252,17 +252,6 @@ impl Drop for PostAdmissionDropGuard<'_> {
             return;
         }
 
-        if let Err(error) = self
-            .kernel
-            .release_runtime_admission_reservations(self.extra_metadata.as_ref())
-        {
-            warn!(
-                request_id = %self.request.request_id,
-                reason = %redacted!(&error),
-                "failed to release dropped runtime admission reservations"
-            );
-        }
-
         let Some(charge) = self.charge_result else {
             return;
         };
@@ -3887,7 +3876,6 @@ impl ChioKernel {
         let (tool_output, reported_cost) = match dispatch_result {
             Ok(result) => result,
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
-                self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
                 let _ = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -3902,7 +3890,6 @@ impl ChioKernel {
                 return Err(error);
             }
             Err(KernelError::RequestCancelled { reason, .. }) => {
-                self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -3932,7 +3919,6 @@ impl ChioKernel {
                 );
             }
             Err(KernelError::RequestIncomplete(reason)) => {
-                self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -3963,7 +3949,6 @@ impl ChioKernel {
                 );
             }
             Err(e) => {
-                self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -4373,7 +4358,13 @@ impl ChioKernel {
                     ),
                 );
             }
-            return self.build_deny_response(request, &msg, now, Some(matched_grant_index));
+            return self.build_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                Some(matched_grant_index),
+                runtime_admission_metadata.clone(),
+            );
         }
 
         let payment_authorization = match self
@@ -4468,7 +4459,6 @@ impl ChioKernel {
         let tool_output = match tool_output_result {
             Ok(output) => output,
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
-                self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
                 let _ = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -4483,7 +4473,6 @@ impl ChioKernel {
                 return Err(error);
             }
             Err(KernelError::RequestCancelled { request_id, reason }) => {
-                self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -4519,7 +4508,6 @@ impl ChioKernel {
                 );
             }
             Err(KernelError::RequestIncomplete(reason)) => {
-                self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -4550,7 +4538,6 @@ impl ChioKernel {
                 );
             }
             Err(error) => {
-                self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -7165,6 +7152,22 @@ impl ChioKernel {
         matched_grant_index: Option<usize>,
     ) -> RuntimeAdmissionDecision {
         let Some(hook) = self.runtime_admission_hook.as_ref() else {
+            if request
+                .governed_intent
+                .as_ref()
+                .and_then(|intent| intent.context.as_ref())
+                .is_some_and(|context| context.get("chiodosAdmission").is_some())
+            {
+                return RuntimeAdmissionDecision::deny(
+                    "chiodos runtime admission hook is required for Chiodos-governed requests",
+                    Some(serde_json::json!({
+                        "chiodos_runtime": {
+                            "accepted": false,
+                            "failure_code": "runtime_admission_hook_missing"
+                        }
+                    })),
+                );
+            }
             return RuntimeAdmissionDecision::allow(None);
         };
         let context = RuntimeAdmissionContext {

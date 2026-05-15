@@ -41,6 +41,14 @@
   },
   "allOf": [
     {
+      "if": { "properties": { "accepted": { "const": false } }, "required": ["accepted"] },
+      "then": { "required": ["failureCode"] }
+    },
+    {
+      "if": { "properties": { "accepted": { "const": true } }, "required": ["accepted"] },
+      "then": { "not": { "required": ["failureCode"] } }
+    },
+    {
       "if": {
         "properties": { "accepted": { "const": true } },
         "required": ["accepted"]

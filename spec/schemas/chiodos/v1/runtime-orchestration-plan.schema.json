@@ -5,6 +5,16 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "runId", "accepted", "generatedAtUnixMs", "profileSha256", "runContractSha256", "plannedSteps", "checks"],
+  "allOf": [
+    {
+      "if": { "properties": { "accepted": { "const": false } }, "required": ["accepted"] },
+      "then": { "required": ["failureCode"] }
+    },
+    {
+      "if": { "properties": { "accepted": { "const": true } }, "required": ["accepted"] },
+      "then": { "not": { "required": ["failureCode"] } }
+    }
+  ],
   "properties": {
     "schema": { "const": "chio.chiodos.runtime-orchestration-plan.v1" },
     "runId": { "type": "string", "minLength": 1 },

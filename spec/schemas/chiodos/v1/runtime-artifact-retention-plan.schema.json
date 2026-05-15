@@ -5,6 +5,16 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "accepted", "generatedAtUnixMs", "retentionProfileSha256", "retainCount", "blockedCount", "quarantineCount", "expiringSoonCount", "eligibleForOperatorReviewCount", "candidateActions", "checks"],
+  "allOf": [
+    {
+      "if": { "properties": { "accepted": { "const": false } }, "required": ["accepted"] },
+      "then": { "required": ["failureCode"] }
+    },
+    {
+      "if": { "properties": { "accepted": { "const": true } }, "required": ["accepted"] },
+      "then": { "not": { "required": ["failureCode"] } }
+    }
+  ],
   "properties": {
     "schema": { "const": "chio.chiodos.runtime-artifact-retention-plan.v1" },
     "accepted": { "type": "boolean" },

@@ -20,6 +20,21 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "crates/chio-chiodos/**"
+      - "crates/chio-chiodos-authority/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-federation/**"
+      - "crates/chio-governance/**"
+      - "crates/chio-workflow/**"
+      - "crates/chio-selective-disclosure/**"
+      - "crates/chio-conformance/**"
+      - "examples/chiodos-3vendor/**"
+      - "scripts/check-chiodos-authority-issuance.sh"
+      - "scripts/check-chiodos-proof-package.sh"
+      - "spec/schemas/chiodos/**"
+      - "spec/schemas/registry.json"
+      - ".github/workflows/chiodos-proof-package.yml"
   workflow_dispatch:
 
 permissions:

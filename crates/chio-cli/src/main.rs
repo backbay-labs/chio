@@ -1056,6 +1056,21 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chiodos_runtime_pheromone_evaluate_subcommand_parses() {
+        let sign = Cli::try_parse_from([
+            "chio",
+            "chiodos",
+            "runtime",
+            "pheromone",
+            "sign-query-report",
+            "--body",
+            "pheromone-query-body.json",
+            "--signing-seed-file",
+            "verifier.seed",
+            "--out",
+            "pheromone-query.signed.json",
+        ]);
+        assert!(sign.is_ok());
+
         let cli = Cli::try_parse_from([
             "chio",
             "chiodos",
