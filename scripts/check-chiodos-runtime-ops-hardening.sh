@@ -122,7 +122,9 @@ JSON
     "runtime_evidence_artifact_hash_mismatch",
     "runtime_run_lease_conflict",
     "runtime_run_stale_fencing_token",
-    "runtime_ops_status_degraded"
+    "runtime_ops_status_degraded",
+    "runtime_ops_supervisor_profile_stale",
+    "runtime_recovery_supervisor_profile_stale"
   ]
 }
 JSON
@@ -184,6 +186,8 @@ run_status_flow() {
     --supervisor-profile "$tmpdir/supervisor-profile.json" \
     --store "$tmpdir/runtime.sqlite3" \
     --evidence-root "$tmpdir/evidence" \
+    --provider-bindings "$tmpdir/provider-bindings.json" \
+    --now-unix-ms 1800000001000 \
     --report "$tmpdir/status-report.json" >/dev/null
   validate_schema "$schema_dir/runtime-ops-status-report.schema.json" "$tmpdir/status-report.json"
 }
@@ -208,6 +212,7 @@ run_evidence_flow() {
     --run-id "runtime-run-health" \
     --store "$tmpdir/runtime.sqlite3" \
     --evidence-root "$tmpdir/evidence" \
+    --now-unix-ms 1800000001000 \
     --report "$tmpdir/evidence-health-report.json" >/dev/null
   validate_schema "$schema_dir/runtime-evidence-sink-health-report.schema.json" "$tmpdir/evidence-health-report.json"
 }
@@ -217,6 +222,7 @@ run_provider_flow() {
   cargo run -p chio-cli -- chiodos runtime ops provider-health \
     --supervisor-profile "$tmpdir/supervisor-profile.json" \
     --provider-bindings "$tmpdir/provider-bindings.json" \
+    --now-unix-ms 1800000001000 \
     --report "$tmpdir/provider-health-report.json" >/dev/null
   validate_schema "$schema_dir/runtime-provider-health-report.schema.json" "$tmpdir/provider-health-report.json"
 }
@@ -237,6 +243,7 @@ run_negative_flow() {
   cargo run -p chio-cli -- chiodos runtime ops provider-health \
     --supervisor-profile "$tmpdir/supervisor-profile.json" \
     --provider-bindings "$tmpdir/provider-bindings-bad.json" \
+    --now-unix-ms 1800000001000 \
     --report "$tmpdir/provider-health-bad.json" >/dev/null
   grep -q '"accepted": false' "$tmpdir/provider-health-bad.json"
   grep -q '"failureCode": "runtime_provider_discovery_not_allowed"' "$tmpdir/provider-health-bad.json"
@@ -245,6 +252,7 @@ run_negative_flow() {
     --run-id "runtime-run-health" \
     --store "$tmpdir/runtime.sqlite3" \
     --evidence-root "$tmpdir/evidence-bad" \
+    --now-unix-ms 1800000001000 \
     --report "$tmpdir/evidence-health-bad.json" >/dev/null
   grep -q '"failureCode": "runtime_evidence_artifact_hash_mismatch"' "$tmpdir/evidence-health-bad.json"
 }
@@ -254,6 +262,8 @@ run_failure_code_flow() {
   validate_schema "$schema_dir/runtime-failure-code-registry.schema.json" "$tmpdir/failure-code-registry.json"
   rg -q 'runtime_provider_discovery_not_allowed' "$repo_root/crates/chio-chiodos-runtime/src/lib.rs"
   rg -q 'runtime_evidence_artifact_hash_mismatch' "$repo_root/crates/chio-chiodos-runtime/src/lib.rs"
+  rg -q 'runtime_ops_supervisor_profile_stale' "$repo_root/crates/chio-chiodos-runtime/src/lib.rs"
+  rg -q 'runtime_recovery_supervisor_profile_stale' "$repo_root/crates/chio-chiodos-runtime/src/lib.rs"
 }
 
 case "$MODE" in

@@ -2569,12 +2569,14 @@ fn main() {
                         supervisor_profile,
                         store,
                         evidence_root,
+                        provider_bindings,
                         now_unix_ms,
                         report,
                     } => cmd_chiodos_runtime_ops_status(
                         &supervisor_profile,
                         &store,
                         &evidence_root,
+                        provider_bindings.as_deref(),
                         Some(now_unix_ms),
                         &report,
                     ),
@@ -2599,12 +2601,14 @@ fn main() {
                         supervisor_profile,
                         store,
                         evidence_root,
+                        provider_bindings,
                         now_unix_ms,
                         report,
                     } => cmd_chiodos_runtime_ops_status(
                         &supervisor_profile,
                         &store,
                         &evidence_root,
+                        provider_bindings.as_deref(),
                         now_unix_ms,
                         &report,
                     ),
@@ -2628,12 +2632,14 @@ fn main() {
                         run_id,
                         store,
                         evidence_root,
+                        now_unix_ms,
                         report,
                     } => cmd_chiodos_runtime_ops_evidence_health(
                         &supervisor_profile,
                         &run_id,
                         &store,
                         &evidence_root,
+                        now_unix_ms.unwrap_or_else(unix_now_ms),
                         &report,
                     ),
                     ChiodosRuntimeOpsCommands::ProviderHealth {
@@ -4618,7 +4624,15 @@ fn cmd_chiodos_runtime_orchestrate_run(
     let evidence = load_runtime_orchestration_evidence(evidence_dir)?;
     let mut accepted = evidence.proof_regeneration_report.accepted;
     let mut failure_code = evidence.proof_regeneration_report.failure_code.clone();
-    if profile_sha256 != run_contract.profile_sha256 {
+    if evidence.proof_regeneration_report.accepted && !evidence.verifier_report_accepted {
+        accepted = false;
+        failure_code = Some(
+            evidence
+                .verifier_report_failure_code
+                .clone()
+                .unwrap_or_else(|| "runtime_orchestration_verifier_report_rejected".to_string()),
+        );
+    } else if profile_sha256 != run_contract.profile_sha256 {
         accepted = false;
         failure_code = Some("runtime_orchestration_profile_hash_mismatch".to_string());
     } else if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
@@ -4702,8 +4716,8 @@ fn cmd_chiodos_runtime_orchestrate_resume(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
-    let _profile = load_runtime_orchestration_profile(profile)?;
-    let input: chio_chiodos_runtime::RuntimeOrchestrationResumePlan =
+    let profile = load_runtime_orchestration_profile(profile)?;
+    let mut resolved: chio_chiodos_runtime::RuntimeOrchestrationResumePlan =
         serde_json::from_str(&read_utf8_json_file(
             resume_plan,
             "Chiodos runtime orchestration resume plan",
@@ -4717,15 +4731,22 @@ fn cmd_chiodos_runtime_orchestrate_resume(
         |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
     )?;
     ensure_runtime_evidence_dir(evidence_dir)?;
-    let resolved = chio_chiodos_runtime::RuntimeOrchestrationResumePlan {
-        generated_at_unix_ms: now_unix_ms,
-        checks: {
-            let mut checks = input.checks;
-            checks.push("runtime_orchestration.resume_inputs_loaded".to_string());
-            checks
-        },
-        ..input
-    };
+    resolved.generated_at_unix_ms = now_unix_ms;
+    resolved
+        .checks
+        .push("runtime_orchestration.resume_inputs_loaded".to_string());
+    let profile_stale =
+        now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms;
+    if profile_stale {
+        resolved.accepted = false;
+        resolved.failure_code = Some("runtime_orchestration_profile_stale".to_string());
+        resolved.blocked = true;
+        resolved.next_step_index = None;
+        resolved.reusable_step_indices.clear();
+        resolved
+            .checks
+            .push("runtime_orchestration.profile_window".to_string());
+    }
     write_pretty_json(
         report,
         &resolved,
@@ -4821,6 +4842,8 @@ struct RuntimeOrchestrationEvidence {
     workflow_run_report: chio_chiodos_runtime::RuntimeWorkflowRunReport,
     proof_regeneration_report: chio_chiodos_runtime::RuntimeProofRegenerationReport,
     manifest: chio_chiodos_runtime::RuntimeEvidenceManifest,
+    verifier_report_accepted: bool,
+    verifier_report_failure_code: Option<String>,
     workflow_report_sha256: String,
     proof_report_sha256: String,
     manifest_sha256: String,
@@ -4960,6 +4983,15 @@ fn load_runtime_orchestration_evidence(
     let verifier_report: serde_json::Value = serde_json::from_str(&verifier_json).map_err(|error| {
         CliError::cli_other_error(format!("Chiodos verifier report: {error}"))
     })?;
+    let verifier_report_accepted = verifier_report
+        .get("accepted")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let verifier_report_failure_code = verifier_report
+        .get("failure")
+        .and_then(|failure| failure.get("code"))
+        .and_then(serde_json::Value::as_str)
+        .map(ToString::to_string);
     chio_chiodos_runtime::validate_runtime_workflow_run_report(&workflow_run_report).map_err(
         |error| CliError::cli_other_error(format!("Chiodos runtime workflow report: {error}")),
     )?;
@@ -4988,6 +5020,8 @@ fn load_runtime_orchestration_evidence(
         workflow_run_report,
         proof_regeneration_report,
         manifest,
+        verifier_report_accepted,
+        verifier_report_failure_code,
         workflow_report_sha256,
         proof_report_sha256,
         manifest_sha256,
@@ -5042,6 +5076,7 @@ fn cmd_chiodos_runtime_ops_status(
     supervisor_profile: &Path,
     store: &Path,
     evidence_root: &Path,
+    provider_bindings: Option<&Path>,
     now_unix_ms: Option<u64>,
     report: &Path,
 ) -> Result<(), CliError> {
@@ -5050,8 +5085,23 @@ fn cmd_chiodos_runtime_ops_status(
         |error| CliError::cli_other_error(format!("Chiodos runtime ops store: {error}")),
     )?;
     let generated_at = now_unix_ms.unwrap_or_else(unix_now_ms);
+    let provider_healthy = provider_bindings
+        .map(|path| {
+            let bindings = load_runtime_provider_bindings(path)?;
+            let health = chio_chiodos_runtime::generate_runtime_provider_health_report(
+                &profile,
+                &bindings,
+                generated_at,
+            )
+            .map_err(|error| {
+                CliError::cli_other_error(format!("Chiodos runtime provider health: {error}"))
+            })?;
+            Ok::<bool, CliError>(health.accepted)
+        })
+        .transpose()?
+        .unwrap_or(false);
     let status = store
-        .ops_status_report(&profile, generated_at, evidence_root.is_dir(), true)
+        .ops_status_report(&profile, generated_at, evidence_root.is_dir(), provider_healthy)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos runtime ops status: {error}")))?;
     write_pretty_json(report, &status, "Chiodos runtime ops status report")
 }
@@ -5064,14 +5114,16 @@ fn cmd_chiodos_runtime_ops_recovery_drill(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
-    let _profile = load_runtime_supervisor_profile(supervisor_profile)?;
+    let profile = load_runtime_supervisor_profile(supervisor_profile)?;
     ensure_runtime_evidence_dir(evidence_root)?;
     let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
         |error| CliError::cli_other_error(format!("Chiodos runtime ops store: {error}")),
     )?;
-    let drill = store.recovery_drill_report(run_id, now_unix_ms).map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos runtime recovery drill: {error}"))
-    })?;
+    let drill = store
+        .recovery_drill_report_for_profile(&profile, run_id, now_unix_ms)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chiodos runtime recovery drill: {error}"))
+        })?;
     write_pretty_json(report, &drill, "Chiodos runtime recovery drill report")
 }
 
@@ -5080,6 +5132,7 @@ fn cmd_chiodos_runtime_ops_evidence_health(
     run_id: &str,
     store: &Path,
     evidence_root: &Path,
+    now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
     let profile = load_runtime_supervisor_profile(supervisor_profile)?;
@@ -5106,7 +5159,7 @@ fn cmd_chiodos_runtime_ops_evidence_health(
         &evidence_dir,
         &manifest,
         &profile.evidence_required_roles,
-        profile.issued_at_unix_ms,
+        now_unix_ms,
         true,
     )
     .map_err(|error| {
@@ -5122,14 +5175,7 @@ fn cmd_chiodos_runtime_ops_provider_health(
     report: &Path,
 ) -> Result<(), CliError> {
     let profile = load_runtime_supervisor_profile(supervisor_profile)?;
-    let bindings =
-        chio_chiodos_runtime::runtime_provider_bindings_from_json(&read_utf8_json_file(
-            provider_bindings,
-            "Chiodos runtime provider bindings",
-        )?)
-        .map_err(|error| {
-            CliError::cli_other_error(format!("Chiodos runtime provider bindings: {error}"))
-        })?;
+    let bindings = load_runtime_provider_bindings(provider_bindings)?;
     let health = chio_chiodos_runtime::generate_runtime_provider_health_report(
         &profile,
         &bindings,
@@ -5139,6 +5185,18 @@ fn cmd_chiodos_runtime_ops_provider_health(
         CliError::cli_other_error(format!("Chiodos runtime provider health: {error}"))
     })?;
     write_pretty_json(report, &health, "Chiodos runtime provider health report")
+}
+
+fn load_runtime_provider_bindings(
+    provider_bindings: &Path,
+) -> Result<chio_chiodos_runtime::RuntimeProviderBindingsDocument, CliError> {
+    chio_chiodos_runtime::runtime_provider_bindings_from_json(&read_utf8_json_file(
+        provider_bindings,
+        "Chiodos runtime provider bindings",
+    )?)
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime provider bindings: {error}"))
+    })
 }
 
 fn cmd_chiodos_runtime_ops_retention_plan(

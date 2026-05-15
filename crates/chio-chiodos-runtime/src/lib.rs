@@ -344,6 +344,8 @@ pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "runtime_orchestration_step_invalid_receipt_hash",
     "runtime_orchestration_step_invalid_state",
     "runtime_orchestration_step_missing_destructive_lease",
+    "runtime_orchestration_verifier_report_rejected",
+    "runtime_ops_supervisor_profile_stale",
     "runtime_peer_weights_duplicate_peer",
     "runtime_peer_weights_hash_failed",
     "runtime_peer_weights_hash_mismatch",
@@ -424,6 +426,7 @@ pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "runtime_recovery_accepted_blocked",
     "runtime_recovery_empty_run_id",
     "runtime_recovery_run_not_found",
+    "runtime_recovery_supervisor_profile_stale",
     "runtime_reputation_epoch_mismatch",
     "runtime_resume_destructive_repair_required",
     "runtime_retention_dry_run_only",
@@ -3254,6 +3257,36 @@ impl SqliteRuntimeOrchestrationStore {
         Ok(report)
     }
 
+    pub fn recovery_drill_report_for_profile(
+        &self,
+        profile: &RuntimeSupervisorProfile,
+        run_id: &str,
+        now_unix_ms: u64,
+    ) -> Result<RuntimeRecoveryDrillReport, ChiodosRuntimeError> {
+        validate_runtime_supervisor_profile(profile)?;
+        validate_non_empty(run_id, "runtime_recovery_empty_run_id")?;
+        if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
+            let report = RuntimeRecoveryDrillReport {
+                schema: CHIODOS_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA.to_string(),
+                run_id: run_id.to_string(),
+                accepted: false,
+                failure_code: Some("runtime_recovery_supervisor_profile_stale".to_string()),
+                generated_at_unix_ms: now_unix_ms,
+                resumable: false,
+                blocked: true,
+                next_step_index: None,
+                reusable_step_indices: Vec::new(),
+                recovery_required_reason: Some(
+                    "runtime_recovery_supervisor_profile_stale".to_string(),
+                ),
+                checks: vec!["runtime_ops.recovery_supervisor_profile_window".to_string()],
+            };
+            validate_runtime_recovery_drill_report(&report)?;
+            return Ok(report);
+        }
+        self.recovery_drill_report(run_id, now_unix_ms)
+    }
+
     pub fn ops_status_report(
         &self,
         profile: &RuntimeSupervisorProfile,
@@ -3263,6 +3296,8 @@ impl SqliteRuntimeOrchestrationStore {
     ) -> Result<RuntimeOpsStatusReport, ChiodosRuntimeError> {
         validate_runtime_supervisor_profile(profile)?;
         let connection = self.lock_connection()?;
+        let profile_stale =
+            now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms;
         let run_counts = runtime_run_counts(&connection)?;
         let consumed_lease_count = query_count(&connection, "runtime_consumed_leases")?;
         let active_lease_count = lease_count_by_state(&connection, "active")?;
@@ -3276,18 +3311,22 @@ impl SqliteRuntimeOrchestrationStore {
             )
             .optional()
             .map_err(sqlite_error)?;
-        let degraded = !evidence_sink_healthy
+        let degraded = profile_stale
+            || !evidence_sink_healthy
             || !provider_healthy
             || stale_lease_count > 0
             || latest_failure_code.is_some();
+        let failure_code = if profile_stale {
+            Some("runtime_ops_supervisor_profile_stale".to_string())
+        } else if degraded {
+            Some("runtime_ops_status_degraded".to_string())
+        } else {
+            None
+        };
         let report = RuntimeOpsStatusReport {
             schema: CHIODOS_RUNTIME_OPS_STATUS_REPORT_SCHEMA.to_string(),
             accepted: !degraded,
-            failure_code: if degraded {
-                Some("runtime_ops_status_degraded".to_string())
-            } else {
-                None
-            },
+            failure_code,
             generated_at_unix_ms: now_unix_ms,
             supervisor_profile_sha256: canonical_sha256(profile)?,
             run_counts,

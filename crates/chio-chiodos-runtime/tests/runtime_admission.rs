@@ -2602,6 +2602,51 @@ fn runtime_ops_scheduler_tick_rejects_profile_at_exact_expiry(
 }
 
 #[test]
+fn runtime_ops_status_rejects_stale_supervisor_profile() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("runtime-ops-status-stale-profile.sqlite3");
+    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
+    let profile = supervisor_profile();
+
+    let report = store.ops_status_report(&profile, profile.expires_at_unix_ms, true, true)?;
+
+    assert!(!report.accepted, "{report:#?}");
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_ops_supervisor_profile_stale")
+    );
+    assert!(report.degraded, "{report:#?}");
+    assert!(!report.ready, "{report:#?}");
+    Ok(())
+}
+
+#[test]
+fn runtime_ops_recovery_drill_rejects_stale_supervisor_profile(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir
+        .path()
+        .join("runtime-ops-recovery-stale-profile.sqlite3");
+    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
+    let profile = supervisor_profile();
+
+    let report = store.recovery_drill_report_for_profile(
+        &profile,
+        "runtime-run-a",
+        profile.expires_at_unix_ms,
+    )?;
+
+    assert!(!report.accepted, "{report:#?}");
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_recovery_supervisor_profile_stale")
+    );
+    assert!(report.blocked, "{report:#?}");
+    assert!(!report.resumable, "{report:#?}");
+    Ok(())
+}
+
+#[test]
 fn runtime_ops_evidence_health_detects_hash_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     std::fs::write(

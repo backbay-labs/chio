@@ -1092,6 +1092,9 @@ enum ChiodosRuntimeOpsCommands {
         #[arg(long = "evidence-root", value_name = "DIR")]
         evidence_root: PathBuf,
 
+        #[arg(long = "provider-bindings", value_name = "PATH")]
+        provider_bindings: Option<PathBuf>,
+
         #[arg(long)]
         now_unix_ms: u64,
 
@@ -1134,6 +1137,9 @@ enum ChiodosRuntimeOpsCommands {
         #[arg(long = "evidence-root", value_name = "DIR")]
         evidence_root: PathBuf,
 
+        #[arg(long = "provider-bindings", value_name = "PATH")]
+        provider_bindings: Option<PathBuf>,
+
         #[arg(long)]
         now_unix_ms: Option<u64>,
 
@@ -1175,6 +1181,9 @@ enum ChiodosRuntimeOpsCommands {
 
         #[arg(long = "evidence-root", value_name = "DIR")]
         evidence_root: PathBuf,
+
+        #[arg(long)]
+        now_unix_ms: Option<u64>,
 
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
