@@ -318,6 +318,72 @@ fn chiodos_governed_request_without_runtime_hook_fails_closed(
 }
 
 #[test]
+fn chiodos_treaty_request_without_runtime_hook_fails_closed(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-chiodos-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chiodos-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let mut request = make_request_with_arguments(
+        "req-chiodos-treaty-no-hook",
+        &cap,
+        "destructive_update",
+        "srv-chiodos-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+    request.governed_intent = Some(GovernedTransactionIntent {
+        id: "intent:chiodos:treaty-no-hook".to_string(),
+        server_id: request.server_id.clone(),
+        tool_name: request.tool_name.clone(),
+        purpose: "verify Chiodos treaty context fails closed without a hook".to_string(),
+        max_amount: None,
+        commerce: None,
+        metered_billing: None,
+        runtime_attestation: None,
+        call_chain: None,
+        autonomy: None,
+        context: Some(serde_json::json!({
+            "chiodosTreaty": {
+                "treatyScopeId": "treaty-buyer-vendor",
+                "treatyScopeSha256": "b".repeat(64),
+                "ladderIntersectionId": "intersection-live-1",
+                "ladderIntersectionSha256": "c".repeat(64),
+                "actionClassId": "workflow.destructive.vendor_call"
+            }
+        })),
+    });
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    let metadata = response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
+    assert_eq!(metadata["chiodos_runtime"]["accepted"], false);
+    assert_eq!(
+        metadata["chiodos_runtime"]["failure_code"],
+        "runtime_admission_hook_missing"
+    );
+    Ok(())
+}
+
+#[test]
 fn chiodos_runtime_admission_hook_denies_federated_call_before_dispatch_or_cosign(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let origin_kp = Keypair::generate();

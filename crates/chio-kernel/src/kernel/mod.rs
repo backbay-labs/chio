@@ -7162,7 +7162,10 @@ impl ChioKernel {
                 .governed_intent
                 .as_ref()
                 .and_then(|intent| intent.context.as_ref())
-                .is_some_and(|context| context.get("chiodosAdmission").is_some())
+                .is_some_and(|context| {
+                    context.get("chiodosAdmission").is_some()
+                        || context.get("chiodosTreaty").is_some()
+                })
             {
                 return RuntimeAdmissionDecision::deny(
                     "chiodos runtime admission hook is required for Chiodos-governed requests",
