@@ -12,6 +12,7 @@ on:
       - "spec/schemas/chiodos/**"
       - "spec/schemas/registry.json"
       - "spec/schemas/MANIFEST.sha256"
+      - ".github/workflows/chiodos-runtime-proof-parity.yml"
   push:
     branches: ["main"]
     paths:
@@ -24,6 +25,7 @@ on:
       - "spec/schemas/chiodos/**"
       - "spec/schemas/registry.json"
       - "spec/schemas/MANIFEST.sha256"
+      - ".github/workflows/chiodos-runtime-proof-parity.yml"
 
 jobs:
   runtime-proof-parity:

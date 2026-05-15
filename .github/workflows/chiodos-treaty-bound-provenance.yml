@@ -13,6 +13,8 @@ on:
       - "spec/schemas/chiodos/v1/*bilateral*.schema.json"
       - "spec/schemas/chiodos/v1/cross-*.schema.json"
       - "spec/schemas/registry.json"
+      - "spec/schemas/MANIFEST.sha256"
+      - ".github/workflows/chiodos-treaty-bound-provenance.yml"
   push:
     branches: ["main"]
     paths:
@@ -26,6 +28,8 @@ on:
       - "spec/schemas/chiodos/v1/*bilateral*.schema.json"
       - "spec/schemas/chiodos/v1/cross-*.schema.json"
       - "spec/schemas/registry.json"
+      - "spec/schemas/MANIFEST.sha256"
+      - ".github/workflows/chiodos-treaty-bound-provenance.yml"
 
 jobs:
   treaty-bound-provenance:

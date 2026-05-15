@@ -10,6 +10,8 @@ on:
       - "scripts/check-chiodos-runtime-spine.sh"
       - "spec/schemas/chiodos/**"
       - "spec/schemas/registry.json"
+      - "spec/schemas/MANIFEST.sha256"
+      - ".github/workflows/chiodos-runtime-policy.yml"
   push:
     branches: [main]
     paths:
@@ -20,6 +22,8 @@ on:
       - "scripts/check-chiodos-runtime-spine.sh"
       - "spec/schemas/chiodos/**"
       - "spec/schemas/registry.json"
+      - "spec/schemas/MANIFEST.sha256"
+      - ".github/workflows/chiodos-runtime-policy.yml"
 
 jobs:
   runtime-policy:

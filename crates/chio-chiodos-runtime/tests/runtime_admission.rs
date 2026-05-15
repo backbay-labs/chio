@@ -163,6 +163,99 @@ fn trust_body(version: u64, previous_hash_sha256: Option<String>) -> RuntimeVeri
     }
 }
 
+#[derive(Debug, Default)]
+struct TrustFloorFailingAdmissionStore {
+    inner: InMemoryRuntimeAdmissionStore,
+}
+
+impl TrustFloorFailingAdmissionStore {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn insert_bundle(&self, bundle: RuntimeAdmissionBundle) -> Result<(), ChiodosRuntimeError> {
+        self.inner.insert_bundle(bundle)
+    }
+}
+
+impl RuntimeAdmissionStore for TrustFloorFailingAdmissionStore {
+    fn bundle(
+        &self,
+        admission_id: &str,
+    ) -> Result<Option<RuntimeAdmissionBundle>, ChiodosRuntimeError> {
+        self.inner.bundle(admission_id)
+    }
+
+    fn treaty_runtime_artifact(
+        &self,
+        evidence_kind: &str,
+        evidence_id: &str,
+    ) -> Result<Option<chio_chiodos_runtime::TreatyRuntimeArtifactRecord>, ChiodosRuntimeError>
+    {
+        self.inner
+            .treaty_runtime_artifact(evidence_kind, evidence_id)
+    }
+
+    fn consume_destructive_lease(
+        &self,
+        lease_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        self.inner.consume_destructive_lease(lease_id, admission_id)
+    }
+
+    fn release_destructive_lease(
+        &self,
+        lease_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        self.inner.release_destructive_lease(lease_id, admission_id)
+    }
+
+    fn consume_treaty_continuation(
+        &self,
+        continuation_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        self.inner
+            .consume_treaty_continuation(continuation_id, admission_id)
+    }
+
+    fn release_treaty_continuation(
+        &self,
+        continuation_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        self.inner
+            .release_treaty_continuation(continuation_id, admission_id)
+    }
+
+    fn runtime_trust_floor(
+        &self,
+        verifier_id: &str,
+        key_id: &str,
+    ) -> Result<Option<chio_chiodos_runtime::RuntimeTrustFloorEntry>, ChiodosRuntimeError> {
+        self.inner.runtime_trust_floor(verifier_id, key_id)
+    }
+
+    fn record_runtime_trust_floor(
+        &self,
+        entry: chio_chiodos_runtime::RuntimeTrustFloorEntry,
+    ) -> Result<(), ChiodosRuntimeError> {
+        self.inner.record_runtime_trust_floor(entry)
+    }
+
+    fn validate_and_record_runtime_trust_floor(
+        &self,
+        _entry: chio_chiodos_runtime::RuntimeTrustFloorEntry,
+        _previous_hash_sha256: Option<&str>,
+    ) -> Result<(), ChiodosRuntimeError> {
+        Err(ChiodosRuntimeError::Store(
+            "injected trust-floor persistence failure".to_string(),
+        ))
+    }
+}
+
 fn advisory(strength: f64) -> RuntimePheromoneAdvisory {
     RuntimePheromoneAdvisory {
         source_report_sha256: "1".repeat(64),
@@ -170,6 +263,7 @@ fn advisory(strength: f64) -> RuntimePheromoneAdvisory {
         subject_class: "workflow.destructive_step".to_string(),
         subject_class_namespace: "chiodos.runtime".to_string(),
         total_strength: strength,
+        distinct_origin_pairs: 1,
         reputation_epoch: 7,
         evaluated_at_unix_ms: 1_800_000_001_000,
         observe_only: true,
@@ -378,6 +472,211 @@ fn runtime_trust_floor_rejects_rollback_after_restart() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn runtime_trust_floor_rejects_same_version_conflict_without_burning_lease(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let store_path = dir.path().join("runtime-store.json");
+    let store = chio_chiodos_runtime::JsonRuntimeAdmissionStore::open(&store_path)?;
+    let verifier = Keypair::generate();
+
+    store.insert_bundle(bundle())?;
+    let accepted = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile(),
+        store: &store,
+        admission_id: "adm-live-1",
+        request: &binding(),
+        runtime_trust_input: Some(&SignedExportEnvelope::sign(trust_body(1, None), &verifier)?),
+        trusted_verifier_keys: &trusted_keys(&verifier),
+        pheromone_advisory: None,
+        runtime_pheromone_policy: None,
+        runtime_peer_weights: None,
+        now_unix_ms: 1_800_000_001_000,
+    })?;
+    assert!(accepted.accepted);
+
+    let mut conflict_bundle = bundle();
+    conflict_bundle.admission_id = "adm-live-conflict".to_string();
+    conflict_bundle.lease_id = Some("lease-live-conflict".to_string());
+    store.insert_bundle(conflict_bundle)?;
+    let mut conflicting_trust = trust_body(1, None);
+    conflicting_trust.revocation_checkpoint_sha256 = "e".repeat(64);
+    let rejected = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile(),
+        store: &store,
+        admission_id: "adm-live-conflict",
+        request: &binding(),
+        runtime_trust_input: Some(&SignedExportEnvelope::sign(conflicting_trust, &verifier)?),
+        trusted_verifier_keys: &trusted_keys(&verifier),
+        pheromone_advisory: None,
+        runtime_pheromone_policy: None,
+        runtime_peer_weights: None,
+        now_unix_ms: 1_800_000_002_000,
+    })?;
+
+    assert!(!rejected.accepted);
+    assert_eq!(
+        rejected.failure_code.as_deref(),
+        Some("runtime_trust_same_version_mismatch")
+    );
+
+    let replay_after_rejection = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile(),
+        store: &store,
+        admission_id: "adm-live-conflict",
+        request: &binding(),
+        runtime_trust_input: None,
+        trusted_verifier_keys: &[],
+        pheromone_advisory: None,
+        runtime_pheromone_policy: None,
+        runtime_peer_weights: None,
+        now_unix_ms: 1_800_000_003_000,
+    })?;
+    assert!(
+        replay_after_rejection.accepted,
+        "{replay_after_rejection:#?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_trust_floor_store_error_releases_reserved_destructive_lease(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = TrustFloorFailingAdmissionStore::new();
+    let verifier = Keypair::generate();
+    store.insert_bundle(bundle())?;
+
+    let failed = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile(),
+        store: &store,
+        admission_id: "adm-live-1",
+        request: &binding(),
+        runtime_trust_input: Some(&SignedExportEnvelope::sign(trust_body(1, None), &verifier)?),
+        trusted_verifier_keys: &trusted_keys(&verifier),
+        pheromone_advisory: None,
+        runtime_pheromone_policy: None,
+        runtime_peer_weights: None,
+        now_unix_ms: 1_800_000_001_000,
+    });
+    match failed {
+        Ok(report) => panic!("expected injected trust-floor store failure, got {report:#?}"),
+        Err(error) => assert_eq!(error.code(), "runtime_admission_store"),
+    }
+
+    let retry_without_trust_update = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile(),
+        store: &store,
+        admission_id: "adm-live-1",
+        request: &binding(),
+        runtime_trust_input: None,
+        trusted_verifier_keys: &[],
+        pheromone_advisory: None,
+        runtime_pheromone_policy: None,
+        runtime_peer_weights: None,
+        now_unix_ms: 1_800_000_002_000,
+    })?;
+    assert!(
+        retry_without_trust_update.accepted,
+        "{retry_without_trust_update:#?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn layered_store_keeps_trust_floor_separate_from_admission_state(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let store_path = dir.path().join("runtime-store.json");
+    let trust_floor_path = dir.path().join("runtime-trust-floor.json");
+    let verifier = Keypair::generate();
+
+    {
+        let admission_store = chio_chiodos_runtime::JsonRuntimeAdmissionStore::open(&store_path)?;
+        let trust_floor_store =
+            chio_chiodos_runtime::JsonRuntimeTrustFloorStateStore::open(&trust_floor_path)?;
+        let layered_store = chio_chiodos_runtime::LayeredRuntimeAdmissionStore::new(
+            &admission_store,
+            &trust_floor_store,
+        );
+        let mut bundle_v2 = bundle();
+        bundle_v2.admission_id = "adm-live-v2".to_string();
+        admission_store.insert_bundle(bundle_v2)?;
+
+        let v1 = trust_body(1, None);
+        let previous_hash = chio_chiodos_runtime::runtime_verifier_trust_bundle_sha256(&v1)?;
+        let signed_v2 = SignedExportEnvelope::sign(trust_body(2, Some(previous_hash)), &verifier)?;
+        let accepted = evaluate_runtime_admission(RuntimeAdmissionInput {
+            profile: &profile(),
+            store: &layered_store,
+            admission_id: "adm-live-v2",
+            request: &binding(),
+            runtime_trust_input: Some(&signed_v2),
+            trusted_verifier_keys: &trusted_keys(&verifier),
+            pheromone_advisory: None,
+            runtime_pheromone_policy: None,
+            runtime_peer_weights: None,
+            now_unix_ms: 1_800_000_001_000,
+        })?;
+        assert!(accepted.accepted);
+    }
+
+    let admission_state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&store_path)?)?;
+    assert_eq!(
+        admission_state["schema"],
+        serde_json::json!("chio.chiodos.runtime-admission-store.v1")
+    );
+    assert_eq!(admission_state["bundles"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        admission_state["consumedLeaseIds"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert!(admission_state.get("trustFloors").is_none());
+
+    let trust_floor_state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&trust_floor_path)?)?;
+    assert_eq!(
+        trust_floor_state["schema"],
+        serde_json::json!("chio.chiodos.runtime-trust-floor-state.v1")
+    );
+    assert_eq!(
+        trust_floor_state["entries"].as_array().map(Vec::len),
+        Some(1)
+    );
+
+    let admission_store = chio_chiodos_runtime::JsonRuntimeAdmissionStore::open(&store_path)?;
+    let trust_floor_store =
+        chio_chiodos_runtime::JsonRuntimeTrustFloorStateStore::open(&trust_floor_path)?;
+    let layered_store = chio_chiodos_runtime::LayeredRuntimeAdmissionStore::new(
+        &admission_store,
+        &trust_floor_store,
+    );
+    let mut bundle_v1 = bundle();
+    bundle_v1.admission_id = "adm-live-v1".to_string();
+    bundle_v1.lease_id = Some("lease-live-v1".to_string());
+    admission_store.insert_bundle(bundle_v1)?;
+    let signed_v1 = SignedExportEnvelope::sign(trust_body(1, None), &verifier)?;
+    let rejected = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile(),
+        store: &layered_store,
+        admission_id: "adm-live-v1",
+        request: &binding(),
+        runtime_trust_input: Some(&signed_v1),
+        trusted_verifier_keys: &trusted_keys(&verifier),
+        pheromone_advisory: None,
+        runtime_pheromone_policy: None,
+        runtime_peer_weights: None,
+        now_unix_ms: 1_800_000_002_000,
+    })?;
+
+    assert!(!rejected.accepted);
+    assert_eq!(
+        rejected.failure_code.as_deref(),
+        Some("runtime_trust_rollback")
+    );
+    Ok(())
+}
+
+#[test]
 fn signed_runtime_pheromone_policy_can_deny_before_dispatch(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();
@@ -419,6 +718,70 @@ fn signed_runtime_pheromone_policy_can_deny_before_dispatch(
         decision.matched_rule_id.as_deref(),
         Some("deny-high-runtime-risk")
     );
+    Ok(())
+}
+
+#[test]
+fn runtime_pheromone_policy_enforces_distinct_origin_floor(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let mut admission_bundle = bundle();
+    admission_bundle.destructive = false;
+    admission_bundle.lease_id = None;
+    admission_bundle.governance_receipt_id = None;
+    store.insert_bundle(admission_bundle)?;
+    let verifier = Keypair::generate();
+    let signed_trust = SignedExportEnvelope::sign(trust_body(1, None), &verifier)?;
+    let weights = peer_weights();
+    let signed_policy =
+        SignedExportEnvelope::sign(policy(runtime_peer_weights_sha256(&weights)?), &verifier)?;
+    let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
+    let mut low_origin_advisory = advisory(0.10);
+    low_origin_advisory.distinct_origin_pairs = 0;
+
+    let rejected = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile(),
+        store: &store,
+        admission_id: "adm-live-1",
+        request: &binding(),
+        runtime_trust_input: Some(&signed_trust),
+        trusted_verifier_keys: &trusted_keys(&verifier),
+        pheromone_advisory: Some(&low_origin_advisory),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
+        now_unix_ms: 1_800_000_001_000,
+    })?;
+
+    assert!(!rejected.accepted);
+    assert_eq!(
+        rejected.failure_code.as_deref(),
+        Some("runtime_pheromone_distinct_origin_floor")
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_pheromone_query_report_parser_reads_snake_case_fields(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let advisory = chio_chiodos_runtime::runtime_pheromone_advisory_from_query_report_json(
+        &serde_json::json!({
+            "schema": "chio.pheromone.query-report.v1",
+            "accepted": true,
+            "concentration": {
+                "subject_class": "workflow.destructive_step",
+                "subject_class_namespace": "chiodos.runtime",
+                "total_strength": 0.42,
+                "distinct_origin_pairs": 3,
+                "reputation_epoch": 7,
+                "evaluated_at_unix_ms": 1_800_000_001_000_i64
+            }
+        })
+        .to_string(),
+    )?;
+
+    assert_eq!(advisory.subject_class, "workflow.destructive_step");
+    assert_eq!(advisory.distinct_origin_pairs, 3);
+    assert_eq!(advisory.reputation_epoch, 7);
     Ok(())
 }
 
@@ -1037,6 +1400,39 @@ fn treaty_runtime_hook_releases_continuation_after_runtime_denial(
 }
 
 #[test]
+fn treaty_runtime_hook_releases_reserved_state_after_kernel_abort(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let store = SqliteRuntimeOrchestrationStore::open(dir.path().join("treaty-hook.sqlite3"))?;
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    let mut admission_bundle = bundle();
+    admission_bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    let bundle_hash = runtime_admission_bundle_sha256(&admission_bundle)?;
+    store.insert_bundle(admission_bundle)?;
+    let fixture = treaty_runtime_fixture()?;
+    insert_treaty_runtime_fixture(&store, &fixture)?;
+    let request = treaty_runtime_request(args, bundle_hash, treaty_runtime_context(&fixture))?;
+    let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
+    let context = RuntimeAdmissionContext {
+        request: &request,
+        now_unix_secs: 1_800_000_001,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    };
+
+    let first = hook.evaluate(&context)?;
+    assert!(first.allowed, "{first:#?}");
+    let metadata = first
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    hook.release_reserved(&metadata)?;
+    let second = hook.evaluate(&context)?;
+
+    assert!(second.allowed, "{second:#?}");
+    Ok(())
+}
+
+#[test]
 fn kernel_hook_uses_configured_runtime_policy_to_deny() -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();
     let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
@@ -1336,6 +1732,16 @@ fn runtime_orchestration_contracts_validate_status_and_run_report(
 
     chio_chiodos_runtime::validate_runtime_orchestration_profile(&profile)?;
     chio_chiodos_runtime::validate_runtime_run_contract(&run_contract)?;
+    let stale_plan = chio_chiodos_runtime::build_runtime_orchestration_plan(
+        &profile,
+        &run_contract,
+        profile.expires_at_unix_ms,
+    )?;
+    assert!(!stale_plan.accepted);
+    assert_eq!(
+        stale_plan.failure_code.as_deref(),
+        Some("runtime_orchestration_profile_stale")
+    );
     chio_chiodos_runtime::validate_runtime_orchestration_run_report(&run_report)?;
     chio_chiodos_runtime::validate_runtime_orchestration_status_report(&status)?;
     assert!(
@@ -1427,6 +1833,32 @@ fn sqlite_runtime_orchestration_store_persists_treaty_evidence_idempotently(
 }
 
 #[test]
+fn sqlite_runtime_orchestration_store_preserves_same_artifact_hash_per_run(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("runtime-artifacts.sqlite3");
+    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
+    let entry = RuntimeEvidenceManifestEntry {
+        role: "proof_package".to_string(),
+        path: "proof-package.json".to_string(),
+        sha256: "7".repeat(64),
+        byte_count: 4096,
+    };
+
+    store.record_evidence_artifact("runtime-run-a", &entry, 1_800_000_000_000)?;
+    store.record_evidence_artifact("runtime-run-b", &entry, 1_800_000_000_001)?;
+
+    let connection = rusqlite::Connection::open(&path)?;
+    let count: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM runtime_evidence_artifacts WHERE artifact_sha256 = ?1",
+        rusqlite::params![entry.sha256],
+        |row| row.get(0),
+    )?;
+    assert_eq!(count, 2);
+    Ok(())
+}
+
+#[test]
 fn runtime_proof_drift_report_rejects_manifest_hash_change(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let baseline_manifest = RuntimeEvidenceManifest {
@@ -1501,6 +1933,12 @@ fn runtime_ops_run_lease_blocks_competing_owner_and_allows_stale_takeover(
         Err(error) => assert_eq!(error.code(), "runtime_run_lease_conflict"),
     }
 
+    let same_owner = store.acquire_run_lease("runtime-run-1", "owner-a", 1_800_000_020_000, 60_000);
+    match same_owner {
+        Ok(_) => panic!("expected same-owner active lease takeover to be rejected"),
+        Err(error) => assert_eq!(error.code(), "runtime_run_lease_conflict"),
+    }
+
     let takeover =
         store.acquire_run_lease("runtime-run-1", "owner-b", 1_800_000_061_000, 60_000)?;
     assert_eq!(takeover.owner_id, "owner-b");
@@ -1517,6 +1955,38 @@ fn runtime_ops_run_lease_blocks_competing_owner_and_allows_stale_takeover(
         Ok(_) => panic!("expected stale fencing token rejection"),
         Err(error) => assert_eq!(error.code(), "runtime_run_stale_fencing_token"),
     }
+
+    store.record_run_state(
+        "runtime-run-expired-heartbeat",
+        "pending",
+        None,
+        1_800_000_000_000,
+    )?;
+    let expiring = store.acquire_run_lease(
+        "runtime-run-expired-heartbeat",
+        "owner-a",
+        1_800_000_000_000,
+        1_000,
+    )?;
+    let expired_heartbeat = store.heartbeat_run_lease(
+        "runtime-run-expired-heartbeat",
+        "owner-a",
+        expiring.fencing_token,
+        1_800_000_002_000,
+        60_000,
+    );
+    match expired_heartbeat {
+        Ok(_) => panic!("expected expired heartbeat to be rejected"),
+        Err(error) => assert_eq!(error.code(), "runtime_run_lease_expired"),
+    }
+    let recovered = store.acquire_run_lease(
+        "runtime-run-expired-heartbeat",
+        "owner-b",
+        1_800_000_002_001,
+        60_000,
+    )?;
+    assert_eq!(recovered.owner_id, "owner-b");
+    assert_eq!(recovered.fencing_token, 2);
     Ok(())
 }
 
@@ -1544,6 +2014,31 @@ fn runtime_ops_scheduler_tick_claims_pending_runs_and_expires_stale_leases(
         .contains(&"runtime-run-b".to_string()));
     assert_eq!(report.skipped_run_count, 1);
     assert_eq!(report.expired_run_ids, vec!["runtime-run-expired"]);
+    Ok(())
+}
+
+#[test]
+fn runtime_ops_scheduler_tick_rejects_profile_at_exact_expiry(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("runtime-ops-expiry.sqlite3");
+    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
+    store.record_run_state("runtime-run-a", "pending", None, 1_800_000_000_000)?;
+
+    let profile = supervisor_profile();
+    let report = store.scheduler_tick_report(
+        &profile,
+        "operator-a",
+        profile.expires_at_unix_ms,
+        profile.max_concurrent_runs,
+    )?;
+
+    assert!(!report.accepted, "{report:#?}");
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_scheduler_profile_stale")
+    );
+    assert!(report.claimed_run_ids.is_empty(), "{report:#?}");
     Ok(())
 }
 
@@ -2294,6 +2789,7 @@ fn buyer_attestation_packet_preserves_verified_lineage_boundary(
         verify_buyer_attestation_packet(&packet, &lineage, &continuation, &admission, &bilateral)?;
     assert!(accepted.accepted);
     assert_eq!(accepted.failure_code, None);
+    assert_eq!(accepted.verification_state, "hash_only");
 
     let mut asserted = lineage.clone();
     asserted.evidence_class = "asserted".to_string();
@@ -2304,6 +2800,7 @@ fn buyer_attestation_packet_preserves_verified_lineage_boundary(
         denied.failure_code.as_deref(),
         Some("chiodos_buyer_packet_lineage_not_verified")
     );
+    assert_eq!(denied.verification_state, "rejected");
 
     let mut mismatched = packet.clone();
     mismatched.bilateral_invocation_sha256 = "b".repeat(64);
@@ -2318,6 +2815,37 @@ fn buyer_attestation_packet_preserves_verified_lineage_boundary(
     assert_eq!(
         denied.failure_code.as_deref(),
         Some("chiodos_buyer_packet_hash_mismatch")
+    );
+    Ok(())
+}
+
+#[test]
+fn buyer_attestation_packet_binds_buyer_to_lineage_source() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (packet, mut lineage, continuation, admission, bilateral) = buyer_fixture()?;
+
+    let mut wrong_buyer = packet.clone();
+    wrong_buyer.buyer_id = "kernel.attacker".to_string();
+    let denied = verify_buyer_attestation_packet(
+        &wrong_buyer,
+        &lineage,
+        &continuation,
+        &admission,
+        &bilateral,
+    )?;
+    assert!(!denied.accepted);
+    assert_eq!(
+        denied.failure_code.as_deref(),
+        Some("chiodos_buyer_packet_identity_mismatch")
+    );
+
+    lineage.source_kernel_id = "kernel.attacker".to_string();
+    let denied =
+        verify_buyer_attestation_packet(&packet, &lineage, &continuation, &admission, &bilateral)?;
+    assert!(!denied.accepted);
+    assert_eq!(
+        denied.failure_code.as_deref(),
+        Some("chiodos_buyer_packet_identity_mismatch")
     );
     Ok(())
 }
@@ -2392,9 +2920,18 @@ fn strict_dsse_fixture_receipt(
     signer_b: &Keypair,
     receipt_action: Option<ToolCallAction>,
 ) -> Result<ChioReceipt, Box<dyn std::error::Error>> {
+    strict_dsse_fixture_receipt_with_id("rcpt-treaty-dsse", capability_id, signer_b, receipt_action)
+}
+
+fn strict_dsse_fixture_receipt_with_id(
+    receipt_id: &str,
+    capability_id: &str,
+    signer: &Keypair,
+    receipt_action: Option<ToolCallAction>,
+) -> Result<ChioReceipt, Box<dyn std::error::Error>> {
     ChioReceipt::sign(
         ChioReceiptBody {
-            id: "rcpt-treaty-dsse".to_string(),
+            id: receipt_id.to_string(),
             timestamp: 1_800_000_010,
             capability_id: capability_id.to_string(),
             tool_server: "vendor-ledger".to_string(),
@@ -2410,15 +2947,25 @@ fn strict_dsse_fixture_receipt(
             metadata: None,
             trust_level: TrustLevel::default(),
             tenant_id: None,
-            kernel_key: signer_b.public_key(),
+            kernel_key: signer.public_key(),
         },
-        signer_b,
+        signer,
     )
     .map_err(Into::into)
 }
 
 fn buyer_fixture() -> Result<BuyerFixture, Box<dyn std::error::Error>> {
+    let default_buyer_key = Keypair::from_seed(&[1; 32]);
     let default_vendor_key = Keypair::from_seed(&[2; 32]);
+    let default_parent_receipt = strict_dsse_fixture_receipt_with_id(
+        "rcpt-parent-local",
+        "cap-live-1",
+        &default_buyer_key,
+        None,
+    )?;
+    let default_parent_receipt_sha256 = chio_core_types::crypto::sha256_hex(
+        &chio_core_types::crypto::canonical_json_bytes(&default_parent_receipt)?,
+    );
     let default_child_receipt =
         strict_dsse_fixture_receipt("cap-live-1", &default_vendor_key, None)?;
     let default_child_receipt_sha256 = chio_core_types::crypto::sha256_hex(
@@ -2429,7 +2976,7 @@ fn buyer_fixture() -> Result<BuyerFixture, Box<dyn std::error::Error>> {
         continuation_id: "continue-1".to_string(),
         source_kernel_id: "kernel.buyer".to_string(),
         target_kernel_id: "kernel.vendor-b".to_string(),
-        parent_receipt_sha256: "1".repeat(64),
+        parent_receipt_sha256: default_parent_receipt_sha256.clone(),
         parent_session_anchor_sha256: "2".repeat(64),
         capability_id: "cap-live-1".to_string(),
         action_class_id: "workflow.destructive.vendor_call".to_string(),
@@ -2444,7 +2991,7 @@ fn buyer_fixture() -> Result<BuyerFixture, Box<dyn std::error::Error>> {
     let mut lineage = ReceiptLineageStatement {
         schema: CHIODOS_RECEIPT_LINEAGE_STATEMENT_SCHEMA.to_string(),
         statement_id: "lineage-1".to_string(),
-        parent_receipt_sha256: "1".repeat(64),
+        parent_receipt_sha256: default_parent_receipt_sha256,
         child_receipt_sha256: default_child_receipt_sha256,
         continuation_sha256,
         bilateral_invocation_sha256: String::new(),
@@ -2532,7 +3079,7 @@ fn buyer_fixture() -> Result<BuyerFixture, Box<dyn std::error::Error>> {
     let packet = BuyerAttestationPacket {
         schema: CHIODOS_BUYER_ATTESTATION_PACKET_SCHEMA.to_string(),
         packet_id: "buyer-packet-1".to_string(),
-        buyer_id: "buyer.acme".to_string(),
+        buyer_id: "kernel.buyer".to_string(),
         capability_id: bilateral.capability_id.clone(),
         treaty_scope_sha256: admission.treaty_scope_sha256.clone(),
         ladder_intersection_sha256: admission.ladder_intersection_sha256.clone(),
@@ -2591,6 +3138,7 @@ fn rebind_buyer_review_core(
 
 struct StrictDsseFixture {
     envelope: chio_federation::DsseEnvelope,
+    local_receipt: ChioReceipt,
     receipt: ChioReceipt,
     signer_a_public_key: chio_core_types::crypto::PublicKey,
     signer_b_public_key: chio_core_types::crypto::PublicKey,
@@ -2676,8 +3224,18 @@ fn strict_dsse_fixture_with_keypairs(
     ));
     let lease_scope_digest = lease_scope_digest
         .unwrap_or("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-    let governance_digest = governance_digest
-        .unwrap_or("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd");
+    let governance_receipt =
+        proof_package_governance_receipt_for_test(bilateral, governance_receipt_id);
+    let computed_governance_digest = chio_core_types::crypto::sha256_hex(
+        &chio_core_types::crypto::canonical_json_bytes(&governance_receipt)?,
+    );
+    let governance_digest = governance_digest.unwrap_or(&computed_governance_digest);
+    let local_receipt = strict_dsse_fixture_receipt_with_id(
+        "rcpt-parent-local",
+        &packet.capability_id,
+        &signer_a,
+        None,
+    )?;
     let receipt = strict_dsse_fixture_receipt(&packet.capability_id, &signer_b, receipt_action)?;
     let envelope = sign_chiodos_dsse_envelope(
         &receipt,
@@ -2746,9 +3304,31 @@ fn strict_dsse_fixture_with_keypairs(
     )?;
     Ok(StrictDsseFixture {
         envelope,
+        local_receipt,
         receipt,
         signer_a_public_key: signer_a.public_key(),
         signer_b_public_key: signer_b.public_key(),
+    })
+}
+
+fn proof_package_governance_receipt_for_test(
+    bilateral: &BilateralInvocation,
+    governance_receipt_id: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "body": {
+            "schema": "chio.governance-receipt.v1",
+            "receiptId": governance_receipt_id,
+            "authorizingKernel": bilateral.signer_kernel_ids[1],
+            "caseKind": "destructive_authorization",
+            "authorizedLeaseId": "lease-live-1",
+            "workflowId": "workflow-live-1",
+            "stepSha256": "e".repeat(64),
+            "issuedAtUnixMs": 1_800_000_000_000_i64,
+            "expiresAtUnixMs": 1_800_003_600_000_i64
+        },
+        "signerKey": "ab",
+        "signature": "cd"
     })
 }
 
@@ -2768,6 +3348,7 @@ fn proof_package_with_peer_keys(
         "generatedAtUnixMs": 1_800_000_010_000_i64,
         "workflowReceipt": workflow_receipt,
         "toolReceipts": [
+            dsse.local_receipt,
             dsse.receipt
         ],
         "bilateralEnvelopes": [dsse.envelope],
@@ -2787,11 +3368,7 @@ fn proof_package_with_peer_keys(
             }
         ],
         "governanceReceipts": [
-            {
-                "receiptId": "gov-receipt-1",
-                "kernelId": bilateral.signer_kernel_ids[1],
-                "digest": "d".repeat(64)
-            }
+            proof_package_governance_receipt_for_test(bilateral, "gov-receipt-1")
         ],
         "workflowIntersection": {
             "treatyId": bilateral.treaty_id,
@@ -3284,16 +3861,24 @@ fn buyer_review_package_hydrates_required_artifacts_by_role(
         .as_str()
         .ok_or_else(|| io::Error::other("fixture step is missing consistency_anchor"))?
         .to_string();
+    let local_receipt_sha256 = initial_proof_package["workflowReceipt"]["steps"][proof_step_index]
+        ["parent_receipt_sha256"]
+        .as_str()
+        .ok_or_else(|| io::Error::other("fixture step is missing parent_receipt_sha256"))?
+        .to_string();
     let buyer_kernel_id = "did:chio:buyer-kernel";
     let (vendor_kernel_id, vendor_server_id, vendor_tool_name) =
         chiodos_three_vendor_example::runtime_vendor_binding(proof_step_index)?;
+    packet.buyer_id = buyer_kernel_id.to_string();
     continuation.source_kernel_id = buyer_kernel_id.to_string();
     continuation.target_kernel_id = vendor_kernel_id.to_string();
+    continuation.parent_receipt_sha256 = local_receipt_sha256.clone();
     continuation.capability_id = lease_id.clone();
     continuation.action_class_id = vendor_tool_name.to_string();
     continuation.audience_tool = format!("{vendor_server_id}.{vendor_tool_name}");
     lineage.source_kernel_id = buyer_kernel_id.to_string();
     lineage.target_kernel_id = vendor_kernel_id.to_string();
+    lineage.parent_receipt_sha256 = local_receipt_sha256;
     lineage.child_receipt_sha256 = receipt_sha256.clone();
     lineage.continuation_sha256 = chio_core_types::crypto::sha256_hex(
         &chio_core_types::crypto::canonical_json_bytes(&continuation)?,
@@ -3505,6 +4090,117 @@ fn buyer_review_package_rejects_minimal_proof_package() -> Result<(), Box<dyn st
     assert_eq!(
         report.failure_code.as_deref(),
         Some("chiodos_buyer_review_proof_package_incomplete")
+    );
+    Ok(())
+}
+
+#[test]
+fn buyer_review_package_rejects_missing_hydrated_parent_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (mut packet, lineage, continuation, admission, bilateral) = buyer_fixture()?;
+    let lineage_bundle = ReceiptLineageBundle {
+        schema: CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
+        bundle_id: "lineage-bundle-1".to_string(),
+        root_receipt_sha256: lineage.parent_receipt_sha256.clone(),
+        leaf_receipt_sha256: lineage.child_receipt_sha256.clone(),
+        statements: vec![lineage.clone()],
+    };
+    let dsse = strict_dsse_fixture_with_keys(&packet, &lineage_bundle, &admission, &bilateral)?;
+    let mut proof_package = proof_package_with_peer_keys(&bilateral, &dsse);
+    proof_package["toolReceipts"]
+        .as_array_mut()
+        .ok_or_else(|| io::Error::other("fixture proof package missing tool receipts"))?
+        .remove(0);
+    let bilateral_dsse_envelope = serde_json::to_value(&dsse.envelope)?;
+    let (package, sources, verifier_trust_bundle) =
+        buyer_review_sources_with_strict_dsse(BuyerReviewStrictDsseSources {
+            packet: &mut packet,
+            lineage: &lineage,
+            continuation: &continuation,
+            admission: &admission,
+            bilateral: &bilateral,
+            lineage_bundle: &lineage_bundle,
+            bilateral_dsse_envelope: &bilateral_dsse_envelope,
+            proof_package: &proof_package,
+        })?;
+
+    let report = verify_review_for_test(&package, &sources, &verifier_trust_bundle)?;
+    assert!(!report.accepted);
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("chiodos_buyer_review_proof_package_mismatch")
+    );
+    Ok(())
+}
+
+#[test]
+fn buyer_review_package_rejects_signed_receipt_with_unbound_fields(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (mut packet, lineage, continuation, admission, bilateral) = buyer_fixture()?;
+    let lineage_bundle = ReceiptLineageBundle {
+        schema: CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
+        bundle_id: "lineage-bundle-1".to_string(),
+        root_receipt_sha256: lineage.parent_receipt_sha256.clone(),
+        leaf_receipt_sha256: lineage.child_receipt_sha256.clone(),
+        statements: vec![lineage.clone()],
+    };
+    let dsse = strict_dsse_fixture_with_keys(&packet, &lineage_bundle, &admission, &bilateral)?;
+    let mut proof_package = proof_package_with_peer_keys(&bilateral, &dsse);
+    proof_package["toolReceipts"][0]["unsignedShadow"] = serde_json::json!("not-signed");
+    let bilateral_dsse_envelope = serde_json::to_value(&dsse.envelope)?;
+    let (package, sources, verifier_trust_bundle) =
+        buyer_review_sources_with_strict_dsse(BuyerReviewStrictDsseSources {
+            packet: &mut packet,
+            lineage: &lineage,
+            continuation: &continuation,
+            admission: &admission,
+            bilateral: &bilateral,
+            lineage_bundle: &lineage_bundle,
+            bilateral_dsse_envelope: &bilateral_dsse_envelope,
+            proof_package: &proof_package,
+        })?;
+
+    let report = verify_review_for_test(&package, &sources, &verifier_trust_bundle)?;
+    assert!(!report.accepted);
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("chiodos_buyer_review_proof_package_mismatch")
+    );
+    Ok(())
+}
+
+#[test]
+fn buyer_review_package_rejects_claimed_governance_digest_drift(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (mut packet, lineage, continuation, admission, bilateral) = buyer_fixture()?;
+    let lineage_bundle = ReceiptLineageBundle {
+        schema: CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
+        bundle_id: "lineage-bundle-1".to_string(),
+        root_receipt_sha256: lineage.parent_receipt_sha256.clone(),
+        leaf_receipt_sha256: lineage.child_receipt_sha256.clone(),
+        statements: vec![lineage.clone()],
+    };
+    let dsse = strict_dsse_fixture_with_keys(&packet, &lineage_bundle, &admission, &bilateral)?;
+    let mut proof_package = proof_package_with_peer_keys(&bilateral, &dsse);
+    proof_package["governanceReceipts"][0]["digest"] = serde_json::json!("0".repeat(64));
+    let bilateral_dsse_envelope = serde_json::to_value(&dsse.envelope)?;
+    let (package, sources, verifier_trust_bundle) =
+        buyer_review_sources_with_strict_dsse(BuyerReviewStrictDsseSources {
+            packet: &mut packet,
+            lineage: &lineage,
+            continuation: &continuation,
+            admission: &admission,
+            bilateral: &bilateral,
+            lineage_bundle: &lineage_bundle,
+            bilateral_dsse_envelope: &bilateral_dsse_envelope,
+            proof_package: &proof_package,
+        })?;
+
+    let report = verify_review_for_test(&package, &sources, &verifier_trust_bundle)?;
+    assert!(!report.accepted);
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("chiodos_buyer_review_proof_package_mismatch")
     );
     Ok(())
 }
@@ -3812,18 +4508,7 @@ fn buyer_review_package_rejects_tampered_strict_dsse_signature_when_peer_keys_av
 #[test]
 fn buyer_review_package_rejects_strict_dsse_signer_kernel_mismatch(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (mut packet, mut lineage, continuation, mut admission, mut bilateral) = buyer_fixture()?;
-    let original_lineage_bundle = ReceiptLineageBundle {
-        schema: CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
-        bundle_id: "lineage-bundle-1".to_string(),
-        root_receipt_sha256: lineage.parent_receipt_sha256.clone(),
-        leaf_receipt_sha256: lineage.child_receipt_sha256.clone(),
-        statements: vec![lineage.clone()],
-    };
-    let dsse =
-        strict_dsse_fixture_with_keys(&packet, &original_lineage_bundle, &admission, &bilateral)?;
-    bilateral.signer_kernel_ids[0] = "kernel.attacker".to_string();
-    rebind_buyer_review_core(&mut packet, &mut lineage, &mut admission, &mut bilateral)?;
+    let (mut packet, lineage, continuation, admission, bilateral) = buyer_fixture()?;
     let lineage_bundle = ReceiptLineageBundle {
         schema: CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
         bundle_id: "lineage-bundle-1".to_string(),
@@ -3831,6 +4516,10 @@ fn buyer_review_package_rejects_strict_dsse_signer_kernel_mismatch(
         leaf_receipt_sha256: lineage.child_receipt_sha256.clone(),
         statements: vec![lineage.clone()],
     };
+    let mut attacker_bilateral = bilateral.clone();
+    attacker_bilateral.signer_kernel_ids[0] = "kernel.attacker".to_string();
+    let dsse =
+        strict_dsse_fixture_with_keys(&packet, &lineage_bundle, &admission, &attacker_bilateral)?;
     let proof_package = proof_package_with_peer_keys(&bilateral, &dsse);
     let bilateral_dsse_envelope = serde_json::to_value(&dsse.envelope)?;
     let (package, sources, verifier_trust_bundle) =

@@ -48,6 +48,7 @@
         "subjectClass",
         "subjectClassNamespace",
         "totalStrength",
+        "distinctOriginPairs",
         "reputationEpoch",
         "evaluatedAtUnixMs",
         "observeOnly"
@@ -61,6 +62,7 @@
         "subjectClass": { "type": "string", "minLength": 1 },
         "subjectClassNamespace": { "type": "string", "minLength": 1 },
         "totalStrength": { "type": "number", "minimum": 0 },
+        "distinctOriginPairs": { "type": "integer", "minimum": 0 },
         "reputationEpoch": { "type": "integer", "minimum": 0 },
         "evaluatedAtUnixMs": { "type": "integer", "minimum": 0 },
         "observeOnly": { "const": true }

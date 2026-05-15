@@ -73,6 +73,10 @@ pub trait RuntimeAdmissionHook: Send + Sync {
         &self,
         context: &RuntimeAdmissionContext<'_>,
     ) -> Result<RuntimeAdmissionDecision, KernelError>;
+
+    fn release_reserved(&self, _metadata: &serde_json::Value) -> Result<(), KernelError> {
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +251,18 @@ impl Drop for PostAdmissionDropGuard<'_> {
         if !self.armed {
             return;
         }
+
+        if let Err(error) = self
+            .kernel
+            .release_runtime_admission_reservations(self.extra_metadata.as_ref())
+        {
+            warn!(
+                request_id = %self.request.request_id,
+                reason = %redacted!(&error),
+                "failed to release dropped runtime admission reservations"
+            );
+        }
+
         let Some(charge) = self.charge_result else {
             return;
         };
@@ -3788,6 +3804,7 @@ impl ChioKernel {
         if let Err(reason) = self.admit_capability_budget(cap) {
             let msg = format!("sibling-sum budget admission failed: {reason}");
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
+            self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
             if let Some(ref charge) = charge_result {
                 let reverse = self.reverse_budget_charge(&cap.id, charge)?;
                 return self.build_pre_execution_monetary_deny_response_with_metadata(
@@ -3822,6 +3839,7 @@ impl ChioKernel {
             Err(error) => {
                 let msg = format!("payment authorization failed: {error}");
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "payment denied");
+                self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
                 if let Some(ref charge) = charge_result {
                     let reverse = self.reverse_budget_charge(&cap.id, charge)?;
                     return self.build_pre_execution_monetary_deny_response_with_metadata(
@@ -3869,6 +3887,7 @@ impl ChioKernel {
         let (tool_output, reported_cost) = match dispatch_result {
             Ok(result) => result,
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
+                self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
                 let _ = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -3883,6 +3902,7 @@ impl ChioKernel {
                 return Err(error);
             }
             Err(KernelError::RequestCancelled { reason, .. }) => {
+                self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -3912,6 +3932,7 @@ impl ChioKernel {
                 );
             }
             Err(KernelError::RequestIncomplete(reason)) => {
+                self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -3942,6 +3963,7 @@ impl ChioKernel {
                 );
             }
             Err(e) => {
+                self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -4295,6 +4317,7 @@ impl ChioKernel {
 
         let runtime_admission =
             self.run_runtime_admission_hook(request, now, Some(matched_grant_index));
+        let runtime_admission_metadata = runtime_admission.metadata.clone();
         if !runtime_admission.allowed {
             let msg = runtime_admission
                 .reason
@@ -4331,6 +4354,7 @@ impl ChioKernel {
         if let Err(reason) = self.admit_capability_budget(cap) {
             let msg = format!("sibling-sum budget admission failed: {reason}");
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
+            self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
             if let Some(ref charge) = charge_result {
                 let reverse = self.reverse_budget_charge(&cap.id, charge)?;
                 return self.build_pre_execution_monetary_deny_response_with_metadata(
@@ -4340,7 +4364,8 @@ impl ChioKernel {
                     charge,
                     reverse.committed_cost_units_after,
                     cap,
-                    Some(
+                    self.merge_budget_receipt_metadata(
+                        runtime_admission_metadata.clone(),
                         self.budget_execution_receipt_metadata(
                             charge,
                             Some(("reversed", &reverse)),
@@ -4358,6 +4383,7 @@ impl ChioKernel {
             Err(error) => {
                 let msg = format!("payment authorization failed: {error}");
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "payment denied");
+                self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
                 if let Some(ref charge) = charge_result {
                     let reverse = self.reverse_budget_charge(&cap.id, charge)?;
                     return self.build_pre_execution_monetary_deny_response_with_metadata(
@@ -4367,13 +4393,22 @@ impl ChioKernel {
                         charge,
                         reverse.committed_cost_units_after,
                         cap,
-                        Some(self.budget_execution_receipt_metadata(
-                            charge,
-                            Some(("reversed", &reverse)),
-                        )),
+                        self.merge_budget_receipt_metadata(
+                            runtime_admission_metadata.clone(),
+                            self.budget_execution_receipt_metadata(
+                                charge,
+                                Some(("reversed", &reverse)),
+                            ),
+                        ),
                     );
                 }
-                return self.build_deny_response(request, &msg, now, Some(matched_grant_index));
+                return self.build_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    Some(matched_grant_index),
+                    runtime_admission_metadata.clone(),
+                );
             }
         };
 
@@ -4386,7 +4421,7 @@ impl ChioKernel {
             Some(matched_grant_index),
             charge_result.as_ref(),
             payment_authorization.as_ref(),
-            None,
+            runtime_admission_metadata.clone(),
         );
         let tool_output_result = {
             let server = self.tool_servers.get(&request.server_id).ok_or_else(|| {
@@ -4433,6 +4468,7 @@ impl ChioKernel {
         let tool_output = match tool_output_result {
             Ok(output) => output,
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
+                self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
                 let _ = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -4447,6 +4483,7 @@ impl ChioKernel {
                 return Err(error);
             }
             Err(KernelError::RequestCancelled { request_id, reason }) => {
+                self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -4470,17 +4507,19 @@ impl ChioKernel {
                     now,
                     Some(matched_grant_index),
                     match (charge_result.as_ref(), unwind.as_ref()) {
-                        (Some(charge), Some(reverse)) => {
-                            Some(self.budget_execution_receipt_metadata(
+                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
+                            runtime_admission_metadata.clone(),
+                            self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
-                            ))
-                        }
-                        _ => None,
+                            ),
+                        ),
+                        _ => runtime_admission_metadata.clone(),
                     },
                 );
             }
             Err(KernelError::RequestIncomplete(reason)) => {
+                self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -4499,17 +4538,19 @@ impl ChioKernel {
                     now,
                     Some(matched_grant_index),
                     match (charge_result.as_ref(), unwind.as_ref()) {
-                        (Some(charge), Some(reverse)) => {
-                            Some(self.budget_execution_receipt_metadata(
+                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
+                            runtime_admission_metadata.clone(),
+                            self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
-                            ))
-                        }
-                        _ => None,
+                            ),
+                        ),
+                        _ => runtime_admission_metadata.clone(),
                     },
                 );
             }
             Err(error) => {
+                self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
@@ -4524,13 +4565,14 @@ impl ChioKernel {
                     now,
                     Some(matched_grant_index),
                     match (charge_result.as_ref(), unwind.as_ref()) {
-                        (Some(charge), Some(reverse)) => {
-                            Some(self.budget_execution_receipt_metadata(
+                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
+                            runtime_admission_metadata.clone(),
+                            self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
-                            ))
-                        }
-                        _ => None,
+                            ),
+                        ),
+                        _ => runtime_admission_metadata.clone(),
                     },
                 );
             }
@@ -4547,7 +4589,7 @@ impl ChioKernel {
                 payment_authorization,
                 cap,
             },
-            None,
+            runtime_admission_metadata,
         )
     }
 
@@ -7147,6 +7189,19 @@ impl ChioKernel {
                 })),
             ),
         }
+    }
+
+    fn release_runtime_admission_reservations(
+        &self,
+        metadata: Option<&serde_json::Value>,
+    ) -> Result<(), KernelError> {
+        let Some(metadata) = metadata else {
+            return Ok(());
+        };
+        let Some(hook) = self.runtime_admission_hook.as_ref() else {
+            return Ok(());
+        };
+        hook.release_reserved(metadata)
     }
 
     /// Forward the validated request and optionally report actual invocation cost.

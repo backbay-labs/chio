@@ -496,17 +496,36 @@ PY
     --trusted-verifiers "$tmpdir/trusted-verifiers.json" \
     --pheromone-query-report "$tmpdir/pheromone-query-report.json" \
     --store "$tmpdir/admission-store.json" \
+    --trust-floor-state "$tmpdir/runtime-trust-floor-live.json" \
     --now-unix-ms 1800000001000 \
     --report "$tmpdir/admission-report.json"
   validate_schema "$SCHEMA_DIR/runtime-admission-report.schema.json" "$tmpdir/admission-report.json"
-  python3 - "$tmpdir/admission-report.json" <<'PY'
+  validate_schema "$SCHEMA_DIR/runtime-trust-floor-state.schema.json" \
+    "$tmpdir/runtime-trust-floor-live.json"
+  python3 - "$tmpdir/admission-report.json" \
+    "$tmpdir/admission-store.json" \
+    "$tmpdir/runtime-trust-floor-live.json" <<'PY'
 import json
 import sys
 report = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+admission_store = json.load(open(sys.argv[2], "r", encoding="utf-8"))
+trust_floor_state = json.load(open(sys.argv[3], "r", encoding="utf-8"))
 if report.get("schema") != "chio.chiodos.runtime-admission-report.v1":
     raise SystemExit("runtime admission report schema mismatch")
 if not report.get("accepted"):
     raise SystemExit("runtime admission report was not accepted")
+if admission_store.get("schema") != "chio.chiodos.runtime-admission-store.v1":
+    raise SystemExit("runtime admission store schema mismatch")
+if len(admission_store.get("bundles", [])) != 1:
+    raise SystemExit("runtime admission store did not retain admission bundle")
+if len(admission_store.get("consumedLeaseIds", [])) != 1:
+    raise SystemExit("runtime admission store did not retain lease replay fence")
+if admission_store.get("trustFloors"):
+    raise SystemExit("runtime admission store leaked separate trust-floor state")
+if trust_floor_state.get("schema") != "chio.chiodos.runtime-trust-floor-state.v1":
+    raise SystemExit("runtime trust-floor state schema mismatch")
+if len(trust_floor_state.get("entries", [])) != 1:
+    raise SystemExit("runtime trust-floor state did not persist verifier floor")
 metadata = report.get("receiptMetadata", {}).get("chiodos_runtime", {})
 if metadata.get("admission_id") != "adm-live-1":
     raise SystemExit("runtime admission metadata did not bind admission id")

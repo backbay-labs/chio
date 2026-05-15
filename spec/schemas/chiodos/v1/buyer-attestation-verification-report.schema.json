@@ -13,10 +13,11 @@
       "then": { "required": ["failureCode"] }
     }
   ],
-  "required": ["schema", "packetId", "accepted", "checks"],
+  "required": ["schema", "packetId", "verificationState", "accepted", "checks"],
   "properties": {
     "schema": { "const": "chio.chiodos.buyer-attestation-verification-report.v1" },
     "packetId": { "type": "string", "minLength": 1 },
+    "verificationState": { "enum": ["hash_only", "rejected"] },
     "accepted": { "type": "boolean" },
     "failureCode": { "type": "string", "minLength": 1 },
     "checks": {

@@ -12,6 +12,7 @@ on:
       - "examples/chiodos-3vendor/**"
       - "scripts/check-chiodos-runtime-spine.sh"
       - "spec/schemas/chiodos/**"
+      - "spec/schemas/MANIFEST.sha256"
       - "spec/schemas/registry.json"
       - ".github/workflows/chiodos-runtime-spine.yml"
   push:

@@ -129,7 +129,7 @@ a9875e15ccac9a633ae13850d081326beff6595f1c665209a43dfb70c843ae37  spec/schemas/c
 2676bba198bda2b1d0bcea11608271b280e0f2618623f9a357227323b533c1d8  spec/schemas/chiodos/v1/buyer-attestation-packet.schema.json
 798cc89474b966dec93d51975cc09d9e926da64b3e5a1da5df5e30fb65bc49d3  spec/schemas/chiodos/v1/buyer-attestation-review-package.schema.json
 99616cf783ce49b417889dda529c48c848d98b729fa6c3693dbde3284a9fc391  spec/schemas/chiodos/v1/buyer-attestation-review-report.schema.json
-ad66e612384b3f8bb75a20baa3c365f49251ad783dab8aba1e42ff01bcf306ed  spec/schemas/chiodos/v1/buyer-attestation-verification-report.schema.json
+9de28e68e21c3cec1e910650905e30a44200b4039ab0625660cb43c4cfb35882  spec/schemas/chiodos/v1/buyer-attestation-verification-report.schema.json
 9bb9dcf63bfc800fb06a5ef6264e18fee48a09097da0ae343f938416c283e8f8  spec/schemas/chiodos/v1/capability-lease.schema.json
 72d2ac7c5a5f31761fbab4d6acd8b9a87f586f5474062d170fd115e25be23b01  spec/schemas/chiodos/v1/cross-boundary-admission-report.schema.json
 bc394aba824ddcd80df4e49ce6c8ee2b4779740729b2026f14de35ee3470f892  spec/schemas/chiodos/v1/cross-kernel-continuation.schema.json
@@ -148,7 +148,7 @@ ab64480597c33edeb6628612061cf833e7d1d55d94116d8fd206befd0b9231a7  spec/schemas/c
 8a2ec18ec3bd93272df1d99608e273eafa06686190134918377cff295429c2a1  spec/schemas/chiodos/v1/revocation-publication-request.schema.json
 38d03b9a40c8a3d5ed3bf238a9233ad37ce091bb20c371cdbb1385a0f39f032a  spec/schemas/chiodos/v1/runtime-admission-bundle.schema.json
 6162a7d436647a8203a1637b57ae2d17e0edfc4253a9c83c0bd46944856a5653  spec/schemas/chiodos/v1/runtime-admission-profile.schema.json
-639040a3d1874d9bc2607a60acda4d17cd95e7e4bb1f0583c8a0c07f5d780062  spec/schemas/chiodos/v1/runtime-admission-report.schema.json
+3d9925120f9fe67d82696f5e05805bed99c6c34c52b851808ebbd533000c50e8  spec/schemas/chiodos/v1/runtime-admission-report.schema.json
 94c87eeb141bbbe4fdc9cd285f33aaed41dbb1443767edc44ca55fff8f78bea4  spec/schemas/chiodos/v1/runtime-artifact-retention-plan.schema.json
 1746be47b5fceb8f4b13bcd50486de05714fca6463ec2e994007f27048298717  spec/schemas/chiodos/v1/runtime-artifact-retention-profile.schema.json
 df59166707a9054c1d3e3f48a2f6c9ef7b4918e0808a649070b2af9bf2967393  spec/schemas/chiodos/v1/runtime-evidence-manifest.schema.json

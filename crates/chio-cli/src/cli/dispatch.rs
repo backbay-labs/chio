@@ -4233,18 +4233,37 @@ fn cmd_chiodos_runtime_admit(
             })
         })
         .transpose()?;
-    let store_path = trust_floor_state.unwrap_or(store);
-    let store = chio_chiodos_runtime::JsonRuntimeAdmissionStore::open(store_path).map_err(|error| {
+    let store = chio_chiodos_runtime::JsonRuntimeAdmissionStore::open(store).map_err(|error| {
         CliError::cli_other_error(format!("Chiodos runtime admission store open: {error}"))
     })?;
     let admission_id = bundle.admission_id.clone();
     store.insert_bundle(bundle).map_err(|error| {
         CliError::cli_other_error(format!("Chiodos runtime admission store update: {error}"))
     })?;
+    let trust_floor_store = trust_floor_state
+        .map(|path| {
+            chio_chiodos_runtime::JsonRuntimeTrustFloorStateStore::open(path).map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos runtime trust-floor state open: {error}"
+                ))
+            })
+        })
+        .transpose()?;
+    let layered_store = trust_floor_store
+        .as_ref()
+        .map(|trust_floor_store| {
+            chio_chiodos_runtime::LayeredRuntimeAdmissionStore::new(&store, trust_floor_store)
+        });
+    let evaluation_store: &dyn chio_chiodos_runtime::RuntimeAdmissionStore =
+        if let Some(layered_store) = layered_store.as_ref() {
+            layered_store
+        } else {
+            &store
+        };
     let admission_report =
         chio_chiodos_runtime::evaluate_runtime_admission(chio_chiodos_runtime::RuntimeAdmissionInput {
             profile: &profile,
-            store: &store,
+            store: evaluation_store,
             admission_id: &admission_id,
             request: &request,
             runtime_trust_input: runtime_trust_input.as_ref(),
@@ -4261,7 +4280,7 @@ fn cmd_chiodos_runtime_admit(
     if admission_report.accepted {
         Ok(())
     } else {
-        Err(CliError::cli_other_error(format!(
+        Err(CliError::policy_error(format!(
             "Chiodos runtime admission rejected request: {}",
             admission_report
                 .failure_code
@@ -4446,6 +4465,10 @@ fn cmd_chiodos_runtime_orchestrate_run(
     if profile_sha256 != run_contract.profile_sha256 {
         accepted = false;
         failure_code = Some("runtime_orchestration_profile_hash_mismatch".to_string());
+    } else if let Some(code) = validate_runtime_orchestration_evidence_binding(&run_contract, &evidence)
+    {
+        accepted = false;
+        failure_code = Some(code);
     }
     let status = if accepted {
         "proof_accepted"
@@ -4630,6 +4653,72 @@ struct RuntimeOrchestrationEvidence {
     verifier_report_sha256: String,
 }
 
+fn validate_runtime_orchestration_evidence_binding(
+    run_contract: &chio_chiodos_runtime::RuntimeRunContract,
+    evidence: &RuntimeOrchestrationEvidence,
+) -> Option<String> {
+    if evidence.workflow_run_report.run_id != run_contract.run_id
+        || evidence.proof_regeneration_report.run_id != run_contract.run_id
+        || evidence.manifest.run_id != run_contract.run_id
+    {
+        return Some("runtime_orchestration_evidence_run_mismatch".to_string());
+    }
+    if !evidence.workflow_run_report.accepted {
+        return Some(
+            evidence
+                .workflow_run_report
+                .failure_code
+                .clone()
+                .unwrap_or_else(|| "runtime_orchestration_workflow_rejected".to_string()),
+        );
+    }
+    let expected_step_count = match usize::try_from(run_contract.expected_step_count) {
+        Ok(count) => count,
+        Err(_) => return Some("runtime_orchestration_step_count_mismatch".to_string()),
+    };
+    if evidence.workflow_run_report.step_evidence.len() != expected_step_count {
+        return Some("runtime_orchestration_step_count_mismatch".to_string());
+    }
+    let actual_admission_ids: Vec<&str> = evidence
+        .workflow_run_report
+        .step_evidence
+        .iter()
+        .map(|step| step.admission_id.as_str())
+        .collect();
+    let expected_admission_ids: Vec<&str> = run_contract
+        .admission_ids
+        .iter()
+        .map(String::as_str)
+        .collect();
+    if actual_admission_ids != expected_admission_ids {
+        return Some("runtime_orchestration_evidence_admission_mismatch".to_string());
+    }
+    if evidence.manifest.workflow_run_report_sha256 != evidence.workflow_report_sha256
+        || evidence.manifest.proof_regeneration_report_sha256 != evidence.proof_report_sha256
+        || evidence
+            .workflow_run_report
+            .proof_regeneration_report_sha256
+            .as_deref()
+            != Some(evidence.proof_report_sha256.as_str())
+    {
+        return Some("runtime_orchestration_evidence_hash_mismatch".to_string());
+    }
+    if evidence
+        .proof_regeneration_report
+        .verifier_report_sha256
+        .as_deref()
+        != Some(evidence.verifier_report_sha256.as_str())
+    {
+        return Some("runtime_orchestration_evidence_hash_mismatch".to_string());
+    }
+    if run_contract.proof_regeneration_required
+        && evidence.proof_regeneration_report.proof_package_sha256.is_none()
+    {
+        return Some("runtime_orchestration_proof_package_missing".to_string());
+    }
+    None
+}
+
 fn load_runtime_orchestration_profile(
     path: &Path,
 ) -> Result<chio_chiodos_runtime::RuntimeOrchestrationProfile, CliError> {
@@ -4694,6 +4783,9 @@ fn load_runtime_orchestration_evidence(
         serde_json::from_str(&manifest_json).map_err(|error| {
             CliError::cli_other_error(format!("Chiodos runtime evidence manifest: {error}"))
         })?;
+    let verifier_report: serde_json::Value = serde_json::from_str(&verifier_json).map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos verifier report: {error}"))
+    })?;
     chio_chiodos_runtime::validate_runtime_workflow_run_report(&workflow_run_report).map_err(
         |error| CliError::cli_other_error(format!("Chiodos runtime workflow report: {error}")),
     )?;
@@ -4704,14 +4796,28 @@ fn load_runtime_orchestration_evidence(
     chio_chiodos_runtime::validate_runtime_evidence_manifest(&manifest).map_err(|error| {
         CliError::cli_other_error(format!("Chiodos runtime evidence manifest: {error}"))
     })?;
+    let workflow_report_sha256 = canonical_sha256_json(
+        &workflow_run_report,
+        "Chiodos runtime workflow report canonical hash",
+    )?;
+    let proof_report_sha256 = canonical_sha256_json(
+        &proof_regeneration_report,
+        "Chiodos runtime proof report canonical hash",
+    )?;
+    let manifest_sha256 = canonical_sha256_json(
+        &manifest,
+        "Chiodos runtime evidence manifest canonical hash",
+    )?;
+    let verifier_report_sha256 =
+        canonical_sha256_json(&verifier_report, "Chiodos verifier report canonical hash")?;
     Ok(RuntimeOrchestrationEvidence {
         workflow_run_report,
         proof_regeneration_report,
         manifest,
-        workflow_report_sha256: chio_core::sha256_hex(workflow_json.as_bytes()),
-        proof_report_sha256: chio_core::sha256_hex(proof_json.as_bytes()),
-        manifest_sha256: chio_core::sha256_hex(manifest_json.as_bytes()),
-        verifier_report_sha256: chio_core::sha256_hex(verifier_json.as_bytes()),
+        workflow_report_sha256,
+        proof_report_sha256,
+        manifest_sha256,
+        verifier_report_sha256,
     })
 }
 

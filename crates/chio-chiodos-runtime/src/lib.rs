@@ -519,6 +519,7 @@ pub struct BuyerAttestationPacket {
 pub struct BuyerAttestationVerificationReport {
     pub schema: String,
     pub packet_id: String,
+    pub verification_state: String,
     pub accepted: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_code: Option<String>,
@@ -644,6 +645,8 @@ pub struct RuntimePheromoneAdvisory {
     pub subject_class: String,
     pub subject_class_namespace: String,
     pub total_strength: f64,
+    #[serde(default)]
+    pub distinct_origin_pairs: u64,
     pub reputation_epoch: u64,
     pub evaluated_at_unix_ms: u64,
     pub observe_only: bool,
@@ -1154,6 +1157,12 @@ pub trait RuntimeAdmissionStore: Send + Sync {
         admission_id: &str,
     ) -> Result<(), ChiodosRuntimeError>;
 
+    fn release_destructive_lease(
+        &self,
+        lease_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError>;
+
     fn consume_treaty_continuation(
         &self,
         _continuation_id: &str,
@@ -1180,6 +1189,174 @@ pub trait RuntimeAdmissionStore: Send + Sync {
         &self,
         entry: RuntimeTrustFloorEntry,
     ) -> Result<(), ChiodosRuntimeError>;
+
+    fn validate_and_record_runtime_trust_floor(
+        &self,
+        entry: RuntimeTrustFloorEntry,
+        previous_hash_sha256: Option<&str>,
+    ) -> Result<(), ChiodosRuntimeError> {
+        validate_runtime_trust_floor_transition(
+            self.runtime_trust_floor(&entry.verifier_id, &entry.key_id)?,
+            &entry,
+            previous_hash_sha256,
+        )?;
+        self.record_runtime_trust_floor(entry)
+    }
+}
+
+pub trait RuntimeTrustFloorStore: Send + Sync {
+    fn runtime_trust_floor(
+        &self,
+        verifier_id: &str,
+        key_id: &str,
+    ) -> Result<Option<RuntimeTrustFloorEntry>, ChiodosRuntimeError>;
+
+    fn record_runtime_trust_floor(
+        &self,
+        entry: RuntimeTrustFloorEntry,
+    ) -> Result<(), ChiodosRuntimeError>;
+
+    fn validate_and_record_runtime_trust_floor(
+        &self,
+        entry: RuntimeTrustFloorEntry,
+        previous_hash_sha256: Option<&str>,
+    ) -> Result<(), ChiodosRuntimeError> {
+        validate_runtime_trust_floor_transition(
+            self.runtime_trust_floor(&entry.verifier_id, &entry.key_id)?,
+            &entry,
+            previous_hash_sha256,
+        )?;
+        self.record_runtime_trust_floor(entry)
+    }
+}
+
+impl<T> RuntimeTrustFloorStore for T
+where
+    T: RuntimeAdmissionStore + ?Sized,
+{
+    fn runtime_trust_floor(
+        &self,
+        verifier_id: &str,
+        key_id: &str,
+    ) -> Result<Option<RuntimeTrustFloorEntry>, ChiodosRuntimeError> {
+        RuntimeAdmissionStore::runtime_trust_floor(self, verifier_id, key_id)
+    }
+
+    fn record_runtime_trust_floor(
+        &self,
+        entry: RuntimeTrustFloorEntry,
+    ) -> Result<(), ChiodosRuntimeError> {
+        RuntimeAdmissionStore::record_runtime_trust_floor(self, entry)
+    }
+
+    fn validate_and_record_runtime_trust_floor(
+        &self,
+        entry: RuntimeTrustFloorEntry,
+        previous_hash_sha256: Option<&str>,
+    ) -> Result<(), ChiodosRuntimeError> {
+        RuntimeAdmissionStore::validate_and_record_runtime_trust_floor(
+            self,
+            entry,
+            previous_hash_sha256,
+        )
+    }
+}
+
+pub struct LayeredRuntimeAdmissionStore<'a> {
+    admission_store: &'a dyn RuntimeAdmissionStore,
+    trust_floor_store: &'a dyn RuntimeTrustFloorStore,
+}
+
+impl<'a> LayeredRuntimeAdmissionStore<'a> {
+    #[must_use]
+    pub fn new(
+        admission_store: &'a dyn RuntimeAdmissionStore,
+        trust_floor_store: &'a dyn RuntimeTrustFloorStore,
+    ) -> Self {
+        Self {
+            admission_store,
+            trust_floor_store,
+        }
+    }
+}
+
+impl RuntimeAdmissionStore for LayeredRuntimeAdmissionStore<'_> {
+    fn bundle(
+        &self,
+        admission_id: &str,
+    ) -> Result<Option<RuntimeAdmissionBundle>, ChiodosRuntimeError> {
+        self.admission_store.bundle(admission_id)
+    }
+
+    fn treaty_runtime_artifact(
+        &self,
+        evidence_kind: &str,
+        evidence_id: &str,
+    ) -> Result<Option<TreatyRuntimeArtifactRecord>, ChiodosRuntimeError> {
+        self.admission_store
+            .treaty_runtime_artifact(evidence_kind, evidence_id)
+    }
+
+    fn consume_destructive_lease(
+        &self,
+        lease_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        self.admission_store
+            .consume_destructive_lease(lease_id, admission_id)
+    }
+
+    fn release_destructive_lease(
+        &self,
+        lease_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        self.admission_store
+            .release_destructive_lease(lease_id, admission_id)
+    }
+
+    fn consume_treaty_continuation(
+        &self,
+        continuation_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        self.admission_store
+            .consume_treaty_continuation(continuation_id, admission_id)
+    }
+
+    fn release_treaty_continuation(
+        &self,
+        continuation_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        self.admission_store
+            .release_treaty_continuation(continuation_id, admission_id)
+    }
+
+    fn runtime_trust_floor(
+        &self,
+        verifier_id: &str,
+        key_id: &str,
+    ) -> Result<Option<RuntimeTrustFloorEntry>, ChiodosRuntimeError> {
+        self.trust_floor_store
+            .runtime_trust_floor(verifier_id, key_id)
+    }
+
+    fn record_runtime_trust_floor(
+        &self,
+        entry: RuntimeTrustFloorEntry,
+    ) -> Result<(), ChiodosRuntimeError> {
+        self.trust_floor_store.record_runtime_trust_floor(entry)
+    }
+
+    fn validate_and_record_runtime_trust_floor(
+        &self,
+        entry: RuntimeTrustFloorEntry,
+        previous_hash_sha256: Option<&str>,
+    ) -> Result<(), ChiodosRuntimeError> {
+        self.trust_floor_store
+            .validate_and_record_runtime_trust_floor(entry, previous_hash_sha256)
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1288,6 +1465,20 @@ impl RuntimeAdmissionStore for InMemoryRuntimeAdmissionStore {
                 detail: format!("destructive lease {lease_id} was already consumed"),
             });
         }
+        Ok(())
+    }
+
+    fn release_destructive_lease(
+        &self,
+        lease_id: &str,
+        _admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        let mut consumed = self.consumed_leases.lock().map_err(|_| {
+            ChiodosRuntimeError::Store(
+                "runtime admission consumption store is poisoned".to_string(),
+            )
+        })?;
+        consumed.remove(lease_id);
         Ok(())
     }
 
@@ -1557,6 +1748,19 @@ impl RuntimeAdmissionStore for JsonRuntimeAdmissionStore {
         self.persist_state(&state)
     }
 
+    fn release_destructive_lease(
+        &self,
+        lease_id: &str,
+        _admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        let mut state = self.lock_state()?;
+        state
+            .consumed_lease_ids
+            .retain(|consumed| consumed != lease_id);
+        Self::validate_state(&state)?;
+        self.persist_state(&state)
+    }
+
     fn consume_treaty_continuation(
         &self,
         continuation_id: &str,
@@ -1617,6 +1821,173 @@ impl RuntimeAdmissionStore for JsonRuntimeAdmissionStore {
             *existing = entry;
         } else {
             state.trust_floors.push(entry);
+        }
+        Self::validate_state(&state)?;
+        self.persist_state(&state)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct JsonRuntimeTrustFloorStateStore {
+    path: PathBuf,
+    state: Arc<Mutex<RuntimeTrustFloorState>>,
+}
+
+impl JsonRuntimeTrustFloorStateStore {
+    pub fn open(path: impl AsRef<Path>) -> Result<Self, ChiodosRuntimeError> {
+        let path = path.as_ref().to_path_buf();
+        let state = if path.exists() {
+            let json = fs::read_to_string(&path).map_err(|error| {
+                ChiodosRuntimeError::Io(format!(
+                    "failed to read runtime trust-floor state {}: {error}",
+                    path.display()
+                ))
+            })?;
+            let state: RuntimeTrustFloorState = serde_json::from_str(&json).map_err(|error| {
+                ChiodosRuntimeError::Json(format!(
+                    "failed to parse runtime trust-floor state {}: {error}",
+                    path.display()
+                ))
+            })?;
+            if state.schema != CHIODOS_RUNTIME_TRUST_FLOOR_STATE_SCHEMA {
+                return Err(ChiodosRuntimeError::Rejected {
+                    code: "unsupported_runtime_trust_floor_state_schema",
+                    detail: format!(
+                        "runtime trust-floor state {} declared unsupported schema {}",
+                        path.display(),
+                        state.schema
+                    ),
+                });
+            }
+            state
+        } else {
+            RuntimeTrustFloorState {
+                schema: CHIODOS_RUNTIME_TRUST_FLOOR_STATE_SCHEMA.to_string(),
+                entries: Vec::new(),
+            }
+        };
+        let store = Self {
+            path,
+            state: Arc::new(Mutex::new(state)),
+        };
+        store.validate_locked_state()?;
+        Ok(store)
+    }
+
+    fn validate_locked_state(&self) -> Result<(), ChiodosRuntimeError> {
+        let state = self.lock_state()?;
+        Self::validate_state(&state)
+    }
+
+    fn validate_state(state: &RuntimeTrustFloorState) -> Result<(), ChiodosRuntimeError> {
+        if state.schema != CHIODOS_RUNTIME_TRUST_FLOOR_STATE_SCHEMA {
+            return Err(ChiodosRuntimeError::Rejected {
+                code: "unsupported_runtime_trust_floor_state_schema",
+                detail: format!(
+                    "runtime trust-floor state declared unsupported schema {}",
+                    state.schema
+                ),
+            });
+        }
+        let mut trust_floor_ids = BTreeSet::new();
+        for entry in &state.entries {
+            let identity = trust_floor_identity(&entry.verifier_id, &entry.key_id);
+            if !trust_floor_ids.insert(identity.clone()) {
+                return Err(ChiodosRuntimeError::Rejected {
+                    code: "duplicate_runtime_trust_floor",
+                    detail: format!("runtime trust-floor state repeats trust floor {identity}"),
+                });
+            }
+            if entry.highest_version == 0 {
+                return Err(ChiodosRuntimeError::Rejected {
+                    code: "runtime_trust_floor_version_zero",
+                    detail: format!("runtime trust floor {identity} has version zero"),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn lock_state(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, RuntimeTrustFloorState>, ChiodosRuntimeError> {
+        self.state.lock().map_err(|_| {
+            ChiodosRuntimeError::Store("runtime trust-floor JSON state is poisoned".to_string())
+        })
+    }
+
+    fn persist_state(&self, state: &RuntimeTrustFloorState) -> Result<(), ChiodosRuntimeError> {
+        if let Some(parent) = self.path.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    ChiodosRuntimeError::Io(format!(
+                        "failed to create runtime trust-floor state directory {}: {error}",
+                        parent.display()
+                    ))
+                })?;
+            }
+        }
+        let json = serde_json::to_string_pretty(state)
+            .map_err(|error| ChiodosRuntimeError::Json(error.to_string()))?;
+        fs::write(&self.path, format!("{json}\n")).map_err(|error| {
+            ChiodosRuntimeError::Io(format!(
+                "failed to write runtime trust-floor state {}: {error}",
+                self.path.display()
+            ))
+        })
+    }
+}
+
+impl RuntimeTrustFloorStore for JsonRuntimeTrustFloorStateStore {
+    fn runtime_trust_floor(
+        &self,
+        verifier_id: &str,
+        key_id: &str,
+    ) -> Result<Option<RuntimeTrustFloorEntry>, ChiodosRuntimeError> {
+        let state = self.lock_state()?;
+        Ok(state
+            .entries
+            .iter()
+            .find(|entry| entry.verifier_id == verifier_id && entry.key_id == key_id)
+            .cloned())
+    }
+
+    fn record_runtime_trust_floor(
+        &self,
+        entry: RuntimeTrustFloorEntry,
+    ) -> Result<(), ChiodosRuntimeError> {
+        let mut state = self.lock_state()?;
+        if let Some(existing) = state.entries.iter_mut().find(|existing| {
+            existing.verifier_id == entry.verifier_id && existing.key_id == entry.key_id
+        }) {
+            *existing = entry;
+        } else {
+            state.entries.push(entry);
+        }
+        Self::validate_state(&state)?;
+        self.persist_state(&state)
+    }
+
+    fn validate_and_record_runtime_trust_floor(
+        &self,
+        entry: RuntimeTrustFloorEntry,
+        previous_hash_sha256: Option<&str>,
+    ) -> Result<(), ChiodosRuntimeError> {
+        let mut state = self.lock_state()?;
+        let existing = state
+            .entries
+            .iter()
+            .find(|existing| {
+                existing.verifier_id == entry.verifier_id && existing.key_id == entry.key_id
+            })
+            .cloned();
+        validate_runtime_trust_floor_transition(existing, &entry, previous_hash_sha256)?;
+        if let Some(existing) = state.entries.iter_mut().find(|existing| {
+            existing.verifier_id == entry.verifier_id && existing.key_id == entry.key_id
+        }) {
+            *existing = entry;
+        } else {
+            state.entries.push(entry);
         }
         Self::validate_state(&state)?;
         self.persist_state(&state)
@@ -1708,12 +2079,13 @@ impl SqliteRuntimeOrchestrationStore {
                     PRIMARY KEY (run_id, step_index)
                 );
                 CREATE TABLE IF NOT EXISTS runtime_evidence_artifacts (
-                    artifact_sha256 TEXT PRIMARY KEY NOT NULL,
                     run_id TEXT NOT NULL,
+                    artifact_sha256 TEXT NOT NULL,
                     role TEXT NOT NULL,
                     relative_path TEXT NOT NULL,
                     byte_count INTEGER NOT NULL,
-                    recorded_at_unix_ms INTEGER NOT NULL
+                    recorded_at_unix_ms INTEGER NOT NULL,
+                    PRIMARY KEY (run_id, artifact_sha256)
                 );
                 CREATE TABLE IF NOT EXISTS runtime_treaty_artifacts (
                     evidence_kind TEXT NOT NULL,
@@ -1760,6 +2132,53 @@ impl SqliteRuntimeOrchestrationStore {
                     healthy INTEGER NOT NULL,
                     failure_code TEXT
                 );
+                "#,
+            )
+            .map_err(sqlite_error)?;
+        Self::migrate_evidence_artifacts_schema(&connection)
+    }
+
+    fn migrate_evidence_artifacts_schema(
+        connection: &Connection,
+    ) -> Result<(), ChiodosRuntimeError> {
+        let mut statement = connection
+            .prepare("PRAGMA table_info(runtime_evidence_artifacts)")
+            .map_err(sqlite_error)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(1)?, row.get::<_, i64>(5)?))
+            })
+            .map_err(sqlite_error)?;
+        let mut primary_key_columns = BTreeSet::new();
+        for row in rows {
+            let (name, primary_key_index) = row.map_err(sqlite_error)?;
+            if primary_key_index > 0 {
+                primary_key_columns.insert(name);
+            }
+        }
+        if primary_key_columns.contains("run_id") && primary_key_columns.contains("artifact_sha256")
+        {
+            return Ok(());
+        }
+        connection
+            .execute_batch(
+                r#"
+                CREATE TABLE runtime_evidence_artifacts_v2 (
+                    run_id TEXT NOT NULL,
+                    artifact_sha256 TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    relative_path TEXT NOT NULL,
+                    byte_count INTEGER NOT NULL,
+                    recorded_at_unix_ms INTEGER NOT NULL,
+                    PRIMARY KEY (run_id, artifact_sha256)
+                );
+                INSERT OR REPLACE INTO runtime_evidence_artifacts_v2 (
+                    run_id, artifact_sha256, role, relative_path, byte_count, recorded_at_unix_ms
+                )
+                SELECT run_id, artifact_sha256, role, relative_path, byte_count, recorded_at_unix_ms
+                FROM runtime_evidence_artifacts;
+                DROP TABLE runtime_evidence_artifacts;
+                ALTER TABLE runtime_evidence_artifacts_v2 RENAME TO runtime_evidence_artifacts;
                 "#,
             )
             .map_err(sqlite_error)
@@ -1889,19 +2308,18 @@ impl SqliteRuntimeOrchestrationStore {
             .execute(
                 r#"
                 INSERT INTO runtime_evidence_artifacts (
-                    artifact_sha256, run_id, role, relative_path, byte_count, recorded_at_unix_ms
+                    run_id, artifact_sha256, role, relative_path, byte_count, recorded_at_unix_ms
                 )
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                ON CONFLICT(artifact_sha256) DO UPDATE SET
-                    run_id = excluded.run_id,
+                ON CONFLICT(run_id, artifact_sha256) DO UPDATE SET
                     role = excluded.role,
                     relative_path = excluded.relative_path,
                     byte_count = excluded.byte_count,
                     recorded_at_unix_ms = excluded.recorded_at_unix_ms
                 "#,
                 params![
-                    entry.sha256,
                     run_id,
+                    entry.sha256,
                     entry.role,
                     entry.path,
                     sqlite_i64(entry.byte_count, "runtime evidence byte count")?,
@@ -2025,11 +2443,11 @@ impl SqliteRuntimeOrchestrationStore {
             .optional()
             .map_err(sqlite_error)?;
         let fencing_token =
-            if let Some((existing_owner, existing_expires, existing_token, state)) = existing {
-                if state == "active" && existing_expires > now && existing_owner != owner_id {
+            if let Some((_existing_owner, existing_expires, existing_token, state)) = existing {
+                if state == "active" && existing_expires > now {
                     return Err(ChiodosRuntimeError::Rejected {
                         code: "runtime_run_lease_conflict",
-                        detail: format!("runtime run {run_id} is leased by another owner"),
+                        detail: format!("runtime run {run_id} already has an active lease"),
                     });
                 }
                 sqlite_u64(existing_token, "runtime run lease fencing token")?.saturating_add(1)
@@ -2121,7 +2539,7 @@ impl SqliteRuntimeOrchestrationStore {
             )
             .optional()
             .map_err(sqlite_error)?;
-        let Some((lease_id, existing_owner, acquired_at, _existing_expires, existing_token, state)) =
+        let Some((lease_id, existing_owner, acquired_at, existing_expires, existing_token, state)) =
             row
         else {
             return Err(ChiodosRuntimeError::Rejected {
@@ -2136,6 +2554,18 @@ impl SqliteRuntimeOrchestrationStore {
             return Err(ChiodosRuntimeError::Rejected {
                 code: "runtime_run_stale_fencing_token",
                 detail: format!("runtime run {run_id} heartbeat used stale fencing token"),
+            });
+        }
+        if existing_expires <= now {
+            connection
+                .execute(
+                    "UPDATE runtime_run_leases SET state = 'expired', reason_code = 'runtime_run_lease_expired' WHERE run_id = ?1 AND state = 'active'",
+                    params![run_id],
+                )
+                .map_err(sqlite_error)?;
+            return Err(ChiodosRuntimeError::Rejected {
+                code: "runtime_run_lease_expired",
+                detail: format!("runtime run {run_id} lease expired before heartbeat"),
             });
         }
         connection
@@ -2175,7 +2605,7 @@ impl SqliteRuntimeOrchestrationStore {
         let mut skipped_run_count = 0_u64;
         let mut accepted = true;
         let mut failure_code = None;
-        if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms > profile.expires_at_unix_ms {
+        if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
             accepted = false;
             failure_code = Some("runtime_scheduler_profile_stale".to_string());
         } else {
@@ -2545,6 +2975,21 @@ impl RuntimeAdmissionStore for SqliteRuntimeOrchestrationStore {
         Ok(())
     }
 
+    fn release_destructive_lease(
+        &self,
+        lease_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChiodosRuntimeError> {
+        let connection = self.lock_connection()?;
+        connection
+            .execute(
+                "DELETE FROM runtime_consumed_leases WHERE lease_id = ?1 AND admission_id = ?2",
+                params![lease_id, admission_id],
+            )
+            .map_err(sqlite_error)?;
+        Ok(())
+    }
+
     fn consume_treaty_continuation(
         &self,
         continuation_id: &str,
@@ -2656,6 +3101,83 @@ impl RuntimeAdmissionStore for SqliteRuntimeOrchestrationStore {
             )
             .map_err(sqlite_error)?;
         Ok(())
+    }
+
+    fn validate_and_record_runtime_trust_floor(
+        &self,
+        entry: RuntimeTrustFloorEntry,
+        previous_hash_sha256: Option<&str>,
+    ) -> Result<(), ChiodosRuntimeError> {
+        let mut connection = self.lock_connection()?;
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
+        let existing: Option<(String, String, i64, String, String)> = tx
+            .query_row(
+                r#"
+                SELECT verifier_id, key_id, highest_version, latest_bundle_sha256,
+                       latest_revocation_checkpoint_sha256
+                FROM runtime_trust_floors
+                WHERE verifier_id = ?1 AND key_id = ?2
+                "#,
+                params![entry.verifier_id, entry.key_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(sqlite_error)?;
+        let existing = existing
+            .map(
+                |(
+                    verifier_id,
+                    key_id,
+                    highest_version,
+                    latest_bundle_sha256,
+                    latest_revocation_checkpoint_sha256,
+                )| {
+                    Ok(RuntimeTrustFloorEntry {
+                        verifier_id,
+                        key_id,
+                        highest_version: sqlite_u64(
+                            highest_version,
+                            "runtime trust floor version",
+                        )?,
+                        latest_bundle_sha256,
+                        latest_revocation_checkpoint_sha256,
+                    })
+                },
+            )
+            .transpose()?;
+        validate_runtime_trust_floor_transition(existing, &entry, previous_hash_sha256)?;
+        tx.execute(
+            r#"
+            INSERT INTO runtime_trust_floors (
+                verifier_id, key_id, highest_version, latest_bundle_sha256,
+                latest_revocation_checkpoint_sha256
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(verifier_id, key_id) DO UPDATE SET
+                highest_version = excluded.highest_version,
+                latest_bundle_sha256 = excluded.latest_bundle_sha256,
+                latest_revocation_checkpoint_sha256 = excluded.latest_revocation_checkpoint_sha256
+            "#,
+            params![
+                entry.verifier_id,
+                entry.key_id,
+                sqlite_i64(entry.highest_version, "runtime trust floor version")?,
+                entry.latest_bundle_sha256,
+                entry.latest_revocation_checkpoint_sha256
+            ],
+        )
+        .map_err(sqlite_error)?;
+        tx.commit().map_err(sqlite_error)
     }
 }
 
@@ -2857,11 +3379,24 @@ pub fn runtime_pheromone_advisory_from_query_report_json(
             .get("accepted")
             .and_then(|item| item.as_bool())
             .unwrap_or(false),
-        subject_class: required_string(concentration, "subjectClass")?,
-        subject_class_namespace: required_string(concentration, "subjectClassNamespace")?,
-        total_strength: required_f64(concentration, "totalStrength")?,
-        reputation_epoch: required_u64(concentration, "reputationEpoch")?,
-        evaluated_at_unix_ms: required_u64(concentration, "evaluatedAtUnixMs")?,
+        subject_class: required_string_any(concentration, &["subject_class", "subjectClass"])?,
+        subject_class_namespace: required_string_any(
+            concentration,
+            &["subject_class_namespace", "subjectClassNamespace"],
+        )?,
+        total_strength: required_f64_any(concentration, &["total_strength", "totalStrength"])?,
+        distinct_origin_pairs: required_u64_any(
+            concentration,
+            &["distinct_origin_pairs", "distinctOriginPairs"],
+        )?,
+        reputation_epoch: required_u64_any(
+            concentration,
+            &["reputation_epoch", "reputationEpoch"],
+        )?,
+        evaluated_at_unix_ms: required_u64_any(
+            concentration,
+            &["evaluated_at_unix_ms", "evaluatedAtUnixMs"],
+        )?,
         observe_only: true,
     })
 }
@@ -3738,6 +4273,32 @@ pub fn verify_buyer_attestation_packet(
             checks,
         ));
     }
+    if packet.buyer_id != continuation.source_kernel_id
+        || lineage.source_kernel_id != continuation.source_kernel_id
+        || lineage.target_kernel_id != continuation.target_kernel_id
+        || bilateral.signer_kernel_ids.len() != 2
+        || bilateral.signer_kernel_ids.first() != Some(&continuation.source_kernel_id)
+        || bilateral.signer_kernel_ids.get(1) != Some(&continuation.target_kernel_id)
+    {
+        return Ok(buyer_packet_rejection_report(
+            packet,
+            "chiodos_buyer_packet_identity_mismatch",
+            checks,
+        ));
+    }
+    if packet.capability_id != continuation.capability_id
+        || bilateral.capability_id != continuation.capability_id
+        || continuation.action_class_id != admission.action_class_id
+        || bilateral.action_class_id != continuation.action_class_id
+        || bilateral.treaty_id != admission.treaty_id
+        || bilateral.consistency_model != admission.consistency_model
+    {
+        return Ok(buyer_packet_rejection_report(
+            packet,
+            "chiodos_buyer_packet_hash_mismatch",
+            checks,
+        ));
+    }
     if receipt_lineage_statement_sha256(lineage)? != packet.receipt_lineage_statement_sha256
         || canonical_sha256(continuation)? != packet.continuation_sha256
         || canonical_sha256(admission)? != packet.cross_boundary_admission_report_sha256
@@ -3747,10 +4308,8 @@ pub fn verify_buyer_attestation_packet(
         || bilateral.continuation_sha256 != packet.continuation_sha256
         || bilateral.lineage_statement_sha256 != packet.receipt_lineage_statement_sha256
         || bilateral.ladder_intersection_sha256 != packet.ladder_intersection_sha256
-        || bilateral.capability_id != packet.capability_id
         || bilateral.local_receipt_sha256 != lineage.parent_receipt_sha256
         || bilateral.remote_receipt_sha256 != lineage.child_receipt_sha256
-        || bilateral.action_class_id != admission.action_class_id
         || admission.treaty_scope_sha256 != packet.treaty_scope_sha256
         || admission.ladder_intersection_sha256 != packet.ladder_intersection_sha256
         || verified_evidence_missing_or_mismatch(
@@ -3772,9 +4331,11 @@ pub fn verify_buyer_attestation_packet(
         ));
     }
     checks.push("chiodos_buyer.lineage_verified".to_string());
+    checks.push("chiodos_buyer.verification_state_hash_only".to_string());
     Ok(BuyerAttestationVerificationReport {
         schema: CHIODOS_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA.to_string(),
         packet_id: packet.packet_id.clone(),
+        verification_state: "hash_only".to_string(),
         accepted: true,
         failure_code: None,
         checks,
@@ -4442,20 +5003,21 @@ fn verify_buyer_review_runtime_reports(
     {
         return Err("chiodos_buyer_review_runtime_report_mismatch");
     }
-    if !proof_package_contains_canonical_hash(
-        proof_package,
-        "toolReceipts",
-        &step.tool_receipt_sha256,
-    ) && !proof_package_array_contains_field(
-        proof_package,
-        "toolReceipts",
-        "receiptSha256",
-        &step.tool_receipt_sha256,
-    ) {
-        return Err("chiodos_buyer_review_proof_package_mismatch");
-    }
     if !workflow_receipt_contains_step_hash(workflow_receipt, &step.workflow_step_sha256)? {
         return Err("chiodos_buyer_review_runtime_report_mismatch");
+    }
+    if !proof_package_contains_signed_receipt(proof_package, &step.tool_receipt_sha256)? {
+        return Err("chiodos_buyer_review_proof_package_mismatch");
+    }
+    if let Some(parent_receipt_sha256) = step.parent_receipt_sha256.as_deref() {
+        if !proof_package_contains_parent_lineage_anchor(
+            proof_package,
+            workflow_receipt,
+            &step.workflow_step_sha256,
+            parent_receipt_sha256,
+        )? {
+            return Err("chiodos_buyer_review_proof_package_mismatch");
+        }
     }
     if !proof_package_array_contains_field(
         proof_package,
@@ -4518,18 +5080,95 @@ fn verify_runtime_evidence_manifest_artifacts(
     Ok(())
 }
 
-fn proof_package_contains_canonical_hash(
+fn receipt_wire_value_matches_parsed_receipt(
+    wire_value: &serde_json::Value,
+    receipt: &ChioReceipt,
+) -> Result<bool, &'static str> {
+    let typed_value =
+        serde_json::to_value(receipt).map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?;
+    let mut normalized_wire_value = wire_value.clone();
+    remove_default_receipt_wire_field(
+        &mut normalized_wire_value,
+        &typed_value,
+        "trust_level",
+        |value| value.as_str() == Some("mediated"),
+    );
+    remove_default_receipt_wire_field(
+        &mut normalized_wire_value,
+        &typed_value,
+        "algorithm",
+        |value| value.as_str() == Some("ed25519") || value.is_null(),
+    );
+    remove_default_receipt_wire_field(
+        &mut normalized_wire_value,
+        &typed_value,
+        "evidence",
+        |value| value.as_array().is_some_and(Vec::is_empty),
+    );
+    remove_default_receipt_wire_field(
+        &mut normalized_wire_value,
+        &typed_value,
+        "metadata",
+        |value| value.is_null(),
+    );
+    remove_default_receipt_wire_field(
+        &mut normalized_wire_value,
+        &typed_value,
+        "tenant_id",
+        |value| value.is_null(),
+    );
+    Ok(normalized_wire_value == typed_value)
+}
+
+fn remove_default_receipt_wire_field<F>(
+    wire_value: &mut serde_json::Value,
+    typed_value: &serde_json::Value,
+    field: &str,
+    is_default: F,
+) where
+    F: Fn(&serde_json::Value) -> bool,
+{
+    if typed_value.get(field).is_some() {
+        return;
+    }
+    let Some(wire_object) = wire_value.as_object_mut() else {
+        return;
+    };
+    if wire_object.get(field).is_some_and(is_default) {
+        wire_object.remove(field);
+    }
+}
+
+fn proof_package_contains_signed_receipt(
     proof_package: &serde_json::Value,
-    array_field: &str,
     expected_sha256: &str,
-) -> bool {
+) -> Result<bool, &'static str> {
     proof_package
-        .get(array_field)
+        .get("toolReceipts")
         .and_then(serde_json::Value::as_array)
-        .is_some_and(|values| {
-            values
-                .iter()
-                .any(|value| canonical_sha256(value).is_ok_and(|hash| hash == expected_sha256))
+        .ok_or("chiodos_buyer_review_proof_package_incomplete")?
+        .iter()
+        .map(|value| {
+            let actual_sha256 = canonical_sha256(value)
+                .map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?;
+            if actual_sha256 != expected_sha256 {
+                return Ok(false);
+            }
+            let receipt: ChioReceipt = serde_json::from_value(value.clone())
+                .map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?;
+            if !receipt_wire_value_matches_parsed_receipt(value, &receipt)? {
+                return Err("chiodos_buyer_review_proof_package_mismatch");
+            }
+            let signature_valid = receipt
+                .verify_signature()
+                .map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?;
+            if !signature_valid {
+                return Err("chiodos_buyer_review_proof_package_mismatch");
+            }
+            Ok(true)
+        })
+        .try_fold(false, |found, current| {
+            current.map(|current| found || current)
         })
 }
 
@@ -4557,6 +5196,13 @@ fn workflow_receipt_contains_step_hash(
     workflow_receipt: &serde_json::Value,
     expected_sha256: &str,
 ) -> Result<bool, &'static str> {
+    Ok(workflow_step_by_hash(workflow_receipt, expected_sha256)?.is_some())
+}
+
+fn workflow_step_by_hash<'a>(
+    workflow_receipt: &'a serde_json::Value,
+    expected_sha256: &str,
+) -> Result<Option<&'a serde_json::Value>, &'static str> {
     let Some(steps) = workflow_receipt
         .get("steps")
         .and_then(serde_json::Value::as_array)
@@ -4564,16 +5210,40 @@ fn workflow_receipt_contains_step_hash(
         return Ok(workflow_receipt
             .get("workflowStepSha256")
             .and_then(serde_json::Value::as_str)
-            .is_some_and(|hash| hash == expected_sha256));
+            .is_some_and(|hash| hash == expected_sha256)
+            .then_some(workflow_receipt));
     };
     for step in steps {
         let hash =
             canonical_sha256(step).map_err(|_| "chiodos_buyer_review_runtime_report_mismatch")?;
         if hash == expected_sha256 {
-            return Ok(true);
+            return Ok(Some(step));
         }
     }
-    Ok(false)
+    Ok(None)
+}
+
+fn proof_package_contains_parent_lineage_anchor(
+    proof_package: &serde_json::Value,
+    workflow_receipt: &serde_json::Value,
+    child_workflow_step_sha256: &str,
+    parent_sha256: &str,
+) -> Result<bool, &'static str> {
+    if proof_package_contains_signed_receipt(proof_package, parent_sha256)? {
+        return Ok(true);
+    }
+    let Some(child_step) = workflow_step_by_hash(workflow_receipt, child_workflow_step_sha256)?
+    else {
+        return Ok(false);
+    };
+    if child_step
+        .get("parent_receipt_sha256")
+        .and_then(serde_json::Value::as_str)
+        != Some(parent_sha256)
+    {
+        return Ok(false);
+    }
+    workflow_receipt_contains_step_hash(workflow_receipt, parent_sha256)
 }
 
 fn proof_package_receipt_subject(
@@ -4593,6 +5263,15 @@ fn proof_package_receipt_subject(
         }
         let receipt: ChioReceipt = serde_json::from_value(receipt_value.clone())
             .map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?;
+        if !receipt_wire_value_matches_parsed_receipt(receipt_value, &receipt)? {
+            return Err("chiodos_buyer_review_proof_package_mismatch");
+        }
+        let signature_valid = receipt
+            .verify_signature()
+            .map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?;
+        if !signature_valid {
+            return Err("chiodos_buyer_review_proof_package_mismatch");
+        }
         let subject_sha256 = canonical_sha256(&receipt.body())
             .map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?;
         return Ok((
@@ -4659,12 +5338,15 @@ fn proof_package_governance_receipt_ref(
             .or_else(|| body.get("kernelId"))
             .and_then(serde_json::Value::as_str)
             .ok_or("chiodos_buyer_review_proof_package_mismatch")?;
-        let digest = if let Some(digest) = receipt.get("digest").and_then(serde_json::Value::as_str)
+        let digest =
+            canonical_sha256(receipt).map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?;
+        if receipt
+            .get("digest")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|claimed| claimed != digest)
         {
-            digest.to_string()
-        } else {
-            canonical_sha256(receipt).map_err(|_| "chiodos_buyer_review_proof_package_mismatch")?
-        };
+            return Err("chiodos_buyer_review_proof_package_mismatch");
+        }
         return Ok(chio_federation::GovernanceReceiptRef {
             receipt_id: receipt_id.to_string(),
             kernel_id: kernel_id.to_string(),
@@ -4949,6 +5631,22 @@ pub fn build_runtime_orchestration_plan(
             run_contract_sha256: runtime_run_contract_sha256(contract)?,
             planned_steps: Vec::new(),
             checks: vec!["runtime_orchestration.profile_hash".to_string()],
+        });
+    }
+    if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
+        return Ok(RuntimeOrchestrationPlan {
+            schema: CHIODOS_RUNTIME_ORCHESTRATION_PLAN_SCHEMA.to_string(),
+            run_id: contract.run_id.clone(),
+            accepted: false,
+            failure_code: Some("runtime_orchestration_profile_stale".to_string()),
+            generated_at_unix_ms: now_unix_ms,
+            profile_sha256,
+            run_contract_sha256: runtime_run_contract_sha256(contract)?,
+            planned_steps: Vec::new(),
+            checks: vec![
+                "runtime_orchestration.profile_hash".to_string(),
+                "runtime_orchestration.profile_freshness".to_string(),
+            ],
         });
     }
     let planned_steps = contract
@@ -6215,18 +6913,20 @@ pub fn evaluate_runtime_admission(
     }
     checks.push(passed("bundle.schema"));
 
-    let mut trust_floor_entry = None;
+    let mut trust_floor_update = None;
     if let Some(runtime_trust_input) = input.runtime_trust_input {
         match validate_runtime_trust_input(
             runtime_trust_input,
             input.trusted_verifier_keys,
             &bundle,
-            input.store,
             input.now_unix_ms,
             &mut checks,
         ) {
             Ok(entry) => {
-                trust_floor_entry = Some(entry);
+                trust_floor_update = Some((
+                    entry,
+                    runtime_trust_input.body.previous_hash_sha256.as_deref(),
+                ));
             }
             Err(code) => return Ok(rejected_report(input.admission_id, code, checks)),
         }
@@ -6299,6 +6999,7 @@ pub fn evaluate_runtime_admission(
         }
     }
 
+    let mut consumed_destructive_lease_id = None;
     if bundle.destructive {
         let Some(lease_id) = bundle.lease_id.as_deref() else {
             return Ok(rejected_report(
@@ -6318,15 +7019,39 @@ pub fn evaluate_runtime_admission(
             .store
             .consume_destructive_lease(lease_id, input.admission_id)
         {
-            Ok(()) => checks.push(passed("destructive.lease_consumed")),
+            Ok(()) => {
+                consumed_destructive_lease_id = Some(lease_id.to_string());
+                checks.push(passed("destructive.lease_reserved"));
+            }
             Err(ChiodosRuntimeError::Rejected { code, .. }) => {
                 return Ok(rejected_report(input.admission_id, code, checks));
             }
             Err(error) => return Err(error),
         }
     }
-    if let Some(entry) = trust_floor_entry {
-        input.store.record_runtime_trust_floor(entry)?;
+    if let Some((entry, previous_hash_sha256)) = trust_floor_update {
+        match input
+            .store
+            .validate_and_record_runtime_trust_floor(entry, previous_hash_sha256)
+        {
+            Ok(()) => checks.push(passed("runtime_trust.floor")),
+            Err(ChiodosRuntimeError::Rejected { code, .. }) => {
+                if let Some(lease_id) = consumed_destructive_lease_id.as_deref() {
+                    input
+                        .store
+                        .release_destructive_lease(lease_id, input.admission_id)?;
+                }
+                return Ok(rejected_report(input.admission_id, code, checks));
+            }
+            Err(error) => {
+                if let Some(lease_id) = consumed_destructive_lease_id.as_deref() {
+                    input
+                        .store
+                        .release_destructive_lease(lease_id, input.admission_id)?;
+                }
+                return Err(error);
+            }
+        }
     }
 
     Ok(RuntimeAdmissionReport {
@@ -6341,6 +7066,7 @@ pub fn evaluate_runtime_admission(
             &bundle,
             true,
             None,
+            consumed_destructive_lease_id.as_deref(),
             pheromone_advisory.as_ref(),
             policy_decision.as_ref(),
         ),
@@ -6581,7 +7307,7 @@ where
                 Err(error) => return Err(KernelError::Internal(error.to_string())),
             }
         }
-        let report = evaluate_runtime_admission(RuntimeAdmissionInput {
+        let report = match evaluate_runtime_admission(RuntimeAdmissionInput {
             profile: &self.profile,
             store: &self.store,
             admission_id: &admission_ref.admission_id,
@@ -6592,12 +7318,26 @@ where
             runtime_pheromone_policy: self.runtime_pheromone_policy.as_ref(),
             runtime_peer_weights: self.runtime_peer_weights.as_ref(),
             now_unix_ms: context.now_unix_secs.saturating_mul(1000),
-        })
-        .map_err(|error| KernelError::Internal(error.to_string()))?;
+        }) {
+            Ok(report) => report,
+            Err(error) => {
+                if let Some(continuation_id) = treaty_continuation_id_to_consume.as_deref() {
+                    self.store
+                        .release_treaty_continuation(continuation_id, &admission_ref.admission_id)
+                        .map_err(|release_error| {
+                            KernelError::Internal(release_error.to_string())
+                        })?;
+                }
+                return Err(KernelError::Internal(error.to_string()));
+            }
+        };
         if report.accepted {
-            Ok(KernelRuntimeAdmissionDecision::allow(Some(
-                report.receipt_metadata,
-            )))
+            let mut metadata = report.receipt_metadata;
+            if let Some(continuation_id) = treaty_continuation_id_to_consume.as_deref() {
+                metadata["chiodos_runtime"]["reserved_treaty_continuation_id"] =
+                    serde_json::json!(continuation_id);
+            }
+            Ok(KernelRuntimeAdmissionDecision::allow(Some(metadata)))
         } else {
             if let Some(continuation_id) = treaty_continuation_id_to_consume.as_deref() {
                 self.store
@@ -6609,6 +7349,38 @@ where
                 Some(report.receipt_metadata),
             ))
         }
+    }
+
+    fn release_reserved(&self, metadata: &serde_json::Value) -> Result<(), KernelError> {
+        let Some(runtime) = metadata
+            .get("chiodos_runtime")
+            .and_then(serde_json::Value::as_object)
+        else {
+            return Ok(());
+        };
+        let Some(admission_id) = runtime
+            .get("admission_id")
+            .and_then(serde_json::Value::as_str)
+        else {
+            return Ok(());
+        };
+        if let Some(lease_id) = runtime
+            .get("reserved_destructive_lease_id")
+            .and_then(serde_json::Value::as_str)
+        {
+            self.store
+                .release_destructive_lease(lease_id, admission_id)
+                .map_err(|error| KernelError::Internal(error.to_string()))?;
+        }
+        if let Some(continuation_id) = runtime
+            .get("reserved_treaty_continuation_id")
+            .and_then(serde_json::Value::as_str)
+        {
+            self.store
+                .release_treaty_continuation(continuation_id, admission_id)
+                .map_err(|error| KernelError::Internal(error.to_string()))?;
+        }
+        Ok(())
     }
 }
 
@@ -7905,6 +8677,15 @@ fn validate_buyer_attestation_verification_report(
         );
     }
     validate_non_empty(&report.packet_id, "buyer_verification_empty_packet")?;
+    match (report.accepted, report.verification_state.as_str()) {
+        (true, "hash_only") | (false, "rejected") => {}
+        _ => {
+            return rejected(
+                "buyer_verification_invalid_state",
+                "buyer attestation packet verification state must describe hash-only or rejected review",
+            )
+        }
+    }
     if !report.accepted && report.failure_code.is_none() {
         return rejected(
             "buyer_verification_missing_failure_code",
@@ -7922,6 +8703,7 @@ fn buyer_packet_rejection_report(
     BuyerAttestationVerificationReport {
         schema: CHIODOS_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA.to_string(),
         packet_id: packet.packet_id.clone(),
+        verification_state: "rejected".to_string(),
         accepted: false,
         failure_code: Some(failure_code.to_string()),
         checks,
@@ -8153,43 +8935,68 @@ fn is_sha256_hex(hash: &str) -> bool {
     hash.len() == 64 && hash.as_bytes().iter().all(u8::is_ascii_hexdigit)
 }
 
-fn required_string(value: &serde_json::Value, field: &str) -> Result<String, ChiodosRuntimeError> {
-    value
-        .get(field)
-        .and_then(|item| item.as_str())
-        .filter(|item| !item.trim().is_empty())
-        .map(ToString::to_string)
-        .ok_or_else(|| ChiodosRuntimeError::Rejected {
-            code: "invalid_pheromone_query_report",
-            detail: format!("runtime pheromone advisory is missing {field}"),
-        })
+fn required_string_any(
+    value: &serde_json::Value,
+    fields: &[&str],
+) -> Result<String, ChiodosRuntimeError> {
+    for field in fields {
+        if let Some(item) = value
+            .get(*field)
+            .and_then(|item| item.as_str())
+            .filter(|item| !item.trim().is_empty())
+        {
+            return Ok(item.to_string());
+        }
+    }
+    Err(ChiodosRuntimeError::Rejected {
+        code: "invalid_pheromone_query_report",
+        detail: format!(
+            "runtime pheromone advisory is missing {}",
+            fields.join(" or ")
+        ),
+    })
 }
 
-fn required_u64(value: &serde_json::Value, field: &str) -> Result<u64, ChiodosRuntimeError> {
-    value
-        .get(field)
-        .and_then(|item| item.as_u64())
-        .ok_or_else(|| ChiodosRuntimeError::Rejected {
-            code: "invalid_pheromone_query_report",
-            detail: format!("runtime pheromone advisory is missing {field}"),
-        })
+fn required_u64_any(
+    value: &serde_json::Value,
+    fields: &[&str],
+) -> Result<u64, ChiodosRuntimeError> {
+    for field in fields {
+        if let Some(item) = value.get(*field).and_then(|item| item.as_u64()) {
+            return Ok(item);
+        }
+    }
+    Err(ChiodosRuntimeError::Rejected {
+        code: "invalid_pheromone_query_report",
+        detail: format!(
+            "runtime pheromone advisory is missing {}",
+            fields.join(" or ")
+        ),
+    })
 }
 
-fn required_f64(value: &serde_json::Value, field: &str) -> Result<f64, ChiodosRuntimeError> {
-    value
-        .get(field)
-        .and_then(|item| item.as_f64())
-        .ok_or_else(|| ChiodosRuntimeError::Rejected {
-            code: "invalid_pheromone_query_report",
-            detail: format!("runtime pheromone advisory is missing {field}"),
-        })
+fn required_f64_any(
+    value: &serde_json::Value,
+    fields: &[&str],
+) -> Result<f64, ChiodosRuntimeError> {
+    for field in fields {
+        if let Some(item) = value.get(*field).and_then(|item| item.as_f64()) {
+            return Ok(item);
+        }
+    }
+    Err(ChiodosRuntimeError::Rejected {
+        code: "invalid_pheromone_query_report",
+        detail: format!(
+            "runtime pheromone advisory is missing {}",
+            fields.join(" or ")
+        ),
+    })
 }
 
 fn validate_runtime_trust_input(
     envelope: &SignedRuntimeVerifierTrustBundle,
     trusted_verifier_keys: &[RuntimeTrustedVerifierKey],
     bundle: &RuntimeAdmissionBundle,
-    store: &dyn RuntimeAdmissionStore,
     now_unix_ms: u64,
     checks: &mut Vec<RuntimeAdmissionCheck>,
 ) -> Result<RuntimeTrustFloorEntry, &'static str> {
@@ -8239,23 +9046,6 @@ fn validate_runtime_trust_input(
 
     let body_hash =
         runtime_verifier_trust_bundle_sha256(body).map_err(|_| "runtime_trust_hash_failed")?;
-    if let Some(floor) = store
-        .runtime_trust_floor(&body.verifier_id, &body.key_id)
-        .map_err(|_| "runtime_trust_floor_store")?
-    {
-        if body.version < floor.highest_version {
-            return Err("runtime_trust_rollback");
-        }
-        if body.version == floor.highest_version && body_hash != floor.latest_bundle_sha256 {
-            return Err("runtime_trust_same_version_mismatch");
-        }
-        if body.version > floor.highest_version
-            && body.previous_hash_sha256.as_deref() != Some(floor.latest_bundle_sha256.as_str())
-        {
-            return Err("runtime_trust_previous_hash_mismatch");
-        }
-    }
-    checks.push(passed("runtime_trust.floor"));
 
     if body.revocation_authority_roots.is_empty() {
         return Err("runtime_trust_revocation_roots_missing");
@@ -8276,6 +9066,44 @@ fn validate_runtime_trust_input(
         latest_bundle_sha256: body_hash,
         latest_revocation_checkpoint_sha256: body.revocation_checkpoint_sha256.clone(),
     })
+}
+
+fn validate_runtime_trust_floor_transition(
+    existing: Option<RuntimeTrustFloorEntry>,
+    next: &RuntimeTrustFloorEntry,
+    previous_hash_sha256: Option<&str>,
+) -> Result<(), ChiodosRuntimeError> {
+    if let Some(floor) = existing {
+        if next.highest_version < floor.highest_version {
+            return Err(ChiodosRuntimeError::Rejected {
+                code: "runtime_trust_rollback",
+                detail: "runtime trust input version is below persisted floor".to_string(),
+            });
+        }
+        if next.highest_version == floor.highest_version
+            && next.latest_bundle_sha256 != floor.latest_bundle_sha256
+        {
+            return Err(ChiodosRuntimeError::Rejected {
+                code: "runtime_trust_same_version_mismatch",
+                detail: "runtime trust input reused a floor version with different content"
+                    .to_string(),
+            });
+        }
+        if next.highest_version > floor.highest_version
+            && previous_hash_sha256 != Some(floor.latest_bundle_sha256.as_str())
+        {
+            return Err(ChiodosRuntimeError::Rejected {
+                code: "runtime_trust_previous_hash_mismatch",
+                detail: "runtime trust input does not extend the persisted floor".to_string(),
+            });
+        }
+    } else if next.highest_version > 1 && previous_hash_sha256.is_none() {
+        return Err(ChiodosRuntimeError::Rejected {
+            code: "runtime_trust_previous_hash_missing",
+            detail: "runtime trust input above version one must carry a previous hash".to_string(),
+        });
+    }
+    Ok(())
 }
 
 struct RuntimePolicyEvaluationInput<'a, 'b> {
@@ -8379,6 +9207,9 @@ fn evaluate_runtime_pheromone_policy(
         > policy_body.max_query_report_age_ms
     {
         return Err("runtime_pheromone_advisory_stale");
+    }
+    if advisory.distinct_origin_pairs < policy_body.min_distinct_origin_pairs {
+        return Err("runtime_pheromone_distinct_origin_floor");
     }
     validate_peer_weights(weights_body)?;
     input.checks.push(passed("runtime_policy.bindings"));
@@ -8515,6 +9346,7 @@ fn receipt_metadata(
     bundle: &RuntimeAdmissionBundle,
     accepted: bool,
     failure_code: Option<&str>,
+    reserved_destructive_lease_id: Option<&str>,
     pheromone_advisory: Option<&RuntimePheromoneAdvisory>,
     pheromone_policy_decision: Option<&RuntimePheromonePolicyDecision>,
 ) -> serde_json::Value {
@@ -8528,6 +9360,7 @@ fn receipt_metadata(
             "step_index": bundle.step_index,
             "destructive": bundle.destructive,
             "lease_id": bundle.lease_id,
+            "reserved_destructive_lease_id": reserved_destructive_lease_id,
             "governance_receipt_id": bundle.governance_receipt_id,
             "trust_bundle_sha256": bundle.trust_bundle_sha256,
             "verification_context_sha256": bundle.verification_context_sha256,
