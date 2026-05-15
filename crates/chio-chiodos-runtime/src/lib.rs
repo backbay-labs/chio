@@ -4422,7 +4422,7 @@ pub fn compute_ladder_intersection(
             } else {
                 consistency_model = Some(action.consistency_model.clone());
             }
-            if action.co_sign == "bilateral_required" {
+            if co_sign_requirement_rank(&action.co_sign)? > co_sign_requirement_rank(&co_sign)? {
                 co_sign = action.co_sign.clone();
             }
             for item in &action.evidence_required {
@@ -4687,6 +4687,13 @@ fn required_evidence_for_action(action: &LadderIntersectionActionClass) -> Vec<S
             .any(|evidence| evidence == "bilateral_invocation")
     {
         required.push("bilateral_invocation".to_string());
+    }
+    if action.co_sign == "quorum_required"
+        && !required
+            .iter()
+            .any(|evidence| evidence == "quorum_signature")
+    {
+        required.push("quorum_signature".to_string());
     }
     required
 }
@@ -6611,6 +6618,20 @@ pub fn validate_runtime_orchestration_profile(
                 detail: format!("runtime orchestration fail-closed code {code} is duplicated"),
             });
         }
+    }
+    Ok(())
+}
+
+pub fn validate_runtime_orchestration_profile_fresh(
+    profile: &RuntimeOrchestrationProfile,
+    now_unix_ms: u64,
+) -> Result<(), ChiodosRuntimeError> {
+    validate_runtime_orchestration_profile(profile)?;
+    if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
+        return Err(ChiodosRuntimeError::Rejected {
+            code: "runtime_orchestration_profile_stale",
+            detail: "runtime orchestration profile is not fresh".to_string(),
+        });
     }
     Ok(())
 }
@@ -8990,6 +9011,18 @@ fn validate_consistency_model(model: &str) -> Result<(), ChiodosRuntimeError> {
 fn validate_co_sign_mode(mode: &str) -> Result<(), ChiodosRuntimeError> {
     match mode {
         "none" | "bilateral_required" | "quorum_required" => Ok(()),
+        _ => rejected(
+            "chiodos_ladder_invalid_cosign_mode",
+            "governance ladder co-sign mode is not supported",
+        ),
+    }
+}
+
+fn co_sign_requirement_rank(mode: &str) -> Result<u8, ChiodosRuntimeError> {
+    match mode {
+        "none" => Ok(0),
+        "bilateral_required" => Ok(1),
+        "quorum_required" => Ok(2),
         _ => rejected(
             "chiodos_ladder_invalid_cosign_mode",
             "governance ladder co-sign mode is not supported",
