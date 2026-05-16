@@ -31,8 +31,10 @@ mod scaffold;
 mod settle;
 
 include!("cli/types.rs");
+include!("cli/chiodos/types.rs");
 include!("cli/doctor.rs");
 include!("cli/dispatch.rs");
+include!("cli/chiodos/dispatch.rs");
 include!("cli/runtime.rs");
 include!("cli/trust_commands.rs");
 include!("cli/session.rs");
