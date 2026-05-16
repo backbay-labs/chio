@@ -51,6 +51,14 @@ run_runtime_treaty_test() {
   cargo test -p chio-chiodos-runtime "$1" --test runtime_treaty
 }
 
+run_runtime_buyer_review_test() {
+  cargo test -p chio-chiodos-runtime "$1" --test runtime_buyer_review
+}
+
+run_runtime_store_test() {
+  cargo test -p chio-chiodos-runtime "$1" --test runtime_store
+}
+
 run_runtime_negative_matrix() {
   run_runtime_admission_test kernel_hook_denies_cross_boundary_request_when_treaty_store_evidence_missing
   run_runtime_admission_test treaty_runtime_hook_denies_missing_lineage_evidence_ref
@@ -64,7 +72,7 @@ run_runtime_negative_matrix() {
 }
 
 run_runtime() {
-  run_runtime_admission_test sqlite_runtime_orchestration_store_persists_treaty_evidence_idempotently
+  run_runtime_store_test sqlite_runtime_orchestration_store_persists_treaty_evidence_idempotently
   run_runtime_negative_matrix
 }
 
@@ -73,7 +81,7 @@ run_dsse() {
 }
 
 run_lineage() {
-  cargo test -p chio-chiodos-runtime receipt_lineage_bundle --test runtime_admission
+  cargo test -p chio-chiodos-runtime receipt_lineage_bundle --test runtime_buyer_review
 }
 
 run_proof() {
@@ -84,15 +92,15 @@ run_proof() {
 
 run_buyer() {
   bash "$repo_root/scripts/check-chiodos-treaty-buyer-hero-loop.sh" --packet-only
-  cargo test -p chio-chiodos-runtime buyer_review --test runtime_admission
+  cargo test -p chio-chiodos-runtime buyer_review --test runtime_buyer_review
   cargo test -p chio-cli --bin chio chiodos_buyer
 }
 
 run_negative() {
   bash "$repo_root/scripts/check-chiodos-treaty-buyer-hero-loop.sh" --negative-only
   run_runtime_negative_matrix
-  run_runtime_admission_test buyer_review_package_rejects_missing_strict_dsse_envelope
-  run_runtime_admission_test buyer_review_package_rejects_non_strict_dsse_envelope
+  run_runtime_buyer_review_test buyer_review_package_rejects_missing_strict_dsse_envelope
+  run_runtime_buyer_review_test buyer_review_package_rejects_non_strict_dsse_envelope
 }
 
 case "$MODE" in

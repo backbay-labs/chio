@@ -58,9 +58,9 @@ validate_schema() {
 }
 
 run_strict_dsse_negative_tests() {
-  cargo test -p chio-chiodos-runtime buyer_review_package_rejects_missing_strict_dsse_envelope --test runtime_admission
-  cargo test -p chio-chiodos-runtime buyer_review_package_rejects_non_strict_dsse_envelope --test runtime_admission
-  cargo test -p chio-chiodos-runtime buyer_review_package_rejects_tampered_strict_dsse_signature_when_peer_keys_available --test runtime_admission
+  cargo test -p chio-chiodos-runtime buyer_review_package_rejects_missing_strict_dsse_envelope --test runtime_buyer_review
+  cargo test -p chio-chiodos-runtime buyer_review_package_rejects_non_strict_dsse_envelope --test runtime_buyer_review
+  cargo test -p chio-chiodos-runtime buyer_review_package_rejects_tampered_strict_dsse_signature_when_peer_keys_available --test runtime_buyer_review
   cargo test -p chio-federation strict_chiodos_treaty_review_binds_live_material --lib
 }
 
@@ -105,7 +105,7 @@ fi
 if [[ "$MODE" == "negative-only" ]]; then
   run_runtime_spine_with_artifacts --negative-only
   run_strict_dsse_negative_tests
-  cargo test -p chio-chiodos-runtime buyer_review --test runtime_admission
+  cargo test -p chio-chiodos-runtime buyer_review --test runtime_buyer_review
   exit 0
 fi
 
@@ -1063,6 +1063,6 @@ if [[ "$MODE" == "negative-only" || "$MODE" == "full" ]]; then
 fi
 
 if [[ "$MODE" == "runtime-only" || "$MODE" == "full" ]]; then
-  cargo test -p chio-chiodos-runtime buyer_review --test runtime_admission
-  cargo test -p chio-chiodos-runtime receipt_lineage_bundle --test runtime_admission
+  cargo test -p chio-chiodos-runtime buyer_review --test runtime_buyer_review
+  cargo test -p chio-chiodos-runtime receipt_lineage_bundle --test runtime_buyer_review
 fi
