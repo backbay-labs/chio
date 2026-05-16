@@ -186,7 +186,7 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
         parent_receipt_sha256: parent_receipt_sha256.clone(),
         child_receipt_sha256: bilateral_invocation.remote_receipt_sha256.clone(),
         continuation_sha256: continuation_sha256.clone(),
-        bilateral_invocation_sha256: bilateral_invocation_binding_sha256,
+        bilateral_invocation_sha256: bilateral_invocation_binding_sha256.clone(),
         evidence_class: "verified".to_string(),
         source_kernel_id: source_kernel_id.clone(),
         target_kernel_id: target_kernel_id.clone(),
@@ -196,10 +196,20 @@ pub(crate) fn insert_runtime_loopback_treaty_context(
         "Chiodos runtime loopback lineage statement hash",
     )?;
     bilateral_invocation.lineage_statement_sha256 = lineage_statement_sha256.clone();
-    let bilateral_invocation_sha256 = canonical_sha256_json(
-        &bilateral_invocation,
-        "Chiodos runtime loopback bilateral invocation hash",
-    )?;
+    let rebound_bilateral_invocation_sha256 =
+        chio_chiodos_runtime::bilateral_invocation_binding_sha256(&bilateral_invocation).map_err(
+            |error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chiodos runtime loopback bilateral invocation rebound binding hash: {error}"
+                ))
+            },
+        )?;
+    if rebound_bilateral_invocation_sha256 != bilateral_invocation_binding_sha256 {
+        return Err(RuntimeLoopbackError::message(format!(
+            "Chiodos runtime loopback bilateral invocation binding changed after lineage back-fill: expected {bilateral_invocation_binding_sha256}, got {rebound_bilateral_invocation_sha256}"
+        )));
+    }
+    let bilateral_invocation_sha256 = bilateral_invocation_binding_sha256.clone();
     let lineage_bundle = chio_chiodos_runtime::ReceiptLineageBundle {
         schema: chio_chiodos_runtime::CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
         bundle_id: format!("lineage-bundle:runtime-loopback:{step_index}"),

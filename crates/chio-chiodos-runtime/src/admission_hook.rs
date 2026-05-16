@@ -637,9 +637,8 @@ fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
         .bilateral_invocation
         .as_ref()
         .map(|reference| {
-            load_treaty_artifact::<_, BilateralInvocation>(
+            load_bilateral_invocation_artifact(
                 store,
-                "bilateral_invocation",
                 reference,
                 "chiodos_treaty_missing_bilateral_evidence",
                 "chiodos_treaty_bilateral_hash_mismatch",
@@ -790,6 +789,35 @@ where
     let artifact: T = serde_json::from_value(record.raw_json)
         .map_err(|error| ChiodosRuntimeError::Json(error.to_string()))?;
     Ok((artifact, artifact_sha256))
+}
+
+fn load_bilateral_invocation_artifact<S>(
+    store: &S,
+    reference: &TreatyEvidenceReference,
+    missing_code: &'static str,
+    mismatch_code: &'static str,
+) -> Result<(BilateralInvocation, String), ChiodosRuntimeError>
+where
+    S: RuntimeAdmissionStore,
+{
+    let Some(record) =
+        store.treaty_runtime_artifact("bilateral_invocation", &reference.evidence_id)?
+    else {
+        return rejected(
+            missing_code,
+            "cross-boundary request referenced treaty evidence that is not in the verifier-owned store",
+        );
+    };
+    let invocation: BilateralInvocation = serde_json::from_value(record.raw_json)
+        .map_err(|error| ChiodosRuntimeError::Json(error.to_string()))?;
+    let artifact_sha256 = bilateral_invocation_binding_sha256(&invocation)?;
+    if artifact_sha256 != reference.artifact_sha256 {
+        return rejected(
+            mismatch_code,
+            "cross-boundary request bilateral invocation binding hash does not match verifier-owned store",
+        );
+    }
+    Ok((invocation, artifact_sha256))
 }
 
 fn verify_continuation_evidence(

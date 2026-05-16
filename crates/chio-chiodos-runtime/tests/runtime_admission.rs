@@ -728,9 +728,8 @@ fn treaty_runtime_hook_denies_stale_continuation_before_dispatch(
         &chio_core_types::crypto::canonical_json_bytes(&fixture.lineage_bundle)?,
     );
     fixture.bilateral_invocation.continuation_sha256 = fixture.continuation_sha256.clone();
-    fixture.bilateral_invocation_sha256 = chio_core_types::crypto::sha256_hex(
-        &chio_core_types::crypto::canonical_json_bytes(&fixture.bilateral_invocation)?,
-    );
+    fixture.bilateral_invocation_sha256 =
+        chio_chiodos_runtime::bilateral_invocation_binding_sha256(&fixture.bilateral_invocation)?;
     insert_treaty_runtime_fixture(&store, &fixture)?;
     let request = treaty_runtime_request(args, bundle_hash, treaty_runtime_context(&fixture))?;
     let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
@@ -773,9 +772,8 @@ fn treaty_runtime_hook_preserves_millisecond_time_for_continuation_staleness(
         &chio_core_types::crypto::canonical_json_bytes(&fixture.lineage_bundle)?,
     );
     fixture.bilateral_invocation.continuation_sha256 = fixture.continuation_sha256.clone();
-    fixture.bilateral_invocation_sha256 = chio_core_types::crypto::sha256_hex(
-        &chio_core_types::crypto::canonical_json_bytes(&fixture.bilateral_invocation)?,
-    );
+    fixture.bilateral_invocation_sha256 =
+        chio_chiodos_runtime::bilateral_invocation_binding_sha256(&fixture.bilateral_invocation)?;
     insert_treaty_runtime_fixture(&store, &fixture)?;
     let request = treaty_runtime_request(args, bundle_hash, treaty_runtime_context(&fixture))?;
     let hook = ChiodosRuntimeAdmissionHook::new(profile(), store);
@@ -1106,7 +1104,7 @@ fn treaty_runtime_fixture() -> Result<TreatyRuntimeFixture, Box<dyn std::error::
         parent_receipt_sha256: bilateral_invocation.local_receipt_sha256.clone(),
         child_receipt_sha256: bilateral_invocation.remote_receipt_sha256.clone(),
         continuation_sha256: continuation_sha256.clone(),
-        bilateral_invocation_sha256: bilateral_invocation_binding_sha256,
+        bilateral_invocation_sha256: bilateral_invocation_binding_sha256.clone(),
         evidence_class: "verified".to_string(),
         source_kernel_id: continuation.source_kernel_id.clone(),
         target_kernel_id: continuation.target_kernel_id.clone(),
@@ -1125,9 +1123,13 @@ fn treaty_runtime_fixture() -> Result<TreatyRuntimeFixture, Box<dyn std::error::
     let lineage_bundle_sha256 = chio_core_types::crypto::sha256_hex(
         &chio_core_types::crypto::canonical_json_bytes(&lineage_bundle)?,
     );
-    let bilateral_invocation_sha256 = chio_core_types::crypto::sha256_hex(
-        &chio_core_types::crypto::canonical_json_bytes(&bilateral_invocation)?,
+    let rebound_bilateral_invocation_sha256 =
+        chio_chiodos_runtime::bilateral_invocation_binding_sha256(&bilateral_invocation)?;
+    assert_eq!(
+        rebound_bilateral_invocation_sha256,
+        bilateral_invocation_binding_sha256
     );
+    let bilateral_invocation_sha256 = bilateral_invocation_binding_sha256;
     let bilateral_dsse = sign_chiodos_dsse_envelope(
         &receipt,
         &signer_a,
