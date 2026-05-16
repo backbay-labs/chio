@@ -1,4 +1,6 @@
-fn read_json_documents_from_dir<T: DeserializeOwned>(
+use super::*;
+
+pub(crate) fn read_json_documents_from_dir<T: DeserializeOwned>(
     dir: &Path,
     label: &str,
     schema: &str,
@@ -37,14 +39,14 @@ fn read_json_documents_from_dir<T: DeserializeOwned>(
     Ok(documents)
 }
 
-fn read_json_file<T: DeserializeOwned>(path: &Path, label: &str) -> Result<T, CliError> {
+pub(crate) fn read_json_file<T: DeserializeOwned>(path: &Path, label: &str) -> Result<T, CliError> {
     serde_json::from_str(&read_utf8_json_file(path, label)?)
         .map_err(|error| CliError::cli_other_error(format!("{label} {}: {error}", path.display())))
 }
 
 
 
-fn load_relay_signing_key(path: &Path) -> Result<(String, Keypair), CliError> {
+pub(crate) fn load_relay_signing_key(path: &Path) -> Result<(String, Keypair), CliError> {
     let json = read_utf8_json_file(path, "Chiodos relay signing key")?;
     let document: RelaySigningKeyDocument = serde_json::from_str(&json).map_err(|error| {
         CliError::cli_other_error(format!("Chiodos relay signing key: {error}"))
@@ -59,7 +61,7 @@ fn load_relay_signing_key(path: &Path) -> Result<(String, Keypair), CliError> {
     Ok((document.kernel_id, keypair))
 }
 
-fn unix_now_ms() -> u64 {
+pub(crate) fn unix_now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| {

@@ -1,4 +1,6 @@
-fn cmd_chiodos_authority_issue(
+use super::*;
+
+pub(crate) fn cmd_chiodos_authority_issue(
     profile: &Path,
     request: &Path,
     signing_keys: &Path,
@@ -61,7 +63,7 @@ fn cmd_chiodos_authority_issue(
     Ok(())
 }
 
-fn cmd_chiodos_authority_checkpoint(
+pub(crate) fn cmd_chiodos_authority_checkpoint(
     profile: &Path,
     revocations: &Path,
     signing_keys: &Path,
@@ -98,7 +100,7 @@ fn cmd_chiodos_authority_checkpoint(
     )
 }
 
-fn cmd_chiodos_authority_trust_bundle_assemble(
+pub(crate) fn cmd_chiodos_authority_trust_bundle_assemble(
     profile: &Path,
     peer_pins: &Path,
     workflow_intersection: &Path,

@@ -1,4 +1,6 @@
-fn cmd_chiodos_pheromone_receive(
+use super::*;
+
+pub(crate) fn cmd_chiodos_pheromone_receive(
     batch: &Path,
     transit_policy: &Path,
     proof_package: &Path,
@@ -66,7 +68,7 @@ fn cmd_chiodos_pheromone_receive(
     }
 }
 
-fn cmd_chiodos_pheromone_query(
+pub(crate) fn cmd_chiodos_pheromone_query(
     store: &Path,
     subject_class: &str,
     namespace: &str,

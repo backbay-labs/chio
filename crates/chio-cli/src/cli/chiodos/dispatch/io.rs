@@ -1,4 +1,6 @@
-fn read_utf8_json_file(path: &Path, label: &str) -> Result<String, CliError> {
+use super::*;
+
+pub(crate) fn read_utf8_json_file(path: &Path, label: &str) -> Result<String, CliError> {
     let bytes = fs::read(path).map_err(|error| {
         CliError::cli_io_error(format!("failed to read {label} {}: {error}", path.display()))
     })?;
@@ -7,7 +9,7 @@ fn read_utf8_json_file(path: &Path, label: &str) -> Result<String, CliError> {
     })
 }
 
-fn write_json_string(path: &Path, json: &str) -> Result<(), CliError> {
+pub(crate) fn write_json_string(path: &Path, json: &str) -> Result<(), CliError> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent).map_err(|error| {

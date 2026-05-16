@@ -1,4 +1,6 @@
-fn cmd_chiodos_verify(
+use super::*;
+
+pub(crate) fn cmd_chiodos_verify(
     package: &Path,
     trust_bundle: &Path,
     context: &Path,

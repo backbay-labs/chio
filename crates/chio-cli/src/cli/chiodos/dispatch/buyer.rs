@@ -1,4 +1,6 @@
-fn cmd_chiodos_buyer_package(run_output: &Path, out: &Path) -> Result<(), CliError> {
+use super::*;
+
+pub(crate) fn cmd_chiodos_buyer_package(run_output: &Path, out: &Path) -> Result<(), CliError> {
     let run_output_root = run_output.canonicalize().map_err(|error| {
         CliError::cli_io_error(format!(
             "failed to canonicalize Chiodos buyer run output {}: {error}",
@@ -94,7 +96,7 @@ fn cmd_chiodos_buyer_package(run_output: &Path, out: &Path) -> Result<(), CliErr
     write_json_string(out, &format!("{json}\n"))
 }
 
-fn cmd_chiodos_buyer_verify(
+pub(crate) fn cmd_chiodos_buyer_verify(
     package_path: &Path,
     trust_bundle_path: &Path,
     context_path: &Path,
@@ -194,7 +196,7 @@ fn cmd_chiodos_buyer_verify(
     }
 }
 
-fn cmd_chiodos_buyer_explain(report_path: &Path, format: &str, out: &Path) -> Result<(), CliError> {
+pub(crate) fn cmd_chiodos_buyer_explain(report_path: &Path, format: &str, out: &Path) -> Result<(), CliError> {
     let report_json = read_utf8_json_file(report_path, "Chiodos buyer review report")?;
     let report: chio_chiodos_runtime::BuyerAttestationReviewReport =
         serde_json::from_str(&report_json).map_err(|error| {
@@ -244,7 +246,7 @@ fn cmd_chiodos_buyer_explain(report_path: &Path, format: &str, out: &Path) -> Re
     }
 }
 
-fn buyer_review_verification_state(
+pub(crate) fn buyer_review_verification_state(
     report: &chio_chiodos_runtime::BuyerAttestationReviewReport,
 ) -> &'static str {
     if report.failure_code.as_deref().is_some_and(|code| {
@@ -287,7 +289,7 @@ fn buyer_review_verification_state(
     }
 }
 
-fn read_buyer_review_sources(
+pub(crate) fn read_buyer_review_sources(
     base_dir: &Path,
     package: &chio_chiodos_runtime::BuyerAttestationReviewPackage,
 ) -> Result<Vec<chio_chiodos_runtime::BuyerAttestationReviewSource>, CliError> {
@@ -324,7 +326,7 @@ fn read_buyer_review_sources(
     Ok(sources)
 }
 
-fn buyer_review_source_bytes<'a>(
+pub(crate) fn buyer_review_source_bytes<'a>(
     sources: &'a [chio_chiodos_runtime::BuyerAttestationReviewSource],
     role: &str,
 ) -> Option<&'a [u8]> {

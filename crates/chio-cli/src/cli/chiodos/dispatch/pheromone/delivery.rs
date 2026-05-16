@@ -1,4 +1,6 @@
-fn cmd_chiodos_pheromone_relay_alert_delivery_import(
+use super::*;
+
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_delivery_import(
     handoff_report: &Path,
     delivery_profile: &Path,
     evidence_dir: &Path,
@@ -37,7 +39,7 @@ fn cmd_chiodos_pheromone_relay_alert_delivery_import(
     )
 }
 
-fn cmd_chiodos_pheromone_relay_alert_delivery_acknowledge(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_delivery_acknowledge(
     handoff_report: &Path,
     delivery_report: &Path,
     delivery_profile: &Path,
@@ -83,7 +85,7 @@ fn cmd_chiodos_pheromone_relay_alert_delivery_acknowledge(
     )
 }
 
-fn cmd_chiodos_pheromone_relay_alert_delivery_drift(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_delivery_drift(
     handoff_reports_dir: &Path,
     delivery_reports_dir: &Path,
     delivery_profile: &Path,
@@ -119,7 +121,7 @@ fn cmd_chiodos_pheromone_relay_alert_delivery_drift(
     )
 }
 
-fn cmd_chiodos_pheromone_relay_alert_delivery_drift_window(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_delivery_drift_window(
     handoff_reports_dir: &Path,
     delivery_reports_dir: &Path,
     delivery_profile: &Path,
@@ -157,7 +159,7 @@ fn cmd_chiodos_pheromone_relay_alert_delivery_drift_window(
 
 
 
-fn read_relay_alert_delivery_evidence(
+pub(crate) fn read_relay_alert_delivery_evidence(
     dir: &Path,
 ) -> Result<Vec<chio_pheromone_relay::RelayAlertDeliveryEvidence>, CliError> {
     let entries = fs::read_dir(dir).map_err(|error| {
@@ -210,7 +212,7 @@ fn read_relay_alert_delivery_evidence(
 
 
 
-fn read_relay_alert_delivery_reports(
+pub(crate) fn read_relay_alert_delivery_reports(
     dir: &Path,
 ) -> Result<Vec<chio_pheromone_relay::RelayAlertDeliveryReport>, CliError> {
     read_json_documents_from_dir(

@@ -1,4 +1,6 @@
-fn cmd_chiodos_pheromone_relay_alert_evaluate(
+use super::*;
+
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_evaluate(
     observability_report: &Path,
     event_dir: &Path,
     routing_profile: &Path,
@@ -40,7 +42,7 @@ fn cmd_chiodos_pheromone_relay_alert_evaluate(
     write_pretty_json(report, &alert_report, "Chiodos relay alert report")
 }
 
-fn cmd_chiodos_pheromone_relay_alert_handoff(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_handoff(
     alert_report: &Path,
     trend_report: &Path,
     routing_profile: &Path,
@@ -87,7 +89,7 @@ fn cmd_chiodos_pheromone_relay_alert_handoff(
     )
 }
 
-fn cmd_chiodos_pheromone_relay_alert_normalize(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_normalize(
     profile: &Path,
     input_dir: &Path,
     now_unix_ms: u64,
@@ -135,7 +137,7 @@ fn cmd_chiodos_pheromone_relay_alert_normalize(
 
 
 
-fn cmd_chiodos_pheromone_relay_alert_review(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_review(
     handoff_report: &Path,
     delivery_report: &Path,
     acknowledgement_report: &Path,
@@ -206,7 +208,7 @@ fn cmd_chiodos_pheromone_relay_alert_review(
 
 
 
-fn read_relay_alert_normalization_sources(
+pub(crate) fn read_relay_alert_normalization_sources(
     dir: &Path,
 ) -> Result<Vec<serde_json::Value>, CliError> {
     let entries = fs::read_dir(dir).map_err(|error| {
@@ -243,7 +245,7 @@ fn read_relay_alert_normalization_sources(
     Ok(sources)
 }
 
-fn read_relay_alert_handoff_reports(
+pub(crate) fn read_relay_alert_handoff_reports(
     dir: &Path,
 ) -> Result<Vec<chio_pheromone_relay::RelayAlertHandoffReport>, CliError> {
     read_json_documents_from_dir(

@@ -1,5 +1,7 @@
+use super::*;
+
 #[derive(Subcommand)]
-enum ChiodosBuyerCommands {
+pub(crate) enum ChiodosBuyerCommands {
     /// Build a buyer review package from a local runtime output directory.
     Package {
         /// Runtime output directory containing buyer review artifacts.

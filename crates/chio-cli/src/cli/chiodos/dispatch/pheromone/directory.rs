@@ -1,4 +1,6 @@
-fn cmd_chiodos_pheromone_relay_directory_inspect(
+use super::*;
+
+pub(crate) fn cmd_chiodos_pheromone_relay_directory_inspect(
     state: &Path,
     report: &Path,
 ) -> Result<(), CliError> {
@@ -40,7 +42,7 @@ fn cmd_chiodos_pheromone_relay_directory_inspect(
     write_pretty_json(report, &inspection, "Chiodos peer-directory inspection")
 }
 
-fn cmd_chiodos_pheromone_relay_directory_promote(
+pub(crate) fn cmd_chiodos_pheromone_relay_directory_promote(
     state: &Path,
     candidate: &Path,
     trusted_issuers: &Path,
@@ -74,7 +76,7 @@ fn cmd_chiodos_pheromone_relay_directory_promote(
     write_pretty_json(report, &report_document, "Chiodos peer-directory rotation")
 }
 
-fn cmd_chiodos_pheromone_relay_directory_reject(
+pub(crate) fn cmd_chiodos_pheromone_relay_directory_reject(
     state: &Path,
     candidate: &Path,
     reason: &str,
@@ -97,7 +99,7 @@ fn cmd_chiodos_pheromone_relay_directory_reject(
     write_pretty_json(report, &report_document, "Chiodos peer-directory rejection")
 }
 
-fn cmd_chiodos_pheromone_relay_supervisor_lint(
+pub(crate) fn cmd_chiodos_pheromone_relay_supervisor_lint(
     profile: &Path,
     report: &Path,
 ) -> Result<(), CliError> {
@@ -123,7 +125,7 @@ fn cmd_chiodos_pheromone_relay_supervisor_lint(
     write_pretty_json(report, &lint_report, "Chiodos relay supervisor lint")
 }
 
-fn load_relay_peer_directory_from_paths(
+pub(crate) fn load_relay_peer_directory_from_paths(
     peer_directory: Option<&Path>,
     peer_directory_state: Option<&Path>,
     now_unix_ms: u64,
@@ -159,7 +161,7 @@ fn load_relay_peer_directory_from_paths(
         .map_err(|error| CliError::cli_other_error(format!("{label}: {error}")))
 }
 
-fn parse_relay_peer_directory_json(
+pub(crate) fn parse_relay_peer_directory_json(
     json: &str,
     now_unix_ms: u64,
     profile: chio_pheromone_relay::RelayProfile,
@@ -202,13 +204,13 @@ fn parse_relay_peer_directory_json(
     )
 }
 
-fn load_optional_relay_trusted_issuers(
+pub(crate) fn load_optional_relay_trusted_issuers(
     path: Option<&Path>,
 ) -> Result<Option<(Vec<chio_pheromone_relay::TrustedPeerDirectoryIssuer>, u64)>, CliError> {
     path.map(load_relay_trusted_issuers).transpose()
 }
 
-fn load_relay_trusted_issuers(
+pub(crate) fn load_relay_trusted_issuers(
     path: &Path,
 ) -> Result<(Vec<chio_pheromone_relay::TrustedPeerDirectoryIssuer>, u64), CliError> {
     let json = read_utf8_json_file(path, "Chiodos relay trusted issuers")?;
@@ -227,7 +229,7 @@ fn load_relay_trusted_issuers(
     Ok((issuers, document.min_version.unwrap_or(0)))
 }
 
-fn build_peer_directory_bundle_trust(
+pub(crate) fn build_peer_directory_bundle_trust(
     trusted_issuers: &Path,
     now_unix_ms: u64,
     profile: chio_pheromone_relay::RelayProfile,
@@ -242,7 +244,7 @@ fn build_peer_directory_bundle_trust(
     })
 }
 
-fn load_relay_peer_directory_bundle(
+pub(crate) fn load_relay_peer_directory_bundle(
     path: &Path,
 ) -> Result<chio_pheromone_relay::PeerDirectoryBundleDocument, CliError> {
     let json = read_utf8_json_file(path, "Chiodos peer-directory bundle")?;
@@ -250,7 +252,7 @@ fn load_relay_peer_directory_bundle(
         .map_err(|error| CliError::cli_other_error(format!("Chiodos peer-directory bundle: {error}")))
 }
 
-fn load_or_create_peer_directory_state(
+pub(crate) fn load_or_create_peer_directory_state(
     path: &Path,
     candidate: &chio_pheromone_relay::PeerDirectoryBundleDocument,
     now_unix_ms: u64,
@@ -267,14 +269,14 @@ fn load_or_create_peer_directory_state(
     }
 }
 
-fn write_peer_directory_state(
+pub(crate) fn write_peer_directory_state(
     path: &Path,
     state: &chio_pheromone_relay::PeerDirectoryStateDocument,
 ) -> Result<(), CliError> {
     write_pretty_json(path, state, "Chiodos peer-directory state")
 }
 
-fn peer_directory_rotation_error_report(
+pub(crate) fn peer_directory_rotation_error_report(
     state: &chio_pheromone_relay::PeerDirectoryStateDocument,
     now_unix_ms: u64,
     error: &chio_pheromone_relay::PheromoneRelayError,
@@ -298,7 +300,7 @@ fn peer_directory_rotation_error_report(
     }
 }
 
-fn write_pretty_json<T: serde::Serialize>(
+pub(crate) fn write_pretty_json<T: serde::Serialize>(
     path: &Path,
     value: &T,
     label: &str,

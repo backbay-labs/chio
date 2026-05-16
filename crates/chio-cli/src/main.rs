@@ -31,10 +31,14 @@ mod scaffold;
 mod settle;
 
 include!("cli/types.rs");
-include!("cli/chiodos/types.rs");
+#[path = "cli/chiodos/types.rs"]
+mod chiodos_types;
+use chiodos_types::*;
 include!("cli/doctor.rs");
 include!("cli/dispatch.rs");
-include!("cli/chiodos/dispatch.rs");
+#[path = "cli/chiodos/dispatch.rs"]
+mod chiodos_dispatch;
+use chiodos_dispatch::*;
 include!("cli/runtime.rs");
 include!("cli/trust_commands.rs");
 include!("cli/session.rs");

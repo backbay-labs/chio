@@ -1,5 +1,7 @@
+use super::*;
+
 #[derive(Subcommand)]
-enum ChiodosPheromoneRelayDirectoryCommands {
+pub(crate) enum ChiodosPheromoneRelayDirectoryCommands {
     /// Inspect active peer-directory state.
     Inspect {
         /// Peer-directory state JSON.
@@ -63,7 +65,7 @@ enum ChiodosPheromoneRelayDirectoryCommands {
 }
 
 #[derive(Subcommand)]
-enum ChiodosPheromoneRelaySupervisorCommands {
+pub(crate) enum ChiodosPheromoneRelaySupervisorCommands {
     /// Lint a relay supervisor deployment profile.
     Lint {
         /// Relay supervisor profile JSON.

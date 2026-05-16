@@ -1,4 +1,6 @@
-fn cmd_chiodos_treaty_intersect(
+use super::*;
+
+pub(crate) fn cmd_chiodos_treaty_intersect(
     treaty_scope_path: &Path,
     manifest_paths: &[PathBuf],
     now_unix_ms: u64,
@@ -36,7 +38,7 @@ fn cmd_chiodos_treaty_intersect(
     write_json_string(report, &format!("{json}\n"))
 }
 
-fn cmd_chiodos_treaty_admit(
+pub(crate) fn cmd_chiodos_treaty_admit(
     treaty_scope_path: &Path,
     ladder_intersection_path: &Path,
     expected_ladder_intersection_sha256: &str,
@@ -89,7 +91,7 @@ fn cmd_chiodos_treaty_admit(
     write_json_string(report, &format!("{json}\n"))
 }
 
-fn cmd_chiodos_treaty_verify_packet(
+pub(crate) fn cmd_chiodos_treaty_verify_packet(
     packet_path: &Path,
     lineage_statement_path: &Path,
     continuation_path: &Path,
@@ -146,7 +148,7 @@ fn cmd_chiodos_treaty_verify_packet(
     write_json_string(report, &format!("{json}\n"))
 }
 
-const BUYER_REVIEW_ARTIFACT_FILES: &[(&str, &str)] = &[
+pub(crate) const BUYER_REVIEW_ARTIFACT_FILES: &[(&str, &str)] = &[
     ("buyer_attestation_packet", "buyer-attestation-packet.json"),
     ("receipt_lineage_statement", "receipt-lineage-statement.json"),
     ("receipt_lineage_bundle", "receipt-lineage-bundle.json"),

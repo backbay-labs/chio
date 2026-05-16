@@ -1,5 +1,7 @@
+use super::*;
+
 #[derive(Subcommand)]
-enum ChiodosPheromoneCommands {
+pub(crate) enum ChiodosPheromoneCommands {
     /// Verify and store a local pheromone gossip batch.
     Receive {
         /// Pheromone gossip batch JSON.

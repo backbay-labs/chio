@@ -1,5 +1,7 @@
+use super::*;
+
 #[derive(Subcommand)]
-enum ChiodosCommands {
+pub(crate) enum ChiodosCommands {
     /// Verify a buyer and auditor proof package and write a verifier report.
     Verify {
         /// Path to the proof package JSON.

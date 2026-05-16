@@ -1,9 +1,11 @@
+use super::*;
+
 #[derive(Clone)]
-struct CliRelayBatchReceiver {
-    store: std::path::PathBuf,
-    transit_policy: chio_federation::PheromoneTransitPolicy,
-    receiver_config: chio_pheromone_runtime::PheromoneReceiverConfig,
-    resolver: chio_pheromone_runtime::VerifiedChiodosWorkflowResolver,
+pub(crate) struct CliRelayBatchReceiver {
+    pub(crate) store: std::path::PathBuf,
+    pub(crate) transit_policy: chio_federation::PheromoneTransitPolicy,
+    pub(crate) receiver_config: chio_pheromone_runtime::PheromoneReceiverConfig,
+    pub(crate) resolver: chio_pheromone_runtime::VerifiedChiodosWorkflowResolver,
 }
 
 #[async_trait::async_trait]
@@ -30,27 +32,27 @@ impl chio_pheromone_relay::RelayBatchReceiver for CliRelayBatchReceiver {
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RelayTrustedIssuersDocument {
-    issuers: Vec<RelayTrustedIssuerDocument>,
-    min_version: Option<u64>,
+pub(crate) struct RelayTrustedIssuersDocument {
+    pub(crate) issuers: Vec<RelayTrustedIssuerDocument>,
+    pub(crate) min_version: Option<u64>,
 }
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RelayTrustedIssuerDocument {
-    issuer: String,
-    key_id: String,
-    public_key: chio_core::crypto::PublicKey,
+pub(crate) struct RelayTrustedIssuerDocument {
+    pub(crate) issuer: String,
+    pub(crate) key_id: String,
+    pub(crate) public_key: chio_core::crypto::PublicKey,
 }
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RelaySigningKeyDocument {
-    kernel_id: String,
-    seed_hex: String,
+pub(crate) struct RelaySigningKeyDocument {
+    pub(crate) kernel_id: String,
+    pub(crate) seed_hex: String,
 }
 
-fn cmd_chiodos_pheromone_relay_lint(
+pub(crate) fn cmd_chiodos_pheromone_relay_lint(
     peer_directory: Option<&Path>,
     peer_directory_state: Option<&Path>,
     profile: chio_pheromone_relay::RelayProfile,
@@ -108,7 +110,7 @@ fn cmd_chiodos_pheromone_relay_lint(
     write_json_string(report, &format!("{json}\n"))
 }
 
-fn cmd_chiodos_pheromone_relay_serve(
+pub(crate) fn cmd_chiodos_pheromone_relay_serve(
     listen: &str,
     store: &Path,
     peer_directory: Option<&Path>,
@@ -219,7 +221,7 @@ fn cmd_chiodos_pheromone_relay_serve(
     })
 }
 
-fn cmd_chiodos_pheromone_relay_enqueue(
+pub(crate) fn cmd_chiodos_pheromone_relay_enqueue(
     store: &Path,
     batch: &Path,
     transit_policy: &Path,
@@ -294,7 +296,7 @@ fn cmd_chiodos_pheromone_relay_enqueue(
     write_json_string(report, &format!("{json}\n"))
 }
 
-fn cmd_chiodos_pheromone_relay_tick(
+pub(crate) fn cmd_chiodos_pheromone_relay_tick(
     store: &Path,
     peer_directory: Option<&Path>,
     peer_directory_state: Option<&Path>,
@@ -347,7 +349,7 @@ fn cmd_chiodos_pheromone_relay_tick(
     Ok(())
 }
 
-fn write_relay_outbound_event_report(
+pub(crate) fn write_relay_outbound_event_report(
     report_dir: &Path,
     local_kernel_id: &str,
     generated_at_unix_ms: u64,
@@ -396,7 +398,7 @@ fn write_relay_outbound_event_report(
     write_json_string(&path, &format!("{json}\n"))
 }
 
-fn cmd_chiodos_pheromone_relay_catchup(
+pub(crate) fn cmd_chiodos_pheromone_relay_catchup(
     store: &Path,
     peer: &str,
     peer_directory_state: Option<&Path>,
@@ -463,7 +465,7 @@ fn cmd_chiodos_pheromone_relay_catchup(
     write_json_string(report, &format!("{json}\n"))
 }
 
-fn validate_relay_enqueue_batch(
+pub(crate) fn validate_relay_enqueue_batch(
     directory: &chio_pheromone_relay::PeerDirectory,
     batch: &chio_federation::PheromoneGossipBatch,
     transit_policy: &chio_federation::PheromoneTransitPolicy,
@@ -487,7 +489,7 @@ fn validate_relay_enqueue_batch(
     Ok(())
 }
 
-fn cmd_chiodos_pheromone_relay_status(store: &Path, report: &Path) -> Result<(), CliError> {
+pub(crate) fn cmd_chiodos_pheromone_relay_status(store: &Path, report: &Path) -> Result<(), CliError> {
     let now = unix_now_ms();
     let relay_store = chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(
         |error| CliError::cli_other_error(format!("Chiodos pheromone relay store: {error}")),
@@ -500,7 +502,7 @@ fn cmd_chiodos_pheromone_relay_status(store: &Path, report: &Path) -> Result<(),
     write_json_string(report, &format!("{json}\n"))
 }
 
-fn cmd_chiodos_pheromone_relay_observe(
+pub(crate) fn cmd_chiodos_pheromone_relay_observe(
     store: &Path,
     peer_directory_state: &Path,
     profile: chio_pheromone_relay::RelayProfile,
@@ -539,7 +541,7 @@ fn cmd_chiodos_pheromone_relay_observe(
     write_pretty_json(report, &report_document, "Chiodos relay observability")
 }
 
-fn cmd_chiodos_pheromone_relay_metrics(
+pub(crate) fn cmd_chiodos_pheromone_relay_metrics(
     store: &Path,
     format: chio_pheromone_relay::RelayMetricsFormat,
     output: &Path,
@@ -556,7 +558,7 @@ fn cmd_chiodos_pheromone_relay_metrics(
 
 
 
-fn cmd_chiodos_pheromone_relay_trend(
+pub(crate) fn cmd_chiodos_pheromone_relay_trend(
     reports_dir: &Path,
     event_dir: &Path,
     routing_profile: &Path,
@@ -587,7 +589,7 @@ fn cmd_chiodos_pheromone_relay_trend(
     write_pretty_json(report, &trend, "Chiodos relay trend report")
 }
 
-fn read_relay_observability_reports(
+pub(crate) fn read_relay_observability_reports(
     dir: &Path,
 ) -> Result<Vec<chio_pheromone_relay::RelayObservabilityReport>, CliError> {
     read_json_documents_from_dir(
@@ -597,7 +599,7 @@ fn read_relay_observability_reports(
     )
 }
 
-fn read_relay_event_reports(
+pub(crate) fn read_relay_event_reports(
     dir: &Path,
 ) -> Result<Vec<chio_pheromone_relay::RelayEventReport>, CliError> {
     read_json_documents_from_dir(

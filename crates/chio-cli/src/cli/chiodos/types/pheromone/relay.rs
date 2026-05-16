@@ -1,5 +1,7 @@
+use super::*;
+
 #[derive(Subcommand)]
-enum ChiodosPheromoneRelayCommands {
+pub(crate) enum ChiodosPheromoneRelayCommands {
     /// Lint a relay peer directory against an operational profile.
     Lint {
         /// Raw peer directory or signed peer-directory bundle JSON.
@@ -310,7 +312,7 @@ enum ChiodosPheromoneRelayCommands {
 
 
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
-enum RelayProfileArg {
+pub(crate) enum RelayProfileArg {
     LocalDev,
     Production,
 }
@@ -325,7 +327,7 @@ impl From<RelayProfileArg> for chio_pheromone_relay::RelayProfile {
 }
 
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
-enum RelayMetricsFormatArg {
+pub(crate) enum RelayMetricsFormatArg {
     Prometheus,
     Json,
 }

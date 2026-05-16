@@ -1,5 +1,7 @@
+use super::*;
+
 #[derive(Subcommand)]
-enum ChiodosRuntimeCommands {
+pub(crate) enum ChiodosRuntimeCommands {
     /// Evaluate a runtime admission request against verifier-owned local state.
     Admit {
         /// Stable request binding JSON.
@@ -117,7 +119,7 @@ enum ChiodosRuntimeCommands {
 }
 
 #[derive(Subcommand)]
-enum ChiodosRuntimeOpsCommands {
+pub(crate) enum ChiodosRuntimeOpsCommands {
     /// Supervise local runtime operations and emit aggregate status.
     Supervise {
         #[arg(long = "supervisor-profile", value_name = "PATH")]
@@ -249,7 +251,7 @@ enum ChiodosRuntimeOpsCommands {
 }
 
 #[derive(Subcommand)]
-enum ChiodosRuntimeOpsRetentionCommands {
+pub(crate) enum ChiodosRuntimeOpsRetentionCommands {
     /// Plan dry-run runtime artifact retention.
     Plan {
         #[arg(long = "retention-profile", value_name = "PATH")]
@@ -270,7 +272,7 @@ enum ChiodosRuntimeOpsRetentionCommands {
 }
 
 #[derive(Subcommand)]
-enum ChiodosRuntimeOrchestrateCommands {
+pub(crate) enum ChiodosRuntimeOrchestrateCommands {
     /// Validate a runtime orchestration profile.
     Lint {
         /// Runtime orchestration profile JSON.
@@ -411,7 +413,7 @@ enum ChiodosRuntimeOrchestrateCommands {
 }
 
 #[derive(Subcommand)]
-enum ChiodosRuntimePolicyCommands {
+pub(crate) enum ChiodosRuntimePolicyCommands {
     /// Sign a runtime pheromone policy body.
     Sign {
         /// Runtime pheromone policy body JSON.
@@ -429,7 +431,7 @@ enum ChiodosRuntimePolicyCommands {
 }
 
 #[derive(Subcommand)]
-enum ChiodosRuntimePeerWeightsCommands {
+pub(crate) enum ChiodosRuntimePeerWeightsCommands {
     /// Compute the canonical hash of a runtime peer weights body.
     Hash {
         /// Runtime peer weights body JSON.
@@ -458,7 +460,7 @@ enum ChiodosRuntimePeerWeightsCommands {
 }
 
 #[derive(Subcommand)]
-enum ChiodosRuntimePheromoneCommands {
+pub(crate) enum ChiodosRuntimePheromoneCommands {
     /// Sign a pheromone query report for runtime admission.
     SignQueryReport {
         /// Pheromone query report body JSON.

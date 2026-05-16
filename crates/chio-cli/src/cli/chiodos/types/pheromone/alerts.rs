@@ -1,5 +1,7 @@
+use super::*;
+
 #[derive(Subcommand)]
-enum ChiodosPheromoneRelayAlertCommands {
+pub(crate) enum ChiodosPheromoneRelayAlertCommands {
     /// Evaluate routeable relay alerts from current observability.
     Evaluate {
         /// Canonical relay observability report JSON.

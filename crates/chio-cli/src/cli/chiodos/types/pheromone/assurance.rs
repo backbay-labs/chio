@@ -1,5 +1,7 @@
+use super::*;
+
 #[derive(Subcommand)]
-enum ChiodosPheromoneRelayAlertAssuranceCommands {
+pub(crate) enum ChiodosPheromoneRelayAlertAssuranceCommands {
     /// Bind alert evidence into one operator-safe assurance package.
     Package {
         /// Relay alert report JSON.
@@ -183,7 +185,7 @@ enum ChiodosPheromoneRelayAlertAssuranceCommands {
 }
 
 #[derive(Subcommand)]
-enum ChiodosPheromoneRelayAlertAssuranceRetentionCommands {
+pub(crate) enum ChiodosPheromoneRelayAlertAssuranceRetentionCommands {
     /// Plan retention over local export bundle directories without deleting evidence.
     Plan {
         /// Directory containing export bundle directories.
@@ -205,7 +207,7 @@ enum ChiodosPheromoneRelayAlertAssuranceRetentionCommands {
 }
 
 #[derive(Subcommand)]
-enum ChiodosPheromoneRelayAlertAssuranceArchiveCommands {
+pub(crate) enum ChiodosPheromoneRelayAlertAssuranceArchiveCommands {
     /// Plan archive lifecycle over local export bundle directories without moving evidence.
     Plan {
         /// Directory containing export bundle directories.
@@ -235,7 +237,7 @@ enum ChiodosPheromoneRelayAlertAssuranceArchiveCommands {
 }
 
 #[derive(Subcommand)]
-enum ChiodosPheromoneRelayAlertAssuranceCloseoutCommands {
+pub(crate) enum ChiodosPheromoneRelayAlertAssuranceCloseoutCommands {
     /// Review local export bundle directories for operator-managed closeout.
     Review {
         /// Directory containing export bundle directories.

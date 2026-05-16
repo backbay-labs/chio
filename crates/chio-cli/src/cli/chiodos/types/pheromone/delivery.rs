@@ -1,5 +1,7 @@
+use super::*;
+
 #[derive(Subcommand)]
-enum ChiodosPheromoneRelayAlertDeliveryCommands {
+pub(crate) enum ChiodosPheromoneRelayAlertDeliveryCommands {
     /// Import local downstream delivery-result artifacts.
     Import {
         /// Relay alert handoff report JSON.

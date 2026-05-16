@@ -1,5 +1,7 @@
+use super::*;
+
 #[derive(Subcommand)]
-enum ChiodosTreatyCommands {
+pub(crate) enum ChiodosTreatyCommands {
     /// Compute a local ladder intersection from verifier-owned treaty inputs.
     Intersect {
         /// Treaty scope JSON.

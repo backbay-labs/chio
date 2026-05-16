@@ -1,5 +1,7 @@
+use super::*;
+
 #[derive(Subcommand)]
-enum ChiodosAuthorityCommands {
+pub(crate) enum ChiodosAuthorityCommands {
     /// Issue capability leases, lease-scope bindings, and governance receipts.
     Issue {
         /// Public authority profile JSON.
@@ -46,7 +48,7 @@ enum ChiodosAuthorityCommands {
 }
 
 #[derive(Subcommand)]
-enum ChiodosTrustBundleCommands {
+pub(crate) enum ChiodosTrustBundleCommands {
     /// Assemble a strict verifier trust bundle.
     Assemble {
         /// Public authority profile JSON.

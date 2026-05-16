@@ -1,4 +1,6 @@
-fn cmd_chiodos_pheromone_relay_alert_assurance_package(
+use super::*;
+
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_package(
     alert_report: &Path,
     trend_report: &Path,
     handoff_report: &Path,
@@ -89,7 +91,7 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_package(
     )
 }
 
-fn cmd_chiodos_pheromone_relay_alert_assurance_export(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_export(
     package: &Path,
     alert_report: &Path,
     trend_report: &Path,
@@ -156,7 +158,7 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_export(
     write_pretty_json(report, &bundle.report, "Chiodos relay alert assurance export report")
 }
 
-fn cmd_chiodos_pheromone_relay_alert_assurance_verify(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_verify(
     bundle_dir: &Path,
     trusted_exporters: &Path,
     now_unix_ms: u64,
@@ -183,7 +185,7 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_verify(
     )
 }
 
-fn cmd_chiodos_pheromone_relay_alert_assurance_replay(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_replay(
     bundle_dir: &Path,
     trusted_exporters: &Path,
     now_unix_ms: u64,
@@ -212,7 +214,7 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_replay(
     )
 }
 
-fn cmd_chiodos_pheromone_relay_alert_assurance_retention_plan(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_retention_plan(
     bundle_root: &Path,
     retention_profile: &Path,
     now_unix_ms: u64,
@@ -240,7 +242,7 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_retention_plan(
     )
 }
 
-fn cmd_chiodos_pheromone_relay_alert_assurance_recovery_drill(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_recovery_drill(
     bundle_dir: &Path,
     trusted_exporters: &Path,
     case_id: &str,
@@ -273,7 +275,7 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_recovery_drill(
     )
 }
 
-fn cmd_chiodos_pheromone_relay_alert_assurance_archive_plan(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_archive_plan(
     bundle_root: &Path,
     trusted_exporters: &Path,
     archive_profile: &Path,
@@ -315,7 +317,7 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_archive_plan(
     )
 }
 
-fn cmd_chiodos_pheromone_relay_alert_assurance_closeout_review(
+pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_closeout_review(
     bundle_root: &Path,
     trusted_exporters: &Path,
     closeout_profile: &Path,
@@ -359,7 +361,7 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_closeout_review(
 
 
 
-fn write_relay_alert_assurance_bundle(
+pub(crate) fn write_relay_alert_assurance_bundle(
     out_dir: &Path,
     bundle: &chio_pheromone_relay::RelayAlertAssuranceExportBundle,
 ) -> Result<(), CliError> {
@@ -394,7 +396,7 @@ fn write_relay_alert_assurance_bundle(
     Ok(())
 }
 
-fn read_relay_alert_assurance_bundle(
+pub(crate) fn read_relay_alert_assurance_bundle(
     bundle_dir: &Path,
 ) -> Result<chio_pheromone_relay::RelayAlertAssuranceExportBundle, CliError> {
     let manifest: chio_pheromone_relay::RelayAlertAssuranceExportManifest = read_json_file(
@@ -426,7 +428,7 @@ fn read_relay_alert_assurance_bundle(
     })
 }
 
-fn read_relay_alert_assurance_bundle_root(
+pub(crate) fn read_relay_alert_assurance_bundle_root(
     bundle_root: &Path,
 ) -> Result<Vec<chio_pheromone_relay::RelayAlertAssuranceExportBundle>, CliError> {
     if bundle_root.join("manifest.json").is_file() {
@@ -465,7 +467,7 @@ fn read_relay_alert_assurance_bundle_root(
     Ok(bundles)
 }
 
-fn read_relay_alert_assurance_archive_candidates(
+pub(crate) fn read_relay_alert_assurance_archive_candidates(
     bundle_root: &Path,
 ) -> Result<Vec<chio_pheromone_relay::RelayAlertAssuranceArchiveBundleCandidate>, CliError> {
     if bundle_root.join("manifest.json").is_file() {
@@ -506,7 +508,7 @@ fn read_relay_alert_assurance_archive_candidates(
     Ok(candidates)
 }
 
-fn read_relay_alert_assurance_archive_candidate(
+pub(crate) fn read_relay_alert_assurance_archive_candidate(
     bundle_dir: &Path,
 ) -> chio_pheromone_relay::RelayAlertAssuranceArchiveBundleCandidate {
     let bundle_path = relay_alert_assurance_bundle_label(bundle_dir);
@@ -526,7 +528,7 @@ fn read_relay_alert_assurance_archive_candidate(
     }
 }
 
-fn relay_alert_assurance_bundle_label(bundle_dir: &Path) -> String {
+pub(crate) fn relay_alert_assurance_bundle_label(bundle_dir: &Path) -> String {
     bundle_dir
         .file_name()
         .and_then(|name| name.to_str())
@@ -535,7 +537,7 @@ fn relay_alert_assurance_bundle_label(bundle_dir: &Path) -> String {
         .to_string()
 }
 
-fn ensure_clean_output_dir(out_dir: &Path) -> Result<(), CliError> {
+pub(crate) fn ensure_clean_output_dir(out_dir: &Path) -> Result<(), CliError> {
     if out_dir.exists() {
         let mut entries = fs::read_dir(out_dir).map_err(|error| {
             CliError::cli_io_error(format!(
@@ -566,7 +568,7 @@ fn ensure_clean_output_dir(out_dir: &Path) -> Result<(), CliError> {
     Ok(())
 }
 
-fn safe_bundle_path(root: &Path, relative: &str) -> Result<PathBuf, CliError> {
+pub(crate) fn safe_bundle_path(root: &Path, relative: &str) -> Result<PathBuf, CliError> {
     if relative.trim() != relative
         || relative.is_empty()
         || relative.contains('\\')
