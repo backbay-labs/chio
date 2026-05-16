@@ -13,7 +13,7 @@ pub(crate) struct RuntimeLoopbackBuyerClosure {
     pub(crate) lineage_statement_sha256: String,
     pub(crate) lineage_bundle: chio_chiodos_runtime::ReceiptLineageBundle,
     pub(crate) bilateral_invocation: chio_chiodos_runtime::BilateralInvocation,
-    pub(crate) bilateral_invocation_sha256: String,
+    pub(crate) bilateral_invocation_binding_sha256: String,
     pub(crate) bilateral_dsse: chio_federation::DsseEnvelope,
     pub(crate) bilateral_dsse_sha256: String,
 }
@@ -97,21 +97,21 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
             )
         })?;
     bilateral_invocation.action_class_id = action_class_id.clone();
-    let bilateral_invocation_sha256 = chio_chiodos_runtime::bilateral_invocation_binding_sha256(
-        &bilateral_invocation,
-    )
-    .map_err(|error| {
-        RuntimeLoopbackError::message(format!(
-            "Chiodos runtime buyer closure bilateral invocation hash: {error}"
-        ))
-    })?;
+    let bilateral_invocation_binding_sha256 =
+        chio_chiodos_runtime::bilateral_invocation_binding_sha256(&bilateral_invocation).map_err(
+            |error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chiodos runtime buyer closure bilateral invocation binding hash: {error}"
+                ))
+            },
+        )?;
     let lineage_statement = chio_chiodos_runtime::ReceiptLineageStatement {
         schema: chio_chiodos_runtime::CHIODOS_RECEIPT_LINEAGE_STATEMENT_SCHEMA.to_string(),
         statement_id: format!("lineage:runtime-loopback:closure:{step_index}"),
         parent_receipt_sha256: local_receipt_sha256.clone(),
         child_receipt_sha256: tool_receipt_sha256.clone(),
         continuation_sha256: treaty_context.continuation_sha256.clone(),
-        bilateral_invocation_sha256: bilateral_invocation_sha256.clone(),
+        bilateral_invocation_sha256: bilateral_invocation_binding_sha256.clone(),
         evidence_class: "verified".to_string(),
         source_kernel_id: treaty_context.continuation.source_kernel_id.clone(),
         target_kernel_id: treaty_context.continuation.target_kernel_id.clone(),
@@ -121,6 +121,19 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
         "Chiodos runtime buyer closure lineage statement hash",
     )?;
     bilateral_invocation.lineage_statement_sha256 = lineage_statement_sha256.clone();
+    let rebound_bilateral_invocation_sha256 =
+        chio_chiodos_runtime::bilateral_invocation_binding_sha256(&bilateral_invocation).map_err(
+            |error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chiodos runtime buyer closure rebound bilateral invocation binding hash: {error}"
+                ))
+            },
+        )?;
+    if rebound_bilateral_invocation_sha256 != bilateral_invocation_binding_sha256 {
+        return Err(RuntimeLoopbackError::message(format!(
+            "Chiodos runtime buyer closure bilateral invocation binding changed after lineage back-fill: expected {bilateral_invocation_binding_sha256}, got {rebound_bilateral_invocation_sha256}"
+        )));
+    }
     let lineage_bundle = chio_chiodos_runtime::ReceiptLineageBundle {
         schema: chio_chiodos_runtime::CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
         bundle_id: format!("{}:closure", treaty_context.lineage_bundle_id),
@@ -152,7 +165,7 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
                 },
                 chio_chiodos_runtime::CrossBoundaryEvidenceRef {
                     evidence_class: "bilateral_invocation".to_string(),
-                    artifact_sha256: bilateral_invocation_sha256.clone(),
+                    artifact_sha256: bilateral_invocation_binding_sha256.clone(),
                     verified: true,
                 },
             ],
@@ -327,7 +340,7 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
             lineage_statement_sha256,
             lineage_bundle,
             bilateral_invocation,
-            bilateral_invocation_sha256,
+            bilateral_invocation_binding_sha256,
             bilateral_dsse,
             bilateral_dsse_sha256,
         },

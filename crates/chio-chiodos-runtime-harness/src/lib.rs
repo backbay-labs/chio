@@ -332,6 +332,11 @@ pub fn run_runtime_loopback_scenario(
             &mut evidence_manifest_entries,
             &mut evidence_paths,
         )?;
+        if verifier_report_artifact_sha256.is_empty() {
+            return Err(RuntimeLoopbackError::message(
+                "Chiodos runtime verifier report artifact hash was empty".to_string(),
+            ));
+        }
         write_runtime_json_artifact(
             out_dir,
             "workflow_receipt",
@@ -342,10 +347,16 @@ pub fn run_runtime_loopback_scenario(
             &mut evidence_paths,
         )?;
 
-        verifier_report_sha256 = Some(canonical_sha256_json(
+        let verifier_report_canonical_sha256 = canonical_sha256_json(
             &verifier_report,
             "Chiodos runtime verifier report canonical hash",
-        )?);
+        )?;
+        if verifier_report_canonical_sha256.is_empty() {
+            return Err(RuntimeLoopbackError::message(
+                "Chiodos runtime verifier report canonical hash was empty".to_string(),
+            ));
+        }
+        verifier_report_sha256 = Some(verifier_report_canonical_sha256);
         workflow_receipt_sha256 = Some(canonical_sha256_json(
             &package.workflow_receipt,
             "Chiodos runtime workflow receipt canonical hash",
@@ -358,9 +369,7 @@ pub fn run_runtime_loopback_scenario(
                 ))
             })?,
         );
-        if verifier_report_sha256.as_deref() != Some(verifier_report_artifact_sha256.as_str()) {
-            proof_checks.push("runtime_verifier_report.canonical_hash_recorded".to_string());
-        }
+        proof_checks.push("runtime_verifier_report.canonical_hash_recorded".to_string());
 
         for (index, step) in package.workflow_receipt.steps.iter().enumerate() {
             let tool_receipt_id = step.tool_receipt_id.as_ref().ok_or_else(|| {
@@ -598,7 +607,7 @@ pub fn run_runtime_loopback_scenario(
                 cross_boundary_admission_report_sha256: closure.admission_report_sha256.clone(),
                 continuation_sha256: closure.bilateral_invocation.continuation_sha256.clone(),
                 receipt_lineage_statement_sha256: closure.lineage_statement_sha256.clone(),
-                bilateral_invocation_sha256: closure.bilateral_invocation_sha256.clone(),
+                bilateral_invocation_sha256: closure.bilateral_invocation_binding_sha256.clone(),
                 bilateral_dsse_sha256: closure.bilateral_dsse_sha256.clone(),
                 workflow_receipt_sha256: workflow_sha256,
                 proof_package_sha256: proof_package_canonical_sha256.clone(),
