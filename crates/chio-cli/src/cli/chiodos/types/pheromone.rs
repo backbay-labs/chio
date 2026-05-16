@@ -1,4 +1,3 @@
-use super::*;
 
 #[path = "pheromone/alerts.rs"]
 mod alerts;
@@ -13,9 +12,28 @@ mod relay;
 #[path = "pheromone/root.rs"]
 mod root;
 
-pub(crate) use self::alerts::*;
-pub(crate) use self::assurance::*;
-pub(crate) use self::delivery::*;
-pub(crate) use self::directory::*;
-pub(crate) use self::relay::*;
-pub(crate) use self::root::*;
+pub(crate) use self::alerts::{
+    ChiodosPheromoneRelayAlertCommands,
+};
+pub(crate) use self::assurance::{
+    ChiodosPheromoneRelayAlertAssuranceCommands,
+    ChiodosPheromoneRelayAlertAssuranceRetentionCommands,
+    ChiodosPheromoneRelayAlertAssuranceArchiveCommands,
+    ChiodosPheromoneRelayAlertAssuranceCloseoutCommands,
+};
+pub(crate) use self::delivery::{
+    ChiodosPheromoneRelayAlertDeliveryCommands,
+};
+pub(crate) use self::directory::{
+    ChiodosPheromoneRelayDirectoryCommands,
+    ChiodosPheromoneRelaySupervisorCommands,
+};
+pub(crate) use self::relay::{
+    ChiodosPheromoneRelayCommands,
+    RelayProfileArg,
+};
+#[cfg(test)]
+pub(crate) use self::relay::RelayMetricsFormatArg;
+pub(crate) use self::root::{
+    ChiodosPheromoneCommands,
+};

@@ -1,4 +1,8 @@
-use super::*;
+use crate::{PeerDirectoryDocument, PheromoneRelayError, RelayProfile, RelayProfileLimits};
+use chio_core_types::canonical::canonical_json_bytes;
+use chio_core_types::crypto::sha256_hex;
+use serde::Serialize;
+use url::Url;
 
 pub(crate) fn validate_endpoint(endpoint: &str) -> Result<(), PheromoneRelayError> {
     let url = Url::parse(endpoint)

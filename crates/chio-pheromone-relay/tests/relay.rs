@@ -3,8 +3,6 @@
 #[path = "relay/common.rs"]
 mod common;
 
-use common::*;
-
 #[path = "relay/alerts.rs"]
 mod alerts;
 #[path = "relay/archive.rs"]

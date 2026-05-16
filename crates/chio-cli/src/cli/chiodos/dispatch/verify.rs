@@ -1,4 +1,7 @@
-use super::*;
+use crate::CliError;
+use std::fs;
+use std::path::Path;
+
 
 pub(crate) fn cmd_chiodos_verify(
     package: &Path,

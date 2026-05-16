@@ -1,0 +1,128 @@
+use std::fs;
+use std::path::Path;
+
+use crate::RuntimeLoopbackError;
+
+pub(crate) fn write_runtime_json_artifact<T: serde::Serialize>(
+    out_dir: &Path,
+    role: &str,
+    relative_path: &str,
+    value: &T,
+    label: &str,
+    entries: &mut Vec<chio_chiodos_runtime::RuntimeEvidenceManifestEntry>,
+    evidence_paths: &mut Vec<String>,
+) -> Result<String, RuntimeLoopbackError> {
+    let json = serde_json::to_string_pretty(value)
+        .map_err(|error| RuntimeLoopbackError::message(format!("{label}: {error}")))?;
+    write_runtime_json_artifact_string(out_dir, role, relative_path, &json, entries, evidence_paths)
+}
+
+pub(crate) fn write_runtime_json_artifact_string(
+    out_dir: &Path,
+    role: &str,
+    relative_path: &str,
+    json: &str,
+    entries: &mut Vec<chio_chiodos_runtime::RuntimeEvidenceManifestEntry>,
+    evidence_paths: &mut Vec<String>,
+) -> Result<String, RuntimeLoopbackError> {
+    validate_runtime_relative_path(relative_path)?;
+    let json_with_newline = format!("{json}\n");
+    let sha256 = chio_core::sha256_hex(json_with_newline.as_bytes());
+    let byte_count = u64::try_from(json_with_newline.len()).map_err(|error| {
+        RuntimeLoopbackError::message(format!("Chiodos runtime artifact byte count: {error}"))
+    })?;
+    write_json_string(&out_dir.join(relative_path), &json_with_newline)?;
+    entries.push(chio_chiodos_runtime::RuntimeEvidenceManifestEntry {
+        role: role.to_string(),
+        path: relative_path.to_string(),
+        sha256: sha256.clone(),
+        byte_count,
+    });
+    if !evidence_paths.iter().any(|path| path == relative_path) {
+        evidence_paths.push(relative_path.to_string());
+    }
+    Ok(sha256)
+}
+
+fn validate_runtime_relative_path(relative_path: &str) -> Result<(), RuntimeLoopbackError> {
+    if relative_path.trim() != relative_path
+        || relative_path.is_empty()
+        || relative_path.starts_with('/')
+        || relative_path.contains('\\')
+        || relative_path.contains(':')
+        || relative_path.contains("//")
+        || relative_path
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err(RuntimeLoopbackError::message(format!(
+            "Chiodos runtime artifact path {relative_path:?} is not safe relative evidence"
+        )));
+    }
+    Ok(())
+}
+
+pub(crate) fn canonical_sha256_json<T: serde::Serialize>(
+    value: &T,
+    label: &str,
+) -> Result<String, RuntimeLoopbackError> {
+    let bytes = chio_core_types::canonical::canonical_json_bytes(value)
+        .map_err(|error| RuntimeLoopbackError::message(format!("{label}: {error}")))?;
+    Ok(chio_core::sha256_hex(&bytes))
+}
+
+pub(crate) fn read_utf8_json_file(
+    path: &Path,
+    label: &str,
+) -> Result<String, RuntimeLoopbackError> {
+    let bytes = fs::read(path).map_err(|error| {
+        RuntimeLoopbackError::message(format!(
+            "failed to read {label} {}: {error}",
+            path.display()
+        ))
+    })?;
+    String::from_utf8(bytes).map_err(|error| {
+        RuntimeLoopbackError::message(format!(
+            "{label} {} is not UTF-8 JSON: {error}",
+            path.display()
+        ))
+    })
+}
+
+pub(crate) fn write_json_string(path: &Path, json: &str) -> Result<(), RuntimeLoopbackError> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|error| {
+                RuntimeLoopbackError::message(format!(
+                    "failed to create Chiodos output directory {}: {error}",
+                    parent.display()
+                ))
+            })?;
+        }
+    }
+    fs::write(path, json).map_err(|error| {
+        RuntimeLoopbackError::message(format!(
+            "failed to write Chiodos JSON {}: {error}",
+            path.display()
+        ))
+    })
+}
+
+pub(crate) fn unix_now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| {
+            let millis = duration.as_millis();
+            u64::try_from(millis).unwrap_or(u64::MAX)
+        })
+        .unwrap_or(0)
+}
+
+pub fn runtime_loopback_capability_window(now_unix_ms: u64) -> (u64, u64) {
+    let scenario_now = now_unix_ms / 1000;
+    let wall_now = unix_now_ms() / 1000;
+    (
+        scenario_now.min(wall_now).saturating_sub(60),
+        scenario_now.max(wall_now).saturating_add(157_680_000),
+    )
+}

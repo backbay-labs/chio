@@ -1,4 +1,15 @@
-use super::*;
+use chio_core::crypto::Keypair;
+use crate::CliError;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use super::{
+    read_utf8_json_file,
+    unix_now_ms,
+    write_json_string,
+    write_pretty_json,
+};
+
 
 pub(crate) fn cmd_chiodos_runtime_sign_trust_input(
     body: &Path,
@@ -1125,7 +1136,10 @@ pub(crate) fn canonical_sha256_json<T: serde::Serialize>(value: &T, label: &str)
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod chiodos_orchestration_cli_tests {
-    use super::*;
+    use super::{
+        canonical_sha256_json, cmd_chiodos_runtime_orchestrate_drift,
+        cmd_chiodos_runtime_orchestrate_resume, cmd_chiodos_runtime_orchestrate_status,
+    };
     use serde::de::DeserializeOwned;
     use std::error::Error;
     use std::fs;
