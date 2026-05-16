@@ -67,6 +67,16 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
             "Chiodos runtime buyer closure step is missing an output hash".to_string(),
         )
     })?;
+    let action_class_id = treaty_context
+        .ladder_intersection
+        .action_classes
+        .first()
+        .map(|action| action.action_class_id.clone())
+        .ok_or_else(|| {
+            RuntimeLoopbackError::message(
+                "Chiodos runtime buyer closure treaty intersection has no action class".to_string(),
+            )
+        })?;
     let mut bilateral_invocation = chio_chiodos_runtime::BilateralInvocation {
         schema: chio_chiodos_runtime::CHIODOS_BILATERAL_INVOCATION_SCHEMA.to_string(),
         invocation_id: format!("bilateral:runtime-loopback:closure:{step_index}"),
@@ -74,7 +84,7 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
         ladder_intersection_sha256: treaty_context.ladder_intersection_sha256.clone(),
         continuation_sha256: treaty_context.continuation_sha256.clone(),
         lineage_statement_sha256: String::new(),
-        action_class_id: format!("workflow.cross_kernel.{}", step.request.tool_name),
+        action_class_id: action_class_id.clone(),
         consistency_model: "totally_ordered".to_string(),
         capability_id: step.request.capability_id.clone(),
         request_sha256: receipt.action.parameter_hash.clone(),
@@ -86,17 +96,6 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
             treaty_context.continuation.target_kernel_id.clone(),
         ],
     };
-    let action_class_id = treaty_context
-        .ladder_intersection
-        .action_classes
-        .first()
-        .map(|action| action.action_class_id.clone())
-        .ok_or_else(|| {
-            RuntimeLoopbackError::message(
-                "Chiodos runtime buyer closure treaty intersection has no action class".to_string(),
-            )
-        })?;
-    bilateral_invocation.action_class_id = action_class_id.clone();
     let bilateral_invocation_binding_sha256 =
         chio_chiodos_runtime::bilateral_invocation_binding_sha256(&bilateral_invocation).map_err(
             |error| {

@@ -150,7 +150,10 @@ pub fn run_runtime_loopback_scenario(
             &mut evidence_manifest_entries,
             &mut evidence_paths,
         )?;
-        let admission_hash = chio_core::sha256_hex(admission_json.as_bytes());
+        let admission_hash = canonical_sha256_json(
+            &admission_report,
+            "Chiodos runtime admission report canonical hash",
+        )?;
         if admission_artifact_hash.is_empty() {
             return Err(RuntimeLoopbackError::message(
                 "Chiodos runtime admission artifact hash was empty".to_string(),
