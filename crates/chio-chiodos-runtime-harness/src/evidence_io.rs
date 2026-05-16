@@ -118,11 +118,14 @@ pub(crate) fn unix_now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// Derive second-denominated capability bounds from a millisecond scenario clock.
 pub fn runtime_loopback_capability_window(now_unix_ms: u64) -> (u64, u64) {
-    let scenario_now = now_unix_ms / 1000;
-    let wall_now = unix_now_ms() / 1000;
+    let scenario_now_secs = now_unix_ms / 1000;
+    let wall_now_secs = unix_now_ms() / 1000;
     (
-        scenario_now.min(wall_now).saturating_sub(60),
-        scenario_now.max(wall_now).saturating_add(157_680_000),
+        scenario_now_secs.min(wall_now_secs).saturating_sub(60),
+        scenario_now_secs
+            .max(wall_now_secs)
+            .saturating_add(157_680_000),
     )
 }

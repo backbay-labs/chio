@@ -92,7 +92,7 @@
   "workflowIntersections": [
     {
       "intersectionId": "workflow-intersection:buyer-refund:001",
-      "sha256": "f293aba39396f914bffc825257bcc3eb583dc997a1409a134d98caa6b8a5d928"
+      "sha256": "288d7491c773d67b09db26e0ead984521aedb1df932463505d66013146f97aae"
     }
   ],
   "leaseAuthorities": [
