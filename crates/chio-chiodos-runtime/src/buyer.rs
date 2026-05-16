@@ -1,4 +1,25 @@
+use crate::treaty::{
+    validate_bilateral_invocation, validate_cross_kernel_continuation,
+    validate_receipt_lineage_bundle, validate_receipt_lineage_statement,
+};
 use crate::*;
+
+const BUYER_REVIEW_REQUIRED_ROLES: &[&str] = &[
+    "buyer_attestation_packet",
+    "receipt_lineage_statement",
+    "receipt_lineage_bundle",
+    "cross_kernel_continuation",
+    "cross_boundary_admission_report",
+    "bilateral_invocation",
+    "bilateral_dsse_envelope",
+    "workflow_receipt",
+    "proof_package",
+    "verifier_report",
+    "proof_regeneration_report",
+    "runtime_run_report",
+    "runtime_evidence_manifest",
+    "proof_regeneration_input",
+];
 
 pub fn verify_buyer_attestation_packet(
     packet: &BuyerAttestationPacket,

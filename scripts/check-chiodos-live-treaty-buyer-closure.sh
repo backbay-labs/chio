@@ -47,6 +47,10 @@ run_runtime_admission_test() {
   cargo test -p chio-chiodos-runtime "$1" --test runtime_admission
 }
 
+run_runtime_treaty_test() {
+  cargo test -p chio-chiodos-runtime "$1" --test runtime_treaty
+}
+
 run_runtime_negative_matrix() {
   run_runtime_admission_test kernel_hook_denies_cross_boundary_request_when_treaty_store_evidence_missing
   run_runtime_admission_test treaty_runtime_hook_denies_missing_lineage_evidence_ref
@@ -56,7 +60,7 @@ run_runtime_negative_matrix() {
   run_runtime_admission_test treaty_runtime_hook_denies_replayed_continuation
   run_runtime_admission_test treaty_runtime_hook_denies_request_smuggled_trust_root
   run_runtime_admission_test treaty_runtime_hook_denies_request_smuggled_dynamic_trust
-  run_runtime_admission_test treaty_cross_boundary_admission_rejects_unverified_or_forged_intersection
+  run_runtime_treaty_test treaty_cross_boundary_admission_rejects_unverified_or_forged_intersection
 }
 
 run_runtime() {
