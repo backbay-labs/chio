@@ -55,12 +55,16 @@ run_runtime_buyer_review_test() {
   cargo test -p chio-chiodos-runtime "$1" --test runtime_buyer_review
 }
 
+run_runtime_kernel_hook_test() {
+  cargo test -p chio-chiodos-runtime "$1" --test runtime_kernel_hook
+}
+
 run_runtime_store_test() {
   cargo test -p chio-chiodos-runtime "$1" --test runtime_store
 }
 
 run_runtime_negative_matrix() {
-  run_runtime_admission_test kernel_hook_denies_cross_boundary_request_when_treaty_store_evidence_missing
+  run_runtime_kernel_hook_test kernel_hook_denies_cross_boundary_request_when_treaty_store_evidence_missing
   run_runtime_admission_test treaty_runtime_hook_denies_missing_lineage_evidence_ref
   run_runtime_admission_test treaty_runtime_hook_denies_missing_bilateral_invocation_evidence_ref
   run_runtime_admission_test treaty_runtime_hook_denies_unverified_lineage_bundle_before_dispatch
