@@ -35,6 +35,51 @@ impl RuntimeLoopbackError {
     }
 }
 
+struct StepAdmissionBinding {
+    admission_report_sha256: String,
+    admission_id: String,
+}
+
+fn validate_step_admission_binding_counts(
+    workflow_step_count: usize,
+    admission_hash_count: usize,
+    admission_id_count: usize,
+) -> Result<(), RuntimeLoopbackError> {
+    if workflow_step_count != admission_hash_count {
+        return Err(RuntimeLoopbackError::message(format!(
+            "Chiodos runtime proof generation workflow step count {workflow_step_count} did not match admission report hash count {admission_hash_count}"
+        )));
+    }
+    if workflow_step_count != admission_id_count {
+        return Err(RuntimeLoopbackError::message(format!(
+            "Chiodos runtime proof generation workflow step count {workflow_step_count} did not match admission id count {admission_id_count}"
+        )));
+    }
+    Ok(())
+}
+
+fn step_admission_binding(
+    index: usize,
+    admission_hashes: &[String],
+    admission_ids: &[String],
+) -> Result<StepAdmissionBinding, RuntimeLoopbackError> {
+    let admission_report_sha256 = admission_hashes.get(index).cloned().ok_or_else(|| {
+        RuntimeLoopbackError::message(format!(
+            "Chiodos runtime proof generation missing admission report hash for workflow step {index}"
+        ))
+    })?;
+    let admission_id = admission_ids.get(index).cloned().ok_or_else(|| {
+        RuntimeLoopbackError::message(format!(
+            "Chiodos runtime proof generation missing admission id for workflow step {index}"
+        ))
+    })?;
+
+    Ok(StepAdmissionBinding {
+        admission_report_sha256,
+        admission_id,
+    })
+}
+
 pub fn run_runtime_loopback_scenario(
     scenario: &Path,
     store_dir: &Path,
@@ -374,6 +419,15 @@ pub fn run_runtime_loopback_scenario(
         );
         proof_checks.push("runtime_verifier_report.canonical_hash_recorded".to_string());
 
+        let admission_ids = steps
+            .iter()
+            .map(|step| step.admission_bundle.admission_id.clone())
+            .collect::<Vec<_>>();
+        validate_step_admission_binding_counts(
+            package.workflow_receipt.steps.len(),
+            admission_hashes.len(),
+            admission_ids.len(),
+        )?;
         for (index, step) in package.workflow_receipt.steps.iter().enumerate() {
             let tool_receipt_id = step.tool_receipt_id.as_ref().ok_or_else(|| {
                 RuntimeLoopbackError::message(format!(
@@ -433,16 +487,8 @@ pub fn run_runtime_loopback_scenario(
                 &mut evidence_manifest_entries,
                 &mut evidence_paths,
             )?;
-            let admission_report_sha256 = admission_hashes
-                .get(index)
-                .or_else(|| admission_hashes.last())
-                .cloned()
-                .ok_or_else(|| {
-                    RuntimeLoopbackError::message(
-                        "Chiodos runtime proof generation missing admission report hash"
-                            .to_string(),
-                    )
-                })?;
+            let admission_binding =
+                step_admission_binding(index, &admission_hashes, &admission_ids)?;
             step_evidence.push(chio_chiodos_runtime::RuntimeStepEvidence {
                 schema: chio_chiodos_runtime::CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
                 step_index: u64::try_from(step.step_index).map_err(|error| {
@@ -450,16 +496,8 @@ pub fn run_runtime_loopback_scenario(
                         "Chiodos runtime step index conversion failed: {error}"
                     ))
                 })?,
-                admission_id: steps
-                    .get(index)
-                    .or_else(|| steps.last())
-                    .map(|runtime_step| runtime_step.admission_bundle.admission_id.clone())
-                    .ok_or_else(|| {
-                        RuntimeLoopbackError::message(
-                            "Chiodos runtime proof generation missing admission id".to_string(),
-                        )
-                    })?,
-                admission_report_sha256: admission_report_sha256.clone(),
+                admission_id: admission_binding.admission_id.clone(),
+                admission_report_sha256: admission_binding.admission_report_sha256.clone(),
                 tool_receipt_id: tool_receipt_id.clone(),
                 tool_receipt_sha256: tool_receipt_sha256.clone(),
                 output_sha256: step.output_hash.clone().ok_or_else(|| {
@@ -490,7 +528,7 @@ pub fn run_runtime_loopback_scenario(
                         "Chiodos runtime source step conversion failed: {error}"
                     ))
                 })?,
-                admission_report_sha256,
+                admission_report_sha256: admission_binding.admission_report_sha256,
                 tool_receipt_sha256,
                 bilateral_dsse_sha256,
                 workflow_step_sha256,
@@ -875,5 +913,47 @@ pub fn run_runtime_loopback_scenario(
                 .as_deref()
                 .unwrap_or("unknown_runtime_loopback_failure")
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{step_admission_binding, validate_step_admission_binding_counts};
+
+    #[test]
+    fn step_admission_binding_rejects_more_workflow_steps_than_admission_hashes() {
+        let error = match validate_step_admission_binding_counts(2, 1, 2) {
+            Ok(()) => panic!("accepted mismatched workflow/admission hash counts"),
+            Err(error) => error,
+        };
+
+        assert!(error
+            .to_string()
+            .contains("workflow step count 2 did not match admission report hash count 1"));
+    }
+
+    #[test]
+    fn step_admission_binding_rejects_more_workflow_steps_than_admission_ids() {
+        let error = match validate_step_admission_binding_counts(2, 2, 1) {
+            Ok(()) => panic!("accepted mismatched workflow/admission id counts"),
+            Err(error) => error,
+        };
+
+        assert!(error
+            .to_string()
+            .contains("workflow step count 2 did not match admission id count 1"));
+    }
+
+    #[test]
+    fn step_admission_binding_uses_exact_index_without_fallback(
+    ) -> Result<(), crate::RuntimeLoopbackError> {
+        let hashes = ["hash-a".to_string(), "hash-b".to_string()];
+        let ids = ["admission-a".to_string(), "admission-b".to_string()];
+
+        let binding = step_admission_binding(1, &hashes, &ids)?;
+
+        assert_eq!(binding.admission_report_sha256, "hash-b");
+        assert_eq!(binding.admission_id, "admission-b");
+        Ok(())
     }
 }
