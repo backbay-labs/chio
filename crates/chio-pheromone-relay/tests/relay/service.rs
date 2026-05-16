@@ -4,9 +4,9 @@ use super::common::{
     sign_relay_http_request, AcceptingReceiver, Arc, CatchupRequest, CatchupResponse,
     PeerDirectory, PheromoneRelayClient, PheromoneRelayConfig, PheromoneRelayService,
     RelayEventReport, RelayHttpSigningInput, RelayProfile, RelayTrendInput,
-    SqlitePheromoneRelayStore, NOW, PHEROMONE_CATCHUP_RELAY_PATH, PHEROMONE_CATCHUP_REQUEST_SCHEMA,
-    PHEROMONE_RELAY_OBSERVABILITY_PATH, PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA,
-    PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
+    SqlitePheromoneRelayStore, NOW, PHEROMONE_BATCH_RELAY_PATH, PHEROMONE_CATCHUP_RELAY_PATH,
+    PHEROMONE_CATCHUP_REQUEST_SCHEMA, PHEROMONE_RELAY_OBSERVABILITY_PATH,
+    PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA, PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
 };
 
 #[test]
@@ -103,6 +103,62 @@ async fn relay_observability_endpoint_requires_operator_token_when_configured() 
         accepted["directory"]["profile"].as_str(),
         Some("production")
     );
+    server.abort();
+}
+
+#[tokio::test]
+async fn relay_rejects_authenticated_batch_above_peer_frame_limit() {
+    let sender = key(1);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let receiver_directory =
+        PeerDirectory::from_document(directory(&sender, format!("http://{address}")), NOW).unwrap();
+    let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+    let service = PheromoneRelayService::new(
+        PheromoneRelayConfig {
+            local_kernel_id: "did:chio:buyer-kernel".to_string(),
+            profile: RelayProfile::Production,
+            now_unix_ms: NOW,
+            freshness_window_ms: 60_000,
+            max_body_bytes: 256_000,
+            use_system_clock: false,
+            operator_token: None,
+            report_dir: None,
+        },
+        receiver_directory,
+        Arc::new(AcceptingReceiver),
+        Arc::clone(&store),
+    );
+    let server = tokio::spawn(service.serve(listener));
+
+    let mut batch = sample_batch();
+    let frame = batch.frames[0].clone();
+    batch.frames = vec![frame; 9];
+    let request = sign_relay_http_request(RelayHttpSigningInput {
+        sender_kernel_id: "did:chio:llamaworks",
+        recipient_kernel_id: "did:chio:buyer-kernel",
+        method: "POST",
+        path: PHEROMONE_BATCH_RELAY_PATH,
+        nonce: "relay-nonce-over-peer-limit",
+        sent_at_unix_ms: NOW,
+        payload: &batch,
+        keypair: &sender,
+    })
+    .unwrap();
+    let response = reqwest::Client::new()
+        .post(format!("http://{address}{PHEROMONE_BATCH_RELAY_PATH}"))
+        .json(&request)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let report = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(report["code"].as_str(), Some("relay_profile_denied"));
+    assert!(report["detail"]
+        .as_str()
+        .unwrap()
+        .contains("submitted 9 batch frames"));
     server.abort();
 }
 

@@ -389,6 +389,8 @@ async fn handle_batch_relay(
     let batch: PheromoneGossipBatch = request
         .verify_payload(&service.directory, &context, service.store.as_ref())
         .map_err(|error| relay_http_error(&service, error))?;
+    enforce_peer_batch_frame_limit(&service.directory, &request.sender_kernel_id, &batch)
+        .map_err(|error| relay_http_error(&service, error))?;
     let report = service
         .receiver
         .receive_batch(batch.clone(), request.sender_kernel_id.clone(), now)
@@ -414,6 +416,22 @@ async fn handle_batch_relay(
         )
         .map_err(|error| relay_http_error(&service, error))?;
     Ok(Json(report))
+}
+
+fn enforce_peer_batch_frame_limit(
+    directory: &PeerDirectory,
+    sender_kernel_id: &str,
+    batch: &PheromoneGossipBatch,
+) -> Result<(), PheromoneRelayError> {
+    let peer = directory.peer(sender_kernel_id)?;
+    let frame_count = batch.frames.len();
+    if frame_count > peer.max_batch_frames {
+        return Err(PheromoneRelayError::RelayProfileDenied(format!(
+            "peer {sender_kernel_id} submitted {frame_count} batch frames, exceeding directory max {}",
+            peer.max_batch_frames
+        )));
+    }
+    Ok(())
 }
 
 async fn handle_catchup_relay(
