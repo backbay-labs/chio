@@ -10,9 +10,7 @@ use chio_core_types::{PublicKey, SignedExportEnvelope};
 use chio_kernel::{
     KernelError, RuntimeAdmissionContext as KernelRuntimeAdmissionContext,
     RuntimeAdmissionDecision as KernelRuntimeAdmissionDecision, RuntimeAdmissionHook,
-    ToolCallRequest,
 };
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 mod admission;
