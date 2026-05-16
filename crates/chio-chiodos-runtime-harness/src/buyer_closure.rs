@@ -203,28 +203,27 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
                 "Chiodos runtime buyer closure missing lease {lease_id}"
             ))
         })?;
-    let governance_receipt = workflow_step
+    let expected_governance_receipt_ids = workflow_step
         .governance_receipt_id
-        .as_ref()
+        .as_deref()
         .into_iter()
-        .chain(step.admission_bundle.governance_receipt_id.as_ref())
-        .find_map(|receipt_id| {
-            baseline_package
-                .governance_receipts
-                .iter()
-                .find(|receipt| receipt.body.receipt_id == *receipt_id)
-        })
-        .or_else(|| {
-            if baseline_package.governance_receipts.len() == 1 {
-                baseline_package.governance_receipts.first()
-            } else {
-                None
-            }
-        })
+        .chain(step.admission_bundle.governance_receipt_id.as_deref())
+        .collect::<Vec<_>>();
+    let governance_receipt_id = select_governance_receipt_id(
+        &expected_governance_receipt_ids,
+        baseline_package
+            .governance_receipts
+            .iter()
+            .map(|receipt| receipt.body.receipt_id.as_str()),
+    )?;
+    let governance_receipt = baseline_package
+        .governance_receipts
+        .iter()
+        .find(|receipt| receipt.body.receipt_id.as_str() == governance_receipt_id)
         .ok_or_else(|| {
-            RuntimeLoopbackError::message(
-                "Chiodos runtime buyer closure requires a package governance receipt".to_string(),
-            )
+            RuntimeLoopbackError::message(format!(
+                "Chiodos runtime buyer closure missing governance receipt {governance_receipt_id}"
+            ))
         })?;
     let governance_digest = canonical_sha256_json(
         governance_receipt,
@@ -344,4 +343,68 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
             bilateral_dsse_sha256,
         },
     ))
+}
+
+fn select_governance_receipt_id<'a>(
+    expected_ids: &[&'a str],
+    package_receipt_ids: impl IntoIterator<Item = &'a str>,
+) -> Result<String, RuntimeLoopbackError> {
+    let package_receipt_ids = package_receipt_ids.into_iter().collect::<Vec<_>>();
+    let expected_ids = expected_ids.to_vec();
+
+    if !expected_ids.is_empty() {
+        if let Some(expected_id) = expected_ids
+            .iter()
+            .find(|expected_id| package_receipt_ids.contains(expected_id))
+        {
+            return Ok(expected_id.to_string());
+        }
+        return Err(RuntimeLoopbackError::message(format!(
+            "Chiodos runtime buyer closure missing expected governance receipt matching {}",
+            expected_ids.join(", ")
+        )));
+    }
+
+    if package_receipt_ids.len() == 1 {
+        return Ok(package_receipt_ids[0].to_string());
+    }
+
+    Err(RuntimeLoopbackError::message(
+        "Chiodos runtime buyer closure requires a package governance receipt".to_string(),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::select_governance_receipt_id;
+
+    #[test]
+    fn governance_receipt_selection_uses_single_fallback_only_without_expected_id(
+    ) -> Result<(), crate::RuntimeLoopbackError> {
+        let selected = select_governance_receipt_id(&[], ["gov-only"])?;
+
+        assert_eq!(selected, "gov-only");
+        Ok(())
+    }
+
+    #[test]
+    fn governance_receipt_selection_rejects_missing_expected_id_even_with_single_receipt() {
+        let error = match select_governance_receipt_id(&["gov-expected"], ["gov-other"]) {
+            Ok(selected) => panic!("selected unexpected governance receipt {selected}"),
+            Err(error) => error,
+        };
+
+        assert!(error
+            .to_string()
+            .contains("missing expected governance receipt matching gov-expected"));
+    }
+
+    #[test]
+    fn governance_receipt_selection_accepts_any_matching_expected_id_without_fallback(
+    ) -> Result<(), crate::RuntimeLoopbackError> {
+        let selected = select_governance_receipt_id(&["gov-a", "gov-b"], ["gov-b"])?;
+
+        assert_eq!(selected, "gov-b");
+        Ok(())
+    }
 }
