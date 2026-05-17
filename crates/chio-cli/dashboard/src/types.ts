@@ -575,6 +575,8 @@ export interface RelayAlertAssuranceArchivePackageReport {
   localKernelId: string
   generatedAtUnixMs: number
   packageId: string
+  packageGeneration: number
+  previousPackageManifestSha256?: string | null
   packageManifestSha256: string
   sourceArchiveReportSha256: string
   sourceCloseoutReportSha256: string
@@ -583,6 +585,9 @@ export interface RelayAlertAssuranceArchivePackageReport {
   bundleCount: number
   trustedPackagerVerified: boolean
   nestedExporterVerified: boolean
+  sourceReportsMatched: boolean
+  closeoutReadyVerified: boolean
+  totalByteCountMatched: boolean
   extractable: boolean
   checks: RelayAlertCheck[]
 }
@@ -624,6 +629,30 @@ export interface RelayAlertAssuranceRetentionHandoffReport {
   packageReportSha256: string
   targetSystemAlias: string
   readyForOperatorHandoff: boolean
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceArchiveRestorePackageReview {
+  packageId: string
+  packageGeneration: number
+  packageManifestSha256: string
+  previousPackageManifestSha256?: string | null
+  accepted: boolean
+  code: string
+}
+
+export interface RelayAlertAssuranceArchiveRestoreDrillReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  packageCount: number
+  verifiedGenerationCount: number
+  latestPackageGeneration: number
+  quarantineCount: number
+  blockedCount: number
+  packages: RelayAlertAssuranceArchiveRestorePackageReview[]
   checks: RelayAlertCheck[]
 }
 

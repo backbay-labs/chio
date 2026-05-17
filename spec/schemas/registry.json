@@ -596,6 +596,24 @@
       "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-archive-package-negative-fixture-corpus.schema.json"
     },
     {
+      "schema": "chio.pheromone.relay-alert-assurance-archive-restore-profile.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_archive_restore_profile",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-hardening/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-archive-restore-profile.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-archive-restore-drill-report.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_archive_restore_drill_report",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-hardening/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-archive-restore-drill-report.schema.json"
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-assurance-archive-restore-negative-fixture-corpus.v1",
+      "artifactKind": "chiodos_pheromone_relay_alert_assurance_archive_restore_negative_fixture_corpus",
+      "introducedBy": "chiodos-relay-alert-assurance-archive-hardening/v1",
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-archive-restore-negative-fixture-corpus.schema.json"
+    },
+    {
       "schema": "chio.pheromone.catchup-request.v1",
       "artifactKind": "chiodos_pheromone_catchup_request",
       "introducedBy": "chiodos-live-pheromone-relay/v1",

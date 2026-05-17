@@ -2846,6 +2846,8 @@ fn main() {
                                         signing_key,
                                         package_id,
                                         packager_key_id,
+                                        package_generation,
+                                        previous_package_report,
                                         now_unix_ms,
                                         out,
                                         report,
@@ -2857,6 +2859,8 @@ fn main() {
                                         &signing_key,
                                         &package_id,
                                         &packager_key_id,
+                                        package_generation,
+                                        previous_package_report.as_deref(),
                                         now_unix_ms,
                                         &out,
                                         &report,
@@ -2909,6 +2913,27 @@ fn main() {
                                     } => cmd_chiodos_pheromone_relay_alert_assurance_physical_drill_review(
                                         &evidence,
                                         &package_report,
+                                        now_unix_ms,
+                                        &report,
+                                    ),
+                                },
+                                ChiodosPheromoneRelayAlertAssuranceArchiveCommands::RestoreDrill {
+                                    command,
+                                } => match command {
+                                    ChiodosPheromoneRelayAlertAssuranceArchiveRestoreDrillCommands::Review {
+                                        package_dir,
+                                        source_report_dir,
+                                        trusted_packagers,
+                                        trusted_exporters,
+                                        restore_profile,
+                                        now_unix_ms,
+                                        report,
+                                    } => cmd_chiodos_pheromone_relay_alert_assurance_archive_restore_drill_review(
+                                        &package_dir,
+                                        &source_report_dir,
+                                        &trusted_packagers,
+                                        &trusted_exporters,
+                                        &restore_profile,
                                         now_unix_ms,
                                         &report,
                                     ),
@@ -4704,6 +4729,8 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_archive_package_create(
     signing_key: &Path,
     package_id: &str,
     packager_key_id: &str,
+    package_generation: u64,
+    previous_package_report: Option<&Path>,
     now_unix_ms: u64,
     out: &Path,
     report: &Path,
@@ -4721,12 +4748,24 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_archive_package_create(
             closeout_report,
             "Chiodos relay alert assurance closeout report",
         )?;
+    let previous_package_report: Option<
+        chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport,
+    > = previous_package_report
+        .map(|path| {
+            read_json_file(
+                path,
+                "Chiodos relay alert assurance previous archive package report",
+            )
+        })
+        .transpose()?;
     let (packager_id, signing_key) = load_relay_signing_key(signing_key)?;
     let package = chio_pheromone_relay::sign_relay_alert_assurance_archive_package(
         chio_pheromone_relay::RelayAlertAssuranceArchivePackageBuildInput {
             package_id,
             packager_id: &packager_id,
             packager_key_id,
+            package_generation,
+            previous_package_report: previous_package_report.as_ref(),
             signing_key: &signing_key,
             bundles: &bundles,
             trusted_exporters: &trusted_exporters,
@@ -4875,6 +4914,63 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_physical_drill_review(
     )
 }
 
+fn cmd_chiodos_pheromone_relay_alert_assurance_archive_restore_drill_review(
+    package_dir: &Path,
+    source_report_dir: &Path,
+    trusted_packagers: &Path,
+    trusted_exporters: &Path,
+    restore_profile: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    let package_reports = read_archive_restore_package_reports(
+        package_dir,
+        source_report_dir,
+        trusted_packagers,
+        trusted_exporters,
+        now_unix_ms,
+    )?;
+    let physical_drill_reports: Vec<
+        chio_pheromone_relay::RelayAlertAssurancePhysicalArchiveDrillReport,
+    > = read_relay_report_documents(
+        source_report_dir,
+        chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_PHYSICAL_ARCHIVE_DRILL_REPORT_SCHEMA,
+        "Chiodos relay alert assurance physical archive drill report",
+    )?;
+    let retention_handoff_reports: Vec<
+        chio_pheromone_relay::RelayAlertAssuranceRetentionHandoffReport,
+    > = read_relay_report_documents(
+        source_report_dir,
+        chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_REPORT_SCHEMA,
+        "Chiodos relay alert assurance retention handoff report",
+    )?;
+    let restore_profile: chio_pheromone_relay::RelayAlertAssuranceArchiveRestoreProfileDocument =
+        read_json_file(
+            restore_profile,
+            "Chiodos relay alert assurance archive restore profile",
+        )?;
+    let restore_report =
+        chio_pheromone_relay::generate_relay_alert_assurance_archive_restore_drill_report(
+            chio_pheromone_relay::RelayAlertAssuranceArchiveRestoreDrillInput {
+                package_reports: &package_reports,
+                physical_drill_reports: &physical_drill_reports,
+                retention_handoff_reports: &retention_handoff_reports,
+                restore_profile: &restore_profile,
+                now_unix_ms,
+            },
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos relay alert assurance archive restore drill: {error}"
+            ))
+        })?;
+    write_pretty_json(
+        report,
+        &restore_report,
+        "Chiodos relay alert assurance archive restore drill report",
+    )
+}
+
 fn cmd_chiodos_pheromone_relay_alert_assurance_retention_handoff_review(
     evidence: &Path,
     profile: &Path,
@@ -4916,6 +5012,276 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_retention_handoff_review(
         &handoff,
         "Chiodos relay alert assurance retention handoff report",
     )
+}
+
+fn read_archive_restore_package_reports(
+    package_dir: &Path,
+    source_report_dir: &Path,
+    trusted_packagers: &Path,
+    trusted_exporters: &Path,
+    now_unix_ms: u64,
+) -> Result<Vec<chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport>, CliError> {
+    let trusted_packagers: chio_pheromone_relay::RelayAlertAssuranceTrustedArchivePackagersDocument =
+        read_json_file(
+            trusted_packagers,
+            "Chiodos relay alert assurance trusted archive packagers",
+        )?;
+    let trusted_exporters: chio_pheromone_relay::RelayAlertAssuranceTrustedExportersDocument =
+        read_json_file(
+            trusted_exporters,
+            "Chiodos relay alert assurance trusted exporters",
+        )?;
+    let mut reports = Vec::new();
+    let mut package_paths = sorted_files(package_dir)?;
+    retain_archive_restore_package_inputs(&mut package_paths);
+    let mut source_reports = None;
+    for path in package_paths {
+        if file_name_ends_with(&path, ".tar.gz") || file_name_ends_with(&path, ".tgz") {
+            let package = read_relay_alert_assurance_archive_package(&path)?;
+            if source_reports.is_none() {
+                source_reports = Some(read_archive_restore_source_reports(source_report_dir)?);
+            }
+            let source_reports = source_reports.as_ref().ok_or_else(|| {
+                CliError::cli_other_error("Chiodos restore source reports missing".to_string())
+            })?;
+            let (archive_report, closeout_report) = source_reports.for_package(&package)?;
+            let verified_report = chio_pheromone_relay::verify_relay_alert_assurance_archive_package(
+                chio_pheromone_relay::RelayAlertAssuranceArchivePackageVerifyInput {
+                    package: &package,
+                    trusted_packagers: &trusted_packagers,
+                    trusted_exporters: &trusted_exporters,
+                    archive_report,
+                    closeout_report,
+                    now_unix_ms,
+                },
+            )
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chiodos relay alert assurance archive package restore verify: {error}"
+                ))
+            })?;
+            let report =
+                read_archive_restore_package_report_sidecar(&path, &verified_report)?
+                    .unwrap_or(verified_report);
+            reports.push(report);
+        } else {
+            let value: serde_json::Value =
+                read_json_file(&path, "Chiodos relay alert assurance restore input report")?;
+            if value.get("schema").and_then(serde_json::Value::as_str)
+                == Some(
+                    chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_REPORT_SCHEMA,
+                )
+            {
+                let report: chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport =
+                    serde_json::from_value(value).map_err(|error| {
+                        CliError::cli_json_error(format!(
+                            "Chiodos relay alert assurance archive package report: {error}"
+                        ))
+                    })?;
+                reports.push(report);
+            }
+        }
+    }
+    if reports.is_empty() {
+        return Err(CliError::cli_other_error(format!(
+            "no archive package reports or tar.gz packages found in {}",
+            package_dir.display()
+        )));
+    }
+    Ok(reports)
+}
+
+fn retain_archive_restore_package_inputs(package_paths: &mut Vec<PathBuf>) {
+    let generated_sidecars: std::collections::BTreeSet<String> = package_paths
+        .iter()
+        .filter_map(|path| archive_restore_package_sidecar_report_name(path))
+        .collect();
+    package_paths.retain(|path| {
+        if file_name_ends_with(path, ".tar.gz") || file_name_ends_with(path, ".tgz") {
+            return true;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            return false;
+        }
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| !generated_sidecars.contains(name))
+    });
+}
+
+fn archive_restore_package_sidecar_report_name(path: &Path) -> Option<String> {
+    let file_name = path.file_name()?.to_str()?;
+    let package_name = file_name
+        .strip_suffix(".tar.gz")
+        .or_else(|| file_name.strip_suffix(".tgz"))?;
+    Some(format!("{package_name}-report.json"))
+}
+
+fn read_archive_restore_package_report_sidecar(
+    package_path: &Path,
+    verified_report: &chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport,
+) -> Result<Option<chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport>, CliError> {
+    let Some(sidecar_name) = archive_restore_package_sidecar_report_name(package_path) else {
+        return Ok(None);
+    };
+    let sidecar_path = package_path.with_file_name(sidecar_name);
+    if !sidecar_path.is_file() {
+        return Ok(None);
+    }
+    let sidecar_report: chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport =
+        read_json_file(
+            &sidecar_path,
+            "Chiodos relay alert assurance archive package sidecar report",
+        )?;
+    if !archive_restore_package_sidecar_matches_verified_report(&sidecar_report, verified_report) {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos relay alert assurance archive package sidecar report {} does not match verified package",
+            sidecar_path.display()
+        )));
+    }
+    Ok(Some(sidecar_report))
+}
+
+fn archive_restore_package_sidecar_matches_verified_report(
+    sidecar_report: &chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport,
+    verified_report: &chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport,
+) -> bool {
+    let mut normalized_sidecar = sidecar_report.clone();
+    normalized_sidecar.generated_at_unix_ms = verified_report.generated_at_unix_ms;
+    normalized_sidecar == *verified_report
+}
+
+struct ArchiveRestoreSourceReports {
+    archive_reports: Vec<chio_pheromone_relay::RelayAlertAssuranceArchiveReport>,
+    closeout_reports: Vec<chio_pheromone_relay::RelayAlertAssuranceCloseoutReport>,
+}
+
+impl ArchiveRestoreSourceReports {
+    fn for_package(
+        &self,
+        package: &chio_pheromone_relay::RelayAlertAssuranceArchivePackage,
+    ) -> Result<
+        (
+            &chio_pheromone_relay::RelayAlertAssuranceArchiveReport,
+            &chio_pheromone_relay::RelayAlertAssuranceCloseoutReport,
+        ),
+        CliError,
+    > {
+        let body = &package.manifest.body;
+        let archive_report = find_report_by_canonical_hash(
+            &self.archive_reports,
+            &body.source_archive_report_sha256,
+            "Chiodos relay alert assurance archive report",
+        )?;
+        let closeout_report = find_report_by_canonical_hash(
+            &self.closeout_reports,
+            &body.source_closeout_report_sha256,
+            "Chiodos relay alert assurance closeout report",
+        )?;
+        Ok((archive_report, closeout_report))
+    }
+}
+
+fn read_archive_restore_source_reports(
+    source_report_dir: &Path,
+) -> Result<ArchiveRestoreSourceReports, CliError> {
+    let archive_reports = read_relay_report_documents(
+        source_report_dir,
+        chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_REPORT_SCHEMA,
+        "Chiodos relay alert assurance archive report",
+    )?;
+    if archive_reports.is_empty() {
+        return Err(CliError::cli_other_error(format!(
+            "no Chiodos relay alert assurance archive reports found in {}",
+            source_report_dir.display()
+        )));
+    }
+    let closeout_reports = read_relay_report_documents(
+        source_report_dir,
+        chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_CLOSEOUT_REPORT_SCHEMA,
+        "Chiodos relay alert assurance closeout report",
+    )?;
+    if closeout_reports.is_empty() {
+        return Err(CliError::cli_other_error(format!(
+            "no Chiodos relay alert assurance closeout reports found in {}",
+            source_report_dir.display()
+        )));
+    }
+    Ok(ArchiveRestoreSourceReports {
+        archive_reports,
+        closeout_reports,
+    })
+}
+
+fn find_report_by_canonical_hash<'a, T: serde::Serialize>(
+    reports: &'a [T],
+    expected_sha256: &str,
+    label: &str,
+) -> Result<&'a T, CliError> {
+    let mut matched_report = None;
+    for report in reports {
+        let report_sha256 = chio_core::crypto::sha256_hex(
+            &chio_core::canonical::canonical_json_bytes(report).map_err(|error| {
+                CliError::cli_other_error(format!("{label} canonical hash: {error}"))
+            })?,
+        );
+        if report_sha256 == expected_sha256 {
+            if matched_report.is_some() {
+                return Err(CliError::cli_other_error(format!(
+                    "multiple {label} documents match package manifest hash {expected_sha256}"
+                )));
+            }
+            matched_report = Some(report);
+        }
+    }
+    matched_report.ok_or_else(|| {
+        CliError::cli_other_error(format!(
+            "no {label} document matches package manifest hash {expected_sha256}"
+        ))
+    })
+}
+
+fn read_relay_report_documents<T: DeserializeOwned>(
+    dir: &Path,
+    schema: &str,
+    label: &str,
+) -> Result<Vec<T>, CliError> {
+    let mut reports = Vec::new();
+    for path in sorted_files(dir)? {
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        let value: serde_json::Value = read_json_file(&path, label)?;
+        if value.get("schema").and_then(serde_json::Value::as_str) == Some(schema) {
+            reports.push(serde_json::from_value(value).map_err(|error| {
+                CliError::cli_json_error(format!("{label}: {error}"))
+            })?);
+        }
+    }
+    Ok(reports)
+}
+
+fn sorted_files(dir: &Path) -> Result<Vec<PathBuf>, CliError> {
+    let mut files = Vec::new();
+    for entry in fs::read_dir(dir).map_err(|error| {
+        CliError::cli_io_error(format!("failed to read directory {}: {error}", dir.display()))
+    })? {
+        let entry = entry.map_err(|error| {
+            CliError::cli_io_error(format!("failed to read directory entry: {error}"))
+        })?;
+        let path = entry.path();
+        if path.is_file() {
+            files.push(path);
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn file_name_ends_with(path: &Path, suffix: &str) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(suffix))
 }
 
 fn cmd_chiodos_pheromone_relay_trend(
@@ -5356,7 +5722,18 @@ const ARCHIVE_PACKAGE_MAX_COMPRESSED_BYTES: u64 = 64 * 1024 * 1024;
 const ARCHIVE_PACKAGE_MAX_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
 const ARCHIVE_PACKAGE_MAX_MEMBER_BYTES: u64 = 32 * 1024 * 1024;
 const ARCHIVE_PACKAGE_MAX_MEMBER_COUNT: usize = 512;
+const ARCHIVE_PACKAGE_MAX_TAR_MEMBER_COUNT: usize = ARCHIVE_PACKAGE_MAX_MEMBER_COUNT + 1;
 const ARCHIVE_PACKAGE_MAX_DECOMPRESSION_RATIO: u64 = 200;
+
+fn archive_package_limits() -> crate::archive::SafeArchiveLimits {
+    crate::archive::SafeArchiveLimits {
+        max_compressed_bytes: ARCHIVE_PACKAGE_MAX_COMPRESSED_BYTES,
+        max_member_bytes: ARCHIVE_PACKAGE_MAX_MEMBER_BYTES,
+        max_total_bytes: ARCHIVE_PACKAGE_MAX_TOTAL_BYTES,
+        max_member_count: ARCHIVE_PACKAGE_MAX_TAR_MEMBER_COUNT,
+        max_decompression_ratio: ARCHIVE_PACKAGE_MAX_DECOMPRESSION_RATIO,
+    }
+}
 
 fn trusted_archive_packagers_from_signing_key(
     packager_id: &str,
@@ -5427,200 +5804,45 @@ fn write_relay_alert_assurance_archive_package(
     out: &Path,
     package: &chio_pheromone_relay::RelayAlertAssuranceArchivePackage,
 ) -> Result<(), CliError> {
-    if out.exists() {
-        return Err(CliError::cli_other_error(format!(
-            "Chiodos archive package output {} already exists",
-            out.display()
-        )));
-    }
-    if let Some(parent) = out.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).map_err(|error| {
-                CliError::cli_io_error(format!(
-                    "failed to create Chiodos archive package parent {}: {error}",
-                    parent.display()
-                ))
-            })?;
-        }
-    }
-    let file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(out)
-        .map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to create Chiodos archive package {}: {error}",
-                out.display()
-            ))
-        })?;
-    let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-    let mut builder = tar::Builder::new(encoder);
     let manifest_bytes =
         chio_core::canonical::canonical_json_bytes(&package.manifest).map_err(|error| {
             CliError::cli_other_error(format!(
                 "Chiodos relay alert assurance archive package manifest: {error}"
             ))
         })?;
-    append_archive_package_file(
-        &mut builder,
-        ARCHIVE_PACKAGE_MANIFEST_PATH,
-        &manifest_bytes,
-    )?;
+    let mut entries = Vec::with_capacity(package.files.len().saturating_add(1));
+    entries.push(crate::archive::SafeArchiveWriteEntry {
+        path: ARCHIVE_PACKAGE_MANIFEST_PATH,
+        bytes: &manifest_bytes,
+    });
     for file in &package.files {
-        append_archive_package_file(&mut builder, &file.path, &file.bytes)?;
+        entries.push(crate::archive::SafeArchiveWriteEntry {
+            path: &file.path,
+            bytes: &file.bytes,
+        });
     }
-    builder.finish().map_err(|error| {
-        CliError::cli_io_error(format!(
-            "failed to finish Chiodos archive package {}: {error}",
-            out.display()
-        ))
-    })?;
-    let encoder = builder.into_inner().map_err(|error| {
-        CliError::cli_io_error(format!(
-            "failed to finish Chiodos archive package encoder {}: {error}",
-            out.display()
-        ))
-    })?;
-    encoder.finish().map_err(|error| {
-        CliError::cli_io_error(format!(
-            "failed to finish Chiodos archive package gzip {}: {error}",
-            out.display()
-        ))
-    })?;
-    Ok(())
-}
-
-fn append_archive_package_file<W: Write>(
-    builder: &mut tar::Builder<W>,
-    path: &str,
-    bytes: &[u8],
-) -> Result<(), CliError> {
-    let safe_path = safe_archive_member_path(path)?;
-    let size = u64::try_from(bytes.len()).map_err(|_| {
-        CliError::cli_other_error("Chiodos archive package member size overflow".to_string())
-    })?;
-    let mut header = tar::Header::new_gnu();
-    header.set_size(size);
-    header.set_mode(0o600);
-    header.set_uid(0);
-    header.set_gid(0);
-    header.set_mtime(0);
-    header.set_cksum();
-    builder
-        .append_data(&mut header, safe_path, std::io::Cursor::new(bytes))
-        .map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to append Chiodos archive package member {path}: {error}"
-            ))
-        })
+    crate::archive::write_tar_gz_file(
+        out,
+        "Chiodos archive package",
+        &entries,
+        archive_package_limits(),
+    )
 }
 
 fn read_relay_alert_assurance_archive_package(
     package_path: &Path,
 ) -> Result<chio_pheromone_relay::RelayAlertAssuranceArchivePackage, CliError> {
-    let compressed_len = fs::metadata(package_path)
-        .map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to inspect Chiodos archive package {}: {error}",
-                package_path.display()
-            ))
-        })?
-        .len();
-    if compressed_len > ARCHIVE_PACKAGE_MAX_COMPRESSED_BYTES {
-        return Err(CliError::cli_other_error(format!(
-            "Chiodos archive package {} exceeds compressed byte limit",
-            package_path.display()
-        )));
-    }
-    let file = fs::File::open(package_path).map_err(|error| {
-        CliError::cli_io_error(format!(
-            "failed to open Chiodos archive package {}: {error}",
-            package_path.display()
-        ))
-    })?;
-    let decoder = flate2::read::GzDecoder::new(file);
-    let mut archive = tar::Archive::new(decoder);
+    let entries = crate::archive::read_tar_gz_file(
+        package_path,
+        "Chiodos archive package",
+        archive_package_limits(),
+    )?;
     let mut manifest = None;
     let mut files = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    let mut seen_casefold = std::collections::BTreeSet::new();
-    let mut total_bytes = 0_u64;
-    let entries = archive.entries().map_err(|error| {
-        CliError::cli_io_error(format!(
-            "failed to read Chiodos archive package {}: {error}",
-            package_path.display()
-        ))
-    })?;
     for entry in entries {
-        let mut entry = entry.map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to read Chiodos archive package entry {}: {error}",
-                package_path.display()
-            ))
-        })?;
-        if !entry.header().entry_type().is_file() {
-            return Err(CliError::cli_other_error(
-                "Chiodos archive package contains a non-regular member".to_string(),
-            ));
-        }
-        let entry_path = entry.path().map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to read Chiodos archive package entry path {}: {error}",
-                package_path.display()
-            ))
-        })?;
-        let entry_path = entry_path.to_str().ok_or_else(|| {
-            CliError::cli_other_error(
-                "Chiodos archive package member path is not UTF-8".to_string(),
-            )
-        })?;
-        let path = safe_archive_member_path(entry_path)?;
-        if !seen.insert(path.clone()) {
-            return Err(CliError::cli_other_error(format!(
-                "Chiodos archive package duplicate member {path}"
-            )));
-        }
-        if !seen_casefold.insert(path.to_ascii_lowercase()) {
-            return Err(CliError::cli_other_error(
-                "Chiodos archive package member has a casefold collision".to_string(),
-            ));
-        }
-        let size = entry.size();
-        if size > ARCHIVE_PACKAGE_MAX_MEMBER_BYTES {
-            return Err(CliError::cli_other_error(format!(
-                "Chiodos archive package member {path} exceeds byte limit"
-            )));
-        }
-        total_bytes = total_bytes.checked_add(size).ok_or_else(|| {
-            CliError::cli_other_error("Chiodos archive package byte count overflow".to_string())
-        })?;
-        if total_bytes > ARCHIVE_PACKAGE_MAX_TOTAL_BYTES {
-            return Err(CliError::cli_other_error(
-                "Chiodos archive package exceeds decompressed byte limit".to_string(),
-            ));
-        }
-        if files.len() >= ARCHIVE_PACKAGE_MAX_MEMBER_COUNT {
-            return Err(CliError::cli_other_error(
-                "Chiodos archive package has too many members".to_string(),
-            ));
-        }
-        let mut bytes = Vec::new();
-        entry.read_to_end(&mut bytes).map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to read Chiodos archive package member {path}: {error}"
-            ))
-        })?;
-        if u64::try_from(bytes.len()).map_err(|_| {
-            CliError::cli_other_error("Chiodos archive package member size overflow".to_string())
-        })? != size
-        {
-            return Err(CliError::cli_other_error(format!(
-                "Chiodos archive package member {path} size changed while reading"
-            )));
-        }
-        if path == ARCHIVE_PACKAGE_MANIFEST_PATH {
+        if entry.path == ARCHIVE_PACKAGE_MANIFEST_PATH {
             let parsed: chio_pheromone_relay::RelayAlertAssuranceArchivePackageManifest =
-                serde_json::from_slice(&bytes).map_err(|error| {
+                serde_json::from_slice(&entry.bytes).map_err(|error| {
                     CliError::cli_other_error(format!(
                         "Chiodos archive package manifest JSON: {error}"
                     ))
@@ -5628,17 +5850,10 @@ fn read_relay_alert_assurance_archive_package(
             manifest = Some(parsed);
         } else {
             files.push(chio_pheromone_relay::RelayAlertAssuranceArchivePackageFile {
-                path,
-                bytes,
+                path: entry.path,
+                bytes: entry.bytes,
             });
         }
-    }
-    if compressed_len > 0
-        && total_bytes / compressed_len > ARCHIVE_PACKAGE_MAX_DECOMPRESSION_RATIO
-    {
-        return Err(CliError::cli_other_error(
-            "Chiodos archive package decompression ratio exceeds limit".to_string(),
-        ));
     }
     let manifest = manifest.ok_or_else(|| {
         CliError::cli_other_error("Chiodos archive package manifest is missing".to_string())
@@ -5650,138 +5865,172 @@ fn write_verified_relay_alert_assurance_archive_package(
     out_dir: &Path,
     package: &chio_pheromone_relay::RelayAlertAssuranceArchivePackage,
 ) -> Result<u64, CliError> {
-    if out_dir.exists() {
-        return Err(CliError::cli_other_error(format!(
-            "Chiodos archive extraction output {} must not exist",
-            out_dir.display()
-        )));
-    }
-    let parent = out_dir.parent().filter(|path| !path.as_os_str().is_empty()).unwrap_or_else(|| {
-        Path::new(".")
-    });
-    fs::create_dir_all(parent).map_err(|error| {
-        CliError::cli_io_error(format!(
-            "failed to create Chiodos archive extraction parent {}: {error}",
-            parent.display()
-        ))
-    })?;
-    let staging = parent.join(format!(
-        ".chio-archive-extract-{}-{}",
-        std::process::id(),
-        unix_now_ms()
-    ));
-    if staging.exists() {
-        return Err(CliError::cli_other_error(format!(
-            "Chiodos archive extraction staging {} already exists",
-            staging.display()
-        )));
-    }
-    fs::create_dir(&staging).map_err(|error| {
-        CliError::cli_io_error(format!(
-            "failed to create Chiodos archive extraction staging {}: {error}",
-            staging.display()
-        ))
-    })?;
-    let result = write_archive_package_files_to_staging(&staging, package);
-    if let Err(error) = result {
-        let _ = fs::remove_dir_all(&staging);
-        return Err(error);
-    }
-    fs::rename(&staging, out_dir).map_err(|error| {
-        let _ = fs::remove_dir_all(&staging);
-        CliError::cli_io_error(format!(
-            "failed to promote Chiodos archive extraction {} to {}: {error}",
-            staging.display(),
-            out_dir.display()
-        ))
-    })?;
+    let entries = archive_package_entries(package)?;
+    crate::archive::write_entries_to_fresh_dir(
+        out_dir,
+        "Chiodos archive extraction",
+        &entries,
+    )?;
     u64::try_from(package.files.len()).map_err(|_| {
         CliError::cli_other_error("Chiodos archive package member count overflow".to_string())
     })
 }
 
-fn write_archive_package_files_to_staging(
-    staging: &Path,
+fn archive_package_entries(
     package: &chio_pheromone_relay::RelayAlertAssuranceArchivePackage,
-) -> Result<(), CliError> {
+) -> Result<Vec<crate::archive::SafeArchiveEntry>, CliError> {
     let manifest_bytes =
         chio_core::canonical::canonical_json_bytes(&package.manifest).map_err(|error| {
             CliError::cli_other_error(format!(
                 "Chiodos relay alert assurance archive package manifest: {error}"
             ))
         })?;
-    write_archive_package_member(staging, ARCHIVE_PACKAGE_MANIFEST_PATH, &manifest_bytes)?;
+    let mut entries = Vec::with_capacity(package.files.len().saturating_add(1));
+    entries.push(crate::archive::SafeArchiveEntry {
+        path: ARCHIVE_PACKAGE_MANIFEST_PATH.to_string(),
+        bytes: manifest_bytes,
+        mode: 0o600,
+    });
     for file in &package.files {
-        write_archive_package_member(staging, &file.path, &file.bytes)?;
+        entries.push(crate::archive::SafeArchiveEntry {
+            path: file.path.clone(),
+            bytes: file.bytes.clone(),
+            mode: 0o600,
+        });
     }
-    Ok(())
+    Ok(entries)
 }
 
-fn write_archive_package_member(root: &Path, relative: &str, bytes: &[u8]) -> Result<(), CliError> {
-    let relative = safe_archive_member_path(relative)?;
-    let path = safe_bundle_path(root, &relative)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to create Chiodos archive extraction dir {}: {error}",
-                parent.display()
-            ))
-        })?;
-    }
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)
-        .map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to create Chiodos archive extraction file {}: {error}",
-                path.display()
-            ))
-        })?;
-    file.write_all(bytes).map_err(|error| {
-        CliError::cli_io_error(format!(
-            "failed to write Chiodos archive extraction file {}: {error}",
-            path.display()
-        ))
-    })?;
-    let written = fs::read(&path).map_err(|error| {
-        CliError::cli_io_error(format!(
-            "failed to read back Chiodos archive extraction file {}: {error}",
-            path.display()
-        ))
-    })?;
-    if written != bytes {
-        return Err(CliError::cli_other_error(format!(
-            "Chiodos archive extraction file {} did not read back",
-            path.display()
-        )));
-    }
-    Ok(())
-}
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod archive_restore_input_tests {
+    use super::*;
 
-fn safe_archive_member_path(relative: &str) -> Result<String, CliError> {
-    if relative.trim() != relative
-        || relative.is_empty()
-        || relative.contains('\\')
-        || relative.contains(':')
-        || relative.contains("//")
-        || !relative.is_ascii()
-        || relative.chars().any(char::is_whitespace)
-        || relative.chars().any(char::is_control)
-        || Path::new(relative).is_absolute()
-    {
-        return Err(CliError::cli_other_error(format!(
-            "Chiodos archive package member path {relative} is not portable"
-        )));
+    #[test]
+    fn archive_restore_inputs_ignore_json_sidecars_when_tarballs_are_present() {
+        let mut paths = vec![
+            PathBuf::from("relay-archive-package.tar.gz"),
+            PathBuf::from("relay-archive-package-report.json"),
+            PathBuf::from("generation-2-package-report.json"),
+            PathBuf::from("notes.txt"),
+        ];
+
+        retain_archive_restore_package_inputs(&mut paths);
+
+        assert_eq!(
+            paths,
+            vec![
+                PathBuf::from("relay-archive-package.tar.gz"),
+                PathBuf::from("generation-2-package-report.json"),
+            ]
+        );
     }
-    for segment in relative.split('/') {
-        if segment.is_empty() || segment == "." || segment == ".." {
-            return Err(CliError::cli_other_error(format!(
-                "Chiodos archive package member path {relative} is unsafe"
-            )));
+
+    #[test]
+    fn archive_restore_inputs_accept_report_json_when_no_tarballs_are_present() {
+        let mut paths = vec![
+            PathBuf::from("relay-archive-package-report.json"),
+            PathBuf::from("notes.txt"),
+        ];
+
+        retain_archive_restore_package_inputs(&mut paths);
+
+        assert_eq!(
+            paths,
+            vec![PathBuf::from("relay-archive-package-report.json")]
+        );
+    }
+
+    #[test]
+    fn archive_restore_source_reports_match_by_canonical_hash() {
+        let reports = vec![
+            serde_json::json!({"id": "one", "schema": "test.schema.v1"}),
+            serde_json::json!({"id": "two", "schema": "test.schema.v1"}),
+        ];
+        let expected_sha256 = chio_core::crypto::sha256_hex(
+            &chio_core::canonical::canonical_json_bytes(&reports[1]).unwrap(),
+        );
+
+        let report =
+            find_report_by_canonical_hash(&reports, &expected_sha256, "test report").unwrap();
+
+        assert_eq!(report, &reports[1]);
+    }
+
+    #[test]
+    fn archive_restore_tarball_prefers_hash_stable_sidecar_report() {
+        let temp = tempfile::tempdir().unwrap();
+        let package_path = temp.path().join("relay-archive-package.tar.gz");
+        std::fs::write(&package_path, b"package bytes").unwrap();
+        let verified_report = archive_restore_package_report_for_test(20_000);
+        let sidecar_report = archive_restore_package_report_for_test(10_000);
+        let sidecar_path = temp.path().join("relay-archive-package-report.json");
+        std::fs::write(
+            &sidecar_path,
+            serde_json::to_vec(&sidecar_report).unwrap(),
+        )
+        .unwrap();
+
+        let report =
+            read_archive_restore_package_report_sidecar(&package_path, &verified_report).unwrap();
+
+        assert_eq!(report, Some(sidecar_report));
+    }
+
+    #[test]
+    fn archive_restore_tarball_rejects_mismatched_sidecar_report() {
+        let temp = tempfile::tempdir().unwrap();
+        let package_path = temp.path().join("relay-archive-package.tar.gz");
+        std::fs::write(&package_path, b"package bytes").unwrap();
+        let verified_report = archive_restore_package_report_for_test(20_000);
+        let mut sidecar_report = archive_restore_package_report_for_test(10_000);
+        sidecar_report.package_manifest_sha256 = "f".repeat(64);
+        let sidecar_path = temp.path().join("relay-archive-package-report.json");
+        std::fs::write(
+            &sidecar_path,
+            serde_json::to_vec(&sidecar_report).unwrap(),
+        )
+        .unwrap();
+
+        let err =
+            read_archive_restore_package_report_sidecar(&package_path, &verified_report)
+                .unwrap_err();
+
+        assert!(err.to_string().contains("sidecar report"));
+    }
+
+    fn archive_restore_package_report_for_test(
+        generated_at_unix_ms: u64,
+    ) -> chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport {
+        chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport {
+            schema: chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_REPORT_SCHEMA
+                .to_string(),
+            accepted: true,
+            code: "accepted".to_string(),
+            local_kernel_id: "did:chio:buyer-kernel".to_string(),
+            generated_at_unix_ms,
+            package_id: "relay-archive-package-1".to_string(),
+            package_generation: 1,
+            previous_package_manifest_sha256: None,
+            package_manifest_sha256: "1".repeat(64),
+            source_archive_report_sha256: "2".repeat(64),
+            source_closeout_report_sha256: "3".repeat(64),
+            package_member_count: 1,
+            package_total_byte_count: 128,
+            bundle_count: 1,
+            trusted_packager_verified: true,
+            nested_exporter_verified: true,
+            source_reports_matched: true,
+            closeout_ready_verified: true,
+            total_byte_count_matched: true,
+            extractable: true,
+            checks: vec![chio_pheromone_relay::RelayAlertCheck {
+                code: "accepted".to_string(),
+                accepted: true,
+                detail: "test package report".to_string(),
+            }],
         }
     }
-    Ok(relative.to_string())
 }
 
 fn cmd_chiodos_pheromone_relay_directory_inspect(

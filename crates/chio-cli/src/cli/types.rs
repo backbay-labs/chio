@@ -9,7 +9,7 @@ pub use chio_control_plane::{
 pub use chio_mcp_remote as remote_mcp;
 
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -1673,6 +1673,12 @@ enum ChiodosPheromoneRelayAlertAssuranceArchiveCommands {
         #[command(subcommand)]
         command: ChiodosPheromoneRelayAlertAssurancePhysicalDrillCommands,
     },
+
+    /// Review multi-generation archive package restore evidence.
+    RestoreDrill {
+        #[command(subcommand)]
+        command: ChiodosPheromoneRelayAlertAssuranceArchiveRestoreDrillCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1736,6 +1742,14 @@ enum ChiodosPheromoneRelayAlertAssuranceArchivePackageCommands {
         /// Archive packager key id.
         #[arg(long, default_value = "default")]
         packager_key_id: String,
+
+        /// Archive package generation.
+        #[arg(long, default_value_t = 1)]
+        package_generation: u64,
+
+        /// Previous archive package report JSON. Required when generation is greater than 1.
+        #[arg(long, value_name = "PATH")]
+        previous_package_report: Option<PathBuf>,
 
         /// Evaluation time in Unix milliseconds.
         #[arg(long)]
@@ -1834,6 +1848,40 @@ enum ChiodosPheromoneRelayAlertAssurancePhysicalDrillCommands {
         now_unix_ms: u64,
 
         /// Output path for physical archive drill report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChiodosPheromoneRelayAlertAssuranceArchiveRestoreDrillCommands {
+    /// Review local archive package generations and readback evidence.
+    Review {
+        /// Directory containing archive package report JSON files.
+        #[arg(long, value_name = "DIR")]
+        package_dir: PathBuf,
+
+        /// Directory containing physical drill and retention handoff reports.
+        #[arg(long, value_name = "DIR")]
+        source_report_dir: PathBuf,
+
+        /// Trusted archive packager profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_packagers: PathBuf,
+
+        /// Trusted exporter profile JSON.
+        #[arg(long, value_name = "PATH")]
+        trusted_exporters: PathBuf,
+
+        /// Archive restore profile JSON.
+        #[arg(long, value_name = "PATH")]
+        restore_profile: PathBuf,
+
+        /// Evaluation time in Unix milliseconds.
+        #[arg(long)]
+        now_unix_ms: u64,
+
+        /// Output path for archive restore drill report JSON.
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },

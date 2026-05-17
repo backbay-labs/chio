@@ -174,6 +174,8 @@ function archivePackageReport(overrides = {}) {
     localKernelId: 'did:chio:buyer-kernel',
     generatedAtUnixMs: 1_766_000_100_000,
     packageId: 'relay-alert-assurance-archive-package-001',
+    packageGeneration: 2,
+    previousPackageManifestSha256: '6'.repeat(64),
     packageManifestSha256: '7'.repeat(64),
     sourceArchiveReportSha256: '8'.repeat(64),
     sourceCloseoutReportSha256: '9'.repeat(64),
@@ -182,6 +184,9 @@ function archivePackageReport(overrides = {}) {
     bundleCount: 1,
     trustedPackagerVerified: true,
     nestedExporterVerified: true,
+    sourceReportsMatched: true,
+    closeoutReadyVerified: true,
+    totalByteCountMatched: true,
     extractable: true,
     checks: [],
     ...overrides,
@@ -199,6 +204,24 @@ function extractionReport(overrides = {}) {
     packageManifestSha256: '7'.repeat(64),
     plannedMemberCount: 13,
     extractedMemberCount: 13,
+    checks: [],
+    ...overrides,
+  }
+}
+
+function restoreReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-archive-restore-drill-report.v1',
+    accepted: true,
+    code: 'accepted',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    packageCount: 2,
+    verifiedGenerationCount: 2,
+    latestPackageGeneration: 2,
+    quarantineCount: 0,
+    blockedCount: 0,
+    packages: [],
     checks: [],
     ...overrides,
   }
@@ -246,6 +269,7 @@ function mockAssuranceFetch(overrides: {
   closeoutReport?: Record<string, unknown>
   archivePackageReport?: Record<string, unknown>
   extractionReport?: Record<string, unknown>
+  restoreReport?: Record<string, unknown>
   physicalArchiveReport?: Record<string, unknown>
   retentionHandoffReport?: Record<string, unknown>
 } = {}) {
@@ -285,6 +309,12 @@ function mockAssuranceFetch(overrides: {
           json: async () => extractionReport(overrides.extractionReport),
         })
       }
+      if (url.endsWith('/archive-restore-drill')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => restoreReport(overrides.restoreReport),
+        })
+      }
       if (url.endsWith('/physical-archive')) {
         return Promise.resolve({
           ok: true,
@@ -321,6 +351,8 @@ describe('RelayAlertAssuranceSummary', () => {
     expect(container.textContent).toContain('1 legal hold')
     expect(container.textContent).toContain('Archive Package')
     expect(container.textContent).toContain('extraction safe')
+    expect(container.textContent).toContain('generation 2')
+    expect(container.textContent).toContain('restore ready')
     expect(container.textContent).toContain('handoff ready')
   })
 

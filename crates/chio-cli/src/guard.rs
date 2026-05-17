@@ -15,7 +15,6 @@ use chio_wasm_guards::abi::{GuardRequest, GuardVerdict, WasmGuardAbi};
 use chio_wasm_guards::blocklist::{GuardDigestBlocklist, E_GUARD_DIGEST_BLOCKLISTED};
 use chio_wasm_guards::manifest::GuardManifest;
 use chio_wasm_guards::runtime::wasmtime_backend::WasmtimeBackend;
-use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use serde::Deserialize;
@@ -862,112 +861,181 @@ fn registry_credentials(username: Option<&str>, password: Option<&str>) -> Regis
 }
 
 pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Result<(), CliError> {
-    let file = fs::File::open(archive_path).map_err(|e| {
-        guard_io_error(format!(
-            "failed to open {}: {e}",
-            archive_path.display()
-        ))
-    })?;
-    let dec = GzDecoder::new(file);
-    let mut archive = tar::Archive::new(dec);
-
-    // Extract to a temporary directory first, then determine guard name from manifest.
-    // Use std::env::temp_dir with a unique suffix derived from the archive filename
-    // to avoid requiring tempfile as a regular dependency.
-    let archive_stem = archive_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("chio-install");
-    let tmp_path = std::env::temp_dir().join(format!(
-        "chio-install-{}-{}",
-        archive_stem,
-        std::process::id()
-    ));
-    if tmp_path.exists() {
-        fs::remove_dir_all(&tmp_path).map_err(|e| {
-            guard_io_error(format!(
-                "failed to clean existing temp directory {}: {e}",
-                tmp_path.display()
-            ))
-        })?;
-    }
-    fs::create_dir_all(&tmp_path).map_err(|e| {
-        guard_io_error(format!(
-            "failed to create temp directory {}: {e}",
-            tmp_path.display()
-        ))
-    })?;
-
-    // Collect entries into the temp directory
-    for entry_result in archive.entries().map_err(|e| {
-        guard_io_error(format!("failed to read archive entries: {e}"))
-    })? {
-        let mut entry = entry_result.map_err(|e| {
-            guard_io_error(format!("failed to read archive entry: {e}"))
-        })?;
-        entry.unpack_in(&tmp_path).map_err(|e| {
-            guard_io_error(format!("failed to extract archive entry: {e}"))
-        })?;
+    let entries = crate::archive::read_tar_gz_file(
+        archive_path,
+        "Chio guard archive",
+        crate::archive::SafeArchiveLimits {
+            max_compressed_bytes: 32 * 1024 * 1024,
+            max_member_bytes: 32 * 1024 * 1024,
+            max_total_bytes: 64 * 1024 * 1024,
+            max_member_count: 3,
+            max_decompression_ratio: 200,
+        },
+    )?;
+    if !(2..=3).contains(&entries.len()) {
+        return Err(CliError::guard_error(
+            "guard archive must contain guard-manifest.yaml, one top-level .wasm, and optional .wasm.sig"
+                .to_string(),
+        ));
     }
 
-    // Read the manifest from the temp directory to determine the guard name
-    let tmp_manifest_path = tmp_path.join("guard-manifest.yaml");
-    let manifest_content = fs::read_to_string(&tmp_manifest_path).map_err(|e| {
-        guard_io_error(format!(
-            "archive does not contain guard-manifest.yaml: {e}"
-        ))
+    let mut manifest_bytes = None;
+    let mut wasm_entry = None;
+    let mut signature_entry = None;
+    for entry in entries {
+        if entry.path == "guard-manifest.yaml" {
+            if manifest_bytes.replace(entry.bytes).is_some() {
+                return Err(CliError::guard_error(
+                    "guard archive contains duplicate manifest entries".to_string(),
+                ));
+            }
+        } else if entry.path.ends_with(".wasm") && !entry.path.contains('/') {
+            if wasm_entry.replace(entry).is_some() {
+                return Err(CliError::guard_error(
+                    "guard archive contains multiple .wasm entries".to_string(),
+                ));
+            }
+        } else if entry.path.ends_with(".wasm.sig") && !entry.path.contains('/') {
+            if signature_entry.replace(entry).is_some() {
+                return Err(CliError::guard_error(
+                    "guard archive contains multiple .wasm.sig entries".to_string(),
+                ));
+            }
+        } else {
+            return Err(CliError::guard_error(format!(
+                "guard archive member {} is not allowed",
+                entry.path
+            )));
+        }
+    }
+
+    let manifest_bytes = manifest_bytes.ok_or_else(|| {
+        CliError::guard_error("archive does not contain guard-manifest.yaml".to_string())
+    })?;
+    let wasm_entry = wasm_entry.ok_or_else(|| {
+        CliError::guard_error("archive does not contain one top-level .wasm file".to_string())
+    })?;
+    let expected_signature_path = format!("{}.sig", wasm_entry.path);
+    if let Some(signature) = &signature_entry {
+        if signature.path != expected_signature_path {
+            return Err(CliError::guard_error(format!(
+                "guard signature sidecar must be named {expected_signature_path}"
+            )));
+        }
+    }
+    let manifest_content = String::from_utf8(manifest_bytes).map_err(|error| {
+        guard_yaml_error(format!("guard manifest is not UTF-8: {error}"))
     })?;
     let manifest: GuardManifest = serde_yml::from_str(&manifest_content).map_err(|e| {
         guard_yaml_error(format!("failed to parse manifest from archive: {e}"))
     })?;
 
-    let guard_name = &manifest.name;
-    let guard_dir = target_dir.join(guard_name);
-    fs::create_dir_all(&guard_dir).map_err(|e| {
+    let guard_name =
+        crate::archive::safe_single_component(&manifest.name, "guard manifest name").map_err(
+            |error| CliError::guard_error(format!("unsafe guard manifest name: {error}")),
+        )?;
+    let wasm_filename =
+        crate::archive::safe_single_component(&wasm_entry.path, "guard wasm filename").map_err(
+            |error| CliError::guard_error(format!("unsafe guard wasm filename: {error}")),
+        )?;
+    if let Ok(metadata) = fs::symlink_metadata(target_dir) {
+        if metadata.file_type().is_symlink() {
+            return Err(CliError::guard_error(format!(
+                "refusing to install into symlinked target directory {}",
+                target_dir.display()
+            )));
+        }
+    }
+    fs::create_dir_all(target_dir).map_err(|e| {
         guard_io_error(format!(
-            "failed to create directory {}: {e}",
+            "failed to create guard target directory {}: {e}",
+            target_dir.display()
+        ))
+    })?;
+    let guard_dir = target_dir.join(&guard_name);
+    if fs::symlink_metadata(&guard_dir).is_ok() {
+        return Err(CliError::guard_error(format!(
+            "refusing to install over existing guard target {}",
+            guard_dir.display()
+        )));
+    }
+
+    let staging = target_dir.join(guard_install_staging_name(&guard_name));
+    fs::create_dir(&staging).map_err(|e| {
+        guard_io_error(format!(
+            "failed to create install staging directory {}: {e}",
+            staging.display()
+        ))
+    })?;
+    let updated_manifest_content = update_manifest_wasm_path(&manifest_content, &wasm_filename)?;
+    let result = (|| -> Result<(), CliError> {
+        write_guard_install_file(&staging.join(&wasm_filename), &wasm_entry.bytes)?;
+        if let Some(signature) = &signature_entry {
+            let signature_filename =
+                crate::archive::safe_single_component(&signature.path, "guard wasm signature filename")
+                    .map_err(|error| {
+                        CliError::guard_error(format!("unsafe guard signature filename: {error}"))
+                    })?;
+            write_guard_install_file(&staging.join(signature_filename), &signature.bytes)?;
+        }
+        write_guard_install_file(
+            &staging.join("guard-manifest.yaml"),
+            updated_manifest_content.as_bytes(),
+        )?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    fs::rename(&staging, &guard_dir).map_err(|e| {
+        let _ = fs::remove_dir_all(&staging);
+        guard_io_error(format!(
+            "failed to promote guard install staging {} to {}: {e}",
+            staging.display(),
             guard_dir.display()
         ))
     })?;
 
-    // Find the .wasm file in the temp directory (the non-manifest entry)
-    let wasm_filename = {
-        let mut found: Option<String> = None;
-        for entry in fs::read_dir(&tmp_path).map_err(|e| {
-            guard_io_error(format!("failed to list temp directory: {e}"))
-        })? {
-            let entry = entry.map_err(|e| {
-                guard_io_error(format!("failed to read directory entry: {e}"))
-            })?;
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if name_str != "guard-manifest.yaml" {
-                found = Some(name_str.into_owned());
-            }
-        }
-        found.ok_or_else(|| {
-            CliError::guard_error("archive does not contain a .wasm file".to_string())
-        })?
-    };
-
-    // Copy the .wasm file
-    let src_wasm = tmp_path.join(&wasm_filename);
-    let dst_wasm = guard_dir.join(&wasm_filename);
-    fs::copy(&src_wasm, &dst_wasm).map_err(|e| {
-        guard_io_error(format!("failed to copy wasm file: {e}"))
-    })?;
-
-    // Update the manifest's wasm_path to point to the co-located filename and write it
-    let updated_manifest_content = update_manifest_wasm_path(&manifest_content, &wasm_filename)?;
-    fs::write(guard_dir.join("guard-manifest.yaml"), updated_manifest_content).map_err(|e| {
-        guard_io_error(format!("failed to write updated manifest: {e}"))
-    })?;
-
-    // Clean up temp directory (best-effort)
-    let _ = fs::remove_dir_all(&tmp_path);
+    let installed_manifest = fs::read_to_string(guard_dir.join("guard-manifest.yaml")).map_err(
+        |e| guard_io_error(format!("failed to read installed manifest: {e}")),
+    )?;
+    if installed_manifest != updated_manifest_content {
+        return Err(CliError::guard_error(
+            "installed manifest did not read back".to_string(),
+        ));
+    }
 
     println!("installed: {guard_name} to {}/", guard_dir.display());
 
+    Ok(())
+}
+
+fn guard_install_staging_name(guard_name: &str) -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!(".{guard_name}.install-{}-{nanos}", std::process::id())
+}
+
+fn write_guard_install_file(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|e| guard_io_error(format!("failed to create {}: {e}", path.display())))?;
+    use std::io::Write as _;
+    file.write_all(bytes)
+        .map_err(|e| guard_io_error(format!("failed to write {}: {e}", path.display())))?;
+    let readback = fs::read(path)
+        .map_err(|e| guard_io_error(format!("failed to read back {}: {e}", path.display())))?;
+    if readback != bytes {
+        return Err(CliError::guard_error(format!(
+            "installed file {} did not read back",
+            path.display()
+        )));
+    }
     Ok(())
 }
 
@@ -1088,6 +1156,33 @@ mod tests {
         }
     }
 
+    fn write_test_arcguard(path: &Path, entries: &[(&str, &[u8])]) {
+        let file = fs::File::create(path).unwrap();
+        let encoder = GzEncoder::new(file, Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        for (name, bytes) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(u64::try_from(bytes.len()).unwrap());
+            header.set_mode(0o600);
+            header.set_uid(0);
+            header.set_gid(0);
+            header.set_mtime(0);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, *name, std::io::Cursor::new(*bytes))
+                .unwrap();
+        }
+        builder.finish().unwrap();
+        let encoder = builder.into_inner().unwrap();
+        encoder.finish().unwrap();
+    }
+
+    fn valid_arcguard_manifest(name: &str) -> String {
+        format!(
+            "name: {name}\nversion: \"0.1.0\"\nabi_version: \"1\"\nwasm_path: demo.wasm\nwasm_sha256: TODO\n"
+        )
+    }
+
     #[test]
     fn cmd_guard_new_creates_project_directory() {
         let dir = tempfile::tempdir().unwrap();
@@ -1135,6 +1230,131 @@ mod tests {
         assert_registry_error(&err, "urn:chio:error:guard:denied", "guard");
         let msg = err.to_string();
         assert!(msg.contains("refusing to scaffold"), "{msg}");
+    }
+
+    #[test]
+    fn guard_archive_hardening_installs_valid_top_level_manifest_and_wasm() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("demo.arcguard");
+        let manifest = valid_arcguard_manifest("demo-guard");
+        write_test_arcguard(
+            &archive,
+            &[
+                ("guard-manifest.yaml", manifest.as_bytes()),
+                ("demo.wasm", b"wasm"),
+            ],
+        );
+        let target = dir.path().join("guards");
+
+        cmd_guard_install(&archive, &target).unwrap();
+
+        assert_eq!(fs::read(target.join("demo-guard/demo.wasm")).unwrap(), b"wasm");
+        let installed_manifest =
+            fs::read_to_string(target.join("demo-guard/guard-manifest.yaml")).unwrap();
+        assert!(installed_manifest.contains("wasm_path: demo.wasm"));
+    }
+
+    #[test]
+    fn guard_archive_hardening_installs_optional_signature_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("demo.arcguard");
+        let manifest = valid_arcguard_manifest("demo-guard");
+        write_test_arcguard(
+            &archive,
+            &[
+                ("guard-manifest.yaml", manifest.as_bytes()),
+                ("demo.wasm", b"wasm"),
+                ("demo.wasm.sig", b"signature"),
+            ],
+        );
+        let target = dir.path().join("guards");
+
+        cmd_guard_install(&archive, &target).unwrap();
+
+        assert_eq!(
+            fs::read(target.join("demo-guard/demo.wasm.sig")).unwrap(),
+            b"signature"
+        );
+    }
+
+    #[test]
+    fn guard_archive_hardening_rejects_nested_wasm_member() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("bad.arcguard");
+        let manifest = valid_arcguard_manifest("demo-guard");
+        write_test_arcguard(
+            &archive,
+            &[
+                ("guard-manifest.yaml", manifest.as_bytes()),
+                ("nested/demo.wasm", b"wasm"),
+            ],
+        );
+
+        let err = must_cli_err(
+            cmd_guard_install(&archive, &dir.path().join("guards")),
+            "nested wasm arcguard",
+        );
+        assert!(err.to_string().contains("not allowed"), "{err}");
+    }
+
+    #[test]
+    fn guard_archive_hardening_rejects_extra_member() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("bad.arcguard");
+        let manifest = valid_arcguard_manifest("demo-guard");
+        write_test_arcguard(
+            &archive,
+            &[
+                ("guard-manifest.yaml", manifest.as_bytes()),
+                ("demo.wasm", b"wasm"),
+                ("extra.txt", b"extra"),
+            ],
+        );
+
+        let err = must_cli_err(
+            cmd_guard_install(&archive, &dir.path().join("guards")),
+            "extra arcguard member",
+        );
+        assert!(err.to_string().contains("not allowed"), "{err}");
+    }
+
+    #[test]
+    fn guard_archive_hardening_rejects_unsafe_manifest_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("bad.arcguard");
+        let manifest = valid_arcguard_manifest("../escape");
+        write_test_arcguard(
+            &archive,
+            &[
+                ("guard-manifest.yaml", manifest.as_bytes()),
+                ("demo.wasm", b"wasm"),
+            ],
+        );
+
+        let err = must_cli_err(
+            cmd_guard_install(&archive, &dir.path().join("guards")),
+            "unsafe manifest name",
+        );
+        assert!(err.to_string().contains("unsafe guard manifest name"), "{err}");
+    }
+
+    #[test]
+    fn guard_archive_hardening_rejects_existing_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("demo.arcguard");
+        let manifest = valid_arcguard_manifest("demo-guard");
+        write_test_arcguard(
+            &archive,
+            &[
+                ("guard-manifest.yaml", manifest.as_bytes()),
+                ("demo.wasm", b"wasm"),
+            ],
+        );
+        let target = dir.path().join("guards");
+        fs::create_dir_all(target.join("demo-guard")).unwrap();
+
+        let err = must_cli_err(cmd_guard_install(&archive, &target), "existing target");
+        assert!(err.to_string().contains("existing guard target"), "{err}");
     }
 
     #[test]

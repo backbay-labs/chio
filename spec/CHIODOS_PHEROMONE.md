@@ -651,3 +651,8 @@ guard against silent format drift.
   `subject_class_namespace` field is forward-compatible; translation
   rules live with the ladder manifest spec).
 - Hybrid-signature acceptance policy on the substrate side.
+- Archive restore drills are local operator evidence over relay alert
+  assurance packages. They do not change pheromone wire semantics and
+  do not authorize deletion, moving, uploading, notification delivery,
+  policy mutation, dynamic trust, new transports, settlement, hidden
+  predicates, VC Data Integrity BBS, zkVM, or FROST.

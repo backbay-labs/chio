@@ -6,6 +6,7 @@ import {
   fetchRelayAlertAssuranceArchiveExtractionReport,
   fetchRelayAlertAssuranceArchivePackageReport,
   fetchRelayAlertAssuranceArchiveReport,
+  fetchRelayAlertAssuranceArchiveRestoreDrillReport,
   fetchRelayAlertAssuranceCloseoutReport,
   fetchRelayAlertAssuranceExportReport,
   fetchRelayAlertAssurancePackage,
@@ -498,6 +499,7 @@ describe('dashboard api helpers', () => {
     await fetchRelayAlertAssuranceCloseoutReport()
     await fetchRelayAlertAssuranceArchivePackageReport()
     await fetchRelayAlertAssuranceArchiveExtractionReport()
+    await fetchRelayAlertAssuranceArchiveRestoreDrillReport()
     await fetchRelayAlertAssurancePhysicalArchiveDrillReport()
     await fetchRelayAlertAssuranceRetentionHandoffReport()
 
@@ -543,11 +545,16 @@ describe('dashboard api helpers', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       8,
-      '/v1/chiodos/pheromone/alert-assurance/physical-archive',
+      '/v1/chiodos/pheromone/alert-assurance/archive-restore-drill',
       expect.anything(),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       9,
+      '/v1/chiodos/pheromone/alert-assurance/physical-archive',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      10,
       '/v1/chiodos/pheromone/alert-assurance/retention-handoff',
       expect.anything(),
     )

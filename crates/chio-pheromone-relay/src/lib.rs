@@ -125,6 +125,12 @@ pub const PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_EVIDENCE_SCHEMA: &st
     "chio.pheromone.relay-alert-assurance-retention-handoff-evidence.v1";
 pub const PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_REPORT_SCHEMA: &str =
     "chio.pheromone.relay-alert-assurance-retention-handoff-report.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_PROFILE_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-archive-restore-profile.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_DRILL_REPORT_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-archive-restore-drill-report.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_NEGATIVE_CORPUS_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-archive-restore-negative-fixture-corpus.v1";
 pub const PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA: &str =
     "chio.pheromone.relay-supervisor-profile.v1";
 pub const PHEROMONE_RELAY_DRILL_REPORT_SCHEMA: &str = "chio.pheromone.relay-drill-report.v1";
@@ -2275,6 +2281,22 @@ pub struct RelayAlertAssuranceArchivePackageBundle {
     pub artifact_count: u64,
 }
 
+fn default_archive_package_generation() -> u64 {
+    1
+}
+
+fn is_default_archive_package_generation(value: &u64) -> bool {
+    *value == default_archive_package_generation()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelayAlertAssuranceArchivePackageManifestBody {
@@ -2284,6 +2306,13 @@ pub struct RelayAlertAssuranceArchivePackageManifestBody {
     pub packager_id: String,
     pub packager_key_id: String,
     pub created_at_unix_ms: u64,
+    #[serde(
+        default = "default_archive_package_generation",
+        skip_serializing_if = "is_default_archive_package_generation"
+    )]
+    pub package_generation: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_package_manifest_sha256: Option<String>,
     pub compression_format: String,
     pub source_archive_report_sha256: String,
     pub source_closeout_report_sha256: String,
@@ -2347,14 +2376,29 @@ pub struct RelayAlertAssuranceArchivePackageReport {
     pub local_kernel_id: String,
     pub generated_at_unix_ms: u64,
     pub package_id: String,
+    #[serde(
+        default = "default_archive_package_generation",
+        skip_serializing_if = "is_default_archive_package_generation"
+    )]
+    pub package_generation: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_package_manifest_sha256: Option<String>,
     pub package_manifest_sha256: String,
     pub source_archive_report_sha256: String,
     pub source_closeout_report_sha256: String,
     pub package_member_count: usize,
     pub package_total_byte_count: u64,
     pub bundle_count: u64,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub trusted_packager_verified: bool,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub nested_exporter_verified: bool,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub source_reports_matched: bool,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub closeout_ready_verified: bool,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub total_byte_count_matched: bool,
     pub extractable: bool,
     pub checks: Vec<RelayAlertCheck>,
 }
@@ -2371,6 +2415,49 @@ pub struct RelayAlertAssuranceArchiveExtractionReport {
     pub package_manifest_sha256: String,
     pub planned_member_count: u64,
     pub extracted_member_count: u64,
+    pub checks: Vec<RelayAlertCheck>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertAssuranceArchiveRestoreProfileDocument {
+    pub schema: String,
+    pub local_kernel_id: String,
+    pub profile_id: String,
+    pub max_package_count: u64,
+    pub require_generation_continuity: bool,
+    pub require_physical_readback: bool,
+    pub require_retention_handoff_ready: bool,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertAssuranceArchiveRestorePackageReview {
+    pub package_id: String,
+    pub package_generation: u64,
+    pub package_manifest_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_package_manifest_sha256: Option<String>,
+    pub accepted: bool,
+    pub code: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayAlertAssuranceArchiveRestoreDrillReport {
+    pub schema: String,
+    pub accepted: bool,
+    pub code: String,
+    pub local_kernel_id: String,
+    pub generated_at_unix_ms: u64,
+    pub package_count: u64,
+    pub verified_generation_count: u64,
+    pub latest_package_generation: u64,
+    pub quarantine_count: u64,
+    pub blocked_count: u64,
+    pub packages: Vec<RelayAlertAssuranceArchiveRestorePackageReview>,
     pub checks: Vec<RelayAlertCheck>,
 }
 
@@ -2558,6 +2645,8 @@ pub struct RelayAlertAssuranceArchivePackageBuildInput<'a> {
     pub package_id: &'a str,
     pub packager_id: &'a str,
     pub packager_key_id: &'a str,
+    pub package_generation: u64,
+    pub previous_package_report: Option<&'a RelayAlertAssuranceArchivePackageReport>,
     pub signing_key: &'a Keypair,
     pub bundles: &'a [RelayAlertAssuranceArchiveBundleCandidate],
     pub trusted_exporters: &'a RelayAlertAssuranceTrustedExportersDocument,
@@ -2572,6 +2661,14 @@ pub struct RelayAlertAssuranceArchivePackageVerifyInput<'a> {
     pub trusted_exporters: &'a RelayAlertAssuranceTrustedExportersDocument,
     pub archive_report: &'a RelayAlertAssuranceArchiveReport,
     pub closeout_report: &'a RelayAlertAssuranceCloseoutReport,
+    pub now_unix_ms: u64,
+}
+
+pub struct RelayAlertAssuranceArchiveRestoreDrillInput<'a> {
+    pub package_reports: &'a [RelayAlertAssuranceArchivePackageReport],
+    pub physical_drill_reports: &'a [RelayAlertAssurancePhysicalArchiveDrillReport],
+    pub retention_handoff_reports: &'a [RelayAlertAssuranceRetentionHandoffReport],
+    pub restore_profile: &'a RelayAlertAssuranceArchiveRestoreProfileDocument,
     pub now_unix_ms: u64,
 }
 
@@ -3933,6 +4030,10 @@ pub fn sign_relay_alert_assurance_archive_package(
     validate_archive_package_identity(input.package_id, "package id")?;
     validate_archive_package_identity(input.packager_id, "packager id")?;
     validate_archive_package_identity(input.packager_key_id, "packager key id")?;
+    let previous_package_manifest_sha256 = validate_archive_package_generation(
+        input.package_generation,
+        input.previous_package_report,
+    )?;
     validate_archive_candidates(input.bundles)?;
     validate_archive_package_source_reports(input.archive_report, input.closeout_report)?;
 
@@ -4049,6 +4150,8 @@ pub fn sign_relay_alert_assurance_archive_package(
         packager_id: input.packager_id.to_string(),
         packager_key_id: input.packager_key_id.to_string(),
         created_at_unix_ms: input.created_at_unix_ms,
+        package_generation: input.package_generation,
+        previous_package_manifest_sha256,
         compression_format: "tar.gz".to_string(),
         source_archive_report_sha256: canonical_sha256(input.archive_report)?,
         source_closeout_report_sha256: canonical_sha256(input.closeout_report)?,
@@ -4145,6 +4248,8 @@ pub fn verify_relay_alert_assurance_archive_package(
         local_kernel_id: body.local_kernel_id.clone(),
         generated_at_unix_ms: input.now_unix_ms,
         package_id: body.package_id.clone(),
+        package_generation: body.package_generation,
+        previous_package_manifest_sha256: body.previous_package_manifest_sha256.clone(),
         package_manifest_sha256: canonical_sha256(&input.package.manifest)?,
         source_archive_report_sha256: body.source_archive_report_sha256.clone(),
         source_closeout_report_sha256: body.source_closeout_report_sha256.clone(),
@@ -4153,6 +4258,9 @@ pub fn verify_relay_alert_assurance_archive_package(
         bundle_count: body.bundle_count,
         trusted_packager_verified: true,
         nested_exporter_verified: true,
+        source_reports_matched: true,
+        closeout_ready_verified: true,
+        total_byte_count_matched: true,
         extractable: true,
         checks: vec![
             RelayAlertCheck {
@@ -4206,6 +4314,128 @@ pub fn build_relay_alert_assurance_archive_extraction_report(
             accepted,
             detail: "extraction report is derived from a verified package report".to_string(),
         }],
+    })
+}
+
+pub fn generate_relay_alert_assurance_archive_restore_drill_report(
+    input: RelayAlertAssuranceArchiveRestoreDrillInput<'_>,
+) -> Result<RelayAlertAssuranceArchiveRestoreDrillReport, PheromoneRelayError> {
+    validate_archive_restore_profile(input.restore_profile, input.now_unix_ms)?;
+    if input.package_reports.is_empty() {
+        return Err(PheromoneRelayError::ArchivePackageInvalid(
+            "restore drill requires at least one package report".to_string(),
+        ));
+    }
+    let max_package_count =
+        usize::try_from(input.restore_profile.max_package_count).map_err(|_| {
+            PheromoneRelayError::ArchivePackageInvalid("restore package count overflow".to_string())
+        })?;
+    if input.package_reports.len() > max_package_count {
+        return Err(PheromoneRelayError::ArchivePackageInvalid(
+            "restore drill package count exceeds profile limit".to_string(),
+        ));
+    }
+
+    let mut package_reports: Vec<&RelayAlertAssuranceArchivePackageReport> =
+        input.package_reports.iter().collect();
+    package_reports.sort_by_key(|report| report.package_generation);
+    let mut seen_generations = BTreeSet::new();
+    let mut reviews = Vec::new();
+    let mut checks = Vec::new();
+    let mut previous_manifest_hash: Option<String> = None;
+    let mut latest_generation = 0_u64;
+    let mut quarantine_count = 0_u64;
+
+    for report in package_reports {
+        let package_report_failure = archive_package_report_integrity_failure(report);
+        let mut accepted = report.accepted;
+        let mut code = if report.accepted {
+            "accepted".to_string()
+        } else {
+            "package_report_rejected".to_string()
+        };
+        if let Some(failure) = package_report_failure {
+            accepted = false;
+            code = failure.to_string();
+        }
+        if accepted && report.local_kernel_id != input.restore_profile.local_kernel_id {
+            accepted = false;
+            code = "local_kernel_mismatch".to_string();
+        }
+        if accepted && seen_generations.contains(&report.package_generation) {
+            accepted = false;
+            code = "duplicate_generation".to_string();
+        }
+        if accepted && input.restore_profile.require_generation_continuity {
+            let expected_generation = latest_generation.saturating_add(1);
+            if report.package_generation != expected_generation {
+                accepted = false;
+                code = "generation_gap".to_string();
+            } else if report.package_generation > 1
+                && report.previous_package_manifest_sha256 != previous_manifest_hash
+            {
+                accepted = false;
+                code = "previous_manifest_hash_mismatch".to_string();
+            }
+        }
+        if accepted
+            && input.restore_profile.require_physical_readback
+            && !has_matching_physical_readback(report, input.physical_drill_reports)?
+        {
+            accepted = false;
+            code = "missing_physical_readback".to_string();
+        }
+        if accepted
+            && input.restore_profile.require_retention_handoff_ready
+            && !has_matching_retention_handoff(report, input.retention_handoff_reports)?
+        {
+            accepted = false;
+            code = "retention_handoff_not_ready".to_string();
+        }
+        if !accepted {
+            quarantine_count = quarantine_count.saturating_add(1);
+        }
+        checks.push(RelayAlertCheck {
+            code: format!("package_generation_{}", report.package_generation),
+            accepted,
+            detail: code.clone(),
+        });
+        reviews.push(RelayAlertAssuranceArchiveRestorePackageReview {
+            package_id: report.package_id.clone(),
+            package_generation: report.package_generation,
+            package_manifest_sha256: report.package_manifest_sha256.clone(),
+            previous_package_manifest_sha256: report.previous_package_manifest_sha256.clone(),
+            accepted,
+            code,
+        });
+        if accepted {
+            seen_generations.insert(report.package_generation);
+            latest_generation = latest_generation.max(report.package_generation);
+            previous_manifest_hash = Some(report.package_manifest_sha256.clone());
+        }
+    }
+
+    let accepted = checks.iter().all(|check| check.accepted);
+    let package_count = u64::try_from(input.package_reports.len()).map_err(|_| {
+        PheromoneRelayError::ArchivePackageInvalid("restore package count overflow".to_string())
+    })?;
+    Ok(RelayAlertAssuranceArchiveRestoreDrillReport {
+        schema: PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_DRILL_REPORT_SCHEMA.to_string(),
+        accepted,
+        code: if accepted {
+            "accepted".to_string()
+        } else {
+            "restore_blocked".to_string()
+        },
+        local_kernel_id: input.restore_profile.local_kernel_id.clone(),
+        generated_at_unix_ms: input.now_unix_ms,
+        package_count,
+        verified_generation_count: package_count.saturating_sub(quarantine_count),
+        latest_package_generation: latest_generation,
+        quarantine_count,
+        blocked_count: quarantine_count,
+        packages: reviews,
+        checks,
     })
 }
 
@@ -6421,6 +6651,162 @@ fn validate_archive_package_source_reports(
     Ok(())
 }
 
+fn validate_archive_package_generation(
+    generation: u64,
+    previous_package_report: Option<&RelayAlertAssuranceArchivePackageReport>,
+) -> Result<Option<String>, PheromoneRelayError> {
+    if generation == 0 {
+        return Err(PheromoneRelayError::ArchivePackageInvalid(
+            "archive package generation must be at least 1".to_string(),
+        ));
+    }
+    match (generation, previous_package_report) {
+        (1, None) => Ok(None),
+        (1, Some(_)) => Err(PheromoneRelayError::ArchivePackageInvalid(
+            "generation 1 package must not carry a previous package report".to_string(),
+        )),
+        (_, Some(previous)) => {
+            if !previous.accepted {
+                return Err(PheromoneRelayError::ArchivePackageInvalid(
+                    "previous package report is not accepted".to_string(),
+                ));
+            }
+            if previous.package_generation.saturating_add(1) != generation {
+                return Err(PheromoneRelayError::ArchivePackageInvalid(
+                    "previous package generation is not contiguous".to_string(),
+                ));
+            }
+            if !is_sha256_hex(&previous.package_manifest_sha256) {
+                return Err(PheromoneRelayError::ArchivePackageInvalid(
+                    "previous package manifest hash is invalid".to_string(),
+                ));
+            }
+            Ok(Some(previous.package_manifest_sha256.clone()))
+        }
+        (_, None) => Err(PheromoneRelayError::ArchivePackageInvalid(
+            "generation greater than 1 requires a previous package report".to_string(),
+        )),
+    }
+}
+
+fn archive_package_report_integrity_failure(
+    report: &RelayAlertAssuranceArchivePackageReport,
+) -> Option<&'static str> {
+    if report.schema != PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_REPORT_SCHEMA {
+        return Some("package_report_schema_invalid");
+    }
+    if validate_archive_package_identity(&report.package_id, "package id").is_err() {
+        return Some("package_report_id_invalid");
+    }
+    if report.package_generation == 0 {
+        return Some("package_report_generation_invalid");
+    }
+    if report.package_generation == 1 && report.previous_package_manifest_sha256.is_some() {
+        return Some("package_report_previous_hash_unexpected");
+    }
+    if report.package_generation > 1 && report.previous_package_manifest_sha256.is_none() {
+        return Some("package_report_previous_hash_missing");
+    }
+    if !is_sha256_hex(&report.package_manifest_sha256)
+        || !is_sha256_hex(&report.source_archive_report_sha256)
+        || !is_sha256_hex(&report.source_closeout_report_sha256)
+        || matches!(
+            report.previous_package_manifest_sha256.as_deref(),
+            Some(hash) if !is_sha256_hex(hash)
+        )
+    {
+        return Some("package_report_hash_invalid");
+    }
+    if report.package_member_count == 0 || report.package_total_byte_count == 0 {
+        return Some("package_report_size_invalid");
+    }
+    if report.bundle_count == 0 {
+        return Some("package_report_bundle_count_invalid");
+    }
+    if report.accepted && report.code != "accepted" {
+        return Some("package_report_code_invalid");
+    }
+    if report.accepted
+        && (!report.trusted_packager_verified
+            || !report.nested_exporter_verified
+            || !report.source_reports_matched
+            || !report.closeout_ready_verified
+            || !report.total_byte_count_matched
+            || !report.extractable)
+    {
+        return Some("package_report_verification_incomplete");
+    }
+    if report.checks.is_empty() {
+        return Some("package_report_checks_empty");
+    }
+    if report.checks.iter().any(|check| !check.accepted) {
+        return Some("package_report_check_failed");
+    }
+    None
+}
+
+fn validate_archive_restore_profile(
+    profile: &RelayAlertAssuranceArchiveRestoreProfileDocument,
+    now_unix_ms: u64,
+) -> Result<(), PheromoneRelayError> {
+    if profile.schema != PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_PROFILE_SCHEMA {
+        return Err(PheromoneRelayError::UnsupportedSchema(
+            profile.schema.clone(),
+        ));
+    }
+    validate_archive_package_identity(&profile.profile_id, "restore profile id")?;
+    if profile.max_package_count == 0 {
+        return Err(PheromoneRelayError::ArchivePackageInvalid(
+            "restore profile max package count must be positive".to_string(),
+        ));
+    }
+    if profile.issued_at_unix_ms >= profile.expires_at_unix_ms {
+        return Err(PheromoneRelayError::ArchivePackageInvalid(
+            "restore profile validity window is invalid".to_string(),
+        ));
+    }
+    if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
+        return Err(PheromoneRelayError::ArchivePackageInvalid(
+            "restore profile is outside its validity window".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn has_matching_physical_readback(
+    package_report: &RelayAlertAssuranceArchivePackageReport,
+    physical_reports: &[RelayAlertAssurancePhysicalArchiveDrillReport],
+) -> Result<bool, PheromoneRelayError> {
+    let report_hash = canonical_sha256(package_report)?;
+    Ok(physical_reports.iter().any(|report| {
+        report.accepted
+            && report.schema == PHEROMONE_RELAY_ALERT_ASSURANCE_PHYSICAL_ARCHIVE_DRILL_REPORT_SCHEMA
+            && report.local_kernel_id == package_report.local_kernel_id
+            && report.package_id == package_report.package_id
+            && report.package_report_sha256 == report_hash
+            && report.sampled_member_count > 0
+            && !report.checks.is_empty()
+    }))
+}
+
+fn has_matching_retention_handoff(
+    package_report: &RelayAlertAssuranceArchivePackageReport,
+    handoff_reports: &[RelayAlertAssuranceRetentionHandoffReport],
+) -> Result<bool, PheromoneRelayError> {
+    let report_hash = canonical_sha256(package_report)?;
+    Ok(handoff_reports.iter().any(|report| {
+        report.accepted
+            && report.schema == PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_REPORT_SCHEMA
+            && report.ready_for_operator_handoff
+            && report.local_kernel_id == package_report.local_kernel_id
+            && report.package_id == package_report.package_id
+            && report.package_report_sha256 == report_hash
+            && validate_archive_package_identity(&report.target_system_alias, "target system alias")
+                .is_ok()
+            && !report.checks.is_empty()
+    }))
+}
+
 fn validate_archive_package_manifest_body(
     body: &RelayAlertAssuranceArchivePackageManifestBody,
 ) -> Result<(), PheromoneRelayError> {
@@ -6434,6 +6820,28 @@ fn validate_archive_package_manifest_body(
         return Err(PheromoneRelayError::ArchivePackageInvalid(
             "archive package compression format must be tar.gz".to_string(),
         ));
+    }
+    if body.package_generation == 0 {
+        return Err(PheromoneRelayError::ArchivePackageInvalid(
+            "archive package generation must be at least 1".to_string(),
+        ));
+    }
+    if body.package_generation == 1 && body.previous_package_manifest_sha256.is_some() {
+        return Err(PheromoneRelayError::ArchivePackageInvalid(
+            "generation 1 package must not carry a previous package hash".to_string(),
+        ));
+    }
+    if body.package_generation > 1 {
+        let Some(previous) = &body.previous_package_manifest_sha256 else {
+            return Err(PheromoneRelayError::ArchivePackageInvalid(
+                "generation greater than 1 requires a previous package hash".to_string(),
+            ));
+        };
+        if !is_sha256_hex(previous) {
+            return Err(PheromoneRelayError::ArchivePackageInvalid(
+                "previous package manifest hash is invalid".to_string(),
+            ));
+        }
     }
     if !is_sha256_hex(&body.source_archive_report_sha256)
         || !is_sha256_hex(&body.source_closeout_report_sha256)
@@ -6452,6 +6860,16 @@ fn validate_archive_package_manifest_body(
     {
         return Err(PheromoneRelayError::ArchivePackageInvalid(
             "archive package counts do not match manifest arrays".to_string(),
+        ));
+    }
+    let member_total = body.members.iter().try_fold(0_u64, |total, member| {
+        total.checked_add(member.byte_count).ok_or_else(|| {
+            PheromoneRelayError::ArchivePackageInvalid("member byte count overflow".to_string())
+        })
+    })?;
+    if body.total_byte_count != member_total {
+        return Err(PheromoneRelayError::ArchivePackageInvalid(
+            "archive package total byte count does not match members".to_string(),
         ));
     }
     for claim in &body.safety_claims {

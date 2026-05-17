@@ -18,6 +18,8 @@
         "packagerId": { "$ref": "#/$defs/token" },
         "packagerKeyId": { "$ref": "#/$defs/token" },
         "createdAtUnixMs": { "type": "integer", "minimum": 0 },
+        "packageGeneration": { "type": "integer", "minimum": 1 },
+        "previousPackageManifestSha256": { "$ref": "#/$defs/sha256" },
         "compressionFormat": { "const": "tar.gz" },
         "sourceArchiveReportSha256": { "$ref": "#/$defs/sha256" },
         "sourceCloseoutReportSha256": { "$ref": "#/$defs/sha256" },
