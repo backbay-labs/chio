@@ -2291,6 +2291,10 @@ fn default_archive_package_generation() -> u64 {
     1
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelayAlertAssuranceArchivePackageManifestBody {
@@ -2377,10 +2381,15 @@ pub struct RelayAlertAssuranceArchivePackageReport {
     pub package_member_count: usize,
     pub package_total_byte_count: u64,
     pub bundle_count: u64,
+    #[serde(default = "default_true")]
     pub trusted_packager_verified: bool,
+    #[serde(default = "default_true")]
     pub nested_exporter_verified: bool,
+    #[serde(default = "default_true")]
     pub source_reports_matched: bool,
+    #[serde(default = "default_true")]
     pub closeout_ready_verified: bool,
+    #[serde(default = "default_true")]
     pub total_byte_count_matched: bool,
     pub extractable: bool,
     pub checks: Vec<RelayAlertCheck>,
@@ -4398,36 +4407,47 @@ pub fn generate_relay_alert_assurance_archive_restore_drill_report(
     let mut quarantine_count = 0_u64;
 
     for report in package_reports {
+        let package_report_failure = archive_package_report_integrity_failure(report);
         let mut accepted = report.accepted;
-        let mut code = "accepted".to_string();
-        if report.local_kernel_id != input.restore_profile.local_kernel_id {
+        let mut code = if report.accepted {
+            "accepted".to_string()
+        } else {
+            "package_report_rejected".to_string()
+        };
+        if let Some(failure) = package_report_failure {
+            accepted = false;
+            code = failure.to_string();
+        }
+        if accepted && report.local_kernel_id != input.restore_profile.local_kernel_id {
             accepted = false;
             code = "local_kernel_mismatch".to_string();
         }
-        if !seen_generations.insert(report.package_generation) {
+        let duplicate_generation = !seen_generations.insert(report.package_generation);
+        if accepted && duplicate_generation {
             accepted = false;
             code = "duplicate_generation".to_string();
         }
-        if input.restore_profile.require_generation_continuity {
+        if accepted && input.restore_profile.require_generation_continuity {
             let expected_generation = latest_generation.saturating_add(1);
             if report.package_generation != expected_generation {
                 accepted = false;
                 code = "generation_gap".to_string();
-            }
-            if report.package_generation > 1
+            } else if report.package_generation > 1
                 && report.previous_package_manifest_sha256 != previous_manifest_hash
             {
                 accepted = false;
                 code = "previous_manifest_hash_mismatch".to_string();
             }
         }
-        if input.restore_profile.require_physical_readback
+        if accepted
+            && input.restore_profile.require_physical_readback
             && !has_matching_physical_readback(report, input.physical_drill_reports)?
         {
             accepted = false;
             code = "missing_physical_readback".to_string();
         }
-        if input.restore_profile.require_retention_handoff_ready
+        if accepted
+            && input.restore_profile.require_retention_handoff_ready
             && !has_matching_retention_handoff(report, input.retention_handoff_reports)?
         {
             accepted = false;
@@ -4449,8 +4469,10 @@ pub fn generate_relay_alert_assurance_archive_restore_drill_report(
             accepted,
             code,
         });
-        latest_generation = latest_generation.max(report.package_generation);
-        previous_manifest_hash = Some(report.package_manifest_sha256.clone());
+        if accepted {
+            latest_generation = latest_generation.max(report.package_generation);
+            previous_manifest_hash = Some(report.package_manifest_sha256.clone());
+        }
     }
 
     let accepted = checks.iter().all(|check| check.accepted);
@@ -4753,6 +4775,9 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
             }
         }
 
+        let package_level_accepted = accepted;
+        let package_level_code = code.clone();
+
         if input.profile.require_restore_accepted {
             match external_retention_restore_status(input.restore_drill_reports, report) {
                 Some((
@@ -4999,6 +5024,9 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
 
         if !accepted {
             quarantine_count = quarantine_count.saturating_add(1);
+        }
+        if !package_level_accepted {
+            code = package_level_code;
         }
         latest_generation = latest_generation.max(report.package_generation);
         previous_manifest_hash = Some(report.package_manifest_sha256.clone());
@@ -7209,6 +7237,53 @@ fn validate_archive_package_generation(
     }
 }
 
+fn archive_package_report_integrity_failure(
+    report: &RelayAlertAssuranceArchivePackageReport,
+) -> Option<&'static str> {
+    if report.schema != PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_REPORT_SCHEMA {
+        return Some("package_report_schema_invalid");
+    }
+    if validate_archive_package_identity(&report.package_id, "package id").is_err() {
+        return Some("package_report_id_invalid");
+    }
+    if report.package_generation == 0 {
+        return Some("package_report_generation_invalid");
+    }
+    if !is_sha256_hex(&report.package_manifest_sha256)
+        || !is_sha256_hex(&report.source_archive_report_sha256)
+        || !is_sha256_hex(&report.source_closeout_report_sha256)
+        || matches!(
+            report.previous_package_manifest_sha256.as_deref(),
+            Some(hash) if !is_sha256_hex(hash)
+        )
+    {
+        return Some("package_report_hash_invalid");
+    }
+    if report.package_member_count == 0 || report.package_total_byte_count == 0 {
+        return Some("package_report_size_invalid");
+    }
+    if report.bundle_count == 0 {
+        return Some("package_report_bundle_count_invalid");
+    }
+    if report.accepted && report.code != "accepted" {
+        return Some("package_report_code_invalid");
+    }
+    if report.accepted
+        && (!report.trusted_packager_verified
+            || !report.nested_exporter_verified
+            || !report.source_reports_matched
+            || !report.closeout_ready_verified
+            || !report.total_byte_count_matched
+            || !report.extractable)
+    {
+        return Some("package_report_verification_incomplete");
+    }
+    if report.checks.is_empty() {
+        return Some("package_report_checks_empty");
+    }
+    None
+}
+
 fn validate_archive_restore_profile(
     profile: &RelayAlertAssuranceArchiveRestoreProfileDocument,
     now_unix_ms: u64,
@@ -7244,9 +7319,12 @@ fn has_matching_physical_readback(
     let report_hash = canonical_sha256(package_report)?;
     Ok(physical_reports.iter().any(|report| {
         report.accepted
+            && report.schema == PHEROMONE_RELAY_ALERT_ASSURANCE_PHYSICAL_ARCHIVE_DRILL_REPORT_SCHEMA
             && report.local_kernel_id == package_report.local_kernel_id
             && report.package_id == package_report.package_id
             && report.package_report_sha256 == report_hash
+            && report.sampled_member_count > 0
+            && !report.checks.is_empty()
     }))
 }
 
@@ -7257,10 +7335,14 @@ fn has_matching_retention_handoff(
     let report_hash = canonical_sha256(package_report)?;
     Ok(handoff_reports.iter().any(|report| {
         report.accepted
+            && report.schema == PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_REPORT_SCHEMA
             && report.ready_for_operator_handoff
             && report.local_kernel_id == package_report.local_kernel_id
             && report.package_id == package_report.package_id
             && report.package_report_sha256 == report_hash
+            && validate_archive_package_identity(&report.target_system_alias, "target system alias")
+                .is_ok()
+            && !report.checks.is_empty()
     }))
 }
 

@@ -10,7 +10,7 @@
     "body": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema", "packageId", "localKernelId", "packagerId", "packagerKeyId", "createdAtUnixMs", "packageGeneration", "compressionFormat", "sourceArchiveReportSha256", "sourceCloseoutReportSha256", "bundleCount", "memberCount", "totalByteCount", "bundles", "members", "safetyClaims"],
+      "required": ["schema", "packageId", "localKernelId", "packagerId", "packagerKeyId", "createdAtUnixMs", "compressionFormat", "sourceArchiveReportSha256", "sourceCloseoutReportSha256", "bundleCount", "memberCount", "totalByteCount", "bundles", "members", "safetyClaims"],
       "properties": {
         "schema": { "const": "chio.pheromone.relay-alert-assurance-archive-package-manifest.v1" },
         "packageId": { "$ref": "#/$defs/token" },

@@ -868,19 +868,20 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
             max_compressed_bytes: 32 * 1024 * 1024,
             max_member_bytes: 32 * 1024 * 1024,
             max_total_bytes: 64 * 1024 * 1024,
-            max_member_count: 2,
+            max_member_count: 3,
             max_decompression_ratio: 200,
         },
     )?;
-    if entries.len() != 2 {
+    if !(2..=3).contains(&entries.len()) {
         return Err(CliError::guard_error(
-            "guard archive must contain exactly guard-manifest.yaml plus one top-level .wasm"
+            "guard archive must contain guard-manifest.yaml, one top-level .wasm, and optional .wasm.sig"
                 .to_string(),
         ));
     }
 
     let mut manifest_bytes = None;
     let mut wasm_entry = None;
+    let mut signature_entry = None;
     for entry in entries {
         if entry.path == "guard-manifest.yaml" {
             if manifest_bytes.replace(entry.bytes).is_some() {
@@ -892,6 +893,12 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
             if wasm_entry.replace(entry).is_some() {
                 return Err(CliError::guard_error(
                     "guard archive contains multiple .wasm entries".to_string(),
+                ));
+            }
+        } else if entry.path.ends_with(".wasm.sig") && !entry.path.contains('/') {
+            if signature_entry.replace(entry).is_some() {
+                return Err(CliError::guard_error(
+                    "guard archive contains multiple .wasm.sig entries".to_string(),
                 ));
             }
         } else {
@@ -908,6 +915,14 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
     let wasm_entry = wasm_entry.ok_or_else(|| {
         CliError::guard_error("archive does not contain one top-level .wasm file".to_string())
     })?;
+    let expected_signature_path = format!("{}.sig", wasm_entry.path);
+    if let Some(signature) = &signature_entry {
+        if signature.path != expected_signature_path {
+            return Err(CliError::guard_error(format!(
+                "guard signature sidecar must be named {expected_signature_path}"
+            )));
+        }
+    }
     let manifest_content = String::from_utf8(manifest_bytes).map_err(|error| {
         guard_yaml_error(format!("guard manifest is not UTF-8: {error}"))
     })?;
@@ -954,6 +969,14 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
     })?;
     let result = (|| -> Result<(), CliError> {
         write_guard_install_file(&staging.join(&wasm_filename), &wasm_entry.bytes)?;
+        if let Some(signature) = &signature_entry {
+            let signature_filename =
+                crate::archive::safe_single_component(&signature.path, "guard wasm signature filename")
+                    .map_err(|error| {
+                        CliError::guard_error(format!("unsafe guard signature filename: {error}"))
+                    })?;
+            write_guard_install_file(&staging.join(signature_filename), &signature.bytes)?;
+        }
         let updated_manifest_content = update_manifest_wasm_path(&manifest_content, &wasm_filename)?;
         write_guard_install_file(
             &staging.join("guard-manifest.yaml"),
@@ -1233,6 +1256,29 @@ mod tests {
     }
 
     #[test]
+    fn guard_archive_hardening_installs_optional_signature_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("demo.arcguard");
+        let manifest = valid_arcguard_manifest("demo-guard");
+        write_test_arcguard(
+            &archive,
+            &[
+                ("guard-manifest.yaml", manifest.as_bytes()),
+                ("demo.wasm", b"wasm"),
+                ("demo.wasm.sig", b"signature"),
+            ],
+        );
+        let target = dir.path().join("guards");
+
+        cmd_guard_install(&archive, &target).unwrap();
+
+        assert_eq!(
+            fs::read(target.join("demo-guard/demo.wasm.sig")).unwrap(),
+            b"signature"
+        );
+    }
+
+    #[test]
     fn guard_archive_hardening_rejects_nested_wasm_member() {
         let dir = tempfile::tempdir().unwrap();
         let archive = dir.path().join("bad.arcguard");
@@ -1270,7 +1316,7 @@ mod tests {
             cmd_guard_install(&archive, &dir.path().join("guards")),
             "extra arcguard member",
         );
-        assert!(err.to_string().contains("too many members"), "{err}");
+        assert!(err.to_string().contains("not allowed"), "{err}");
     }
 
     #[test]

@@ -4,7 +4,7 @@
   "title": "Chiodos Pheromone Relay Alert Assurance Archive Package Report",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "accepted", "code", "localKernelId", "generatedAtUnixMs", "packageId", "packageGeneration", "packageManifestSha256", "sourceArchiveReportSha256", "sourceCloseoutReportSha256", "packageMemberCount", "packageTotalByteCount", "bundleCount", "trustedPackagerVerified", "nestedExporterVerified", "sourceReportsMatched", "closeoutReadyVerified", "totalByteCountMatched", "extractable", "checks"],
+  "required": ["schema", "accepted", "code", "localKernelId", "generatedAtUnixMs", "packageId", "packageManifestSha256", "sourceArchiveReportSha256", "sourceCloseoutReportSha256", "packageMemberCount", "packageTotalByteCount", "bundleCount", "trustedPackagerVerified", "nestedExporterVerified", "extractable", "checks"],
   "properties": {
     "schema": { "const": "chio.pheromone.relay-alert-assurance-archive-package-report.v1" },
     "accepted": { "type": "boolean" },
