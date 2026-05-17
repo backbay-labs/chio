@@ -38,6 +38,10 @@ pub(crate) enum ChiodosRuntimeCommands {
         #[arg(long = "runtime-peer-weights", value_name = "PATH")]
         runtime_peer_weights: Option<PathBuf>,
 
+        /// Treaty or governance action class id used for runtime policy matching.
+        #[arg(long = "action-class-id", value_name = "ACTION_CLASS_ID")]
+        action_class_id: Option<String>,
+
         /// Durable trust-floor state path. Uses --store when omitted.
         #[arg(long = "trust-floor-state", value_name = "PATH")]
         trust_floor_state: Option<PathBuf>,
@@ -504,6 +508,10 @@ pub(crate) enum ChiodosRuntimePheromoneCommands {
         #[arg(long = "runtime-peer-weights", value_name = "PATH")]
         runtime_peer_weights: PathBuf,
 
+        /// Treaty or governance action class id used for runtime policy matching.
+        #[arg(long = "action-class-id", value_name = "ACTION_CLASS_ID")]
+        action_class_id: Option<String>,
+
         /// Evaluation time in Unix milliseconds.
         #[arg(long)]
         now_unix_ms: u64,
@@ -513,4 +521,3 @@ pub(crate) enum ChiodosRuntimePheromoneCommands {
         report: PathBuf,
     },
 }
-

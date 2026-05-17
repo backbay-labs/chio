@@ -410,6 +410,7 @@ pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "runtime_recovery_supervisor_profile_stale",
     "runtime_reputation_epoch_mismatch",
     "runtime_resume_destructive_repair_required",
+    "runtime_resume_non_contiguous_recovery_steps",
     "runtime_retention_dry_run_only",
     "runtime_retention_empty_kernel",
     "runtime_retention_empty_profile_id",

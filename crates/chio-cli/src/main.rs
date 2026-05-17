@@ -966,6 +966,8 @@ mod cli_entrypoint_tests {
             "runtime-policy.json",
             "--runtime-peer-weights",
             "peer-weights.json",
+            "--action-class-id",
+            "workflow.destructive.vendor_call",
             "--trust-floor-state",
             "trust-floor.json",
             "--store",
@@ -991,6 +993,7 @@ mod cli_entrypoint_tests {
                                 pheromone_query_report,
                                 runtime_pheromone_policy,
                                 runtime_peer_weights,
+                                action_class_id,
                                 trust_floor_state,
                                 store,
                                 now_unix_ms,
@@ -1023,6 +1026,10 @@ mod cli_entrypoint_tests {
                 assert_eq!(
                     runtime_peer_weights,
                     Some(std::path::PathBuf::from("peer-weights.json"))
+                );
+                assert_eq!(
+                    action_class_id.as_deref(),
+                    Some("workflow.destructive.vendor_call")
                 );
                 assert_eq!(
                     trust_floor_state,
@@ -1198,6 +1205,8 @@ mod cli_entrypoint_tests {
             "runtime-policy.json",
             "--runtime-peer-weights",
             "peer-weights.json",
+            "--action-class-id",
+            "workflow.destructive.vendor_call",
             "--now-unix-ms",
             "1800000001000",
             "--report",
@@ -1219,6 +1228,7 @@ mod cli_entrypoint_tests {
                                         pheromone_query_report,
                                         runtime_pheromone_policy,
                                         runtime_peer_weights,
+                                        action_class_id,
                                         now_unix_ms,
                                         report,
                                     },
@@ -1245,6 +1255,10 @@ mod cli_entrypoint_tests {
                 assert_eq!(
                     runtime_peer_weights,
                     std::path::PathBuf::from("peer-weights.json")
+                );
+                assert_eq!(
+                    action_class_id.as_deref(),
+                    Some("workflow.destructive.vendor_call")
                 );
                 assert_eq!(now_unix_ms, 1_800_000_001_000);
                 assert_eq!(report, std::path::PathBuf::from("decision.json"));

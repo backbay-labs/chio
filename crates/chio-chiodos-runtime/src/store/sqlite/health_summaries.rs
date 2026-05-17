@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use chio_core_types::crypto::sha256_hex;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -124,6 +124,7 @@ impl SqliteRuntimeOrchestrationStore {
             return Ok(report);
         }
         let mut reusable_step_indices = Vec::new();
+        let mut step_indices = Vec::new();
         let mut destructive_terminal_without_evidence = false;
         {
             let mut statement = connection
@@ -144,6 +145,7 @@ impl SqliteRuntimeOrchestrationStore {
             for row in rows {
                 let (index, destructive, receipt, state) = row.map_err(sqlite_error)?;
                 let index = sqlite_u64(index, "runtime recovery step index")?;
+                step_indices.push(index);
                 if state == "proof_accepted" || state == "completed" {
                     reusable_step_indices.push(index);
                 } else if state == "terminal_failure" {
@@ -157,20 +159,24 @@ impl SqliteRuntimeOrchestrationStore {
                             |row| row.get(0),
                         )
                         .map_err(sqlite_error)?;
-                    destructive_terminal_without_evidence = artifact_count == 0;
+                    destructive_terminal_without_evidence |= artifact_count == 0;
                 }
             }
         }
-        let blocked = destructive_terminal_without_evidence;
-        let failure_code = if blocked {
+        let reusable_step_set: BTreeSet<u64> = reusable_step_indices.iter().copied().collect();
+        let next_step_index =
+            first_non_reusable_recovery_step_index(&step_indices, &reusable_step_set);
+        let non_contiguous_reusable_steps = reusable_step_indices
+            .iter()
+            .any(|index| *index > next_step_index);
+        let failure_code = if destructive_terminal_without_evidence {
             Some("runtime_resume_destructive_repair_required".to_string())
+        } else if non_contiguous_reusable_steps {
+            Some("runtime_resume_non_contiguous_recovery_steps".to_string())
         } else {
             None
         };
-        let next_step_index = reusable_step_indices
-            .last()
-            .map(|last| last.saturating_add(1))
-            .or(Some(0));
+        let blocked = failure_code.is_some();
         let report = RuntimeRecoveryDrillReport {
             schema: CHIODOS_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA.to_string(),
             run_id: run_id.to_string(),
@@ -179,7 +185,7 @@ impl SqliteRuntimeOrchestrationStore {
             generated_at_unix_ms: now_unix_ms,
             resumable: !blocked,
             blocked,
-            next_step_index,
+            next_step_index: Some(next_step_index),
             reusable_step_indices,
             recovery_required_reason: failure_code,
             checks: vec!["runtime_ops.recovery_drill".to_string()],
@@ -285,6 +291,24 @@ impl SqliteRuntimeOrchestrationStore {
         validate_runtime_ops_status_report(&report)?;
         Ok(report)
     }
+}
+
+fn first_non_reusable_recovery_step_index(
+    step_indices: &[u64],
+    reusable_step_indices: &BTreeSet<u64>,
+) -> u64 {
+    let mut expected_index = 0_u64;
+    for step_index in step_indices {
+        if *step_index != expected_index {
+            return expected_index;
+        }
+        if reusable_step_indices.contains(step_index) {
+            expected_index = expected_index.saturating_add(1);
+        } else {
+            return *step_index;
+        }
+    }
+    expected_index
 }
 
 fn runtime_run_counts(

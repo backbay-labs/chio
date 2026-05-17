@@ -803,6 +803,116 @@ fn runtime_ops_recovery_drill_blocks_terminal_failure_steps(
 }
 
 #[test]
+fn runtime_ops_recovery_drill_blocks_non_contiguous_reusable_steps(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("runtime-ops-recovery-gap.sqlite3");
+    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
+    store.record_run_state("runtime-run-gap", "running", None, 1_800_000_000_000)?;
+    store.record_run_step_state(
+        "runtime-run-gap",
+        RuntimeOrchestrationStepState {
+            step_index: 0,
+            admission_id: "adm-gap-0".to_string(),
+            state: "planned".to_string(),
+            destructive: false,
+            admission_report_sha256: None,
+            tool_receipt_sha256: None,
+            lease_id: None,
+        },
+    )?;
+    store.record_run_step_state(
+        "runtime-run-gap",
+        RuntimeOrchestrationStepState {
+            step_index: 1,
+            admission_id: "adm-gap-1".to_string(),
+            state: "completed".to_string(),
+            destructive: false,
+            admission_report_sha256: Some("1".repeat(64)),
+            tool_receipt_sha256: Some("2".repeat(64)),
+            lease_id: None,
+        },
+    )?;
+
+    let report = store.recovery_drill_report("runtime-run-gap", 1_800_000_001_000)?;
+
+    assert!(!report.accepted, "{report:#?}");
+    assert!(report.blocked, "{report:#?}");
+    assert!(!report.resumable, "{report:#?}");
+    assert_eq!(report.next_step_index, Some(0));
+    assert_eq!(report.reusable_step_indices, vec![1]);
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_resume_non_contiguous_recovery_steps")
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_ops_recovery_drill_preserves_earlier_terminal_failure_blocker(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir
+        .path()
+        .join("runtime-ops-recovery-terminal-preserved.sqlite3");
+    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
+    store.record_run_state(
+        "runtime-run-terminal-preserved",
+        "terminal_failure",
+        Some("runtime_verifier_rejected"),
+        1_800_000_000_000,
+    )?;
+    store.record_run_step_state(
+        "runtime-run-terminal-preserved",
+        RuntimeOrchestrationStepState {
+            step_index: 0,
+            admission_id: "adm-terminal-0".to_string(),
+            state: "terminal_failure".to_string(),
+            destructive: false,
+            admission_report_sha256: Some("1".repeat(64)),
+            tool_receipt_sha256: None,
+            lease_id: None,
+        },
+    )?;
+    store.record_run_step_state(
+        "runtime-run-terminal-preserved",
+        RuntimeOrchestrationStepState {
+            step_index: 1,
+            admission_id: "adm-terminal-1".to_string(),
+            state: "completed".to_string(),
+            destructive: true,
+            admission_report_sha256: Some("2".repeat(64)),
+            tool_receipt_sha256: Some("3".repeat(64)),
+            lease_id: Some("lease-terminal-1".to_string()),
+        },
+    )?;
+    store.record_evidence_artifact(
+        "runtime-run-terminal-preserved",
+        &RuntimeEvidenceManifestEntry {
+            role: "workflow_run_report".to_string(),
+            path: "workflow-run-report.json".to_string(),
+            sha256: "4".repeat(64),
+            byte_count: 128,
+        },
+        1_800_000_000_500,
+    )?;
+
+    let report =
+        store.recovery_drill_report("runtime-run-terminal-preserved", 1_800_000_001_000)?;
+
+    assert!(!report.accepted, "{report:#?}");
+    assert!(report.blocked, "{report:#?}");
+    assert!(!report.resumable, "{report:#?}");
+    assert_eq!(report.next_step_index, Some(0));
+    assert_eq!(report.reusable_step_indices, vec![1]);
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_resume_destructive_repair_required")
+    );
+    Ok(())
+}
+
+#[test]
 fn runtime_ops_evidence_health_detects_hash_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     std::fs::write(
