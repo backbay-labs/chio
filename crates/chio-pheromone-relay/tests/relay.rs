@@ -2920,6 +2920,65 @@ fn relay_alert_assurance_archive_restore_rejects_invalid_package_report() {
 }
 
 #[test]
+fn relay_alert_assurance_archive_restore_rejects_failed_package_report_checks() {
+    let mut invalid = restore_package_report(1, None);
+    invalid.checks[0].accepted = false;
+    let physical = vec![physical_drill_for_package(&invalid)];
+    let handoff = vec![handoff_for_package(&invalid)];
+
+    let report = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: &[invalid],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!report.accepted);
+    assert_eq!(report.packages[0].code, "package_report_check_failed");
+    assert_eq!(report.verified_generation_count, 0);
+}
+
+#[test]
+fn relay_alert_assurance_archive_restore_rejects_malformed_previous_hash_without_continuity() {
+    let mut first = restore_package_report(1, Some("c".repeat(64)));
+    first.package_id = "relay-archive-package-1-invalid".to_string();
+    let second = restore_package_report(2, None);
+    let physical = vec![
+        physical_drill_for_package(&first),
+        physical_drill_for_package(&second),
+    ];
+    let handoff = vec![handoff_for_package(&first), handoff_for_package(&second)];
+    let mut profile = archive_restore_profile();
+    profile.require_generation_continuity = false;
+
+    let report = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: &[first, second],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            restore_profile: &profile,
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!report.accepted);
+    assert_eq!(
+        report.packages[0].code,
+        "package_report_previous_hash_unexpected"
+    );
+    assert_eq!(
+        report.packages[1].code,
+        "package_report_previous_hash_missing"
+    );
+    assert_eq!(report.verified_generation_count, 0);
+}
+
+#[test]
 fn relay_alert_assurance_archive_restore_does_not_reserve_quarantined_generations() {
     let mut invalid = restore_package_report(1, None);
     invalid.trusted_packager_verified = false;

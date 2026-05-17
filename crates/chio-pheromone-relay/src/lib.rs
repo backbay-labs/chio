@@ -6701,6 +6701,12 @@ fn archive_package_report_integrity_failure(
     if report.package_generation == 0 {
         return Some("package_report_generation_invalid");
     }
+    if report.package_generation == 1 && report.previous_package_manifest_sha256.is_some() {
+        return Some("package_report_previous_hash_unexpected");
+    }
+    if report.package_generation > 1 && report.previous_package_manifest_sha256.is_none() {
+        return Some("package_report_previous_hash_missing");
+    }
     if !is_sha256_hex(&report.package_manifest_sha256)
         || !is_sha256_hex(&report.source_archive_report_sha256)
         || !is_sha256_hex(&report.source_closeout_report_sha256)
@@ -6732,6 +6738,9 @@ fn archive_package_report_integrity_failure(
     }
     if report.checks.is_empty() {
         return Some("package_report_checks_empty");
+    }
+    if report.checks.iter().any(|check| !check.accepted) {
+        return Some("package_report_check_failed");
     }
     None
 }
