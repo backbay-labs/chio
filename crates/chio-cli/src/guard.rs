@@ -967,6 +967,7 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
             staging.display()
         ))
     })?;
+    let updated_manifest_content = update_manifest_wasm_path(&manifest_content, &wasm_filename)?;
     let result = (|| -> Result<(), CliError> {
         write_guard_install_file(&staging.join(&wasm_filename), &wasm_entry.bytes)?;
         if let Some(signature) = &signature_entry {
@@ -977,7 +978,6 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
                     })?;
             write_guard_install_file(&staging.join(signature_filename), &signature.bytes)?;
         }
-        let updated_manifest_content = update_manifest_wasm_path(&manifest_content, &wasm_filename)?;
         write_guard_install_file(
             &staging.join("guard-manifest.yaml"),
             updated_manifest_content.as_bytes(),
@@ -997,7 +997,6 @@ pub(crate) fn cmd_guard_install(archive_path: &Path, target_dir: &Path) -> Resul
         ))
     })?;
 
-    let updated_manifest_content = update_manifest_wasm_path(&manifest_content, &wasm_filename)?;
     let installed_manifest = fs::read_to_string(guard_dir.join("guard-manifest.yaml")).map_err(
         |e| guard_io_error(format!("failed to read installed manifest: {e}")),
     )?;
