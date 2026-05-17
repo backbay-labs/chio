@@ -6,7 +6,9 @@ use crate::evidence_io::{
     canonical_sha256_json, write_json_string, write_runtime_json_artifact,
     write_runtime_json_artifact_string,
 };
-use crate::proof_parity::{runtime_proof_parity, ExpectedBuyerClosureParity};
+use crate::proof_parity::{
+    materialize_final_runtime_proof_parity_report, ExpectedBuyerClosureParity,
+};
 use crate::scenario::RuntimeLoopbackStep;
 use crate::RuntimeLoopbackError;
 
@@ -532,23 +534,6 @@ pub(crate) fn assemble_runtime_loopback_outputs(
                 "Chiodos static three-vendor verifier report: {error}"
             ))
         })?;
-        let parity_trust_bundle_document =
-            chio_chiodos_loopback::verifier_trust_bundle_document_for_package(&package).map_err(
-                |error| {
-                    RuntimeLoopbackError::message(format!(
-                        "Chiodos runtime parity trust bundle build: {error}"
-                    ))
-                },
-            )?;
-        let parity_trust_bundle =
-            chio_chiodos::ChiodosVerifierTrustBundle::from_document(parity_trust_bundle_document)
-                .map_err(|error| {
-                RuntimeLoopbackError::message(format!(
-                    "Chiodos runtime parity trust bundle parse: {error}"
-                ))
-            })?;
-        let parity_verifier_report =
-            chio_chiodos::verify_package_report(&package, &parity_trust_bundle, &context);
         let expected_buyer_closure_parity =
             buyer_closure
                 .as_ref()
@@ -556,53 +541,19 @@ pub(crate) fn assemble_runtime_loopback_outputs(
                     step_index: closure.step_index,
                     consistency_model: closure.admission_report.consistency_model.clone(),
                 });
-        let (compared_fields, mismatches) = runtime_proof_parity(
+        let final_parity_report = materialize_final_runtime_proof_parity_report(
+            run_id,
+            now_unix_ms,
             &static_package,
+            &static_report,
             &package,
+            &context,
             expected_buyer_closure_parity.as_ref(),
-        )
-        .map_err(|error| {
-            RuntimeLoopbackError::message(format!("Chiodos runtime proof parity: {error}"))
-        })?;
-        let parity_accepted = mismatches.is_empty() && parity_verifier_report.accepted;
-        parity_report = Some(chio_chiodos_runtime::RuntimeProofParityReport {
-            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PROOF_PARITY_REPORT_SCHEMA.to_string(),
-            run_id: run_id.to_string(),
-            accepted: parity_accepted,
-            failure_code: if parity_accepted {
-                None
-            } else {
-                Some("runtime_proof_semantic_parity_mismatch".to_string())
-            },
-            generated_at_unix_ms: now_unix_ms,
-            static_proof_package_sha256: chio_chiodos::package_sha256(&static_package).map_err(
-                |error| {
-                    RuntimeLoopbackError::message(format!(
-                        "Chiodos static proof package hash: {error}"
-                    ))
-                },
-            )?,
-            runtime_proof_package_sha256: chio_chiodos::package_sha256(&package).map_err(
-                |error| {
-                    RuntimeLoopbackError::message(format!(
-                        "Chiodos runtime parity proof package hash: {error}"
-                    ))
-                },
-            )?,
-            static_verifier_report_sha256: canonical_sha256_json(
-                &static_report,
-                "Chiodos static verifier report canonical hash",
-            )?,
-            runtime_verifier_report_sha256: canonical_sha256_json(
-                &parity_verifier_report,
-                "Chiodos runtime parity verifier report hash",
-            )?,
-            compared_fields,
-            mismatches,
-        });
+        )?;
+        let parity_accepted = final_parity_report.accepted;
+        parity_report = Some(final_parity_report);
 
-        if verifier_report.accepted && parity_report.as_ref().is_some_and(|report| report.accepted)
-        {
+        if verifier_report.accepted && parity_accepted {
             proof_checks.push("runtime_semantic_proof_regeneration.verified".to_string());
         } else {
             accepted = false;

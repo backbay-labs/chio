@@ -7,6 +7,73 @@ pub(crate) struct ExpectedBuyerClosureParity {
     pub(crate) consistency_model: String,
 }
 
+pub(crate) fn materialize_final_runtime_proof_parity_report(
+    run_id: &str,
+    now_unix_ms: u64,
+    static_package: &chio_chiodos::ChiodosProofPackage,
+    static_report: &chio_chiodos::VerifierReport,
+    final_runtime_package: &chio_chiodos::ChiodosProofPackage,
+    context: &chio_chiodos::ChiodosVerificationContext,
+    expected_buyer_closure: Option<&ExpectedBuyerClosureParity>,
+) -> Result<chio_chiodos_runtime::RuntimeProofParityReport, RuntimeLoopbackError> {
+    let parity_trust_bundle_document =
+        chio_chiodos_loopback::verifier_trust_bundle_document_for_package(final_runtime_package)
+            .map_err(|error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chiodos runtime parity trust bundle build: {error}"
+                ))
+            })?;
+    let parity_trust_bundle =
+        chio_chiodos::ChiodosVerifierTrustBundle::from_document(parity_trust_bundle_document)
+            .map_err(|error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chiodos runtime parity trust bundle parse: {error}"
+                ))
+            })?;
+    let parity_verifier_report =
+        chio_chiodos::verify_package_report(final_runtime_package, &parity_trust_bundle, context);
+    let (compared_fields, mismatches) = runtime_proof_parity(
+        static_package,
+        final_runtime_package,
+        expected_buyer_closure,
+    )?;
+    let parity_accepted = mismatches.is_empty() && parity_verifier_report.accepted;
+
+    Ok(chio_chiodos_runtime::RuntimeProofParityReport {
+        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PROOF_PARITY_REPORT_SCHEMA.to_string(),
+        run_id: run_id.to_string(),
+        accepted: parity_accepted,
+        failure_code: if parity_accepted {
+            None
+        } else {
+            Some("runtime_proof_semantic_parity_mismatch".to_string())
+        },
+        generated_at_unix_ms: now_unix_ms,
+        static_proof_package_sha256: chio_chiodos::package_sha256(static_package).map_err(
+            |error| {
+                RuntimeLoopbackError::message(format!("Chiodos static proof package hash: {error}"))
+            },
+        )?,
+        runtime_proof_package_sha256: chio_chiodos::package_sha256(final_runtime_package).map_err(
+            |error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chiodos runtime parity proof package hash: {error}"
+                ))
+            },
+        )?,
+        static_verifier_report_sha256: canonical_sha256_json(
+            static_report,
+            "Chiodos static verifier report canonical hash",
+        )?,
+        runtime_verifier_report_sha256: canonical_sha256_json(
+            &parity_verifier_report,
+            "Chiodos runtime parity verifier report hash",
+        )?,
+        compared_fields,
+        mismatches,
+    })
+}
+
 pub(crate) fn runtime_proof_parity(
     static_package: &chio_chiodos::ChiodosProofPackage,
     runtime_package: &chio_chiodos::ChiodosProofPackage,
@@ -396,8 +463,8 @@ fn compare_runtime_proof_field<T: serde::Serialize + PartialEq>(
 #[cfg(test)]
 mod tests {
     use super::{
-        compare_bilateral_dsse_predicate_semantics, BilateralDssePredicateParityBinding,
-        ExpectedBuyerClosureParity,
+        compare_bilateral_dsse_predicate_semantics, materialize_final_runtime_proof_parity_report,
+        BilateralDssePredicateParityBinding, ExpectedBuyerClosureParity,
     };
 
     fn predicate_binding() -> BilateralDssePredicateParityBinding {
@@ -466,6 +533,48 @@ mod tests {
 
         assert_eq!(mismatches.len(), 1, "{mismatches:#?}");
         assert_eq!(mismatches[0].field, "bilateral_dsse_predicate_semantics");
+        Ok(())
+    }
+
+    #[test]
+    fn materialized_parity_hashes_final_runtime_package() -> Result<(), crate::RuntimeLoopbackError>
+    {
+        let static_package = chio_chiodos_loopback::fixture_proof_package().map_err(|error| {
+            crate::RuntimeLoopbackError::message(format!("fixture package build failed: {error}"))
+        })?;
+        let static_report = chio_chiodos_loopback::fixture_verifier_report().map_err(|error| {
+            crate::RuntimeLoopbackError::message(format!("fixture report build failed: {error}"))
+        })?;
+        let context = chio_chiodos_loopback::verification_context();
+        let mut final_package = static_package.clone();
+        final_package.claims.hidden_range_predicates =
+            !final_package.claims.hidden_range_predicates;
+
+        let report = materialize_final_runtime_proof_parity_report(
+            "run-final-package",
+            1_747_500_000_000,
+            &static_package,
+            &static_report,
+            &final_package,
+            &context,
+            None,
+        )?;
+        let final_package_sha256 =
+            chio_chiodos::package_sha256(&final_package).map_err(|error| {
+                crate::RuntimeLoopbackError::message(format!("final package hash failed: {error}"))
+            })?;
+        let static_package_sha256 =
+            chio_chiodos::package_sha256(&static_package).map_err(|error| {
+                crate::RuntimeLoopbackError::message(format!("static package hash failed: {error}"))
+            })?;
+
+        assert_eq!(report.runtime_proof_package_sha256, final_package_sha256);
+        assert_ne!(report.runtime_proof_package_sha256, static_package_sha256);
+        assert!(!report.accepted);
+        assert_eq!(
+            report.failure_code.as_deref(),
+            Some("runtime_proof_semantic_parity_mismatch")
+        );
         Ok(())
     }
 }
