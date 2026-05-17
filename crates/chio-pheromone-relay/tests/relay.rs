@@ -2431,7 +2431,11 @@ fn physical_drill_for_package(
         package_id: package_report.package_id.clone(),
         package_report_sha256: canonical_digest(package_report),
         sampled_member_count: 1,
-        checks: vec![],
+        checks: vec![RelayAlertCheck {
+            code: "physical_archive_evidence".to_string(),
+            accepted: true,
+            detail: "test physical readback".to_string(),
+        }],
     }
 }
 
@@ -2449,7 +2453,11 @@ fn handoff_for_package(
         package_report_sha256: canonical_digest(package_report),
         target_system_alias: "retention-vault".to_string(),
         ready_for_operator_handoff: true,
-        checks: vec![],
+        checks: vec![RelayAlertCheck {
+            code: "retention_handoff_evidence".to_string(),
+            accepted: true,
+            detail: "test retention handoff".to_string(),
+        }],
     }
 }
 
@@ -2883,6 +2891,142 @@ fn relay_alert_assurance_archive_hardening_blocks_generation_gap() {
         .packages
         .iter()
         .any(|package| package.code == "generation_gap"));
+}
+
+#[test]
+fn relay_alert_assurance_archive_restore_rejects_invalid_package_report() {
+    let mut invalid = restore_package_report(1, None);
+    invalid.trusted_packager_verified = false;
+    let physical = vec![physical_drill_for_package(&invalid)];
+    let handoff = vec![handoff_for_package(&invalid)];
+
+    let report = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: &[invalid],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!report.accepted);
+    assert_eq!(
+        report.packages[0].code,
+        "package_report_verification_incomplete"
+    );
+    assert_eq!(report.verified_generation_count, 0);
+}
+
+#[test]
+fn relay_alert_assurance_archive_restore_preserves_rejected_report_code() {
+    let mut rejected = restore_package_report(1, None);
+    rejected.accepted = false;
+    rejected.code = "source_report_mismatch".to_string();
+    let physical = vec![physical_drill_for_package(&rejected)];
+    let handoff = vec![handoff_for_package(&rejected)];
+
+    let report = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: &[rejected],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!report.accepted);
+    assert_eq!(report.packages[0].code, "package_report_rejected");
+}
+
+#[test]
+fn relay_alert_assurance_archive_restore_does_not_advance_through_quarantine() {
+    let first = restore_package_report(1, None);
+    let third = restore_package_report(3, Some(first.package_manifest_sha256.clone()));
+    let fourth = restore_package_report(4, Some(third.package_manifest_sha256.clone()));
+    let physical = vec![
+        physical_drill_for_package(&first),
+        physical_drill_for_package(&third),
+        physical_drill_for_package(&fourth),
+    ];
+    let handoff = vec![
+        handoff_for_package(&first),
+        handoff_for_package(&third),
+        handoff_for_package(&fourth),
+    ];
+
+    let report = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: &[first, third, fourth],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!report.accepted);
+    assert_eq!(report.verified_generation_count, 1);
+    assert_eq!(report.latest_package_generation, 1);
+    assert!(
+        report
+            .packages
+            .iter()
+            .filter(|package| package.code == "generation_gap")
+            .count()
+            >= 2
+    );
+}
+
+#[test]
+fn relay_alert_assurance_archive_restore_rejects_forged_secondary_reports() {
+    let package = restore_package_report(1, None);
+    let mut physical = physical_drill_for_package(&package);
+    physical.schema = "forged.physical.report.v1".to_string();
+    let handoff = handoff_for_package(&package);
+
+    let report = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: &[package],
+            physical_drill_reports: &[physical],
+            retention_handoff_reports: &[handoff],
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!report.accepted);
+    assert_eq!(report.packages[0].code, "missing_physical_readback");
+}
+
+#[test]
+fn relay_alert_assurance_archive_restore_rejects_forged_handoff_reports() {
+    let package = restore_package_report(1, None);
+    let physical = physical_drill_for_package(&package);
+    let mut handoff = handoff_for_package(&package);
+    handoff.checks.clear();
+
+    let report = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: &[package],
+            physical_drill_reports: &[physical],
+            retention_handoff_reports: &[handoff],
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!report.accepted);
+    assert!(report
+        .packages
+        .iter()
+        .any(|package| package.code == "retention_handoff_not_ready"));
 }
 
 #[test]

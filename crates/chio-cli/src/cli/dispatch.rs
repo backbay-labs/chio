@@ -5592,6 +5592,7 @@ const ARCHIVE_PACKAGE_MAX_COMPRESSED_BYTES: u64 = 64 * 1024 * 1024;
 const ARCHIVE_PACKAGE_MAX_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
 const ARCHIVE_PACKAGE_MAX_MEMBER_BYTES: u64 = 32 * 1024 * 1024;
 const ARCHIVE_PACKAGE_MAX_MEMBER_COUNT: usize = 512;
+const ARCHIVE_PACKAGE_MAX_TAR_MEMBER_COUNT: usize = ARCHIVE_PACKAGE_MAX_MEMBER_COUNT + 1;
 const ARCHIVE_PACKAGE_MAX_DECOMPRESSION_RATIO: u64 = 200;
 
 fn archive_package_limits() -> crate::archive::SafeArchiveLimits {
@@ -5599,7 +5600,7 @@ fn archive_package_limits() -> crate::archive::SafeArchiveLimits {
         max_compressed_bytes: ARCHIVE_PACKAGE_MAX_COMPRESSED_BYTES,
         max_member_bytes: ARCHIVE_PACKAGE_MAX_MEMBER_BYTES,
         max_total_bytes: ARCHIVE_PACKAGE_MAX_TOTAL_BYTES,
-        max_member_count: ARCHIVE_PACKAGE_MAX_MEMBER_COUNT,
+        max_member_count: ARCHIVE_PACKAGE_MAX_TAR_MEMBER_COUNT,
         max_decompression_ratio: ARCHIVE_PACKAGE_MAX_DECOMPRESSION_RATIO,
     }
 }
