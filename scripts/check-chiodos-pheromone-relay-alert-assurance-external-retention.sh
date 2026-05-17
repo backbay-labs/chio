@@ -55,27 +55,38 @@ for schema_id, filename in expected.items():
         raise SystemExit(f"schema {schema_id} is not registered at {want}")
 
 negative = json.loads((fixture_dir / "relay-alert-assurance-external-retention-negative-cases.json").read_text(encoding="utf-8"))
-case_ids = {case.get("caseId") for case in negative.get("cases", [])}
-required = {
-    "untrusted_packager",
-    "untrusted_exporter",
-    "source_report_mismatch",
-    "stale_evidence",
-    "local_kernel_mismatch",
-    "generation_gap",
-    "previous_manifest_mismatch",
-    "missing_restore_drill",
-    "rejected_restore_drill",
-    "missing_physical_readback",
-    "insufficient_sample",
-    "missing_retention_handoff",
-    "unknown_retention_alias",
-    "alias_drift",
-    "wrong_expected_code",
+expected_codes = {
+    "untrusted_packager": "external_retention_blocked",
+    "untrusted_exporter": "external_retention_blocked",
+    "source_report_mismatch": "external_retention_blocked",
+    "stale_profile": "archive_package_invalid",
+    "stale_evidence": "external_retention_blocked",
+    "local_kernel_mismatch": "external_retention_blocked",
+    "generation_gap": "external_retention_blocked",
+    "previous_manifest_mismatch": "external_retention_blocked",
+    "missing_restore_drill": "external_retention_blocked",
+    "rejected_restore_drill": "external_retention_blocked",
+    "missing_physical_readback": "external_retention_blocked",
+    "insufficient_sample": "external_retention_blocked",
+    "missing_retention_handoff": "external_retention_blocked",
+    "unknown_retention_alias": "external_retention_blocked",
+    "alias_drift": "external_retention_blocked",
+    "wrong_expected_code": "negative_corpus_mismatch",
 }
-missing = sorted(required - case_ids)
+actual_codes = {case.get("caseId"): case.get("expectedCode") for case in negative.get("cases", [])}
+missing = sorted(set(expected_codes) - set(actual_codes))
 if missing:
     raise SystemExit(f"external retention negative corpus missing cases: {missing}")
+unexpected = sorted(set(actual_codes) - set(expected_codes))
+if unexpected:
+    raise SystemExit(f"external retention negative corpus has unexpected cases: {unexpected}")
+mismatched = {
+    case_id: {"want": want, "got": actual_codes.get(case_id)}
+    for case_id, want in expected_codes.items()
+    if actual_codes.get(case_id) != want
+}
+if mismatched:
+    raise SystemExit(f"external retention negative corpus expectedCode mismatch: {mismatched}")
 print("OK Chiodos relay alert assurance external retention metadata")
 PY
 

@@ -4755,8 +4755,22 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
 
         if input.profile.require_restore_accepted {
             match external_retention_restore_status(input.restore_drill_reports, report) {
-                Some((restore_code, restore_accepted, restore_generated_at)) => {
+                Some((
+                    restore_code,
+                    restore_accepted,
+                    restore_generated_at,
+                    restore_local_kernel_id,
+                )) => {
                     restore_status = restore_code;
+                    external_retention_check(
+                        &mut checks,
+                        &mut accepted,
+                        &mut code,
+                        restore_local_kernel_id == input.profile.local_kernel_id,
+                        "restore_drill_local_kernel",
+                        "local_kernel_mismatch",
+                        "restore drill report local kernel matches external retention profile",
+                    );
                     external_retention_check(
                         &mut checks,
                         &mut accepted,
@@ -4808,9 +4822,20 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
                                 "external retention member count overflow".to_string(),
                             )
                         })?;
+                    let sample_within_package =
+                        physical.sampled_member_count <= package_member_count;
                     sample_coverage_basis_points = external_retention_sample_coverage(
                         physical.sampled_member_count,
                         package_member_count,
+                    );
+                    external_retention_check(
+                        &mut checks,
+                        &mut accepted,
+                        &mut code,
+                        physical.local_kernel_id == input.profile.local_kernel_id,
+                        "physical_readback_local_kernel",
+                        "local_kernel_mismatch",
+                        "physical readback report local kernel matches external retention profile",
                     );
                     external_retention_check(
                         &mut checks,
@@ -4836,22 +4861,33 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
                         "stale_evidence",
                         "physical readback report is inside the review window and freshness bound",
                     );
-                    let sample_ok = physical.sampled_member_count
-                        >= input.profile.min_sampled_members
+                    external_retention_check(
+                        &mut checks,
+                        &mut accepted,
+                        &mut code,
+                        sample_within_package,
+                        "physical_readback_sample_bound",
+                        "sample_exceeds_package_size",
+                        "physical readback sample count does not exceed package member count",
+                    );
+                    let sample_ok = sample_within_package
+                        && physical.sampled_member_count >= input.profile.min_sampled_members
                         && sample_coverage_basis_points
                             >= input.profile.min_sample_coverage_basis_points;
                     if !sample_ok {
                         insufficient_sample_count = insufficient_sample_count.saturating_add(1);
                     }
-                    external_retention_check(
-                        &mut checks,
-                        &mut accepted,
-                        &mut code,
-                        sample_ok,
-                        "physical_readback_sample",
-                        "insufficient_sample",
-                        "physical readback sample satisfies external retention profile",
-                    );
+                    if sample_within_package {
+                        external_retention_check(
+                            &mut checks,
+                            &mut accepted,
+                            &mut code,
+                            sample_ok,
+                            "physical_readback_sample",
+                            "insufficient_sample",
+                            "physical readback sample satisfies external retention profile",
+                        );
+                    }
                 }
                 None => {
                     physical_readback_status = "missing".to_string();
@@ -4885,6 +4921,15 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
                 [handoff] => {
                     retention_handoff_status = handoff.code.clone();
                     target_system_alias = Some(handoff.target_system_alias.clone());
+                    external_retention_check(
+                        &mut checks,
+                        &mut accepted,
+                        &mut code,
+                        handoff.local_kernel_id == input.profile.local_kernel_id,
+                        "retention_handoff_local_kernel",
+                        "local_kernel_mismatch",
+                        "retention handoff report local kernel matches external retention profile",
+                    );
                     external_retention_check(
                         &mut checks,
                         &mut accepted,
@@ -7674,7 +7719,7 @@ fn validate_external_retention_profile(
     }
     let mut seen_aliases = BTreeSet::new();
     for alias in &profile.allowed_retention_system_aliases {
-        validate_archive_package_identity(alias, "external retention alias")?;
+        validate_external_retention_schema_token(alias, "external retention alias")?;
         if !seen_aliases.insert(alias) {
             return Err(PheromoneRelayError::ArchivePackageInvalid(
                 "duplicate external retention alias".to_string(),
@@ -7683,7 +7728,7 @@ fn validate_external_retention_profile(
     }
     let mut seen_recommendations = BTreeSet::new();
     for code in &profile.recommendation_codes {
-        validate_archive_package_identity(code, "external retention recommendation")?;
+        validate_external_retention_schema_token(code, "external retention recommendation")?;
         if !seen_recommendations.insert(code) {
             return Err(PheromoneRelayError::ArchivePackageInvalid(
                 "duplicate external retention recommendation".to_string(),
@@ -7693,10 +7738,27 @@ fn validate_external_retention_profile(
     Ok(())
 }
 
+fn validate_external_retention_schema_token(
+    value: &str,
+    field: &str,
+) -> Result<(), PheromoneRelayError> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-'))
+    {
+        return Err(PheromoneRelayError::ArchivePackageInvalid(format!(
+            "{field} is invalid"
+        )));
+    }
+    Ok(())
+}
+
 fn external_retention_restore_status(
     restore_reports: &[RelayAlertAssuranceArchiveRestoreDrillReport],
     package_report: &RelayAlertAssuranceArchivePackageReport,
-) -> Option<(String, bool, u64)> {
+) -> Option<(String, bool, u64, String)> {
     restore_reports.iter().find_map(|restore| {
         restore
             .packages
@@ -7711,6 +7773,7 @@ fn external_retention_restore_status(
                     package.code.clone(),
                     restore.accepted && package.accepted,
                     restore.generated_at_unix_ms,
+                    restore.local_kernel_id.clone(),
                 )
             })
     })
@@ -7739,7 +7802,7 @@ fn external_retention_sample_coverage(sampled: u64, member_count: u64) -> u64 {
     if member_count == 0 {
         return 0;
     }
-    sampled.saturating_mul(10_000) / member_count
+    sampled.min(member_count).saturating_mul(10_000) / member_count
 }
 
 fn external_retention_fresh(
