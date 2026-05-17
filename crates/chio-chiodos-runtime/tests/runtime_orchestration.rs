@@ -61,6 +61,23 @@ fn runtime_orchestration_evidence_binding_rejects_wrong_admission_order(
 }
 
 #[test]
+fn runtime_orchestration_evidence_binding_rejects_wrong_step_index() -> Result<(), Box<dyn Error>> {
+    let fixture = write_evidence_fixture(NOW)?;
+    let mut evidence = load_runtime_orchestration_evidence(fixture.evidence_dir.path())?;
+    evidence.workflow_run_report.step_evidence[0].step_index = 1;
+
+    let failure = validate_runtime_orchestration_evidence_binding(&fixture.contract, &evidence)
+        .err()
+        .ok_or("expected step index mismatch")?;
+    assert_eq!(
+        failure.code(),
+        "runtime_orchestration_evidence_admission_mismatch"
+    );
+
+    Ok(())
+}
+
+#[test]
 fn runtime_orchestration_evidence_sink_health_rejects_stale_artifacts() -> Result<(), Box<dyn Error>>
 {
     let mut fixture = write_evidence_fixture(NOW)?;

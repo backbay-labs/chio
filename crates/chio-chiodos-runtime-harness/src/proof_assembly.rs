@@ -57,6 +57,25 @@ pub(crate) fn step_admission_binding(
     })
 }
 
+pub(crate) fn runtime_admission_report_sha256_for_workflow(
+    principal_admission_report_sha256: Option<&str>,
+    admission_hashes: &[String],
+    terminal_admission_report_sha256: Option<&str>,
+) -> Result<String, RuntimeLoopbackError> {
+    if let Some(principal_admission_report_sha256) = principal_admission_report_sha256 {
+        return Ok(principal_admission_report_sha256.to_string());
+    }
+    if let Some(admission_report_sha256) = admission_hashes.first() {
+        return Ok(admission_report_sha256.clone());
+    }
+    if let Some(terminal_admission_report_sha256) = terminal_admission_report_sha256 {
+        return Ok(terminal_admission_report_sha256.to_string());
+    }
+    Err(RuntimeLoopbackError::message(
+        "Chiodos runtime proof generation missing admission report hash".to_string(),
+    ))
+}
+
 pub(crate) fn assemble_runtime_loopback_outputs(
     run_id: &str,
     steps: &[RuntimeLoopbackStep],
@@ -69,6 +88,7 @@ pub(crate) fn assemble_runtime_loopback_outputs(
         mut failure_code,
         mut evidence_paths,
         admission_hashes,
+        terminal_admission_report_sha256,
         mut evidence_manifest_entries,
         live_tool_receipts,
         live_treaty_contexts,
@@ -618,9 +638,11 @@ pub(crate) fn assemble_runtime_loopback_outputs(
             &mut evidence_paths,
         )?;
     }
-    let runtime_admission_report_sha256 = principal_admission_report_sha256
-        .clone()
-        .unwrap_or_else(|| chio_core::sha256_hex(admission_hashes.join(":").as_bytes()));
+    let runtime_admission_report_sha256 = runtime_admission_report_sha256_for_workflow(
+        principal_admission_report_sha256.as_deref(),
+        &admission_hashes,
+        terminal_admission_report_sha256.as_deref(),
+    )?;
     let workflow_report = chio_chiodos_runtime::RuntimeWorkflowRunReport {
         schema: chio_chiodos_runtime::CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
         run_id: run_id.to_string(),

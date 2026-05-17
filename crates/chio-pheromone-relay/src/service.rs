@@ -586,6 +586,7 @@ pub async fn deliver_due_batches(
     now_unix_ms: u64,
     max_batches: usize,
 ) -> Result<RelayTickReport, PheromoneRelayError> {
+    let delivery_directory = directory.clone();
     let client = PheromoneRelayClient::new(directory, keypair, now_unix_ms, 60_000)?;
     let due = store.lease_due_batches(now_unix_ms, max_batches)?;
     let mut report = RelayTickReport {
@@ -609,6 +610,14 @@ pub async fn deliver_due_batches(
             report
                 .failures
                 .push(format!("{}: sender_mismatch", entry.outbox_id));
+            continue;
+        }
+        if let Err(error) = enforce_outbound_peer_batch_directory_scope(
+            &delivery_directory,
+            &entry.recipient_kernel_id,
+            &entry.batch,
+        ) {
+            mark_delivery_failure(store, &entry, error.code(), now_unix_ms, &mut report)?;
             continue;
         }
         let nonce = format!("relay-tick:{}:{}", entry.outbox_id, entry.attempts + 1);
@@ -640,6 +649,34 @@ pub async fn deliver_due_batches(
         }
     }
     Ok(report)
+}
+
+fn enforce_outbound_peer_batch_directory_scope(
+    directory: &PeerDirectory,
+    recipient_kernel_id: &str,
+    batch: &PheromoneGossipBatch,
+) -> Result<(), PheromoneRelayError> {
+    if batch.recipient_kernel_id != recipient_kernel_id {
+        return Err(PheromoneRelayError::RecipientMismatch(format!(
+            "queued batch recipient {} does not match outbox recipient {}",
+            batch.recipient_kernel_id, recipient_kernel_id
+        )));
+    }
+    let peer = directory.peer(recipient_kernel_id)?;
+    let frame_count = batch.frames.len();
+    if frame_count > peer.max_batch_frames {
+        return Err(PheromoneRelayError::RelayProfileDenied(format!(
+            "recipient {recipient_kernel_id} is limited to {} batch frames but queued batch has {frame_count}",
+            peer.max_batch_frames
+        )));
+    }
+    if !peer.treaty_subscriptions.contains(&batch.treaty_id) {
+        return Err(PheromoneRelayError::RelayProfileDenied(format!(
+            "recipient {recipient_kernel_id} is not subscribed to treaty {}",
+            batch.treaty_id
+        )));
+    }
+    Ok(())
 }
 
 pub(crate) fn mark_delivery_failure(

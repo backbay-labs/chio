@@ -666,6 +666,8 @@ pub fn validate_cross_boundary_admission_report(
             "accepted cross-boundary admission report cannot include failure code",
         );
     }
+    let present: BTreeSet<_> = report.present_evidence.iter().map(String::as_str).collect();
+    let mut verified = BTreeMap::new();
     for evidence in &report.verified_evidence {
         validate_state_label(
             &evidence.evidence_class,
@@ -675,6 +677,34 @@ pub fn validate_cross_boundary_admission_report(
             &evidence.artifact_sha256,
             "cross_boundary_admission_invalid_evidence_hash",
         )?;
+        verified.insert(evidence.evidence_class.as_str(), evidence.verified);
+    }
+    for evidence_class in &report.present_evidence {
+        validate_state_label(
+            evidence_class,
+            "cross_boundary_admission_invalid_evidence_class",
+        )?;
+    }
+    if report.accepted {
+        for required in &report.required_evidence {
+            validate_state_label(required, "cross_boundary_admission_invalid_evidence_class")?;
+            if !present.contains(required.as_str()) {
+                return rejected(
+                    "chiodos_treaty_missing_required_evidence",
+                    "accepted cross-boundary admission report is missing required evidence",
+                );
+            }
+            if verified
+                .get(required.as_str())
+                .copied()
+                .is_none_or(|is_verified| !is_verified)
+            {
+                return rejected(
+                    "chiodos_treaty_unverified_required_evidence",
+                    "accepted cross-boundary admission report has unverified required evidence",
+                );
+            }
+        }
     }
     Ok(())
 }

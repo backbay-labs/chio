@@ -11,6 +11,7 @@ pub(crate) struct RuntimeLoopbackAdmissionOutput {
     pub(crate) failure_code: Option<String>,
     pub(crate) evidence_paths: Vec<String>,
     pub(crate) admission_hashes: Vec<String>,
+    pub(crate) terminal_admission_report_sha256: Option<String>,
     pub(crate) evidence_manifest_entries: Vec<chio_chiodos_runtime::RuntimeEvidenceManifestEntry>,
     pub(crate) live_tool_receipts: Vec<chio_core::receipt::ChioReceipt>,
     pub(crate) live_treaty_contexts: Vec<Option<RuntimeLoopbackTreatyContext>>,
@@ -26,6 +27,7 @@ pub(crate) fn execute_runtime_admission_loop(
     let mut failure_code = None;
     let mut evidence_paths = Vec::new();
     let mut admission_hashes = Vec::new();
+    let mut terminal_admission_report_sha256 = None;
     let mut evidence_manifest_entries = Vec::new();
     let mut live_tool_receipts = Vec::new();
     let mut live_treaty_contexts = Vec::new();
@@ -88,12 +90,13 @@ pub(crate) fn execute_runtime_admission_loop(
                 "Chiodos runtime admission artifact hash was empty".to_string(),
             ));
         }
-        admission_hashes.push(admission_hash);
+        terminal_admission_report_sha256 = Some(admission_hash.clone());
         if !admission_report.accepted {
             accepted = false;
             failure_code = admission_report.failure_code.clone();
             break;
         }
+        admission_hashes.push(admission_hash);
         let arguments = step.arguments.clone().ok_or_else(|| {
             RuntimeLoopbackError::message(format!(
                 "Chiodos runtime accepted step {} did not carry executable arguments",
@@ -110,6 +113,7 @@ pub(crate) fn execute_runtime_admission_loop(
         failure_code,
         evidence_paths,
         admission_hashes,
+        terminal_admission_report_sha256,
         evidence_manifest_entries,
         live_tool_receipts,
         live_treaty_contexts,

@@ -192,6 +192,25 @@ pub fn validate_runtime_orchestration_evidence_binding(
             "runtime workflow step evidence count does not match the run contract",
         ));
     }
+    for (index, step) in evidence
+        .workflow_run_report
+        .step_evidence
+        .iter()
+        .enumerate()
+    {
+        let expected_step_index = u64::try_from(index).map_err(|_| {
+            RuntimeOrchestrationEvidenceFailure::new(
+                "runtime_orchestration_step_count_mismatch",
+                "runtime workflow step index does not fit this platform",
+            )
+        })?;
+        if step.step_index != expected_step_index {
+            return Err(RuntimeOrchestrationEvidenceFailure::new(
+                "runtime_orchestration_evidence_admission_mismatch",
+                "runtime workflow step indices do not match the run contract order",
+            ));
+        }
+    }
     let actual_admission_ids: Vec<&str> = evidence
         .workflow_run_report
         .step_evidence

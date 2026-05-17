@@ -71,6 +71,12 @@ pub(crate) fn validate_peer_directory_profile(
                 peer.kernel_id, peer.max_catchup_frames, limits.max_catchup_frames
             )));
         }
+        if peer.max_batch_frames > peer.max_catchup_frames {
+            return Err(PheromoneRelayError::RelayProfileDenied(format!(
+                "peer {} max batch frames {} exceeds max catch-up frames {}",
+                peer.kernel_id, peer.max_batch_frames, peer.max_catchup_frames
+            )));
+        }
         if peer.max_catchup_bytes == 0 || peer.max_catchup_bytes > limits.max_catchup_bytes {
             return Err(PheromoneRelayError::RelayProfileDenied(format!(
                 "peer {} max catch-up bytes {} exceeds profile bound {}",

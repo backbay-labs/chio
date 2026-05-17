@@ -142,6 +142,14 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
     ) {
         accepted = false;
         failure_code = Some("runtime_orchestration_evidence_stale".to_string());
+    } else if let Err(failure) =
+        chio_chiodos_runtime::validate_runtime_orchestration_evidence_binding(
+            &run_contract,
+            &evidence,
+        )
+    {
+        accepted = false;
+        failure_code = Some(failure.code().to_string());
     } else if evidence.proof_regeneration_report.accepted && !evidence.verifier_report_accepted {
         accepted = false;
         failure_code = Some(
@@ -150,16 +158,6 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
                 .clone()
                 .unwrap_or_else(|| "runtime_orchestration_verifier_report_rejected".to_string()),
         );
-    } else if evidence.proof_regeneration_report.accepted {
-        if let Err(failure) =
-            chio_chiodos_runtime::validate_runtime_orchestration_evidence_binding(
-                &run_contract,
-                &evidence,
-            )
-        {
-            accepted = false;
-            failure_code = Some(failure.code().to_string());
-        }
     }
     let status = if accepted {
         "proof_accepted"

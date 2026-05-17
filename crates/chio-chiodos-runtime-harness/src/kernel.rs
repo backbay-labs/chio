@@ -1,4 +1,4 @@
-use std::fs;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use chio_kernel::{ChioKernel, ToolCallRequest as KernelToolCallRequest};
 
@@ -12,6 +12,8 @@ pub(crate) struct RuntimeLoopbackExecution {
     pub(crate) receipt: chio_core::receipt::ChioReceipt,
     pub(crate) treaty: Option<RuntimeLoopbackTreatyContext>,
 }
+
+static RUNTIME_LOOPBACK_RECEIPT_STORE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 struct RuntimeLoopbackToolServer {
     id: String,
@@ -312,19 +314,15 @@ pub(crate) fn execute_runtime_loopback_step(
         retention_config: None,
     });
     kernel.set_federation_local_kernel_id(step.request.host_kernel_id.clone());
+    let receipt_store_nonce =
+        RUNTIME_LOOPBACK_RECEIPT_STORE_COUNTER.fetch_add(1, Ordering::Relaxed);
     let receipt_store_path = std::env::temp_dir().join(format!(
-        "chio-runtime-loopback-{}-{}.sqlite3",
+        "chio-runtime-loopback-{}-{}-{}-{}.sqlite3",
         std::process::id(),
-        step_index
+        unix_now_ms(),
+        step_index,
+        receipt_store_nonce
     ));
-    if receipt_store_path.exists() {
-        fs::remove_file(&receipt_store_path).map_err(|error| {
-            RuntimeLoopbackError::message(format!(
-                "failed to clear Chiodos runtime loopback receipt store {}: {error}",
-                receipt_store_path.display()
-            ))
-        })?;
-    }
     let receipt_store =
         chio_store_sqlite::SqliteReceiptStore::open(&receipt_store_path).map_err(|error| {
             RuntimeLoopbackError::message(format!(

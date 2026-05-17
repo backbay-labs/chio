@@ -191,14 +191,6 @@ pub(crate) fn cmd_chiodos_runtime_pheromone_evaluate(
     .map_err(|error| {
         CliError::cli_other_error(format!("Chiodos runtime admission bundle parse: {error}"))
     })?;
-    let profile = chio_chiodos_runtime::RuntimeAdmissionProfile {
-        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_ADMISSION_PROFILE_SCHEMA.to_string(),
-        profile_id: "policy-evaluate".to_string(),
-        local_kernel_id: bundle.binding.host_kernel_id.clone(),
-        verifier_id: "policy-evaluate".to_string(),
-        issued_at_unix_ms: now_unix_ms.saturating_sub(1),
-        expires_at_unix_ms: now_unix_ms.saturating_add(1),
-    };
     let runtime_trust_input =
         chio_chiodos_runtime::signed_runtime_verifier_trust_bundle_from_json(
             &read_utf8_json_file(runtime_trust_input, "Chiodos runtime trust input")?,
@@ -228,6 +220,18 @@ pub(crate) fn cmd_chiodos_runtime_pheromone_evaluate(
     .map_err(|error| {
         CliError::cli_other_error(format!("Chiodos runtime pheromone policy parse: {error}"))
     })?;
+    let verifier_id = resolve_runtime_pheromone_evaluation_verifier_id(
+        &runtime_trust_input.body.verifier_id,
+        &policy.body.verifier_id,
+    )?;
+    let profile = chio_chiodos_runtime::RuntimeAdmissionProfile {
+        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_ADMISSION_PROFILE_SCHEMA.to_string(),
+        profile_id: "policy-evaluate".to_string(),
+        local_kernel_id: bundle.binding.host_kernel_id.clone(),
+        verifier_id,
+        issued_at_unix_ms: now_unix_ms.saturating_sub(1),
+        expires_at_unix_ms: now_unix_ms.saturating_add(1),
+    };
     let weights = chio_chiodos_runtime::signed_runtime_peer_weights_from_json(
         &read_utf8_json_file(runtime_peer_weights, "Chiodos runtime peer weights")?,
     )
@@ -267,6 +271,19 @@ pub(crate) fn cmd_chiodos_runtime_pheromone_evaluate(
     write_pretty_json(report, &decision, "Chiodos runtime pheromone policy decision")
 }
 
+fn resolve_runtime_pheromone_evaluation_verifier_id(
+    runtime_trust_verifier_id: &str,
+    policy_verifier_id: &str,
+) -> Result<String, CliError> {
+    if runtime_trust_verifier_id != policy_verifier_id {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos runtime pheromone policy verifier {} does not match trust input verifier {}",
+            policy_verifier_id, runtime_trust_verifier_id
+        )));
+    }
+    Ok(runtime_trust_verifier_id.to_string())
+}
+
 fn resolve_runtime_action_class_id(
     request: &chio_chiodos_runtime::RuntimeRequestBinding,
     policy: Option<&chio_chiodos_runtime::RuntimePheromonePolicy>,
@@ -298,6 +315,37 @@ fn resolve_runtime_action_class_id(
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod verifier_tests {
+    use super::resolve_runtime_pheromone_evaluation_verifier_id;
+
+    #[test]
+    fn pheromone_evaluation_uses_verifier_from_signed_inputs() {
+        let verifier_id = match resolve_runtime_pheromone_evaluation_verifier_id(
+            "did:chio:buyer-verifier",
+            "did:chio:buyer-verifier",
+        ) {
+            Ok(verifier_id) => verifier_id,
+            Err(error) => panic!("expected matching verifier ids to resolve: {error}"),
+        };
+
+        assert_eq!(verifier_id, "did:chio:buyer-verifier");
+    }
+
+    #[test]
+    fn pheromone_evaluation_rejects_mismatched_signed_verifiers() {
+        let error = match resolve_runtime_pheromone_evaluation_verifier_id(
+            "did:chio:trust-verifier",
+            "did:chio:policy-verifier",
+        ) {
+            Ok(verifier_id) => panic!("expected verifier mismatch, got {verifier_id}"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("does not match"));
+    }
 }
 
 #[cfg(test)]

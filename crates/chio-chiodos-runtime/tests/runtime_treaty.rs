@@ -8,6 +8,30 @@ use chio_chiodos_runtime::{
 use std::io;
 use support::treaty::{treaty_action_class, treaty_manifest, treaty_scope};
 
+fn accepted_admission_report() -> CrossBoundaryAdmissionReport {
+    CrossBoundaryAdmissionReport {
+        schema: chio_chiodos_runtime::CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA.to_string(),
+        treaty_id: "treaty-buyer-vendor".to_string(),
+        action_class_id: "workflow.destructive.vendor_call".to_string(),
+        accepted: true,
+        failure_code: None,
+        mode: "receipt_backed".to_string(),
+        consistency_model: "totally_ordered".to_string(),
+        co_sign: "bilateral_required".to_string(),
+        required_evidence: vec!["governance_receipt".to_string()],
+        present_evidence: vec!["governance_receipt".to_string()],
+        verified_evidence: vec![CrossBoundaryEvidenceRef {
+            evidence_class: "governance_receipt".to_string(),
+            artifact_sha256: "d".repeat(64),
+            verified: true,
+        }],
+        treaty_scope_sha256: "a".repeat(64),
+        ladder_intersection_sha256: "b".repeat(64),
+        expected_ladder_intersection_sha256: Some("b".repeat(64)),
+        checks: vec!["chiodos_treaty.cross_boundary_admission".to_string()],
+    }
+}
+
 #[test]
 fn treaty_ladder_intersection_rejects_destructive_observation(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -149,6 +173,54 @@ fn treaty_cross_boundary_admission_rejects_accepted_failure_code(
         error.code(),
         "cross_boundary_admission_unexpected_failure_code"
     );
+    Ok(())
+}
+
+#[test]
+fn treaty_cross_boundary_admission_rejects_accepted_missing_required_evidence(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut report = accepted_admission_report();
+    report
+        .required_evidence
+        .push("quorum_signature".to_string());
+
+    let error = match validate_cross_boundary_admission_report(&report) {
+        Ok(()) => {
+            return Err(io::Error::other(
+                "accepted treaty report without required evidence was accepted",
+            )
+            .into());
+        }
+        Err(error) => error,
+    };
+    assert_eq!(error.code(), "chiodos_treaty_missing_required_evidence");
+    Ok(())
+}
+
+#[test]
+fn treaty_cross_boundary_admission_rejects_accepted_unverified_required_evidence(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut report = accepted_admission_report();
+    report
+        .required_evidence
+        .push("quorum_signature".to_string());
+    report.present_evidence.push("quorum_signature".to_string());
+    report.verified_evidence.push(CrossBoundaryEvidenceRef {
+        evidence_class: "quorum_signature".to_string(),
+        artifact_sha256: "e".repeat(64),
+        verified: false,
+    });
+
+    let error = match validate_cross_boundary_admission_report(&report) {
+        Ok(()) => {
+            return Err(io::Error::other(
+                "accepted treaty report with unverified required evidence was accepted",
+            )
+            .into());
+        }
+        Err(error) => error,
+    };
+    assert_eq!(error.code(), "chiodos_treaty_unverified_required_evidence");
     Ok(())
 }
 

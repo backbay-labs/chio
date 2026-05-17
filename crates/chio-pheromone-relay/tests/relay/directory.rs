@@ -278,6 +278,14 @@ fn relay_profiles_reject_unsafe_production_endpoints() {
     )
     .unwrap_err();
     assert_eq!(over_limit.code(), "relay_profile_denied");
+
+    let mut wedged = directory(&sender, "http://127.0.0.1:18080".to_string());
+    wedged.peers[0].max_batch_frames = 4;
+    wedged.peers[0].max_catchup_frames = 2;
+    let catchup_wedge =
+        PeerDirectory::from_document_with_profile(wedged, NOW, RelayProfile::LocalDev, &limits)
+            .unwrap_err();
+    assert_eq!(catchup_wedge.code(), "relay_profile_denied");
 }
 
 #[test]

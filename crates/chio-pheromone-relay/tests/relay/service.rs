@@ -371,3 +371,45 @@ async fn relay_tick_delivers_leased_batches_with_real_request_signature() {
         .is_empty());
     server.abort();
 }
+
+#[tokio::test]
+async fn relay_tick_rechecks_recipient_scope_before_delivery() {
+    let sender = key(1);
+    let recipient = key(2);
+    let mut sender_directory_document =
+        client_directory(&recipient, "http://127.0.0.1:9".to_string());
+    sender_directory_document.peers[0]
+        .treaty_subscriptions
+        .clear();
+    let sender_directory = PeerDirectory::from_document(sender_directory_document, NOW).unwrap();
+    let outbox_store = SqlitePheromoneRelayStore::open_in_memory().unwrap();
+    let batch = sample_batch();
+    outbox_store
+        .enqueue_batch(
+            "did:chio:llamaworks",
+            "did:chio:buyer-kernel",
+            &batch.treaty_id,
+            &batch,
+            NOW,
+        )
+        .unwrap();
+
+    let report = deliver_due_batches(
+        &outbox_store,
+        sender_directory,
+        sender,
+        "did:chio:llamaworks",
+        NOW,
+        4,
+    )
+    .await
+    .unwrap();
+
+    assert!(!report.accepted);
+    assert_eq!(report.delivered, 0);
+    assert_eq!(report.retried, 1);
+    assert!(report
+        .failures
+        .iter()
+        .any(|failure| failure.contains("relay_profile_denied")));
+}

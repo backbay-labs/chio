@@ -16,7 +16,10 @@ use admission_loop::execute_runtime_admission_loop;
 use evidence_io::read_utf8_json_file;
 use proof_assembly::assemble_runtime_loopback_outputs;
 #[cfg(test)]
-use proof_assembly::{step_admission_binding, validate_step_admission_binding_counts};
+use proof_assembly::{
+    runtime_admission_report_sha256_for_workflow, step_admission_binding,
+    validate_step_admission_binding_counts,
+};
 use scenario::{normalize_runtime_loopback_steps, RuntimeLoopbackScenario};
 
 pub use evidence_io::runtime_loopback_capability_window;
@@ -76,7 +79,10 @@ pub fn run_runtime_loopback_scenario(
 
 #[cfg(test)]
 mod tests {
-    use super::{step_admission_binding, validate_step_admission_binding_counts};
+    use super::{
+        runtime_admission_report_sha256_for_workflow, step_admission_binding,
+        validate_step_admission_binding_counts,
+    };
 
     #[test]
     fn step_admission_binding_rejects_more_workflow_steps_than_admission_hashes() {
@@ -112,6 +118,31 @@ mod tests {
 
         assert_eq!(binding.admission_report_sha256, "hash-b");
         assert_eq!(binding.admission_id, "admission-b");
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_workflow_admission_hash_uses_report_hash_without_rehashing(
+    ) -> Result<(), crate::RuntimeLoopbackError> {
+        let admission_hash = "a".repeat(64);
+        let selected = runtime_admission_report_sha256_for_workflow(
+            None,
+            std::slice::from_ref(&admission_hash),
+            None,
+        )?;
+
+        assert_eq!(selected, admission_hash);
+        assert_ne!(selected, chio_core::sha256_hex(admission_hash.as_bytes()));
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_workflow_admission_hash_uses_terminal_denial_hash(
+    ) -> Result<(), crate::RuntimeLoopbackError> {
+        let denied_hash = "b".repeat(64);
+        let selected = runtime_admission_report_sha256_for_workflow(None, &[], Some(&denied_hash))?;
+
+        assert_eq!(selected, denied_hash);
         Ok(())
     }
 }
