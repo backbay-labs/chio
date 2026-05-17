@@ -2818,6 +2818,7 @@ dependencies = [
  "flate2",
  "hex",
  "insta",
+ "libc",
  "p256 0.13.2",
  "p384",
  "percent-encoding",

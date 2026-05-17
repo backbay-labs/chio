@@ -2945,6 +2945,42 @@ fn relay_alert_assurance_archive_restore_rejects_invalid_package_report() {
 }
 
 #[test]
+fn relay_alert_assurance_archive_restore_does_not_reserve_quarantined_generations() {
+    let mut invalid = restore_package_report(1, None);
+    invalid.trusted_packager_verified = false;
+    let mut valid = restore_package_report(1, None);
+    valid.package_id = "relay-archive-package-1-valid".to_string();
+    valid.package_manifest_sha256 = "f".repeat(64);
+    let physical = vec![
+        physical_drill_for_package(&invalid),
+        physical_drill_for_package(&valid),
+    ];
+    let handoff = vec![handoff_for_package(&invalid), handoff_for_package(&valid)];
+
+    let report = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: &[invalid, valid.clone()],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!report.accepted);
+    assert_eq!(report.verified_generation_count, 1);
+    assert_eq!(report.latest_package_generation, 1);
+    let valid_review = report
+        .packages
+        .iter()
+        .find(|package| package.package_id == valid.package_id)
+        .unwrap();
+    assert!(valid_review.accepted);
+    assert_eq!(valid_review.code, "accepted");
+}
+
+#[test]
 fn relay_alert_assurance_archive_restore_preserves_rejected_report_code() {
     let mut rejected = restore_package_report(1, None);
     rejected.accepted = false;
