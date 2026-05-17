@@ -6,7 +6,7 @@ use crate::evidence_io::{
     canonical_sha256_json, write_json_string, write_runtime_json_artifact,
     write_runtime_json_artifact_string,
 };
-use crate::proof_parity::runtime_proof_parity;
+use crate::proof_parity::{runtime_proof_parity, ExpectedBuyerClosureParity};
 use crate::scenario::RuntimeLoopbackStep;
 use crate::RuntimeLoopbackError;
 
@@ -117,7 +117,6 @@ pub(crate) fn assemble_runtime_loopback_outputs(
             ));
         }
         proof_checks.push("runtime_live_receipts.bound_to_proof_package".to_string());
-        let parity_package = baseline_package.clone();
         let buyer_closure_index = steps
             .iter()
             .enumerate()
@@ -534,12 +533,13 @@ pub(crate) fn assemble_runtime_loopback_outputs(
             ))
         })?;
         let parity_trust_bundle_document =
-            chio_chiodos_loopback::verifier_trust_bundle_document_for_package(&parity_package)
-                .map_err(|error| {
+            chio_chiodos_loopback::verifier_trust_bundle_document_for_package(&package).map_err(
+                |error| {
                     RuntimeLoopbackError::message(format!(
                         "Chiodos runtime parity trust bundle build: {error}"
                     ))
-                })?;
+                },
+            )?;
         let parity_trust_bundle =
             chio_chiodos::ChiodosVerifierTrustBundle::from_document(parity_trust_bundle_document)
                 .map_err(|error| {
@@ -548,11 +548,22 @@ pub(crate) fn assemble_runtime_loopback_outputs(
                 ))
             })?;
         let parity_verifier_report =
-            chio_chiodos::verify_package_report(&parity_package, &parity_trust_bundle, &context);
-        let (compared_fields, mismatches) = runtime_proof_parity(&static_package, &parity_package)
-            .map_err(|error| {
-                RuntimeLoopbackError::message(format!("Chiodos runtime proof parity: {error}"))
-            })?;
+            chio_chiodos::verify_package_report(&package, &parity_trust_bundle, &context);
+        let expected_buyer_closure_parity =
+            buyer_closure
+                .as_ref()
+                .map(|closure| ExpectedBuyerClosureParity {
+                    step_index: closure.step_index,
+                    consistency_model: closure.admission_report.consistency_model.clone(),
+                });
+        let (compared_fields, mismatches) = runtime_proof_parity(
+            &static_package,
+            &package,
+            expected_buyer_closure_parity.as_ref(),
+        )
+        .map_err(|error| {
+            RuntimeLoopbackError::message(format!("Chiodos runtime proof parity: {error}"))
+        })?;
         let parity_accepted = mismatches.is_empty() && parity_verifier_report.accepted;
         parity_report = Some(chio_chiodos_runtime::RuntimeProofParityReport {
             schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PROOF_PARITY_REPORT_SCHEMA.to_string(),
@@ -571,7 +582,7 @@ pub(crate) fn assemble_runtime_loopback_outputs(
                     ))
                 },
             )?,
-            runtime_proof_package_sha256: chio_chiodos::package_sha256(&parity_package).map_err(
+            runtime_proof_package_sha256: chio_chiodos::package_sha256(&package).map_err(
                 |error| {
                     RuntimeLoopbackError::message(format!(
                         "Chiodos runtime parity proof package hash: {error}"

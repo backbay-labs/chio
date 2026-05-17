@@ -1,9 +1,16 @@
 use crate::evidence_io::canonical_sha256_json;
 use crate::RuntimeLoopbackError;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExpectedBuyerClosureParity {
+    pub(crate) step_index: usize,
+    pub(crate) consistency_model: String,
+}
+
 pub(crate) fn runtime_proof_parity(
     static_package: &chio_chiodos::ChiodosProofPackage,
     runtime_package: &chio_chiodos::ChiodosProofPackage,
+    expected_buyer_closure: Option<&ExpectedBuyerClosureParity>,
 ) -> Result<
     (
         Vec<String>,
@@ -26,6 +33,10 @@ pub(crate) fn runtime_proof_parity(
         "governance_authorization_presence".to_string(),
         "destructive_step_flags".to_string(),
     ];
+    let mut compared_fields = compared_fields;
+    if expected_buyer_closure.is_some() {
+        compared_fields.push("buyer_closure_treaty_binding_delta".to_string());
+    }
     let mut mismatches = Vec::new();
     compare_runtime_proof_field(
         "proof_claims",
@@ -115,10 +126,11 @@ pub(crate) fn runtime_proof_parity(
         &tool_receipt_semantics(runtime_package),
         &mut mismatches,
     )?;
-    compare_runtime_proof_field(
+    compare_bilateral_dsse_predicate_semantics(
         "bilateral_dsse_predicate_semantics",
-        &bilateral_dsse_predicate_semantics(static_package)?,
-        &bilateral_dsse_predicate_semantics(runtime_package)?,
+        bilateral_dsse_predicate_semantics(static_package)?,
+        bilateral_dsse_predicate_semantics(runtime_package)?,
+        expected_buyer_closure,
         &mut mismatches,
     )?;
     compare_runtime_proof_field(
@@ -154,7 +166,7 @@ pub(crate) fn runtime_proof_parity(
     Ok((compared_fields, mismatches))
 }
 
-#[derive(serde::Serialize, PartialEq, Eq)]
+#[derive(Clone, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct WorkflowStepParityBinding {
     step_index: usize,
@@ -170,7 +182,7 @@ struct WorkflowStepParityBinding {
     destructive: Option<bool>,
 }
 
-#[derive(serde::Serialize, PartialEq, Eq)]
+#[derive(Clone, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct ToolReceiptParityBinding {
     capability_id: String,
@@ -180,7 +192,7 @@ struct ToolReceiptParityBinding {
     decision_allowed: bool,
 }
 
-#[derive(serde::Serialize, PartialEq, Eq)]
+#[derive(Clone, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct BilateralDssePredicateParityBinding {
     predicate_type: String,
@@ -197,7 +209,7 @@ struct BilateralDssePredicateParityBinding {
     has_treaty_binding: bool,
 }
 
-#[derive(serde::Serialize, PartialEq, Eq)]
+#[derive(Clone, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct LeaseScopeParityBinding {
     workflow_id: String,
@@ -314,6 +326,51 @@ fn governance_authorization_presence(package: &chio_chiodos::ChiodosProofPackage
         .collect()
 }
 
+fn compare_bilateral_dsse_predicate_semantics(
+    field: &str,
+    static_value: Vec<BilateralDssePredicateParityBinding>,
+    runtime_value: Vec<BilateralDssePredicateParityBinding>,
+    expected_buyer_closure: Option<&ExpectedBuyerClosureParity>,
+    mismatches: &mut Vec<chio_chiodos_runtime::RuntimeProofParityMismatch>,
+) -> Result<(), RuntimeLoopbackError> {
+    let Some(expected_buyer_closure) = expected_buyer_closure else {
+        return compare_runtime_proof_field(field, &static_value, &runtime_value, mismatches);
+    };
+    if static_value.len() != runtime_value.len()
+        || expected_buyer_closure.step_index >= static_value.len()
+    {
+        return compare_runtime_proof_field(field, &static_value, &runtime_value, mismatches);
+    }
+
+    let mut normalized_runtime_value = runtime_value.clone();
+    let step_index = expected_buyer_closure.step_index;
+    if buyer_closure_predicate_delta_matches(
+        &static_value[step_index],
+        &runtime_value[step_index],
+        expected_buyer_closure,
+    ) {
+        normalized_runtime_value[step_index] = static_value[step_index].clone();
+    }
+    compare_runtime_proof_field(field, &static_value, &normalized_runtime_value, mismatches)
+}
+
+fn buyer_closure_predicate_delta_matches(
+    static_value: &BilateralDssePredicateParityBinding,
+    runtime_value: &BilateralDssePredicateParityBinding,
+    expected_buyer_closure: &ExpectedBuyerClosureParity,
+) -> bool {
+    if static_value.has_treaty_binding
+        || !runtime_value.has_treaty_binding
+        || expected_buyer_closure.consistency_model.is_empty()
+    {
+        return false;
+    }
+    let mut expected_runtime_value = static_value.clone();
+    expected_runtime_value.has_treaty_binding = true;
+    expected_runtime_value.consistency_model = expected_buyer_closure.consistency_model.clone();
+    runtime_value == &expected_runtime_value
+}
+
 fn compare_runtime_proof_field<T: serde::Serialize + PartialEq>(
     field: &str,
     static_value: &T,
@@ -334,4 +391,81 @@ fn compare_runtime_proof_field<T: serde::Serialize + PartialEq>(
         });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        compare_bilateral_dsse_predicate_semantics, BilateralDssePredicateParityBinding,
+        ExpectedBuyerClosureParity,
+    };
+
+    fn predicate_binding() -> BilateralDssePredicateParityBinding {
+        BilateralDssePredicateParityBinding {
+            predicate_type: "https://chio.dev/predicate/chiodos-bilateral/v1".to_string(),
+            tool_server_a: "did:chio:buyer-kernel".to_string(),
+            tool_server_b: "did:chio:vendor-kernel".to_string(),
+            tool_name: "vendor.receipt".to_string(),
+            co_sign: "required".to_string(),
+            consistency_model: "crdt-commutative".to_string(),
+            tool_args_hash: Some("a".repeat(64)),
+            has_capability_lease_ref: true,
+            has_capability_lease_scope_digest: true,
+            has_governance_receipt_ref: true,
+            has_consistency_anchor: true,
+            has_treaty_binding: false,
+        }
+    }
+
+    #[test]
+    fn buyer_closure_parity_accepts_exact_treaty_binding_delta(
+    ) -> Result<(), crate::RuntimeLoopbackError> {
+        let static_value = predicate_binding();
+        let mut runtime_value = static_value.clone();
+        runtime_value.has_treaty_binding = true;
+        runtime_value.consistency_model = "totally_ordered".to_string();
+        let expected = ExpectedBuyerClosureParity {
+            step_index: 0,
+            consistency_model: "totally_ordered".to_string(),
+        };
+        let mut mismatches = Vec::new();
+
+        compare_bilateral_dsse_predicate_semantics(
+            "bilateral_dsse_predicate_semantics",
+            vec![static_value],
+            vec![runtime_value],
+            Some(&expected),
+            &mut mismatches,
+        )?;
+
+        assert!(mismatches.is_empty(), "{mismatches:#?}");
+        Ok(())
+    }
+
+    #[test]
+    fn buyer_closure_parity_rejects_unexpected_treaty_step_drift(
+    ) -> Result<(), crate::RuntimeLoopbackError> {
+        let static_value = predicate_binding();
+        let mut runtime_value = static_value.clone();
+        runtime_value.has_treaty_binding = true;
+        runtime_value.consistency_model = "totally_ordered".to_string();
+        runtime_value.tool_name = "vendor.other".to_string();
+        let expected = ExpectedBuyerClosureParity {
+            step_index: 0,
+            consistency_model: "totally_ordered".to_string(),
+        };
+        let mut mismatches = Vec::new();
+
+        compare_bilateral_dsse_predicate_semantics(
+            "bilateral_dsse_predicate_semantics",
+            vec![static_value],
+            vec![runtime_value],
+            Some(&expected),
+            &mut mismatches,
+        )?;
+
+        assert_eq!(mismatches.len(), 1, "{mismatches:#?}");
+        assert_eq!(mismatches[0].field, "bilateral_dsse_predicate_semantics");
+        Ok(())
+    }
 }

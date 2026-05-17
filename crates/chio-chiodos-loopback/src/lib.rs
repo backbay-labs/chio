@@ -1264,8 +1264,18 @@ mod tests {
         ChiodosVerifierTrustBundle::from_document(document).expect("trust bundle parses")
     }
 
-    fn runtime_artifacts_from_package(package: &ChiodosProofPackage) -> Vec<RuntimeProofArtifact> {
-        package
+    fn runtime_artifacts_from_package(
+        package: &ChiodosProofPackage,
+    ) -> Result<Vec<RuntimeProofArtifact>, String> {
+        let receipt_count = package.tool_receipts.len();
+        let envelope_count = package.bilateral_envelopes.len();
+        let step_count = package.workflow_receipt.steps.len();
+        if receipt_count != envelope_count || receipt_count != step_count {
+            return Err(format!(
+                "runtime artifact fixture length mismatch: receipts={receipt_count}, envelopes={envelope_count}, steps={step_count}"
+            ));
+        }
+        Ok(package
             .tool_receipts
             .iter()
             .cloned()
@@ -1278,7 +1288,7 @@ mod tests {
                     workflow_step,
                 },
             )
-            .collect()
+            .collect())
     }
 
     fn refresh_runtime_parent_chain(artifacts: &mut [RuntimeProofArtifact]) {
@@ -1287,6 +1297,20 @@ mod tests {
             artifact.workflow_step.parent_receipt_sha256 = parent;
             parent = Some(canonical_sha256(&artifact.workflow_step).expect("step hashes"));
         }
+    }
+
+    #[test]
+    fn runtime_artifacts_from_package_rejects_fixture_length_mismatch() {
+        let mut package = fresh_proof_package().expect("fresh package builds");
+        package.bilateral_envelopes.pop();
+
+        let error = runtime_artifacts_from_package(&package)
+            .expect_err("mismatched runtime artifacts were silently truncated");
+
+        assert!(error.contains("runtime artifact fixture length mismatch"));
+        assert!(error.contains("receipts=3"));
+        assert!(error.contains("envelopes=2"));
+        assert!(error.contains("steps=3"));
     }
 
     #[test]
@@ -1306,7 +1330,7 @@ mod tests {
     #[test]
     fn runtime_artifact_package_uses_supplied_envelopes_and_steps() {
         let baseline = fresh_proof_package().expect("fresh package builds");
-        let mut artifacts = runtime_artifacts_from_package(&baseline);
+        let mut artifacts = runtime_artifacts_from_package(&baseline).expect("runtime artifacts");
         artifacts[0].bilateral_envelope.signatures.reverse();
         let supplied_envelope_hash =
             canonical_sha256(&artifacts[0].bilateral_envelope).expect("envelope hashes");
@@ -1353,7 +1377,7 @@ mod tests {
     #[test]
     fn runtime_artifact_package_rejects_step_dsse_hash_mismatch() {
         let baseline = fresh_proof_package().expect("fresh package builds");
-        let mut artifacts = runtime_artifacts_from_package(&baseline);
+        let mut artifacts = runtime_artifacts_from_package(&baseline).expect("runtime artifacts");
         artifacts[0].workflow_step.bilateral_dsse_sha256 = Some("0".repeat(64));
 
         let error = proof_package_from_runtime_artifacts(artifacts).unwrap_err();

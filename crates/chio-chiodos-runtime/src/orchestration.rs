@@ -104,6 +104,7 @@ pub fn load_runtime_orchestration_evidence(
     let proof_report_sha256 = canonical_sha256(&proof_regeneration_report)?;
     let manifest_sha256 = canonical_sha256(&manifest)?;
     let verifier_report_sha256 = canonical_sha256(&verifier_report_value)?;
+    validate_runtime_orchestration_manifest_artifacts(evidence_dir, &manifest)?;
     let proof_package_hashes = load_runtime_orchestration_role_json_artifact_hashes(
         evidence_dir,
         &manifest,
@@ -312,6 +313,22 @@ pub fn runtime_orchestration_evidence_sink_healthy(
         return Ok(false);
     }
     Ok(validate_runtime_orchestration_evidence_integrity(&evidence).is_ok())
+}
+
+fn validate_runtime_orchestration_manifest_artifacts(
+    evidence_dir: &Path,
+    manifest: &RuntimeEvidenceManifest,
+) -> Result<(), ChiodosRuntimeError> {
+    for entry in &manifest.entries {
+        let hashes = load_runtime_json_artifact_hashes(evidence_dir, entry, &entry.role)?;
+        if hashes.manifest_sha256 != hashes.file_sha256 {
+            return Err(ChiodosRuntimeError::Rejected {
+                code: "runtime_orchestration_artifact_hash_mismatch",
+                detail: format!("runtime evidence manifest hash mismatch for {}", entry.path),
+            });
+        }
+    }
+    Ok(())
 }
 
 #[must_use]

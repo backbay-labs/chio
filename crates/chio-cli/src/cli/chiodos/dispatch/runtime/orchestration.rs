@@ -143,6 +143,13 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
     } else if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
         accepted = false;
         failure_code = Some("runtime_orchestration_profile_stale".to_string());
+    } else if !chio_chiodos_runtime::runtime_orchestration_evidence_is_fresh(
+        &profile,
+        &evidence,
+        now_unix_ms,
+    ) {
+        accepted = false;
+        failure_code = Some("runtime_orchestration_evidence_stale".to_string());
     } else if let Err(failure) =
         chio_chiodos_runtime::validate_runtime_orchestration_evidence_binding(
             &run_contract,
@@ -356,6 +363,22 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_drift(
         if evidence.manifest.generated_at_unix_ms >= since_unix_ms
             && evidence.manifest.generated_at_unix_ms <= until_unix_ms
         {
+            if !chio_chiodos_runtime::runtime_orchestration_evidence_is_fresh(
+                &profile,
+                &evidence,
+                until_unix_ms,
+            ) {
+                return Err(CliError::cli_other_error(
+                    "Chiodos runtime drift evidence is outside the orchestration profile window"
+                        .to_string(),
+                ));
+            }
+            chio_chiodos_runtime::validate_runtime_orchestration_evidence_integrity(&evidence)
+                .map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime drift evidence integrity: {error}"
+                    ))
+                })?;
             runs_in_window.push((evidence.manifest.generated_at_unix_ms, run_dir, evidence));
         }
     }

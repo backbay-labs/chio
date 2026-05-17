@@ -238,7 +238,7 @@ impl SqliteRuntimeOrchestrationStore {
             }
             let active_lease_count = {
                 let connection = self.lock_connection()?;
-                lease_count_by_state(&connection, "active")?
+                active_nonterminal_lease_count(&connection)?
             };
             let claim_limit = max_runs
                 .min(profile.max_concurrent_runs)
@@ -311,6 +311,26 @@ pub(super) fn lease_count_by_state(
         )
         .map_err(sqlite_error)?;
     sqlite_u64(count, "runtime lease count")
+}
+
+fn active_nonterminal_lease_count(connection: &Connection) -> Result<u64, ChiodosRuntimeError> {
+    let count: i64 = connection
+        .query_row(
+            r#"
+            SELECT COUNT(*)
+            FROM runtime_run_leases leases
+            LEFT JOIN runtime_runs runs ON runs.run_id = leases.run_id
+            WHERE leases.state = 'active'
+              AND (
+                runs.status IS NULL
+                OR runs.status NOT IN ('proof_accepted', 'terminal_failure', 'completed')
+              )
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    sqlite_u64(count, "runtime active nonterminal lease count")
 }
 
 pub(super) fn stale_lease_count(

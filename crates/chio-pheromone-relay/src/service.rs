@@ -389,7 +389,7 @@ async fn handle_batch_relay(
     let batch: PheromoneGossipBatch = request
         .verify_payload(&service.directory, &context, service.store.as_ref())
         .map_err(|error| relay_http_error(&service, error))?;
-    enforce_peer_batch_frame_limit(&service.directory, &request.sender_kernel_id, &batch)
+    enforce_peer_batch_directory_scope(&service.directory, &request.sender_kernel_id, &batch)
         .map_err(|error| relay_http_error(&service, error))?;
     let report = service
         .receiver
@@ -418,7 +418,7 @@ async fn handle_batch_relay(
     Ok(Json(report))
 }
 
-fn enforce_peer_batch_frame_limit(
+fn enforce_peer_batch_directory_scope(
     directory: &PeerDirectory,
     sender_kernel_id: &str,
     batch: &PheromoneGossipBatch,
@@ -429,6 +429,12 @@ fn enforce_peer_batch_frame_limit(
         return Err(PheromoneRelayError::RelayProfileDenied(format!(
             "peer {sender_kernel_id} submitted {frame_count} batch frames, exceeding directory max {}",
             peer.max_batch_frames
+        )));
+    }
+    if !peer.treaty_subscriptions.contains(&batch.treaty_id) {
+        return Err(PheromoneRelayError::RelayProfileDenied(format!(
+            "peer {sender_kernel_id} is not subscribed to treaty {}",
+            batch.treaty_id
         )));
     }
     Ok(())

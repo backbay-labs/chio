@@ -45,7 +45,8 @@ pub(crate) fn canonical_sha256_json<T: serde::Serialize>(value: &T, label: &str)
 mod chiodos_orchestration_cli_tests {
     use super::{
         canonical_sha256_json, cmd_chiodos_runtime_orchestrate_drift,
-        cmd_chiodos_runtime_orchestrate_resume, cmd_chiodos_runtime_orchestrate_status,
+        cmd_chiodos_runtime_orchestrate_resume, cmd_chiodos_runtime_orchestrate_run,
+        cmd_chiodos_runtime_orchestrate_status,
     };
     use serde::de::DeserializeOwned;
     use std::error::Error;
@@ -111,6 +112,32 @@ mod chiodos_orchestration_cli_tests {
     ) -> Result<PathBuf, Box<dyn Error>> {
         let path = dir.join("profile.json");
         write_json(&path, profile)?;
+        Ok(path)
+    }
+
+    fn runtime_contract(
+        profile: &chio_chiodos_runtime::RuntimeOrchestrationProfile,
+        run_id: &str,
+    ) -> Result<chio_chiodos_runtime::RuntimeRunContract, Box<dyn Error>> {
+        Ok(chio_chiodos_runtime::RuntimeRunContract {
+            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_RUN_CONTRACT_SCHEMA.to_string(),
+            run_id: run_id.to_string(),
+            profile_sha256: chio_chiodos_runtime::runtime_orchestration_profile_sha256(profile)?,
+            workflow_id: format!("workflow-{run_id}"),
+            expected_step_count: 1,
+            admission_ids: vec!["adm-runtime-cli-0".to_string()],
+            store_id: "sqlite-runtime-store".to_string(),
+            evidence_sink_id: "local-evidence-sink".to_string(),
+            proof_regeneration_required: true,
+        })
+    }
+
+    fn write_contract(
+        dir: &Path,
+        contract: &chio_chiodos_runtime::RuntimeRunContract,
+    ) -> Result<PathBuf, Box<dyn Error>> {
+        let path = dir.join("run-contract.json");
+        write_json(&path, contract)?;
         Ok(path)
     }
 
@@ -262,6 +289,61 @@ mod chiodos_orchestration_cli_tests {
             report.failure_code.as_deref(),
             Some("runtime_proof_drift_detected")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_orchestrate_run_rejects_stale_evidence() -> Result<(), Box<dyn Error>> {
+        let dir = TempDir::new()?;
+        let profile = orchestration_profile();
+        let profile_path = write_profile(dir.path(), &profile)?;
+        let contract = runtime_contract(&profile, "run-stale")?;
+        let contract_path = write_contract(dir.path(), &contract)?;
+        let evidence_dir = dir.path().join("evidence");
+        write_runtime_evidence(&evidence_dir, "run-stale", ISSUED_AT - 1, "stale")?;
+        let report_path = dir.path().join("run-report.json");
+
+        cmd_chiodos_runtime_orchestrate_run(
+            &profile_path,
+            &contract_path,
+            &dir.path().join("runtime.sqlite3"),
+            &evidence_dir,
+            NOW,
+            &report_path,
+        )?;
+        let report: chio_chiodos_runtime::RuntimeOrchestrationRunReport =
+            read_json(&report_path)?;
+
+        assert!(!report.accepted);
+        assert_eq!(
+            report.failure_code.as_deref(),
+            Some("runtime_orchestration_evidence_stale")
+        );
+        assert_eq!(report.status, "terminal_failure");
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_orchestrate_drift_rejects_stale_evidence_in_window() -> Result<(), Box<dyn Error>> {
+        let dir = TempDir::new()?;
+        let profile = orchestration_profile();
+        let profile_path = write_profile(dir.path(), &profile)?;
+        let runs_dir = dir.path().join("runs");
+        write_runtime_evidence(&runs_dir.join("run-a"), "run-a", ISSUED_AT - 1, "stale")?;
+        write_runtime_evidence(&runs_dir.join("run-b"), "run-b", NOW, "fresh")?;
+
+        let error = cmd_chiodos_runtime_orchestrate_drift(
+            &profile_path,
+            &runs_dir,
+            ISSUED_AT - 10,
+            NOW + 1,
+            &dir.path().join("drift-report.json"),
+        )
+        .expect_err("stale evidence inside drift window unexpectedly passed");
+
+        assert!(error
+            .to_string()
+            .contains("outside the orchestration profile window"));
         Ok(())
     }
 

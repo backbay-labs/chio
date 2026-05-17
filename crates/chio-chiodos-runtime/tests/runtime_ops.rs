@@ -634,6 +634,41 @@ fn runtime_ops_scheduler_tick_limits_claims_by_active_leases(
 }
 
 #[test]
+fn runtime_ops_scheduler_tick_ignores_terminal_run_leases_for_capacity(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("runtime-ops-terminal-capacity.sqlite3");
+    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
+    store.record_run_state("runtime-run-terminal", "pending", None, 1_800_000_000_000)?;
+    store.acquire_run_lease(
+        "runtime-run-terminal",
+        "operator-old",
+        1_800_000_001_000,
+        60_000,
+    )?;
+    store.record_run_state(
+        "runtime-run-terminal",
+        "proof_accepted",
+        None,
+        1_800_000_001_500,
+    )?;
+    store.record_run_state("runtime-run-next", "pending", None, 1_800_000_002_000)?;
+
+    let mut profile = supervisor_profile();
+    profile.max_concurrent_runs = 1;
+    let report = store.scheduler_tick_report(&profile, "operator-a", 1_800_000_003_000, 1)?;
+
+    assert!(report.accepted, "{report:#?}");
+    assert_eq!(
+        report.claimed_run_ids,
+        vec!["runtime-run-next"],
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_run_count, 0, "{report:#?}");
+    Ok(())
+}
+
+#[test]
 fn runtime_ops_scheduler_tick_excludes_active_leased_runs_before_claim_limit(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
@@ -726,6 +761,44 @@ fn runtime_ops_recovery_drill_rejects_stale_supervisor_profile(
     );
     assert!(report.blocked, "{report:#?}");
     assert!(!report.resumable, "{report:#?}");
+    Ok(())
+}
+
+#[test]
+fn runtime_ops_recovery_drill_blocks_terminal_failure_steps(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("runtime-ops-recovery-terminal.sqlite3");
+    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
+    store.record_run_state(
+        "runtime-run-terminal",
+        "terminal_failure",
+        Some("runtime_verifier_rejected"),
+        1_800_000_000_000,
+    )?;
+    store.record_run_step_state(
+        "runtime-run-terminal",
+        RuntimeOrchestrationStepState {
+            step_index: 0,
+            admission_id: "adm-terminal".to_string(),
+            state: "terminal_failure".to_string(),
+            destructive: false,
+            admission_report_sha256: Some("1".repeat(64)),
+            tool_receipt_sha256: Some("2".repeat(64)),
+            lease_id: None,
+        },
+    )?;
+
+    let report = store.recovery_drill_report("runtime-run-terminal", 1_800_000_001_000)?;
+
+    assert!(!report.accepted, "{report:#?}");
+    assert!(report.blocked, "{report:#?}");
+    assert!(!report.resumable, "{report:#?}");
+    assert!(report.reusable_step_indices.is_empty(), "{report:#?}");
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_resume_destructive_repair_required")
+    );
     Ok(())
 }
 

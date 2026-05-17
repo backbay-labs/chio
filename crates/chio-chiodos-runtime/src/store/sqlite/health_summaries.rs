@@ -128,7 +128,7 @@ impl SqliteRuntimeOrchestrationStore {
         {
             let mut statement = connection
                 .prepare(
-                    "SELECT step_index, destructive, tool_receipt_sha256 FROM runtime_step_states WHERE run_id = ?1 ORDER BY step_index",
+                    "SELECT step_index, destructive, tool_receipt_sha256, state FROM runtime_step_states WHERE run_id = ?1 ORDER BY step_index",
                 )
                 .map_err(sqlite_error)?;
             let rows = statement
@@ -137,13 +137,18 @@ impl SqliteRuntimeOrchestrationStore {
                         row.get::<_, i64>(0)?,
                         row.get::<_, i64>(1)?,
                         row.get::<_, Option<String>>(2)?,
+                        row.get::<_, String>(3)?,
                     ))
                 })
                 .map_err(sqlite_error)?;
             for row in rows {
-                let (index, destructive, receipt) = row.map_err(sqlite_error)?;
+                let (index, destructive, receipt, state) = row.map_err(sqlite_error)?;
                 let index = sqlite_u64(index, "runtime recovery step index")?;
-                reusable_step_indices.push(index);
+                if state == "proof_accepted" || state == "completed" {
+                    reusable_step_indices.push(index);
+                } else if state == "terminal_failure" {
+                    destructive_terminal_without_evidence = true;
+                }
                 if destructive != 0 && receipt.is_some() {
                     let artifact_count: i64 = connection
                         .query_row(

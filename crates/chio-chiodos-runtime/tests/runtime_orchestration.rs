@@ -90,6 +90,29 @@ fn runtime_orchestration_evidence_sink_health_rejects_rejected_verifier_report(
     Ok(())
 }
 
+#[test]
+fn runtime_orchestration_evidence_load_rejects_manifest_artifact_hash_mismatch(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = write_evidence_fixture(NOW)?;
+    let proof_package_path = fixture.evidence_dir.path().join("proof-package.json");
+    let proof_package = fs::read_to_string(&proof_package_path)?;
+    let tampered_proof_package = proof_package.replace("proof-package-A", "proof-package-B");
+    assert_eq!(
+        proof_package.len(),
+        tampered_proof_package.len(),
+        "fixture tamper must preserve byte count to exercise hash validation"
+    );
+    fs::write(proof_package_path, tampered_proof_package)?;
+
+    let error = match load_runtime_orchestration_evidence(fixture.evidence_dir.path()) {
+        Ok(_) => panic!("tampered manifest artifact unexpectedly loaded"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.code(), "runtime_orchestration_artifact_hash_mismatch");
+    Ok(())
+}
+
 fn write_evidence_fixture(generated_at_unix_ms: u64) -> Result<EvidenceFixture, Box<dyn Error>> {
     write_evidence_fixture_with_verifier(generated_at_unix_ms, true)
 }
