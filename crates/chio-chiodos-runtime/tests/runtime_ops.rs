@@ -1206,6 +1206,60 @@ fn runtime_ops_evidence_health_detects_hash_mismatch() -> Result<(), Box<dyn std
 }
 
 #[test]
+fn runtime_ops_evidence_health_detects_manifest_report_binding_mismatch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let workflow = br#"{"ok":true}"#;
+    let proof = br#"{"ok":false}"#;
+    std::fs::write(dir.path().join("workflow-run-report.json"), workflow)?;
+    std::fs::write(dir.path().join("proof-regeneration-report.json"), proof)?;
+    let manifest = RuntimeEvidenceManifest {
+        schema: CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        run_id: "runtime-run-health".to_string(),
+        generated_at_unix_ms: 1_800_000_000_000,
+        workflow_run_report_sha256: "1".repeat(64),
+        proof_regeneration_report_sha256: "2".repeat(64),
+        entries: vec![
+            RuntimeEvidenceManifestEntry {
+                role: "workflow_run_report".to_string(),
+                path: "workflow-run-report.json".to_string(),
+                sha256: chio_core_types::crypto::sha256_hex(workflow),
+                byte_count: u64::try_from(workflow.len())?,
+            },
+            RuntimeEvidenceManifestEntry {
+                role: "proof_regeneration_report".to_string(),
+                path: "proof-regeneration-report.json".to_string(),
+                sha256: chio_core_types::crypto::sha256_hex(proof),
+                byte_count: u64::try_from(proof.len())?,
+            },
+        ],
+    };
+
+    let report = chio_chiodos_runtime::generate_runtime_evidence_sink_health_report(
+        "runtime-run-health",
+        dir.path(),
+        &manifest,
+        &[
+            "workflow_run_report".to_string(),
+            "proof_regeneration_report".to_string(),
+        ],
+        1_800_000_000_000,
+        false,
+    )?;
+
+    assert!(!report.accepted);
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_evidence_artifact_hash_mismatch")
+    );
+    assert!(report
+        .artifact_hash_mismatches
+        .iter()
+        .any(|path| path == "workflow-run-report.json"));
+    Ok(())
+}
+
+#[test]
 fn runtime_ops_evidence_health_rejects_manifest_run_mismatch(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;

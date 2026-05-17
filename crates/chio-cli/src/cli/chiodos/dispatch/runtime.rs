@@ -471,6 +471,40 @@ mod chiodos_orchestration_cli_tests {
     }
 
     #[test]
+    fn runtime_orchestrate_run_emits_report_for_missing_manifest_artifact(
+    ) -> Result<(), Box<dyn Error>> {
+        let dir = TempDir::new()?;
+        let profile = orchestration_profile();
+        let profile_path = write_profile(dir.path(), &profile)?;
+        let contract = runtime_contract(&profile, "run-missing-artifact")?;
+        let contract_path = write_contract(dir.path(), &contract)?;
+        let evidence_dir = dir.path().join("evidence");
+        write_runtime_evidence(&evidence_dir, "run-missing-artifact", NOW, "fresh")?;
+        fs::remove_file(evidence_dir.join("proof-package.json"))?;
+        let report_path = dir.path().join("run-report.json");
+
+        cmd_chiodos_runtime_orchestrate_run(
+            &profile_path,
+            &contract_path,
+            &dir.path().join("runtime.sqlite3"),
+            &evidence_dir,
+            NOW,
+            &report_path,
+        )?;
+        let report: chio_chiodos_runtime::RuntimeOrchestrationRunReport =
+            read_json(&report_path)?;
+
+        assert!(!report.accepted);
+        assert_eq!(report.status, "terminal_failure");
+        assert_eq!(report.failure_code.as_deref(), Some("runtime_admission_io"));
+        assert!(report
+            .checks
+            .iter()
+            .any(|check| check == "runtime_orchestration.evidence_load_failed"));
+        Ok(())
+    }
+
+    #[test]
     fn runtime_orchestrate_drift_rejects_stale_evidence_in_window() -> Result<(), Box<dyn Error>> {
         let dir = TempDir::new()?;
         let profile = orchestration_profile();
@@ -563,6 +597,35 @@ mod chiodos_orchestration_cli_tests {
 
         assert!(!report.accepted);
         assert!(!report.evidence_sink_healthy);
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_orchestrate_status_checks_every_recorded_run_directory(
+    ) -> Result<(), Box<dyn Error>> {
+        let dir = TempDir::new()?;
+        let profile_path = write_profile(dir.path(), &orchestration_profile())?;
+        let store_path = dir.path().join("runtime.sqlite3");
+        let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(&store_path)?;
+        store.record_run_state("run-good", "proof_accepted", None, NOW)?;
+        store.record_run_state("run-missing", "proof_accepted", None, NOW)?;
+        let evidence_root = dir.path().join("evidence");
+        write_runtime_evidence(&evidence_root.join("run-good"), "run-good", NOW, "fresh")?;
+        let report_path = dir.path().join("status-report.json");
+
+        cmd_chiodos_runtime_orchestrate_status(
+            &profile_path,
+            &store_path,
+            &evidence_root,
+            NOW,
+            &report_path,
+        )?;
+        let report: chio_chiodos_runtime::RuntimeOrchestrationStatusReport =
+            read_json(&report_path)?;
+
+        assert!(!report.accepted);
+        assert!(!report.evidence_sink_healthy);
+        assert!(!report.ready);
         Ok(())
     }
 

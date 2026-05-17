@@ -119,14 +119,46 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
         |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
     )?;
     ensure_runtime_evidence_dir(evidence_dir)?;
-    let evidence =
-        chio_chiodos_runtime::load_runtime_orchestration_evidence(evidence_dir).map_err(
-            |error| {
-                CliError::cli_other_error(format!(
-                    "Chiodos runtime orchestration evidence: {error}"
-                ))
-            },
-        )?;
+    let evidence = match chio_chiodos_runtime::load_runtime_orchestration_evidence(evidence_dir) {
+        Ok(evidence) => evidence,
+        Err(error) => {
+            let failure_code = error.code().to_string();
+            store
+                .record_run_state(
+                    &run_contract.run_id,
+                    "terminal_failure",
+                    Some(&failure_code),
+                    now_unix_ms,
+                )
+                .map_err(|store_error| {
+                    CliError::cli_other_error(format!(
+                        "Chiodos runtime orchestration failed run state: {store_error}"
+                    ))
+                })?;
+            let report_value = chio_chiodos_runtime::RuntimeOrchestrationRunReport {
+                schema: chio_chiodos_runtime::CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA
+                    .to_string(),
+                run_id: run_contract.run_id,
+                accepted: false,
+                failure_code: Some(failure_code),
+                status: "terminal_failure".to_string(),
+                generated_at_unix_ms: now_unix_ms,
+                profile_sha256,
+                run_contract_sha256,
+                workflow_run_report_sha256: None,
+                evidence_manifest_sha256: None,
+                proof_regeneration_report_sha256: None,
+                verifier_report_sha256: None,
+                step_states: Vec::new(),
+                checks: vec!["runtime_orchestration.evidence_load_failed".to_string()],
+            };
+            return write_pretty_json(
+                report,
+                &report_value,
+                "Chiodos runtime orchestration run report",
+            );
+        }
+    };
     let mut accepted = evidence.proof_regeneration_report.accepted;
     let mut failure_code = evidence.proof_regeneration_report.failure_code.clone();
     if profile_sha256 != run_contract.profile_sha256 {
@@ -142,22 +174,22 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
     ) {
         accepted = false;
         failure_code = Some("runtime_orchestration_evidence_stale".to_string());
-    } else if let Err(failure) =
-        chio_chiodos_runtime::validate_runtime_orchestration_evidence_binding(
+    } else if evidence.proof_regeneration_report.accepted {
+        if let Err(failure) = chio_chiodos_runtime::validate_runtime_orchestration_evidence_binding(
             &run_contract,
             &evidence,
-        )
-    {
-        accepted = false;
-        failure_code = Some(failure.code().to_string());
-    } else if evidence.proof_regeneration_report.accepted && !evidence.verifier_report_accepted {
-        accepted = false;
-        failure_code = Some(
-            evidence
-                .verifier_report_failure_code
-                .clone()
-                .unwrap_or_else(|| "runtime_orchestration_verifier_report_rejected".to_string()),
-        );
+        ) {
+            accepted = false;
+            failure_code = Some(failure.code().to_string());
+        } else if !evidence.verifier_report_accepted {
+            accepted = false;
+            failure_code = Some(
+                evidence
+                    .verifier_report_failure_code
+                    .clone()
+                    .unwrap_or_else(|| "runtime_orchestration_verifier_report_rejected".to_string()),
+            );
+        }
     }
     let status = if accepted {
         "proof_accepted"
@@ -304,16 +336,7 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_status(
         |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
     )?;
     let evidence_sink_healthy =
-        chio_chiodos_runtime::runtime_orchestration_evidence_sink_healthy(
-            &profile,
-            evidence_dir,
-            now_unix_ms,
-        )
-        .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chiodos runtime orchestration evidence health: {error}"
-            ))
-        })?;
+        runtime_orchestration_recorded_evidence_healthy(&profile, &store, evidence_dir, now_unix_ms)?;
     let report_value = store
         .status_report(
             &profile,
@@ -329,6 +352,45 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_status(
         &report_value,
         "Chiodos runtime orchestration status report",
     )
+}
+
+fn runtime_orchestration_recorded_evidence_healthy(
+    profile: &chio_chiodos_runtime::RuntimeOrchestrationProfile,
+    store: &chio_chiodos_runtime::SqliteRuntimeOrchestrationStore,
+    evidence_dir: &Path,
+    now_unix_ms: u64,
+) -> Result<bool, CliError> {
+    let run_ids = store.recorded_run_ids().map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime orchestration recorded runs: {error}"))
+    })?;
+    if run_ids.len() <= 1 {
+        return chio_chiodos_runtime::runtime_orchestration_evidence_sink_healthy(
+            profile,
+            evidence_dir,
+            now_unix_ms,
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos runtime orchestration evidence health: {error}"
+            ))
+        });
+    }
+    for run_id in run_ids {
+        let run_dir = evidence_dir.join(&run_id);
+        if !chio_chiodos_runtime::runtime_orchestration_evidence_sink_healthy(
+            profile,
+            &run_dir,
+            now_unix_ms,
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chiodos runtime orchestration evidence health for {run_id}: {error}"
+            ))
+        })? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 pub(crate) fn cmd_chiodos_runtime_orchestrate_drift(

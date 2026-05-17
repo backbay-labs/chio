@@ -245,7 +245,10 @@ pub fn generate_runtime_evidence_sink_health_report(
                 continue;
             }
         };
-        if sha256_hex(&bytes) != entry.sha256 {
+        let entry_hash_mismatches = sha256_hex(&bytes) != entry.sha256;
+        let manifest_report_binding_mismatches =
+            runtime_evidence_manifest_report_binding_mismatches(&bytes, entry, manifest)?;
+        if entry_hash_mismatches || manifest_report_binding_mismatches {
             artifact_hash_mismatches.push(entry.path.clone());
         }
         if u64::try_from(bytes.len()).unwrap_or(u64::MAX) != entry.byte_count {
@@ -433,6 +436,25 @@ fn compare_semantic_field<T: Serialize + PartialEq>(
         });
     }
     Ok(())
+}
+
+fn runtime_evidence_manifest_report_binding_mismatches(
+    bytes: &[u8],
+    entry: &RuntimeEvidenceManifestEntry,
+    manifest: &RuntimeEvidenceManifest,
+) -> Result<bool, ChiodosRuntimeError> {
+    let expected = match entry.role.as_str() {
+        "workflow_run_report" => &manifest.workflow_run_report_sha256,
+        "proof_regeneration_report" => &manifest.proof_regeneration_report_sha256,
+        _ => return Ok(false),
+    };
+    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|error| {
+        ChiodosRuntimeError::Json(format!(
+            "Chiodos runtime evidence health artifact JSON {}: {error}",
+            entry.path
+        ))
+    })?;
+    Ok(canonical_sha256(&value)? != *expected)
 }
 
 fn compare_verifier_field<T: Serialize + PartialEq>(

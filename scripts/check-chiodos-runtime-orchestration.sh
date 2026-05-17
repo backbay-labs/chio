@@ -172,7 +172,7 @@ directory = pathlib.Path(sys.argv[1])
 verifier_state = sys.argv[2]
 proof_package_path = directory / "buyer-auditor-proof-package.json"
 proof_package_bytes = proof_package_path.read_bytes()
-proof_package_hash = hashlib.sha256(proof_package_bytes).hexdigest()
+proof_package_file_hash = hashlib.sha256(proof_package_bytes).hexdigest()
 
 def canonical_hash(value):
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
@@ -183,7 +183,7 @@ def write_json(path, value):
 
 verifier_report = {
     "schema": "chio.chiodos.verifier-report.v2",
-    "packageSha256": proof_package_hash,
+    "packageSha256": canonical_hash(json.loads(proof_package_bytes.decode("utf-8"))),
     "accepted": verifier_state == "accepted",
     "checks": [
         {
@@ -198,7 +198,7 @@ verifier_hash = canonical_hash(verifier_report)
 
 proof_path = directory / "proof-regeneration-report.json"
 proof_report = json.loads(proof_path.read_text(encoding="utf-8"))
-proof_report["proofPackageSha256"] = proof_package_hash
+proof_report["proofPackageSha256"] = verifier_report["packageSha256"]
 proof_report["verifierReportSha256"] = verifier_hash
 write_json(proof_path, proof_report)
 proof_hash = canonical_hash(proof_report)
@@ -215,7 +215,7 @@ manifest["workflowRunReportSha256"] = workflow_hash
 manifest["proofRegenerationReportSha256"] = proof_hash
 for entry in manifest["entries"]:
     if entry["role"] == "proof_package":
-        entry["sha256"] = proof_package_hash
+        entry["sha256"] = proof_package_file_hash
         entry["byteCount"] = len(proof_package_bytes)
 write_json(manifest_path, manifest)
 PY
@@ -256,11 +256,21 @@ run_positive_flow() {
     --profile "$tmpdir/profile.json" \
     --store "$tmpdir/runtime.sqlite3" \
     --evidence-dir "$tmpdir/run-a" \
+    --now-unix-ms 1800000001000 \
     --report "$tmpdir/status-report.json"
   validate_schema "$schema_dir/runtime-orchestration-status-report.schema.json" "$tmpdir/lint-report.json"
   validate_schema "$schema_dir/runtime-orchestration-plan.schema.json" "$tmpdir/plan-report.json"
   validate_schema "$schema_dir/runtime-orchestration-run-report.schema.json" "$tmpdir/run-report.json"
   validate_schema "$schema_dir/runtime-orchestration-status-report.schema.json" "$tmpdir/status-report.json"
+  python3 - "$tmpdir/status-report.json" <<'PY'
+import json
+import pathlib
+import sys
+
+report = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+if report.get("accepted") is not True or report.get("ready") is not True:
+    raise SystemExit(f"runtime orchestration status was not healthy: {report}")
+PY
 }
 
 run_resume_flow() {
@@ -322,7 +332,7 @@ run_negative_flow() {
     --now-unix-ms 1800000001000 \
     --report "$tmpdir/proof-missing-run-report.json"
   grep -q '"accepted": false' "$tmpdir/proof-missing-run-report.json"
-  grep -q '"failureCode": "runtime_orchestration_evidence_hash_mismatch"' "$tmpdir/proof-missing-run-report.json"
+  grep -q '"failureCode": "runtime_admission_io"' "$tmpdir/proof-missing-run-report.json"
   validate_schema "$schema_dir/runtime-orchestration-run-report.schema.json" "$tmpdir/proof-missing-run-report.json"
   make_evidence_dir "$tmpdir/verifier-package-mismatch-run" "runtime-orchestration-1"
   python3 - "$tmpdir/verifier-package-mismatch-run" <<'PY'
