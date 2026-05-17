@@ -272,7 +272,7 @@ function externalRetentionReport(overrides = {}) {
     packageCount: 2,
     readyCount: 1,
     latestPackageGeneration: 2,
-    quarantineCount: 0,
+    quarantineCount: 1,
     driftCount: 1,
     insufficientSampleCount: 1,
     reviews: [
