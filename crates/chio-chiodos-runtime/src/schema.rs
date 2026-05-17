@@ -472,6 +472,7 @@ pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "runtime_trust_context_hash_mismatch",
     "runtime_trust_floor_version_zero",
     "runtime_trust_hash_failed",
+    "runtime_trust_input_verifier_mismatch",
     "runtime_trust_previous_hash_mismatch",
     "runtime_trust_previous_hash_missing",
     "runtime_trust_revocation_roots_missing",

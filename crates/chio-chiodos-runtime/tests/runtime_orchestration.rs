@@ -91,6 +91,30 @@ fn runtime_orchestration_evidence_sink_health_rejects_rejected_verifier_report(
 }
 
 #[test]
+fn runtime_orchestration_evidence_loads_rejected_proof_without_verifier_report(
+) -> Result<(), Box<dyn Error>> {
+    let fixture = write_rejected_proof_without_verifier_fixture(NOW)?;
+
+    assert!(!fixture
+        .evidence_dir
+        .path()
+        .join("verifier-report.json")
+        .exists());
+    let evidence = load_runtime_orchestration_evidence(fixture.evidence_dir.path())?;
+
+    assert!(!evidence.proof_regeneration_report.accepted);
+    assert!(!evidence.verifier_report_accepted);
+    assert_eq!(evidence.verifier_report_sha256, None);
+    assert!(!runtime_orchestration_evidence_sink_healthy(
+        &fixture.profile,
+        fixture.evidence_dir.path(),
+        NOW
+    )?);
+
+    Ok(())
+}
+
+#[test]
 fn runtime_orchestration_evidence_load_rejects_manifest_artifact_hash_mismatch(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = write_evidence_fixture(NOW)?;
@@ -247,6 +271,112 @@ fn write_evidence_fixture_with_verifier(
             sha256: proof_package_file_sha256,
             byte_count: proof_package_bytes,
         }],
+    };
+    write_json(
+        &evidence_dir.path().join("runtime-evidence-manifest.json"),
+        &manifest,
+    )?;
+    Ok(EvidenceFixture {
+        profile,
+        contract,
+        evidence_dir,
+    })
+}
+
+fn write_rejected_proof_without_verifier_fixture(
+    generated_at_unix_ms: u64,
+) -> Result<EvidenceFixture, Box<dyn Error>> {
+    let evidence_dir = TempDir::new()?;
+    let profile = RuntimeOrchestrationProfile {
+        schema: CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA.to_string(),
+        profile_id: "runtime-orchestration-profile".to_string(),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+        verifier_id: "did:chio:buyer-verifier".to_string(),
+        mode: "enforce".to_string(),
+        issued_at_unix_ms: ISSUED_AT,
+        expires_at_unix_ms: EXPIRES_AT,
+        max_concurrent_runs: 2,
+        fail_closed_on: vec!["runtime_orchestration_profile_stale".to_string()],
+    };
+    let profile_sha256 = runtime_orchestration_profile_sha256(&profile)?;
+    let contract = RuntimeRunContract {
+        schema: CHIODOS_RUNTIME_RUN_CONTRACT_SCHEMA.to_string(),
+        run_id: "run-runtime-orchestration-rejected-proof".to_string(),
+        profile_sha256,
+        workflow_id: "workflow-runtime-orchestration".to_string(),
+        expected_step_count: 1,
+        admission_ids: vec!["admission-A".to_string()],
+        store_id: "sqlite-runtime-store".to_string(),
+        evidence_sink_id: "local-evidence-sink".to_string(),
+        proof_regeneration_required: true,
+    };
+    let step = RuntimeStepEvidence {
+        schema: CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
+        step_index: 0,
+        admission_id: "admission-A".to_string(),
+        admission_report_sha256: fixed_hash('a'),
+        tool_receipt_id: "receipt-A".to_string(),
+        tool_receipt_sha256: fixed_hash('b'),
+        output_sha256: fixed_hash('c'),
+        bilateral_dsse_sha256: fixed_hash('d'),
+        workflow_step_sha256: fixed_hash('e'),
+        parent_receipt_sha256: None,
+        consistency_anchor: "anchor-A".to_string(),
+        destructive: false,
+        lease_id: None,
+        governance_receipt_id: None,
+    };
+    let proof = RuntimeProofRegenerationReport {
+        schema: CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA.to_string(),
+        run_id: contract.run_id.clone(),
+        accepted: false,
+        failure_code: Some("runtime_proof_regeneration_missing_package_hash".to_string()),
+        generated_at_unix_ms,
+        proof_package_sha256: None,
+        verifier_report_sha256: None,
+        workflow_receipt_sha256: None,
+        source_records: Vec::new(),
+        checks: vec!["runtime_proof.regeneration_failed".to_string()],
+    };
+    let (proof_file_sha256, proof_sha256, proof_bytes) = write_json_with_hashes(
+        &evidence_dir.path().join("proof-regeneration-report.json"),
+        &proof,
+    )?;
+    let workflow = RuntimeWorkflowRunReport {
+        schema: CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
+        run_id: contract.run_id.clone(),
+        accepted: true,
+        failure_code: None,
+        generated_at_unix_ms,
+        admission_report_sha256: step.admission_report_sha256.clone(),
+        evidence_paths: vec!["proof-regeneration-report.json".to_string()],
+        step_evidence: vec![step],
+        proof_regeneration_report_sha256: Some(proof_sha256.clone()),
+    };
+    let (workflow_file_sha256, workflow_sha256, workflow_bytes) = write_json_with_hashes(
+        &evidence_dir.path().join("workflow-run-report.json"),
+        &workflow,
+    )?;
+    let manifest = RuntimeEvidenceManifest {
+        schema: CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        run_id: contract.run_id.clone(),
+        generated_at_unix_ms,
+        workflow_run_report_sha256: workflow_sha256,
+        proof_regeneration_report_sha256: proof_sha256,
+        entries: vec![
+            RuntimeEvidenceManifestEntry {
+                role: "workflow_run_report".to_string(),
+                path: "workflow-run-report.json".to_string(),
+                sha256: workflow_file_sha256,
+                byte_count: workflow_bytes,
+            },
+            RuntimeEvidenceManifestEntry {
+                role: "proof_regeneration_report".to_string(),
+                path: "proof-regeneration-report.json".to_string(),
+                sha256: proof_file_sha256,
+                byte_count: proof_bytes,
+            },
+        ],
     };
     write_json(
         &evidence_dir.path().join("runtime-evidence-manifest.json"),

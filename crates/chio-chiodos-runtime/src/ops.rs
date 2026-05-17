@@ -194,7 +194,6 @@ fn is_timestamped_runtime_report_artifact(entry: &RuntimeEvidenceManifestEntry) 
             "proof_regeneration_report",
             "proof-regeneration-report.json"
         ) | ("runtime_run_report", "runtime-run-report.json")
-            | ("workflow_run_report", "workflow-run-report.json")
     )
 }
 

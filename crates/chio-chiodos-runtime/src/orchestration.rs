@@ -28,7 +28,7 @@ pub struct RuntimeOrchestrationEvidence {
     pub workflow_report_sha256: String,
     pub proof_report_sha256: String,
     pub manifest_sha256: String,
-    pub verifier_report_sha256: String,
+    pub verifier_report_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,34 +76,55 @@ pub fn load_runtime_orchestration_evidence(
     let workflow_report_path = evidence_dir.join("workflow-run-report.json");
     let proof_report_path = evidence_dir.join("proof-regeneration-report.json");
     let manifest_path = evidence_dir.join("runtime-evidence-manifest.json");
-    let verifier_report_path = evidence_dir.join("verifier-report.json");
     let workflow_json =
         read_utf8_json_file(&workflow_report_path, "Chiodos runtime workflow report")?;
     let proof_json = read_utf8_json_file(&proof_report_path, "Chiodos runtime proof report")?;
     let manifest_json = read_utf8_json_file(&manifest_path, "Chiodos runtime evidence manifest")?;
-    let verifier_json = read_utf8_json_file(&verifier_report_path, "Chiodos verifier report")?;
     let workflow_run_report: RuntimeWorkflowRunReport =
         parse_json(&workflow_json, "Chiodos runtime workflow report")?;
     let proof_regeneration_report: RuntimeProofRegenerationReport =
         parse_json(&proof_json, "Chiodos runtime proof report")?;
     let manifest: RuntimeEvidenceManifest =
         parse_json(&manifest_json, "Chiodos runtime evidence manifest")?;
-    let verifier_report_value: serde_json::Value =
-        parse_json(&verifier_json, "Chiodos verifier report")?;
-    let verifier_report: VerifierReport = parse_json(&verifier_json, "Chiodos verifier report")?;
-    let verifier_report_accepted = verifier_report.accepted;
-    let verifier_report_failure_code = verifier_report
-        .failure
-        .as_ref()
-        .map(|failure| failure.code.clone());
-    let verifier_report_package_sha256 = Some(verifier_report.package_sha256);
     validate_runtime_workflow_run_report(&workflow_run_report)?;
     validate_runtime_proof_regeneration_report(&proof_regeneration_report)?;
     validate_runtime_evidence_manifest(&manifest)?;
+    let verifier_report_path = evidence_dir.join("verifier-report.json");
+    let verifier_report_required = proof_regeneration_report.accepted
+        || proof_regeneration_report.verifier_report_sha256.is_some();
+    let verifier_json = if verifier_report_path.is_file() || verifier_report_required {
+        Some(read_utf8_json_file(
+            &verifier_report_path,
+            "Chiodos verifier report",
+        )?)
+    } else {
+        None
+    };
+    let (
+        verifier_report_accepted,
+        verifier_report_failure_code,
+        verifier_report_package_sha256,
+        verifier_report_sha256,
+    ) = if let Some(verifier_json) = verifier_json {
+        let verifier_report_value: serde_json::Value =
+            parse_json(&verifier_json, "Chiodos verifier report")?;
+        let verifier_report: VerifierReport =
+            parse_json(&verifier_json, "Chiodos verifier report")?;
+        (
+            verifier_report.accepted,
+            verifier_report
+                .failure
+                .as_ref()
+                .map(|failure| failure.code.clone()),
+            Some(verifier_report.package_sha256),
+            Some(canonical_sha256(&verifier_report_value)?),
+        )
+    } else {
+        (false, None, None, None)
+    };
     let workflow_report_sha256 = canonical_sha256(&workflow_run_report)?;
     let proof_report_sha256 = canonical_sha256(&proof_regeneration_report)?;
     let manifest_sha256 = canonical_sha256(&manifest)?;
-    let verifier_report_sha256 = canonical_sha256(&verifier_report_value)?;
     validate_runtime_orchestration_manifest_artifacts(evidence_dir, &manifest)?;
     let proof_package_hashes = load_runtime_orchestration_role_json_artifact_hashes(
         evidence_dir,
@@ -236,16 +257,23 @@ pub fn validate_runtime_orchestration_evidence_integrity(
             "runtime orchestration manifest and workflow report hashes do not match",
         ));
     }
-    if evidence
+    if let Some(expected_verifier_report_sha256) = evidence
         .proof_regeneration_report
         .verifier_report_sha256
         .as_deref()
-        != Some(evidence.verifier_report_sha256.as_str())
     {
-        return Err(RuntimeOrchestrationEvidenceFailure::new(
-            "runtime_orchestration_evidence_hash_mismatch",
-            "runtime proof report does not bind the verifier report hash",
-        ));
+        let Some(actual_verifier_report_sha256) = evidence.verifier_report_sha256.as_deref() else {
+            return Err(RuntimeOrchestrationEvidenceFailure::new(
+                "runtime_orchestration_evidence_hash_mismatch",
+                "runtime proof report binds a verifier report that is missing",
+            ));
+        };
+        if expected_verifier_report_sha256 != actual_verifier_report_sha256 {
+            return Err(RuntimeOrchestrationEvidenceFailure::new(
+                "runtime_orchestration_evidence_hash_mismatch",
+                "runtime proof report does not bind the verifier report hash",
+            ));
+        }
     }
     if evidence
         .proof_regeneration_report
@@ -272,19 +300,29 @@ pub fn validate_runtime_orchestration_evidence_integrity(
         else {
             return Err(proof_package_missing_failure());
         };
-        let Some(verifier_report_package_sha256) =
-            evidence.verifier_report_package_sha256.as_deref()
-        else {
-            return Err(proof_package_missing_failure());
-        };
         if manifest_proof_package_sha256 != actual_proof_package_sha256
             || canonical_proof_package_sha256 != expected_proof_package_sha256
-            || verifier_report_package_sha256 != expected_proof_package_sha256
         {
             return Err(RuntimeOrchestrationEvidenceFailure::new(
                 "runtime_orchestration_evidence_hash_mismatch",
-                "runtime proof package hashes do not match manifest, proof, and verifier bindings",
+                "runtime proof package hashes do not match manifest and proof bindings",
             ));
+        }
+        if let Some(verifier_report_package_sha256) =
+            evidence.verifier_report_package_sha256.as_deref()
+        {
+            if verifier_report_package_sha256 != expected_proof_package_sha256 {
+                return Err(RuntimeOrchestrationEvidenceFailure::new(
+                    "runtime_orchestration_evidence_hash_mismatch",
+                    "runtime proof package hash does not match verifier binding",
+                ));
+            }
+        } else if evidence
+            .proof_regeneration_report
+            .verifier_report_sha256
+            .is_some()
+        {
+            return Err(proof_package_missing_failure());
         }
     }
     Ok(())

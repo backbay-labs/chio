@@ -129,15 +129,7 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
         )?;
     let mut accepted = evidence.proof_regeneration_report.accepted;
     let mut failure_code = evidence.proof_regeneration_report.failure_code.clone();
-    if evidence.proof_regeneration_report.accepted && !evidence.verifier_report_accepted {
-        accepted = false;
-        failure_code = Some(
-            evidence
-                .verifier_report_failure_code
-                .clone()
-                .unwrap_or_else(|| "runtime_orchestration_verifier_report_rejected".to_string()),
-        );
-    } else if profile_sha256 != run_contract.profile_sha256 {
+    if profile_sha256 != run_contract.profile_sha256 {
         accepted = false;
         failure_code = Some("runtime_orchestration_profile_hash_mismatch".to_string());
     } else if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
@@ -150,14 +142,24 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
     ) {
         accepted = false;
         failure_code = Some("runtime_orchestration_evidence_stale".to_string());
-    } else if let Err(failure) =
-        chio_chiodos_runtime::validate_runtime_orchestration_evidence_binding(
-            &run_contract,
-            &evidence,
-        )
-    {
+    } else if evidence.proof_regeneration_report.accepted && !evidence.verifier_report_accepted {
         accepted = false;
-        failure_code = Some(failure.code().to_string());
+        failure_code = Some(
+            evidence
+                .verifier_report_failure_code
+                .clone()
+                .unwrap_or_else(|| "runtime_orchestration_verifier_report_rejected".to_string()),
+        );
+    } else if evidence.proof_regeneration_report.accepted {
+        if let Err(failure) =
+            chio_chiodos_runtime::validate_runtime_orchestration_evidence_binding(
+                &run_contract,
+                &evidence,
+            )
+        {
+            accepted = false;
+            failure_code = Some(failure.code().to_string());
+        }
     }
     let status = if accepted {
         "proof_accepted"
@@ -210,7 +212,7 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
         workflow_run_report_sha256: Some(evidence.workflow_report_sha256),
         evidence_manifest_sha256: Some(evidence.manifest_sha256),
         proof_regeneration_report_sha256: Some(evidence.proof_report_sha256),
-        verifier_report_sha256: Some(evidence.verifier_report_sha256),
+        verifier_report_sha256: evidence.verifier_report_sha256,
         step_states,
         checks: vec![
             "runtime_orchestration.evidence_sink_loaded".to_string(),

@@ -300,6 +300,42 @@ fn strict_runtime_trust_input_binds_bundle_and_signer() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn strict_runtime_trust_input_binds_profile_verifier() -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    store.insert_bundle(bundle())?;
+
+    let verifier = Keypair::generate();
+    let signed_trust = SignedExportEnvelope::sign(trust_body(1, None), &verifier)?;
+    let mut mismatched_profile = profile();
+    mismatched_profile.verifier_id = "did:chio:other-verifier".to_string();
+
+    let rejected = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &mismatched_profile,
+        store: &store,
+        admission_id: "adm-live-1",
+        request: &binding(),
+        action_class_id: None,
+        runtime_trust_input: Some(&signed_trust),
+        trusted_verifier_keys: &trusted_keys(&verifier),
+        pheromone_query_report: None,
+        runtime_pheromone_policy: None,
+        runtime_peer_weights: None,
+        now_unix_ms: 1_800_000_001_000,
+    })?;
+
+    assert!(!rejected.accepted);
+    assert_eq!(
+        rejected.failure_code.as_deref(),
+        Some("runtime_trust_input_verifier_mismatch")
+    );
+    assert!(!rejected
+        .checks
+        .iter()
+        .any(|check| check.code == "runtime_trust.signature"));
+    Ok(())
+}
+
+#[test]
 fn runtime_trust_floor_rejects_rollback_after_restart() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let store_path = dir.path().join("runtime-store.json");

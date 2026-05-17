@@ -56,6 +56,14 @@ pub fn evaluate_runtime_admission(
 
     let mut trust_floor_update = None;
     if let Some(runtime_trust_input) = input.runtime_trust_input {
+        if runtime_trust_input.body.verifier_id != input.profile.verifier_id {
+            return Ok(rejected_report(
+                input.admission_id,
+                "runtime_trust_input_verifier_mismatch",
+                checks,
+            ));
+        }
+        checks.push(passed("runtime_trust.profile_verifier"));
         match validate_runtime_trust_input(
             runtime_trust_input,
             input.trusted_verifier_keys,

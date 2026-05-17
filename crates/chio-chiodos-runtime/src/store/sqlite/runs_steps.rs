@@ -81,6 +81,27 @@ impl SqliteRuntimeOrchestrationStore {
         Ok(())
     }
 
+    pub fn recorded_run_ids(&self) -> Result<Vec<String>, ChiodosRuntimeError> {
+        let connection = self.lock_connection()?;
+        let mut statement = connection
+            .prepare(
+                r#"
+                SELECT run_id
+                FROM runtime_runs
+                ORDER BY run_id
+                "#,
+            )
+            .map_err(sqlite_error)?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(sqlite_error)?;
+        let mut run_ids = Vec::new();
+        for row in rows {
+            run_ids.push(row.map_err(sqlite_error)?);
+        }
+        Ok(run_ids)
+    }
+
     pub(super) fn pending_run_ids(&self) -> Result<Vec<String>, ChiodosRuntimeError> {
         let connection = self.lock_connection()?;
         let mut statement = connection

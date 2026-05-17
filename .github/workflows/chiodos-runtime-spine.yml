@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-chiodos-runtime-harness/**"
+      - "crates/chio-chiodos-loopback/**"
       - "crates/chio-chiodos/**"
       - "crates/chio-chiodos-authority/**"
       - "crates/chio-cli/**"
@@ -20,6 +22,8 @@ on:
       - main
     paths:
       - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-chiodos-runtime-harness/**"
+      - "crates/chio-chiodos-loopback/**"
       - "crates/chio-chiodos/**"
       - "crates/chio-chiodos-authority/**"
       - "crates/chio-cli/**"

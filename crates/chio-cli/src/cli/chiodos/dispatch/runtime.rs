@@ -44,7 +44,8 @@ pub(crate) fn canonical_sha256_json<T: serde::Serialize>(value: &T, label: &str)
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod chiodos_orchestration_cli_tests {
     use super::{
-        canonical_sha256_json, cmd_chiodos_runtime_orchestrate_drift,
+        canonical_sha256_json, cmd_chiodos_runtime_ops_status,
+        cmd_chiodos_runtime_orchestrate_drift,
         cmd_chiodos_runtime_orchestrate_resume, cmd_chiodos_runtime_orchestrate_run,
         cmd_chiodos_runtime_orchestrate_status,
     };
@@ -74,6 +75,24 @@ mod chiodos_orchestration_cli_tests {
             expires_at_unix_ms: EXPIRES_AT,
             max_concurrent_runs: 2,
             fail_closed_on: vec!["runtime_orchestration_profile_stale".to_string()],
+        }
+    }
+
+    fn supervisor_profile() -> chio_chiodos_runtime::RuntimeSupervisorProfile {
+        chio_chiodos_runtime::RuntimeSupervisorProfile {
+            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_SUPERVISOR_PROFILE_SCHEMA.to_string(),
+            profile_id: "runtime-supervisor-cli".to_string(),
+            local_kernel_id: "kernel.vendor-b".to_string(),
+            issued_at_unix_ms: ISSUED_AT,
+            expires_at_unix_ms: EXPIRES_AT,
+            max_concurrent_runs: 2,
+            run_lease_ttl_ms: 60_000,
+            stale_run_after_ms: 300_000,
+            evidence_required_roles: vec![
+                "workflow_run_report".to_string(),
+                "proof_regeneration_report".to_string(),
+            ],
+            fail_closed_on: vec!["runtime_evidence_artifact_hash_mismatch".to_string()],
         }
     }
 
@@ -111,6 +130,15 @@ mod chiodos_orchestration_cli_tests {
         profile: &chio_chiodos_runtime::RuntimeOrchestrationProfile,
     ) -> Result<PathBuf, Box<dyn Error>> {
         let path = dir.join("profile.json");
+        write_json(&path, profile)?;
+        Ok(path)
+    }
+
+    fn write_supervisor_profile(
+        dir: &Path,
+        profile: &chio_chiodos_runtime::RuntimeSupervisorProfile,
+    ) -> Result<PathBuf, Box<dyn Error>> {
+        let path = dir.join("supervisor-profile.json");
         write_json(&path, profile)?;
         Ok(path)
     }
@@ -240,6 +268,88 @@ mod chiodos_orchestration_cli_tests {
         Ok(())
     }
 
+    fn write_rejected_runtime_evidence_without_verifier(
+        dir: &Path,
+        run_id: &str,
+        generated_at_unix_ms: u64,
+    ) -> Result<(), Box<dyn Error>> {
+        fs::create_dir_all(dir)?;
+        let source_record = chio_chiodos_runtime::RuntimeProofSourceRecord {
+            step_index: 0,
+            admission_report_sha256: fixed_hash('1'),
+            tool_receipt_sha256: fixed_hash('2'),
+            bilateral_dsse_sha256: fixed_hash('3'),
+            workflow_step_sha256: fixed_hash('4'),
+        };
+        let proof_report = chio_chiodos_runtime::RuntimeProofRegenerationReport {
+            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA
+                .to_string(),
+            run_id: run_id.to_string(),
+            accepted: false,
+            failure_code: Some("runtime_proof_regeneration_missing_package_hash".to_string()),
+            generated_at_unix_ms,
+            proof_package_sha256: None,
+            verifier_report_sha256: None,
+            workflow_receipt_sha256: None,
+            source_records: Vec::new(),
+            checks: vec!["runtime_source_records.regeneration_failed".to_string()],
+        };
+        let (proof_report_file_sha256, proof_report_sha256, proof_report_byte_count) =
+            write_json_with_hashes(&dir.join("proof-regeneration-report.json"), &proof_report)?;
+        let workflow_report = chio_chiodos_runtime::RuntimeWorkflowRunReport {
+            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
+            run_id: run_id.to_string(),
+            accepted: true,
+            failure_code: None,
+            generated_at_unix_ms,
+            admission_report_sha256: fixed_hash('6'),
+            evidence_paths: vec!["proof-regeneration-report.json".to_string()],
+            step_evidence: vec![chio_chiodos_runtime::RuntimeStepEvidence {
+                schema: chio_chiodos_runtime::CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
+                step_index: 0,
+                admission_id: "adm-runtime-cli-0".to_string(),
+                admission_report_sha256: source_record.admission_report_sha256,
+                tool_receipt_id: format!("receipt-{run_id}"),
+                tool_receipt_sha256: source_record.tool_receipt_sha256,
+                output_sha256: fixed_hash('7'),
+                bilateral_dsse_sha256: source_record.bilateral_dsse_sha256,
+                workflow_step_sha256: source_record.workflow_step_sha256,
+                parent_receipt_sha256: None,
+                consistency_anchor: format!("chiodos:runtime:{run_id}:0"),
+                destructive: false,
+                lease_id: None,
+                governance_receipt_id: None,
+            }],
+            proof_regeneration_report_sha256: Some(proof_report_sha256.clone()),
+        };
+        let (workflow_report_file_sha256, workflow_report_sha256, workflow_report_byte_count) =
+            write_json_with_hashes(&dir.join("workflow-run-report.json"), &workflow_report)?;
+        let manifest = chio_chiodos_runtime::RuntimeEvidenceManifest {
+            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+            run_id: run_id.to_string(),
+            generated_at_unix_ms,
+            workflow_run_report_sha256: workflow_report_sha256,
+            proof_regeneration_report_sha256: proof_report_sha256,
+            entries: vec![
+                chio_chiodos_runtime::RuntimeEvidenceManifestEntry {
+                    role: "workflow_run_report".to_string(),
+                    path: "workflow-run-report.json".to_string(),
+                    sha256: workflow_report_file_sha256,
+                    byte_count: workflow_report_byte_count,
+                },
+                chio_chiodos_runtime::RuntimeEvidenceManifestEntry {
+                    role: "proof_regeneration_report".to_string(),
+                    path: "proof-regeneration-report.json".to_string(),
+                    sha256: proof_report_file_sha256,
+                    byte_count: proof_report_byte_count,
+                },
+            ],
+        };
+
+        write_json(&dir.join("runtime-evidence-manifest.json"), &manifest)?;
+        Ok(())
+    }
+
     #[test]
     fn runtime_orchestrate_drift_rejects_stale_profile_window() -> Result<(), Box<dyn Error>> {
         let dir = TempDir::new()?;
@@ -320,6 +430,43 @@ mod chiodos_orchestration_cli_tests {
             Some("runtime_orchestration_evidence_stale")
         );
         assert_eq!(report.status, "terminal_failure");
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_orchestrate_run_records_rejected_proof_without_verifier(
+    ) -> Result<(), Box<dyn Error>> {
+        let dir = TempDir::new()?;
+        let profile = orchestration_profile();
+        let profile_path = write_profile(dir.path(), &profile)?;
+        let contract = runtime_contract(&profile, "run-rejected-proof")?;
+        let contract_path = write_contract(dir.path(), &contract)?;
+        let evidence_dir = dir.path().join("evidence");
+        write_rejected_runtime_evidence_without_verifier(
+            &evidence_dir,
+            "run-rejected-proof",
+            NOW,
+        )?;
+        let report_path = dir.path().join("run-report.json");
+
+        cmd_chiodos_runtime_orchestrate_run(
+            &profile_path,
+            &contract_path,
+            &dir.path().join("runtime.sqlite3"),
+            &evidence_dir,
+            NOW,
+            &report_path,
+        )?;
+        let report: chio_chiodos_runtime::RuntimeOrchestrationRunReport =
+            read_json(&report_path)?;
+
+        assert!(!report.accepted);
+        assert_eq!(
+            report.failure_code.as_deref(),
+            Some("runtime_proof_regeneration_missing_package_hash")
+        );
+        assert_eq!(report.status, "terminal_failure");
+        assert_eq!(report.verifier_report_sha256, None);
         Ok(())
     }
 
@@ -416,6 +563,34 @@ mod chiodos_orchestration_cli_tests {
 
         assert!(!report.accepted);
         assert!(!report.evidence_sink_healthy);
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_ops_status_rejects_empty_evidence_root_when_store_has_runs(
+    ) -> Result<(), Box<dyn Error>> {
+        let dir = TempDir::new()?;
+        let profile_path = write_supervisor_profile(dir.path(), &supervisor_profile())?;
+        let store_path = dir.path().join("runtime.sqlite3");
+        let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(&store_path)?;
+        store.record_run_state("run-without-evidence", "planned", None, NOW)?;
+        let evidence_root = dir.path().join("evidence");
+        fs::create_dir_all(&evidence_root)?;
+        let report_path = dir.path().join("ops-status-report.json");
+
+        cmd_chiodos_runtime_ops_status(
+            &profile_path,
+            &store_path,
+            &evidence_root,
+            None,
+            Some(NOW),
+            &report_path,
+        )?;
+        let report: chio_chiodos_runtime::RuntimeOpsStatusReport = read_json(&report_path)?;
+
+        assert!(!report.evidence_sink_healthy, "{report:#?}");
+        assert!(!report.ready, "{report:#?}");
+        assert!(report.degraded, "{report:#?}");
         Ok(())
     }
 

@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use crate::CliError;
@@ -55,8 +56,15 @@ pub(crate) fn cmd_chiodos_runtime_ops_status(
         })
         .transpose()?
         .unwrap_or(false);
-    let evidence_sink_healthy =
-        runtime_ops_status_evidence_sink_healthy(&profile, evidence_root, generated_at)?;
+    let recorded_run_ids = store.recorded_run_ids().map_err(|error| {
+        CliError::cli_other_error(format!("Chiodos runtime recorded runs: {error}"))
+    })?;
+    let evidence_sink_healthy = runtime_ops_status_evidence_sink_healthy(
+        &profile,
+        evidence_root,
+        generated_at,
+        &recorded_run_ids,
+    )?;
     let status = store
         .ops_status_report(&profile, generated_at, evidence_sink_healthy, provider_healthy)
         .map_err(|error| CliError::cli_other_error(format!("Chiodos runtime ops status: {error}")))?;
@@ -67,14 +75,20 @@ pub(crate) fn runtime_ops_status_evidence_sink_healthy(
     profile: &chio_chiodos_runtime::RuntimeSupervisorProfile,
     evidence_root: &Path,
     now_unix_ms: u64,
+    recorded_run_ids: &[String],
 ) -> Result<bool, CliError> {
     if !evidence_root.is_dir() {
         return Ok(false);
     }
     let run_dirs = sorted_child_dirs(evidence_root)?;
     if run_dirs.is_empty() {
-        return Ok(true);
+        return Ok(recorded_run_ids.is_empty());
     }
+    let recorded_run_ids = recorded_run_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let mut healthy_run_ids = BTreeSet::new();
     for run_dir in run_dirs {
         let Some(run_id) = run_dir.file_name().and_then(|name| name.to_str()) else {
             return Ok(false);
@@ -103,6 +117,12 @@ pub(crate) fn runtime_ops_status_evidence_sink_healthy(
             Err(_) => return Ok(false),
         };
         if !health.accepted {
+            return Ok(false);
+        }
+        healthy_run_ids.insert(run_id.to_string());
+    }
+    for run_id in recorded_run_ids {
+        if !healthy_run_ids.contains(run_id) {
             return Ok(false);
         }
     }
