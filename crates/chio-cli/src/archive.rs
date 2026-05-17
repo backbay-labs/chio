@@ -63,6 +63,7 @@ pub(crate) fn read_tar_gz_file(
     let mut seen = BTreeSet::new();
     let mut seen_casefold = BTreeSet::new();
     let mut total_bytes = 0_u64;
+    let mut entry_count = 0_usize;
     let entries = archive.entries().map_err(|error| {
         CliError::cli_io_error(format!(
             "failed to read {label} {}: {error}",
@@ -76,6 +77,12 @@ pub(crate) fn read_tar_gz_file(
                 archive_path.display()
             ))
         })?;
+        if entry_count >= limits.max_member_count {
+            return Err(CliError::cli_other_error(format!(
+                "{label} has too many members"
+            )));
+        }
+        entry_count = entry_count.saturating_add(1);
         let entry_path = entry.path().map_err(|error| {
             CliError::cli_io_error(format!(
                 "failed to read {label} entry path {}: {error}",
@@ -118,11 +125,6 @@ pub(crate) fn read_tar_gz_file(
         if total_bytes > limits.max_total_bytes {
             return Err(CliError::cli_other_error(format!(
                 "{label} exceeds decompressed byte limit"
-            )));
-        }
-        if entries_out.len() >= limits.max_member_count {
-            return Err(CliError::cli_other_error(format!(
-                "{label} has too many members"
             )));
         }
         let mut bytes = Vec::new();
@@ -602,6 +604,36 @@ mod tests {
         assert_eq!(read.len(), 2);
         assert_eq!(read[0].path, "one.txt");
         assert_eq!(read[1].path, "nested/two.txt");
+    }
+
+    #[test]
+    fn safe_archive_helper_counts_directory_members() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("bundle.tar.gz");
+        let file = fs::File::create(&archive).unwrap();
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        for index in 0..3 {
+            let mut header = tar::Header::new_ustar();
+            header.set_entry_type(tar::EntryType::Directory);
+            header.set_size(0);
+            header.set_mode(0o755);
+            header.set_cksum();
+            let directory_name = format!("dir{index}/");
+            builder
+                .append_data(&mut header, directory_name.as_str(), std::io::empty())
+                .unwrap();
+        }
+        let encoder = builder.into_inner().unwrap();
+        encoder.finish().unwrap();
+        let limits = SafeArchiveLimits {
+            max_member_count: 2,
+            ..TEST_LIMITS
+        };
+
+        let err = read_tar_gz_file(&archive, "test archive", limits).unwrap_err();
+
+        assert!(err.to_string().contains("too many members"));
     }
 
     #[cfg(unix)]

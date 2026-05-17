@@ -5037,13 +5037,14 @@ fn read_archive_restore_package_reports(
     let mut source_reports = None;
     for path in package_paths {
         if file_name_ends_with(&path, ".tar.gz") || file_name_ends_with(&path, ".tgz") {
+            let package = read_relay_alert_assurance_archive_package(&path)?;
             if source_reports.is_none() {
                 source_reports = Some(read_archive_restore_source_reports(source_report_dir)?);
             }
-            let (archive_report, closeout_report) = source_reports.as_ref().ok_or_else(|| {
+            let source_reports = source_reports.as_ref().ok_or_else(|| {
                 CliError::cli_other_error("Chiodos restore source reports missing".to_string())
             })?;
-            let package = read_relay_alert_assurance_archive_package(&path)?;
+            let (archive_report, closeout_report) = source_reports.for_package(&package)?;
             let report = chio_pheromone_relay::verify_relay_alert_assurance_archive_package(
                 chio_pheromone_relay::RelayAlertAssuranceArchivePackageVerifyInput {
                     package: &package,
@@ -5088,35 +5089,119 @@ fn read_archive_restore_package_reports(
 }
 
 fn retain_archive_restore_package_inputs(package_paths: &mut Vec<PathBuf>) {
-    let has_archives = package_paths.iter().any(|path| {
-        file_name_ends_with(path, ".tar.gz") || file_name_ends_with(path, ".tgz")
-    });
+    let generated_sidecars: std::collections::BTreeSet<String> = package_paths
+        .iter()
+        .filter_map(|path| archive_restore_package_sidecar_report_name(path))
+        .collect();
     package_paths.retain(|path| {
         if file_name_ends_with(path, ".tar.gz") || file_name_ends_with(path, ".tgz") {
             return true;
         }
-        !has_archives && path.extension().and_then(|ext| ext.to_str()) == Some("json")
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            return false;
+        }
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| !generated_sidecars.contains(name))
     });
+}
+
+fn archive_restore_package_sidecar_report_name(path: &Path) -> Option<String> {
+    let file_name = path.file_name()?.to_str()?;
+    let package_name = file_name
+        .strip_suffix(".tar.gz")
+        .or_else(|| file_name.strip_suffix(".tgz"))?;
+    Some(format!("{package_name}-report.json"))
+}
+
+struct ArchiveRestoreSourceReports {
+    archive_reports: Vec<chio_pheromone_relay::RelayAlertAssuranceArchiveReport>,
+    closeout_reports: Vec<chio_pheromone_relay::RelayAlertAssuranceCloseoutReport>,
+}
+
+impl ArchiveRestoreSourceReports {
+    fn for_package(
+        &self,
+        package: &chio_pheromone_relay::RelayAlertAssuranceArchivePackage,
+    ) -> Result<
+        (
+            &chio_pheromone_relay::RelayAlertAssuranceArchiveReport,
+            &chio_pheromone_relay::RelayAlertAssuranceCloseoutReport,
+        ),
+        CliError,
+    > {
+        let body = &package.manifest.body;
+        let archive_report = find_report_by_canonical_hash(
+            &self.archive_reports,
+            &body.source_archive_report_sha256,
+            "Chiodos relay alert assurance archive report",
+        )?;
+        let closeout_report = find_report_by_canonical_hash(
+            &self.closeout_reports,
+            &body.source_closeout_report_sha256,
+            "Chiodos relay alert assurance closeout report",
+        )?;
+        Ok((archive_report, closeout_report))
+    }
 }
 
 fn read_archive_restore_source_reports(
     source_report_dir: &Path,
-) -> Result<
-    (
-        chio_pheromone_relay::RelayAlertAssuranceArchiveReport,
-        chio_pheromone_relay::RelayAlertAssuranceCloseoutReport,
-    ),
-    CliError,
-> {
-    let archive_report = read_json_file(
-        &source_report_dir.join("relay-alert-assurance-archive-report.json"),
+) -> Result<ArchiveRestoreSourceReports, CliError> {
+    let archive_reports = read_relay_report_documents(
+        source_report_dir,
+        chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_REPORT_SCHEMA,
         "Chiodos relay alert assurance archive report",
     )?;
-    let closeout_report = read_json_file(
-        &source_report_dir.join("relay-alert-assurance-closeout-report.json"),
+    if archive_reports.is_empty() {
+        return Err(CliError::cli_other_error(format!(
+            "no Chiodos relay alert assurance archive reports found in {}",
+            source_report_dir.display()
+        )));
+    }
+    let closeout_reports = read_relay_report_documents(
+        source_report_dir,
+        chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_CLOSEOUT_REPORT_SCHEMA,
         "Chiodos relay alert assurance closeout report",
     )?;
-    Ok((archive_report, closeout_report))
+    if closeout_reports.is_empty() {
+        return Err(CliError::cli_other_error(format!(
+            "no Chiodos relay alert assurance closeout reports found in {}",
+            source_report_dir.display()
+        )));
+    }
+    Ok(ArchiveRestoreSourceReports {
+        archive_reports,
+        closeout_reports,
+    })
+}
+
+fn find_report_by_canonical_hash<'a, T: serde::Serialize>(
+    reports: &'a [T],
+    expected_sha256: &str,
+    label: &str,
+) -> Result<&'a T, CliError> {
+    let mut matched_report = None;
+    for report in reports {
+        let report_sha256 = chio_core::crypto::sha256_hex(
+            &chio_core::canonical::canonical_json_bytes(report).map_err(|error| {
+                CliError::cli_other_error(format!("{label} canonical hash: {error}"))
+            })?,
+        );
+        if report_sha256 == expected_sha256 {
+            if matched_report.is_some() {
+                return Err(CliError::cli_other_error(format!(
+                    "multiple {label} documents match package manifest hash {expected_sha256}"
+                )));
+            }
+            matched_report = Some(report);
+        }
+    }
+    matched_report.ok_or_else(|| {
+        CliError::cli_other_error(format!(
+            "no {label} document matches package manifest hash {expected_sha256}"
+        ))
+    })
 }
 
 fn read_relay_report_documents<T: DeserializeOwned>(
@@ -5789,12 +5874,19 @@ mod archive_restore_input_tests {
         let mut paths = vec![
             PathBuf::from("relay-archive-package.tar.gz"),
             PathBuf::from("relay-archive-package-report.json"),
+            PathBuf::from("generation-2-package-report.json"),
             PathBuf::from("notes.txt"),
         ];
 
         retain_archive_restore_package_inputs(&mut paths);
 
-        assert_eq!(paths, vec![PathBuf::from("relay-archive-package.tar.gz")]);
+        assert_eq!(
+            paths,
+            vec![
+                PathBuf::from("relay-archive-package.tar.gz"),
+                PathBuf::from("generation-2-package-report.json"),
+            ]
+        );
     }
 
     #[test]
@@ -5810,6 +5902,22 @@ mod archive_restore_input_tests {
             paths,
             vec![PathBuf::from("relay-archive-package-report.json")]
         );
+    }
+
+    #[test]
+    fn archive_restore_source_reports_match_by_canonical_hash() {
+        let reports = vec![
+            serde_json::json!({"id": "one", "schema": "test.schema.v1"}),
+            serde_json::json!({"id": "two", "schema": "test.schema.v1"}),
+        ];
+        let expected_sha256 = chio_core::crypto::sha256_hex(
+            &chio_core::canonical::canonical_json_bytes(&reports[1]).unwrap(),
+        );
+
+        let report =
+            find_report_by_canonical_hash(&reports, &expected_sha256, "test report").unwrap();
+
+        assert_eq!(report, &reports[1]);
     }
 }
 
