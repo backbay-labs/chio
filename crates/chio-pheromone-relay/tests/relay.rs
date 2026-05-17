@@ -3030,6 +3030,70 @@ fn relay_alert_assurance_archive_restore_rejects_forged_handoff_reports() {
 }
 
 #[test]
+fn relay_alert_assurance_archive_manifest_preserves_v1_signature_payload() {
+    let signing_key = key(91);
+    let legacy_body = json!({
+        "schema": PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_MANIFEST_SCHEMA,
+        "packageId": "relay-archive-package-1",
+        "localKernelId": "did:chio:buyer-kernel",
+        "packagerId": "relay-archive-packager",
+        "packagerKeyId": "relay-archive-packager-key-1",
+        "createdAtUnixMs": NOW,
+        "compressionFormat": "tar.gz",
+        "sourceArchiveReportSha256": "a".repeat(64),
+        "sourceCloseoutReportSha256": "b".repeat(64),
+        "bundleCount": 1,
+        "memberCount": 1,
+        "totalByteCount": 64,
+        "bundles": [{
+            "bundleId": "bundle-1",
+            "bundlePath": "bundle-1",
+            "exportManifestSha256": "c".repeat(64),
+            "exportReportSha256": "d".repeat(64),
+            "sourcePackageSha256": "e".repeat(64),
+            "artifactCount": 1
+        }],
+        "members": [{
+            "path": "bundle-1/report.json",
+            "kind": "json",
+            "bundleId": "bundle-1",
+            "artifactRole": "report",
+            "schema": "test.report.v1",
+            "sha256": "f".repeat(64),
+            "byteCount": 64,
+            "retentionClass": "standard"
+        }],
+        "safetyClaims": ["local_archive_package_only"]
+    });
+    let (signature, _) = signing_key.sign_canonical(&legacy_body).unwrap();
+    let body: chio_pheromone_relay::RelayAlertAssuranceArchivePackageManifestBody =
+        serde_json::from_value(legacy_body).unwrap();
+
+    assert!(signing_key
+        .public_key()
+        .verify_canonical(&body, &signature)
+        .unwrap());
+}
+
+#[test]
+fn relay_alert_assurance_archive_report_hash_preserves_v1_defaulted_payload() {
+    let report = restore_package_report(1, None);
+    let mut legacy_value = serde_json::to_value(&report).unwrap();
+    let legacy_object = legacy_value.as_object_mut().unwrap();
+    legacy_object.remove("packageGeneration");
+    legacy_object.remove("trustedPackagerVerified");
+    legacy_object.remove("nestedExporterVerified");
+    legacy_object.remove("sourceReportsMatched");
+    legacy_object.remove("closeoutReadyVerified");
+    legacy_object.remove("totalByteCountMatched");
+    let expected = sha256_hex(&canonical_json_bytes(&legacy_value).unwrap());
+    let legacy_report: chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport =
+        serde_json::from_value(legacy_value).unwrap();
+
+    assert_eq!(canonical_digest(&legacy_report), expected);
+}
+
+#[test]
 fn relay_alert_assurance_physical_drill_and_retention_handoff_are_local_only() {
     let package_report_sha256 = "f".repeat(64);
     let evidence = RelayAlertAssurancePhysicalArchiveEvidence {

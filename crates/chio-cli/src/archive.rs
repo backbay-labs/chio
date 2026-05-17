@@ -19,6 +19,7 @@ pub(crate) struct SafeArchiveLimits {
 pub(crate) struct SafeArchiveEntry {
     pub path: String,
     pub bytes: Vec<u8>,
+    pub mode: u32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -72,11 +73,6 @@ pub(crate) fn read_tar_gz_file(
                 archive_path.display()
             ))
         })?;
-        if !entry.header().entry_type().is_file() {
-            return Err(CliError::cli_other_error(format!(
-                "{label} contains a non-regular member"
-            )));
-        }
         let entry_path = entry.path().map_err(|error| {
             CliError::cli_io_error(format!(
                 "failed to read {label} entry path {}: {error}",
@@ -86,7 +82,17 @@ pub(crate) fn read_tar_gz_file(
         let entry_path = entry_path.to_str().ok_or_else(|| {
             CliError::cli_other_error(format!("{label} member path is not UTF-8"))
         })?;
+        if entry.header().entry_type().is_dir() {
+            let directory_path = entry_path.trim_end_matches('/');
+            let _ = safe_archive_member_path(directory_path, label)?;
+            continue;
+        }
         let path = safe_archive_member_path(entry_path, label)?;
+        if !entry.header().entry_type().is_file() {
+            return Err(CliError::cli_other_error(format!(
+                "{label} contains a non-regular member"
+            )));
+        }
         if !seen.insert(path.clone()) {
             return Err(CliError::cli_other_error(format!(
                 "{label} duplicate member {path}"
@@ -128,7 +134,12 @@ pub(crate) fn read_tar_gz_file(
                 "{label} member {path} size changed while reading"
             )));
         }
-        entries_out.push(SafeArchiveEntry { path, bytes });
+        let mode = entry
+            .header()
+            .mode()
+            .map(safe_archive_file_mode)
+            .unwrap_or(0o600);
+        entries_out.push(SafeArchiveEntry { path, bytes, mode });
     }
 
     enforce_decompression_ratio(total_bytes, compressed_len, limits.max_decompression_ratio, label)?;
@@ -281,7 +292,21 @@ pub(crate) fn write_entries_to_existing_dir(
         CliError::cli_io_error(format!("failed to create {label} root {}: {error}", root.display()))
     })?;
     for entry in entries {
-        write_entry(root, label, entry)?;
+        write_entry(root, label, entry, false)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn replace_entries_in_existing_dir(
+    root: &Path,
+    label: &str,
+    entries: &[SafeArchiveEntry],
+) -> Result<(), CliError> {
+    fs::create_dir_all(root).map_err(|error| {
+        CliError::cli_io_error(format!("failed to create {label} root {}: {error}", root.display()))
+    })?;
+    for entry in entries {
+        write_entry(root, label, entry, true)?;
     }
     Ok(())
 }
@@ -342,7 +367,12 @@ fn append_regular_file<W: Write>(
         .map_err(|error| CliError::cli_io_error(format!("failed to append {label} member: {error}")))
 }
 
-fn write_entry(root: &Path, label: &str, entry: &SafeArchiveEntry) -> Result<(), CliError> {
+fn write_entry(
+    root: &Path,
+    label: &str,
+    entry: &SafeArchiveEntry,
+    overwrite: bool,
+) -> Result<(), CliError> {
     let relative = safe_archive_member_path(&entry.path, label)?;
     let path = safe_join(root, &relative, label)?;
     if let Some(parent) = path.parent() {
@@ -353,19 +383,23 @@ fn write_entry(root: &Path, label: &str, entry: &SafeArchiveEntry) -> Result<(),
             ))
         })?;
     }
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)
-        .map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to create {label} file {}: {error}",
-                path.display()
-            ))
-        })?;
+    let mut options = fs::OpenOptions::new();
+    options.write(true);
+    if overwrite {
+        options.create(true).truncate(true);
+    } else {
+        options.create_new(true);
+    }
+    let mut file = options.open(&path).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to create {label} file {}: {error}",
+            path.display()
+        ))
+    })?;
     file.write_all(&entry.bytes).map_err(|error| {
         CliError::cli_io_error(format!("failed to write {label} file {}: {error}", path.display()))
     })?;
+    apply_safe_archive_file_mode(&path, entry.mode, label)?;
     let written = fs::read(&path).map_err(|error| {
         CliError::cli_io_error(format!(
             "failed to read back {label} file {}: {error}",
@@ -378,6 +412,33 @@ fn write_entry(root: &Path, label: &str, entry: &SafeArchiveEntry) -> Result<(),
             path.display()
         )));
     }
+    Ok(())
+}
+
+fn safe_archive_file_mode(mode: u32) -> u32 {
+    if mode & 0o111 == 0 {
+        0o600
+    } else {
+        0o755
+    }
+}
+
+#[cfg(unix)]
+fn apply_safe_archive_file_mode(path: &Path, mode: u32, label: &str) -> Result<(), CliError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(safe_archive_file_mode(mode))).map_err(
+        |error| {
+            CliError::cli_io_error(format!(
+                "failed to set {label} file mode {}: {error}",
+                path.display()
+            ))
+        },
+    )
+}
+
+#[cfg(not(unix))]
+fn apply_safe_archive_file_mode(_path: &Path, _mode: u32, _label: &str) -> Result<(), CliError> {
     Ok(())
 }
 

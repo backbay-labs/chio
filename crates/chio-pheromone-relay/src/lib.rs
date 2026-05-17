@@ -2285,8 +2285,16 @@ fn default_archive_package_generation() -> u64 {
     1
 }
 
+fn is_default_archive_package_generation(value: &u64) -> bool {
+    *value == default_archive_package_generation()
+}
+
 fn default_true() -> bool {
     true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2298,7 +2306,10 @@ pub struct RelayAlertAssuranceArchivePackageManifestBody {
     pub packager_id: String,
     pub packager_key_id: String,
     pub created_at_unix_ms: u64,
-    #[serde(default = "default_archive_package_generation")]
+    #[serde(
+        default = "default_archive_package_generation",
+        skip_serializing_if = "is_default_archive_package_generation"
+    )]
     pub package_generation: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_package_manifest_sha256: Option<String>,
@@ -2365,7 +2376,10 @@ pub struct RelayAlertAssuranceArchivePackageReport {
     pub local_kernel_id: String,
     pub generated_at_unix_ms: u64,
     pub package_id: String,
-    #[serde(default = "default_archive_package_generation")]
+    #[serde(
+        default = "default_archive_package_generation",
+        skip_serializing_if = "is_default_archive_package_generation"
+    )]
     pub package_generation: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_package_manifest_sha256: Option<String>,
@@ -2375,15 +2389,15 @@ pub struct RelayAlertAssuranceArchivePackageReport {
     pub package_member_count: usize,
     pub package_total_byte_count: u64,
     pub bundle_count: u64,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub trusted_packager_verified: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub nested_exporter_verified: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub source_reports_matched: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub closeout_ready_verified: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub total_byte_count_matched: bool,
     pub extractable: bool,
     pub checks: Vec<RelayAlertCheck>,
