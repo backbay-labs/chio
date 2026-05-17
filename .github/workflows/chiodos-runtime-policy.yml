@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-chiodos-runtime-harness/**"
+      - "crates/chio-chiodos-loopback/**"
       - "crates/chio-cli/**"
       - "crates/chio-kernel/**"
       - "scripts/check-chiodos-runtime-policy.sh"
@@ -16,6 +18,8 @@ on:
     branches: [main]
     paths:
       - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-chiodos-runtime-harness/**"
+      - "crates/chio-chiodos-loopback/**"
       - "crates/chio-cli/**"
       - "crates/chio-kernel/**"
       - "scripts/check-chiodos-runtime-policy.sh"
