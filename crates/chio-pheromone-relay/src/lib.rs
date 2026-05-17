@@ -2291,8 +2291,16 @@ fn default_archive_package_generation() -> u64 {
     1
 }
 
+fn is_default_archive_package_generation(value: &u64) -> bool {
+    *value == default_archive_package_generation()
+}
+
 fn default_true() -> bool {
     true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2304,7 +2312,10 @@ pub struct RelayAlertAssuranceArchivePackageManifestBody {
     pub packager_id: String,
     pub packager_key_id: String,
     pub created_at_unix_ms: u64,
-    #[serde(default = "default_archive_package_generation")]
+    #[serde(
+        default = "default_archive_package_generation",
+        skip_serializing_if = "is_default_archive_package_generation"
+    )]
     pub package_generation: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_package_manifest_sha256: Option<String>,
@@ -2371,7 +2382,10 @@ pub struct RelayAlertAssuranceArchivePackageReport {
     pub local_kernel_id: String,
     pub generated_at_unix_ms: u64,
     pub package_id: String,
-    #[serde(default = "default_archive_package_generation")]
+    #[serde(
+        default = "default_archive_package_generation",
+        skip_serializing_if = "is_default_archive_package_generation"
+    )]
     pub package_generation: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_package_manifest_sha256: Option<String>,
@@ -2381,15 +2395,15 @@ pub struct RelayAlertAssuranceArchivePackageReport {
     pub package_member_count: usize,
     pub package_total_byte_count: u64,
     pub bundle_count: u64,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub trusted_packager_verified: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub nested_exporter_verified: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub source_reports_matched: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub closeout_ready_verified: bool,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub total_byte_count_matched: bool,
     pub extractable: bool,
     pub checks: Vec<RelayAlertCheck>,
@@ -4645,6 +4659,11 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
     let mut insufficient_sample_count = 0_u64;
 
     for report in package_reports {
+        if let Some(failure) = archive_package_report_integrity_failure(report) {
+            return Err(PheromoneRelayError::ArchivePackageInvalid(format!(
+                "external retention package report rejected: {failure}"
+            )));
+        }
         let package_report_sha256 = canonical_sha256(report)?;
         let mut accepted = true;
         let mut code = "accepted".to_string();
@@ -4838,6 +4857,7 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
             match external_retention_physical_report(
                 input.physical_drill_reports,
                 &package_report_sha256,
+                &report.package_id,
             ) {
                 Some(physical) => {
                     physical_readback_status = physical.code.clone();
@@ -4899,7 +4919,7 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
                         && physical.sampled_member_count >= input.profile.min_sampled_members
                         && sample_coverage_basis_points
                             >= input.profile.min_sample_coverage_basis_points;
-                    if !sample_ok {
+                    if sample_within_package && !sample_ok {
                         insufficient_sample_count = insufficient_sample_count.saturating_add(1);
                     }
                     if sample_within_package {
@@ -4931,6 +4951,7 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
             let matching_handoffs = external_retention_handoffs(
                 input.retention_handoff_reports,
                 &package_report_sha256,
+                &report.package_id,
             );
             match matching_handoffs.as_slice() {
                 [] => {
@@ -4945,7 +4966,6 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
                 }
                 [handoff] => {
                     retention_handoff_status = handoff.code.clone();
-                    target_system_alias = Some(handoff.target_system_alias.clone());
                     external_retention_check(
                         &mut checks,
                         &mut accepted,
@@ -4979,11 +4999,20 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
                         "stale_evidence",
                         "retention handoff report is inside the review window and freshness bound",
                     );
-                    let alias_allowed = input
-                        .profile
-                        .allowed_retention_system_aliases
-                        .iter()
-                        .any(|alias| alias == &handoff.target_system_alias);
+                    let alias_schema_valid = validate_external_retention_schema_token(
+                        &handoff.target_system_alias,
+                        "retention handoff target alias",
+                    )
+                    .is_ok();
+                    let alias_allowed = alias_schema_valid
+                        && input
+                            .profile
+                            .allowed_retention_system_aliases
+                            .iter()
+                            .any(|alias| alias == &handoff.target_system_alias);
+                    if alias_schema_valid {
+                        target_system_alias = Some(handoff.target_system_alias.clone());
+                    }
                     if !alias_allowed {
                         drift_count = drift_count.saturating_add(1);
                         external_retention_fail(
@@ -5028,8 +5057,10 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
         if !package_level_accepted {
             code = package_level_code;
         }
-        latest_generation = latest_generation.max(report.package_generation);
-        previous_manifest_hash = Some(report.package_manifest_sha256.clone());
+        if accepted {
+            latest_generation = latest_generation.max(report.package_generation);
+            previous_manifest_hash = Some(report.package_manifest_sha256.clone());
+        }
         reviews.push(RelayAlertAssuranceExternalRetentionPackageReview {
             package_id: report.package_id.clone(),
             package_generation: report.package_generation,
@@ -7864,19 +7895,23 @@ fn external_retention_restore_status(
 fn external_retention_physical_report<'a>(
     physical_reports: &'a [RelayAlertAssurancePhysicalArchiveDrillReport],
     package_report_sha256: &str,
+    package_id: &str,
 ) -> Option<&'a RelayAlertAssurancePhysicalArchiveDrillReport> {
-    physical_reports
-        .iter()
-        .find(|report| report.package_report_sha256 == package_report_sha256)
+    physical_reports.iter().find(|report| {
+        report.package_report_sha256 == package_report_sha256 && report.package_id == package_id
+    })
 }
 
 fn external_retention_handoffs<'a>(
     handoff_reports: &'a [RelayAlertAssuranceRetentionHandoffReport],
     package_report_sha256: &str,
+    package_id: &str,
 ) -> Vec<&'a RelayAlertAssuranceRetentionHandoffReport> {
     handoff_reports
         .iter()
-        .filter(|report| report.package_report_sha256 == package_report_sha256)
+        .filter(|report| {
+            report.package_report_sha256 == package_report_sha256 && report.package_id == package_id
+        })
         .collect()
 }
 

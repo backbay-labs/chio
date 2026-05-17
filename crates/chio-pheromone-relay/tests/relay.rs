@@ -3181,7 +3181,7 @@ fn external_retention_review_blocks_unbound_package_report() {
     )
     .unwrap();
 
-    let review = generate_relay_alert_assurance_external_retention_review_report(
+    let err = generate_relay_alert_assurance_external_retention_review_report(
         RelayAlertAssuranceExternalRetentionReviewInput {
             package_reports: &[package],
             restore_drill_reports: &[restore],
@@ -3193,14 +3193,12 @@ fn external_retention_review_blocks_unbound_package_report() {
             now_unix_ms: NOW + 40_000,
         },
     )
-    .unwrap();
+    .unwrap_err();
 
-    assert!(!review.accepted);
-    assert_eq!(review.reviews[0].code, "source_report_mismatch");
-    assert!(review
-        .checks
-        .iter()
-        .any(|check| check.code == "source_report_mismatch"));
+    assert_eq!(err.code(), "archive_package_invalid");
+    assert!(err
+        .to_string()
+        .contains("package_report_verification_incomplete"));
 }
 
 #[test]
@@ -3283,7 +3281,159 @@ fn external_retention_review_rejects_sample_counts_above_package_size() {
 
     assert!(!review.accepted);
     assert_eq!(review.reviews[0].code, "sample_exceeds_package_size");
+    assert_eq!(review.insufficient_sample_count, 0);
     assert!(review.reviews[0].sample_coverage_basis_points <= 10_000);
+}
+
+#[test]
+fn external_retention_review_rejects_invalid_package_report_before_review() {
+    let mut package = restore_package_report(0, None);
+    package.package_manifest_sha256 = "not-a-sha".to_string();
+
+    let err = generate_relay_alert_assurance_external_retention_review_report(
+        RelayAlertAssuranceExternalRetentionReviewInput {
+            package_reports: &[package],
+            restore_drill_reports: &[],
+            physical_drill_reports: &[],
+            retention_handoff_reports: &[],
+            profile: &external_retention_profile(),
+            since_unix_ms: NOW,
+            until_unix_ms: NOW + 120_000,
+            now_unix_ms: NOW + 40_000,
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "archive_package_invalid");
+    assert!(err
+        .to_string()
+        .contains("package_report_generation_invalid"));
+}
+
+#[test]
+fn external_retention_review_does_not_advance_continuity_through_quarantine() {
+    let first = restore_package_report(1, None);
+    let mut second = restore_package_report(2, Some(first.package_manifest_sha256.clone()));
+    second.accepted = false;
+    second.code = "operator_quarantine".to_string();
+    let third = restore_package_report(3, Some(second.package_manifest_sha256.clone()));
+    let packages = vec![first.clone(), second.clone(), third.clone()];
+    let physical = packages
+        .iter()
+        .map(physical_drill_for_package)
+        .collect::<Vec<_>>();
+    let handoff = packages.iter().map(handoff_for_package).collect::<Vec<_>>();
+    let restore = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: &packages,
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+    let mut profile = external_retention_profile();
+    profile.require_restore_accepted = false;
+
+    let review = generate_relay_alert_assurance_external_retention_review_report(
+        RelayAlertAssuranceExternalRetentionReviewInput {
+            package_reports: &packages,
+            restore_drill_reports: &[restore],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            profile: &profile,
+            since_unix_ms: NOW,
+            until_unix_ms: NOW + 120_000,
+            now_unix_ms: NOW + 40_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!review.accepted);
+    assert_eq!(review.ready_count, 1);
+    assert_eq!(review.latest_package_generation, 1);
+    assert!(review
+        .reviews
+        .iter()
+        .any(|package| package.package_generation == 3 && !package.accepted));
+    assert!(review
+        .checks
+        .iter()
+        .any(|check| check.code == "generation_gap"));
+}
+
+#[test]
+fn external_retention_review_sanitizes_invalid_handoff_alias_before_reporting() {
+    let package = restore_package_report(1, None);
+    let physical = vec![physical_drill_for_package(&package)];
+    let mut handoff = vec![handoff_for_package(&package)];
+    handoff[0].target_system_alias = "vault/1".to_string();
+    let restore = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: std::slice::from_ref(&package),
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &[handoff_for_package(&package)],
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+
+    let review = generate_relay_alert_assurance_external_retention_review_report(
+        RelayAlertAssuranceExternalRetentionReviewInput {
+            package_reports: &[package],
+            restore_drill_reports: &[restore],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            profile: &external_retention_profile(),
+            since_unix_ms: NOW,
+            until_unix_ms: NOW + 120_000,
+            now_unix_ms: NOW + 40_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!review.accepted);
+    assert_eq!(review.reviews[0].code, "unknown_retention_alias");
+    assert_eq!(review.reviews[0].target_system_alias, None);
+    canonical_json_bytes(&review).unwrap();
+}
+
+#[test]
+fn external_retention_review_binds_readback_to_package_id() {
+    let package = restore_package_report(1, None);
+    let other_package = restore_package_report(2, Some(package.package_manifest_sha256.clone()));
+    let mut physical = vec![physical_drill_for_package(&package)];
+    physical[0].package_id = other_package.package_id;
+    let handoff = vec![handoff_for_package(&package)];
+    let restore = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: std::slice::from_ref(&package),
+            physical_drill_reports: &[physical_drill_for_package(&package)],
+            retention_handoff_reports: &handoff,
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+
+    let review = generate_relay_alert_assurance_external_retention_review_report(
+        RelayAlertAssuranceExternalRetentionReviewInput {
+            package_reports: &[package],
+            restore_drill_reports: &[restore],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            profile: &external_retention_profile(),
+            since_unix_ms: NOW,
+            until_unix_ms: NOW + 120_000,
+            now_unix_ms: NOW + 40_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!review.accepted);
+    assert_eq!(review.reviews[0].code, "missing_physical_readback");
 }
 
 #[test]
@@ -3306,6 +3456,70 @@ fn external_retention_profile_rejects_schema_invalid_aliases() {
     .unwrap_err();
 
     assert_eq!(err.code(), "archive_package_invalid");
+}
+
+#[test]
+fn relay_alert_assurance_archive_manifest_preserves_v1_signature_payload() {
+    let signing_key = key(91);
+    let legacy_body = json!({
+        "schema": PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_MANIFEST_SCHEMA,
+        "packageId": "relay-archive-package-1",
+        "localKernelId": "did:chio:buyer-kernel",
+        "packagerId": "relay-archive-packager",
+        "packagerKeyId": "relay-archive-packager-key-1",
+        "createdAtUnixMs": NOW,
+        "compressionFormat": "tar.gz",
+        "sourceArchiveReportSha256": "a".repeat(64),
+        "sourceCloseoutReportSha256": "b".repeat(64),
+        "bundleCount": 1,
+        "memberCount": 1,
+        "totalByteCount": 64,
+        "bundles": [{
+            "bundleId": "bundle-1",
+            "bundlePath": "bundle-1",
+            "exportManifestSha256": "c".repeat(64),
+            "exportReportSha256": "d".repeat(64),
+            "sourcePackageSha256": "e".repeat(64),
+            "artifactCount": 1
+        }],
+        "members": [{
+            "path": "bundle-1/report.json",
+            "kind": "json",
+            "bundleId": "bundle-1",
+            "artifactRole": "report",
+            "schema": "test.report.v1",
+            "sha256": "f".repeat(64),
+            "byteCount": 64,
+            "retentionClass": "standard"
+        }],
+        "safetyClaims": ["local_archive_package_only"]
+    });
+    let (signature, _) = signing_key.sign_canonical(&legacy_body).unwrap();
+    let body: chio_pheromone_relay::RelayAlertAssuranceArchivePackageManifestBody =
+        serde_json::from_value(legacy_body).unwrap();
+
+    assert!(signing_key
+        .public_key()
+        .verify_canonical(&body, &signature)
+        .unwrap());
+}
+
+#[test]
+fn relay_alert_assurance_archive_report_hash_preserves_v1_defaulted_payload() {
+    let report = restore_package_report(1, None);
+    let mut legacy_value = serde_json::to_value(&report).unwrap();
+    let legacy_object = legacy_value.as_object_mut().unwrap();
+    legacy_object.remove("packageGeneration");
+    legacy_object.remove("trustedPackagerVerified");
+    legacy_object.remove("nestedExporterVerified");
+    legacy_object.remove("sourceReportsMatched");
+    legacy_object.remove("closeoutReadyVerified");
+    legacy_object.remove("totalByteCountMatched");
+    let expected = sha256_hex(&canonical_json_bytes(&legacy_value).unwrap());
+    let legacy_report: chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport =
+        serde_json::from_value(legacy_value).unwrap();
+
+    assert_eq!(canonical_digest(&legacy_report), expected);
 }
 
 #[test]

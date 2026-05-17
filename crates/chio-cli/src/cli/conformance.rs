@@ -389,7 +389,11 @@ fn extract_archive(archive: &Path, dest: &Path, source_url: &str) -> Result<(), 
                 max_decompression_ratio: 200,
             },
         )?;
-        crate::archive::write_entries_to_existing_dir(dest, "Chio conformance archive", &entries)?;
+        crate::archive::replace_entries_in_existing_dir(
+            dest,
+            "Chio conformance archive",
+            &entries,
+        )?;
         Ok(())
     } else if lower.ends_with(".zip") {
         Err(CliError::cli_other_error(format!(
@@ -448,13 +452,34 @@ mod conformance_error_tests {
     }
 
     fn write_test_tar_gz(path: &Path, entries: &[(&str, &[u8])]) {
+        write_test_tar_gz_with_modes(path, &[], entries);
+    }
+
+    fn write_test_tar_gz_with_modes(
+        path: &Path,
+        directories: &[&str],
+        entries: &[(&str, &[u8])],
+    ) {
         let file = fs::File::create(path).unwrap();
         let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
         let mut builder = tar::Builder::new(encoder);
+        for name in directories {
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(tar::EntryType::Directory);
+            header.set_size(0);
+            header.set_mode(0o755);
+            header.set_uid(0);
+            header.set_gid(0);
+            header.set_mtime(0);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, *name, std::io::empty())
+                .unwrap();
+        }
         for (name, bytes) in entries {
             let mut header = tar::Header::new_gnu();
             header.set_size(u64::try_from(bytes.len()).unwrap());
-            header.set_mode(0o600);
+            header.set_mode(if name.ends_with("peer") { 0o755 } else { 0o600 });
             header.set_uid(0);
             header.set_gid(0);
             header.set_mtime(0);
@@ -492,11 +517,38 @@ mod conformance_error_tests {
         let archive = temp.path().join("peer.tar.gz");
         let dest = temp.path().join("extract");
         fs::create_dir_all(&dest).unwrap();
-        write_test_tar_gz(&archive, &[("bin/peer", b"peer-binary")]);
+        write_test_tar_gz_with_modes(&archive, &["bin"], &[("bin/peer", b"peer-binary")]);
 
         extract_archive(&archive, &dest, "https://example.invalid/peer.tar.gz").unwrap();
 
         assert_eq!(fs::read(dest.join("bin/peer")).unwrap(), b"peer-binary");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            assert_eq!(
+                fs::metadata(dest.join("bin/peer"))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o755
+            );
+        }
+    }
+
+    #[test]
+    fn conformance_archive_hardening_refreshes_existing_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("peer.tar.gz");
+        let dest = temp.path().join("extract");
+        fs::create_dir_all(dest.join("bin")).unwrap();
+        fs::write(dest.join("bin/peer"), b"old-peer").unwrap();
+        write_test_tar_gz(&archive, &[("bin/peer", b"new-peer")]);
+
+        extract_archive(&archive, &dest, "https://example.invalid/peer.tar.gz").unwrap();
+
+        assert_eq!(fs::read(dest.join("bin/peer")).unwrap(), b"new-peer");
     }
 
     #[test]

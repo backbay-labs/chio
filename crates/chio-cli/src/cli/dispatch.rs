@@ -5074,11 +5074,19 @@ fn cmd_chiodos_pheromone_relay_alert_assurance_retention_external_review(
         chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_REPORT_SCHEMA,
         "Chiodos relay alert assurance retention handoff report",
     )?;
-    let profile: chio_pheromone_relay::RelayAlertAssuranceExternalRetentionProfileDocument =
-        read_json_file(
-            profile,
-            "Chiodos relay alert assurance external retention profile",
-        )?;
+    let profile_json = read_utf8_json_file(
+        profile,
+        "Chiodos relay alert assurance external retention profile",
+    )?;
+    let profile = chio_pheromone_relay::relay_alert_assurance_external_retention_profile_from_json(
+        &profile_json,
+        now_unix_ms,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "Chiodos relay alert assurance external retention profile: {error}"
+        ))
+    })?;
     let review =
         chio_pheromone_relay::generate_relay_alert_assurance_external_retention_review_report(
             chio_pheromone_relay::RelayAlertAssuranceExternalRetentionReviewInput {
@@ -5123,11 +5131,7 @@ fn read_archive_restore_package_reports(
         )?;
     let mut reports = Vec::new();
     let mut package_paths = sorted_files(package_dir)?;
-    package_paths.retain(|path| {
-        file_name_ends_with(path, ".tar.gz")
-            || file_name_ends_with(path, ".tgz")
-            || path.extension().and_then(|ext| ext.to_str()) == Some("json")
-    });
+    retain_archive_restore_package_inputs(&mut package_paths);
     let mut source_reports = None;
     for path in package_paths {
         if file_name_ends_with(&path, ".tar.gz") || file_name_ends_with(&path, ".tgz") {
@@ -5179,6 +5183,18 @@ fn read_archive_restore_package_reports(
         )));
     }
     Ok(reports)
+}
+
+fn retain_archive_restore_package_inputs(package_paths: &mut Vec<PathBuf>) {
+    let has_archives = package_paths.iter().any(|path| {
+        file_name_ends_with(path, ".tar.gz") || file_name_ends_with(path, ".tgz")
+    });
+    package_paths.retain(|path| {
+        if file_name_ends_with(path, ".tar.gz") || file_name_ends_with(path, ".tgz") {
+            return true;
+        }
+        !has_archives && path.extension().and_then(|ext| ext.to_str()) == Some("json")
+    });
 }
 
 fn read_archive_restore_source_reports(
@@ -5849,14 +5865,50 @@ fn archive_package_entries(
     entries.push(crate::archive::SafeArchiveEntry {
         path: ARCHIVE_PACKAGE_MANIFEST_PATH.to_string(),
         bytes: manifest_bytes,
+        mode: 0o600,
     });
     for file in &package.files {
         entries.push(crate::archive::SafeArchiveEntry {
             path: file.path.clone(),
             bytes: file.bytes.clone(),
+            mode: 0o600,
         });
     }
     Ok(entries)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod archive_restore_input_tests {
+    use super::*;
+
+    #[test]
+    fn archive_restore_inputs_ignore_json_sidecars_when_tarballs_are_present() {
+        let mut paths = vec![
+            PathBuf::from("relay-archive-package.tar.gz"),
+            PathBuf::from("relay-archive-package-report.json"),
+            PathBuf::from("notes.txt"),
+        ];
+
+        retain_archive_restore_package_inputs(&mut paths);
+
+        assert_eq!(paths, vec![PathBuf::from("relay-archive-package.tar.gz")]);
+    }
+
+    #[test]
+    fn archive_restore_inputs_accept_report_json_when_no_tarballs_are_present() {
+        let mut paths = vec![
+            PathBuf::from("relay-archive-package-report.json"),
+            PathBuf::from("notes.txt"),
+        ];
+
+        retain_archive_restore_package_inputs(&mut paths);
+
+        assert_eq!(
+            paths,
+            vec![PathBuf::from("relay-archive-package-report.json")]
+        );
+    }
 }
 
 fn cmd_chiodos_pheromone_relay_directory_inspect(
