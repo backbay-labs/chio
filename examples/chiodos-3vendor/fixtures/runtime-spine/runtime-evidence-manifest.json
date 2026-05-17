@@ -1,0 +1,15 @@
+{
+  "schema": "chio.chiodos.runtime-evidence-manifest.v1",
+  "runId": "runtime-loopback-1",
+  "generatedAtUnixMs": 1800000001000,
+  "workflowRunReportSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "proofRegenerationReportSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "entries": [
+    {
+      "role": "proof_package",
+      "path": "buyer-auditor-proof-package.json",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "byteCount": 4096
+    }
+  ]
+}

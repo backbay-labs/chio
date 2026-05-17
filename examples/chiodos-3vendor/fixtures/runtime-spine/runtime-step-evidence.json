@@ -1,0 +1,15 @@
+{
+  "schema": "chio.chiodos.runtime-step-evidence.v1",
+  "stepIndex": 1,
+  "admissionId": "adm-loopback-1",
+  "admissionReportSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "toolReceiptId": "runtime-tool-receipt:runtime-loopback-1:1",
+  "toolReceiptSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+  "outputSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+  "bilateralDsseSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+  "workflowStepSha256": "5555555555555555555555555555555555555555555555555555555555555555",
+  "consistencyAnchor": "chiodos:consistency:wf-live-1:1",
+  "destructive": true,
+  "leaseId": "lease-loopback-1",
+  "governanceReceiptId": "gov-loopback-1"
+}

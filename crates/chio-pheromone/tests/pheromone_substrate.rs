@@ -188,6 +188,23 @@ fn replay_nonce_and_diversity_limits_fail_closed() {
 }
 
 #[test]
+fn future_dated_deposit_is_rejected() {
+    let passport_key = key(1);
+    let kernel_key = key(2);
+    let mut body = body(&passport_key);
+    body.timestamp_unix_ms = 1_700_000_001_000;
+    let deposit = sign_deposit(body, &passport_key).expect("sign deposit");
+    let mut context = context(&passport_key, &kernel_key);
+    context.now_unix_ms = 1_700_000_000_500;
+
+    let err = InMemoryPheromoneSubstrate::new()
+        .deposit(deposit, &context)
+        .expect_err("future deposit rejected");
+
+    assert_eq!(err.code(), "deposit_from_future");
+}
+
+#[test]
 fn concentration_rejects_unknown_epoch_and_bad_weight() {
     let passport_key = key(1);
     let kernel_key = key(2);

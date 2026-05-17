@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime-failure-code-registry.schema.json",
+  "title": "Chiodos Runtime Failure Code Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "codes"],
+  "properties": {
+    "schema": { "const": "chio.chiodos.runtime-failure-code-registry.v1" },
+    "codes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/code" },
+      "uniqueItems": true
+    }
+  },
+  "$defs": { "code": { "type": "string", "pattern": "^[a-z0-9_]+$" } }
+}

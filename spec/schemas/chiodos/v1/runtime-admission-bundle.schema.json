@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime-admission-bundle.schema.json",
+  "title": "Chiodos Runtime Admission Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "admissionId",
+    "binding",
+    "workflowId",
+    "workflowGrantId",
+    "stepIndex",
+    "destructive",
+    "trustBundleSha256",
+    "verificationContextSha256"
+  ],
+  "properties": {
+    "schema": { "const": "chio.chiodos.runtime-admission-bundle.v1" },
+    "admissionId": { "type": "string", "minLength": 1 },
+    "binding": { "$ref": "#/$defs/requestBinding" },
+    "workflowId": { "type": "string", "minLength": 1 },
+    "workflowGrantId": { "type": "string", "minLength": 1 },
+    "stepIndex": { "type": "integer", "minimum": 0 },
+    "destructive": { "type": "boolean" },
+    "leaseId": { "type": "string", "minLength": 1 },
+    "governanceReceiptId": { "type": "string", "minLength": 1 },
+    "trustBundleSha256": { "$ref": "#/$defs/sha256" },
+    "verificationContextSha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "requestBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "capabilityId",
+        "serverId",
+        "toolName",
+        "toolArgsSha256",
+        "hostKernelId"
+      ],
+      "properties": {
+        "requestId": { "type": "string", "minLength": 1 },
+        "capabilityId": { "type": "string", "minLength": 1 },
+        "serverId": { "type": "string", "minLength": 1 },
+        "toolName": { "type": "string", "minLength": 1 },
+        "toolArgsSha256": { "$ref": "#/$defs/sha256" },
+        "originKernelId": { "type": "string", "minLength": 1 },
+        "hostKernelId": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

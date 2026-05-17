@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bilateral-invocation.schema.json",
+  "title": "Chiodos Bilateral Invocation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "invocationId",
+    "treatyId",
+    "ladderIntersectionSha256",
+    "continuationSha256",
+    "lineageStatementSha256",
+    "actionClassId",
+    "consistencyModel",
+    "capabilityId",
+    "requestSha256",
+    "outcomeSha256",
+    "localReceiptSha256",
+    "remoteReceiptSha256",
+    "signerKernelIds"
+  ],
+  "properties": {
+    "schema": { "const": "chio.chiodos.bilateral-invocation.v1" },
+    "invocationId": { "type": "string", "minLength": 1 },
+    "treatyId": { "type": "string", "minLength": 1 },
+    "ladderIntersectionSha256": { "$ref": "#/$defs/sha256" },
+    "continuationSha256": { "$ref": "#/$defs/sha256" },
+    "lineageStatementSha256": { "$ref": "#/$defs/sha256" },
+    "actionClassId": { "type": "string", "minLength": 1 },
+    "consistencyModel": { "type": "string", "minLength": 1 },
+    "capabilityId": { "type": "string", "minLength": 1 },
+    "requestSha256": { "$ref": "#/$defs/sha256" },
+    "outcomeSha256": { "$ref": "#/$defs/sha256" },
+    "localReceiptSha256": { "$ref": "#/$defs/sha256" },
+    "remoteReceiptSha256": { "$ref": "#/$defs/sha256" },
+    "signerKernelIds": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

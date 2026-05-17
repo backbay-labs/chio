@@ -292,9 +292,11 @@ impl ReceiptStore for SqliteReceiptStore {
                 "#,
             params![receipt.body_hash.as_str(), legacy_receipt_id_alias, raw_json],
         )?;
-        Ok((rows > 0)
-            .then(|| connection.last_insert_rowid().max(0) as u64)
-            .unwrap_or(0))
+        if rows > 0 {
+            Ok(connection.last_insert_rowid().max(0) as u64)
+        } else {
+            Ok(0)
+        }
     }
 
     fn contains_chio_receipt_v2_body_hash(
@@ -1169,53 +1171,61 @@ fn make_delegation_link(
     .unwrap()
 }
 
-fn make_v2_delegated_child(
-    kernel: &ChioKernel,
-    parent: &CapabilityToken,
-    parent_kp: &Keypair,
-    child_kp: &Keypair,
-    parent_scope: &ChioScope,
+struct V2DelegatedChildInput<'a> {
+    kernel: &'a ChioKernel,
+    parent: &'a CapabilityToken,
+    parent_kp: &'a Keypair,
+    child_kp: &'a Keypair,
+    parent_scope: &'a ChioScope,
     child_scope: ChioScope,
-    id: &str,
+    id: &'a str,
     share_bps: u16,
-) -> CapabilityToken {
-    let parent_scope_hash = scope_hash(parent_scope).unwrap();
-    let child_scope_hash = scope_hash(&child_scope).unwrap();
+}
+
+fn make_v2_delegated_child(input: V2DelegatedChildInput<'_>) -> CapabilityToken {
+    let parent_scope_hash = scope_hash(input.parent_scope).unwrap();
+    let child_scope_hash = scope_hash(&input.child_scope).unwrap();
+    let issued_at = current_unix_timestamp();
+    let expires_at = issued_at.saturating_add(300).min(input.parent.expires_at);
     let proof = AttenuationProof {
         parent_scope_hash: parent_scope_hash.clone(),
         child_scope_hash,
-        normalized_subset_proof: compute_attenuation_witness(parent_scope, &child_scope).unwrap(),
+        normalized_subset_proof: compute_attenuation_witness(
+            input.parent_scope,
+            &input.child_scope,
+        )
+        .unwrap(),
     };
     let link = DelegationLink::sign(
         DelegationLinkBody {
-            capability_id: parent.id.clone(),
-            delegator: parent_kp.public_key(),
-            delegatee: child_kp.public_key(),
+            capability_id: input.parent.id.clone(),
+            delegator: input.parent_kp.public_key(),
+            delegatee: input.child_kp.public_key(),
             attenuations: vec![],
             timestamp: current_unix_timestamp(),
             scope_hash: Some(parent_scope_hash),
         },
-        parent_kp,
+        input.parent_kp,
     )
     .unwrap();
 
     CapabilityToken::sign_v2(
         CapabilityTokenV2Body {
             body: CapabilityTokenBody {
-                id: id.to_string(),
-                issuer: kernel.config.keypair.public_key(),
-                subject: child_kp.public_key(),
-                scope: child_scope,
-                issued_at: current_unix_timestamp(),
-                expires_at: current_unix_timestamp() + 300,
+                id: input.id.to_string(),
+                issuer: input.kernel.config.keypair.public_key(),
+                subject: input.child_kp.public_key(),
+                scope: input.child_scope,
+                issued_at,
+                expires_at,
                 delegation_chain: vec![link],
             },
             caveats: vec![],
             scope_attenuations: vec![],
             attenuation_proof: proof,
-            budget_share_bps: Some(share_bps),
+            budget_share_bps: Some(input.share_bps),
         },
-        &kernel.config.keypair,
+        &input.kernel.config.keypair,
     )
     .unwrap()
 }
@@ -5744,26 +5754,28 @@ fn make_sibling_sum_monetary_fixture(prefix: &str) -> SiblingSumMonetaryFixture 
         scope_hash(&parent_scope).unwrap(),
     );
 
-    let child_a = make_v2_delegated_child(
-        &kernel,
-        &parent,
-        &parent_kp,
-        &child_a_kp,
-        &parent_scope,
-        child_scope.clone(),
-        &format!("cap-{prefix}-child-a"),
-        4_000,
-    );
-    let child_b = make_v2_delegated_child(
-        &kernel,
-        &parent,
-        &parent_kp,
-        &child_b_kp,
-        &parent_scope,
+    let child_a_id = format!("cap-{prefix}-child-a");
+    let child_a = make_v2_delegated_child(V2DelegatedChildInput {
+        kernel: &kernel,
+        parent: &parent,
+        parent_kp: &parent_kp,
+        child_kp: &child_a_kp,
+        parent_scope: &parent_scope,
+        child_scope: child_scope.clone(),
+        id: &child_a_id,
+        share_bps: 4_000,
+    });
+    let child_b_id = format!("cap-{prefix}-child-b");
+    let child_b = make_v2_delegated_child(V2DelegatedChildInput {
+        kernel: &kernel,
+        parent: &parent,
+        parent_kp: &parent_kp,
+        child_kp: &child_b_kp,
+        parent_scope: &parent_scope,
         child_scope,
-        &format!("cap-{prefix}-child-b"),
-        4_000,
-    );
+        id: &child_b_id,
+        share_bps: 4_000,
+    });
 
     SiblingSumMonetaryFixture {
         kernel,

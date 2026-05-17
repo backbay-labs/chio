@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime-provider-bindings.schema.json",
+  "title": "Chiodos Runtime Provider Bindings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "bindings"],
+  "properties": {
+    "schema": { "const": "chio.chiodos.runtime-provider-bindings.v1" },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["providerId", "localKernelId", "serverId", "toolName", "discoveryAllowed"],
+        "properties": {
+          "providerId": { "type": "string", "minLength": 1 },
+          "localKernelId": { "type": "string", "minLength": 1 },
+          "serverId": { "type": "string", "minLength": 1 },
+          "toolName": { "type": "string", "minLength": 1 },
+          "discoveryAllowed": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

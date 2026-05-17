@@ -1,0 +1,57 @@
+{
+  "schema": "chio.chiodos.treaty-runtime-negative-fixture-corpus.v1",
+  "cases": [
+    {
+      "caseId": "missing-treaty",
+      "expectedCode": "chiodos_buyer_review_missing_treaty_dsse_binding"
+    },
+    {
+      "caseId": "stale-treaty",
+      "expectedCode": "chiodos_buyer_packet_hash_mismatch"
+    },
+    {
+      "caseId": "forged-intersection",
+      "expectedCode": "chiodos_buyer_packet_hash_mismatch"
+    },
+    {
+      "caseId": "compatibility-only-dsse",
+      "expectedCode": "chiodos_buyer_review_non_strict_dsse"
+    },
+    {
+      "caseId": "missing-co-signature",
+      "expectedCode": "chiodos_buyer_review_strict_dsse_signature_invalid"
+    },
+    {
+      "caseId": "duplicate-dsse-signature-keyid",
+      "expectedCode": "chiodos_buyer_review_strict_dsse_signature_invalid"
+    },
+    {
+      "caseId": "receipt-mismatch",
+      "expectedCode": "chiodos_treaty_bilateral_mismatch"
+    },
+    {
+      "caseId": "verifier-report-substitution",
+      "expectedCode": "chiodos_buyer_review_artifact_hash_mismatch"
+    },
+    {
+      "caseId": "verifier-report-rejected",
+      "expectedCode": "chiodos_buyer_review_verifier_report_rejected"
+    },
+    {
+      "caseId": "settlement-claim",
+      "expectedCode": "chiodos_buyer_packet_settlement_claimed"
+    },
+    {
+      "caseId": "hidden-predicate-claim",
+      "expectedCode": "chiodos_buyer_review_verifier_report_rejected"
+    },
+    {
+      "caseId": "request-smuggled-trust-root",
+      "expectedCode": "chiodos_buyer_review_strict_dsse_binding_mismatch"
+    },
+    {
+      "caseId": "dynamic-trust-claim",
+      "expectedCode": "chiodos_buyer_review_strict_dsse_binding_mismatch"
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "runId": "runtime-loopback-1",
+  "steps": [
+    {
+      "admissionProfile": {
+        "schema": "chio.chiodos.runtime-admission-profile.v1",
+        "profileId": "profile-live-spine",
+        "localKernelId": "kernel.vendor-b",
+        "verifierId": "did:chio:buyer-verifier",
+        "issuedAtUnixMs": 1800000000000,
+        "expiresAtUnixMs": 1800003600000
+      },
+      "admissionBundle": {
+        "schema": "chio.chiodos.runtime-admission-bundle.v1",
+        "admissionId": "adm-loopback-1",
+        "binding": {
+          "requestId": "req-loopback-1",
+          "capabilityId": "cap-live-1",
+          "serverId": "vendor-a.files",
+          "toolName": "read_refund_case",
+          "toolArgsSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "originKernelId": "did:chio:buyer-kernel",
+          "hostKernelId": "kernel.vendor-b"
+        },
+        "workflowId": "wf-chiodos-refund-001",
+        "workflowGrantId": "cap-chiodos-workflow",
+        "stepIndex": 0,
+        "destructive": false,
+        "leaseId": "lease-vendor-a-read",
+        "trustBundleSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "verificationContextSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "request": {
+        "requestId": "req-loopback-1",
+        "capabilityId": "cap-live-1",
+        "serverId": "vendor-a.files",
+        "toolName": "read_refund_case",
+        "toolArgsSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "originKernelId": "did:chio:buyer-kernel",
+        "hostKernelId": "kernel.vendor-b"
+      }
+    },
+    {
+      "admissionProfile": {
+        "schema": "chio.chiodos.runtime-admission-profile.v1",
+        "profileId": "profile-live-spine",
+        "localKernelId": "kernel.vendor-b",
+        "verifierId": "did:chio:buyer-verifier",
+        "issuedAtUnixMs": 1800000000000,
+        "expiresAtUnixMs": 1800003600000
+      },
+      "admissionBundle": {
+        "schema": "chio.chiodos.runtime-admission-bundle.v1",
+        "admissionId": "adm-loopback-2",
+        "binding": {
+          "requestId": "req-loopback-2",
+          "capabilityId": "cap-live-1",
+          "serverId": "vendor-b.kyc",
+          "toolName": "verify_customer",
+          "toolArgsSha256": "abababababababababababababababababababababababababababababababab",
+          "originKernelId": "did:chio:buyer-kernel",
+          "hostKernelId": "kernel.vendor-b"
+        },
+        "workflowId": "wf-chiodos-refund-001",
+        "workflowGrantId": "cap-chiodos-workflow",
+        "stepIndex": 1,
+        "destructive": false,
+        "leaseId": "lease-vendor-b-kyc",
+        "trustBundleSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "verificationContextSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "request": {
+        "requestId": "req-loopback-2",
+        "capabilityId": "cap-live-1",
+        "serverId": "vendor-b.kyc",
+        "toolName": "verify_customer",
+        "toolArgsSha256": "abababababababababababababababababababababababababababababababab",
+        "originKernelId": "did:chio:buyer-kernel",
+        "hostKernelId": "kernel.vendor-b"
+      }
+    },
+    {
+      "admissionProfile": {
+        "schema": "chio.chiodos.runtime-admission-profile.v1",
+        "profileId": "profile-live-spine",
+        "localKernelId": "kernel.vendor-b",
+        "verifierId": "did:chio:buyer-verifier",
+        "issuedAtUnixMs": 1800000000000,
+        "expiresAtUnixMs": 1800003600000
+      },
+      "admissionBundle": {
+        "schema": "chio.chiodos.runtime-admission-bundle.v1",
+        "admissionId": "adm-loopback-3",
+        "binding": {
+          "requestId": "req-loopback-3",
+          "capabilityId": "cap-live-1",
+          "serverId": "vendor-c.payments",
+          "toolName": "stage_refund",
+          "toolArgsSha256": "acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",
+          "originKernelId": "did:chio:buyer-kernel",
+          "hostKernelId": "kernel.vendor-b"
+        },
+        "workflowId": "wf-chiodos-refund-001",
+        "workflowGrantId": "cap-chiodos-workflow",
+        "stepIndex": 2,
+        "destructive": true,
+        "leaseId": "lease-vendor-c-refund",
+        "governanceReceiptId": "gov:buyer:refund:vendor-c",
+        "trustBundleSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "verificationContextSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "request": {
+        "requestId": "req-loopback-3",
+        "capabilityId": "cap-live-1",
+        "serverId": "vendor-c.payments",
+        "toolName": "stage_refund",
+        "toolArgsSha256": "acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",
+        "originKernelId": "did:chio:buyer-kernel",
+        "hostKernelId": "kernel.vendor-b"
+      }
+    }
+  ]
+}

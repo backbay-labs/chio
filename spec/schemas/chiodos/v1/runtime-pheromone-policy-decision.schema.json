@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime-pheromone-policy-decision.schema.json",
+  "title": "Chiodos Runtime Pheromone Policy Decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "enforced",
+    "decision",
+    "policyId",
+    "policySha256",
+    "queryReportSha256",
+    "peerWeightsSha256",
+    "reputationEpoch",
+    "reasonCode"
+  ],
+  "properties": {
+    "schema": { "const": "chio.chiodos.runtime-pheromone-policy-decision.v1" },
+    "enforced": { "type": "boolean" },
+    "decision": { "enum": ["allow", "deny", "escalate"] },
+    "policyId": { "type": "string", "minLength": 1 },
+    "policySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "queryReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "peerWeightsSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "reputationEpoch": { "type": "integer", "minimum": 0 },
+    "matchedRuleId": { "type": "string", "minLength": 1 },
+    "reasonCode": { "type": "string", "minLength": 1 }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "buyer-attestation-review-report.schema.json",
+  "title": "Chiodos Buyer Attestation Review Report",
+  "type": "object",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "accepted": { "const": false } },
+        "required": ["accepted"]
+      },
+      "then": { "required": ["failureCode"] }
+    }
+  ],
+  "required": ["schema", "packageId", "packetId", "accepted", "checks"],
+  "properties": {
+    "schema": { "const": "chio.chiodos.buyer-attestation-review-report.v1" },
+    "packageId": { "type": "string", "minLength": 1 },
+    "packetId": { "type": "string", "minLength": 1 },
+    "accepted": { "type": "boolean" },
+    "failureCode": { "type": "string", "minLength": 1 },
+    "checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/check" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "passed", "severity", "artifactRole", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "passed": { "type": "boolean" },
+        "severity": { "enum": ["info", "warning", "error"] },
+        "artifactRole": { "type": "string", "minLength": 1 },
+        "expectedSha256": { "$ref": "#/$defs/sha256" },
+        "observedSha256": { "$ref": "#/$defs/sha256" },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

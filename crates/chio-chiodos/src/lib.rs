@@ -765,7 +765,7 @@ impl LeaseScopeBindingArtifact {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChiodosProofPackage {
     pub schema: String,
     pub generated_at_unix_ms: u64,
@@ -2532,6 +2532,18 @@ mod tests {
             report.context_sha256.as_deref(),
             Some(context_sha256.as_str())
         );
+    }
+
+    #[test]
+    fn proof_package_parser_rejects_treaty_bilateral_side_channel() {
+        let mut package: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../examples/chiodos-3vendor/fixtures/buyer-auditor-proof-package.json"
+        ))
+        .expect("package fixture parses as JSON");
+        package["treatyBilateralEnvelopes"] = serde_json::json!([]);
+        let err = proof_package_from_json(&package.to_string())
+            .expect_err("canonical proof package parser must reject unknown side-channel fields");
+        assert!(err.to_string().contains("treatyBilateralEnvelopes"));
     }
 
     #[test]

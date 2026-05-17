@@ -32,13 +32,13 @@
     "schema": "chio.pheromone-workflow-context.v1",
     "workflow_id": "wf-chiodos-refund-001",
     "workflow_receipt_id": "wf-chiodos-refund-001",
-    "workflow_receipt_sha256": "6ed5840315a86b7fa88d5444b029546ac56cffdb980e96c87fef0c4505568718",
+    "workflow_receipt_sha256": "404c40908ccd00aef7293aabab9fafd2d56ebf6f2c6292d8cc17c5f579a67b56",
     "workflow_intersection_id": "workflow-intersection:buyer-refund:001",
-    "workflow_intersection_sha256": "f293aba39396f914bffc825257bcc3eb583dc997a1409a134d98caa6b8a5d928",
+    "workflow_intersection_sha256": "288d7491c773d67b09db26e0ead984521aedb1df932463505d66013146f97aae",
     "step_index": 0,
     "tool_receipt_id": "rcpt-vendor-a",
     "bilateral_dsse_sha256": "b3e25054b239d741faa6f87a9d9cd618243734b254c8d022b42250e0782f3838",
     "consistency_anchor": "chiodos:consistency:wf-chiodos-refund-001:0"
   },
-  "signature": "2251126a62bb392b159ed62d8c4c03fe666ae537a2a4c211b30c94a2351e2a56ecd1c8436f02b3ca272de6f4150a165f4d81b3ced2672f18e9917eefdd365302"
+  "signature": "026dfd781d23f13ad39846997ac842fb31bef8ad2c13c90b65b2d2f2cfd7cef67cfae0a1549c1e4b5594e524b852b04c8094703a4b587b1eada2c8134e091806"
 }

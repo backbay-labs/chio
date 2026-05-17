@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "treaty-scope.schema.json",
+  "title": "Chiodos Treaty Scope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "treatyId",
+    "participantKernelIds",
+    "participantPublicKeys",
+    "ladderManifestSha256s",
+    "allowedActionClasses",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs",
+    "revocationEpochSha256",
+    "trustBundleSha256"
+  ],
+  "properties": {
+    "schema": { "const": "chio.chiodos.treaty-scope.v1" },
+    "treatyId": { "type": "string", "minLength": 1 },
+    "participantKernelIds": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "participantPublicKeys": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+      "uniqueItems": true
+    },
+    "ladderManifestSha256s": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/sha256" },
+      "uniqueItems": true
+    },
+    "allowedActionClasses": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+    "revocationEpochSha256": { "$ref": "#/$defs/sha256" },
+    "trustBundleSha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

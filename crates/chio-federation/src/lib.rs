@@ -52,16 +52,17 @@ pub use bilateral_dsse::{
     verify_dsse_envelope, BilateralPredicate, BilateralPredicateExtensions, CapabilityLeaseRef,
     DsseEnvelope, DsseSignature, DsseStatement, GovernanceReceiptRef, HashRecord, KernelIdentity,
     Keyid, PolicyEvaluationSummary, PolicyVerdict, StatementSubject, SubjectDigest,
-    BILATERAL_DSSE_ENVELOPE_SCHEMA, DEFAULT_CONSISTENCY_MODEL, DEFAULT_COSIGN_MODE,
-    DEFAULT_CROSS_ORG_VISIBILITY, PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA,
+    TreatyBindingRef, BILATERAL_DSSE_ENVELOPE_SCHEMA, DEFAULT_CONSISTENCY_MODEL,
+    DEFAULT_COSIGN_MODE, DEFAULT_CROSS_ORG_VISIBILITY, PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA,
     PREDICATE_TYPE_BILATERAL, PREDICATE_TYPE_CHIODOS_BILATERAL, STATEMENT_TYPE_V1,
 };
 pub use bilateral_verifier::{
-    verify_bilateral_cosign_invocation, verify_chiodos_bilateral_invocation, ActionClassKind,
-    CapabilityLeaseRegistry, DemoAllowAllRevocationOracle, DenyListRevocationOracle,
-    GovernanceReceiptStore, InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry,
-    InMemoryReceiptStore, PeerPinSet, PinnedEpoch, PinnedPeer, ReceiptStore,
-    ResolvedGovernanceReceipt, ResolvedLease, RevocationOracle, StrictChiodosVerifierConfig,
+    verify_bilateral_cosign_invocation, verify_chiodos_bilateral_invocation,
+    verify_treaty_bound_chiodos_bilateral_invocation, ActionClassKind, CapabilityLeaseRegistry,
+    DemoAllowAllRevocationOracle, DenyListRevocationOracle, GovernanceReceiptStore,
+    InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, PeerPinSet,
+    PinnedEpoch, PinnedPeer, ReceiptStore, ResolvedGovernanceReceipt, ResolvedLease,
+    RevocationOracle, StrictChiodosVerifierConfig, TreatyBoundBilateralDsseReview,
     UnknownActionClassPolicy, VerifiedBilateralCoSignInvocation, VerifierConfig, VerifierError,
 };
 pub use revocation_gossip::{

@@ -1,0 +1,31 @@
+[package]
+name = "chio-chiodos-runtime-harness"
+description = "Live Chiodos runtime loopback harness library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_chiodos_runtime_harness"
+
+[dependencies]
+async-trait = { workspace = true }
+chio-chiodos = { path = "../chio-chiodos" }
+chio-chiodos-loopback = { path = "../chio-chiodos-loopback" }
+chio-chiodos-runtime = { path = "../chio-chiodos-runtime" }
+chio-core = { path = "../chio-core" }
+chio-core-types = { path = "../chio-core-types" }
+chio-federation = { path = "../chio-federation" }
+chio-kernel = { path = "../chio-kernel" }
+chio-store-sqlite = { path = "../chio-store-sqlite" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
