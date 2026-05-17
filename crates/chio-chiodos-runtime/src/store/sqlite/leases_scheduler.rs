@@ -341,7 +341,17 @@ pub(super) fn stale_lease_count(
     let stale_before = now_unix_ms.saturating_sub(stale_run_after_ms);
     let count: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM runtime_run_leases WHERE state = 'active' AND (expires_at_unix_ms <= ?1 OR heartbeat_at_unix_ms <= ?2)",
+            r#"
+            SELECT COUNT(*)
+            FROM runtime_run_leases leases
+            LEFT JOIN runtime_runs runs ON runs.run_id = leases.run_id
+            WHERE leases.state = 'active'
+              AND (leases.expires_at_unix_ms <= ?1 OR leases.heartbeat_at_unix_ms <= ?2)
+              AND (
+                runs.status IS NULL
+                OR runs.status NOT IN ('proof_accepted', 'terminal_failure', 'completed')
+              )
+            "#,
             params![
                 sqlite_i64(now_unix_ms, "runtime stale lease timestamp")?,
                 sqlite_i64(stale_before, "runtime stale heartbeat timestamp")?

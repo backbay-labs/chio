@@ -180,6 +180,12 @@ pub fn validate_runtime_orchestration_run_report(
             ),
         });
     }
+    validate_acceptance_failure_code(
+        report.accepted,
+        report.failure_code.as_deref(),
+        "runtime_orchestration_run_missing_failure_code",
+        "runtime_orchestration_run_unexpected_failure_code",
+    )?;
     validate_non_empty(&report.run_id, "runtime_orchestration_run_empty_id")?;
     validate_state_label(&report.status, "runtime_orchestration_run_invalid_status")?;
     ensure_sha256_hash(

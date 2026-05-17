@@ -660,6 +660,12 @@ pub fn validate_cross_boundary_admission_report(
             "rejected cross-boundary admission report must include failure code",
         );
     }
+    if report.accepted && report.failure_code.is_some() {
+        return rejected(
+            "cross_boundary_admission_unexpected_failure_code",
+            "accepted cross-boundary admission report cannot include failure code",
+        );
+    }
     for evidence in &report.verified_evidence {
         validate_state_label(
             &evidence.evidence_class,

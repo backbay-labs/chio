@@ -92,6 +92,24 @@ pub fn generate_runtime_proof_drift_report(
         &mut semantic_drifts,
     )?;
     compare_semantic_field(
+        "accepted",
+        &baseline_proof.accepted,
+        &candidate_proof.accepted,
+        &mut semantic_drifts,
+    )?;
+    compare_semantic_field(
+        "failure_code",
+        &baseline_proof.failure_code,
+        &candidate_proof.failure_code,
+        &mut semantic_drifts,
+    )?;
+    compare_semantic_field(
+        "checks",
+        &baseline_proof.checks,
+        &candidate_proof.checks,
+        &mut semantic_drifts,
+    )?;
+    compare_semantic_field(
         "proof_package_sha256",
         &baseline_proof.proof_package_sha256,
         &candidate_proof.proof_package_sha256,

@@ -2,7 +2,8 @@ mod support;
 
 use chio_chiodos_runtime::{
     compute_ladder_intersection, evaluate_cross_boundary_admission,
-    validate_governance_ladder_manifest, CrossBoundaryAdmissionInput, CrossBoundaryEvidenceRef,
+    validate_cross_boundary_admission_report, validate_governance_ladder_manifest,
+    CrossBoundaryAdmissionInput, CrossBoundaryAdmissionReport, CrossBoundaryEvidenceRef,
 };
 use std::io;
 use support::treaty::{treaty_action_class, treaty_manifest, treaty_scope};
@@ -108,6 +109,46 @@ fn treaty_cross_boundary_admission_requires_intersection_and_evidence(
     assert!(accepted.accepted);
     assert_eq!(accepted.mode, "receipt_backed");
     assert_eq!(accepted.consistency_model, "totally_ordered");
+    Ok(())
+}
+
+#[test]
+fn treaty_cross_boundary_admission_rejects_accepted_failure_code(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let report = CrossBoundaryAdmissionReport {
+        schema: chio_chiodos_runtime::CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA.to_string(),
+        treaty_id: "treaty-buyer-vendor".to_string(),
+        action_class_id: "workflow.destructive.vendor_call".to_string(),
+        accepted: true,
+        failure_code: Some("chiodos_treaty_forged_failure".to_string()),
+        mode: "receipt_backed".to_string(),
+        consistency_model: "totally_ordered".to_string(),
+        co_sign: "bilateral_required".to_string(),
+        required_evidence: vec!["governance_receipt".to_string()],
+        present_evidence: vec!["governance_receipt".to_string()],
+        verified_evidence: vec![CrossBoundaryEvidenceRef {
+            evidence_class: "governance_receipt".to_string(),
+            artifact_sha256: "d".repeat(64),
+            verified: true,
+        }],
+        treaty_scope_sha256: "a".repeat(64),
+        ladder_intersection_sha256: "b".repeat(64),
+        expected_ladder_intersection_sha256: Some("b".repeat(64)),
+        checks: vec!["chiodos_treaty.cross_boundary_admission".to_string()],
+    };
+
+    let error = match validate_cross_boundary_admission_report(&report) {
+        Ok(()) => {
+            return Err(
+                io::Error::other("accepted treaty report with failure code was accepted").into(),
+            );
+        }
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.code(),
+        "cross_boundary_admission_unexpected_failure_code"
+    );
     Ok(())
 }
 

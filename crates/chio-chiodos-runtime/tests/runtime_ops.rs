@@ -271,6 +271,68 @@ fn runtime_orchestration_contracts_validate_status_and_run_report(
 }
 
 #[test]
+fn runtime_orchestration_run_report_rejects_inconsistent_outcome(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut report = chio_chiodos_runtime::RuntimeOrchestrationRunReport {
+        schema: CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA.to_string(),
+        run_id: "runtime-orchestration-outcome".to_string(),
+        accepted: true,
+        failure_code: None,
+        status: "proof_accepted".to_string(),
+        generated_at_unix_ms: 1_800_000_001_000,
+        profile_sha256: "1".repeat(64),
+        run_contract_sha256: "2".repeat(64),
+        workflow_run_report_sha256: Some("3".repeat(64)),
+        evidence_manifest_sha256: Some("4".repeat(64)),
+        proof_regeneration_report_sha256: Some("5".repeat(64)),
+        verifier_report_sha256: Some("6".repeat(64)),
+        step_states: vec![chio_chiodos_runtime::RuntimeOrchestrationStepState {
+            step_index: 0,
+            admission_id: "adm-loopback-1".to_string(),
+            state: "proof_accepted".to_string(),
+            destructive: false,
+            admission_report_sha256: Some("7".repeat(64)),
+            tool_receipt_sha256: Some("8".repeat(64)),
+            lease_id: None,
+        }],
+        checks: vec!["runtime_orchestration.proof_regeneration_verified".to_string()],
+    };
+    report.accepted = false;
+    report.status = "terminal_failure".to_string();
+    let error = match chio_chiodos_runtime::validate_runtime_orchestration_run_report(&report) {
+        Ok(()) => {
+            return Err(io::Error::other(
+                "rejected runtime orchestration run report without failure code was accepted",
+            )
+            .into());
+        }
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.code(),
+        "runtime_orchestration_run_missing_failure_code"
+    );
+
+    report.accepted = true;
+    report.status = "proof_accepted".to_string();
+    report.failure_code = Some("runtime_orchestration_forged_failure".to_string());
+    let error = match chio_chiodos_runtime::validate_runtime_orchestration_run_report(&report) {
+        Ok(()) => {
+            return Err(io::Error::other(
+                "accepted runtime orchestration run report with failure code was accepted",
+            )
+            .into());
+        }
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.code(),
+        "runtime_orchestration_run_unexpected_failure_code"
+    );
+    Ok(())
+}
+
+#[test]
 fn runtime_orchestration_status_rejects_stale_profile() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let store = SqliteRuntimeOrchestrationStore::open(dir.path().join("runtime-status.sqlite3"))?;
@@ -441,6 +503,88 @@ fn runtime_proof_drift_report_normalizes_runtime_and_proof_report_artifacts(
             "generatedAtUnixMs".to_string(),
             "timestampedReportArtifacts".to_string()
         ]
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_proof_drift_report_rejects_proof_outcome_drift() -> Result<(), Box<dyn std::error::Error>>
+{
+    let mut baseline_manifest = RuntimeEvidenceManifest {
+        schema: CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        run_id: "runtime-baseline".to_string(),
+        generated_at_unix_ms: 1_800_000_001_000,
+        workflow_run_report_sha256: "1".repeat(64),
+        proof_regeneration_report_sha256: "2".repeat(64),
+        entries: vec![RuntimeEvidenceManifestEntry {
+            role: "proof_regeneration_report".to_string(),
+            path: "proof-regeneration-report.json".to_string(),
+            sha256: "6".repeat(64),
+            byte_count: 2048,
+        }],
+    };
+    baseline_manifest.proof_regeneration_report_sha256 =
+        baseline_manifest.entries[0].sha256.clone();
+    let mut candidate_manifest = baseline_manifest.clone();
+    candidate_manifest.run_id = "runtime-candidate".to_string();
+    candidate_manifest.generated_at_unix_ms = 1_800_000_002_000;
+    candidate_manifest.entries[0].sha256 = "9".repeat(64);
+    candidate_manifest.proof_regeneration_report_sha256 =
+        candidate_manifest.entries[0].sha256.clone();
+    let source = RuntimeProofSourceRecord {
+        step_index: 0,
+        admission_report_sha256: "a".repeat(64),
+        tool_receipt_sha256: "b".repeat(64),
+        bilateral_dsse_sha256: "c".repeat(64),
+        workflow_step_sha256: "d".repeat(64),
+    };
+    let proof = RuntimeProofRegenerationReport {
+        schema: CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA.to_string(),
+        run_id: "runtime-baseline".to_string(),
+        accepted: true,
+        failure_code: None,
+        generated_at_unix_ms: 1_800_000_001_000,
+        proof_package_sha256: Some("e".repeat(64)),
+        verifier_report_sha256: Some("f".repeat(64)),
+        workflow_receipt_sha256: Some("0".repeat(64)),
+        source_records: vec![source],
+        checks: vec!["runtime_semantic_proof_regeneration.verified".to_string()],
+    };
+    let mut candidate_proof = proof.clone();
+    candidate_proof.run_id = "runtime-candidate".to_string();
+    candidate_proof.accepted = false;
+    candidate_proof.failure_code = Some("runtime_proof_regeneration_denied".to_string());
+    candidate_proof.generated_at_unix_ms = 1_800_000_002_000;
+    candidate_proof.checks = vec!["runtime_semantic_proof_regeneration.denied".to_string()];
+
+    let report = chio_chiodos_runtime::generate_runtime_proof_drift_report(
+        &baseline_manifest,
+        &candidate_manifest,
+        &proof,
+        &candidate_proof,
+        1_800_000_003_000,
+    )?;
+
+    assert!(!report.accepted, "{report:#?}");
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("runtime_proof_drift_detected")
+    );
+    assert!(report
+        .semantic_drifts
+        .iter()
+        .any(|drift| drift.field == "accepted"));
+    assert!(report
+        .semantic_drifts
+        .iter()
+        .any(|drift| drift.field == "failure_code"));
+    assert!(report
+        .semantic_drifts
+        .iter()
+        .any(|drift| drift.field == "checks"));
+    assert!(
+        report.artifact_drifts.is_empty(),
+        "proof report artifact drift should be covered semantically: {report:#?}"
     );
     Ok(())
 }
@@ -813,6 +957,36 @@ fn runtime_ops_status_rejects_stale_supervisor_profile() -> Result<(), Box<dyn s
     );
     assert!(report.degraded, "{report:#?}");
     assert!(!report.ready, "{report:#?}");
+    Ok(())
+}
+
+#[test]
+fn runtime_ops_status_ignores_terminal_lease_for_staleness(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("runtime-ops-status-terminal-lease.sqlite3");
+    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
+    store.record_run_state("runtime-run-terminal", "pending", None, 1_800_000_000_000)?;
+    store.acquire_run_lease(
+        "runtime-run-terminal",
+        "operator-old",
+        1_800_000_001_000,
+        1_000,
+    )?;
+    store.record_run_state(
+        "runtime-run-terminal",
+        "proof_accepted",
+        None,
+        1_800_000_002_000,
+    )?;
+
+    let report = store.ops_status_report(&supervisor_profile(), 1_800_000_400_000, true, true)?;
+
+    assert!(report.accepted, "{report:#?}");
+    assert_eq!(report.active_lease_count, 1, "{report:#?}");
+    assert_eq!(report.stale_lease_count, 0, "{report:#?}");
+    assert!(report.ready, "{report:#?}");
+    assert!(!report.degraded, "{report:#?}");
     Ok(())
 }
 
