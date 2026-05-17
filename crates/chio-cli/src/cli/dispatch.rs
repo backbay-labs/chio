@@ -5143,7 +5143,7 @@ fn read_archive_restore_package_reports(
                 CliError::cli_other_error("Chiodos restore source reports missing".to_string())
             })?;
             let (archive_report, closeout_report) = source_reports.for_package(&package)?;
-            let report = chio_pheromone_relay::verify_relay_alert_assurance_archive_package(
+            let verified_report = chio_pheromone_relay::verify_relay_alert_assurance_archive_package(
                 chio_pheromone_relay::RelayAlertAssuranceArchivePackageVerifyInput {
                     package: &package,
                     trusted_packagers: &trusted_packagers,
@@ -5158,6 +5158,9 @@ fn read_archive_restore_package_reports(
                     "Chiodos relay alert assurance archive package restore verify: {error}"
                 ))
             })?;
+            let report =
+                read_archive_restore_package_report_sidecar(&path, &verified_report)?
+                    .unwrap_or(verified_report);
             reports.push(report);
         } else {
             let value: serde_json::Value =
@@ -5210,6 +5213,40 @@ fn archive_restore_package_sidecar_report_name(path: &Path) -> Option<String> {
         .strip_suffix(".tar.gz")
         .or_else(|| file_name.strip_suffix(".tgz"))?;
     Some(format!("{package_name}-report.json"))
+}
+
+fn read_archive_restore_package_report_sidecar(
+    package_path: &Path,
+    verified_report: &chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport,
+) -> Result<Option<chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport>, CliError> {
+    let Some(sidecar_name) = archive_restore_package_sidecar_report_name(package_path) else {
+        return Ok(None);
+    };
+    let sidecar_path = package_path.with_file_name(sidecar_name);
+    if !sidecar_path.is_file() {
+        return Ok(None);
+    }
+    let sidecar_report: chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport =
+        read_json_file(
+            &sidecar_path,
+            "Chiodos relay alert assurance archive package sidecar report",
+        )?;
+    if !archive_restore_package_sidecar_matches_verified_report(&sidecar_report, verified_report) {
+        return Err(CliError::cli_other_error(format!(
+            "Chiodos relay alert assurance archive package sidecar report {} does not match verified package",
+            sidecar_path.display()
+        )));
+    }
+    Ok(Some(sidecar_report))
+}
+
+fn archive_restore_package_sidecar_matches_verified_report(
+    sidecar_report: &chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport,
+    verified_report: &chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport,
+) -> bool {
+    let mut normalized_sidecar = sidecar_report.clone();
+    normalized_sidecar.generated_at_unix_ms = verified_report.generated_at_unix_ms;
+    normalized_sidecar == *verified_report
 }
 
 struct ArchiveRestoreSourceReports {
@@ -6016,6 +6053,81 @@ mod archive_restore_input_tests {
             find_report_by_canonical_hash(&reports, &expected_sha256, "test report").unwrap();
 
         assert_eq!(report, &reports[1]);
+    }
+
+    #[test]
+    fn archive_restore_tarball_prefers_hash_stable_sidecar_report() {
+        let temp = tempfile::tempdir().unwrap();
+        let package_path = temp.path().join("relay-archive-package.tar.gz");
+        std::fs::write(&package_path, b"package bytes").unwrap();
+        let verified_report = archive_restore_package_report_for_test(20_000);
+        let sidecar_report = archive_restore_package_report_for_test(10_000);
+        let sidecar_path = temp.path().join("relay-archive-package-report.json");
+        std::fs::write(
+            &sidecar_path,
+            serde_json::to_vec(&sidecar_report).unwrap(),
+        )
+        .unwrap();
+
+        let report =
+            read_archive_restore_package_report_sidecar(&package_path, &verified_report).unwrap();
+
+        assert_eq!(report, Some(sidecar_report));
+    }
+
+    #[test]
+    fn archive_restore_tarball_rejects_mismatched_sidecar_report() {
+        let temp = tempfile::tempdir().unwrap();
+        let package_path = temp.path().join("relay-archive-package.tar.gz");
+        std::fs::write(&package_path, b"package bytes").unwrap();
+        let verified_report = archive_restore_package_report_for_test(20_000);
+        let mut sidecar_report = archive_restore_package_report_for_test(10_000);
+        sidecar_report.package_manifest_sha256 = "f".repeat(64);
+        let sidecar_path = temp.path().join("relay-archive-package-report.json");
+        std::fs::write(
+            &sidecar_path,
+            serde_json::to_vec(&sidecar_report).unwrap(),
+        )
+        .unwrap();
+
+        let err =
+            read_archive_restore_package_report_sidecar(&package_path, &verified_report)
+                .unwrap_err();
+
+        assert!(err.to_string().contains("sidecar report"));
+    }
+
+    fn archive_restore_package_report_for_test(
+        generated_at_unix_ms: u64,
+    ) -> chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport {
+        chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport {
+            schema: chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_REPORT_SCHEMA
+                .to_string(),
+            accepted: true,
+            code: "accepted".to_string(),
+            local_kernel_id: "did:chio:buyer-kernel".to_string(),
+            generated_at_unix_ms,
+            package_id: "relay-archive-package-1".to_string(),
+            package_generation: 1,
+            previous_package_manifest_sha256: None,
+            package_manifest_sha256: "1".repeat(64),
+            source_archive_report_sha256: "2".repeat(64),
+            source_closeout_report_sha256: "3".repeat(64),
+            package_member_count: 1,
+            package_total_byte_count: 128,
+            bundle_count: 1,
+            trusted_packager_verified: true,
+            nested_exporter_verified: true,
+            source_reports_matched: true,
+            closeout_ready_verified: true,
+            total_byte_count_matched: true,
+            extractable: true,
+            checks: vec![chio_pheromone_relay::RelayAlertCheck {
+                code: "accepted".to_string(),
+                accepted: true,
+                detail: "test package report".to_string(),
+            }],
+        }
     }
 }
 
