@@ -632,6 +632,39 @@ export interface RelayAlertAssuranceRetentionHandoffReport {
   checks: RelayAlertCheck[]
 }
 
+export interface RelayAlertAssuranceExternalRetentionPackageReview {
+  packageId: string
+  packageGeneration: number
+  packageManifestSha256: string
+  packageReportSha256: string
+  targetSystemAlias?: string | null
+  sampleCoverageBasisPoints: number
+  restoreStatus: string
+  physicalReadbackStatus: string
+  retentionHandoffStatus: string
+  accepted: boolean
+  code: string
+}
+
+export interface RelayAlertAssuranceExternalRetentionReviewReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  sinceUnixMs: number
+  untilUnixMs: number
+  packageCount: number
+  readyCount: number
+  latestPackageGeneration: number
+  quarantineCount: number
+  driftCount: number
+  insufficientSampleCount: number
+  reviews: RelayAlertAssuranceExternalRetentionPackageReview[]
+  recommendations: RelayOperatorRecommendation[]
+  checks: RelayAlertCheck[]
+}
+
 export interface RelayAlertAssuranceArchiveRestorePackageReview {
   packageId: string
   packageGeneration: number

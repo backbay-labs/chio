@@ -260,6 +260,42 @@ function retentionHandoffReport(overrides = {}) {
   }
 }
 
+function externalRetentionReport(overrides = {}) {
+  return {
+    schema: 'chio.pheromone.relay-alert-assurance-external-retention-review-report.v1',
+    accepted: false,
+    code: 'external_retention_blocked',
+    localKernelId: 'did:chio:buyer-kernel',
+    generatedAtUnixMs: 1_766_000_100_000,
+    sinceUnixMs: 1_766_000_000_000,
+    untilUnixMs: 1_766_000_100_000,
+    packageCount: 2,
+    readyCount: 1,
+    latestPackageGeneration: 2,
+    quarantineCount: 1,
+    driftCount: 1,
+    insufficientSampleCount: 1,
+    reviews: [
+      {
+        packageId: 'relay-alert-assurance-archive-package-001',
+        packageGeneration: 2,
+        packageManifestSha256: '7'.repeat(64),
+        packageReportSha256: '8'.repeat(64),
+        targetSystemAlias: 'records_vault',
+        sampleCoverageBasisPoints: 2500,
+        restoreStatus: 'accepted',
+        physicalReadbackStatus: 'accepted',
+        retentionHandoffStatus: 'ready',
+        accepted: false,
+        code: 'insufficient_sample_coverage',
+      },
+    ],
+    recommendations: [{ code: 'review_external_retention_evidence', severity: 'warning' }],
+    checks: [],
+    ...overrides,
+  }
+}
+
 function mockAssuranceFetch(overrides: {
   packageReport?: Record<string, unknown>
   exportReport?: Record<string, unknown>
@@ -272,6 +308,7 @@ function mockAssuranceFetch(overrides: {
   restoreReport?: Record<string, unknown>
   physicalArchiveReport?: Record<string, unknown>
   retentionHandoffReport?: Record<string, unknown>
+  externalRetentionReport?: Record<string, unknown>
 } = {}) {
   vi.stubGlobal(
     'fetch',
@@ -327,6 +364,12 @@ function mockAssuranceFetch(overrides: {
           json: async () => retentionHandoffReport(overrides.retentionHandoffReport),
         })
       }
+      if (url.endsWith('/external-retention-review')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => externalRetentionReport(overrides.externalRetentionReport),
+        })
+      }
       return Promise.resolve({
         ok: true,
         json: async () => assurancePackage(overrides.packageReport),
@@ -354,6 +397,9 @@ describe('RelayAlertAssuranceSummary', () => {
     expect(container.textContent).toContain('generation 2')
     expect(container.textContent).toContain('restore ready')
     expect(container.textContent).toContain('handoff ready')
+    expect(container.textContent).toContain('External Retention')
+    expect(container.textContent).toContain('external_retention_blocked')
+    expect(container.textContent).toContain('1 insufficient sample')
   })
 
   it('renders unknown when the assurance report is missing', async () => {

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-external-retention-review-report.schema.json",
+  "title": "Chiodos Pheromone Relay Alert Assurance External Retention Review Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "accepted", "code", "localKernelId", "generatedAtUnixMs", "sinceUnixMs", "untilUnixMs", "packageCount", "readyCount", "latestPackageGeneration", "quarantineCount", "driftCount", "insufficientSampleCount", "reviews", "recommendations", "checks"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-assurance-external-retention-review-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "$ref": "#/$defs/token" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "sinceUnixMs": { "type": "integer", "minimum": 0 },
+    "untilUnixMs": { "type": "integer", "minimum": 0 },
+    "packageCount": { "type": "integer", "minimum": 0 },
+    "readyCount": { "type": "integer", "minimum": 0 },
+    "latestPackageGeneration": { "type": "integer", "minimum": 0 },
+    "quarantineCount": { "type": "integer", "minimum": 0 },
+    "driftCount": { "type": "integer", "minimum": 0 },
+    "insufficientSampleCount": { "type": "integer", "minimum": 0 },
+    "reviews": { "type": "array", "items": { "$ref": "#/$defs/packageReview" } },
+    "recommendations": { "type": "array", "items": { "$ref": "#/$defs/recommendation" } },
+    "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+  },
+  "$defs": {
+    "token": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "packageReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageId", "packageGeneration", "packageManifestSha256", "packageReportSha256", "sampleCoverageBasisPoints", "restoreStatus", "physicalReadbackStatus", "retentionHandoffStatus", "accepted", "code"],
+      "properties": {
+        "packageId": { "$ref": "#/$defs/token" },
+        "packageGeneration": { "type": "integer", "minimum": 1 },
+        "packageManifestSha256": { "$ref": "#/$defs/sha256" },
+        "packageReportSha256": { "$ref": "#/$defs/sha256" },
+        "targetSystemAlias": { "$ref": "#/$defs/token" },
+        "sampleCoverageBasisPoints": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "restoreStatus": { "$ref": "#/$defs/token" },
+        "physicalReadbackStatus": { "$ref": "#/$defs/token" },
+        "retentionHandoffStatus": { "$ref": "#/$defs/token" },
+        "accepted": { "type": "boolean" },
+        "code": { "$ref": "#/$defs/token" }
+      }
+    },
+    "recommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity"],
+      "properties": {
+        "code": { "$ref": "#/$defs/token" },
+        "severity": { "$ref": "#/$defs/token" }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "accepted", "detail"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "accepted": { "type": "boolean" },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

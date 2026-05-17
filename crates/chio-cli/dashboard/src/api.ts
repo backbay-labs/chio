@@ -16,6 +16,7 @@ import type {
   RelayAlertAssuranceArchivePackageReport,
   RelayAlertAssuranceCloseoutReport,
   RelayAlertAssuranceArchiveRestoreDrillReport,
+  RelayAlertAssuranceExternalRetentionReviewReport,
   RelayAlertReport,
   RelayAlertDeliveryReport,
   RelayAlertAssuranceExportReport,
@@ -410,6 +411,21 @@ export async function fetchRelayAlertAssuranceArchiveRestoreDrillReport(): Promi
     throw new Error(`Relay alert assurance archive restore drill request failed: ${res.status} ${res.statusText}`)
   }
   return res.json() as Promise<RelayAlertAssuranceArchiveRestoreDrillReport>
+}
+
+export async function fetchRelayAlertAssuranceExternalRetentionReviewReport(): Promise<RelayAlertAssuranceExternalRetentionReviewReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/external-retention-review', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance external retention request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssuranceExternalRetentionReviewReport>
 }
 
 /**
