@@ -235,6 +235,46 @@ fn signed_runtime_pheromone_policy_can_deny_before_dispatch(
 }
 
 #[test]
+fn runtime_pheromone_policy_requires_action_class_for_governance_scoped_rule(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let mut bundle = bundle();
+    bundle.destructive = false;
+    bundle.lease_id = None;
+    bundle.governance_receipt_id = None;
+    store.insert_bundle(bundle)?;
+    let verifier = Keypair::generate();
+    let signed_trust = SignedExportEnvelope::sign(trust_body(1, None), &verifier)?;
+    let weights = peer_weights();
+    let mut policy_body = policy(runtime_peer_weights_sha256(&weights)?);
+    policy_body.rules[0].action_class_id = "workflow.destructive.vendor_call".to_string();
+    let signed_policy = SignedExportEnvelope::sign(policy_body, &verifier)?;
+    let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
+    let high_risk_query_report = signed_query_report(advisory(0.91), &verifier)?;
+
+    let rejected = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile(),
+        store: &store,
+        admission_id: "adm-live-1",
+        request: &binding(),
+        action_class_id: None,
+        runtime_trust_input: Some(&signed_trust),
+        trusted_verifier_keys: &trusted_keys(&verifier),
+        pheromone_query_report: Some(&high_risk_query_report),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
+        now_unix_ms: 1_800_000_001_000,
+    })?;
+
+    assert!(!rejected.accepted);
+    assert_eq!(
+        rejected.failure_code.as_deref(),
+        Some("runtime_pheromone_policy_action_class_missing")
+    );
+    Ok(())
+}
+
+#[test]
 fn runtime_pheromone_policy_rejects_query_report_signed_by_other_key(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();

@@ -484,6 +484,7 @@ impl SqlitePheromoneRelayStore {
         )?;
         let mut frames = Vec::new();
         let mut bytes = 0usize;
+        let mut served_frame_count = 0usize;
         let mut next_cursor = after_rowid;
         for row in rows {
             let (rowid, batch_json) = row?;
@@ -496,8 +497,19 @@ impl SqlitePheromoneRelayStore {
                 }
                 break;
             }
-            frames.push(serde_json::from_str(&batch_json)?);
+            let batch: PheromoneGossipBatch = serde_json::from_str(&batch_json)?;
+            let batch_frame_count = batch.frames.len();
+            if served_frame_count.saturating_add(batch_frame_count) > limit {
+                if frames.is_empty() {
+                    return Err(PheromoneRelayError::CatchupDenied(
+                        "catch-up frame limit exceeded before first batch".to_string(),
+                    ));
+                }
+                break;
+            }
+            frames.push(batch);
             bytes = bytes.saturating_add(batch_bytes);
+            served_frame_count = served_frame_count.saturating_add(batch_frame_count);
             next_cursor = u64::try_from(rowid)
                 .map_err(|_| PheromoneRelayError::Sqlite("negative cursor rowid".to_string()))?;
         }

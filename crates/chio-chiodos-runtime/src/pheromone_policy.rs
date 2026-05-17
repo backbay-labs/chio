@@ -158,9 +158,12 @@ pub(crate) fn evaluate_runtime_pheromone_policy(
         reason_code: "runtime_pheromone_policy_allow".to_string(),
     };
 
-    let action_class_id = input
-        .action_class_id
-        .unwrap_or(&input.bundle.binding.tool_name);
+    let action_class_id = resolve_runtime_policy_action_class_id(
+        input.action_class_id,
+        &input.bundle.binding.tool_name,
+        policy_body,
+        &advisory,
+    )?;
     for rule in &policy_body.rules {
         if rule.subject_class != advisory.subject_class
             || rule.subject_class_namespace != advisory.subject_class_namespace
@@ -191,6 +194,35 @@ pub(crate) fn evaluate_runtime_pheromone_policy(
         break;
     }
     Ok((Some(decision), Some(advisory)))
+}
+
+fn resolve_runtime_policy_action_class_id<'a>(
+    action_class_id: Option<&'a str>,
+    tool_name: &'a str,
+    policy: &RuntimePheromonePolicy,
+    advisory: &RuntimePheromoneAdvisory,
+) -> Result<&'a str, &'static str> {
+    match action_class_id {
+        Some(id) if !id.trim().is_empty() => Ok(id),
+        Some(_) => Err("runtime_pheromone_policy_action_class_missing"),
+        None if policy_requires_explicit_action_class(policy, advisory, tool_name) => {
+            Err("runtime_pheromone_policy_action_class_missing")
+        }
+        None => Ok(tool_name),
+    }
+}
+
+fn policy_requires_explicit_action_class(
+    policy: &RuntimePheromonePolicy,
+    advisory: &RuntimePheromoneAdvisory,
+    tool_name: &str,
+) -> bool {
+    policy.rules.iter().any(|rule| {
+        rule.subject_class == advisory.subject_class
+            && rule.subject_class_namespace == advisory.subject_class_namespace
+            && rule.action_class_id != "*"
+            && rule.action_class_id != tool_name
+    })
 }
 
 fn validate_peer_weights(weights: &RuntimePeerWeights) -> Result<(), &'static str> {

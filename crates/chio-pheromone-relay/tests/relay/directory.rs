@@ -398,3 +398,77 @@ fn relay_store_leases_due_batches_and_records_idempotent_inbox() {
             .inserted
     );
 }
+
+#[test]
+fn relay_store_catchup_limit_counts_frames_not_batches() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = SqlitePheromoneRelayStore::open(temp.path().join("relay.sqlite3")).unwrap();
+    let mut first = sample_batch();
+    first.frames.push(first.frames[0].clone());
+    let mut second = sample_batch();
+    second.frames.push(second.frames[0].clone());
+
+    store
+        .enqueue_batch(
+            "did:chio:llamaworks",
+            "did:chio:buyer-kernel",
+            &first.treaty_id,
+            &first,
+            NOW,
+        )
+        .unwrap();
+    store
+        .enqueue_batch(
+            "did:chio:llamaworks",
+            "did:chio:buyer-kernel",
+            &second.treaty_id,
+            &second,
+            NOW + 1,
+        )
+        .unwrap();
+
+    let (catchup_frames, next_cursor) = store
+        .catchup_batches("did:chio:buyer-kernel", &first.treaty_id, "0", 3, 256_000)
+        .unwrap();
+
+    assert_eq!(catchup_frames, vec![first.clone()]);
+    assert_ne!(next_cursor, "0");
+
+    let (remaining_frames, _) = store
+        .catchup_batches(
+            "did:chio:buyer-kernel",
+            &first.treaty_id,
+            &next_cursor,
+            3,
+            256_000,
+        )
+        .unwrap();
+    assert_eq!(remaining_frames, vec![second]);
+}
+
+#[test]
+fn relay_store_catchup_denies_first_batch_above_frame_limit() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = SqlitePheromoneRelayStore::open(temp.path().join("relay.sqlite3")).unwrap();
+    let mut batch = sample_batch();
+    batch.frames.push(batch.frames[0].clone());
+
+    store
+        .enqueue_batch(
+            "did:chio:llamaworks",
+            "did:chio:buyer-kernel",
+            &batch.treaty_id,
+            &batch,
+            NOW,
+        )
+        .unwrap();
+
+    let error = store
+        .catchup_batches("did:chio:buyer-kernel", &batch.treaty_id, "0", 1, 256_000)
+        .unwrap_err();
+
+    assert_eq!(error.code(), "catchup_denied");
+    assert!(error
+        .to_string()
+        .contains("catch-up frame limit exceeded before first batch"));
+}

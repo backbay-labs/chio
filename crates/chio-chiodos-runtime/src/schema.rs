@@ -338,6 +338,7 @@ pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "runtime_pheromone_advisory_rejected",
     "runtime_pheromone_advisory_stale",
     "runtime_pheromone_distinct_origin_floor",
+    "runtime_pheromone_policy_action_class_missing",
     "runtime_pheromone_policy_allow",
     "runtime_pheromone_policy_deny",
     "runtime_pheromone_policy_direction_unsupported",

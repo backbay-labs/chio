@@ -548,6 +548,7 @@ pub fn fresh_proof_package() -> Result<ChiodosProofPackage, ChiodosPackageError>
         build_proof_package_unchecked(ProofPackageInput::Fixture, empty_disclosure_proof())?;
     package.selective_disclosure_proof =
         disclosure_proof_for_workflow(&package.workflow_receipt.body(), &context)?;
+    ensure_disclosure_subject_matches_workflow(&package)?;
     Ok(package)
 }
 
@@ -1297,6 +1298,18 @@ mod tests {
             artifact.workflow_step.parent_receipt_sha256 = parent;
             parent = Some(canonical_sha256(&artifact.workflow_step).expect("step hashes"));
         }
+    }
+
+    #[test]
+    fn fresh_proof_package_binds_disclosure_subject_to_workflow() {
+        let package = fresh_proof_package().expect("fresh package builds");
+        let projection = project_workflow_receipt_body(&package.workflow_receipt.body())
+            .expect("workflow projection derives");
+
+        assert_eq!(
+            package.selective_disclosure_proof.subject_sha256_hex,
+            projection.subject_sha256_hex
+        );
     }
 
     #[test]

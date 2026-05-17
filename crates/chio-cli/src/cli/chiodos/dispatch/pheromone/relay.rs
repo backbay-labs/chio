@@ -200,13 +200,14 @@ pub(crate) fn cmd_chiodos_pheromone_relay_serve(
         receiver_config,
         resolver,
     });
+    let relay_limits = relay_service_limits_for_profile(profile);
     let service = chio_pheromone_relay::PheromoneRelayService::new(
         chio_pheromone_relay::PheromoneRelayConfig {
             local_kernel_id: peer_directory.local_kernel_id().to_string(),
             profile,
             now_unix_ms: now,
-            freshness_window_ms: 60_000,
-            max_body_bytes: 1_048_576,
+            freshness_window_ms: relay_limits.freshness_window_ms,
+            max_body_bytes: relay_limits.max_body_bytes,
             use_system_clock: true,
             operator_token,
             report_dir: Some(report_dir.to_path_buf()),
@@ -568,7 +569,18 @@ pub(crate) fn cmd_chiodos_pheromone_relay_metrics(
     write_json_string(output, &snapshot.render(format))
 }
 
-
+pub(crate) fn relay_service_limits_for_profile(
+    profile: chio_pheromone_relay::RelayProfile,
+) -> chio_pheromone_relay::RelayProfileLimits {
+    let mut limits = chio_pheromone_relay::RelayProfileLimits::production_defaults();
+    match profile {
+        chio_pheromone_relay::RelayProfile::Production => limits,
+        chio_pheromone_relay::RelayProfile::LocalDev => {
+            limits.max_body_bytes = 1_048_576;
+            limits
+        }
+    }
+}
 
 pub(crate) fn cmd_chiodos_pheromone_relay_trend(
     reports_dir: &Path,
@@ -619,4 +631,28 @@ pub(crate) fn read_relay_event_reports(
         "relay event report",
         chio_pheromone_relay::PHEROMONE_RELAY_EVENT_REPORT_SCHEMA,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn production_relay_service_limits_use_profile_body_bound() {
+        let limits =
+            relay_service_limits_for_profile(chio_pheromone_relay::RelayProfile::Production);
+
+        assert_eq!(
+            limits.max_body_bytes,
+            chio_pheromone_relay::RelayProfileLimits::production_defaults().max_body_bytes
+        );
+    }
+
+    #[test]
+    fn local_dev_relay_service_limits_keep_existing_body_bound() {
+        let limits =
+            relay_service_limits_for_profile(chio_pheromone_relay::RelayProfile::LocalDev);
+
+        assert_eq!(limits.max_body_bytes, 1_048_576);
+    }
 }
