@@ -78,6 +78,7 @@ use chio_pheromone_relay::{
     PHEROMONE_RELAY_ALERT_ASSURANCE_CLOSEOUT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_EXPORT_MANIFEST_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_EXPORT_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_EXTERNAL_RETENTION_NEGATIVE_CORPUS_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_EXTERNAL_RETENTION_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_EXTERNAL_RETENTION_REVIEW_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_PACKAGE_SCHEMA,
@@ -3470,6 +3471,168 @@ fn external_retention_review_binds_readback_to_package_id() {
 
     assert!(!review.accepted);
     assert_eq!(review.reviews[0].code, "missing_physical_readback");
+}
+
+#[test]
+fn external_retention_review_sanitizes_invalid_secondary_statuses() {
+    let package = restore_package_report(1, None);
+    let mut physical = vec![physical_drill_for_package(&package)];
+    physical[0].code = "accepted/ok".to_string();
+    let mut handoff = vec![handoff_for_package(&package)];
+    handoff[0].code = "ready/ok".to_string();
+    let mut restore = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: std::slice::from_ref(&package),
+            physical_drill_reports: &[physical_drill_for_package(&package)],
+            retention_handoff_reports: &[handoff_for_package(&package)],
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+    restore.packages[0].code = "accepted/ok".to_string();
+
+    let review = generate_relay_alert_assurance_external_retention_review_report(
+        RelayAlertAssuranceExternalRetentionReviewInput {
+            package_reports: &[package],
+            restore_drill_reports: &[restore],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            profile: &external_retention_profile(),
+            since_unix_ms: NOW,
+            until_unix_ms: NOW + 120_000,
+            now_unix_ms: NOW + 40_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!review.accepted);
+    assert_eq!(review.reviews[0].restore_status, "invalid");
+    assert_eq!(review.reviews[0].physical_readback_status, "invalid");
+    assert_eq!(review.reviews[0].retention_handoff_status, "invalid");
+    assert!(review
+        .checks
+        .iter()
+        .any(|check| check.code == "invalid_secondary_status"));
+    canonical_json_bytes(&review).unwrap();
+}
+
+#[test]
+fn external_retention_review_rejects_duplicate_secondary_matches() {
+    let package = restore_package_report(1, None);
+    let physical = vec![physical_drill_for_package(&package)];
+    let handoff = vec![handoff_for_package(&package)];
+    let restore = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: std::slice::from_ref(&package),
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+    let duplicate_physical = vec![
+        physical_drill_for_package(&package),
+        physical_drill_for_package(&package),
+    ];
+
+    let review = generate_relay_alert_assurance_external_retention_review_report(
+        RelayAlertAssuranceExternalRetentionReviewInput {
+            package_reports: std::slice::from_ref(&package),
+            restore_drill_reports: &[restore.clone(), restore],
+            physical_drill_reports: &duplicate_physical,
+            retention_handoff_reports: &handoff,
+            profile: &external_retention_profile(),
+            since_unix_ms: NOW,
+            until_unix_ms: NOW + 120_000,
+            now_unix_ms: NOW + 40_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!review.accepted);
+    assert_eq!(review.reviews[0].restore_status, "duplicate");
+    assert_eq!(review.reviews[0].physical_readback_status, "duplicate");
+    assert!(review
+        .checks
+        .iter()
+        .any(|check| check.code == "duplicate_restore_drill_evidence"));
+    assert!(review
+        .checks
+        .iter()
+        .any(|check| check.code == "duplicate_physical_readback_evidence"));
+}
+
+#[test]
+fn external_retention_review_advances_alias_baseline_only_from_ready_packages() {
+    let first = restore_package_report(1, None);
+    let second = restore_package_report(2, Some(first.package_manifest_sha256.clone()));
+    let packages = vec![first.clone(), second.clone()];
+    let mut physical = vec![
+        physical_drill_for_package(&first),
+        physical_drill_for_package(&second),
+    ];
+    physical[0].sampled_member_count = 0;
+    let mut handoff = vec![handoff_for_package(&first), handoff_for_package(&second)];
+    handoff[1].target_system_alias = "cold-storage".to_string();
+    let restore = generate_relay_alert_assurance_archive_restore_drill_report(
+        RelayAlertAssuranceArchiveRestoreDrillInput {
+            package_reports: &packages,
+            physical_drill_reports: &[
+                physical_drill_for_package(&first),
+                physical_drill_for_package(&second),
+            ],
+            retention_handoff_reports: &[handoff_for_package(&first), handoff_for_package(&second)],
+            restore_profile: &archive_restore_profile(),
+            now_unix_ms: NOW + 30_000,
+        },
+    )
+    .unwrap();
+    let mut profile = external_retention_profile();
+    profile.require_generation_continuity = false;
+    profile
+        .allowed_retention_system_aliases
+        .push("cold-storage".to_string());
+
+    let review = generate_relay_alert_assurance_external_retention_review_report(
+        RelayAlertAssuranceExternalRetentionReviewInput {
+            package_reports: &packages,
+            restore_drill_reports: &[restore],
+            physical_drill_reports: &physical,
+            retention_handoff_reports: &handoff,
+            profile: &profile,
+            since_unix_ms: NOW,
+            until_unix_ms: NOW + 120_000,
+            now_unix_ms: NOW + 40_000,
+        },
+    )
+    .unwrap();
+
+    assert!(!review.accepted);
+    assert_eq!(review.ready_count, 1);
+    assert_eq!(review.drift_count, 0);
+    assert_eq!(
+        review.reviews[1].target_system_alias.as_deref(),
+        Some("cold-storage")
+    );
+    assert!(!review
+        .checks
+        .iter()
+        .any(|check| check.code == "alias_drift"));
+}
+
+#[test]
+fn external_retention_negative_fixture_corpus_uses_exported_schema_token() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../examples/chiodos-3vendor/fixtures/pheromone/relay/alert-assurance/relay-alert-assurance-external-retention-negative-cases.json"
+    ))
+    .unwrap();
+
+    assert_eq!(
+        corpus["schema"].as_str(),
+        Some(PHEROMONE_RELAY_ALERT_ASSURANCE_EXTERNAL_RETENTION_NEGATIVE_CORPUS_SCHEMA)
+    );
 }
 
 #[test]

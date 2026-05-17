@@ -4671,6 +4671,7 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
         let mut physical_readback_status = "not_required".to_string();
         let mut retention_handoff_status = "not_required".to_string();
         let mut target_system_alias = None;
+        let mut accepted_alias_candidate = None;
         let mut sample_coverage_basis_points = 0_u64;
 
         external_retention_check(
@@ -4799,18 +4800,36 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
 
         if input.profile.require_restore_accepted {
             match external_retention_restore_status(input.restore_drill_reports, report) {
-                Some((
-                    restore_code,
-                    restore_accepted,
-                    restore_generated_at,
-                    restore_local_kernel_id,
-                )) => {
-                    restore_status = restore_code;
+                ExternalRetentionEvidence::Missing => {
+                    restore_status = "missing".to_string();
+                    external_retention_fail(
+                        &mut checks,
+                        &mut accepted,
+                        &mut code,
+                        "missing_restore_drill",
+                        "no restore drill report covers this package generation",
+                    );
+                }
+                ExternalRetentionEvidence::Single(restore) => {
+                    let (status, status_valid) = external_retention_report_status(
+                        &restore.code,
+                        "restore drill report status",
+                    );
+                    restore_status = status;
+                    if !status_valid {
+                        external_retention_fail(
+                            &mut checks,
+                            &mut accepted,
+                            &mut code,
+                            "invalid_secondary_status",
+                            "restore drill report status is not schema-safe",
+                        );
+                    }
                     external_retention_check(
                         &mut checks,
                         &mut accepted,
                         &mut code,
-                        restore_local_kernel_id == input.profile.local_kernel_id,
+                        restore.local_kernel_id == input.profile.local_kernel_id,
                         "restore_drill_local_kernel",
                         "local_kernel_mismatch",
                         "restore drill report local kernel matches external retention profile",
@@ -4819,7 +4838,7 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
                         &mut checks,
                         &mut accepted,
                         &mut code,
-                        restore_accepted,
+                        restore.accepted,
                         "restore_drill",
                         "rejected_restore_drill",
                         "restore drill accepts this package generation",
@@ -4829,7 +4848,7 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
                         &mut accepted,
                         &mut code,
                         external_retention_fresh(
-                            restore_generated_at,
+                            restore.generated_at_unix_ms,
                             input.since_unix_ms,
                             input.until_unix_ms,
                             input.now_unix_ms,
@@ -4840,27 +4859,52 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
                         "restore drill report is inside the review window and freshness bound",
                     );
                 }
-                None => {
-                    restore_status = "missing".to_string();
+                ExternalRetentionEvidence::Duplicate => {
+                    restore_status = "duplicate".to_string();
                     external_retention_fail(
                         &mut checks,
                         &mut accepted,
                         &mut code,
-                        "missing_restore_drill",
-                        "no restore drill report covers this package generation",
+                        "duplicate_restore_drill_evidence",
+                        "multiple restore drill reports match this package report",
                     );
                 }
             }
         }
 
         if input.profile.require_physical_readback {
-            match external_retention_physical_report(
+            match external_retention_physical_reports(
                 input.physical_drill_reports,
                 &package_report_sha256,
                 &report.package_id,
-            ) {
-                Some(physical) => {
-                    physical_readback_status = physical.code.clone();
+            )
+            .as_slice()
+            {
+                [] => {
+                    physical_readback_status = "missing".to_string();
+                    external_retention_fail(
+                        &mut checks,
+                        &mut accepted,
+                        &mut code,
+                        "missing_physical_readback",
+                        "no physical readback report matches this package report",
+                    );
+                }
+                [physical] => {
+                    let (status, status_valid) = external_retention_report_status(
+                        &physical.code,
+                        "physical readback report status",
+                    );
+                    physical_readback_status = status;
+                    if !status_valid {
+                        external_retention_fail(
+                            &mut checks,
+                            &mut accepted,
+                            &mut code,
+                            "invalid_secondary_status",
+                            "physical readback report status is not schema-safe",
+                        );
+                    }
                     let package_member_count =
                         u64::try_from(report.package_member_count).map_err(|_| {
                             PheromoneRelayError::ArchivePackageInvalid(
@@ -4934,14 +4978,14 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
                         );
                     }
                 }
-                None => {
-                    physical_readback_status = "missing".to_string();
+                _ => {
+                    physical_readback_status = "duplicate".to_string();
                     external_retention_fail(
                         &mut checks,
                         &mut accepted,
                         &mut code,
-                        "missing_physical_readback",
-                        "no physical readback report matches this package report",
+                        "duplicate_physical_readback_evidence",
+                        "multiple physical readback reports match this package report",
                     );
                 }
             }
@@ -4965,7 +5009,20 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
                     );
                 }
                 [handoff] => {
-                    retention_handoff_status = handoff.code.clone();
+                    let (status, status_valid) = external_retention_report_status(
+                        &handoff.code,
+                        "retention handoff report status",
+                    );
+                    retention_handoff_status = status;
+                    if !status_valid {
+                        external_retention_fail(
+                            &mut checks,
+                            &mut accepted,
+                            &mut code,
+                            "invalid_secondary_status",
+                            "retention handoff report status is not schema-safe",
+                        );
+                    }
                     external_retention_check(
                         &mut checks,
                         &mut accepted,
@@ -5034,7 +5091,9 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
                                 "retention handoff target alias drifted across generations",
                             );
                         }
-                        (None, true) => expected_alias = Some(handoff.target_system_alias.clone()),
+                        (None, true) => {
+                            accepted_alias_candidate = Some(handoff.target_system_alias.clone());
+                        }
                         _ => {}
                     }
                 }
@@ -5058,6 +5117,9 @@ pub fn generate_relay_alert_assurance_external_retention_review_report(
             code = package_level_code;
         }
         if accepted {
+            if let Some(alias) = accepted_alias_candidate {
+                expected_alias = Some(alias);
+            }
             latest_generation = latest_generation.max(report.package_generation);
             previous_manifest_hash = Some(report.package_manifest_sha256.clone());
         }
@@ -7868,38 +7930,67 @@ fn validate_external_retention_schema_token(
     Ok(())
 }
 
+enum ExternalRetentionEvidence<T> {
+    Missing,
+    Single(T),
+    Duplicate,
+}
+
+struct ExternalRetentionRestoreStatus {
+    code: String,
+    accepted: bool,
+    generated_at_unix_ms: u64,
+    local_kernel_id: String,
+}
+
+fn external_retention_report_status(value: &str, field: &str) -> (String, bool) {
+    if validate_external_retention_schema_token(value, field).is_ok() {
+        return (value.to_string(), true);
+    }
+    ("invalid".to_string(), false)
+}
+
 fn external_retention_restore_status(
     restore_reports: &[RelayAlertAssuranceArchiveRestoreDrillReport],
     package_report: &RelayAlertAssuranceArchivePackageReport,
-) -> Option<(String, bool, u64, String)> {
-    restore_reports.iter().find_map(|restore| {
-        restore
-            .packages
-            .iter()
-            .find(|package| {
-                package.package_id == package_report.package_id
-                    && package.package_generation == package_report.package_generation
-                    && package.package_manifest_sha256 == package_report.package_manifest_sha256
-            })
-            .map(|package| {
-                (
-                    package.code.clone(),
-                    restore.accepted && package.accepted,
-                    restore.generated_at_unix_ms,
-                    restore.local_kernel_id.clone(),
-                )
-            })
-    })
+) -> ExternalRetentionEvidence<ExternalRetentionRestoreStatus> {
+    let mut matches = restore_reports.iter().filter_map(|restore| {
+        restore.packages.iter().find_map(|package| {
+            if package.package_id == package_report.package_id
+                && package.package_generation == package_report.package_generation
+                && package.package_manifest_sha256 == package_report.package_manifest_sha256
+            {
+                Some(ExternalRetentionRestoreStatus {
+                    code: package.code.clone(),
+                    accepted: restore.accepted && package.accepted,
+                    generated_at_unix_ms: restore.generated_at_unix_ms,
+                    local_kernel_id: restore.local_kernel_id.clone(),
+                })
+            } else {
+                None
+            }
+        })
+    });
+    let Some(first) = matches.next() else {
+        return ExternalRetentionEvidence::Missing;
+    };
+    if matches.next().is_some() {
+        return ExternalRetentionEvidence::Duplicate;
+    }
+    ExternalRetentionEvidence::Single(first)
 }
 
-fn external_retention_physical_report<'a>(
+fn external_retention_physical_reports<'a>(
     physical_reports: &'a [RelayAlertAssurancePhysicalArchiveDrillReport],
     package_report_sha256: &str,
     package_id: &str,
-) -> Option<&'a RelayAlertAssurancePhysicalArchiveDrillReport> {
-    physical_reports.iter().find(|report| {
-        report.package_report_sha256 == package_report_sha256 && report.package_id == package_id
-    })
+) -> Vec<&'a RelayAlertAssurancePhysicalArchiveDrillReport> {
+    physical_reports
+        .iter()
+        .filter(|report| {
+            report.package_report_sha256 == package_report_sha256 && report.package_id == package_id
+        })
+        .collect()
 }
 
 fn external_retention_handoffs<'a>(
