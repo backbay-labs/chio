@@ -4362,8 +4362,7 @@ pub fn generate_relay_alert_assurance_archive_restore_drill_report(
             accepted = false;
             code = "local_kernel_mismatch".to_string();
         }
-        let duplicate_generation = !seen_generations.insert(report.package_generation);
-        if accepted && duplicate_generation {
+        if accepted && seen_generations.contains(&report.package_generation) {
             accepted = false;
             code = "duplicate_generation".to_string();
         }
@@ -4410,6 +4409,7 @@ pub fn generate_relay_alert_assurance_archive_restore_drill_report(
             code,
         });
         if accepted {
+            seen_generations.insert(report.package_generation);
             latest_generation = latest_generation.max(report.package_generation);
             previous_manifest_hash = Some(report.package_manifest_sha256.clone());
         }

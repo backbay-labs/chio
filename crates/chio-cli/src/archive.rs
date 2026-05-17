@@ -6,6 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::CliError;
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SafeArchiveLimits {
     pub max_compressed_bytes: u64,
@@ -291,6 +294,7 @@ pub(crate) fn write_entries_to_existing_dir(
     fs::create_dir_all(root).map_err(|error| {
         CliError::cli_io_error(format!("failed to create {label} root {}: {error}", root.display()))
     })?;
+    ensure_safe_archive_root(root, label)?;
     for entry in entries {
         write_entry(root, label, entry, false)?;
     }
@@ -305,6 +309,7 @@ pub(crate) fn replace_entries_in_existing_dir(
     fs::create_dir_all(root).map_err(|error| {
         CliError::cli_io_error(format!("failed to create {label} root {}: {error}", root.display()))
     })?;
+    ensure_safe_archive_root(root, label)?;
     for entry in entries {
         write_entry(root, label, entry, true)?;
     }
@@ -374,17 +379,14 @@ fn write_entry(
     overwrite: bool,
 ) -> Result<(), CliError> {
     let relative = safe_archive_member_path(&entry.path, label)?;
-    let path = safe_join(root, &relative, label)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to create {label} dir {}: {error}",
-                parent.display()
-            ))
-        })?;
+    let path = prepare_safe_archive_entry_path(root, &relative, label)?;
+    if overwrite {
+        reject_unsafe_archive_target(&path, label)?;
     }
     let mut options = fs::OpenOptions::new();
     options.write(true);
+    #[cfg(unix)]
+    options.custom_flags(libc::O_NOFOLLOW);
     if overwrite {
         options.create(true).truncate(true);
     } else {
@@ -415,6 +417,87 @@ fn write_entry(
     Ok(())
 }
 
+fn ensure_safe_archive_root(root: &Path, label: &str) -> Result<(), CliError> {
+    let metadata = fs::symlink_metadata(root).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to inspect {label} root {}: {error}",
+            root.display()
+        ))
+    })?;
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() || !file_type.is_dir() {
+        return Err(CliError::cli_other_error(format!(
+            "{label} root {} must be a real directory",
+            root.display()
+        )));
+    }
+    Ok(())
+}
+
+fn prepare_safe_archive_entry_path(
+    root: &Path,
+    relative: &str,
+    label: &str,
+) -> Result<PathBuf, CliError> {
+    let relative = safe_archive_member_path(relative, label)?;
+    let mut path = root.to_path_buf();
+    let mut segments = relative.split('/').peekable();
+    while let Some(segment) = segments.next() {
+        path.push(segment);
+        if segments.peek().is_none() {
+            return Ok(path);
+        }
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) => {
+                let file_type = metadata.file_type();
+                if file_type.is_symlink() || !file_type.is_dir() {
+                    return Err(CliError::cli_other_error(format!(
+                        "{label} parent {} must be a real directory",
+                        path.display()
+                    )));
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(&path).map_err(|error| {
+                    CliError::cli_io_error(format!(
+                        "failed to create {label} dir {}: {error}",
+                        path.display()
+                    ))
+                })?;
+            }
+            Err(error) => {
+                return Err(CliError::cli_io_error(format!(
+                    "failed to inspect {label} dir {}: {error}",
+                    path.display()
+                )));
+            }
+        }
+    }
+    Ok(path)
+}
+
+fn reject_unsafe_archive_target(path: &Path, label: &str) -> Result<(), CliError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            let file_type = metadata.file_type();
+            if file_type.is_symlink() || !file_type.is_file() {
+                return Err(CliError::cli_other_error(format!(
+                    "{label} target {} must be a real file",
+                    path.display()
+                )));
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(CliError::cli_io_error(format!(
+                "failed to inspect {label} target {}: {error}",
+                path.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn safe_archive_file_mode(mode: u32) -> u32 {
     if mode & 0o111 == 0 {
         0o600
@@ -440,15 +523,6 @@ fn apply_safe_archive_file_mode(path: &Path, mode: u32, label: &str) -> Result<(
 #[cfg(not(unix))]
 fn apply_safe_archive_file_mode(_path: &Path, _mode: u32, _label: &str) -> Result<(), CliError> {
     Ok(())
-}
-
-fn safe_join(root: &Path, relative: &str, label: &str) -> Result<PathBuf, CliError> {
-    let relative = safe_archive_member_path(relative, label)?;
-    let mut path = root.to_path_buf();
-    for segment in relative.split('/') {
-        path.push(segment);
-    }
-    Ok(path)
 }
 
 fn enforce_decompression_ratio(
@@ -528,5 +602,48 @@ mod tests {
         assert_eq!(read.len(), 2);
         assert_eq!(read[0].path, "one.txt");
         assert_eq!(read[1].path, "nested/two.txt");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn safe_archive_helper_rejects_symlink_target_on_refresh() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("extract");
+        let bin = root.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let outside = temp.path().join("outside.txt");
+        fs::write(&outside, b"keep").unwrap();
+        std::os::unix::fs::symlink(&outside, bin.join("peer")).unwrap();
+        let entries = [SafeArchiveEntry {
+            path: "bin/peer".to_string(),
+            bytes: b"new-peer".to_vec(),
+            mode: 0o600,
+        }];
+
+        let err = replace_entries_in_existing_dir(&root, "test archive", &entries).unwrap_err();
+
+        assert!(err.to_string().contains("target"));
+        assert_eq!(fs::read(&outside).unwrap(), b"keep");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn safe_archive_helper_rejects_symlink_parent_on_refresh() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("extract");
+        fs::create_dir_all(&root).unwrap();
+        let outside = temp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("bin")).unwrap();
+        let entries = [SafeArchiveEntry {
+            path: "bin/peer".to_string(),
+            bytes: b"new-peer".to_vec(),
+            mode: 0o600,
+        }];
+
+        let err = replace_entries_in_existing_dir(&root, "test archive", &entries).unwrap_err();
+
+        assert!(err.to_string().contains("parent"));
+        assert!(!outside.join("peer").exists());
     }
 }

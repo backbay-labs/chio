@@ -86,5 +86,5 @@ fi
 if [[ "$MODE" == "all" || "$MODE" == "negative-only" ]]; then
   cargo test -p chio-cli guard_archive_hardening
   cargo test -p chio-cli conformance_archive_hardening
-  cargo test -p chio-pheromone-relay alert_assurance_archive_hardening --test relay
+  cargo test -p chio-pheromone-relay relay_alert_assurance_archive --test relay
 fi
