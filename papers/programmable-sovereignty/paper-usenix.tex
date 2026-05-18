@@ -1,0 +1,58 @@
+% USENIX Security / NDSS variant build of paper.tex
+%
+% Per action-plan M10 (produce both USENIX and acmart builds from one source),
+% this file shares the content sections with paper.tex via \input{sections/...}
+% but switches the document class so the manuscript can target a USENIX-shaped
+% venue without rewriting the body.
+%
+% NOTE: this stand-in uses the standard article class with USENIX-flavored
+% defaults (10pt, two-column, letterpaper, Times). When the USENIX-track
+% submission timeline is firm, replace the \documentclass line with the
+% venue's official template (usenix2019_v3.cls for USENIX Security; the
+% Internet Society's NDSS template for NDSS).
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+\usepackage[letterpaper,margin=0.75in]{geometry}
+\usepackage{times}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xurl}
+\usepackage{hyperref}
+\usepackage{cite}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric}
+
+% Stand-ins for acmart macros the section sources use.
+\newcommand{\codepath}[1]{\path{#1}}
+\newcommand{\thm}[1]{\path{#1}}
+\providecommand{\Description}[1]{}
+\Urlmuskip=0mu plus 1mu
+
+% Replace acmart's \maketitle preamble. USENIX papers usually have a flat
+% title block; the abstract sits in its own paragraph at the start.
+\title{Programmable Sovereignty: Lean-Attestable Constitutions Over Capability-Bounded Federated Receipts}
+\author{Anonymous for external review}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Agent systems already allocate authority, settle costs, and emit records that become accounting and dispute evidence, yet their governance reduces to prompts, API keys, dashboards, and after-the-fact logs. We give a substrate in which a polity is a triple $(T, C, K)$: a closed receipt-admission scope $T$, a Merkle-rooted citizenship roster $C$, and a constitution $K$ expressed as a finite list of predicates evaluated by a runtime kernel and discharged by machine-checked proofs over a bounded model. Admission, capability attenuation, treaty intersection, ladder-floor stability, and constitutional amendment become decidable operations on this triple, and each emits a canonically signed receipt only when $K$ and $T$ accept. We implement the construction in Rust with companion proofs in Lean~4, prove theorems for treaty predicate intersection, ladder-floor stability, and amendment refinement, and demonstrate the construction with a three-party buyer-vendor closure backed by replay fixtures. Treaty intersection composes with ladder-floor reduction without changing admission; amendment enactment is conditioned at the type level on a refinement witness and is unconstructable in the well-typed runtime path without one; the three-vendor demonstration replays both admitted and denied paths in the same canonical schema. The paper contributes the formal model, the substrate implementation, and an evaluation across dispatch admission, treaty intersection, selective disclosure, and replay-corpus stability.
+\end{abstract}
+
+\input{sections/01-introduction}
+\input{sections/02-background}
+\input{sections/03-substrate}
+\input{sections/04-model}
+\input{sections/05-implementation}
+\input{sections/06-evaluation}
+\input{sections/07-discussion}
+\input{sections/08-related-work}
+\input{sections/09-limitations}
+\input{sections/10-conclusion}
+
+\bibliographystyle{plain}
+\bibliography{bib}
+
+\end{document}

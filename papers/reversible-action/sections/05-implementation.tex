@@ -1,0 +1,84 @@
+\section{Implementation}
+\label{sec:implementation-ra}
+
+The deployment instance is an endpoint enforcement engine whose
+response module dispatches twelve action variants, four of which carry
+inverse executors with content-hash-gated rollback constructors. The
+substrate inherits the canonical-byte signing path, ledger discipline,
+and verifier-owned trust store conventions from the parent paper. The
+implementation citations below resolve to deployment-instance file
+paths; the substrate-level claims rest on the parent paper's runtime
+admission hook and bilateral DSSE verifier.
+
+\paragraph{Action plan and execution.}
+The response plan is bound at request time:
+\codepath{EndpointResponsePlan} carries action identifier, action
+class, dry-run flag, root node identifier, graph slice identifier,
+TTL in seconds, rollback reference handle, reason, issued-at and
+expires-at timestamps, and node and edge counts. The expires-at
+timestamp is derived structurally from issued-at and TTL. The TTL
+validator rejects zero and out-of-range durations at admission; the
+upper bound is the deployment-instance constant
+\codepath{EDR_MAX_RESPONSE_TTL_SECONDS}.
+
+The forward executor dispatches on the action class. File quarantine
+is a hashed read followed by \codepath{fs::rename} into the quarantine
+root. Persistence disable is the same shape with a different
+destination subtree under the same quarantine root. Process-tree
+suspend issues \codepath{libc::SIGSTOP} to each pid in the target
+list in reverse-order traversal of the process tree. Egress
+restriction writes a policy snapshot file at the network-extension
+policy path and invokes the network-extension reload entry point. Each
+executor returns a signed execution receipt that records the forward
+effect set; an effect carries effect identifier, effect type, target,
+artifact path, content hash, and byte count.
+
+\paragraph{Rollback executor.}
+The rollback executor's inverse pair runs on the four reversible
+variants. File quarantine's inverse reads the artifact, hashes it,
+verifies content-hash parity against the recorded forward hash,
+refuses the operation if the original target path now exists, and
+issues the inverse \codepath{fs::rename}. Persistence disable's
+inverse has the same shape. Process-tree suspend's inverse issues
+\codepath{libc::SIGCONT} to each pid; the substrate records which pids
+in the original set have since exited and reports the partial-inverse
+status. Egress restriction's inverse deactivates the egress ledger
+entry and re-syncs the network-extension policy. Each inverse
+executor emits a rollback receipt
+(\codepath{EndpointResponseRollbackReport}) that references the
+execution identifier and the action identifier, and the receipt is
+appended to the rollback ledger before the next dispatch.
+
+\paragraph{Acknowledgement loop.}
+The acknowledgement receipt
+(\codepath{EndpointResponseAcknowledgementReport}) is emitted by an
+endpoint-initiated postback to the control plane. The acknowledgement
+identifier, execution identifier, action identifier, acknowledged-by
+key, and optional control-correlation token are bound to the receipt.
+The substrate does not mutate execution-ledger state on
+acknowledgement; the acknowledgement is an additive receipt event the
+verifier-owned correlator ingests.
+
+\paragraph{Receipt signing and verification.}
+Each response receipt is signed by the endpoint's Ed25519 keypair over
+the canonical-JSON body. The signing path is shared across the four
+receipt families, which is the substrate's chosen trust granularity
+for the response engine. Bilateral cosignature on the destructive
+subclass is a substrate-level obligation discussed in
+Section~\ref{sec:limitations-ra}: the deployment instance carries the
+single-signer path; the bilateral path is a substrate primitive
+inherited from the parent paper's
+\codepath{crates/chio-federation/src/bilateral_dsse.rs} that the
+response engine does not yet wire.
+
+\paragraph{Proof bundle.}
+The proof endpoint
+(\codepath{GET /api/v1/agent/edr/response-executions/\{id\}/proof})
+returns the response-execution proof: the execution record, the
+graph slice, the provider and sensor state, and six receipt families
+(request, execution, evidence-bundle-manifest, lifecycle transitions,
+rollback, acknowledgement). The verifier replays the canonical bytes
+against the polity's pinned public keys and asserts actor continuity
+across the chain. This is the deployment-instance counterpart of the
+parent paper's buyer-closure proof package, specialized to the
+response engine.

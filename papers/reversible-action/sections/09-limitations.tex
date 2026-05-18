@@ -1,0 +1,125 @@
+\section{Limitations and Threats to Validity}
+\label{sec:limitations-ra}
+
+The construction inherits the parent paper's limitations and adds
+limitations specific to the response side. The assumption ledger
+below is restricted to the new obligations; the parent paper's ledger
+covers the cryptographic, library, operational, and legal assumptions
+common to both constructions.
+
+\begin{table*}[t]
+\centering
+\caption{Assumption ledger for the response-side construction. The
+parent paper's ledger applies in full; the rows below name the
+additional substrate-level obligations.}
+\label{tab:assumptions-ra}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{.28\textwidth}>{\raggedright\arraybackslash}p{.34\textwidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+Assumption & Used for & Residual risk \\
+\midrule
+Substrate counter is monotonic and faithfully advanced by a real-time scheduler. & TTL expiry, auto-reversion, partition-window bounds. & A compromised counter falsifies the TTL claim. The substrate does not trust the endpoint's wall clock; it trusts the counter's monotonicity. \\
+Inverse executors are content-hash-checked against the forward effect's recorded artifact. & Rollback receipt admissibility. & A forged artifact that matches the forward hash collapses the inverse check. \\
+Ledger append happens before the side effect's external visibility. & Crash safety on the rollback path. & The deployment instance appends the execution receipt AFTER the side effect runs; a crash between effect and append leaves a live side effect with no execution record. \\
+Bilateral cosignature on the destructive subclass is drawn from independent principals. & The bilateral reduction. & Inherited from the parent paper; collapses to one-of-one when a single actor operates both keys. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+The remaining limits are:
+
+\begin{itemize}
+  \item \textbf{TTL auto-expiry scheduler.} The substrate model
+    assumes a scheduler advances the counter and triggers expiry
+    callbacks. The deployment instance exposes the
+    \codepath{/expire} HTTP endpoint but no background task invokes
+    it. The headline composition theorem is unfalsifiable against the
+    current binary without the scheduler; "terminates within its TTL"
+    is operator-dependent rather than type-level.
+  \item \textbf{Missing inverse executors on the destructive subclass.}
+    Process-tree terminate, grant revoke, and (in the substrate's
+    taxonomy) network isolate are destructive: each has a forward
+    executor but no inverse. The bilateral reduction applies as an
+    admission obligation; an empirical measurement of the destructive
+    chain requires inverse executors that do not exist.
+  \item \textbf{Crash safety on the ledger append.} The deployment
+    instance runs the OS executor before the ledger append. A crash
+    between effect and append leaves a live side effect with no
+    execution record. A write-ahead ledger pattern (append a pending
+    record before the effect, then mark succeeded after) would close
+    this; the substrate model and the headline theorem do not require
+    it, but the empirical chapter's "rollback closes the chain" claim
+    is weakened by the crash window.
+  \item \textbf{Bilateral cosignature not wired into the response
+    engine.} The substrate's bilateral DSSE verifier exists; the
+    response engine signs every receipt under a single endpoint
+    keypair. The destructive subclass's bilateral admission is
+    therefore a substrate-level obligation, not a deployed
+    measurement. Wiring requires an operator-polity key custody
+    design.
+  \item \textbf{Single-actor bilateral collapse.} Inherited from the
+    parent paper. Two keys held by a single actor satisfy two-key
+    DSSE but not party-independence; the destructive admission
+    reduces to one-of-one signatures. The construction here narrows
+    the consequence (the destructive class becomes operator-key-
+    dependent) without solving the underlying problem.
+  \item \textbf{Sensor stub on macOS Endpoint Security.} The
+    deployment instance declares the entitlement but does not
+    subscribe via \codepath{es_new_client}; sensor-state attestation
+    on response receipts is bounded to the Network Extension verdict
+    path, the tool-preflight admission hook, and the package-manager
+    runtime guard. The substrate model treats sensor state as an
+    audited input; the deployment instance's input fidelity on the
+    Endpoint Security path is below the substrate model's assumption.
+  \item \textbf{Sensor-state fidelity on rollback and acknowledgement
+    receipts.} The deployment instance attaches a placeholder sensor
+    state on rollback and acknowledgement emitters rather than a
+    fresh snapshot; a constitution that requires sensor-attested
+    rollbacks sees synthetic data. The substrate model treats this
+    as a deployment refinement obligation.
+  \item \textbf{Rollback receipts under concurrent invocation.} The
+    deployment instance has no per-execution rollback lock; manual
+    rollback and TTL-driven rollback can fire concurrently. The
+    egress ledger mutex serializes egress rollbacks; the file-rename
+    rollbacks rely on filesystem-level atomicity of
+    \codepath{rename(2)} plus a TOCTOU-racy existence check. The
+    substrate model does not address concurrency.
+  \item \textbf{Chain-of-rollback semantics.} A rollback receipt
+    inverting another rollback receipt is not modeled. The
+    \codepath{RollbackReceipt} structure has a single
+    \codepath{rollbackOf} field; an inductive chain requires a
+    structure the substrate does not introduce.
+  \item \textbf{Bounded paper model.} The model encodes the TTL-
+    bounded amendment chain composition theorem and four supporting
+    bridges; it does not verify the whole deployment instance. The
+    proof manifest entries map the formal names to substrate-level
+    obligations; the deployment instance discharges those obligations
+    by code citation rather than by mechanized refinement.
+  \item \textbf{rfl-gate on the headline theorem.} The headline
+    composition theorem \thm{ttl_bounded_amendment_chain_preserves_baseline}
+    is plausibly non-\emph{rfl} in this construction's reading: the
+    discharge requires structural induction over the chain and a
+    case split on the TTL window at each step. Confirmation requires
+    a focused Lean session. If, on closer inspection, the theorem
+    discharges to \emph{rfl}, the construction collapses to the
+    definitional bridges and the paper has no headline.
+  \item \textbf{Operator-key custody at scale.} The bilateral
+    admission on the destructive subclass requires an operator-polity
+    key whose custody, rotation, revocation, and compromise recovery
+    is outside the present construction. The parent paper's
+    inheritance applies: per-kernel Ed25519 signing assumes a key-
+    management story (HSM, KMS, TEE-bound key handles) the present
+    construction does not specify.
+  \item \textbf{Override path for false-rollback admission.} The
+    substrate denies a rollback receipt whose canonical body fails
+    the polity's predicates. The construction does not define which
+    capability authorizes an admit-under-protest rollback, what
+    crisis artifact the override produces, or how the override is
+    audited. The same gap applies to the parent paper's override
+    authority limitation.
+  \item \textbf{Real-time semantics.} The substrate treats time as a
+    monotonic counter; partition behavior across a TTL boundary is
+    not modeled. The auto-reversion at TTL expiry during a partition
+    is a deployment-side obligation rather than a substrate-level
+    theorem.
+\end{itemize}

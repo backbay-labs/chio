@@ -1,0 +1,97 @@
+\section{Discussion}
+\label{sec:discussion-ra}
+
+The construction extends the parent paper's amendment-side type-level
+discipline to the response side for the class of actions whose effects
+are reversible by an inverse executor. The interpretation of the
+extension is constrained by what the substrate proves and what it does
+not. Three threads of discussion follow: the relationship to
+constitutional emergency powers, the relationship to agentic-AI
+oversight, and the relationship to the substrate's notion of time.
+
+\paragraph{Emergency powers and bounded action.}
+A natural framing for time-bounded constitutional change is the
+literature on emergency powers, particularly the post-9/11 work on
+deliberative versus emergency authority. The framing is partially
+apt: a TTL-bounded amendment looks like an emergency exception, and
+the auto-reversion at TTL expiry looks like a sunset clause. The
+framing is also partially misleading: real emergency powers are
+notable for the absence of reliable rollback. A government that
+invokes emergency authority does not in practice undo the actions
+taken during the emergency; the very property the TTL discipline
+formalizes is the property emergency-powers regimes have struggled to
+guarantee. The construction therefore does not claim to formalize
+emergency powers; it formalizes a stricter discipline (timed reversal
+with type-level invariant) that lies inside the space emergency-
+powers scholarship surveys.
+
+The deeper point is that the construction is conservative. The
+parent paper's amendment refinement obligation already requires
+backward refinement: an amendment cannot widen admission on receipts
+already admitted. The TTL-bounded extension keeps the refinement
+obligation per step and adds the reversion. A constitutional change
+that genuinely cannot be reverted (debt restructuring, retroactive
+statute, founder override, treaty repudiation) does not fit the TTL-
+bounded class; the parent paper records such events as crisis
+artifacts that break refinement and are signed as such. The TTL-
+bounded class is a strict subclass of the parent paper's amendment
+space.
+
+\paragraph{Agentic-AI oversight.}
+An autonomous agent taking a destructive action without a paired
+rollback is exactly the bounded-action failure mode the substrate
+forbids at the type level. A typed substrate that refuses to
+construct an executive action without a TTL witness and an action
+class tag is a primitive other safety systems can cite without
+adopting the substrate as a whole. Constitutional AI conditions
+outputs at training time; capability evaluations bound what a model
+is likely to do in advance; the substrate here gates whether a
+specific cross-boundary action enters the receipt log without the
+counterparty's signature.
+
+The bilateral-cosignature reduction on the destructive subclass is
+the natural primitive for human-in-the-loop deployment of agentic
+systems: a destructive action authored by an agent admits only when
+the deploying organization's polity also signs. The reduction does
+not solve the operational-discipline problem the parent paper named
+(a single actor operating both keys collapses the bilateral envelope
+to one-of-one), but it gives the discipline a typed obligation rather
+than a policy file. The Anthropic alignment-evaluation work on
+alignment-faking and situational-awareness is the upstream
+motivation; the construction here is the downstream substrate.
+
+\paragraph{Time and the substrate.}
+The substrate treats time as a monotonic integer counter. The TTL
+invariant is a duration in counter units, and the auto-reversion at
+TTL expiry is a substrate-level event triggered by the counter
+advancing past the expiry instant. The substrate model abstracts the
+real-time scheduler that advances the counter; the scheduler is a
+deployment-side obligation. The implication for the threat model is
+that a compromised counter falsifies the TTL claim in the same way a
+compromised signing key falsifies admission. The substrate does not
+trust the endpoint's wall clock; it trusts the counter's monotonicity
+and the scheduler's faithfulness in advancing it.
+
+The substrate's notion of partition (the parent paper's partition-
+contingency mode on the trust ladder) introduces a second relationship
+to time. A partition is a window during which the substrate cannot
+exchange receipts with peer polities; the substrate records the
+partition's start and end as receipts and conditions admission during
+the partition on the ladder's partition-contingency rules. A TTL-
+bounded amendment whose TTL spans a partition is a substrate-level
+case the construction does not yet model: the auto-reversion at TTL
+expiry should fire even if the substrate is partitioned, but the
+reversion's receipt cannot be exchanged with peers until the partition
+ends. The substrate model treats this as a deployment-side obligation
+rather than as a substrate-level theorem.
+
+\paragraph{What the substrate does not extend.}
+The construction does not extend the type-level discipline to actions
+whose effects are not reversible by an inverse executor. Process-tree
+terminate, network isolate, and grant revoke are destructive: the
+substrate's response to these is to require bilateral cosignature at
+admission, not to record a rollback. The substrate makes the
+distinction between reversible and destructive explicit at the type
+level, but it does not turn a destructive action into a reversible one.
+The category boundary is empirical (existence of an inverse executor)
+rather than constitutional.

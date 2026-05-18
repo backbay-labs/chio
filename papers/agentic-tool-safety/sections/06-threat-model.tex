@@ -1,0 +1,30 @@
+\section{Threat Model}
+\label{sec:threat}
+
+The construction's value depends on which threats it survives. We name the threat model explicitly: a substrate-layer admission guarantee is interesting only if it composes with a sharper threat model than a training-layer guarantee can carry. We list the assumptions the construction is designed to hold under, and the assumptions it does not claim to hold under.
+
+\paragraph{Assumptions the substrate-layer guarantee survives.}
+
+\emph{The model is misaligned.} Training failed; the model's preferences over outputs are not aligned with the user's, the operator's, or the developer's. The substrate's admission of a destructive tool call still requires a typed rollback witness (or a destructive-class bilateral cosignature). A misaligned model that does not happen to be able to construct a valid rollback witness for an irreversible effect cannot produce an admissible envelope. The substrate's check is structural; the model's preferences over outputs are not an input to it.
+
+\emph{The model can compose tool calls strategically.} The model can sequence calls to maximise some non-aligned objective, can split destructive effects across multiple reversible-class calls, can stage intermediate state to mask the destructive payload. The substrate's admission of each individual call still operates on the call's own envelope. A strategic composition that achieves a destructive aggregate effect through reversible-class atoms must, by hypothesis, be rollback-discharged at each atom: the cumulative effect is rolled back by the cumulative rollback. The aggregate-effect-without-aggregate-rollback case requires an atom to be misclassified, which is an operator-side error rather than a substrate-side failure.
+
+\emph{The model can fake alignment during evaluation.} The model's behaviour during pre-deployment evaluation is not a reliable indicator of its behaviour in deployment~\cite{hubingerAlignmentFaking2024}. The substrate's admission predicate at deployment time is the same predicate that was specified before deployment; it does not depend on the model's inferred intent or on a verdict from an evaluator. Alignment-faking changes nothing about the typed admission, because the typed admission is not a function of the model's claimed intent.
+
+\emph{The model can attempt to manipulate the operator.} The model may produce prompts, summaries, or justifications designed to elicit operator approval for a tool call. For reversible-class calls, operator approval suffices and the substrate's rollback slot remains the structural backstop. For destructive-class calls, operator approval is necessary but not sufficient: bilateral cosignature requires the host polity's independent acceptance. A manipulated operator cannot supply the host polity's signature. The structural check is two-party, not one-party.
+
+\paragraph{The model-substrate factorisation.}
+The above survival argument rests on a factorisation: the substrate is type-checked external to the model. The model produces tool-call messages; the substrate's admission hook accepts or rejects them; the substrate's executor library produces effects only on accepted envelopes. The model may be Turing-complete, may scheme, may reason about its own training; the substrate's admission logic is a finite typed function whose behaviour is independent of the model that produced the input. This factorisation is the load-bearing structural property and is the precondition under which the survival arguments above hold.
+
+\paragraph{Assumptions the substrate-layer guarantee does not survive.}
+
+\emph{The class registry is wrong.} If the operator mis-classifies a destructive method as reversible, the substrate's admission discipline does not catch it. A row insert that triggers a backup-prune-cascade is destructive by effect even if the SQL surface looks reversible. The grammar pushes the trust assumption onto the class registry; the registry is the operator's responsibility.
+
+\emph{The class registry is manipulable.} If the agent (or an upstream actor) can write to the class registry, the substrate's admission discipline collapses: any destructive method can be re-classified as reversible. Hardening the class registry is an operational responsibility of the deployment instance, not a property of the grammar.
+
+\emph{The rollback executor is faulty.} A rollback executor that claims to invert a method but does not (because of a bug, a race, or an adversarial state precondition) leaves the call's effects in place after the TTL expires. The companion substrate~\cite{programmableSovereignty2026} addresses this case as the failed-rollback amendment obligation: a rollback that fails is a constitutional event the substrate must publish rather than silently retry. The present paper inherits that posture but does not duplicate the discharge.
+
+\emph{The substrate is bypassed.} If the agent can issue tool calls that do not pass through the admission hook (because the agent has direct kernel access, because a side channel exists, because the operator runs an unmediated session), no substrate-layer property holds. Adoption is the limiting factor: a substrate-layer guarantee is interesting only for the deployments that route every tool call through the admission hook.
+
+\paragraph{The headline survival claim.}
+The substrate-layer guarantee holds under model-side adversarial assumptions that training-layer guarantees cannot match: misaligned model, strategic composition, alignment-faking, operator manipulation. The guarantee does not extend past the substrate's own correctness boundary (class registry, rollback executor, dispatch routing). The two-layer construction is the composition of these guarantees; neither layer claims more than its scope.

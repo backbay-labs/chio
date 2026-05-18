@@ -759,6 +759,46 @@
       "status": "assumed",
       "mapsTo": ["P4"],
       "notes": "Receipt v2 body-hash addressing: the kernel mints `ChioReceiptV2` whose `body_hash` field equals H(canonical_jcs(ReceiptV2BodyHashInput)) on the production hot path when the negotiated peer profile advertises `accepts_receipt_v2`. The replay store keys exclusively on body_hash; the legacy UUIDv7 alias is non-authoritative. Status remains `assumed` because the Lean toolchain is not in CI; the Rust shell is exercised by crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs which dispatches a real ChioKernel evaluate call and asserts the chio_receipts_v2 row keyed on body_hash."
+    },
+    {
+      "id": "proof.treaty_admission_iff_predicate_intersection",
+      "leanName": "Chio.Treaty.treaty_admission_iff_predicate_intersection",
+      "file": "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "mapsTo": ["P7"],
+      "notes": "Bounded treaty model showing bilateral treaty admission is equivalent to the intersection of treaty, left-polity, and right-polity predicates."
+    },
+    {
+      "id": "proof.treaty_admission_stable_under_ladder_floor",
+      "leanName": "Chio.Treaty.treaty_admission_stable_under_ladder_floor",
+      "file": "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "mapsTo": ["P7"],
+      "notes": "Bounded treaty model showing a satisfied trust-ladder floor leaves treaty predicate intersection admission unchanged."
+    },
+    {
+      "id": "proof.amendment_admissible_iff_backward_refinement",
+      "leanName": "Chio.Treaty.amendment_admissible_iff_backward_refinement",
+      "file": "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "mapsTo": ["P3"],
+      "notes": "Bounded amendment model tying constitutional amendment admissibility to an explicit backward-refinement proof term."
+    },
+    {
+      "id": "proof.amendment_without_refinement_rejected",
+      "leanName": "Chio.Treaty.amendment_without_refinement_rejected",
+      "file": "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "mapsTo": ["P3"],
+      "notes": "Bounded amendment model showing enactment is rejected when the backward-refinement proof is absent."
     }
   ]
 }

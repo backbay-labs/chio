@@ -1,0 +1,47 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{xurl}
+\usepackage{hyperref}
+\usepackage{microtype}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\newcommand{\codepath}[1]{\texttt{#1}}
+\newcommand{\thm}[1]{\texttt{#1}}
+
+\title{Tool Calls as Reversible-Action Admission:\\
+A Formal Grammar for Agentic AI Safety}
+
+\author{Anonymous for review}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+The agentic-AI safety literature treats safety as a property of the model. Constitutional AI, alignment-faking research, scheming risk, and situational-awareness work converge on the question of how to make a particular model behave well; the proposed solutions sit at training time, evaluation time, or interpretability time. We argue for an orthogonal property: safety can additionally be a property of the substrate that admits a tool call, independent of the model that produced the call. Every tool call an LLM agent issues is structurally an executive act, with a subject (a tool server), an authorisation chain (the agent on behalf of a user), and an effect in the world. A substrate that requires every destructive tool call to carry a typed rollback witness at admission, with a positive time-to-live (TTL) by construction, refuses tool calls a misaligned model can issue but cannot justify. This refusal holds even if alignment training has failed, the model is scheming, the model fakes alignment during evaluation, and the operator is manipulated, because the substrate is the verifier and not the agent. The argument is layered on the formal grammar of bounded executive action: a destructive tool call is admissible only as a typed witness carrying TTL, rollback receipt slot, and (for irreversible variants) a bilateral cosignature. Substrate safety composes with training safety; neither is sufficient alone. We sketch the formal grammar, name the threat model that survives, and discuss the relationship between an admission-layer construction and the existing alignment-research stack. The contribution is a structural reframing rather than a new theorem; the load-bearing claim is that runtime substrate guarantees can hold under model-side adversarial assumptions that training-time guarantees cannot survive.
+\end{abstract}
+
+\input{sections/01-introduction}
+\input{sections/02-background}
+\input{sections/03-tool-calls-as-executive-acts}
+\input{sections/04-formal-grammar}
+\input{sections/05-implementation-sketch}
+\input{sections/06-threat-model}
+\input{sections/07-discussion}
+\input{sections/08-limitations}
+\input{sections/09-conclusion}
+
+\bibliographystyle{plain}
+\bibliography{bib}
+
+\end{document}

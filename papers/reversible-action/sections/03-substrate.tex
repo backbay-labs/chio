@@ -1,0 +1,100 @@
+\section{The Reversible Action Substrate}
+\label{sec:substrate-ra}
+
+A reversible action substrate consists of an action taxonomy, a four-
+receipt grammar, an inverse executor for each reversible action, and a
+TTL-bounded amendment chain that conditions the active constitution on
+the instant the receipt is admitted. The taxonomy and the grammar are
+typed; the inverse executors are OS-level operations; the chain is the
+substrate-level model that connects the response side to the amendment
+side of the parent paper.
+
+\paragraph{Action taxonomy.}
+The action taxonomy has twelve variants partitioned into three classes.
+Five variants (allow, observe, warn, alert, block) are verdict tags
+that do not dispatch to an executor; they are observed by the
+admission predicate and recorded by the receipt grammar without OS-
+level side effects. Four variants (file quarantine, persistence
+disable, process-tree suspend, egress restriction) are reversible:
+each has a forward executor and an inverse executor, and the rollback
+receipt is admissible when the inverse executor's signed completion
+matches the forward executor's recorded effect. Three variants
+(process-tree terminate, network isolate, grant revoke) are
+destructive: each has a forward executor without an inverse, and
+admission reduces to bilateral predicate intersection between a device
+polity and an operator polity.
+
+The partition is structural rather than operational. A reversible
+variant is one for which an inverse executor exists whose effect, when
+applied to the post-effect state, returns the pre-effect state up to
+the substrate's notion of equivalence. File rename is the canonical
+instance: a forward rename moves a file to a quarantine root, the
+inverse rename moves it back to its original path, and the content-
+hash gate on the inverse rejects the operation if the original path
+has been overwritten in the interim. Process-tree suspend via SIGSTOP
+and its inverse SIGCONT is a second instance: the inverse is valid
+against the surviving pid set, with the substrate recording which pids
+in the original target list have since exited.
+
+\paragraph{Four-receipt grammar.}
+Each action chain emits up to four receipt families. A request receipt
+records the action plan: action identifier, action class, target root
+node, dry-run flag, TTL duration, rollback reference, reason, issued-
+at timestamp, expires-at timestamp, and node and edge counts of the
+target subgraph. An execution receipt records the executor's
+completion: execution identifier, action identifier, started-at and
+completed-at timestamps, an evidence bundle, the actor, and the
+effects produced (forward effects only). A rollback receipt closes the
+chain when the inverse executor runs: rollback identifier, execution
+identifier, action identifier, rolled-back-at timestamp, executor key,
+and the inverse effect set with content-hash parity check against the
+forward effect set. An acknowledgement receipt records the operator's
+attestation that the chain has been observed: acknowledgement
+identifier, execution identifier, acknowledged-by, optional note, and
+optional control-correlation token carrying the acknowledgement-token
+hash.
+
+The receipt grammar is canonical-byte stable. Each receipt body is
+serialized under the RFC 8785 canonical JSON discipline the parent
+paper's substrate already requires, signed under the polity's Ed25519
+keypair, and appended to a per-family ledger. Cross-family references
+(rollback's execution identifier, acknowledgement's execution
+identifier, control-correlation's response-action identifier) are
+checked at verification time by the verifier-owned ledger lookup, not
+by trust in the signing kernel.
+
+\paragraph{Bilateral envelopes on destructive variants.}
+A destructive action's admission requires a bilateral DSSE envelope
+over the canonical request body. The device-polity signature and the
+operator-polity signature must be drawn from independent keys; the
+parent paper's strict bilateral DSSE verifier
+(\codepath{crates/chio-federation/src/bilateral_dsse.rs}) rejects
+envelopes with reused signer keys, wrong predicate types, and
+noncanonical payloads. The reduction \thm{destructive_action_requires_bilateral_admission}
+in Section~\ref{sec:model-ra} specializes the treaty intersection
+theorem to the destructive subclass of the action taxonomy.
+
+\paragraph{TTL-bounded amendment chain.}
+A TTL-bounded amendment is a constitutional delta paired with a
+positive TTL duration. The pre-amendment constitution is the
+substrate's baseline; the post-amendment constitution is the
+constitution active inside the TTL window; the auto-reversion at TTL
+expiry returns the baseline. The chain is the sequence of such
+amendments issued during the substrate's lifetime, indexed by
+issued-at timestamp.
+
+The chain is the response-side analog of the parent paper's amendment
+trajectory. The parent's chain machinery
+\thm{essential_preserved_chain} proves that essential admission is
+preserved across an amendment sequence whose every step carries a
+preservation witness. The TTL-bounded variant adds the auto-reversion:
+each step's effect is bounded by the TTL, and the baseline is the
+substrate-level invariant the chain returns to whenever the topmost
+window expires.
+
+The substrate does not assume real-time semantics. The substrate
+treats time as a monotonic integer counter, and the TTL is a duration
+in the same counter's units. A real-time scheduler (deployed
+separately) advances the counter and triggers expiry callbacks; the
+substrate model abstracts the scheduler as an axiom in
+Section~\ref{sec:limitations-ra}.

@@ -1,0 +1,15 @@
+\section{Receipt Admission as a Primitive}
+
+Signed-evidence systems decide one of two questions. Supply-chain transparency logs (Certificate Transparency, Rekor, in-toto, SLSA) answer how an artifact was built and whether a build-time claim was published to a public log~\cite{rfc9162,sigstoreSecurity,torres2019intoto,slsa,dsse}. Authorization systems (Cedar, OPA, capability OSes) answer whether a principal may perform an action inside a single trust boundary~\cite{cedarOOPSLA2024,cedarFSE2024,miller2006composition,klein2009sel4}. Neither addresses the question agent systems force: whether two organizations jointly admitted a cross-vendor action under predicates each holds independently, in a form a third-party verifier can replay over canonical bytes.
+
+The bilateral-receipt-admission primitive is the smallest construction that answers that question. It separates four concerns:
+
+\paragraph{Local enforcement.} Each kernel evaluates a local predicate set against a tool-call request. The predicate set may include capability attenuation~\cite{miller2006composition}, information-flow gates~\cite{isolategptNDSS2025}, or arbitrary local policy. The local decision is recorded in a canonical receipt body signed with the kernel's Ed25519 key.
+
+\paragraph{Treaty-bound co-signing.} When the action crosses an organizational boundary, both kernels independently sign a DSSE envelope whose subject digest binds the two receipts plus the treaty's scope, ladder, and continuation state. The envelope is admissible only when both signatures verify, the predicate type matches, and the canonical bytes are identical at both signers.
+
+\paragraph{Strict rejection.} A verifier accepts only envelopes that satisfy every precondition. The rejection codes are part of the protocol so downstream audit can identify the failing precondition.
+
+\paragraph{Selective disclosure at presentation.} BBS group signatures~\cite{boneh2004bbs,bbsDraft,etsiSelectiveDisclosure2025} project the receipt body for presentation to a third party (regulator, auditor, counterparty) without exposing every field. Ed25519 over canonical bytes remains authoritative for audit corpora; BBS is presentation-only.
+
+The four concerns compose: local enforcement is independent of the cosigning protocol; cosigning is independent of selective disclosure; the verifier's rejection codes are independent of all three. A deployment can adopt them incrementally.

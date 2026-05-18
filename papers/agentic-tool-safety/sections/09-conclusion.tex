@@ -1,0 +1,12 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+Agentic-AI safety has been treated, in the literature so far, as a property of the model. The training-time stack (RLHF, Constitutional AI), the evaluation-time stack (oversight, debate, red-teaming), and the interpretability-time stack all operate on the model as the object of analysis. Each thread has produced real progress on a real problem.
+
+We have argued that an orthogonal layer is available. Safety can additionally be a property of the substrate that admits a tool call, enforced as a typed precondition on the action's envelope rather than as a verdict on the model's output. The structural commitments of this layer are a positive TTL by construction, a typed rollback receipt slot for reversible actions, bilateral cosignature for destructive ones, and an admission predicate evaluated by a verifier external to the model. These commitments hold under threat models the training-time stack cannot survive: a misaligned model, strategic composition, alignment-faking, operator manipulation.
+
+The two layers compose. Training shapes what the model wants; admission shapes what the substrate is willing to execute. Neither layer alone is sufficient: training may fail, and admission may be too narrow if the class registry is wrong or the dispatch is bypassed. The combination is a stronger construction than either layer in isolation, and it is the construction the field would benefit from naming explicitly.
+
+The structural contribution of this paper is the framing. The load-bearing formal content lives in companion work that develops the substrate, the grammar, and the discharged theorems. We see three near-term directions. First, a worked benchmark of misaligned-agent behaviours against admission-layer protected and unprotected deployments, to expose the empirical gap. Second, formal-methods discipline on the class registry, so that the substrate's trust assumption is itself a checkable artifact. Third, integration with existing tool-calling protocols, so that the admission hook becomes a deployment option rather than a research prototype.
+
+A scheming model that defeats alignment training still cannot, by construction, present an admissible envelope for a destructive call whose effects it cannot reverse. The substrate is the verifier, not the agent. That is a safety property of a kind the literature has not yet had, and it is available today.

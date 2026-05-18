@@ -17,3 +17,6 @@ import Chio.Proofs.AttenuationWitness
 import Chio.Proofs.HandshakeNegotiation
 import Chio.Proofs.SiblingSumBudget
 import Chio.Capability.Delegation
+import Chio.Treaty.Intersection
+import Chio.Treaty.PredicateLang
+import Chio.Treaty.BilateralAccept

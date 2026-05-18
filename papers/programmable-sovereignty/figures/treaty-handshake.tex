@@ -1,0 +1,20 @@
+\begin{tikzpicture}[
+  node distance=0.85cm and 1.05cm,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=4pt, font=\footnotesize},
+  arr/.style={-Latex, line width=.4pt}
+]
+\node[box] (a) {Kernel A\\local policy};
+\node[box, right=of a] (scope) {Treaty scope\\and ladder hash};
+\node[box, right=of scope] (b) {Kernel B\\local policy};
+\node[box, below=of scope] (pred) {Strict bilateral\\predicate};
+\node[box, below left=of pred] (siga) {A signs\\DSSE PAE};
+\node[box, below right=of pred] (sigb) {B signs\\DSSE PAE};
+\node[box, below=of pred, yshift=-1.0cm] (ver) {Buyer verifier checks\\two keys, subject, lease, governance, treaty refs};
+\draw[arr] (a) -- (scope);
+\draw[arr] (b) -- (scope);
+\draw[arr] (scope) -- (pred);
+\draw[arr] (pred) -- (siga);
+\draw[arr] (pred) -- (sigb);
+\draw[arr] (siga) -- (ver);
+\draw[arr] (sigb) -- (ver);
+\end{tikzpicture}

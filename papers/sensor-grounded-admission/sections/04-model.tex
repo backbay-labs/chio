@@ -1,0 +1,61 @@
+\section{Formal Model}
+\label{sec:model}
+
+The model adds a sensor-state attestation type, a sensor-attested receipt type, and an admission predicate conditioned on both fields to the parent paper's predicate language. The construction is at the predicate layer; no cryptographic primitive is assumed.
+
+\paragraph{Provider records and attestations.}
+Let $\mathsf{ProviderKind}$ be a finite enumeration over a small fixed tag set. A provider record is a tuple
+\[
+  \rho = (\mathit{id},\ \mathit{kind},\ \mathit{inst},\ \mathit{act},\ \mathit{healthy},\ \mathit{deg},\ \mathit{reasons},\ \mathit{drop},\ \mathit{miss}),
+\]
+with $\mathit{id} \in \mathsf{ProviderId}$, $\mathit{kind} \in \mathsf{ProviderKind}$, the four flags in $\{\bot,\top\}$, $\mathit{reasons}$ a finite list of strings, and $\mathit{drop}, \mathit{miss} \in \mathbb{N}$. A sensor attestation $A$ is a finite list of provider records, together with a clock record $(\tau, \mathit{src}, \mathit{sync}, \mathit{unc})$ as defined in Section~\ref{sec:substrate}.
+
+The predicate $\mathsf{providerHealthy}(A, \mathit{id})$ holds iff $A$ contains a record with the given identifier whose installed, active, and healthy flags are all $\top$, and is decidable on $A$.
+
+\paragraph{Sensor-attested receipts.}
+A sensor-attested receipt $\hat r$ is a pair $(r, A)$ where $r$ is a canonical receipt body and $A$ is a sensor attestation. The canonical-JSON subject digest covers both fields jointly: two receipts $\hat r_1 = (r, A_1)$ and $\hat r_2 = (r, A_2)$ that share a body but differ on attestation have distinct subject digests, so the receiver cannot silently treat them as the same.
+
+\paragraph{Constitution-required sets.}
+A constitution $K$ is a finite list of predicates over receipts as in the parent paper, additionally carrying a required-set map $\mathsf{Req}_K : \mathsf{ReceiptFamily} \to \mathsf{Set}(\mathsf{ProviderId} \times \mathsf{ProviderKind})$ and per-family thresholds $\mathsf{Drop}_K, \mathsf{Miss}_K : \mathsf{ReceiptFamily} \to \mathbb{N}$.
+
+\paragraph{Admission under attested substrate.}
+The sensor-attested admission predicate is
+\[
+\begin{aligned}
+  \mathsf{admissibleUnderSensorState}(K, \hat r) =\
+   & \mathsf{allPredicates}(K.\mathit{body}, r) \\
+   &\wedge\ \mathsf{requiredSetCovered}(K, \hat r) \\
+   &\wedge\ \mathsf{dropAndMissBounded}(K, \hat r),
+\end{aligned}
+\]
+where $\mathsf{requiredSetCovered}$ holds iff every entry in $\mathsf{Req}_K$ for $\hat r$'s family corresponds to a $\mathsf{providerHealthy}$ entry in $A$, and $\mathsf{dropAndMissBounded}$ holds iff every provider in $A$ has dropped-event count below $\mathsf{Drop}_K$ and deadline-miss count below $\mathsf{Miss}_K$ for the receipt's family. Both auxiliary predicates are decidable on $A$ and $K$.
+
+\paragraph{Headline theorem.}
+For every constitution $K$ whose required set $\mathsf{Req}_K$ for the body's family is non-empty, and for every body $r$ that admits under $K$'s body predicates, there exist attestations $A_h, A_d$ such that $\mathsf{admissibleUnderSensorState}(K, (r, A_h)) = \top$ and $\mathsf{admissibleUnderSensorState}(K, (r, A_d)) = \bot$.
+
+The proof is a $\Sigma$-construction. It destructs the body-admission hypothesis to obtain a body $r$, instantiates the existential with two fixed attestations (a healthy attestation listing one healthy provider record per entry in $\mathsf{Req}_K$, with installed, active, healthy all $\top$ and zero drop and miss counts; and an empty attestation), and discharges the admission predicate at each branch by rewriting under the family lookup and the supporting lemmas. The list-induction work lives inside the supporting lemmas: $\mathsf{requiredSetCovered\_healthyWitness}$ lifts a per-entry healthy claim over $\mathsf{Req}_K$ via $\mathsf{List.all\_eq\_true}$, and $\mathsf{not\_requiredSetCovered\_degradedWitness}$ case-splits on $\mathsf{Req}_K$ with the cons case discharged by $\mathsf{simp}$ and the nil case ruled out by the non-emptiness hypothesis. The headline itself does not induct over the provider list; it instantiates two fixed witnesses and rewrites. The empty list suffices as a degraded witness; the stronger separation that the predicate reliably rejects any short-falling attestation is the required-set-coverage projection (Theorem~3).
+
+\paragraph{Worked example.}
+Take $K$ with required set on the response-execution family
+\[
+  \mathsf{Req}_K = \{(\mathsf{endpointSecurity}, \mathit{kernelCallout}),\ (\mathsf{networkExtension}, \mathit{networkFlow})\},
+\]
+$\mathsf{Drop}_K = \mathsf{Miss}_K = 0$, and let $r$ be a canonical response-execution body that body-admits under $K$. The healthy witness pairs $r$ with $A_h = [\,\rho_{\mathsf{ep}},\ \rho_{\mathsf{net}}\,]$, each $\rho$ naming its provider with all four flags installed, active, healthy, not-degraded and counts $(0,0)$. The degraded witness pairs the identical $r$ with $A_d = [\,]$. Both receipts share body bytes; their subject digests differ because the digest covers both fields. The admission predicate discharges to $\mathsf{admissibleUnderSensorState}(K, \hat r_h) = \top$ and $\mathsf{admissibleUnderSensorState}(K, \hat r_d) = \bot$: the required-set check matches both $\mathsf{Req}_K$ entries on $A_h$ and fails $\mathsf{endpointSecurity}$ on $A_d$. The structural distinction lives in the attestation, not the body.
+
+\paragraph{Ladder structuring.}
+The partition-contingency mode is
+\[
+  \mathsf{partitionContingencyMode}(K, \hat r) \;\Leftrightarrow\;
+   \mathsf{attestedHealthy}(K, \hat r) \,\sqsubset\, \mathsf{Req}_K(\hat r.\mathit{family}),
+\]
+where $\sqsubset$ denotes the strict-sublist relation (sublist witness paired with list inequality) and $\mathsf{attestedHealthy}$ is the order-preserving subsequence of $\mathsf{Req}_K$ entries that the attestation asserts healthy. The biconditional is \emph{partition\_contingency\_mode\_iff\_degraded\_subset}. The forward direction extracts the sublist witness from $\mathsf{attestedHealthy} = \mathsf{filter}(\cdot, \mathsf{Req}_K)$ and establishes list-distinctness from the strict length inequality. The backward direction recovers the strict length inequality via $\mathsf{Sublist.length\_le}$ together with $\mathsf{Sublist.eq\_of\_length}$. Both rely on the structural lemma that filtering preserves the sublist relation.
+
+The destructive-admission floor is conditioned on a projection of the admission predicate's three-conjunct shape. The supporting theorem \emph{healthy\_attestation\_required\_for\_destructive\_admission} extracts the required-set coverage Boolean from any admitted receipt via a $\mathsf{Bool.and\_eq\_true}$ decomposition. The destructive-family discriminator appears in the signature for prose alignment with the floor's intended invariant but does not appear in the proof body; the projection holds for any admitted receipt, and a quorum-required admission rejects any cosigner whose attestation falls short of the required set.
+
+\paragraph{Amendment re-admission.}
+The supporting theorem \emph{degraded\_sensor\_admission\_requires\_re\_attestation} states that given $\mathsf{partitionContingencyMode}(\mathit{decl}_{\mathit{prev}}, A) = \top$ and $\mathsf{admissibleUnderSensorState}(K', \hat r) = \top$, the witness's new mode evaluates $\mathsf{partitionContingencyMode}(\mathit{decl}_{\mathit{next}}, A) = \bot$ on the same attestation bytes. The amendment narrows the substrate-required set far enough that what fell short of $\mathsf{Req}_K(\hat r.\mathit{family})$ now covers $\mathsf{Req}_{K'}(\hat r.\mathit{family})$ in full: a structural improvement, not a relabel.
+
+\paragraph{Threat model.}
+The parent paper's adversary controls the agent process, malformed evidence, and stale treaty references; cannot break the listed cryptographic primitives; and is honest-by-assumption with respect to its own substrate state. The threat model here strictly strengthens this last clause: a kernel that silently lost a sensor mid-decision and produced a body that parses cleanly is now also signing an attestation that asserts the lost sensor is healthy. The silent-degradation path becomes a signed-false-attestation path, falsifiable by any out-of-band sensor-coverage auditor; the parent admission predicate, conditioned only on body fields, could not state that audit obligation structurally. Attestation and body are signed by the same kernel key in the construction here; a separate attestation key, rooted in a TEE platform's quote-signing identity, would make the strengthening cryptographic in addition to structural and is named as an extension axis.
+
+The model does not introduce the audit channel; it introduces the structural placement that makes one coherent. A polity that admits a receipt without evaluating its attestation has chosen to skip a check the substrate makes available, and a polity that admits under a degraded attestation has chosen the partition-contingency mode rather than the receipt-backed mode. Both choices are recorded in the receiver's history as constitutional events.

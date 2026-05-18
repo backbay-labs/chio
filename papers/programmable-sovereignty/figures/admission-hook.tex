@@ -1,0 +1,30 @@
+\begin{tikzpicture}[
+  node distance=0.85cm and 1.0cm,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=4pt, font=\footnotesize},
+  decision/.style={draw, diamond, aspect=1.8, align=center, inner sep=1pt, font=\scriptsize},
+  allowterm/.style={draw, rounded corners=2pt, align=center, inner sep=4pt, font=\footnotesize, fill=black!5},
+  denyterm/.style={draw, double, rounded corners=2pt, align=center, inner sep=4pt, font=\footnotesize},
+  arr/.style={-Latex, line width=.4pt}
+]
+\node[box] (req) {Tool call\\request};
+\node[decision, right=of req] (parse) {Chiodos\\context\\parseable?};
+\node[denyterm, above right=of parse] (denyparse) {Deny:\\malformed\\context};
+\node[decision, below right=of parse] (fed) {Chiodos\\context\\present?};
+\node[allowterm, right=of fed, yshift=0.9cm] (plain) {Non-Chiodos\\allow path};
+\node[decision, below right=of fed] (treaty) {Treaty ref\\valid?};
+\node[denyterm, below=of treaty] (denytreaty) {Deny:\\missing or\\invalid treaty};
+\node[box, right=of treaty] (store) {Verifier-owned\\artifact store};
+\node[decision, right=of store] (eval) {Admission\\accepted?};
+\node[allowterm, above right=of eval] (allow) {Allow + signed\\receipt metadata};
+\node[denyterm, below right=of eval] (deny) {Deny before\\dispatch};
+\draw[arr] (req) -- (parse);
+\draw[arr] (parse) -- node[above, font=\scriptsize]{no} (denyparse);
+\draw[arr] (parse) -- node[left, font=\scriptsize]{yes} (fed);
+\draw[arr] (fed) -- node[above, font=\scriptsize]{no} (plain);
+\draw[arr] (fed) -- node[left, font=\scriptsize]{yes} (treaty);
+\draw[arr] (treaty) -- node[above, font=\scriptsize]{yes} (store);
+\draw[arr] (treaty) -- node[left, font=\scriptsize]{no} (denytreaty);
+\draw[arr] (store) -- (eval);
+\draw[arr] (eval) -- node[above, font=\scriptsize]{yes} (allow);
+\draw[arr] (eval) -- node[right, font=\scriptsize]{no} (deny);
+\end{tikzpicture}

@@ -1,0 +1,260 @@
+\section{Five Case Studies}
+\label{sec:cases}
+
+Each case study below is organized around three questions.
+First, was the authority, on its statutory or constitutional face, intended as time-bounded?
+Second, did the ratcheting pattern in fact occur,
+in the sense that an authority granted as exceptional became routine or permanent?
+Third, would the typed-rollback grammar developed in Part~\ref{sec:grammar} have structurally prevented the ratchet?
+The third question is the most demanding and the one on which the Article's structural claim must stand or fall.
+The Article is candid where the answer is contested or where the case study fits the framing less cleanly.
+The five case studies vary in fit, and the variation is itself instructive.
+
+\subsection{Weimar Article 48: the canonical case}
+\label{sec:cases:weimar}
+
+Article~48 of the Weimar Constitution \cite{TODO_weimar_const_art48} authorized the Reich President
+to take ``the necessary measures'' to restore public security and order
+in cases where it had been ``substantially disturbed or endangered.''
+The article required the Reich President to notify the Reichstag of measures taken,
+and permitted the Reichstag to demand the suspension of any such measure.
+The drafters of the article, working within the constitutional convention at Weimar in 1919,
+appear to have understood the authority as a narrowly bounded emergency power
+designed to provide the new republic with a tool for response to acute civil disorder
+\cite{TODO_caldwell_popular_sovereignty,TODO_jacobson_weimar_pdf}.
+
+The historical trajectory of the article's use is well-documented.
+Through the 1920s, the authority was invoked in response to discrete crises:
+the hyperinflation of 1923, the political assassinations of the early decade,
+and the recurring municipal-level civil disturbances that characterized the era.
+The invocations during the early period were generally followed by Reichstag review,
+and the measures taken were, in many cases, subsequently regularized through ordinary legislation
+or allowed to lapse \cite{TODO_kershaw_hitler}.
+
+The pattern shifted in the early 1930s.
+The Bruening, Papen, and Schleicher governments of 1930 to 1933 used Article~48 not as a response to
+discrete crises but as a substitute for ordinary legislation that could not pass the fragmented Reichstag.
+By 1932, governance by Article~48 decree had become routine,
+and the article's text -- which spoke of measures necessary to restore public order --
+had been stretched to cover budgetary decisions, currency policy, and the regulation of commerce
+\cite{TODO_caldwell_popular_sovereignty,TODO_mommsen_weimar}.
+The Reichstag Fire Decree of February 28, 1933, issued under Article~48 in response to the burning of the Reichstag building,
+suspended civil liberties indefinitely.
+The Enabling Act of March 24, 1933, although procedurally distinct, was made possible in part by the
+prior normalization of governance by emergency decree.
+
+The historiography on whether the Article~48 ratchet was structural or political is contested.
+Ian Kershaw \cite{TODO_kershaw_hitler} treats the trajectory as substantially political,
+emphasizing the role of specific political actors and the contingency of particular decisions.
+Hans Mommsen \cite{TODO_mommsen_weimar} treats it as more structural,
+emphasizing the way that the article's text and the constitutional design surrounding it
+provided no built-in mechanism for the lapse of decreed measures.
+Peter Caldwell's work on popular sovereignty in Weimar
+\cite{TODO_caldwell_popular_sovereignty} occupies an intermediate position.
+The Article does not need to resolve this dispute.
+It needs only the narrower observation that Article~48 contained no typed rollback obligation:
+the Reich President could exercise the authority without exhibiting, at the moment of exercise,
+a constructible path back to the prior state.
+The decrees taken under the authority created facts on the ground -- suspended civil liberties,
+imprisoned dissidents, dissolved political organizations -- that did not return to the prior state
+when the formal emergency ended.
+
+The typed-rollback grammar would have structurally constrained the article's use in a way the original
+text did not.
+A grammar that required the Reich President, at the moment of exercising Article~48 authority,
+to exhibit a witness for the path back to the prior state would have made decrees creating irreversible
+facts on the ground unconstructible.
+The grammar would not have prevented the political use of the article to circumvent the Reichstag,
+but it would have prevented the conversion of that political use into permanent constitutional facts.
+This is the cleanest application of the framing to a historical case,
+and the case study against which the Article's structural claim is most defensible.
+
+\subsection{Section 230 and the takedown ecosystem}
+\label{sec:cases:section230}
+
+Section~230 of the Communications Decency Act \cite{TODO_section230} is not in its primary form an emergency-authority statute.
+The provision immunizes interactive computer services from civil liability for content posted by users,
+and immunizes good-faith content-moderation actions from civil liability.
+The case-study selection here is consequently the one most in tension with the Article's framing.
+The argument that Section~230 bears structural similarity to a delegated emergency authority requires acknowledgement
+that the statute does not, on its face, grant any emergency power and does not, on its face, constitute a delegation
+of executive authority.
+
+The structural similarity is downstream of how the statute operates in conjunction with the Digital Millennium Copyright Act's
+notice-and-takedown procedure \cite{TODO_dmca_512} and with the platform self-regulatory practices that have arisen
+in the statute's shadow.
+The DMCA notice-and-takedown procedure permits a copyright holder to request removal of allegedly infringing content.
+The platform that receives the notice has a strong statutory incentive to remove the content without making an
+independent merits determination, because removal preserves the safe harbor and refusal does not.
+The platform that wishes to contest the notice has a counter-notice procedure available,
+but the structural default of the regime is removal followed by the absence of any obligation to restore.
+Section~230 immunizes the platform's good-faith removal decision regardless of whether the removal was substantively warranted.
+The combined effect is a takedown regime in which removal is structurally a time-bounded executive act
+of a private intermediary,
+with no statutory mechanism that requires the intermediary to construct a path back to the prior state.\footnote{%
+Daphne Keller has argued at length that the DMCA-Section~230 interaction produces a takedown regime that operates
+in important respects like a privatized administrative regime
+\cite{TODO_keller_takedowns}.
+The Article's structural claim is consistent with Keller's empirical account.}
+
+The ratcheting pattern in this regime is less dramatic than in the Weimar case but is documented.
+Empirical work on DMCA notice-and-takedown indicates that a substantial fraction of notices target content for which
+the underlying infringement claim is dubious or absent \cite{TODO_urban_quilter_dmca}.
+The removed content is, in practice, not restored even when the counter-notice procedure produces no response from
+the original requester.
+The platform's safe harbor incentive favors removal as the default,
+and the counter-notice procedure is rarely used because of the friction it imposes on the user whose content was removed
+\cite{TODO_seng_dmca}.
+
+The typed-rollback grammar would, in this regime, have a more specific implication.
+A removal action under the DMCA-Section~230 regime would, under the grammar,
+require the platform to construct, at the moment of removal, a witness for restoration of the content
+in the case that the underlying claim is later determined to be without merit.
+The witness is not the counter-notice procedure as currently constituted,
+which operates at the moment of objection rather than at the moment of removal.
+The witness is a precondition for the removal action itself.
+A removal that cannot be reversed by construction would fail to type-check.
+
+The application of the grammar to this regime is contested on multiple fronts.
+Platforms operating at the scale of contemporary social-media services would argue that a typed-rollback discipline
+is impractical at scale because the volume of removals is too high to permit individualized rollback construction.
+Eric Goldman's writing on Section~230 \cite{TODO_goldman_section230} would observe that the grammar imposes a
+structural cost on intermediaries that the existing statute deliberately declines to impose.
+Danielle Citron's writing on intermediary liability \cite{TODO_citron_intermediary_liability} would argue, from a
+different direction, that the typed-rollback discipline does not address the harms produced by content that should
+have been removed but was not.
+The Article acknowledges these objections without resolving them.
+The structural similarity to a delegated emergency authority is the load-bearing observation;
+the policy question of whether the grammar should apply to this regime is a separate question on which the
+Article does not take a position.
+
+\subsection{GDPR Article 17: erasure without rollback}
+\label{sec:cases:gdpr}
+
+Article~17 of the General Data Protection Regulation \cite{TODO_gdpr_art17} grants data subjects a right to erasure of
+their personal data in specified circumstances.
+The article's enforcement has produced a body of erasure orders against search-engine providers and platform operators,
+of which the \emph{Google Spain} decision \cite{TODO_google_spain} is the canonical example.
+The erasure orders are time-bounded executive acts in the formal sense that they are issued by administrative bodies
+operating under defined procedures,
+and they are subject to judicial review on familiar administrative-law grounds.
+
+The ratcheting pattern in this regime takes a different form from the Weimar case.
+There is no observed trajectory in which the erasure authority has been used to dissolve the underlying constitutional order
+or to substitute for ordinary legislation.
+The pattern that this Article identifies is the structural irreversibility of individual erasure orders.
+An erasure order requires the controller to delete or de-index the targeted data.
+The deletion is, as a practical matter, irreversible:
+even if the order is later set aside by judicial review, the data is not, in general, restored
+\cite{TODO_kuner_gdpr_erasure}.
+The order is, in form, a time-bounded executive act.
+It is, in effect, a permanent alteration of the data ecosystem.
+
+The Article's framing here is narrower than in the Weimar case.
+The claim is not that the GDPR Article~17 regime has ratcheted into something other than what it was designed to be.
+The claim is that individual erasure orders share the structural defect of an emergency authority granted without a
+typed rollback witness:
+the order can be admitted without exhibiting, at the moment of admission, a constructible path back to the prior state.
+The witness is not currently a requirement of the regime.
+
+Mantelero's writing on GDPR enforcement \cite{TODO_mantelero_gdpr_enforcement} and Kuner's analysis of the right to be forgotten
+\cite{TODO_kuner_gdpr_erasure} both observe the structural irreversibility of individual erasure orders.
+Neither author proposes a typed-rollback discipline as the corrective.
+The Article's contribution to this literature is the identification of the structural similarity to the emergency-authority
+pattern,
+and the proposal that the typed-rollback grammar provides a more principled corrective than ad hoc restoration mechanisms.
+
+The fit of the case study to the framing is intermediate.
+The GDPR Article~17 regime is not on its face an emergency-authority regime,
+and the data-protection scholars who have written on it have not, in general, framed it as such.
+The structural similarity is at the level of the form of authority rather than the substance of the regime.
+The Article includes the case study because the structural similarity is real and because the corrective the
+grammar proposes is applicable to the regime even though the regime is not, in its self-understanding, an emergency-authority regime.
+
+\subsection{FISA Section 702: emergency surveillance authorizations}
+\label{sec:cases:fisa702}
+
+Section~702 of the Foreign Intelligence Surveillance Act, codified at 50 U.S.C. \S~1881a \cite{TODO_fisa_702_statute},
+provides for the acquisition of foreign-intelligence information from non-U.S. persons reasonably believed to be located
+outside the United States.
+The section includes an emergency authorization mechanism that permits the Attorney General,
+in conjunction with the Director of National Intelligence,
+to authorize a surveillance program in advance of judicial approval where the Attorney General determines that an emergency exists.
+
+The Privacy and Civil Liberties Oversight Board's 2014 report on the Section~702 program
+\cite{TODO_pclob_702_report}
+and the declassified opinions of the Foreign Intelligence Surveillance Court
+\cite{TODO_fisc_702_opinions}
+document the operation of the emergency authorization mechanism in practice.
+The mechanism is invoked rarely in absolute terms but operates at a boundary of judicial review that the original
+statutory text did not contemplate.
+The information collected under an emergency authorization remains in the holdings of the collecting agency
+even if the authorization is later determined to have been improperly granted.
+
+The structural defect, on the framing this Article develops, is the absence of a typed rollback witness for
+information collection.
+The mechanism authorizes the collection;
+it does not require, at the moment of authorization, the construction of a path back to the pre-collection state.
+The targets of the collection do not return to a pre-collection state when the emergency authorization is later
+reviewed or withdrawn.
+The collected information persists.
+
+The Article's claim here is the most cautious of the five case studies.
+The public record on Section~702 emergency authorizations is incomplete.
+The declassified opinions and PCLOB reports provide an authoritative but partial picture of the program's operation.
+A national-security-law scholar with classified-clearance access to the full record may have grounds to dispute the
+characterization above.
+The structural claim is offered as a working hypothesis on the basis of the available public record,
+with explicit acknowledgement that the record is incomplete.
+The typed-rollback grammar's applicability to surveillance authorities depends on whether information collection can,
+in principle, be made reversible by construction.
+The cryptographic literature on revocable encryption \cite{TODO_revocable_encryption_lit} suggests that some forms of
+collection can be made constructively reversible.
+Whether the construction is operationally feasible in the surveillance context is an empirical question on which
+the Article does not take a position.
+
+\subsection{The 2001 AUMF: a quarter-century of unbounded authorization}
+\label{sec:cases:aumf}
+
+The Authorization for Use of Military Force enacted by Congress on September 18, 2001 \cite{TODO_aumf_2001}
+permits the President to use ``all necessary and appropriate force'' against ``those nations, organizations, or persons
+he determines planned, authorized, committed, or aided'' the September 11 attacks.
+The text contains no geographic limit, no sunset, and no requirement of periodic reauthorization.
+
+The trajectory of the AUMF's use is documented at length by the Brennan Center
+\cite{TODO_brennan_center_aumf} and by scholarly accounts in Chesney \cite{TODO_chesney_aumf}
+and Jaffer \cite{TODO_jaffer_aumf}.
+By 2024, the authorization had been cited as legal basis for armed action in at least eight named theaters,
+including territories of states not in existence as targets of policy at the time of the authorization's enactment.
+The Islamic State of Iraq and the Levant, which did not exist in any form in 2001, has been characterized as a
+covered organization under the AUMF on the legal theory that it is a successor entity to al-Qaeda in Iraq.
+The expansion of the authority through the doctrine of associated forces has been documented in Department of Justice
+white papers, declassified Office of Legal Counsel opinions, and the periodic ``war powers'' reports submitted to Congress
+under the War Powers Resolution.
+
+Periodic legislative efforts to repeal and replace the 2001 AUMF, including proposals by Senators Kaine and Young
+across multiple Congresses, have not produced enacted legislation.
+The pattern is the equilibrium failure described in Part~\ref{sec:pattern}:
+the default at each successive period is continuation,
+and the political coalition required to enact a replacement is the same coalition required to enact a repeal.
+That coalition has not assembled in the twenty-five years since the original enactment.
+
+The typed-rollback grammar's application to the AUMF is the most politically charged of the five case studies.
+The application is structural: the original AUMF was enacted without a typed rollback witness,
+which is to say, without a requirement that the President exhibit, at the moment of authorizing the use of force,
+a constructible path back to the pre-authorization state.
+The grammar would have required the original authorization to specify the conditions under which the use of force
+was to terminate and the state of affairs to which the post-termination order would return.
+A military action that could not exhibit, at the moment of authorization, a constructible path back to the prior state
+would have failed to type-check.
+
+The political content of this case study is not the Article's subject.
+The Article does not take a position on the merits of any particular use of force under the AUMF or on the
+desirability of any particular successor authorization.
+The structural claim is that the original AUMF's grant of unbounded authority is a clear instance of the
+ratcheting pattern,
+and that the typed-rollback grammar would have made the ratchet structurally unavailable.
+A reader who disagrees with the structural claim on this case study can disagree with it without disturbing the
+Article's claims about the other four cases.
+The AUMF is included because it is the most prominent contemporary American example of the ratcheting pattern,
+and because a structural account that omitted it would be incomplete.

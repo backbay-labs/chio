@@ -1,0 +1,137 @@
+\section{Formal Model}
+\label{sec:model-ra}
+
+The model abstracts away the OS executor, the canonical JSON encoder,
+and the receipt ledger; those lower layers are audited assumptions in
+the proof manifest. The institutional core that remains is the
+executive-action type, its TTL invariant, the rollback receipt, the
+TTL-bounded amendment chain, and the composition theorem connecting
+the response side to the parent paper's amendment side.
+
+\paragraph{Executive action.}
+An executive action is a structure that cannot be constructed without
+a positive TTL witness:
+\[
+  \mathsf{ExecutiveAction} =
+  (\mathit{rid},\,\mathit{t_{\text{issued}}},\,\mathit{ttl},\,
+   \mathit{ttlPos},\,\mathit{kind},\,\mathit{rb})
+\]
+where $\mathit{rid}$ is the receipt identifier, $\mathit{t_{\text{issued}}}$
+is the issued-at instant, $\mathit{ttl}$ is the duration in counter
+units, $\mathit{ttlPos}$ is the field-level proof $0 < \mathit{ttl}$,
+$\mathit{kind}$ is the action class tag, and $\mathit{rb}$ is an
+optional rollback receipt. The expiry $\mathit{t_{\text{expires}}} =
+\mathit{t_{\text{issued}}} + \mathit{ttl}$ is derived structurally.
+
+The action is closed at instant $t$ iff a rollback receipt exists with
+$\mathit{rolledBackAt} \le t$ or the TTL window has elapsed by $t$.
+This is recorded as the definitional bridge
+\thm{rollback_closes_or_ttl_window_active}, which discharges to
+\emph{rfl} after case analysis on the rollback option. The bridge is
+not the headline theorem; it documents the relationship between the
+type-level fields and the propositional closure claim, in the same
+role \thm{amendment_admissible_iff_backward_refinement} plays for the
+amendment side of the parent paper.
+
+\paragraph{TTL-bounded amendment.}
+A TTL-bounded amendment $A$ is a constitutional delta $\delta$ paired
+with an issued-at instant $\mathit{t_{\text{issued}}}$ and a positive
+TTL duration $\mathit{ttl}$. The active constitution at instant $t$ is
+\[
+  \mathsf{activeAt}(A, t) =
+  \begin{cases}
+    \delta.\mathit{old} & \text{if } \mathit{t_{\text{issued}}} + \mathit{ttl} \le t, \\
+    \delta.\mathit{new} & \text{otherwise.}
+  \end{cases}
+\]
+The case split is a substrate-level abstraction of the TTL scheduler's
+behavior. The scheduler advances the counter and reverts the amendment
+at $\mathit{t_{\text{expires}}}$; the model represents this as a
+conditional on $t$.
+
+\paragraph{The composition theorem.}
+The headline composition theorem
+\thm{ttl_bounded_amendment_chain_preserves_baseline} states that a
+chain of TTL-bounded amendments, each carrying a backward-refinement
+witness against a fixed baseline constitution, preserves the baseline
+at every instant:
+\[
+  \forall t,\, \forall A \in \mathit{chain},\
+    \mathsf{BackwardRefines}\bigl(\mathsf{activeAt}(A, t),\, \mathit{baseline}\bigr).
+\]
+The proof shape is structural rather than definitional. For each
+amendment $A$ in the chain, the conclusion case-splits on whether $t$
+falls inside or outside $A$'s window. Outside the window,
+$\mathsf{activeAt}(A, t) = \delta.\mathit{old} = \mathit{baseline}$ and
+the conclusion holds by reflexivity of $\mathsf{BackwardRefines}$ on a
+fixed constitution. Inside the window,
+$\mathsf{activeAt}(A, t) = \delta.\mathit{new}$ and the conclusion
+holds by the per-step refinement witness on $A$.
+
+The shape is the response-side dual of the parent paper's
+\thm{essential_preserved_chain}, which composes per-step essential-
+admission witnesses over an amendment sequence. The dual relation is
+that the parent theorem ranges over receipts and a chain of
+constitutions; this theorem ranges over instants and a chain of
+TTL-bounded amendments. Both theorems are structurally inductive over
+the chain rather than definitional on a single step. The discharge in
+each case threads the per-step witness through the case analysis on
+the inductive variable.
+
+\paragraph{Rollback admissibility.}
+The supporting reduction \thm{rollback_admission_composes_with_refinement}
+states that a rollback receipt admissible under the post-amendment
+constitution remains admissible under the pre-amendment constitution
+given the refinement witness:
+\[
+  \mathsf{admits}(c_{\text{new}}, \mathit{rb}) = \text{true}
+    \;\wedge\; \mathsf{BackwardRefines}(c_{\text{new}}, c_{\text{old}})
+    \;\Rightarrow\; \mathsf{admits}(c_{\text{old}}, \mathit{rb}) = \text{true}.
+\]
+The proof is a direct application of the refinement hypothesis to the
+rollback receipt's admission. The theorem's role in the paper is the
+load-bearing reduction the headline composition leans on: it shows
+that the rollback receipt produced inside an amendment's TTL window
+does not become unadmittable when the window expires and the baseline
+returns. In the substrate, this is the property the auto-reversion
+relies on: the rollback receipt's canonical body is the same under
+both constitutions, and the predicates the baseline applies to it are
+a subset of the predicates the amended constitution applies.
+
+\paragraph{Bilateral destructive admission.}
+The bilateral reduction \thm{destructive_action_requires_bilateral_admission}
+specializes the parent paper's
+\thm{treaty_admission_iff_predicate_intersection} to the destructive
+subclass of the action taxonomy. For a bilateral envelope binding a
+device-polity receipt id and an operator-polity receipt id under a
+destructive action class, admission requires that each polity's
+predicates accept its own receipt. The reduction is structural rather
+than novel: the parent theorem already establishes the bilateral
+intersection; this theorem renames it for the destructive class. The
+contribution at this point is the typed envelope, not a new theorem.
+
+\paragraph{Threat model.}
+The adversary can author and sign requests, attempt to skip the
+rollback receipt, forge or delete the rollback receipt in the local
+ledger, backdate or freeze the substrate counter, omit the
+acknowledgement receipt, present a rollback receipt for an execution
+it did not perform, or claim that an inverse executor completed when
+it did not. The adversary cannot break Ed25519, SHA-256 collision
+resistance, or canonical JSON correctness. The substrate counter
+itself is an assumption: a compromised counter falsifies the TTL claim
+in the same way a compromised signing key falsifies admission. The
+counter is named as a foundational assumption in
+Section~\ref{sec:limitations-ra}.
+
+The model discharges two obligations. First, the typed executive-
+action constructor refuses to build a witness without a positive TTL
+and a class tag, so the type system rules out unbounded acts on the
+construction side. Second, the composition theorem pins the chain's
+trajectory to the baseline at every instant, so an amendment ratchet
+that aggregates predicate drift through a sequence of TTL-bounded
+amendments cannot accumulate without violating a per-step refinement
+witness. The third obligation, namely that the rollback receipt
+faithfully witnesses the inverse executor's completion, is a runtime
+obligation discharged by the executor's signed completion against the
+forward effect's content hash and is not a theorem in the bounded
+model.

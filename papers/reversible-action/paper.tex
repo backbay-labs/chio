@@ -1,0 +1,73 @@
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{hyperref}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black,
+}
+
+% Macro stubs matching the parent paper's conventions. The parent
+% defines these against acmart; this paper uses article and supplies
+% lightweight definitions.
+\newcommand{\codepath}[1]{\texttt{#1}}
+\newcommand{\thm}[1]{\texttt{#1}}
+
+\title{Programmable Sovereignty Over Reversible Action}
+\author{Anonymous for external review}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Constitutional admission has been described as the test a polity applies
+to incoming receipts at the boundary of its own log. The amendment side
+of that lifecycle is conditioned at the type level on a backward-refinement
+witness, so a candidate constitution cannot be enacted in the well-typed
+runtime path unless the proof of refinement is supplied as data. The
+response side has been left to the admission predicate alone. The
+construction described here extends the discipline of the amendment
+side to enforcement actions whose effects are reversible by an inverse
+executor. An executive action is a type whose constructor refuses to
+build a witness without a positive time-to-live duration and an action
+class tag; reversible variants admit an optional rollback receipt that
+closes the action chain; destructive variants reduce admission to
+bilateral predicate intersection between a device polity and an operator
+polity. The load-bearing claim is a composition theorem stating that a
+chain of time-bounded amendments, each carrying a per-step refinement
+witness, preserves the baseline constitution at every instant under the
+auto-reversion semantics of the TTL window. The empirical anchor is an
+endpoint substrate in which four reversible action variants have real OS
+executors with content-hash-gated rollback constructors, the rollback
+inversion is checked at the receipt level by the same canonical-byte
+machinery that signs admission, and the bilateral-destructive variant
+is reported as a deployment obligation rather than a measurement.
+\end{abstract}
+
+\input{sections/01-introduction}
+\input{sections/02-background}
+\input{sections/03-substrate}
+\input{sections/04-model}
+\input{sections/05-implementation}
+\input{sections/06-evaluation}
+\input{sections/07-discussion}
+\input{sections/08-related-work}
+\input{sections/09-limitations}
+\input{sections/10-conclusion}
+
+\bibliographystyle{plain}
+\begin{thebibliography}{99}
+\bibitem{TODO_bea_bib}
+  Citation placeholder. A populated \texttt{bib.bib} is deferred.
+\end{thebibliography}
+
+\end{document}
