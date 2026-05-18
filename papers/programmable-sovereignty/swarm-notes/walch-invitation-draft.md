@@ -1,56 +1,55 @@
 # Walch pre-arXiv embargo invitation (draft)
 
-Draft of the cover letter for the round-3 strategic agent's pre-arXiv adversarial-disclosure embargo to Angela Walch. To be sent on the user's signature after final review.
+Draft of the cover letter inviting Angela Walch to a pre-arXiv adversarial-disclosure embargo on "Programmable Sovereignty." To be sent on the author's signature after final review.
 
 ---
 
-**Subject**: Pre-arXiv adversarial-disclosure embargo invitation — "Programmable Sovereignty" preprint
+**Subject**: Pre-arXiv embargo invitation, "Programmable Sovereignty" preprint
 
 Dear Professor Walch,
 
-I am writing to invite your hostile pre-publication review of a forthcoming preprint, "Programmable Sovereignty: Lean-Attestable Constitutions Over Capability-Bounded Federated Receipts," with a 14-day embargo before posting to arXiv. Your 2017 *Review of Banking and Financial Law* article on the path of the blockchain lexicon is cited in §2 of the manuscript as a methodological constraint on the paper itself, and your subsequent work has been the most consistent academic check on technical communities' tendency to claim more than their substrates carry. The paper's argument deserves a serious test against that check before publication.
+I am writing to ask whether you would accept a 14-day pre-arXiv embargoed reading of a forthcoming preprint, "Programmable Sovereignty: Lean-Attestable Constitutions Over Capability-Bounded Federated Receipts." Your 2017 *Review of Banking and Financial Law* article on the path of the blockchain lexicon is cited in §8, and the discipline it has imposed on legal-technical vocabulary is, in my reading, the binding constraint on what a paper of this kind is allowed to claim. I would rather the paper meet that constraint in your hands than in print.
 
-The paper makes a deliberately narrow positivist claim: that an agent runtime can instantiate condition (a) of Hart's rule of recognition (the criterion officials apply to identify which rules count as law of the system) over cross-organizational tool invocations, leaving conditions (b) practice-of-officials and (c) internal-point-of-view acceptance as sociological obligations the construction does not discharge. Sections 7, 8, and 9 acknowledge the methodological constraint your work imposes; section 2 cites your 2017 article in the failure-modes paragraph alongside Próspera, FTX, and Tornado Cash.
+The argument is deliberately narrow. It identifies a machine-checkable admission predicate over a receipt log with *condition (a)* of Hart's rule of recognition (the criterion officials apply to identify which rules count as law of the system), and explicitly leaves *condition (b)* settled-practice and *condition (c)* internal-point-of-view acceptance as sociological obligations it does not discharge. §2 frames Próspera, FTX, and Tornado Cash as the failure modes any state-flavored claim has to survive; §7 develops the Hart scoping and the constitutive-recognition pushback against Montevideo Article 3; §8 places the work alongside Cedar and SampCert as a verified-systems contribution rather than a theory of sovereignty; §9 enumerates the live limitations, including that no current attestation framework (SOC 2, ISO 27001, PCAOB, sectoral) recognises the paper's evidence form.
 
-The construction itself is a Rust runtime with companion Lean 4 proofs, instantiated as a three-vendor buyer-closure replay artifact. Independent review across multiple revision rounds has surfaced and the paper now openly documents: (1) the Hartian framing's restriction to condition (a) only, (2) the Lean theorems' narrow proof obligation versus the broader Rust runtime, (3) the absence of a published interop profile, and (4) the regulator-accreditation gap that no current attestation framework cites Lean-attested receipt evidence.
+Two formats are equally welcome, and the second is a real choice rather than a fallback.
 
-I am inviting you to a 14-day pre-arXiv embargo so you can prepare a response on terms of your choosing. Two formats are on the table:
+1. **Companion response, citable.** You publish a written rejoinder, op-ed, or technical note alongside the arXiv post. §7 and §8 cite it on first posting; any subsequent revision treats it as load-bearing.
 
-1. **Co-launched response.** You publish a written rejoinder, op-ed, or technical note that appears alongside the arXiv preprint. The paper cites your response prominently in §7 and §8.
-2. **Private comments only.** You read the paper under embargo and respond by email; the response is not public.
+2. **Private comments, incorporated.** You read under embargo and respond by whatever channel suits you. Nothing is attributed publicly without your consent; substantive objections are absorbed into §7, §9, or the acknowledgements (or withheld from them) on terms you set. For a scholar who wants to shape what a paper claims without taking a public posture on it, this is the pre-publication form I am most genuinely asking for.
 
-Either is welcome. The point is that the paper benefits from a serious adversarial reading that it cannot itself supply, and the most credible version of that reading is yours.
-
-Attached: the current manuscript draft and a one-page summary of the swarm-review findings the paper has already addressed. If you prefer to engage on a different timeline or with different framing, I would rather defer arXiv than skip your review.
+If neither timing nor either format works, I would rather defer the arXiv post than skip the reading.
 
 Sincerely,
 [Author signature]
 
 ---
 
-## Cover-letter attachments (for reference; not part of the letter)
+## Attachments (for reference; not part of the letter)
 
-1. `papers/programmable-sovereignty/paper.pdf` — current manuscript
-2. `papers/programmable-sovereignty/polish-diff.md` — revision history across five polish passes
-3. `papers/programmable-sovereignty/swarm-notes/action-plan.md` — outstanding action plan with five-tier severity ranking
-4. One-page summary: this draft document, with the substantive limitations §9 carries:
-   - Hart claim scoped to condition (a) only
-   - 109-vs-113 Lean declaration-count branch drift (decision to ship from main with 113)
-   - Bibliography hygiene pass landed (seven WRONG entries re-derived from primary sources; six WOBBLE entries corrected)
-   - Replay-corpus §6 prose honestly separates kernel-capability gate from unreplayed Chiodos buyer-closure
-   - Figure 1 fail-closed bug fixed (malformed contexts now deny)
-   - Walch / De Filippi / Hildebrandt cited as the methodological constraint on the paper's vocabulary
+1. The current manuscript (`paper.pdf`).
+2. A one-page summary of the limitations the manuscript carries on its own terms, drawn from §9:
+   - The Hart claim is scoped to *condition (a)* only; *(b)* and *(c)* are explicitly sociological residue.
+   - The Lean theorems range over a bounded paper model (treaty predicate intersection, ladder-floor stability, amendment as backward refinement). They do not verify the whole Rust implementation, and §9 says so on its face.
+   - No published cross-implementation interop profile, so a second receiver cannot today admit these receipts without trusting the reference implementation.
+   - No accredited consumer: SOC 2, ISO 27001, PCAOB, and sectoral attestation frameworks do not recognise Lean-attested receipt evidence.
+   - Declarative scope only: a Chio polity has final authority over admission to its own receipt log and over nothing else. Montevideo territoriality is satisfied in the event-space sense, not the human one.
+   - Walch, De Filippi and Wright, and Hildebrandt are cited in §8 as the binding methodological constraint on the paper's vocabulary.
 
-## Backup recipients if Walch declines
+## Backup recipients if Professor Walch declines
 
-In priority order (each gets a tailored variant of the letter):
+In priority order (each receives a tailored variant of the letter):
 
-1. **Peter Van Valkenburgh** (Coin Center, Director of Research): the Tornado Cash legal-academic constituency. Likely to engage on the §2 failure-modes framing and the §7 declarative-statehood reading.
-2. **Primavera De Filippi** (CNRS / Harvard Berkman Klein): cited as `defilippi2018blockchain` in §2. Likely to engage on the constitutive-recognition pushback in §7.
-3. **Mireille Hildebrandt** (Vrije Universiteit Brussel): legal-informatics depth; would engage with the Hart paragraph in §7 and Schauer rules-vs-standards in §7.
+1. **Peter Van Valkenburgh** (Coin Center, Director of Research): the Tornado Cash legal-academic constituency. The §2 failure-modes framing and the §7 declarative-statehood scoping are the natural points of contact.
+2. **Primavera De Filippi** (CNRS / Harvard Berkman Klein): cited as `defilippi2018blockchain` in §8. The constitutive-recognition pushback in §7 is the natural point of contact.
+3. **Mireille Hildebrandt** (Vrije Universiteit Brussel): legal-informatics depth; the Hart paragraph and the Schauer rules-vs-standards reading in §7 are the natural points of contact.
 
 Send to one at a time; do not parallel-send. The point is a sustained adversarial reading, not a survey of consent.
 
 ## Timing
 
-Optimal week of send: as soon as the MUST-fix sprint is verified shipped (this branch). The 14-day embargo lands arXiv at most 21 days from send. NDSS 2027 (Aug 2026 deadline) and USENIX Security 2027 (Feb 2026 short-paper, Aug 2026 full) both accommodate an arXiv-then-submit timeline.
+Send once the manuscript is in its intended-for-arXiv form. The 14-day embargo places the arXiv post at most 21 days from send. NDSS 2027 (August 2026 deadline) and USENIX Security 2027 (February 2026 short-paper, August 2026 full) both accommodate an arXiv-then-submit timeline.
+
+<!-- CHECK: §2 currently cites Próspera/FTX/Tornado as failure-mode background but does NOT cite Walch there; the Walch citation is in §8 alongside De Filippi and Wright. The previous draft asserted Walch was cited in §2, which was incorrect. Letter now reflects §8 for the Walch citation and §2/§7 for the failure-mode framing. Please confirm this matches your reading of the current manuscript before sending. -->
+
+<!-- CHECK: The "§9 enumerates the live limitations" sentence names SOC 2, ISO 27001, PCAOB, and sectoral as the unrecognised attestation frameworks. §9 line 45 of 09-limitations.tex uses exactly that phrasing; if you trim §9 between now and send, re-verify. -->
