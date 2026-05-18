@@ -167,3 +167,54 @@ W3.b (sensor-grounded USENIX prep) -- COMPLETE.
 Wave 3 close: sensor-grounded paper is in submission-ready state for USENIX Security 2027 Cycle 1; V2 tier-1 federation scaffolding parked on its own branch with a 31-task PLAN.md ready for future execution.
 
 HUMAN GATE stacked for end-of-session (sensor-grounded portal upload): same shape as parent paper.
+
+Git mechanics note: the W3.b subagent left HEAD on the `wave-3-v2-tier-1` branch when it returned (a side effect of W3.a's parallel branch creation), so the initial commit landed there as `8fa4297be` rather than on `research/programmable-sovereignty-papers`. Recovered additively: switched to research branch and cherry-picked, producing commit `675d145f3`. The `wave-3-v2-tier-1` branch retains the duplicate commit but is parked for future development (the duplicate is cosmetic, not blocking). No destructive operations performed.
+
+## Wave 4: dispatch start
+
+Timestamp: 2026-05-18 (same orchestrator session).
+
+Wave 4 is a single-subagent verification pass to produce a submission-ready checklist for the sensor-grounded paper. Wave 3.b's `make submit-check` already exits 0; Wave 4.a's job is to apply the verification-before-completion discipline and produce a one-page checklist document the human can refer to before portal submission.
+
+Dispatched (single Agent call):
+- W4.a: submission assembly verification. Skill: verification-before-completion. Read-only scope on `papers/sensor-grounded-admission/`. Produces `papers/sensor-grounded-admission/SUBMISSION-CHECKLIST.md`.
+
+## Wave 4: deliverables landed
+
+Timestamp: 2026-05-18 (same orchestrator session).
+
+W4.a (sensor-grounded submission verification) -- COMPLETE.
+- All gates verified green: build (4-pass clean), body 10 pages, anonymization clean, voice clean, tarball verify clean (`lake build` 24/24 jobs in 11.48s wallclock), TOML/JSON parse clean, theorems consistent.
+- One judgment call flagged for human: the paper cites `chioProgrammableSovereignty2027` (the parent paper) and refers to "the Chio substrate" in sections 1 and 8. This is a substrate-name reference using a project name (not a personal-author signal), but the human should confirm this matches their reading of USENIX double-blind policy. If conservative, the cite can be rewritten as "the substrate of \cite{anonymized-companion}" before submission.
+- Open items the human still needs to close (beyond clicking Submit): draft Open Science appendix (~1 page; supplementary `README.md` provides source material) and draft Ethics Considerations appendix (~1 page; no draft yet in the repo).
+- Output: `papers/sensor-grounded-admission/SUBMISSION-CHECKLIST.md`.
+
+## Wave 5: dispatch and deliverables
+
+Timestamp: 2026-05-18 (same orchestrator session). Dispatched alongside Wave 4 since both were independent at this point.
+
+W5.a (agentic-tool-safety workshop polish) -- COMPLETE.
+- Workshop picked: NeurIPS 2026 workshop track. Suggested workshop-author submission deadline 2026-08-29 (about 14 weeks out). Specific workshop chosen from the NeurIPS 2026 workshop list, which is finalized after the organizer-proposal acceptance on 2026-07-11. Strong fit candidates: Safe Generative AI (recurring), an AgentAI / Agentic-Safety workshop, or Trustworthy ML.
+- ICML 2026 "Agents in the Wild" already passed (2026-05-08); ICML 2027 has no CFP yet.
+- Word count: 6033 -> 4896 (19% reduction). 11 pages on generic article 11pt; expected to compress to 6-7 pages on `neurips_2026.sty` when the specific workshop is named.
+- 4-pass LaTeX build clean; PDF at `papers/agentic-tool-safety/paper.pdf` (161 KB).
+- §4 restructured around three named theorems cited from the parent paper.
+- 5 open items in `papers/agentic-tool-safety/VENUE-DECISION.md` for the human.
+
+W5.b (Anthropic outreach polish) -- COMPLETE.
+- `swarm-notes/anthropic-coauthor-outreach.md` and `papers/agentic-tool-safety/anthropic-coauthor-pitch.md` both polished.
+- Email bodies tightened: parent memo 291 words, pitch 318 words.
+- Bai 2022 / Hubinger 2024 / Berglund 2023 cross-references in §7 and `bib.bib` spot-checked and confirmed; no CHECK comments needed.
+- Sharpened offer: primary = read under embargo + contribute to §7 / §10 framing; secondary = co-author the agentic-tool-safety workshop submission. Removed the "co-author this submission" desperation ask.
+- Target priority split-routed: Bowman primary for parent paper (scalable-oversight work matches §7); Perez primary for agentic-tool-safety pitch (red-teaming threat-model match). Sending both to the same person was the original-memo conflation; fixed.
+- Walch-letter dependency soft-decoupled: "Send when (a) the parent paper has been submitted to USENIX and (b) the human is ready to commit to an Anthropic conversation."
+- W5.c (Walch response handler) and W5.d (parent-paper reviewer-response handler) SLEEP: both are reactive to events that have not happened (Walch letter not sent yet; parent paper not submitted). They will wake when the trigger fires.
+
+## Waves 6, 7, 8: SLEEP
+
+All three are conditional on outcomes that do not exist yet:
+- Wave 6 forks on parent-paper accept/reject decision (~4 months after submission).
+- Wave 7 conditional on Walch accepting the embargo. Letter deferred per human; wave sleeps until letter is sent and a response arrives.
+- Wave 8 conditional on co-author landings (Anthropic, Walch, FM partner). None have landed; outreach drafts ready but not sent.
+
+The orchestrator does NOT dispatch any of these. They wake on triggers the human controls.
