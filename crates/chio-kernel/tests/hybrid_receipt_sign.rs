@@ -12,11 +12,23 @@
 
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::crypto::{Keypair, PublicKey, SigningAlgorithm};
-use chio_core::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    chio_receipt_id, ChioReceiptBody, ChioReceiptSigningBody, Decision, ToolCallAction, TrustLevel,
+};
 use chio_kernel::{
     kernel_signing_backend, sign_receipt_body_with_backend, KernelCryptoFloor,
     KernelSigningBackendError,
 };
+
+/// Canonical JSON bytes of the authoritative `ChioReceiptSigningBody`
+/// wrapper. Both classical and hybrid receipt-signing paths sign these
+/// bytes, not the bare `ChioReceiptBody` bytes.
+fn canonical_signing_wrapper_bytes(body: &ChioReceiptBody) -> Vec<u8> {
+    let mut body = body.clone();
+    body.id = chio_receipt_id(&body).unwrap();
+    let signing_body = ChioReceiptSigningBody::from(&body);
+    canonical_json_bytes(&signing_body).unwrap()
+}
 
 fn fixture_pq_seed() -> [u8; 32] {
     // Stable test seed: reproducible across runs, never used in production.
@@ -34,7 +46,13 @@ fn build_body(kernel_key: PublicKey) -> ChioReceiptBody {
         tool_server: "srv".to_string(),
         tool_name: "echo".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({"k": "v"})).unwrap(),
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
             .to_string(),
         policy_hash: "test-policy".to_string(),
@@ -138,10 +156,17 @@ fn classical_receipt_byte_identical_under_allow_classical() {
     let body_bytes_post = canonical_json_bytes(&body).unwrap();
     assert_eq!(body_bytes_pre, body_bytes_post);
 
-    // Signature verifies via the issuer key.
-    assert!(receipt
-        .kernel_key
-        .verify(&body_bytes_post, &receipt.signature));
+    // Signature verifies via the issuer key. The signed bytes are the
+    // authoritative `ChioReceiptSigningBody` wrapper bytes, not the
+    // bare body bytes.
+    let wrapper_bytes = canonical_signing_wrapper_bytes(&body);
+    assert!(
+        receipt
+            .kernel_key
+            .verify(&wrapper_bytes, &receipt.signature),
+        "signature must verify against the ChioReceiptSigningBody wrapper bytes"
+    );
+    assert!(receipt.verify_signature().unwrap());
 }
 
 #[test]
@@ -161,8 +186,13 @@ fn hybrid_receipt_round_trip_signs_and_verifies() {
     assert_eq!(receipt.signature.algorithm(), SigningAlgorithm::Hybrid);
     assert_eq!(receipt.kernel_key.algorithm(), SigningAlgorithm::Hybrid);
 
-    let body_bytes = canonical_json_bytes(&body).unwrap();
-    assert!(receipt.kernel_key.verify(&body_bytes, &receipt.signature));
+    // The signature verifies against the authoritative
+    // `ChioReceiptSigningBody` wrapper bytes, not the bare body bytes.
+    let wrapper_bytes = canonical_signing_wrapper_bytes(&body);
+    assert!(receipt
+        .kernel_key
+        .verify(&wrapper_bytes, &receipt.signature));
+    assert!(receipt.verify_signature().unwrap());
 }
 
 #[test]

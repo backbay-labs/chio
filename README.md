@@ -33,17 +33,22 @@ Chio is the runtime and trust-control layer that sits between an agent and the
 actions it can take. It validates capabilities, enforces policy and budgets,
 and produces signed receipts for every governed decision.
 
+Chio is pre-release. The current Chio-owned protocol, schema, SDK, and runtime
+surfaces are v1-only. Older `v2.x` and `v3.x` labels in planning, release, and
+research docs are internal milestone labels, not protocol or wire
+compatibility versions.
+
 ## Start Here
 
 1. Install Chio: [docs/install/README.md](docs/install/README.md)
-2. Run the guided local walkthrough: [docs/PROGRESSIVE_TUTORIAL.md](docs/PROGRESSIVE_TUTORIAL.md)
+2. Run the guided local walkthrough: [docs/start-here/PROGRESSIVE_TUTORIAL.md](docs/start-here/PROGRESSIVE_TUTORIAL.md)
 3. Pick the supported path that matches your use case:
    - Existing MCP server or coding-agent flow:
      [docs/guides/MIGRATING-FROM-MCP.md](docs/guides/MIGRATING-FROM-MCP.md)
    - Web backend:
      [docs/guides/WEB_BACKEND_QUICKSTART.md](docs/guides/WEB_BACKEND_QUICKSTART.md)
    - Native Chio tool server:
-     [docs/NATIVE_ADOPTION_GUIDE.md](docs/NATIVE_ADOPTION_GUIDE.md)
+     [docs/start-here/NATIVE_ADOPTION_GUIDE.md](docs/start-here/NATIVE_ADOPTION_GUIDE.md)
 
 ## Supported Paths
 
@@ -73,7 +78,7 @@ Shared verification flow:
 For native Chio authoring, start with the native adoption guide and the minimal
 tool example:
 
-- [docs/NATIVE_ADOPTION_GUIDE.md](docs/NATIVE_ADOPTION_GUIDE.md)
+- [docs/start-here/NATIVE_ADOPTION_GUIDE.md](docs/start-here/NATIVE_ADOPTION_GUIDE.md)
 - [examples/hello-tool/README.md](examples/hello-tool/README.md)
 
 ## CLI
@@ -126,7 +131,7 @@ canonical example links back to the supported web-backend flow.
 ## More
 
 - Install options: [docs/install/README.md](docs/install/README.md)
-- Progressive tutorial: [docs/PROGRESSIVE_TUTORIAL.md](docs/PROGRESSIVE_TUTORIAL.md)
+- Progressive tutorial: [docs/start-here/PROGRESSIVE_TUTORIAL.md](docs/start-here/PROGRESSIVE_TUTORIAL.md)
 - Protocol specification: [spec/PROTOCOL.md](spec/PROTOCOL.md)
 - Formal boundary and claims: [docs/reference/CLAIM_REGISTRY.md](docs/reference/CLAIM_REGISTRY.md)
 - Release and operations docs: [docs/release/](docs/release/)

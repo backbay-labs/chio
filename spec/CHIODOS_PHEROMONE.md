@@ -1,19 +1,19 @@
 # Chiodos Pheromone Substrate
 
-**Status:** Draft v0.2 (wire-freeze gate; not a finalized standard)
+**Status:** v1 (Chio-owned pre-release; wire-frozen against `chio.pheromone-deposit.v1` and the sibling pheromone schemas)
 **Date:** 2026-05-04
-**Supersedes:** Draft v0.1 (2026-05-04)
+**Supersedes:** none
 
-**Revision history:**
-- v0.1 (2026-05-04): initial wire freeze; sqrt(N) cap framed as a Sybil-cost reducer; newcomer-discount cybersec default `N = 28`; observation-cost commitments required only for `cost_committed_only` subject classes.
-- v0.2 (2026-05-04): three corrections from `docs/research/CHIODOS_SCARCITY_ECONOMICS.md`. (1) `sqrt(N)` cap reframed honestly as a cost-shifter, not a cost-reducer (section 5.4). (2) Newcomer-discount default lowered to `N = 8` epochs across sectors (section 6); the prior `N = 28` is retained as a high-assurance opt-in. (3) Observation-cost commitments are now REQUIRED by default for any subject class that the participant's ladder manifest declares `destructive: true` (section 7); the previous `cost_committed_only` flag survives as a way to opt non-destructive classes into the same requirement. Wire format unchanged: all v0.1 deposits remain valid; the changes affect default substrate behaviour and operator guidance, not the canonical bytes.
+**Revision history (pre-v1 drafting passes):**
+- First drafting pass (2026-05-04): initial wire freeze; sqrt(N) cap framed as a Sybil-cost reducer; newcomer-discount cybersec default `N = 28`; observation-cost commitments required only for `cost_committed_only` subject classes.
+- Second drafting pass (2026-05-04): three corrections from `docs/research/CHIODOS_SCARCITY_ECONOMICS.md`. (1) `sqrt(N)` cap reframed honestly as a cost-shifter, not a cost-reducer (section 5.4). (2) Newcomer-discount default lowered to `N = 8` epochs across sectors (section 6); the prior `N = 28` is retained as a high-assurance opt-in. (3) Observation-cost commitments are now REQUIRED by default for any subject class that the participant's ladder manifest declares `destructive: true` (section 7); the previous `cost_committed_only` flag survives as a way to opt non-destructive classes into the same requirement. Wire format unchanged across these passes; the changes affect default substrate behaviour and operator guidance, not the canonical bytes.
 
 This specification freezes the wire format for the chio-pheromone
 substrate called out as the gating spec in
-`docs/research/CHIODOS_CONCEPT.md` section 4.1. No further code in
-`chio-federation`, `chio-market`, `chio-governance`, or `chio-workflow`
-may ship cross-trust pheromone surfaces until v0.2 is adopted;
-subsequent revisions remain backward-compatible per the additive rule
+`docs/research/CHIODOS_CONCEPT.md` section 4.1. Cross-trust pheromone
+surfaces in `chio-federation`, `chio-market`, `chio-governance`, and
+`chio-workflow` ship against the v1 wire format defined here;
+post-v1 revisions remain backward-compatible per the additive rule
 in `PROTOCOL.md` section 2.
 
 The crate boundary is a new `chio-pheromone` workspace member depending
@@ -88,7 +88,7 @@ signature is computed over that body and reattached as the value of
 The `signature` field uses the self-describing encoding from
 `PROTOCOL.md` section 4.1. Hybrid prefixes (`hybrid:<classical>:<pq>:<alg_set>`)
 MUST be accepted by verifiers that already accept hybrid signatures elsewhere
-in the Chio stack; v0.1 substrates MAY decline hybrid material but MUST then
+in the Chio stack; v1 substrates MAY decline hybrid material but MUST then
 reject deposits that present it rather than silently downgrade.
 
 ### 2.2 Canonical JSON ordering
@@ -245,11 +245,11 @@ queries cannot reference it; the gossip layer MAY surface a metric).
 
 ### 3.5 Catch-up
 
-V0.1 does not specify a catch-up protocol analogous to
+v1 does not specify a catch-up protocol analogous to
 `RevocationCatchupRequest`. Pheromones decay (section 8) and are not
 canonical state that diverges if missed; receivers recover via newer
-deposits. V0.2 MAY add bounded historical replay; v0.1 does not require
-it.
+deposits. Post-v1 revisions MAY add bounded historical replay; v1
+does not require it.
 
 ---
 
@@ -352,8 +352,9 @@ the treaty during the window. Overruns reject the marginal deposit with
 the reputation epoch cadence so cap exhaustion and reputation snapshots
 turn over together.
 
-**Honest framing of what the cap does** (corrected in v0.2 from the
-v0.1 framing). The cap is a **cost-shifter, not a cost-reducer**. The
+**Honest framing of what the cap does** (corrected in a pre-v1
+drafting pass from earlier framing). The cap is a **cost-shifter, not
+a cost-reducer**. The
 quantitative analysis in `docs/research/CHIODOS_SCARCITY_ECONOMICS.md`
 shows that for a fixed dollar budget the `sqrt(N)` term cancels out of
 the closed-form attacker-budget expression: an adversary capped on
@@ -392,16 +393,17 @@ first observation under the treaty and `reputation_epoch`, inclusive.
 `N` is the participant's `newcomer_discount_horizon`, declared in the
 ladder manifest.
 
-**Default**: `N = 8` epochs across all sectors (revised in v0.2 from
-the v0.1 cybersec default of `N = 28`). The `CHIODOS_SCARCITY_ECONOMICS`
-analysis shows `N = 8` is the breakeven point at which (a) the
-newcomer-discount linearly amortises the passport-issuance cost in the
-attacker-budget formula and (b) honest agents reach full weight within
-operationally reasonable onboarding (about a week at one epoch per day)
-without giving low-cost Sybil passports a useful fraction of weight
-before sanction can land. `N` MAY be raised (the v0.1 cybersec
-`N = 28` is retained as a high-assurance opt-in for sectors that are
-willing to trade onboarding latency for adversary-budget headroom)
+**Default**: `N = 8` epochs across all sectors (revised in a pre-v1
+drafting pass from the earlier cybersec default of `N = 28`). The
+`CHIODOS_SCARCITY_ECONOMICS` analysis shows `N = 8` is the breakeven
+point at which (a) the newcomer-discount linearly amortises the
+passport-issuance cost in the attacker-budget formula and (b) honest
+agents reach full weight within operationally reasonable onboarding
+(about a week at one epoch per day) without giving low-cost Sybil
+passports a useful fraction of weight before sanction can land.
+`N` MAY be raised (the pre-v1 cybersec `N = 28` is retained as a
+high-assurance opt-in for sectors that are willing to trade onboarding
+latency for adversary-budget headroom)
 and MAY be lowered for fast-churn sectors with strong out-of-band
 identity verification, but participants SHOULD NOT lower `N` below `4`
 without an explicit out-of-band roster issuer (see
@@ -429,11 +431,12 @@ body carries a `chio.pheromone-cost-commitment.v1` object:
 | `chain_position_proof` | string | Yes | Chain inclusion proof (canonical JSON; depositor-defined shape) |
 | `observed_at_unix_ms` | u64 | Yes | Wall-clock at which the underlying observation was recorded |
 
-**When the substrate MUST require this field** (revised in v0.2):
+**When the substrate MUST require this field** (revised in a pre-v1
+drafting pass):
 
 1. **Always**, for any subject class that the participant's ladder
    manifest (`spec/CHIODOS_LADDER.md`) declares `destructive: true`.
-   This is the v0.2 default; the rationale follows the
+   This is the v1 default; the rationale follows the
    `CHIODOS_SCARCITY_ECONOMICS` analysis showing observation-cost
    commitments add a multiplicative term `m_oc` to the attacker-budget
    formula that no passport-key-cap manipulation can offset, and
@@ -443,9 +446,9 @@ body carries a `chio.pheromone-cost-commitment.v1` object:
    with `observation_cost_commitment_required`.
 
 2. **Optionally**, for any subject class explicitly flagged
-   `cost_committed_only` in the ladder manifest. This was the v0.1
-   trigger (now widened in v0.2) and survives as the way to opt
-   non-destructive classes into the same requirement (e.g., a
+   `cost_committed_only` in the ladder manifest. This was the
+   earlier-drafting-pass trigger (now widened) and survives as the way
+   to opt non-destructive classes into the same requirement (e.g., a
    detection-deposit class whose downstream consumers run automated
    actions).
 
@@ -561,7 +564,7 @@ canonical error envelope (see `spec/errors/`).
 | `unknown_reputation_epoch` | `reputation_epoch` is not present in the local anchor view |
 | `confidence_out_of_range` | `confidence` is non-finite or outside `[0.0, 1.0]` |
 | `half_life_invalid` | `decay_half_life_secs` is non-finite, zero, or negative |
-| `unsupported_schema` | `schema` field does not match a known v0.1 identifier |
+| `unsupported_schema` | `schema` field does not match a known v1 identifier |
 | `subject_class_unknown` | Subject class not in the treaty's allowlist |
 
 Error envelopes follow the `chio.error.v1` shape used elsewhere in the
@@ -573,7 +576,7 @@ spec; see `spec/errors/README.md`.
 
 The selective-disclosure mechanism for chiodos receipts (including
 pheromone deposits) is normatively specified in
-`spec/CHIODOS_SELECTIVE_DISCLOSURE.md` (Draft v0.1). The high-level
+`spec/CHIODOS_SELECTIVE_DISCLOSURE.md` (v1). The high-level
 direction:
 
 - BBS+ projection over the deposit body (`bbs-2023` cryptosuite plus
@@ -587,15 +590,16 @@ direction:
   `member(merkle_root)`, AND-composed up to 8 clauses.
 - A zkVM (Risc0/SP1 + Groth16 wrap) escape hatch covers chained-receipt
   proofs and predicates over the Ed25519 signature itself; not in
-  v0.1 of the disclosure spec.
+  v1 of the disclosure spec.
 
 This pheromone spec does not freeze the BBS+ wire shape itself. The
 disclosure spec owns the `bbs_messages()` projection ordering, the
 disclosure envelope schema, and the verification algorithm.
 Implementations MAY emit BBS+ material under an experimental
 `bbs_v01_messages` field on a deposit; receivers MUST ignore unknown
-fields per the additive-fields rule. Once the disclosure spec exits
-draft, the field name MUST be updated to match.
+fields per the additive-fields rule. The field name tracks the
+disclosure-spec projection identifier and MUST be updated as that
+identifier evolves.
 
 ---
 
@@ -643,7 +647,7 @@ guard against silent format drift.
 
 ---
 
-## 13. Open Questions Deferred to v0.2
+## 13. Open Questions Deferred Post-v1
 
 - Catch-up replay (section 3.5).
 - BBS+ projection ordering and secondary-keypair binding (section 11).

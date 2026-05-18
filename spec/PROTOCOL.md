@@ -1,13 +1,12 @@
 # Chio Protocol
 
-**Version:** 3.0
+**Version:** 1.0
 **Date:** 2026-04-14
 **Status:** Current bounded Chio release profile
 
-v3.0 is a backward-compatible extension of v2.0. All v2 artifacts, wire
-formats, and verification rules remain valid. v3 adds the HTTP substrate
-protocol, OpenAPI integration pipeline, and supporting CLI surfaces without
-changing existing contract semantics.
+Chio is pre-release. This document describes the current v1 protocol profile.
+Earlier internal draft versions have been folded into this v1 contract rather
+than exposed as runtime compatibility layers.
 
 ---
 
@@ -21,11 +20,12 @@ In this repository it ships as:
   incomplete outcomes
 - trust-control services for authority, revocation, receipt, budget, and
   federation state
-- hosted MCP-compatible edges and adapters that keep the same trust contract
+- MCP-compatible edges and adapters only where the kernel owns dispatch and
+  receipt authority
 - machine-readable official-stack, extension-manifest, negotiation, and
-  qualification artifacts over Chio's named extension points
-- machine-readable web3 trust, anchoring, oracle, and settlement artifacts
-  for one official external rail stack
+  qualification artifacts that remain subordinate to the v1 receipt contract
+- machine-readable web3 trust, anchoring, oracle, and settlement artifacts that
+  remain evidence artifacts unless a kernel-mediated dispatch path is present
 - one bounded off-chain `chio-link` oracle runtime plus operator and
   qualification artifacts for conservative cross-currency budget enforcement
 - one bounded `chio-anchor` runtime plus discovery, proof-bundle, and
@@ -48,24 +48,33 @@ In this repository it ships as:
 This document describes the protocol and artifact contract that the code in
 this repository actually ships. It is intentionally narrower than the older
 research draft that described aspirational networking and deployment topology.
+When a later section names an adapter, bridge, external rail, hosted tool, or
+directory surface, that section is normative only for the bounded artifact or
+kernel-owned path it describes. It does not make trace-only provider activity,
+remote hosted execution, or advisory directory data into an authoritative Chio
+authorization receipt.
 
 ## 2. Scope And Compatibility
 
-The shipped `v2` contract covers:
+The shipped v1 contract covers:
 
 - native capability and receipt validation
-- wrapped and hosted MCP mediation
+- wrapped MCP mediation only where Chio owns dispatch; hosted or remote
+  provider-executed activity is trace-only unless a later implementation proves
+  a live kernel-mediated dispatch boundary
 - trust-control HTTP APIs for authority, receipts, revocation, budgets,
   federation, reputation comparison, and certification
 - `did:chio`
 - Agent Passport artifacts and verifier-policy distribution
 - federated evidence export/import and cross-org delegation continuation
-- A2A v1.0.0 mediation through `chio-a2a-adapter`
+- A2A v1.0.0 consumption through `chio-a2a-adapter` only where receipt
+  authority is backed by a live kernel authorization receipt
 - signed certification checks plus operator-scoped registry and discovery-network
   surfaces
 - one machine-readable extension inventory plus an official Chio stack package,
   custom extension manifest contract, fail-closed negotiation report, and
-  extension qualification matrix
+  extension qualification matrix; extension data cannot widen signed Chio truth
+  or capability scope
 - one machine-readable web3 trust profile, contract package, chain
   configuration, anchor-proof, oracle-evidence, dispatch, settlement-receipt,
   and qualification artifact family for the official web3 rail
@@ -93,8 +102,17 @@ The shipped `v2` contract covers:
   wallet-routing manifest, and identity-interop qualification artifact family
   for the bounded public identity network
 
-The shipped `v2` contract does not claim:
+The shipped v1 contract does not claim:
 
+- OpenAI hosted-tool mediation, OpenAI remote MCP execution, Bedrock Lambda
+  mediation, voice execution, broad live-directory import, or any other adapter
+  execution before receipt semantics, durable commit, semantic authority, and
+  tenant read-boundary gates are merged and tested
+- OAuth authorization-server product status before a dedicated accepted ADR or
+  equivalent decision note defines scope, RAR grammar, telemetry, and
+  feature-gating posture
+- manifest event publish/consume actions before the current v1 manifest
+  planning work is accepted and implemented
 - multi-region consensus or Byzantine replication
 - a public certification marketplace
 - automatic SCIM provisioning lifecycle
@@ -114,9 +132,9 @@ The shipped `v2` contract does not claim:
   bounded web3 interop surfaces
 - a replacement of MCP or A2A at the wire-protocol ecosystem level
 
-### v3 Additions
+### HTTP And OpenAPI Surfaces
 
-The `v3` contract extends the `v2` scope with:
+The v1 contract also covers:
 
 - an HTTP substrate sidecar protocol for protecting arbitrary HTTP APIs through
   Chio policy evaluation, typed HTTP receipts, and structured verdicts (see
@@ -130,7 +148,7 @@ The `v3` contract extends the `v2` scope with:
   `chio cert inspect`) for operator-facing TLS and signing material
 
 These surfaces share the same core receipt, capability, and policy primitives
-documented in v2 sections below. The HTTP substrate's `HttpReceipt` maps
+documented below. The HTTP substrate's `HttpReceipt` maps
 deterministically to `ChioReceipt` so all existing receipt verification,
 checkpoint, and evidence-export workflows continue to apply.
 
@@ -255,10 +273,8 @@ this release.
 The shipped capability token is `CapabilityToken` from
 `crates/chio-core/src/capability.rs`.
 
-Capability tokens are now schema-tagged signed artifacts. Newly issued tokens
-carry `schema: "chio.capability.v1"` or `schema: "chio.capability.v2"` in the
-schema-aware signing input. Legacy v1 tokens that omit `schema` remain
-verifiable through an explicit compatibility fallback, but load-time and
+Capability tokens are schema-tagged signed artifacts. Newly issued tokens carry
+`schema: "chio.capability.v1"` in the schema-aware signing input. Load-time and
 verify-time paths reject any unknown capability schema.
 
 The v1 signed body is:
@@ -286,47 +302,19 @@ those strings live only inside the hybrid wire value.
 ### Capability Negotiation
 
 Federated peers exchange `chio.capabilities.v1` during trust establishment.
-The envelope carries a string-keyed feature bitset and `maxCapabilitySchema`.
-Peers proceed only with the intersection of features both sides advertise.
-Malformed feature names and unsupported schema IDs fail closed before a peer can
-use a negotiated upgrade.
+The envelope carries a string-keyed feature bitset. Peers proceed only with the
+intersection of features both sides advertise. Malformed feature names and
+unsupported schema IDs fail closed before a peer can use a negotiated feature.
 
 Initial feature names are:
 
-- `accepts_capability_v2`
-- `accepts_receipt_v2`
 - `accepts_anchor_batch_v1`
 - `accepts_hybrid_signatures`
+- `delegation_chain_binding`
 
-Peers that do not advertise the bitset stay on the v1 default. This prevents a
-flag-day rollout for additive capability, receipt, anchor, and signature
-changes.
-
-#### Negotiated Schema Ceiling (W1.3)
-
-The negotiated `maxCapabilitySchema` is enforced by the verifier as a
-schema ceiling on every inbound capability token. Concretely:
-
-- `FederationTrustExchange.negotiated_with(...)` derives the per-peer
-  ceiling and stores it on `FederationPeer.capabilities`.
-- The portable verifier entrypoint
-  `chio_kernel_core::verify_capability_with_negotiated_floor(token,
-  trusted_issuers, clock, crypto_floor, peer)` rejects with
-  `CapabilityError::SchemaExceedsNegotiatedCeiling { token_schema,
-  peer_max }` when `token.schema == chio.capability.v2` and
-  `peer.max_capability_schema != chio.capability.v2`.
-- The check runs before signature, time, and crypto-floor checks. It
-  costs nothing on the happy path and closes the downgrade attack
-  where a v1-only Mallory presents a v2 token to a v2-aware Alice in
-  order to force Alice to parse v2-only fields.
-- The symmetric direction (a v1 token presented to a v2-aware peer) is
-  always admitted: v1 is the universal floor of the schema lattice and
-  raising the ceiling never invalidates legacy tokens.
-
-The Lean theorem `theorem.handshake.negotiation_safety` in
-`formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean` models the
-ceiling check, and the Rust shell is exercised by
-`crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs`.
+Peers that do not advertise the bitset stay on the v1 default. Capability schema
+selection is not negotiated before public release: `chio.capability.v1` is the
+only Chio-owned token schema accepted by runtime verifiers.
 
 ### Signed-Artifact Registry
 
@@ -359,10 +347,10 @@ The shipped `constraints` surface includes ordinary argument constraints plus
 governed-transaction controls such as `governed_intent_required`,
 `require_approval_above`, and `seller_exact`.
 
-### Capability v2 Attenuation
+### Capability Attenuation
 
-`chio.capability.v2` promotes delegation and attenuation onto the negotiated
-wire shape:
+`chio.capability.v1` includes delegation and attenuation in the signed token
+body:
 
 - typed first-party `caveats` with `{ kind, predicate, sig? }`
 - `scope_attenuations` carrying the narrowing operations
@@ -386,21 +374,20 @@ bps fail closed because they re-amplify parent authority.
 
 The `attenuation_proof.parent_scope_hash` field MUST be bound to the token's
 upstream lineage. Without this rule an issuer with true authority `scope_X`
-could mint a v2 token claiming `parent_scope = scope_BIGGER` and supply an
+could mint a token claiming `parent_scope = scope_BIGGER` and supply an
 internally consistent witness, because nothing tied `parent_scope_hash` to
 the issuer's actual upstream parent capability. Concretely:
 
-- Every v2 delegation hop carries a signed `DelegationLink.scope_hash` that
+- Every delegation hop carries a signed `DelegationLink.scope_hash` that
   records the canonical hash of the scope authorized at that step.
-- A direct-issue v2 token (empty `delegation_chain`) MUST have
+- A direct-issue token (empty `delegation_chain`) MUST have
   `attenuation_proof.parent_scope_hash` equal to the verifier's
   trust-root scope hash for the issuing authority.
-- A delegated v2 token MUST have `attenuation_proof.parent_scope_hash`
+- A delegated token MUST have `attenuation_proof.parent_scope_hash`
   equal to `delegation_chain.last().scope_hash`. The chain-link signature
   binds that hash to the predecessor's key, transitively rooting the
   witness in the trust-root authority.
-- A v2 chain whose hops omit `scope_hash` is rejected fail-closed; legacy
-  v1 hops do not carry it and v2 verifiers therefore reject mixed chains.
+- A chain whose hops omit `scope_hash` is rejected fail-closed.
 
 The portable verifier entrypoint
 `chio_kernel_core::verify_capability_with_floor_and_trust_root(token,
@@ -408,8 +395,8 @@ trusted_issuers, clock, crypto_floor, trust_root_scope_hash)` enforces
 the rule in isolation. Production kernels MUST route every inbound
 capability admission through the composite entrypoint
 `chio_kernel_core::verify_capability_full(token, trusted_issuers,
-clock, crypto_floor, peer, trust_root, budgets)`, which chains the W1.3
-schema-ceiling check, the W1.1 chain-binding check, and the W1.2
+clock, crypto_floor, peer, trust_root, budgets)`, which chains the W1.1
+chain-binding check and the W1.2
 sibling-sum budget admission alongside signature, floor, and time-bound
 verification. The earlier partial entry points
 (`verify_capability_with_floor`,
@@ -428,8 +415,8 @@ nested-flow bridges) MUST traverse `verify_capability_full` exactly
 once per admission decision.
 
 The two-phase split is intentionally asymmetric. The pre-admit
-verifier pass (signature + crypto-floor + W1.3 schema-ceiling + W1.1
-chain-binding + time-window) MUST run on every surface listed above.
+verifier pass (signature + crypto-floor + W1.1 chain-binding + time-window)
+MUST run on every surface listed above.
 The authoritative budget admit phase (W1.2 sibling-sum) MUST run on
 hosted tool dispatch and federated nested-flow bridges -- the surfaces
 that actually execute a side-effecting action against the budget --
@@ -439,9 +426,8 @@ session/resource/prompt operations (which are read-only metadata
 exchanges that do not consume the caller's invocation budget). Kernel
 implementations that omit the admit phase on these stateless surfaces
 MUST document the omission alongside the surface helper. The
-`b1_capability_v2_single_entry_no_bypass.rs` fixture asserts the
-pre-admit pass MUST; the W1.2 sibling-sum admit MUST is asserted by
-the hosted-dispatch admit fixtures (e.g.
+The W1.1 chain-binding fixture asserts the pre-admit pass MUST; the W1.2
+sibling-sum admit MUST is asserted by the hosted-dispatch admit fixtures (e.g.
 `budget_split_cross_hop_rejects_amplification.rs`,
 `wave1_hot_path_enforcement.rs`). Both rejection paths surface
 `CapabilityError::AttenuationViolation` with the offending hashes
@@ -449,19 +435,17 @@ formatted as hex. The check costs a single hash comparison on the
 happy path and runs after the basic signature, time, and crypto-floor
 checks (the chain binding is meaningful only once those succeed).
 
-The MUST above is enforced by the conformance fixture
-`crates/chio-conformance/tests/b1_capability_v2_single_entry_no_bypass.rs`,
-which constructs a v2 capability whose `attenuation_proof.parent_scope_hash`
-does not bind to any registered trust root and asserts that the
-production hosted dispatch path returns a deny verdict. If a future
-refactor reintroduces a kernel-side verifier shortcut that bypasses
-`verify_capability_full`, that fixture must fail.
+The MUST above is enforced by conformance fixtures that construct an attenuated
+capability whose `attenuation_proof.parent_scope_hash` does not bind to any
+registered trust root and assert that production dispatch surfaces deny. If a
+future refactor reintroduces a kernel-side verifier shortcut that bypasses
+`verify_capability_full`, those fixtures must fail.
 
 Worked example. An issuer with trust-root authority hash `H_root` mints
-a v2 capability directly (empty `delegation_chain`). The verifier accepts
+a capability directly (empty `delegation_chain`). The verifier accepts
 the token only if `attenuation_proof.parent_scope_hash == H_root`. If
 the issuer further delegates to Bob, the resulting hop's
-`DelegationLink.scope_hash` is `H_bob`, and Bob's downstream v2 token
+`DelegationLink.scope_hash` is `H_bob`, and Bob's downstream token
 must carry `attenuation_proof.parent_scope_hash == H_bob`. A token that
 claims `parent_scope_hash == H_BIGGER` (any unbound hash) is rejected
 with `CapabilityError::AttenuationViolation`.
@@ -693,55 +677,99 @@ unless and until they receive their own manifest entry and proof lane.
 
 ## 6. Receipt Contract
 
-The shipped receipt envelope is `ChioReceipt` from
-`crates/chio-core/src/receipt.rs`.
+The current pre-release v1 receipt envelope is `ChioReceipt` from
+`crates/chio-core-types/src/receipt.rs`.
 
 | Field | Meaning |
 | --- | --- |
-| `id` | Stable receipt identifier |
+| `id` | Authoritative content-addressed receipt identifier |
 | `timestamp` | Unix timestamp seconds |
 | `capability_id` | Capability exercised or presented |
 | `tool_server` | Target server id |
 | `tool_name` | Target tool |
 | `action` | Canonicalized tool parameters plus `parameter_hash` |
-| `decision` | `allow`, `deny`, `cancelled`, or `incomplete` |
+| `receipt_kind` | `mediated_decision`, `trace_observation`, or `advisory_evaluation` |
+| `boundary_class` | Runtime boundary: `prevent`, `detect_only`, or `advisory_only` |
+| `observation_outcome` | Trace/advisory outcome. Omitted for mediated decisions |
+| `tool_origin` | Where the tool effect executed relative to Chio |
+| `redaction_mode` | Signed redaction mode for receipt details |
+| `actor_chain` | Signed actor attribution chain |
+| `decision` | Present only for `mediated_decision` + `prevent` receipts |
 | `content_hash` | Hash of the evaluated content or outcome payload |
 | `policy_hash` | Hash of the policy material used |
 | `evidence` | Per-guard evidence |
 | `metadata` | Optional structured metadata |
-| `kernel_key` | Verifying public key |
-| `signature` | Ed25519 signature |
+| `trust_level` | `mediated`, `verified`, or `advisory`, coherent with `receipt_kind` |
+| `tenant_id` | Optional authenticated tenant id |
+| `kernel_key` | Verifying public key; bare 64-hex Ed25519, `p256:<130-hex>` SEC1 P-256, or `p384:<194-hex>` SEC1 P-384 |
+| `algorithm` | Optional envelope hint (`ed25519`, `p256`, or `p384`); verification dispatches off the signature prefix, not this field |
+| `signature` | Algorithm-aware hex signature over canonical JSON of `ChioReceiptSigningBody { id, body: ChioReceiptIdInput }`. The schema regex is `^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$`: bare 128-hex for Ed25519, `p256:<DER hex>` for P-256, or `p384:<DER hex>` for P-384 |
 
-### Receipt v2 Body Hash And DAG
+### Receipt Identity And DAG
 
-`chio.receipt.v2` adds a content-addressed lane while preserving the legacy
-`receiptId` as a non-authoritative tooling alias. The authoritative identity is
-`bodyHash`.
+`chio.receipt.v1` is content-addressed. The authoritative receipt identity is
+`id`.
 
-`ReceiptV2BodyHashInput` contains every v2 body field except `bodyHash`,
-`signature`, and the legacy `receiptId`. The body hash is:
+The receipt-id input contains every receipt body field except `id`,
+`algorithm`, and `signature`. The receipt id is:
 
 ```text
-bodyHash = H(canonical_jcs(ReceiptV2BodyHashInput))
+id = H(canonical_jcs(ChioReceiptIdInput))
 ```
 
 The signature input is the typed wrapper:
 
 ```text
-ReceiptV2SigningBody { bodyHash, body: ReceiptV2BodyHashInput }
+ChioReceiptSigningBody { id, body: ChioReceiptIdInput }
 ```
 
-Ad hoc byte concatenation is not a valid signing input. Verifiers reconstruct
-the typed wrapper and re-canonicalize it before signature verification.
+The producer canonicalizes that wrapper via RFC 8785 JCS and signs the
+resulting bytes with the kernel's identity key. Three signing
+algorithms are supported in v1, and verifiers dispatch off the
+`signature` field prefix rather than the optional `algorithm` envelope
+hint:
 
-Replay and deduplication state keys exclusively on `bodyHash`. A tampered
-legacy `receiptId` cannot influence replay acceptance and does not change the
-receipt's cryptographic identity.
+- **Ed25519** (default): bare lowercase 128-hex (exactly 64 raw bytes);
+  the `kernel_key` is bare lowercase 64-hex (32 raw bytes).
+- **P-256 (ECDSA / SECP256R1)**: `p256:<DER hex>` over the same canonical
+  bytes; the `kernel_key` is `p256:<130-hex>` (uncompressed SEC1 point,
+  65 bytes, leading byte `0x04`).
+- **P-384 (ECDSA / SECP384R1)**: `p384:<DER hex>` over the same canonical
+  bytes; the `kernel_key` is `p384:<194-hex>` (uncompressed SEC1 point,
+  97 bytes, leading byte `0x04`).
 
-For multi-parent lineage, v2 receipts carry:
+The wire pattern is fixed by
+`spec/schemas/chio-wire/v1/receipt/record.schema.json`:
+
+```text
+signature  -> ^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$
+kernel_key -> ^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$
+```
+
+The Ed25519 signature length is exactly 128 hex characters; the P-256
+and P-384 hex bodies hold variable-length DER-encoded ECDSA signatures
+(roughly 70-72 bytes for P-256 and 104-110 bytes for P-384) and are
+validated by length-aware decoders downstream of the schema regex. The
+optional `algorithm` envelope hint MAY be `ed25519`, `p256`, or `p384`;
+when present it MUST agree with the signature prefix and verifiers
+reject mismatches fail-closed. Hybrid post-quantum signatures use the
+self-describing prefix shape defined in section 4 and are not part of
+this `chio.receipt.v1` algorithm enumeration.
+
+Ad hoc byte concatenation is not a valid signing input. Verifiers
+reconstruct the typed wrapper, re-canonicalize it via JCS, dispatch off
+the signature prefix to select the correct verification algorithm, and
+only then verify the signature against the embedded `kernel_key` (which
+itself must agree with the same algorithm prefix).
+
+Replay and deduplication state keys exclusively on `id`. A tampered id cannot
+influence replay acceptance because verifiers recompute the id from canonical
+receipt content before accepting the signature.
+
+For multi-parent lineage, receipts carry:
 
 - `chainId`
-- sorted and deduplicated `parentReceiptIds`, each a parent `bodyHash`
+- sorted and deduplicated `parentReceiptIds`, each a parent receipt id
 - `parentSetHash = H(canonical(parentReceiptIds))`
 - `dagOrdinal`
 - HLC triple `{ wallSeconds, logical, kernelId }`
@@ -751,55 +779,22 @@ parent set, every parent shares the same `chainId`, and
 `child.dagOrdinal > max(parent.dagOrdinal)`. This rejects cross-kernel cycles
 without relying on one global clock.
 
-#### Receipt v2 body_hash addressing (W2.1)
+### 6.1 Receipt Semantics And Decisions
 
-This section records producer-side wiring for T1.2. The verifier-side check is already present; the kernel
-now mints v2 receipts at production mint time when peer negotiation selects v2.
+The v1 receipt shape makes authority structural:
 
-- **Mint path.** `ChioKernel::record_chio_receipt_with_federation` is the
-  hot-path entry that all governed dispatches funnel through. When the
-  `ACCEPTS_RECEIPT_V2` capability feature is advertised on the negotiated peer
-  profile (per `chio.capabilities.v1`), the kernel mints a `ChioReceiptV2`
-  alongside the legacy v1 receipt. The legacy UUIDv7 alias on the v2 receipt
-  is set to the v1 receipt's id so external readers can correlate; replay
-  identity is exclusively `bodyHash`.
-- **Replay store key.** The kernel maintains an in-memory `ReceiptV2ReplaySet`
-  keyed on `bodyHash`. A persistent `chio_receipts_v2` table mirrors the same
-  key. Both stores reject the second insertion of any `bodyHash` fail-closed.
-  The persistent row carries `legacy_receipt_id` only as a non-authoritative
-  tooling alias; tampering with the alias never changes a replay decision.
-- **Verifier rule.** A v2 receipt is admitted only when
-  `bodyHash == H(canonical_jcs(ReceiptV2BodyHashInput))`. The signature is
-  computed over the typed `ReceiptV2SigningBody { bodyHash, body }` wrapper.
-  Either form of mismatch (wrong `bodyHash` field, signature over the wrong
-  body) fails closed. This matches the T1.2 audit closure.
-- **Negotiation downgrade (v2 hardening).**
-  - When the peer profile advertises only v1 (no `ACCEPTS_RECEIPT_V2`) and
-    is pinned fresh, the kernel mints only the v1 UUIDv7 receipt. This is
-    the spec-conformant v1-only profile; advisory dispatches that name no
-    federation peer remain governed by the kernel-level
-    `kernel_receipt_v2_default` setting.
-  - When the request names a federation peer but no matching peer is pinned
-    fresh for that `remote_kernel_id` (whether stale or never-pinned), the
-    kernel MUST reject the dispatch with a typed
-    `KernelError::ReceiptNegotiationDowngrade` whose
-    `NegotiationDowngradeReason` enumerates the failure mode (currently
-    `PeerNotPinnedFresh`). The kernel MUST NOT mint a v1 receipt as a
-    silent fallback. This hardening adds a
-    new normative MUST to a section that previously contained only
-    descriptive prose ("the kernel falls back"). The "stale or
-    never-pinned" enumeration is part of the MUST so a future
-    implementation cannot read "not pinned fresh" as "stale only" and
-    re-introduce a bypass for the never-pinned path.
-  - The pre-B2 warn-and-continue behaviour (a `tracing::warn!` event
-    followed by a v1 fallback) is removed. Operators retain the
-    structured `KernelError::ReceiptNegotiationDowngrade` as the
-    observability signal; the dispatch fails closed instead of silently
-    minting a downgraded receipt.
+- `mediated_decision` receipts use `boundary_class = prevent`,
+  `trust_level = mediated`, and MUST carry a `decision`.
+- `trace_observation` receipts use `boundary_class = detect_only`,
+  `trust_level = verified`, and MUST omit `decision`.
+- `advisory_evaluation` receipts use `boundary_class = advisory_only`,
+  `trust_level = advisory`, and MUST omit `decision`.
 
-### 6.1 Decisions
+Only `mediated_decision` + `prevent` + `Allow` may be displayed or exported as
+authorization. Trace and advisory records can be evidence, but they are never
+authorization receipts.
 
-The decision enum is part of the contract:
+When present, the decision enum is:
 
 - `Allow`
 - `Deny { reason, guard }`
@@ -1140,7 +1135,7 @@ protocol. `chio.manifest.v1` remains frozen in this release for compatibility.
 
 ### 7.1 OpenAPI-Derived Manifests
 
-Chio v3 adds an automated pipeline for deriving `chio.manifest.v1` tool
+Chio includes an automated pipeline for deriving `chio.manifest.v1` tool
 definitions from OpenAPI 3.0.x and 3.1.x specifications. Each HTTP operation
 (method + path pair) in the OpenAPI spec becomes one `ToolDefinition`. The full
 pipeline is specified in [OPENAPI-INTEGRATION.md](OPENAPI-INTEGRATION.md).
@@ -1183,14 +1178,11 @@ The repository ships these primary runtime entrypoints:
 These surfaces intentionally share the same core receipt, capability,
 revocation, and policy primitives rather than defining separate trust models.
 
-`chio receipt explain <receipt-id>` accepts legacy receipt aliases from the
-local receipt DB or control plane. v2 `bodyHash` explanation is supported only
-when the full v2 receipt JSON is supplied with `--input-file`; this CLI path
-does not yet implement persisted v2 DB or control-plane lookup by `bodyHash`.
-It renders the signed decision, policy hash, guard evidence, parent receipt
-set, batch witness reference when present, and a repair hint for denials or
-incomplete receipts. It is a local CLI narrator, not a replacement for
-signature verification.
+`chio receipt explain <receipt-id>` loads the content-addressed receipt from
+the local receipt DB or control plane. It renders the signed decision, policy
+hash, guard evidence, parent receipt set, batch witness reference when present,
+and a repair hint for denials or incomplete receipts. It is a local CLI
+narrator, not a replacement for signature verification.
 
 ### 8.2 MCP Compatibility
 
@@ -1205,7 +1197,9 @@ that currently covers:
 - tasks
 - progress notifications
 - nested sampling, elicitation, and roots callbacks
-- remote HTTP auth discovery and hosted authorization-server flows
+- remote HTTP auth discovery. Hosted OAuth authorization-server product work is
+  explicitly blocked until the OAuth AS ADR or equivalent decision note is
+  accepted.
 
 Compatibility claims are grounded in checked-in conformance scenarios, live JS
 and Python peers, and the release-qualification wave corpus.
@@ -1381,8 +1375,12 @@ delegated call-chain fields into independently verified upstream provenance,
 and `senderConstraint.delegatedCallChainBound` is reserved for observed or
 verified lineage only.
 
-Chio's hosted authorization edge now publishes and enforces the same bounded
-contract at request time. The published `chio_authorization_profile` includes:
+Chio does not claim OAuth authorization-server product status in this v1
+contract. The bounded OAuth authorization profile below is an accepted
+planning boundary for the feature-gated authorization edge, not a generally
+available product surface, and remains blocked for product use until a
+dedicated OAuth AS ADR or equivalent decision note is accepted. When enabled in
+local or operator-gated builds, the draft `chio_authorization_profile` includes:
 
 - one request-time contract naming `authorization_details` and
   `chio_transaction_context` as the only supported Chio request parameters and
@@ -1394,7 +1392,7 @@ contract at request time. The published `chio_authorization_profile` includes:
   authorization artifacts while approval tokens, Chio capabilities, and review
   evidence remain non-bearer artifacts
 
-At request time, Chio only accepts the bounded governed detail family
+In that gated path, Chio only accepts the bounded governed detail family
 `chio_governed_tool`, `chio_governed_commerce`, and
 `chio_governed_metered_billing`, and at least one governed-tool row must be
 present. Malformed transaction context, unsupported detail types, mismatched
@@ -1402,21 +1400,23 @@ resource indicators, stale identity assertions, mismatched verifier bindings,
 request-binding mismatches, or ambiguous approval/runtime-assurance/call-chain
 fragments fail closed before token issuance.
 
-Chio also supports one bounded sender-constrained continuation contract on that
-same hosted authorization path. The request may carry:
+The same gated path sketches one bounded sender-constrained continuation
+contract. The request may carry:
 
 - `chio_sender_dpop_public_key`
 - `chio_sender_mtls_thumbprint_sha256`
 - `chio_sender_attestation_sha256`
 
-If Chio approves the request, the resulting sender constraint is persisted on
-the authorization code and then projected into access tokens through `cnf`:
+If that gated path approves the request, the resulting sender constraint is
+persisted on the authorization code and then projected into access tokens
+through `cnf`:
 
 - `cnf.chioSenderKey`
 - `cnf["x5t#S256"]`
 - `cnf.chioAttestationSha256`
 
-Runtime admission then enforces the same bound sender proof continuity:
+Runtime admission for the gated path then enforces the same bound sender proof
+continuity:
 
 - DPoP-bound flows must present a valid proof during token exchange and again
   on protected-resource admission, including nonce, `jti`, `htm`, and `htu`
@@ -1433,8 +1433,8 @@ the same request. Missing, stale, replayed, or mismatched sender proof fails
 closed as `invalid_request`, `invalid_grant`, or bearer denial depending on
 where the mismatch occurs.
 
-The hosted edge now publishes the same profile through OAuth-family discovery
-documents:
+When the gated path is configured, the hosted edge may publish the same profile
+through OAuth-family discovery documents:
 
 - `/.well-known/oauth-protected-resource/mcp`
 - `/.well-known/oauth-authorization-server/{issuer-path}`
@@ -2093,7 +2093,7 @@ review package. It returns:
 This package is still a bounded review artifact rather than a live financing
 contract. Chio can now package honest credit posture for external capital review,
 but it still does not bind external capital, execute reserves, or run a
-liability market from `v2.18` alone.
+liability market from the current automation profile alone.
 
 `GET /v1/reports/capital-book` is Chio's signed live source-of-funds ledger for
 that same bounded credit layer. It returns:
@@ -2764,6 +2764,7 @@ The shipped cross-org artifact schemas now use Chio-primary identifiers:
 | Artifact | Schema |
 | --- | --- |
 | Evidence export manifest | `chio.evidence_export_manifest.v1` |
+| Evidence export disclosure notice | `chio.evidence_export_disclosure_notice.v1` |
 | Federation policy | `chio.federation-policy.v1` |
 | Federated evidence share | `chio.federated-evidence-share.v1` |
 | Federated delegation policy | `chio.federated-delegation-policy.v1` |
@@ -2778,6 +2779,10 @@ The supported contract includes:
   local delegation anchor
 - non-Chio evidence and delegation schema identifiers are rejected instead of
   treated as compatibility aliases
+- tenant-scoped evidence export manifests carry a structured disclosure
+  notice documenting which cross-tenant aggregate fields the signed
+  checkpoint set inherently reveals; admin-all manifests omit the notice
+  because the operator already requested cross-tenant visibility
 
 ### 10.3 Enterprise Identity Federation
 
@@ -3009,7 +3014,7 @@ For operational guidance, see:
 
 ## 14. Explicit Gaps
 
-The following are intentionally outside the shipped `v3` contract:
+The following are intentionally outside the shipped v1 contract:
 
 - permissionless or auto-trusting public federation or certification
   marketplace semantics

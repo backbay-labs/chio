@@ -7,6 +7,7 @@ import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
 import io.backbay.chio.sdk.errors.ChioConnectionError
 import io.backbay.chio.sdk.errors.ChioDeniedError
+import io.backbay.chio.sdk.errors.ChioError
 import io.backbay.chio.sdk.errors.ChioTimeoutError
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -22,11 +23,13 @@ import kotlin.test.assertTrue
 class ChioClientHttpTest {
     private lateinit var server: HttpServer
     private lateinit var baseUrl: String
+    private var serverStarted: Boolean = false
 
     @BeforeEach
     fun startServer() {
         server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         baseUrl = "http://127.0.0.1:${server.address.port}"
+        serverStarted = false
     }
 
     @AfterEach
@@ -39,7 +42,10 @@ class ChioClientHttpTest {
         handler: HttpHandler,
     ) {
         server.createContext(path, handler)
-        server.start()
+        if (!serverStarted) {
+            server.start()
+            serverStarted = true
+        }
     }
 
     private fun respond(
@@ -55,6 +61,23 @@ class ChioClientHttpTest {
 
     private fun readBody(exchange: HttpExchange): ByteArray = exchange.requestBody.readAllBytes()
 
+    private fun structuredVerifyResponse(authorized: Boolean): String =
+        """
+        {
+          "signature_valid": $authorized,
+          "signer_trusted": $authorized,
+          "receipt_id_valid": $authorized,
+          "parameter_hash_valid": $authorized,
+          "receipt_kind": "mediated_decision",
+          "boundary_class": "prevent",
+          "trust_level": "mediated",
+          "result": "${if (authorized) "allow" else "deny"}",
+          "authorized": $authorized,
+          "signer_key_hex": "${"d".repeat(64)}",
+          "ok": $authorized
+        }
+        """.trimIndent()
+
     @Test
     fun evaluateToolCallSendsParameterHash() {
         val observed = AtomicReference<Map<String, Any?>>()
@@ -69,13 +92,22 @@ class ChioClientHttpTest {
                   "id": "r1", "timestamp": 1700000000, "capability_id": "cap",
                   "tool_server": "s", "tool_name": "t",
                   "action": {"parameters": ${'$'}{params}, "parameter_hash": "${'$'}{ph}"},
-                  "decision": {"verdict": "allow"}, "content_hash": "c", "policy_hash": "p",
+                  "decision": {"verdict": "allow"},
+                  "receipt_kind": "mediated_decision",
+                  "boundary_class": "prevent",
+                  "tool_origin": "caller_executed",
+                  "redaction_mode": "none",
+                  "trust_level": "mediated",
+                  "content_hash": "c", "policy_hash": "p",
                   "evidence": [], "kernel_key": "k", "signature": "sig"
                 }
                 """.trimIndent()
                     .replace("\${params}", """{"a":1}""")
                     .replace("\${ph}", "abc")
             respond(exchange, 200, resp)
+        }
+        register("/v1/receipts/verify") { exchange ->
+            respond(exchange, 200, structuredVerifyResponse(true))
         }
 
         ChioClient(baseUrl, Duration.ofSeconds(2)).use { c ->
@@ -92,11 +124,48 @@ class ChioClientHttpTest {
     }
 
     @Test
+    fun evaluateToolCallRejectsUnverifiedAllowReceipt() {
+        register("/v1/evaluate") { exchange ->
+            val body = readBody(exchange)
+            val parsed: Map<String, Any?> = jacksonObjectMapper().readValue(body)
+            val resp =
+                """
+                {
+                  "id": "r1", "timestamp": 1700000000, "capability_id": "cap",
+                  "tool_server": "s", "tool_name": "t",
+                  "action": {"parameters": ${'$'}{params}, "parameter_hash": "abc"},
+                  "decision": {"verdict": "allow"},
+                  "receipt_kind": "mediated_decision",
+                  "boundary_class": "prevent",
+                  "tool_origin": "caller_executed",
+                  "redaction_mode": "none",
+                  "trust_level": "mediated",
+                  "content_hash": "c", "policy_hash": "p",
+                  "evidence": [], "kernel_key": "k", "signature": "sig"
+                }
+                """.trimIndent()
+                    .replace("\${params}", jacksonObjectMapper().writeValueAsString(parsed["parameters"]))
+            respond(exchange, 200, resp)
+        }
+        register("/v1/receipts/verify") { exchange ->
+            respond(exchange, 200, structuredVerifyResponse(false))
+        }
+
+        ChioClient(baseUrl, Duration.ofSeconds(2)).use { c ->
+            val err =
+                assertThrows<ChioError> {
+                    c.evaluateToolCall("cap", "s", "t", mapOf("a" to 1))
+                }
+            assertEquals(ChioErrorCodes.INVALID_RECEIPT, err.code)
+        }
+    }
+
+    @Test
     fun verifyReceiptPostsToRightPath() {
         val calls = AtomicReference<String?>()
         register("/v1/receipts/verify") { exchange ->
             calls.set(exchange.requestURI.path)
-            respond(exchange, 200, """{"valid": true}""")
+            respond(exchange, 200, structuredVerifyResponse(true))
         }
         val receipt = buildDummyReceipt()
         ChioClient(baseUrl, Duration.ofSeconds(2)).use { c ->
@@ -110,7 +179,7 @@ class ChioClientHttpTest {
         val calls = AtomicReference<String?>()
         register("/chio/verify") { exchange ->
             calls.set(exchange.requestURI.path)
-            respond(exchange, 200, """{"valid": false}""")
+            respond(exchange, 200, structuredVerifyResponse(false))
         }
         val http =
             HttpReceipt(
@@ -120,15 +189,20 @@ class ChioClientHttpTest {
                 method = "GET",
                 callerIdentityHash = "h",
                 verdict = Verdict.allow(),
+                receiptKind = "mediated_decision",
+                boundaryClass = "prevent",
+                toolOrigin = "caller_executed",
+                redactionMode = "none",
                 responseStatus = 200,
                 timestamp = 1L,
                 contentHash = "c",
                 policyHash = "p",
+                trustLevel = "mediated",
                 kernelKey = "k",
                 signature = "s",
             )
         ChioClient(baseUrl, Duration.ofSeconds(2)).use { c ->
-            assertFalse(c.verifyHttpReceipt(http))
+            assertFalse(c.verifyHttpReceipt(http).ok)
         }
         assertEquals("/chio/verify", calls.get())
     }
@@ -242,6 +316,11 @@ class ChioClientHttpTest {
                   "receipt": {
                     "id":"r","request_id":"req","route_pattern":"/","method":"GET",
                     "caller_identity_hash":"h","verdict":{"verdict":"allow"},
+                    "receipt_kind":"mediated_decision",
+                    "boundary_class":"prevent",
+                    "tool_origin":"caller_executed",
+                    "redaction_mode":"none",
+                    "trust_level":"mediated",
                     "evidence":[],"response_status":200,"timestamp":1,
                     "content_hash":"c","policy_hash":"p",
                     "kernel_key":"k","signature":"s"
@@ -250,6 +329,9 @@ class ChioClientHttpTest {
                 }
                 """.trimIndent()
             respond(exchange, 200, resp)
+        }
+        register("/chio/verify") { exchange ->
+            respond(exchange, 200, structuredVerifyResponse(true))
         }
         val request =
             ChioHttpRequest(
@@ -267,6 +349,51 @@ class ChioClientHttpTest {
         assertEquals("tok-1", observedCap.get())
     }
 
+    @Test
+    fun evaluateHttpRequestRejectsUnverifiedAllowReceipt() {
+        register("/chio/evaluate") { exchange ->
+            val resp =
+                """
+                {
+                  "verdict": {"verdict":"allow"},
+                  "receipt": {
+                    "id":"r","request_id":"req","route_pattern":"/","method":"GET",
+                    "caller_identity_hash":"h","verdict":{"verdict":"allow"},
+                    "receipt_kind":"mediated_decision",
+                    "boundary_class":"prevent",
+                    "tool_origin":"caller_executed",
+                    "redaction_mode":"none",
+                    "trust_level":"mediated",
+                    "evidence":[],"response_status":200,"timestamp":1,
+                    "content_hash":"c","policy_hash":"p",
+                    "kernel_key":"k","signature":"s"
+                  },
+                  "evidence":[]
+                }
+                """.trimIndent()
+            respond(exchange, 200, resp)
+        }
+        register("/chio/verify") { exchange ->
+            respond(exchange, 200, structuredVerifyResponse(false))
+        }
+        val request =
+            ChioHttpRequest(
+                requestId = "req",
+                method = "GET",
+                routePattern = "/",
+                path = "/",
+                caller = CallerIdentity.anonymous(),
+                timestamp = 1L,
+            )
+        ChioClient(baseUrl, Duration.ofSeconds(2)).use { c ->
+            val err =
+                assertThrows<ChioError> {
+                    c.evaluateHttpRequest(request, "tok-1")
+                }
+            assertEquals(ChioErrorCodes.INVALID_RECEIPT, err.code)
+        }
+    }
+
     private fun buildDummyReceipt(
         id: String = "r1",
         content: String = "c",
@@ -279,6 +406,11 @@ class ChioClientHttpTest {
             toolName = "events:consume:x",
             action = ToolCallAction(parameters = mapOf("a" to 1), parameterHash = "h"),
             decision = Decision.allow(),
+            receiptKind = "mediated_decision",
+            boundaryClass = "prevent",
+            toolOrigin = "caller_executed",
+            redactionMode = "none",
+            trustLevel = "mediated",
             contentHash = content,
             policyHash = "p",
             evidence = emptyList(),

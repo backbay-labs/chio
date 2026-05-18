@@ -20,7 +20,8 @@ use chio_core_types::capability::{
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    ActorRef, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, ReceiptKind, RedactionMode,
+    ToolCallAction, ToolOrigin, TrustLevel,
 };
 use chio_core_types::SignedExportEnvelope;
 use chio_federation::{
@@ -1082,7 +1083,16 @@ fn treaty_runtime_fixture() -> Result<TreatyRuntimeFixture, Box<dyn std::error::
                 "record": "vendor-ledger-7",
                 "value": "closed"
             }))?,
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: vec![ActorRef {
+                actor_id: "agent:chiodos-runtime/admission".to_string(),
+                actor_kind: Some("agent".to_string()),
+            }],
             content_hash: bilateral_invocation.outcome_sha256.clone(),
             policy_hash: "policy-live".to_string(),
             evidence: Vec::new(),

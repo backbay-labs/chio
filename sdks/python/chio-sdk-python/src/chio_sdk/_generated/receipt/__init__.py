@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: d680571b15f2c519e43943d2ec4e7754e54e544f1245ac1e25d16952856342c9
+# Schema sha256: 31d733bff1206a7961e2e9bccbc59a4de576f3e3f9cfaf465469e3c66d48fba7
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -11,25 +11,29 @@
 from __future__ import annotations
 
 from .inclusion_proof_schema import ChioReceiptMerkleInclusionProof
-from .lineage_statement_v2_schema import ChioReceiptLineageStatementV2, ParentReceiptId
-from .record_schema import Algorithm, ChioReceiptRecord, Decision, Decision1, Decision2, Decision3, Decision4, GuardEvidence, ToolCallAction, TrustLevel
-from .v2_schema import Algorithm, ChioReceiptV2, Hlc, ParentReceiptId, ReceiptV2BodyHashInput, TrustLevel
+from .lineage_statement_schema import ChioReceiptLineageStatement, EvidenceClass, RelationKind, SessionAnchorReference
+from .record_schema import ActorRef, Algorithm, BoundaryClass, ChioReceiptRecord, Decision, Decision1, Decision2, Decision3, Decision4, GuardEvidence, ObservationOutcome, ReceiptKind, RedactionMode, ToolCallAction, ToolOrigin, TrustLevel
 
 __all__ = [
+    "ActorRef",
     "Algorithm",
-    "ChioReceiptLineageStatementV2",
+    "BoundaryClass",
+    "ChioReceiptLineageStatement",
     "ChioReceiptMerkleInclusionProof",
     "ChioReceiptRecord",
-    "ChioReceiptV2",
     "Decision",
     "Decision1",
     "Decision2",
     "Decision3",
     "Decision4",
+    "EvidenceClass",
     "GuardEvidence",
-    "Hlc",
-    "ParentReceiptId",
-    "ReceiptV2BodyHashInput",
+    "ObservationOutcome",
+    "ReceiptKind",
+    "RedactionMode",
+    "RelationKind",
+    "SessionAnchorReference",
     "ToolCallAction",
+    "ToolOrigin",
     "TrustLevel",
 ]

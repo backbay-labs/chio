@@ -1,8 +1,8 @@
 use chio_core::canonical::CanonicalBytes;
 use chio_core::capability::CapabilityToken;
 use chio_core::credit::CreditBondRow;
+use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChildRequestReceipt, ChioReceipt};
-use chio_core_types::receipt::ChioReceiptV2;
 
 use crate::capability_lineage::CapabilitySnapshot;
 use crate::checkpoint::KernelCheckpoint;
@@ -36,6 +36,118 @@ impl Default for RetentionConfig {
     }
 }
 
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptWriterCounters {
+    pub accepted_total: u64,
+    pub committed_total: u64,
+    pub failed_total: u64,
+    pub saturated_total: u64,
+    pub inflight: u64,
+    #[serde(default)]
+    pub last_commit_unix_ms: Option<u64>,
+    #[serde(default)]
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptWalCheckpointReport {
+    pub busy: u64,
+    pub log_frames: u64,
+    pub checkpointed_frames: u64,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptFlushReport {
+    pub writer: ReceiptWriterCounters,
+    pub latest_committed_entry_seq: u64,
+    #[serde(default)]
+    pub latest_checkpoint_seq: Option<u64>,
+    pub latest_checkpointed_entry_seq: u64,
+    #[serde(default)]
+    pub uncheckpointed_start_seq: Option<u64>,
+    #[serde(default)]
+    pub uncheckpointed_end_seq: Option<u64>,
+    #[serde(default)]
+    pub wal_checkpoint: Option<ReceiptWalCheckpointReport>,
+    #[serde(default)]
+    pub db_size_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptCheckpointRange {
+    pub start_seq: u64,
+    pub end_seq: u64,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptCheckpointStatusReport {
+    pub healthy: bool,
+    pub latest_committed_entry_seq: u64,
+    #[serde(default)]
+    pub latest_checkpoint_seq: Option<u64>,
+    pub latest_checkpointed_entry_seq: u64,
+    #[serde(default)]
+    pub next_range: Option<ReceiptCheckpointRange>,
+    #[serde(default)]
+    pub checkpoint_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptStoreHealthReport {
+    pub healthy: bool,
+    pub writer: ReceiptWriterCounters,
+    pub latest_committed_entry_seq: u64,
+    #[serde(default)]
+    pub latest_checkpoint_seq: Option<u64>,
+    pub latest_checkpointed_entry_seq: u64,
+    #[serde(default)]
+    pub uncheckpointed_start_seq: Option<u64>,
+    #[serde(default)]
+    pub uncheckpointed_end_seq: Option<u64>,
+    #[serde(default)]
+    pub checkpoint_error: Option<String>,
+    #[serde(default)]
+    pub db_size_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptCheckpointCreateReport {
+    pub created: bool,
+    #[serde(default)]
+    pub checkpoint_seq: Option<u64>,
+    #[serde(default)]
+    pub batch_start_seq: Option<u64>,
+    #[serde(default)]
+    pub batch_end_seq: Option<u64>,
+    pub latest_committed_entry_seq: u64,
+    pub latest_checkpointed_entry_seq: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorizationReceiptConsumption {
+    pub authorization_receipt_id: String,
+    pub consumer_receipt_id: String,
+    pub request_id: String,
+    pub session_id: String,
+    pub tool_call_id: String,
+    /// Tenant id copied from the live authorization receipt. ACP authorization
+    /// receipts may legitimately carry `tenant_id: None` for non-enterprise
+    /// (single-tenant or local) deployments; the consumption record mirrors
+    /// the receipt's tenant scope (including `None`) for binding integrity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
+    pub parameter_hash: String,
+    pub consumed_at_unix_ms: u64,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ReceiptStoreError {
     #[error("sqlite error: {0}")]
@@ -43,6 +155,9 @@ pub enum ReceiptStoreError {
 
     #[error("sqlite pool error: {0}")]
     Pool(String),
+
+    #[error("{operation} timed out after {timeout_ms}ms")]
+    Timeout { operation: String, timeout_ms: u64 },
 
     #[error("serialization error: {0}")]
     Json(#[from] serde_json::Error),
@@ -59,6 +174,9 @@ pub enum ReceiptStoreError {
     #[error("invalid outcome filter: {0}")]
     InvalidOutcome(String),
 
+    #[error("receipt read boundary error: {0}")]
+    ReadBoundary(String),
+
     #[error("conflict: {0}")]
     Conflict(String),
 
@@ -68,6 +186,12 @@ pub enum ReceiptStoreError {
 
 pub trait ReceiptStore: Send + Sync {
     fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError>;
+    fn load_chio_receipt(
+        &self,
+        _receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        Ok(None)
+    }
     fn append_chio_receipt_canonical(
         &self,
         receipt: &ChioReceipt,
@@ -82,6 +206,16 @@ pub trait ReceiptStore: Send + Sync {
         self.append_chio_receipt(receipt)?;
         Ok(None)
     }
+    fn append_chio_receipt_consuming_authorization(
+        &self,
+        _receipt: &ChioReceipt,
+        _consumption: &AuthorizationReceiptConsumption,
+    ) -> Result<(), ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "durable authorization receipt consumption is not supported by this receipt store"
+                .to_string(),
+        ))
+    }
     fn append_child_receipt(&self, receipt: &ChildRequestReceipt) -> Result<(), ReceiptStoreError>;
     fn append_child_receipt_returning_seq(
         &self,
@@ -91,52 +225,81 @@ pub trait ReceiptStore: Send + Sync {
         Ok(None)
     }
 
-    /// Returns true when this store durably persists v2 receipts keyed
-    /// on `body_hash` and can replay-check them through
-    /// [`ReceiptStore::contains_chio_receipt_v2_body_hash`].
-    fn supports_chio_receipt_v2(&self) -> bool {
-        false
-    }
-
-    /// Persist a v2 receipt keyed on `body_hash`.
-    ///
-    /// The replay store keys on `receipt.body_hash`. The optional
-    /// `legacy_receipt_id_alias` is the kernel's UUIDv7 tooling alias
-    /// (when one is co-minted alongside a v1 fallback receipt) and is
-    /// non-authoritative: tampering with the alias must NOT change the
-    /// replay decision. Implementations that do not support v2 storage
-    /// return `Ok(0)`. Kernels must reject v2-required dispatches unless
-    /// [`ReceiptStore::supports_chio_receipt_v2`] is true.
-    fn append_chio_receipt_v2(
-        &self,
-        _receipt: &ChioReceiptV2,
-        _legacy_receipt_id_alias: Option<&str>,
-    ) -> Result<u64, ReceiptStoreError> {
-        Ok(0)
-    }
-
-    /// Replay-detection probe for a v2 receipt body_hash. Returns `true`
-    /// when the body_hash has already been admitted to the store.
-    /// Default implementation returns `false` so non-v2 stores never
-    /// flag a replay. V2-required dispatches must not rely on this
-    /// default; they require a v2-capable store before side effects.
-    fn contains_chio_receipt_v2_body_hash(
-        &self,
-        _body_hash: &str,
-    ) -> Result<bool, ReceiptStoreError> {
-        Ok(false)
-    }
-
     fn receipts_canonical_bytes_range(
         &self,
         _start_seq: u64,
         _end_seq: u64,
     ) -> Result<Vec<(u64, Vec<u8>)>, ReceiptStoreError> {
-        Ok(Vec::new())
+        Err(ReceiptStoreError::Conflict(
+            "receipt canonical byte ranges are not supported by this receipt store".to_string(),
+        ))
+    }
+
+    fn flush_receipt_writes(&self) -> Result<ReceiptFlushReport, ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "receipt writer flush is not supported by this receipt store".to_string(),
+        ))
+    }
+
+    fn flush_receipt_writes_with_timeout(
+        &self,
+        _timeout: std::time::Duration,
+    ) -> Result<ReceiptFlushReport, ReceiptStoreError> {
+        self.flush_receipt_writes()
+    }
+
+    fn receipt_store_health(&self) -> Result<ReceiptStoreHealthReport, ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "receipt store health is not supported by this receipt store".to_string(),
+        ))
+    }
+
+    fn latest_committed_entry_seq(&self) -> Result<u64, ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "receipt committed sequence reporting is not supported by this receipt store"
+                .to_string(),
+        ))
+    }
+
+    fn latest_checkpointed_entry_seq(&self) -> Result<u64, ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "receipt checkpoint sequence reporting is not supported by this receipt store"
+                .to_string(),
+        ))
+    }
+
+    fn next_checkpoint_range(
+        &self,
+        _max_batch: u64,
+    ) -> Result<Option<ReceiptCheckpointRange>, ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "receipt checkpoint ranges are not supported by this receipt store".to_string(),
+        ))
+    }
+
+    fn receipt_checkpoint_status(
+        &self,
+        _max_batch: Option<u64>,
+    ) -> Result<ReceiptCheckpointStatusReport, ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "receipt checkpoint status is not supported by this receipt store".to_string(),
+        ))
     }
 
     fn store_checkpoint(&self, _checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
-        Ok(())
+        Err(ReceiptStoreError::Conflict(
+            "receipt checkpoint storage is not supported by this receipt store".to_string(),
+        ))
+    }
+
+    fn create_next_receipt_checkpoint(
+        &self,
+        _max_batch: u64,
+        _keypair: &Keypair,
+    ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "receipt checkpoint creation is not supported by this receipt store".to_string(),
+        ))
     }
 
     fn load_checkpoint_by_seq(
@@ -266,6 +429,85 @@ pub trait ReceiptStore: Send + Sync {
 
     fn as_any_mut(&self) -> Option<&dyn std::any::Any> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct AppendOnlyStore;
+
+    impl ReceiptStore for AppendOnlyStore {
+        fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+            Ok(())
+        }
+
+        fn append_child_receipt(
+            &self,
+            _receipt: &ChildRequestReceipt,
+        ) -> Result<(), ReceiptStoreError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn unsupported_durability_surfaces_fail_closed() -> Result<(), Box<dyn std::error::Error>> {
+        let store = AppendOnlyStore;
+        let checkpoint = crate::checkpoint::build_checkpoint(
+            1,
+            1,
+            1,
+            &[b"receipt".to_vec()],
+            &Keypair::generate(),
+        )?;
+
+        assert!(matches!(
+            store.receipts_canonical_bytes_range(1, 1),
+            Err(ReceiptStoreError::Conflict(message))
+                if message.contains("receipt canonical byte ranges are not supported")
+        ));
+        assert!(matches!(
+            store.flush_receipt_writes(),
+            Err(ReceiptStoreError::Conflict(message))
+                if message.contains("receipt writer flush is not supported")
+        ));
+        assert!(matches!(
+            store.flush_receipt_writes_with_timeout(std::time::Duration::from_millis(1)),
+            Err(ReceiptStoreError::Conflict(message))
+                if message.contains("receipt writer flush is not supported")
+        ));
+        assert!(matches!(
+            store.receipt_store_health(),
+            Err(ReceiptStoreError::Conflict(message))
+                if message.contains("receipt store health is not supported")
+        ));
+        assert!(matches!(
+            store.latest_committed_entry_seq(),
+            Err(ReceiptStoreError::Conflict(message))
+                if message.contains("receipt committed sequence reporting is not supported")
+        ));
+        assert!(matches!(
+            store.latest_checkpointed_entry_seq(),
+            Err(ReceiptStoreError::Conflict(message))
+                if message.contains("receipt checkpoint sequence reporting is not supported")
+        ));
+        assert!(matches!(
+            store.next_checkpoint_range(1),
+            Err(ReceiptStoreError::Conflict(message))
+                if message.contains("receipt checkpoint ranges are not supported")
+        ));
+        assert!(matches!(
+            store.receipt_checkpoint_status(Some(1)),
+            Err(ReceiptStoreError::Conflict(message))
+                if message.contains("receipt checkpoint status is not supported")
+        ));
+        assert!(matches!(
+            store.store_checkpoint(&checkpoint),
+            Err(ReceiptStoreError::Conflict(message))
+                if message.contains("receipt checkpoint storage is not supported")
+        ));
+        Ok(())
     }
 }
 

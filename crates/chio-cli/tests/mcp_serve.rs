@@ -2200,7 +2200,7 @@ fn mcp_serve_enforces_filesystem_resource_roots_with_signed_evidence() {
     assert_eq!(receipt.tool_name, "resources/read");
     assert_eq!(receipt.tool_server, "session");
     match &receipt.decision {
-        Decision::Deny { reason, guard } => {
+        Some(Decision::Deny { reason, guard }) => {
             assert_eq!(guard, "session_roots");
             assert_eq!(
                 reason,
@@ -2311,7 +2311,7 @@ fn mcp_serve_denies_filesystem_resources_when_roots_are_missing() {
     assert_eq!(receipt.tool_name, "resources/read");
     assert_eq!(receipt.tool_server, "session");
     match &receipt.decision {
-        Decision::Deny { reason, guard } => {
+        Some(Decision::Deny { reason, guard }) => {
             assert_eq!(guard, "session_roots");
             assert_eq!(
                 reason,

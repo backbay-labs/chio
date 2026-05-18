@@ -21,7 +21,8 @@
 
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    ActorRef, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, ReceiptKind, RedactionMode,
+    ToolCallAction, ToolOrigin, TrustLevel,
 };
 use chio_federation::{
     execute_local_bilateral_invocation_fixture, ActionClassKind, BilateralCoSigningProtocol,
@@ -206,7 +207,16 @@ fn sample_receipt(kp: &Keypair) -> Result<ChioReceipt, Box<dyn std::error::Error
         tool_name: "file_read".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({"path":"/etc/hosts"}))
             .map_err(|e| -> Box<dyn std::error::Error> { format!("toolcall: {e}").into() })?,
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: ReceiptKind::MediatedDecision,
+        boundary_class: BoundaryClass::Prevent,
+        observation_outcome: None,
+        tool_origin: ToolOrigin::CallerExecuted,
+        redaction_mode: RedactionMode::None,
+        actor_chain: vec![ActorRef {
+            actor_id: "agent:org-a/bilateral-demo".to_string(),
+            actor_kind: Some("agent".to_string()),
+        }],
         content_hash: sha256_hex(b"{}"),
         policy_hash: "policy:demo".to_string(),
         evidence: Vec::new(),

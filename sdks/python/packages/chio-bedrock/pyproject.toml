@@ -23,6 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "boto3>=1.40,<2",
+    "cryptography>=42,<47",
     "pytest>=8,<9",
 ]
 

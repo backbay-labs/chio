@@ -180,6 +180,7 @@ fn main() {
             TrustCommands::Serve {
                 listen,
                 service_token,
+                tenant_read_tokens,
                 advertise_url,
                 peer_urls,
                 allow_local_peer_urls,
@@ -198,6 +199,7 @@ fn main() {
             } => cmd_trust_serve(
                 listen,
                 &service_token,
+                &tenant_read_tokens,
                 policy.as_deref(),
                 enterprise_providers_file.as_deref(),
                 federation_policies_file.as_deref(),
@@ -944,6 +946,7 @@ fn main() {
                         },
                         budget_db_path: budget_db.as_deref(),
                         certification_registry_file: certification_registry_file.as_deref(),
+                        authority_seed_path: authority_seed_file.as_deref(),
                     },
                 ),
             },
@@ -1301,6 +1304,7 @@ fn main() {
                         },
                         budget_db_path: budget_db.as_deref(),
                         certification_registry_file: certification_registry_file.as_deref(),
+                        authority_seed_path: authority_seed_file.as_deref(),
                     },
                 ),
                 TrustUnderwritingDecisionCommands::Simulate {
@@ -1335,6 +1339,7 @@ fn main() {
                         },
                         budget_db_path: budget_db.as_deref(),
                         certification_registry_file: certification_registry_file.as_deref(),
+                        authority_seed_path: authority_seed_file.as_deref(),
                     },
                 ),
                 TrustUnderwritingDecisionCommands::Issue {
@@ -1508,6 +1513,8 @@ fn main() {
                 max_cost,
                 limit,
                 cursor,
+                tenant,
+                admin_all,
             } => cmd_receipt_list(
                 ReceiptListArgs {
                     capability: capability.as_deref(),
@@ -1520,6 +1527,8 @@ fn main() {
                     max_cost,
                     limit,
                     cursor,
+                    tenant: tenant.as_deref(),
+                    admin_all,
                 },
                 QueryBackend {
                     json_output,
@@ -1528,12 +1537,59 @@ fn main() {
                     control_token: control_token.as_deref(),
                 },
             ),
+            ReceiptCommands::Health => cmd_receipt_health(QueryBackend {
+                json_output,
+                receipt_db_path: receipt_db.as_deref(),
+                control_url: control_url.as_deref(),
+                control_token: control_token.as_deref(),
+            }),
+            ReceiptCommands::Flush { timeout_ms } => cmd_receipt_flush(
+                timeout_ms,
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
+            ),
+            ReceiptCommands::Checkpoint { command } => match command {
+                ReceiptCheckpointCommands::Status { max_batch } => cmd_receipt_checkpoint_status(
+                    max_batch,
+                    QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
+                    },
+                ),
+                ReceiptCheckpointCommands::Create {
+                    kernel_seed_file,
+                    max_batch,
+                } => cmd_receipt_checkpoint_create(
+                    &kernel_seed_file,
+                    max_batch,
+                    QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
+                    },
+                ),
+                ReceiptCheckpointCommands::Verify => cmd_receipt_checkpoint_verify(QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                }),
+            },
             ReceiptCommands::Explain {
                 receipt_id,
                 input_file,
                 depth,
                 fanout_limit,
                 inspect_bilateral,
+                tenant,
+                admin_all,
             } => cmd_receipt_explain(
                 ReceiptExplainArgs {
                     receipt_id: &receipt_id,
@@ -1541,6 +1597,8 @@ fn main() {
                     depth,
                     fanout_limit,
                     inspect_bilateral,
+                    tenant: tenant.as_deref(),
+                    admin_all,
                 },
                 QueryBackend {
                     json_output,
@@ -1557,6 +1615,8 @@ fn main() {
                 agent_subject,
                 since,
                 until,
+                tenant,
+                admin_all,
                 policy_file,
                 federation_policy,
                 require_proofs,
@@ -1566,6 +1626,8 @@ fn main() {
                 agent_subject.as_deref(),
                 since,
                 until,
+                tenant.as_deref(),
+                admin_all,
                 policy_file.as_deref(),
                 federation_policy.as_deref(),
                 require_proofs,
@@ -1593,6 +1655,8 @@ fn main() {
                     agent_subject,
                     since,
                     until,
+                    tenant,
+                    admin_all,
                     expires_at,
                     require_proofs,
                     purpose,
@@ -1606,6 +1670,8 @@ fn main() {
                         agent_subject: agent_subject.as_deref(),
                         since,
                         until,
+                        tenant: tenant.as_deref(),
+                        admin_all,
                         expires_at,
                         require_proofs,
                         purpose: purpose.as_deref(),
@@ -2197,9 +2263,16 @@ fn main() {
             ),
             CertCommands::Verify {
                 certificate,
+                trusted_kernel_pubkey,
                 full,
                 receipt_db: cert_receipt_db,
-            } => cert::cmd_cert_verify(&certificate, full, cert_receipt_db.as_deref(), json_output),
+            } => cert::cmd_cert_verify(
+                &certificate,
+                full,
+                cert_receipt_db.as_deref(),
+                &trusted_kernel_pubkey,
+                json_output,
+            ),
             CertCommands::Inspect { certificate } => {
                 cert::cmd_cert_inspect(&certificate, json_output)
             }
@@ -2220,6 +2293,7 @@ fn main() {
                 budget_db_path: budget_db.as_deref(),
                 control_url: control_url.as_deref(),
                 control_token: control_token.as_deref(),
+                authority_seed_file: authority_seed_file.as_deref(),
             }),
             ReputationCommands::Compare {
                 subject_public_key,
@@ -2240,6 +2314,7 @@ fn main() {
                 budget_db_path: budget_db.as_deref(),
                 control_url: control_url.as_deref(),
                 control_token: control_token.as_deref(),
+                authority_seed_file: authority_seed_file.as_deref(),
             }),
         },
         Commands::Guard { command } => match command {

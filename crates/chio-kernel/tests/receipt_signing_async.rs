@@ -27,7 +27,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chio_core::crypto::{sha256_hex, Keypair};
-use chio_core::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{chio_receipt_id, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
 use chio_kernel::{
     ChioKernel, KernelConfig, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
     DEFAULT_MAX_STREAM_TOTAL_BYTES,
@@ -58,6 +58,7 @@ fn make_config(keypair: Keypair) -> KernelConfig {
         max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     }
@@ -77,14 +78,27 @@ fn make_body(n: usize, kernel_key: &Keypair) -> ChioReceiptBody {
     .expect("payload canonicalises");
     let content_hash = sha256_hex(action.parameter_hash.as_bytes());
     let policy_hash = sha256_hex(format!("policy:{nonce}").as_bytes());
-    ChioReceiptBody {
+    // The signing path (sync `ChioReceipt::sign` and the mpsc-backed
+    // `sign_one_with_backend`) computes the authoritative content-addressed
+    // id via `chio_receipt_id(&body)` before signing the
+    // `ChioReceiptSigningBody` wrapper. Pre-compute that id on the input
+    // body so the test fixture matches what the signing pipeline will emit,
+    // letting downstream assertions compare receipt ids without needing to
+    // know the canonical hash up front.
+    let mut body = ChioReceiptBody {
         id: format!("rcpt-{nonce}"),
         timestamp: 1_700_000_000 + (n as u64),
         capability_id: format!("cap-{nonce}"),
         tool_server: "tool.example".to_string(),
         tool_name: "echo".to_string(),
         action,
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash,
         policy_hash,
         evidence: Vec::new(),
@@ -92,7 +106,9 @@ fn make_body(n: usize, kernel_key: &Keypair) -> ChioReceiptBody {
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kernel_key.public_key(),
-    }
+    };
+    body.id = chio_receipt_id(&body).expect("canonical receipt id computes");
+    body
 }
 
 // ---------------------------------------------------------------------------

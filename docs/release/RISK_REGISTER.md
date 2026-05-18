@@ -1,7 +1,7 @@
 # Risk Register
 
 This register tracks the known non-blocking risks that remain after the local
-post-`v2.41` production-candidate closeout.
+v1-only pre-release production-candidate closeout.
 
 | Risk | Current posture | Mitigation |
 | --- | --- | --- |

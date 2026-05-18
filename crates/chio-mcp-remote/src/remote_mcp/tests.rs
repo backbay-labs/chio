@@ -193,6 +193,7 @@ mod tests {
             max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         }

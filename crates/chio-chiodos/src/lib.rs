@@ -25,14 +25,9 @@ use chio_workflow::receipt::{VendorSignatureRequirement, WorkflowReceipt};
 use serde::{Deserialize, Serialize};
 
 pub const PROOF_PACKAGE_SCHEMA: &str = "chio.chiodos.proof-package.v1";
-pub const VERIFIER_REPORT_SCHEMA_V1: &str = "chio.chiodos.verifier-report.v1";
-pub const VERIFIER_REPORT_SCHEMA_V2: &str = "chio.chiodos.verifier-report.v2";
-pub const VERIFIER_REPORT_SCHEMA: &str = VERIFIER_REPORT_SCHEMA_V2;
+pub const VERIFIER_REPORT_SCHEMA: &str = "chio.chiodos.verifier-report.v1";
 pub const TRUSTED_ISSUER_REGISTRY_SCHEMA: &str = "chio.chiodos.trusted-issuer-registry.v1";
-pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V1: &str = "chio.chiodos.verifier-trust-bundle.v1";
-pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V2: &str = "chio.chiodos.verifier-trust-bundle.v2";
-pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V3: &str = "chio.chiodos.verifier-trust-bundle.v3";
-pub const VERIFIER_TRUST_BUNDLE_SCHEMA: &str = VERIFIER_TRUST_BUNDLE_SCHEMA_V3;
+pub const VERIFIER_TRUST_BUNDLE_SCHEMA: &str = "chio.chiodos.verifier-trust-bundle.v1";
 pub const REVOCATION_CHECKPOINT_SCHEMA: &str = "chio.chiodos.revocation-checkpoint.v1";
 pub const VERIFICATION_CONTEXT_SCHEMA: &str = "chio.chiodos.verification-context.v1";
 pub const WORKFLOW_INTERSECTION_SCHEMA: &str = "chio.chiodos-workflow-intersection.v1";
@@ -327,15 +322,7 @@ impl ChiodosVerifierTrustBundle {
         document: ChiodosVerifierTrustBundleDocument,
     ) -> Result<Self, ChiodosPackageError> {
         let document_sha256 = canonical_sha256(&document)?;
-        if document.schema == VERIFIER_TRUST_BUNDLE_SCHEMA_V1
-            || document.schema == VERIFIER_TRUST_BUNDLE_SCHEMA_V2
-        {
-            return Err(ChiodosPackageError::TrustBundle(
-                "historical verifier trust bundle is parse-only and cannot satisfy strict Chiodos verification"
-                    .to_string(),
-            ));
-        }
-        if document.schema != VERIFIER_TRUST_BUNDLE_SCHEMA_V3 {
+        if document.schema != VERIFIER_TRUST_BUNDLE_SCHEMA {
             return Err(ChiodosPackageError::TrustBundle(format!(
                 "verifier trust bundle schema {} is unsupported",
                 document.schema
@@ -2522,7 +2509,7 @@ mod tests {
         let report =
             verify_package(&package, &trust_bundle, &context).expect("package fixture verifies");
         assert!(report.accepted);
-        assert_eq!(report.schema, VERIFIER_REPORT_SCHEMA_V2);
+        assert_eq!(report.schema, VERIFIER_REPORT_SCHEMA);
         assert!(report
             .checks
             .iter()
@@ -2553,7 +2540,7 @@ mod tests {
         ))
         .expect("report fixture parses");
         assert!(report.accepted);
-        assert_eq!(report.schema, VERIFIER_REPORT_SCHEMA_V2);
+        assert_eq!(report.schema, VERIFIER_REPORT_SCHEMA);
         assert!(report.context_sha256.is_some());
         assert!(report.revocation_epoch_height.is_some());
     }
@@ -2585,12 +2572,12 @@ mod tests {
     }
 
     #[test]
-    fn verifier_trust_bundle_v3_requires_signed_fresh_revocation_checkpoint() {
+    fn verifier_trust_bundle_requires_signed_fresh_revocation_checkpoint() {
         let mut document = serde_json::to_value(trust_bundle_document_from_fixture())
             .expect("trust bundle serializes");
         assert_eq!(
             document["schema"],
-            serde_json::Value::String(VERIFIER_TRUST_BUNDLE_SCHEMA_V3.to_string())
+            serde_json::Value::String(VERIFIER_TRUST_BUNDLE_SCHEMA.to_string())
         );
 
         document["revocation"]["body"]["expiresAtUnixMs"] =
@@ -2868,9 +2855,13 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "v1-only collapse: v1 is now the strict schema, not a historical one"]
     fn historical_v1_trust_bundle_is_not_strict_verifier_input() {
+        // Predates the Chio-owned pre-release v1-only collapse. Kept here as a
+        // marker so the historical-rejection contract can be revived if a
+        // future revision reintroduces multiple trust-bundle schema versions.
         let mut document = trust_bundle_document_from_fixture();
-        document.schema = VERIFIER_TRUST_BUNDLE_SCHEMA_V1.to_string();
+        document.schema = VERIFIER_TRUST_BUNDLE_SCHEMA.to_string();
 
         let error = ChiodosVerifierTrustBundle::from_document(document).unwrap_err();
         assert!(error.to_string().contains("historical"));

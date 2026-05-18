@@ -13,6 +13,8 @@ from chio_sdk.models import (
     ToolCallAction,
 )
 
+_DEFAULT_DECISION = object()
+
 
 def _param_hash(params: dict[str, Any]) -> str:
     import json
@@ -28,7 +30,7 @@ def build_receipt(
     tool_name: str = "search",
     capability_id: str = "cap-abc",
     parameters: dict[str, Any] | None = None,
-    decision: Decision | None = None,
+    decision: Decision | None | object = _DEFAULT_DECISION,
     evidence: list[GuardEvidence] | None = None,
     metadata: dict[str, Any] | None = None,
     timestamp: int = 1_700_000_000,
@@ -39,6 +41,7 @@ def build_receipt(
     no cryptographic verification is performed by the bridges.
     """
     params = parameters if parameters is not None else {"q": "hello"}
+    actual_decision = Decision.allow() if decision is _DEFAULT_DECISION else decision
     return ChioReceipt(
         id=receipt_id,
         timestamp=timestamp,
@@ -49,7 +52,13 @@ def build_receipt(
             parameters=params,
             parameter_hash=_param_hash(params),
         ),
-        decision=decision or Decision.allow(),
+        decision=actual_decision,
+        receipt_kind="mediated_decision" if actual_decision is not None else "trace_observation",
+        boundary_class="prevent" if actual_decision is not None else "detect_only",
+        observation_outcome=None if actual_decision is not None else "observed",
+        tool_origin="caller_executed",
+        redaction_mode="none",
+        trust_level="mediated" if actual_decision is not None else "verified",
         content_hash="a" * 64,
         policy_hash="b" * 64,
         evidence=evidence or [],

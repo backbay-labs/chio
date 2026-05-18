@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata, SettlementStatus,
-    ToolCallAction,
+    ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata, ReceiptSemanticFields,
+    SettlementStatus, ToolCallAction, TrustLevel,
 };
 use chio_siem::event::SiemEvent;
 use chio_siem::exporter::ExportError;
@@ -28,7 +28,13 @@ fn sample_receipt(id: &str) -> ChioReceipt {
             tool_name: "bash".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"cmd": "ls"}))
                 .expect("action parameters serialize"),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: "content-hash-test".to_string(),
             policy_hash: "policy-hash-test".to_string(),
             evidence: Vec::new(),
@@ -70,12 +76,50 @@ fn sample_receipt_with_financial(id: &str) -> ChioReceipt {
             tool_name: "bash".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"cmd": "echo hi"}))
                 .expect("action parameters serialize"),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: "content-hash-financial".to_string(),
             policy_hash: "policy-hash-financial".to_string(),
             evidence: Vec::new(),
             metadata: Some(metadata),
             trust_level: chio_core::TrustLevel::default(),
+            tenant_id: None,
+            kernel_key: keypair.public_key(),
+        },
+        &keypair,
+    )
+    .expect("ChioReceipt::sign must succeed in tests")
+}
+
+fn trace_allow_receipt(id: &str) -> ChioReceipt {
+    let keypair = Keypair::generate();
+    let semantics = ReceiptSemanticFields::trace_detect_only();
+    ChioReceipt::sign(
+        ChioReceiptBody {
+            id: id.to_string(),
+            timestamp: 1_700_000_000,
+            capability_id: "cap-splunk-test".to_string(),
+            tool_server: "shell".to_string(),
+            tool_name: "bash".to_string(),
+            action: ToolCallAction::from_parameters(serde_json::json!({"cmd": "ls"}))
+                .expect("action parameters serialize"),
+            decision: None,
+            receipt_kind: semantics.receipt_kind,
+            boundary_class: semantics.boundary_class,
+            observation_outcome: semantics.observation_outcome,
+            tool_origin: semantics.tool_origin,
+            redaction_mode: semantics.redaction_mode,
+            actor_chain: semantics.actor_chain,
+            content_hash: "content-hash-test".to_string(),
+            policy_hash: "policy-hash-test".to_string(),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: TrustLevel::Verified,
             tenant_id: None,
             kernel_key: keypair.public_key(),
         },
@@ -115,6 +159,8 @@ async fn splunk_hec_sends_correct_envelope() {
 
     let receipt1 = sample_receipt("splunk-rcpt-001");
     let receipt2 = sample_receipt_with_financial("splunk-rcpt-002");
+    let receipt1_id = receipt1.id.clone();
+    let receipt2_id = receipt2.id.clone();
     let events = vec![
         SiemEvent::from_receipt(receipt1),
         SiemEvent::from_receipt(receipt2),
@@ -150,7 +196,7 @@ async fn splunk_hec_sends_correct_envelope() {
     let event0 = obj0.get("event").expect("event field must exist");
     assert_eq!(
         event0.get("id").and_then(|v| v.as_str()),
-        Some("splunk-rcpt-001"),
+        Some(receipt1_id.as_str()),
         "event.id must match receipt id"
     );
 
@@ -159,7 +205,7 @@ async fn splunk_hec_sends_correct_envelope() {
     let event1 = obj1.get("event").expect("event field must exist");
     assert_eq!(
         event1.get("id").and_then(|v| v.as_str()),
-        Some("splunk-rcpt-002"),
+        Some(receipt2_id.as_str()),
         "event.id must match receipt id"
     );
     let cost = event1
@@ -168,6 +214,44 @@ async fn splunk_hec_sends_correct_envelope() {
         .and_then(|f| f.get("cost_charged"))
         .and_then(|c| c.as_u64());
     assert_eq!(cost, Some(500), "financial.cost_charged must be 500");
+}
+
+#[tokio::test]
+async fn splunk_hec_marks_trace_allow_as_non_authorizing() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/services/collector/event"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_raw(r#"{"text":"Success","code":0}"#, "application/json"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let exporter = SplunkHecExporter::new_plaintext_for_tests(SplunkConfig {
+        endpoint: server.uri(),
+        hec_token: "test-token".to_string(),
+        sourcetype: "chio:receipt".to_string(),
+        ..SplunkConfig::default()
+    })
+    .expect("exporter builds");
+
+    exporter
+        .export_batch(&[SiemEvent::from_receipt(trace_allow_receipt(
+            "splunk-trace-allow",
+        ))])
+        .await
+        .expect("export trace allow");
+    let received = server.received_requests().await.unwrap();
+    let body_str = String::from_utf8(received[0].body.clone()).expect("body is valid UTF-8");
+    let obj: serde_json::Value = serde_json::from_str(body_str.trim()).expect("payload JSON");
+
+    assert_eq!(obj["fields"]["receipt_kind"], "trace_observation");
+    assert_eq!(obj["fields"]["boundary_class"], "detect_only");
+    assert_eq!(obj["fields"]["authorized"], false);
+    assert_ne!(obj["fields"]["result"], "Authorized");
 }
 
 /// SplunkHecExporter returns ExportError::HttpError when the server responds 401.

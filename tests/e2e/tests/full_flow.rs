@@ -94,6 +94,7 @@ fn make_kernel_with_guards() -> (ChioKernel, Keypair) {
         max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     };
@@ -118,6 +119,7 @@ fn make_kernel_bare() -> (ChioKernel, Keypair) {
         max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     };
@@ -607,6 +609,7 @@ async fn full_flow_guard_pipeline_mixed_verdicts() {
         max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     };

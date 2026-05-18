@@ -56,6 +56,7 @@
 //!   malformed input.
 //! - No em dashes (U+2014); use `-` or parentheses.
 
+use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs;
@@ -117,6 +118,8 @@ pub enum CodegenError {
     SchemaShape(PathBuf, serde_json::Error),
     /// `typify::TypeSpace::add_root_schema` rejected the schema.
     Typify(PathBuf, String),
+    /// A local JSON Schema reference could not be resolved for typify.
+    SchemaRef(PathBuf, String),
     /// The token stream emitted by typify did not parse as a `syn::File`.
     SynParse(syn::Error),
     /// The error registry YAML could not be loaded or validated.
@@ -135,6 +138,9 @@ impl fmt::Display for CodegenError {
             }
             Self::Typify(path, msg) => {
                 write!(f, "typify rejected schema {}: {msg}", path.display())
+            }
+            Self::SchemaRef(path, msg) => {
+                write!(f, "schema reference error in {}: {msg}", path.display())
             }
             Self::SynParse(err) => write!(f, "generated tokens did not parse: {err}"),
             Self::Registry(path, msg) => {
@@ -182,14 +188,16 @@ pub fn codegen_rust(schemas_dir: &Path, out_dir: &Path) -> Result<()> {
     let mut schema_files: Vec<PathBuf> = Vec::new();
     walk_schema_files(schemas_dir, &mut schema_files)?;
     schema_files.sort();
+    let referenced_schema_roots = collect_local_schema_ref_roots(&schema_files, schemas_dir)?;
 
     let settings = TypeSpaceSettings::default();
     let mut type_space = TypeSpace::new(&settings);
 
     for path in &schema_files {
-        let raw = fs::read_to_string(path).map_err(|err| CodegenError::Io(path.clone(), err))?;
-        let value: serde_json::Value =
-            serde_json::from_str(&raw).map_err(|err| CodegenError::Json(path.clone(), err))?;
+        if should_skip_referenced_root(path, &referenced_schema_roots)? {
+            continue;
+        }
+        let value = load_schema_value(path, schemas_dir)?;
         let schema: schemars::schema::RootSchema = serde_json::from_value(value)
             .map_err(|err| CodegenError::SchemaShape(path.clone(), err))?;
         type_space
@@ -237,13 +245,15 @@ pub fn render_chio_wire_v1(schemas_dir: &Path) -> Result<String> {
     let mut schema_files: Vec<PathBuf> = Vec::new();
     walk_schema_files(schemas_dir, &mut schema_files)?;
     schema_files.sort();
+    let referenced_schema_roots = collect_local_schema_ref_roots(&schema_files, schemas_dir)?;
 
     let settings = TypeSpaceSettings::default();
     let mut type_space = TypeSpace::new(&settings);
     for path in &schema_files {
-        let raw = fs::read_to_string(path).map_err(|err| CodegenError::Io(path.clone(), err))?;
-        let value: serde_json::Value =
-            serde_json::from_str(&raw).map_err(|err| CodegenError::Json(path.clone(), err))?;
+        if should_skip_referenced_root(path, &referenced_schema_roots)? {
+            continue;
+        }
+        let value = load_schema_value(path, schemas_dir)?;
         let schema: schemars::schema::RootSchema = serde_json::from_value(value)
             .map_err(|err| CodegenError::SchemaShape(path.clone(), err))?;
         type_space
@@ -284,6 +294,321 @@ fn is_schema_json(path: &Path) -> bool {
     name.ends_with(".schema.json")
 }
 
+fn load_schema_value(path: &Path, schemas_dir: &Path) -> Result<serde_json::Value> {
+    let raw = fs::read_to_string(path).map_err(|err| CodegenError::Io(path.to_path_buf(), err))?;
+    let mut value: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|err| CodegenError::Json(path.to_path_buf(), err))?;
+    let mut extra_defs = serde_json::Map::new();
+    inline_local_schema_refs(&mut value, path, schemas_dir, &mut extra_defs)?;
+    merge_extra_defs_into_root(&mut value, extra_defs, path)?;
+    strip_typify_unsupported_conditionals(&mut value);
+    Ok(value)
+}
+
+fn collect_local_schema_ref_roots(
+    schema_files: &[PathBuf],
+    schemas_dir: &Path,
+) -> Result<BTreeSet<PathBuf>> {
+    let mut referenced_roots = BTreeSet::new();
+
+    for path in schema_files {
+        let raw =
+            fs::read_to_string(path).map_err(|err| CodegenError::Io(path.to_path_buf(), err))?;
+        let value: serde_json::Value = serde_json::from_str(&raw)
+            .map_err(|err| CodegenError::Json(path.to_path_buf(), err))?;
+        collect_local_schema_ref_roots_from_value(
+            &value,
+            path,
+            schemas_dir,
+            &mut referenced_roots,
+        )?;
+    }
+
+    Ok(referenced_roots)
+}
+
+fn collect_local_schema_ref_roots_from_value(
+    value: &serde_json::Value,
+    base_path: &Path,
+    schemas_dir: &Path,
+    referenced_roots: &mut BTreeSet<PathBuf>,
+) -> Result<()> {
+    match value {
+        serde_json::Value::Object(map) => {
+            if let Some(serde_json::Value::String(reference)) = map.get("$ref") {
+                if let Some((target_path, fragment)) =
+                    resolve_local_schema_ref(reference, base_path, schemas_dir)?
+                {
+                    let targets_root = match fragment.as_deref() {
+                        None | Some("") => true,
+                        Some(_) => false,
+                    };
+                    if targets_root {
+                        referenced_roots.insert(target_path);
+                    }
+                }
+            }
+            for item in map.values() {
+                collect_local_schema_ref_roots_from_value(
+                    item,
+                    base_path,
+                    schemas_dir,
+                    referenced_roots,
+                )?;
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_local_schema_ref_roots_from_value(
+                    item,
+                    base_path,
+                    schemas_dir,
+                    referenced_roots,
+                )?;
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn should_skip_referenced_root(
+    path: &Path,
+    referenced_schema_roots: &BTreeSet<PathBuf>,
+) -> Result<bool> {
+    let path = fs::canonicalize(path).map_err(|err| CodegenError::Io(path.to_path_buf(), err))?;
+    Ok(referenced_schema_roots.contains(&path))
+}
+
+fn inline_local_schema_refs(
+    value: &mut serde_json::Value,
+    base_path: &Path,
+    schemas_dir: &Path,
+    extra_defs: &mut serde_json::Map<String, serde_json::Value>,
+) -> Result<()> {
+    match value {
+        serde_json::Value::Object(map) => {
+            if let Some(serde_json::Value::String(reference)) = map.get("$ref") {
+                if let Some((target_path, fragment)) =
+                    resolve_local_schema_ref(reference, base_path, schemas_dir)?
+                {
+                    let target = load_schema_value(&target_path, schemas_dir)?;
+                    merge_referenced_defs(&target, extra_defs, base_path, reference)?;
+                    let mut resolved = resolve_json_pointer(&target, fragment.as_deref())
+                        .map_err(|msg| {
+                            CodegenError::SchemaRef(
+                                base_path.to_path_buf(),
+                                format!("{reference}: {msg}"),
+                            )
+                        })?
+                        .clone();
+                    strip_inlined_resource_keywords(&mut resolved);
+                    *value = resolved;
+                    return Ok(());
+                }
+            }
+            for item in map.values_mut() {
+                inline_local_schema_refs(item, base_path, schemas_dir, extra_defs)?;
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                inline_local_schema_refs(item, base_path, schemas_dir, extra_defs)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn resolve_local_schema_ref(
+    reference: &str,
+    base_path: &Path,
+    schemas_dir: &Path,
+) -> Result<Option<(PathBuf, Option<String>)>> {
+    let (path_part, fragment) = reference
+        .split_once('#')
+        .map_or((reference, None), |(path, fragment)| {
+            (path, Some(fragment.to_string()))
+        });
+
+    if path_part.is_empty() || path_part.contains("://") {
+        return Ok(None);
+    }
+
+    let base_dir = base_path.parent().ok_or_else(|| {
+        CodegenError::SchemaRef(
+            base_path.to_path_buf(),
+            "schema path has no parent directory".to_string(),
+        )
+    })?;
+    let target_path = base_dir.join(path_part);
+    let target_path =
+        fs::canonicalize(&target_path).map_err(|err| CodegenError::Io(target_path.clone(), err))?;
+    let schemas_dir =
+        fs::canonicalize(schemas_dir).map_err(|err| CodegenError::Io(schemas_dir.into(), err))?;
+
+    if !target_path.starts_with(&schemas_dir) {
+        return Err(CodegenError::SchemaRef(
+            base_path.to_path_buf(),
+            format!("{reference} resolves outside {}", schemas_dir.display()),
+        ));
+    }
+
+    Ok(Some((target_path, fragment)))
+}
+
+fn merge_referenced_defs(
+    target: &serde_json::Value,
+    extra_defs: &mut serde_json::Map<String, serde_json::Value>,
+    base_path: &Path,
+    reference: &str,
+) -> Result<()> {
+    let Some(defs) = target
+        .as_object()
+        .and_then(|object| object.get("$defs"))
+        .and_then(serde_json::Value::as_object)
+    else {
+        return Ok(());
+    };
+
+    for (key, value) in defs {
+        merge_schema_def(extra_defs, key, value.clone(), base_path, reference)?;
+    }
+
+    Ok(())
+}
+
+fn merge_extra_defs_into_root(
+    root: &mut serde_json::Value,
+    extra_defs: serde_json::Map<String, serde_json::Value>,
+    path: &Path,
+) -> Result<()> {
+    if extra_defs.is_empty() {
+        return Ok(());
+    }
+
+    let Some(root_object) = root.as_object_mut() else {
+        return Err(CodegenError::SchemaRef(
+            path.to_path_buf(),
+            "cannot merge referenced definitions into a non-object schema".to_string(),
+        ));
+    };
+
+    let defs = root_object
+        .entry("$defs".to_string())
+        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+    let Some(defs_object) = defs.as_object_mut() else {
+        return Err(CodegenError::SchemaRef(
+            path.to_path_buf(),
+            "root $defs is not an object".to_string(),
+        ));
+    };
+
+    for (key, value) in extra_defs {
+        merge_schema_def(defs_object, &key, value, path, "$defs")?;
+    }
+
+    Ok(())
+}
+
+fn merge_schema_def(
+    defs: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    value: serde_json::Value,
+    base_path: &Path,
+    reference: &str,
+) -> Result<()> {
+    match defs.get(key) {
+        Some(existing) if existing == &value => Ok(()),
+        Some(_) => Err(CodegenError::SchemaRef(
+            base_path.to_path_buf(),
+            format!("{reference} collides with existing $defs/{key}"),
+        )),
+        None => {
+            defs.insert(key.to_string(), value);
+            Ok(())
+        }
+    }
+}
+
+fn resolve_json_pointer<'a>(
+    value: &'a serde_json::Value,
+    fragment: Option<&str>,
+) -> core::result::Result<&'a serde_json::Value, String> {
+    let Some(fragment) = fragment else {
+        return Ok(value);
+    };
+    if fragment.is_empty() {
+        return Ok(value);
+    }
+    if !fragment.starts_with('/') {
+        return Err(format!("unsupported fragment #{fragment}"));
+    }
+
+    let mut current = value;
+    for token in fragment.trim_start_matches('/').split('/') {
+        let token = token.replace("~1", "/").replace("~0", "~");
+        current = match current {
+            serde_json::Value::Object(map) => map
+                .get(&token)
+                .ok_or_else(|| format!("missing object key {token}"))?,
+            serde_json::Value::Array(items) => {
+                let index = token
+                    .parse::<usize>()
+                    .map_err(|_| format!("array index {token} is not numeric"))?;
+                items
+                    .get(index)
+                    .ok_or_else(|| format!("array index {index} is out of bounds"))?
+            }
+            _ => {
+                return Err(format!(
+                    "cannot descend through non-container token {token}"
+                ))
+            }
+        };
+    }
+
+    Ok(current)
+}
+
+fn strip_inlined_resource_keywords(value: &mut serde_json::Value) {
+    if let serde_json::Value::Object(map) = value {
+        map.remove("$schema");
+        map.remove("$id");
+        map.remove("$defs");
+    }
+}
+
+fn strip_typify_unsupported_conditionals(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            let remove_all_of = map
+                .get("allOf")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|items| {
+                    items.iter().any(|item| {
+                        item.as_object()
+                            .is_some_and(|object| object.contains_key("if"))
+                    })
+                });
+            if remove_all_of {
+                map.remove("allOf");
+            }
+            for item in map.values_mut() {
+                strip_typify_unsupported_conditionals(item);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                strip_typify_unsupported_conditionals(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 pub(crate) fn write_if_changed(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Ok(existing) = fs::read(path) {
         if existing == bytes {
@@ -319,5 +644,35 @@ mod tests {
             Err(other) => panic!("expected SchemasDirMissing, got {other}"),
             Ok(_) => panic!("expected error, got Ok"),
         }
+    }
+
+    #[test]
+    fn tool_call_response_receipt_keeps_record_type(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let workspace_root = manifest_dir
+            .parent()
+            .and_then(Path::parent)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "missing workspace"))?;
+        let schemas_dir = workspace_root.join("spec/schemas/chio-wire/v1");
+
+        let rendered = render_chio_wire_v1(&schemas_dir)?;
+
+        assert!(
+            rendered.contains("pub receipt: ChioReceiptRecord,"),
+            "tool_call_response.receipt must use the typed receipt record"
+        );
+        assert!(
+            !rendered.contains("External schema reference erased for Rust typify codegen"),
+            "local cross-file refs must not be erased before typify"
+        );
+        assert_eq!(
+            rendered
+                .matches("\npub struct ChioReceiptRecord {\n")
+                .count(),
+            1,
+            "the referenced receipt root schema must be emitted once"
+        );
+        Ok(())
     }
 }

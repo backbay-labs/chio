@@ -7,7 +7,7 @@ use crate::capability_lineage::{CapabilityLineageError, CapabilitySnapshot};
 use crate::checkpoint::{
     CheckpointError, CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
 };
-use crate::receipt_query::ReceiptQuery;
+use crate::receipt_query::{ReceiptQuery, ReceiptReadBoundary, ReceiptReadContext};
 use crate::receipt_store::ReceiptStoreError;
 
 pub const EVIDENCE_TRANSPARENCY_CLAIMS_SCHEMA: &str = "chio.evidence_transparency_claims.v1";
@@ -30,6 +30,10 @@ pub struct EvidenceExportQuery {
     /// tenant claim; callers MUST NOT let the agent choose this value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant: Option<String>,
+    /// Explicit read boundary for receipt export. Local exports must not infer
+    /// admin scope from an omitted tenant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_boundary: Option<ReceiptReadBoundary>,
 }
 
 /// Coverage mode for child receipts in an export bundle.
@@ -96,8 +100,9 @@ pub struct EvidenceUncheckpointedReceipt {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct EvidenceRetentionMetadata {
-    pub live_db_size_bytes: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub live_db_size_bytes: Option<u64>,
+    #[serde(default)]
     pub oldest_live_receipt_timestamp: Option<u64>,
 }
 
@@ -238,10 +243,21 @@ pub enum EvidenceExportError {
 
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("receipt read boundary error: {0}")]
+    ReadBoundary(String),
 }
 
 impl EvidenceExportQuery {
     pub fn as_receipt_query(&self, cursor: Option<u64>) -> ReceiptQuery {
+        let tenant_filter = self.effective_tenant_filter();
+        let read_context = match &self.read_boundary {
+            Some(ReceiptReadBoundary::AdminAll) => Some(ReceiptReadContext::admin_service()),
+            Some(ReceiptReadBoundary::TenantScoped { tenant }) => {
+                Some(ReceiptReadContext::authenticated_tenant(tenant.clone()))
+            }
+            None => None,
+        };
         ReceiptQuery {
             capability_id: self.capability_id.clone(),
             tool_server: None,
@@ -254,7 +270,82 @@ impl EvidenceExportQuery {
             cursor,
             limit: crate::MAX_QUERY_LIMIT,
             agent_subject: self.agent_subject.clone(),
-            tenant_filter: self.tenant.clone(),
+            tenant_filter,
+            read_context,
+        }
+    }
+
+    #[must_use]
+    pub fn admin_all() -> Self {
+        Self {
+            read_boundary: Some(ReceiptReadBoundary::AdminAll),
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn tenant_scoped(tenant: impl Into<String>) -> Self {
+        let tenant = tenant.into();
+        Self {
+            tenant: Some(tenant.clone()),
+            read_boundary: Some(ReceiptReadBoundary::TenantScoped { tenant }),
+            ..Self::default()
+        }
+    }
+
+    pub fn validate_read_boundary(&self) -> Result<(), EvidenceExportError> {
+        match &self.read_boundary {
+            Some(ReceiptReadBoundary::AdminAll) => {
+                if self
+                    .tenant
+                    .as_deref()
+                    .is_some_and(|tenant| tenant.trim().is_empty())
+                {
+                    return Err(EvidenceExportError::ReadBoundary(
+                        "admin-all evidence export tenant filter requires a non-empty tenant"
+                            .to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Some(ReceiptReadBoundary::TenantScoped { tenant }) => {
+                let tenant = tenant.trim();
+                if tenant.is_empty() {
+                    return Err(EvidenceExportError::ReadBoundary(
+                        "tenant-scoped evidence export requires a non-empty tenant".to_string(),
+                    ));
+                }
+                if self
+                    .tenant
+                    .as_deref()
+                    .is_some_and(|query_tenant| query_tenant != tenant)
+                {
+                    return Err(EvidenceExportError::ReadBoundary(
+                        "tenant-scoped evidence export tenant does not match query tenant"
+                            .to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            None => Err(EvidenceExportError::ReadBoundary(
+                "evidence export requires an explicit receipt read boundary".to_string(),
+            )),
+        }
+    }
+
+    #[must_use]
+    pub fn normalized_for_read_boundary(&self) -> Self {
+        let mut normalized = self.clone();
+        if let Some(ReceiptReadBoundary::TenantScoped { tenant }) = &self.read_boundary {
+            normalized.tenant = Some(tenant.clone());
+        }
+        normalized
+    }
+
+    fn effective_tenant_filter(&self) -> Option<String> {
+        match &self.read_boundary {
+            Some(ReceiptReadBoundary::TenantScoped { tenant }) => Some(tenant.clone()),
+            _ => self.tenant.clone(),
         }
     }
 
@@ -268,6 +359,19 @@ impl EvidenceExportQuery {
 
     #[must_use]
     pub fn child_receipt_scope(&self) -> EvidenceChildReceiptScope {
+        if self
+            .effective_tenant_filter()
+            .as_deref()
+            .is_some_and(|tenant| !tenant.trim().is_empty())
+        {
+            return EvidenceChildReceiptScope::OmittedNoJoinPath;
+        }
+        if matches!(
+            self.read_boundary,
+            Some(ReceiptReadBoundary::TenantScoped { .. })
+        ) {
+            return EvidenceChildReceiptScope::OmittedNoJoinPath;
+        }
         if self.has_subject_or_capability_scope() {
             if self.has_time_window() {
                 EvidenceChildReceiptScope::TimeWindowContextOnly
@@ -424,6 +528,54 @@ mod tests {
     }
 
     #[test]
+    fn tenant_scoped_evidence_export_omits_child_receipts_without_join_path() {
+        assert_eq!(
+            EvidenceExportQuery::tenant_scoped("tenant-a").child_receipt_scope(),
+            EvidenceChildReceiptScope::OmittedNoJoinPath
+        );
+    }
+
+    #[test]
+    fn evidence_export_query_allows_admin_all_with_tenant_filter() {
+        EvidenceExportQuery {
+            tenant: Some("tenant-a".to_string()),
+            read_boundary: Some(ReceiptReadBoundary::AdminAll),
+            ..EvidenceExportQuery::default()
+        }
+        .validate_read_boundary()
+        .expect("admin-all evidence export may narrow to a tenant filter");
+    }
+
+    #[test]
+    fn admin_all_evidence_export_uses_remote_safe_read_context() {
+        let receipt_query = EvidenceExportQuery {
+            tenant: Some("tenant-a".to_string()),
+            read_boundary: Some(ReceiptReadBoundary::AdminAll),
+            ..EvidenceExportQuery::default()
+        }
+        .as_receipt_query(None);
+
+        assert_eq!(receipt_query.tenant_filter.as_deref(), Some("tenant-a"));
+        assert_eq!(
+            receipt_query.read_context,
+            Some(ReceiptReadContext::admin_service())
+        );
+    }
+
+    #[test]
+    fn admin_all_tenant_filtered_export_omits_child_receipts_without_join_path() {
+        assert_eq!(
+            EvidenceExportQuery {
+                tenant: Some("tenant-a".to_string()),
+                read_boundary: Some(ReceiptReadBoundary::AdminAll),
+                ..EvidenceExportQuery::default()
+            }
+            .child_receipt_scope(),
+            EvidenceChildReceiptScope::OmittedNoJoinPath
+        );
+    }
+
+    #[test]
     fn evidence_export_marks_unanchored_publication_as_transparency_preview() {
         let keypair = Keypair::generate();
         let first = build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &keypair)
@@ -447,7 +599,7 @@ mod tests {
             inclusion_proofs: Vec::new(),
             uncheckpointed_receipts: Vec::new(),
             retention: EvidenceRetentionMetadata {
-                live_db_size_bytes: 0,
+                live_db_size_bytes: Some(0),
                 oldest_live_receipt_timestamp: None,
             },
         };
@@ -503,7 +655,7 @@ mod tests {
             inclusion_proofs: Vec::new(),
             uncheckpointed_receipts: Vec::new(),
             retention: EvidenceRetentionMetadata {
-                live_db_size_bytes: 0,
+                live_db_size_bytes: Some(0),
                 oldest_live_receipt_timestamp: None,
             },
         };

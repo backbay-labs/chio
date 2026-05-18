@@ -27,7 +27,13 @@ fn receipt_fixture(kp: &Keypair) -> ChioReceiptBody {
             "path": "/cases/refund-250.json"
         }))
         .expect("fixture action is valid"),
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: sha256_hex(b"{\"refund_minor\":25000}"),
         policy_hash: sha256_hex(b"chiodos-policy"),
         evidence: Vec::new(),

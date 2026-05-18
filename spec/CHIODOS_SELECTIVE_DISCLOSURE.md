@@ -1,12 +1,12 @@
 # Chiodos Selective Disclosure Over Chio Receipts
 
-**Status:** Draft v0.1 design target with a real-BBS implementation slice.
+**Status:** v1 wire format with a real-BBS implementation slice.
 **Date:** 2026-05-04
 **Supersedes:** none
 
-This specification describes the target v0.1 wire format and
-verification contract for **selective-disclosure proofs over chio
-receipts and workflow receipts**. The repository now includes
+This specification describes the v1 wire format and verification
+contract for **selective-disclosure proofs over chio receipts and
+workflow receipts**. The repository now includes
 `chio-selective-disclosure` with an opt-in `bbs` feature that signs
 receipt, workflow, and step projections and verifies reveal-set BBS
 proof packages. The older `chio-federation` `bbs-stub` projection
@@ -14,11 +14,11 @@ remains a legacy placeholder and cannot satisfy Chiodos conformance. Hidden
 range predicates, VC Data Integrity interop, and zkVM proofs are still
 deferred.
 
-The target contract closes Hard Problem #4 from
+The v1 contract closes Hard Problem #4 from
 [CHIODOS_CONCEPT.md](../docs/research/CHIODOS_CONCEPT.md) v1.1 section 7
 ("Privacy and selective disclosure"), turning the BBS+ direction set in
 that document into a normative wire format, and it stands as the
-v0.1 normative version of the Pattern C dual-commitment route sketched
+v1 normative version of the Pattern C dual-commitment route sketched
 in [ARC_ZK_RECEIPT_PROOFS_MEMO.md](../docs/research/ARC_ZK_RECEIPT_PROOFS_MEMO.md)
 section 1.3 (signed canonical-JSON receipts remain authoritative; a
 secondary commitment is added for proving efficiency).
@@ -45,7 +45,7 @@ The 3-vendor cross-vendor fixture (CHIODOS_CONCEPT v1.1 section 9)
 exercises the same primitive at the workflow layer: a buyer auditor
 verifies "the refund step transferred no more than $250 to a customer
 at KYC tier 2 or higher" without learning customer, exact amount, or
-upstream prompts. The implemented v0.1 slice proves reveal-set BBS
+upstream prompts. The implemented v1 slice proves reveal-set BBS
 disclosure. Hidden comparisons such as "amount <= $250 while the amount
 is hidden" remain G6 follow-up work. Gaps G3 and G9 are now handled by
 the workflow verifier through optional `StepRecord` fields, while the
@@ -73,9 +73,9 @@ BBS step projection remains limited to stable step summary fields.
   `member`), `AND`-only composition, hard ceiling of eight clauses.
 - Predicate verification for hidden comparisons or membership.
 
-### 2.3 Out of scope (deferred to v0.2)
+### 2.3 Out of scope (future-projection gated)
 
-- The zkVM lane (Risc0 / SP1 + Groth16 wrap) for chained-receipt
+- The future zkVM lane (Risc0 / SP1 + Groth16 wrap) for chained-receipt
   proofs, predicates over the Ed25519 signature itself, predicates
   over fields hashed into a single BBS message (5.6), and
   non-arithmetic boolean composition (`OR`, negation, nested
@@ -83,7 +83,7 @@ BBS step projection remains limited to stable step summary fields.
 - SD-JWT VC bridging for EUDI Wallet interop: the EUDI ARF does not
   approve BLS12-381, so a separate SD-JWT VC mapping is required for
   EUDI-facing verifiers. Flagged in section 14.
-- `OR` and negation in the predicate language; deferred so v0.1 stays
+- `OR` and negation in the predicate language; deferred so v1 stays
   expressible by BBS+ + AnonCreds-v2 range proofs alone.
 
 ---
@@ -114,7 +114,7 @@ that do care MUST first verify Ed25519, then verify the BBS+
 commitment was produced over the canonical projection of the same
 body (section 9). Two signatures bind one body.
 
-v0.1 pins narrowly: implementations MUST NOT ship BBS#, threshold-BBS,
+v1 pins narrowly: implementations MUST NOT ship BBS#, threshold-BBS,
 or other variants. Future revisions MAY add them under new schema ids
 once IRTF and W3C documents stabilise.
 
@@ -123,7 +123,7 @@ once IRTF and W3C documents stabilise.
 ## 4. Cross-Spec Consistency
 
 - [CHIODOS_PHEROMONE.md](./CHIODOS_PHEROMONE.md) section 11 reserves a
-  v0.2 BBS+ projection over the pheromone deposit body; when it lands,
+  future BBS+ projection over the pheromone deposit body; when it lands,
   its ordering rule MUST follow the same canonical-ordering principle
   (5.1) used here.
 - [CHIODOS_LADDER.md](./CHIODOS_LADDER.md) section 9 lists "BBS+
@@ -187,7 +187,7 @@ band.
 ### 5.3 Schema versioning
 
 `ChioReceiptBody` gains an optional `bbs_projection_version: Option<String>`
-declaring which projection produced the BBS+ commitment. v0.1
+declaring which projection produced the BBS+ commitment. v1
 implementations MUST emit `"chio.bbs-projection.receipt.v1"` when a
 `bbs_signature` is present and MUST omit it otherwise. Older receipts
 that lack the field deserialize unchanged. Unknown versions fail
@@ -210,7 +210,7 @@ Each kernel maintains a **separate** BBS+ keypair from its Ed25519
 federation identity. BLS12-381 and Ed25519 are not interchangeable
 and their security analyses do not compose. The BBS+ public key MUST
 be advertised in the kernel's `chio-credentials` passport under a new
-`bbs_public_key` field (sibling work; v0.1 treats as a forward
+`bbs_public_key` field (sibling work; v1 treats as a forward
 reference). Issuer fingerprints that do not resolve to a non-revoked
 passport at pinned_epoch fail closed
 (`disclosure.bbs_issuer_unknown_or_revoked`).
@@ -219,12 +219,12 @@ passport at pinned_epoch fail closed
 
 Wholesale-only rows (0, 3, 4, 7 of the 5.2 table) carry a single BBS
 message. They MAY be revealed wholesale (producer discloses the
-nested JSON body, verifier re-hashes) or kept hidden, but v0.1
+nested JSON body, verifier re-hashes) or kept hidden, but v1
 clauses cannot reach inside. Predicates over individual
-`GuardEvidence` elements MUST defer to the v0.2 zkVM lane. This is a
-deliberate v0.1 simplification: the nested-field count is small,
-wholesale disclosure covers most asks, and v0.2 zkVM handles the
-residual.
+`GuardEvidence` elements MUST defer to the future zkVM lane. This is a
+deliberate v1 simplification: the nested-field count is small,
+wholesale disclosure covers most asks, and the future zkVM lane handles
+the residual.
 
 ---
 
@@ -271,15 +271,13 @@ padded to scalar):
 | 7 | `cost` | H |
 | 8 | `output_hash` | Opt<S> |
 
-Chiodos workflow v2 adds optional `StepRecord` fields for bilateral
-DSSE linkage, governance receipt id, parent receipt hash, consistency
-anchor, and destructive-step status. Those fields are verified by the
-offline Chiodos package verifier. They are not part of
-`chio.bbs-projection.step.v1`; adding them to the BBS projection would
-require a future projection version such as
-`chio.bbs-projection.step.v2`:
+Chiodos workflow receipts include optional `StepRecord` fields for bilateral
+DSSE linkage, governance receipt id, parent receipt hash, consistency anchor,
+and destructive-step status. Those fields are verified by the offline Chiodos
+package verifier. They are not part of `chio.bbs-projection.step.v1`; adding
+them to the BBS projection would require a future projection profile.
 
-| Idx | Field (v0.2 gated) | Enc. |
+| Idx | Field (future-projection gated) | Enc. |
 |---|---|---|
 | 9  | `bilateral_dsse_sha256` | Hx |
 | 10 | `governance_receipt_id` | Opt<S> |
@@ -360,19 +358,19 @@ construction (`disclosure.scale_mismatch`).
 
 ### 7.3 Composition
 
-**AND only**, hard ceiling of **eight clauses per proof**. v0.1
+**AND only**, hard ceiling of **eight clauses per proof**. v1
 forbids `OR`, negation, nested quantifiers, and predicates over
-wholesale-only field hashes (5.2, 6.1, 6.2); all flow to v0.2 zkVM.
-The ceiling is a deliberate cost cap; section 1 use cases do not
-motivate more than four. Producers fail at construction, verifiers
-reject (`disclosure.predicate_clause_count_exceeded`).
+wholesale-only field hashes (5.2, 6.1, 6.2); all flow to the future
+zkVM lane. The ceiling is a deliberate cost cap; section 1 use cases
+do not motivate more than four. Producers fail at construction,
+verifiers reject (`disclosure.predicate_clause_count_exceeded`).
 
 ### 7.4 No predicates over nested-field hashes
 
 A clause naming a wholesale-only field MUST be rejected at
 construction with `disclosure.unknown_predicate_field`. Wholesale
-disclosure plus a parallel projection clause (6.4) is the v0.1 path;
-native predicates over nested sub-fields are v0.2 zkVM.
+disclosure plus a parallel projection clause (6.4) is the v1 path;
+native predicates over nested sub-fields are future zkVM lane.
 
 ---
 
@@ -506,7 +504,7 @@ verify(envelope, pinned_receipt, pinned_epoch, peer_pin_set):
 receipt, fetched via its own audit-store lookup keyed on
 `subject_receipt_sha256`. Verifiers that cannot resolve a pinned
 receipt MUST fail closed (`disclosure.subject_receipt_unresolved`);
-v0.1 does not specify a proof-carrying-receipt mode.
+v1 does not specify a proof-carrying-receipt mode.
 
 ---
 
@@ -627,9 +625,9 @@ Error envelopes follow `chio.error.v1`; see `spec/errors/README.md`.
 
 ---
 
-## 13. v0.2 Lane (deferred)
+## 13. Future zkVM Lane (deferred)
 
-The v0.2 lane uses a zkVM (Risc0 or SP1) plus Groth16 wrap for
+The future zkVM lane uses a zkVM (Risc0 or SP1) plus Groth16 wrap for
 expressivity BBS+ cannot reach. Use cases:
 
 - **Chained-receipt proofs.** Properties over N receipts ("every
@@ -637,20 +635,20 @@ expressivity BBS+ cannot reach. Use cases:
   and falls within a 5-minute window"). BBS+ commits to one body;
   chained proofs require a chain-walking circuit.
 - **Predicates over the Ed25519 signature itself.** "Signed by a key
-  in this set" without revealing which. v0.1 reveals the kernel key.
+  in this set" without revealing which. v1 reveals the kernel key.
 - **Non-arithmetic boolean logic.** `OR`, negation, nested
-  quantifiers, anything past v0.1's AND-of-eight.
-- **Predicates over wholesale-only fields.** v0.2 zkVM circuits crack
+  quantifiers, anything past v1's AND-of-eight.
+- **Predicates over wholesale-only fields.** Future zkVM circuits crack
   nested bodies (`evidence`, `metadata`, `outcome`) and prove
   sub-field predicates without disclosing them.
 
-v0.1 reserves the optional `verifier_image_hash` envelope field so a
-v0.2 zkVM proof can ride the same envelope, with the image binding as
+v1 reserves the optional `verifier_image_hash` envelope field so a
+future zkVM proof can ride the same envelope, with the image binding as
 a public input. Proof-bytes wire format is **not** specified here.
 
 ---
 
-## 14. Open Questions for v0.1 Review
+## 14. Open Questions for v1 Review
 
 1. **Canonical ordering rule.** This spec picks alphabetical (5.1);
    [CHIODOS_PHEROMONE.md](./CHIODOS_PHEROMONE.md) section 11 has not
@@ -662,10 +660,10 @@ a public input. Proof-bytes wire format is **not** specified here.
    alongside `kernel_key` is the right shape.
 3. **SD-JWT VC bridging for EUDI.** EUDI does not approve BLS12-381;
    a separate SD-JWT VC mapping is required. Out of scope; flagged
-   for v0.2.
+   for the future zkVM lane.
 4. **`predicate_id` registry: cross-org or local?** Inline clauses
    work without one. A cross-org registry would let buyers reference
    predicates by name (`chio.refund_cap_v1`) but introduces a bootstrap
-   problem. v0.1 leaves the field optional; review SHOULD confirm
-   whether to draft a cross-org registry at v0.2 or rely on local
+   problem. v1 leaves the field optional; review SHOULD confirm
+   whether to draft a cross-org registry post-v1 or rely on local
    ladder-manifest declarations indefinitely.

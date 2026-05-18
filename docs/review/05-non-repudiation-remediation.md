@@ -57,9 +57,11 @@ The implementation also already exposes the main limitations:
 - receipt verification trusts the embedded `kernel_key` instead of an external
   trust anchor
 - checkpoint verification does the same
-- checkpoint leaves and inclusion proofs still derive from tool receipts only;
-  child receipts are projected into the claim log but are not yet sequenced
-  into the checkpoint tree
+- checkpoint leaves and inclusion proofs now derive from the local claim log;
+  child receipts with persisted canonical bytes can be sequenced into local
+  checkpoints, but child receipt inclusion-proof export remains deferred unless
+  the evidence package includes explicit child proof rows, and this still does
+  not make the log public or independently anchored
 - checkpoints now provide local prefix-growth continuity over checkpointed
   tool-receipt batches, not one externally anchored append-only log over the
   full claimed receipt family
@@ -131,11 +133,13 @@ append-only ledger across nodes, it needs one authoritative sequencing surface
 with linearizable append semantics. Local SQLite order plus async replication
 does not establish a globally ordered log.
 
-### 6. Child-receipt exclusion breaks completeness claims
+### 6. Child-receipt coverage remains local-only
 
-The repo signs child receipts, but checkpoint coverage currently applies only to
-tool receipts. That makes claims like "every decision is signed and
-checkpointed" false for nested work and provenance-heavy flows.
+The repo signs child receipts and can now include persisted child-receipt
+canonical bytes in local checkpoint ranges. That improves nested-work audit
+coverage, but claims like "every decision is globally non-repudiable" remain too
+strong until the checkpoint log is externally anchored and independently
+reviewable.
 
 ### 7. Audit semantics are being described as transparency semantics
 

@@ -538,7 +538,7 @@ class _ChioFlinkEvaluator:
                 guard="chio-streaming-sidecar",
             )
 
-        if receipt.is_denied:
+        if not receipt.is_allowed:
             _bump(self._metrics, "deny_total")
             dlq_record = self._dlq_router.build_record(  # type: ignore[union-attr]
                 source_topic=subject or "unknown",

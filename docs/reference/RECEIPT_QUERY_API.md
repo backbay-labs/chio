@@ -193,6 +193,48 @@ Response shape:
 
 The analytics API is backend-side aggregation. It complements, but is distinct from, any client-side dashboard summaries.
 
+## Local Receipt Operations CLI
+
+Receipt write operations are local SQLite operator commands in this release.
+They require `--receipt-db <path>`. Remote `--control-url` receipt
+health, flush, and checkpoint operations fail with:
+
+```text
+requires local --receipt-db; remote receipt write operations are not supported in this release
+```
+
+The JSON response is always an envelope:
+
+```json
+{
+  "schema": "chio.cli.receipt.health.v1",
+  "report": {}
+}
+```
+
+Supported envelope schemas:
+
+| Command | Schema |
+|---------|--------|
+| `chio receipt health` | `chio.cli.receipt.health.v1` |
+| `chio receipt flush` | `chio.cli.receipt.flush.v1` |
+| `chio receipt checkpoint status` | `chio.cli.receipt.checkpoint_status.v1` |
+| `chio receipt checkpoint create` | `chio.cli.receipt.checkpoint_create.v1` |
+| `chio receipt checkpoint verify` | `chio.cli.receipt.checkpoint_verify.v1` |
+
+`chio receipt flush --timeout-ms <n>` treats the timeout as the receipt writer
+flush-barrier timeout. It is not a whole-command timeout. A timeout means the
+operator cannot prove all writes accepted before the barrier are committed.
+
+`chio receipt checkpoint create --kernel-seed-file <path> --max-batch <n>`
+creates the next checkpoint through the receipt store. SQLite chooses the next
+contiguous `claim_receipt_log_entries.entry_seq` range, loads canonical bytes,
+loads the predecessor checkpoint, builds and signs the checkpoint, inserts it,
+and validates the checkpoint projections in one `IMMEDIATE` transaction.
+
+`chio receipt checkpoint status` and `chio receipt checkpoint verify` return a
+non-zero exit status when checkpoint chain or projection integrity fails.
+
 ## Operator Report Endpoint
 
 The trust-control service also exposes a composed operator report:
@@ -282,14 +324,32 @@ Options:
   --max-cost <UNITS>     Maximum cost in minor currency units
   --limit <N>            Page size (default: 50)
   --cursor <SEQ>         Pagination cursor (seq value)
+  --tenant <ID>          Strict tenant read boundary (local mode);
+                         required for local --receipt-db reads unless
+                         --admin-all is set.
+  --admin-all            Explicit local-operator read across all tenants
+                         (local mode); required unless --tenant is set.
   --control-url <URL>    Trust-control server URL
   --control-token <TOK>  Bearer token for the trust-control server
   --receipt-db <PATH>    Path to receipt SQLite file (local mode)
 ```
 
+Local `--receipt-db` reads require an explicit read boundary. The CLI does
+not silently default to admin-all reads across all tenants. Pass either
+`--tenant <id>` to scope output to a single tenant or `--admin-all` to
+read across tenants as a documented operator action. Remote
+`--control-url` reads derive the read boundary from the control token.
+
 Each matching receipt is printed as a JSON object on its own line (NDJSON). Example:
 
 ```bash
+# Local mode, scoped to one tenant.
+chio --receipt-db ./receipts.sqlite receipt list \
+  --tenant my-tenant \
+  --outcome deny \
+  --since 1700000000
+
+# Remote control plane.
 chio receipt list \
   --outcome deny \
   --since 1700000000 \

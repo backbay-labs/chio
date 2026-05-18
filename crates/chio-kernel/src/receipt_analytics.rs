@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::receipt_query::ReceiptReadContext;
+
 /// Maximum number of grouped analytics rows to return per dimension.
 pub const MAX_ANALYTICS_GROUP_LIMIT: usize = 200;
 
@@ -41,6 +43,9 @@ pub struct ReceiptAnalyticsQuery {
     pub group_limit: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time_bucket: Option<AnalyticsTimeBucket>,
+    /// Auth-derived read authority. This is never accepted from request bodies.
+    #[serde(skip)]
+    pub read_context: Option<ReceiptReadContext>,
 }
 
 impl Default for ReceiptAnalyticsQuery {
@@ -54,6 +59,7 @@ impl Default for ReceiptAnalyticsQuery {
             until: None,
             group_limit: Some(50),
             time_bucket: Some(AnalyticsTimeBucket::Day),
+            read_context: None,
         }
     }
 }

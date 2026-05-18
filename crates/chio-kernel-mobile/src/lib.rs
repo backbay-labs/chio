@@ -139,14 +139,13 @@ struct EvaluateRequest {
     /// [`MobileClock`].
     #[serde(default)]
     now_secs: Option<i64>,
-    /// Optional W1.3 peer-negotiated profile. When omitted, mobile
-    /// defaults to a single-trusted-CA `t1_default` profile (admits
-    /// v2 tokens). When supplied as v1-only, v2 tokens are rejected
-    /// before any signature work.
+    /// Optional peer-negotiated feature profile. When omitted, mobile
+    /// defaults to a single-trusted-CA `t1_default` profile with current
+    /// chain-binding semantics enabled.
     #[serde(default)]
     peer_capabilities: Option<CapabilityNegotiation>,
-    /// Optional W1.1 chain-binding trust roots, keyed by issuer hex.
-    /// V2 tokens require an entry; absent issuers fail-closed.
+    /// Optional chain-binding trust roots, keyed by issuer hex. Attenuated or
+    /// delegated tokens require an entry; absent issuers fail-closed.
     #[serde(default)]
     capability_trust_roots: std::collections::BTreeMap<String, ScopeHash>,
     /// Optional parent-budget snapshots used to seed sibling-sum
@@ -334,9 +333,8 @@ pub fn evaluate(request_json: String) -> Result<String, ChioMobileError> {
     // subject binding, scope) with an empty guard slice.
     let guards: &[&dyn Guard] = &[];
 
-    // Wave 1.5 hot-path wiring: route through `evaluate_with_full_floor`
-    // so v2 tokens are bound to a registered trust-root scope hash and
-    // a v1-only peer profile rejects v2 tokens before signature work.
+    // Route through `evaluate_with_full_floor` so attenuated or delegated
+    // tokens are bound to a registered trust-root scope hash before dispatch.
     let peer_profile = parsed
         .peer_capabilities
         .clone()
@@ -540,14 +538,6 @@ fn verify_capability_with_parts(
         },
         CapabilityError::Internal(msg) => ChioMobileError::Internal {
             message: format!("capability verification failed: {msg}"),
-        },
-        CapabilityError::SchemaExceedsNegotiatedCeiling {
-            token_schema,
-            peer_max,
-        } => ChioMobileError::InvalidCapability {
-            message: format!(
-                "capability token schema {token_schema} exceeds peer-negotiated ceiling {peer_max}"
-            ),
         },
     })?;
 
@@ -762,7 +752,11 @@ pub fn verify_play_integrity_evidence(
     })
 }
 
-/// Verify a mobile receipt against App Attest or Play Integrity evidence.
+/// Shape-check a mobile receipt against App Attest or Play Integrity evidence.
+///
+/// This does not authorize a capability or prove device integrity. It returns
+/// an explicit non-authoritative status until full receipt-chain verification
+/// is wired to trusted issuer pins and challenge binding.
 pub fn verify_mobile_receipt(
     receipt_json: String,
     evidence_json: String,
@@ -780,6 +774,12 @@ pub fn verify_mobile_receipt(
         .map_err(map_attestation_error)?;
     serde_json::to_string(&serde_json::json!({
         "schema": "chio.mobile.receipt-verification.v1",
+        "status": "shape_only",
+        "receipt_kind": "trace_observation",
+        "boundary_class": "detect_only",
+        "result": "observed",
+        "authoritative": false,
+        "authorized": false,
         "receipt_schema": verified.receipt_schema,
         "evidence_schema": verified.evidence_schema,
         "platform": verified.platform

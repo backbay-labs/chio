@@ -17,6 +17,7 @@ pub fn compute_local_scorecard(
         .iter()
         .filter(|receipt| {
             receipt_subject_key(receipt, &capability_map).as_deref() == Some(subject_key)
+                && receipt_integrity_valid(receipt, config)
         })
         .collect();
 
@@ -143,7 +144,7 @@ fn compute_boundary_pressure(
         let entry = by_policy
             .entry(receipt.policy_hash.as_str())
             .or_insert((0.0, 0.0));
-        if matches!(receipt.decision, Decision::Deny { .. }) {
+        if matches!(&receipt.decision, Some(Decision::Deny { .. })) {
             entry.0 += weight;
         }
         entry.1 += weight;
@@ -225,7 +226,7 @@ fn compute_least_privilege(
             .iter()
             .filter(|receipt| {
                 receipt.capability_id == capability.capability_id
-                    && matches!(receipt.decision, Decision::Allow)
+                    && receipt_authority_valid(receipt, config)
             })
             .map(|receipt| (receipt.tool_server.as_str(), receipt.tool_name.as_str()))
             .collect();

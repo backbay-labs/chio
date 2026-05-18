@@ -3,7 +3,11 @@
 ## Purpose
 
 This runbook covers the supported operator actions for the shipped
-`chio-settle` runtime in `v2.37`.
+`chio-settle` runtime originally tracked under internal milestone `v2.37`.
+
+> Version posture: this is a pre-release operator runbook. Internal `v2.x`
+> milestone labels are historical planning labels, not Chio-owned protocol,
+> schema, SDK, or runtime versions. Current protocol posture is v1-only.
 
 `chio-settle` is the bounded on-chain settlement surface. It does not discover
 new rails permissionlessly, hold agent private keys, bridge funds between

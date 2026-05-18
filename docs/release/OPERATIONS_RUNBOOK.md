@@ -198,6 +198,41 @@ Minimum deploy-time smoke checks:
 ./scripts/check-chio-go-release.sh
 ```
 
+### Receipt Store Operations
+
+Receipt writer and checkpoint operations are local SQLite operations in this
+release. Run them on the node that owns the receipt database:
+
+```bash
+chio receipt health --receipt-db /var/lib/chio/receipts.sqlite3
+chio receipt flush --receipt-db /var/lib/chio/receipts.sqlite3 --timeout-ms 5000
+chio receipt checkpoint status --receipt-db /var/lib/chio/receipts.sqlite3
+chio receipt checkpoint create \
+  --receipt-db /var/lib/chio/receipts.sqlite3 \
+  --kernel-seed-file /etc/chio/kernel.seed \
+  --max-batch 1000
+chio receipt checkpoint verify --receipt-db /var/lib/chio/receipts.sqlite3
+```
+
+Use `--json` for automation. The envelope `schema` value is stable and the
+`report` keeps null fields present for optional checkpoint and error values.
+
+Human output includes the committed and checkpointed entry sequences, the
+uncheckpointed range, writer counters, database size, WAL checkpoint
+observation, checkpoint sequence, next range, and checkpoint or writer errors.
+`chio receipt checkpoint status` and `chio receipt checkpoint verify` exit
+non-zero when checkpoint chain or projection integrity fails.
+
+`--timeout-ms` on `chio receipt flush` is the receipt writer flush-barrier
+timeout. It does not bound the entire command.
+
+Remote control-plane receipt health, flush, and checkpoint operations are
+deferred. Passing `--control-url` fails with:
+
+```text
+requires local --receipt-db; remote receipt write operations are not supported in this release
+```
+
 ### Launch And Partner Evidence Handoff
 
 Before promoting a candidate outside the operator boundary, archive and attach:

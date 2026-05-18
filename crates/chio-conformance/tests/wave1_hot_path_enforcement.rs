@@ -4,9 +4,8 @@
 
 use chio_core::capability::{
     capability_features, compute_attenuation_witness, scope_hash, AttenuationProof,
-    CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken, CapabilityTokenBody,
-    CapabilityTokenV2Body, ChioScope, DelegationLink, DelegationLinkBody, Operation, ToolGrant,
-    CHIO_CAPABILITY_V1_SCHEMA,
+    CapabilityCryptoFloor, CapabilityNegotiation, CapabilityToken, CapabilityTokenAttenuationBody,
+    CapabilityTokenBody, ChioScope, DelegationLink, DelegationLinkBody, Operation, ToolGrant,
 };
 use chio_core::crypto::Keypair;
 use chio_federation::{ConformanceTier, FederationPeer, InProcessCoSigner};
@@ -56,6 +55,7 @@ fn make_kernel(issuer: Keypair) -> ChioKernel {
         max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     };
@@ -94,7 +94,7 @@ fn now_unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
-fn direct_v2_token(
+fn direct_attenuated_token(
     id: &str,
     issuer: &Keypair,
     subject: &Keypair,
@@ -108,8 +108,8 @@ fn direct_v2_token(
         child_scope_hash: scope_hash(&scope).unwrap(),
         normalized_subset_proof: witness,
     };
-    CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body: CapabilityTokenBody {
                 id: id.to_string(),
                 issuer: issuer.public_key(),
@@ -126,7 +126,7 @@ fn direct_v2_token(
         },
         issuer,
     )
-    .expect("v2 token signs")
+    .expect("attenuated token signs")
 }
 
 fn peer(
@@ -142,6 +142,7 @@ fn peer(
         established_at: now,
         rotation_due: now + 3_600,
         capabilities,
+        ladder_manifest_ref: None,
     }
 }
 
@@ -195,7 +196,7 @@ fn kernel_hot_path_rejects_inflated_parent_scope() {
     };
 
     let body = CapabilityTokenBody {
-        id: "cap-v2-inflated-parent-hot-path".to_string(),
+        id: "cap-attenuated-inflated-parent-hot-path".to_string(),
         issuer: issuer.public_key(),
         subject: subject.public_key(),
         scope: scope_child,
@@ -203,8 +204,8 @@ fn kernel_hot_path_rejects_inflated_parent_scope() {
         expires_at: 200,
         delegation_chain: vec![],
     };
-    let token = CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    let token = CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body,
             caveats: vec![],
             scope_attenuations: vec![],
@@ -240,79 +241,6 @@ fn kernel_hot_path_rejects_inflated_parent_scope() {
             || reason.contains("trust-root"),
         "expected chain-binding diagnostic, got: {reason}"
     );
-}
-
-#[test]
-fn kernel_hot_path_rejects_v2_token_to_v1_only_peer() {
-    let scope = scope_with(vec![grant(vec![Operation::Invoke])]);
-    let issuer = Keypair::generate();
-    let subject = Keypair::generate();
-
-    let witness = compute_attenuation_witness(&scope, &scope).unwrap();
-    let proof = AttenuationProof {
-        parent_scope_hash: scope_hash(&scope).unwrap(),
-        child_scope_hash: scope_hash(&scope).unwrap(),
-        normalized_subset_proof: witness,
-    };
-    let body = CapabilityTokenBody {
-        id: "cap-v2-downgrade".to_string(),
-        issuer: issuer.public_key(),
-        subject: subject.public_key(),
-        scope: scope.clone(),
-        issued_at: 100,
-        expires_at: 200,
-        delegation_chain: vec![],
-    };
-    let token = CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
-            body,
-            caveats: vec![],
-            scope_attenuations: vec![],
-            attenuation_proof: proof,
-            budget_share_bps: None,
-        },
-        &issuer,
-    )
-    .expect("v2 token signs");
-
-    let mut peer_v1_only = CapabilityNegotiation::t1_default();
-    peer_v1_only.max_capability_schema = CHIO_CAPABILITY_V1_SCHEMA.to_string();
-    let trust_resolver = |k: &chio_core::PublicKey| -> Option<chio_core::capability::ScopeHash> {
-        if k == &issuer.public_key() {
-            Some(scope_hash(&scope).unwrap())
-        } else {
-            None
-        }
-    };
-    let mut budgets = InMemoryBudgetRegistry::new();
-    let clock = FixedClock::new(150);
-    let err = verify_capability_full(
-        &token,
-        &[issuer.public_key()],
-        &clock,
-        CapabilityCryptoFloor::AllowClassical,
-        &peer_v1_only,
-        &trust_resolver,
-        &mut budgets,
-    )
-    .expect_err("W1.3 schema ceiling must reject v2 token presented across a v1-only peer");
-
-    match err {
-        CapabilityError::SchemaExceedsNegotiatedCeiling {
-            token_schema,
-            peer_max,
-        } => {
-            assert!(
-                token_schema.contains("v2") || token_schema.contains("V2"),
-                "token_schema should mention v2: {token_schema}"
-            );
-            assert!(
-                peer_max.contains("v1") || peer_max.contains("V1"),
-                "peer_max should mention v1: {peer_max}"
-            );
-        }
-        other => panic!("expected SchemaExceedsNegotiatedCeiling, got: {other:?}"),
-    }
 }
 
 #[test]
@@ -358,8 +286,8 @@ fn kernel_hot_path_rejects_oversubscribed_siblings() {
             expires_at: 200,
             delegation_chain: mk_chain(delegatee),
         };
-        CapabilityToken::sign_v2(
-            CapabilityTokenV2Body {
+        CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
                 body,
                 caveats: vec![],
                 scope_attenuations: vec![],
@@ -457,8 +385,8 @@ fn delegated_child_without_pre_registered_parent_fails_closed() {
         expires_at: 200,
         delegation_chain: chain,
     };
-    let token = CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    let token = CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body,
             caveats: vec![],
             scope_attenuations: vec![],
@@ -543,8 +471,8 @@ fn unregistered_parent_rejects_first_sibling_fail_closed() {
             expires_at: 200,
             delegation_chain: mk_chain(delegatee),
         };
-        CapabilityToken::sign_v2(
-            CapabilityTokenV2Body {
+        CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
                 body,
                 caveats: vec![],
                 scope_attenuations: vec![],
@@ -592,7 +520,7 @@ fn unregistered_parent_rejects_first_sibling_fail_closed() {
 }
 
 #[test]
-fn chain_binding_disabled_rejects_v2_token() {
+fn chain_binding_disabled_rejects_attenuated_token() {
     let scope = scope_with(vec![grant(vec![Operation::Invoke])]);
     let issuer = Keypair::generate();
     let subject = Keypair::generate();
@@ -604,7 +532,7 @@ fn chain_binding_disabled_rejects_v2_token() {
         normalized_subset_proof: witness,
     };
     let body = CapabilityTokenBody {
-        id: "cap-v2-chain-binding-disabled".to_string(),
+        id: "cap-attenuated-chain-binding-disabled".to_string(),
         issuer: issuer.public_key(),
         subject: subject.public_key(),
         scope: scope.clone(),
@@ -612,8 +540,8 @@ fn chain_binding_disabled_rejects_v2_token() {
         expires_at: 200,
         delegation_chain: vec![],
     };
-    let token = CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    let token = CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body,
             caveats: vec![],
             scope_attenuations: vec![],
@@ -622,18 +550,18 @@ fn chain_binding_disabled_rejects_v2_token() {
         },
         &issuer,
     )
-    .expect("v2 token signs");
+    .expect("attenuated token signs");
 
     // Peer profile with chain-binding explicitly disabled.
     let mut peer = CapabilityNegotiation::t1_default();
     peer.features.insert(
-        capability_features::DELEGATION_V2_CHAIN_BINDING.to_string(),
+        capability_features::DELEGATION_CHAIN_BINDING.to_string(),
         false,
     );
 
     // Empty trust resolver: no issuer has a registered authority hash.
     // The verifier should reject because the peer explicitly disabled
-    // chain binding for v2 capabilities.
+    // chain binding for attenuated capabilities.
     let trust_resolver =
         |_k: &chio_core::PublicKey| -> Option<chio_core::capability::ScopeHash> { None };
     let clock = FixedClock::new(150);
@@ -648,10 +576,10 @@ fn chain_binding_disabled_rejects_v2_token() {
         &trust_resolver,
         &mut budgets,
     )
-    .expect_err("disabled chain-binding must reject v2 token fail-closed");
+    .expect_err("disabled chain-binding must reject attenuated token fail-closed");
     match err {
         CapabilityError::AttenuationViolation(message) => assert!(
-            message.contains("delegation_v2_chain_binding") || message.contains("disabled"),
+            message.contains("delegation_chain_binding") || message.contains("disabled"),
             "expected disabled chain-binding diagnostic, got: {message}"
         ),
         other => panic!("expected AttenuationViolation, got: {other:?}"),
@@ -660,58 +588,12 @@ fn chain_binding_disabled_rejects_v2_token() {
 
 #[test]
 #[allow(deprecated)]
-fn hosted_path_rejects_v2_token_to_v1_only_peer() {
+fn hosted_path_rejects_attenuated_when_peer_disables_chain_binding() {
     let now = now_unix_secs();
     let scope = scope_with(vec![grant(vec![Operation::Invoke])]);
     let issuer = Keypair::generate();
     let subject = Keypair::generate();
-    let token = direct_v2_token(
-        "cap-hosted-v2-to-v1-peer",
-        &issuer,
-        &subject,
-        scope.clone(),
-        now.saturating_sub(1),
-        now + 300,
-    );
-    let origin_kernel_id = "kernel.v1-only";
-    let origin_keypair = Keypair::generate();
-    let mut kernel = make_kernel(issuer.clone())
-        .with_capability_trust_roots(vec![(issuer.public_key(), scope_hash(&scope).unwrap())])
-        .with_federation_peers(vec![peer(
-            origin_kernel_id,
-            &origin_keypair,
-            CapabilityNegotiation::v1_default(),
-            now,
-        )]);
-    kernel.set_federation_cosigner(std::sync::Arc::new(InProcessCoSigner::new(
-        origin_kernel_id,
-        origin_keypair,
-        issuer.public_key(),
-    )));
-    kernel.register_tool_server(Box::new(EchoToolServer));
-
-    let mut request = hosted_request("req-hosted-v2-to-v1-peer", &token);
-    request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
-
-    let response = kernel
-        .evaluate_tool_call_blocking(&request)
-        .expect("schema-ceiling denial should return a signed deny response");
-    assert_eq!(response.verdict, HostedVerdict::Deny);
-    let reason = response.reason.as_deref().unwrap_or("");
-    assert!(
-        reason.contains("schema") && reason.contains("ceiling"),
-        "expected schema-ceiling denial, got: {reason}"
-    );
-}
-
-#[test]
-#[allow(deprecated)]
-fn hosted_path_rejects_v2_when_peer_disables_chain_binding() {
-    let now = now_unix_secs();
-    let scope = scope_with(vec![grant(vec![Operation::Invoke])]);
-    let issuer = Keypair::generate();
-    let subject = Keypair::generate();
-    let token = direct_v2_token(
+    let token = direct_attenuated_token(
         "cap-hosted-chain-binding-disabled",
         &issuer,
         &subject,
@@ -723,7 +605,7 @@ fn hosted_path_rejects_v2_when_peer_disables_chain_binding() {
     let origin_keypair = Keypair::generate();
     let mut capabilities = CapabilityNegotiation::t1_default();
     capabilities.features.insert(
-        capability_features::DELEGATION_V2_CHAIN_BINDING.to_string(),
+        capability_features::DELEGATION_CHAIN_BINDING.to_string(),
         false,
     );
     let mut kernel = make_kernel(issuer.clone())
@@ -750,7 +632,7 @@ fn hosted_path_rejects_v2_when_peer_disables_chain_binding() {
     assert_eq!(response.verdict, HostedVerdict::Deny);
     let reason = response.reason.as_deref().unwrap_or("");
     assert!(
-        reason.contains("chain") || reason.contains("delegation_v2_chain_binding"),
+        reason.contains("chain") || reason.contains("delegation_chain_binding"),
         "expected chain-binding denial, got: {reason}"
     );
 }

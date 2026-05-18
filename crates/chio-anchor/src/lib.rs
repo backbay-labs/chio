@@ -438,7 +438,7 @@ mod tests {
             inclusion_proofs: vec![inclusion],
             uncheckpointed_receipts: vec![],
             retention: EvidenceRetentionMetadata {
-                live_db_size_bytes: 0,
+                live_db_size_bytes: Some(0),
                 oldest_live_receipt_timestamp: None,
             },
         }

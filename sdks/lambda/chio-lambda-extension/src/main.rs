@@ -262,6 +262,10 @@ struct EvaluateRequest {
 struct EvaluateResponse {
     receipt_id: String,
     decision: &'static str,
+    authorized: bool,
+    authoritative: bool,
+    receipt_kind: &'static str,
+    boundary_class: &'static str,
     reason: Option<String>,
     metadata: Option<serde_json::Value>,
     capability_id: String,
@@ -388,6 +392,10 @@ async fn evaluate(request: EvaluateRequest, state: Arc<AppState>) -> Response<Fu
     let response = EvaluateResponse {
         receipt_id: receipt_id.clone(),
         decision,
+        authorized: false,
+        authoritative: false,
+        receipt_kind: "trace_observation",
+        boundary_class: "detect_only",
         reason: reason.clone(),
         metadata: request.metadata.clone(),
         capability_id: request.capability_id.clone(),
@@ -950,6 +958,10 @@ mod tests {
         let body = response.into_body().collect().await.unwrap().to_bytes();
         let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(parsed["decision"], "allow");
+        assert_eq!(parsed["authorized"], false);
+        assert_eq!(parsed["authoritative"], false);
+        assert_eq!(parsed["receipt_kind"], "trace_observation");
+        assert_eq!(parsed["boundary_class"], "detect_only");
         assert_eq!(parsed["metadata"]["trace_id"], "trace-1");
     }
 

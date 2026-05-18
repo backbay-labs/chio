@@ -13,7 +13,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from chio_sdk.models import ChioScope, Operation, ToolGrant
+from chio_sdk.models import ChioReceipt, ChioScope, Operation, ToolCallAction, ToolGrant
 from chio_sdk.testing import MockChioClient, MockVerdict, allow_all, deny_all
 
 from chio_prefect import chio_flow, chio_task
@@ -101,6 +101,32 @@ class _EventCapture:
 
     def of(self, event_name: str) -> list[_EmittedEvent]:
         return [e for e in self.events if e.event == event_name]
+
+
+class _DecisionlessReceiptClient:
+    async def evaluate_tool_call(self, **kwargs: Any) -> ChioReceipt:
+        return ChioReceipt(
+            id="mock-trace-receipt",
+            timestamp=1_700_000_000,
+            capability_id=str(kwargs["capability_id"]),
+            tool_server=str(kwargs["tool_server"]),
+            tool_name=str(kwargs["tool_name"]),
+            action=ToolCallAction(parameters=dict(kwargs["parameters"]), parameter_hash="hash"),
+            decision=None,
+            receipt_kind="trace_observation",
+            boundary_class="detect_only",
+            observation_outcome="observed_allow",
+            tool_origin="provider_reported",
+            redaction_mode="metadata_only",
+            content_hash="content",
+            policy_hash="policy",
+            trust_level="verified",
+            kernel_key="kernel",
+            signature="signature",
+        )
+
+    async def close(self) -> None:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +347,40 @@ class TestDenyPath:
         # one. Some offline test paths may skip this -- accept either.
         roles = {r.get("prefect.resource.role") for r in related}
         assert "task-run" in roles or roles == set()
+
+    def test_decisionless_non_authorizing_receipt_denies_without_crashing(self) -> None:
+        chio = _DecisionlessReceiptClient()
+
+        @chio_task(
+            scope=_scope_for_tools("observe"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+        )
+        def observe() -> str:
+            return "observed"
+
+        @chio_flow(
+            scope=_scope_for_tools("observe"),
+            capability_id="cap-1",
+            tool_server="srv",
+            chio_client=chio,
+        )
+        def myflow() -> str:
+            return observe()
+
+        with _EventCapture() as capture:
+            with pytest.raises(PermissionError) as exc_info:
+                myflow()
+
+        chio_error = getattr(exc_info.value, "chio_error", None)
+        assert chio_error is not None
+        assert chio_error.reason == "non-authorizing Chio receipt"
+        assert chio_error.guard is None
+        assert chio_error.decision is None
+        denies = capture.of(EVENT_DENY)
+        assert len(denies) == 1
+        assert denies[0].payload["reason"] == "non-authorizing Chio receipt"
 
 
 # ---------------------------------------------------------------------------

@@ -325,7 +325,10 @@ fn tool_receipt_semantics(
             tool_server: receipt.tool_server.clone(),
             tool_name: receipt.tool_name.clone(),
             action_parameter_hash: receipt.action.parameter_hash.clone(),
-            decision_allowed: matches!(&receipt.decision, chio_core::receipt::Decision::Allow),
+            decision_allowed: matches!(
+                &receipt.decision,
+                Some(chio_core::receipt::Decision::Allow)
+            ),
         })
         .collect()
 }

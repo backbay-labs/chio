@@ -2,8 +2,13 @@
 
 ## Purpose
 
-This profile closes `v2.36` by freezing the bounded `chio-anchor` runtime that
-Chio now actually ships for multi-chain checkpoint anchoring.
+This profile freezes the bounded `chio-anchor` runtime, originally tracked
+under historical internal milestone `v2.36`, as implemented in the current
+pre-release v1 workspace for multi-chain checkpoint anchoring.
+
+> Version posture: this is a pre-release standards profile. Internal `v2.x`
+> milestone labels are historical planning labels, not Chio-owned protocol,
+> schema, SDK, or runtime versions. Current protocol posture is v1-only.
 
 It covers four connected surfaces:
 

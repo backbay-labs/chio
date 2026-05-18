@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use chio_core_types::crypto::{Keypair, PublicKey, Signature};
-use chio_core_types::receipt::GuardEvidence;
+use chio_core_types::receipt::{
+    ActorRef, BoundaryClass, GuardEvidence, ObservationOutcome, ReceiptKind, RedactionMode,
+    ToolOrigin, TrustLevel,
+};
 use chio_core_types::{canonical_json_bytes, sha256_hex};
 
 use crate::method::HttpMethod;
@@ -21,7 +24,7 @@ pub const CHIO_HTTP_STATUS_SCOPE_FINAL: &str = "final";
 /// under an Ed25519 signature from the kernel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpReceipt {
-    /// Unique receipt ID (UUIDv7 recommended).
+    /// Authoritative content-addressed receipt id.
     pub id: String,
 
     /// Unique request ID this receipt covers.
@@ -42,6 +45,26 @@ pub struct HttpReceipt {
 
     /// The kernel's verdict.
     pub verdict: Verdict,
+
+    /// Signed semantic class for this HTTP receipt.
+    pub receipt_kind: ReceiptKind,
+
+    /// Signed boundary class for this HTTP receipt.
+    pub boundary_class: BoundaryClass,
+
+    /// Observation outcome. Mediated HTTP receipts must omit this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_outcome: Option<ObservationOutcome>,
+
+    /// Where the protected effect executes relative to Chio.
+    pub tool_origin: ToolOrigin,
+
+    /// Redaction mode applied to signed receipt details.
+    pub redaction_mode: RedactionMode,
+
+    /// Actor chain associated with the HTTP decision.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actor_chain: Vec<ActorRef>,
 
     /// Per-guard evidence collected during evaluation.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -64,6 +87,9 @@ pub struct HttpReceipt {
 
     /// SHA-256 hash of the policy that was applied.
     pub policy_hash: String,
+
+    /// Trust level of the signed decision.
+    pub trust_level: TrustLevel,
 
     /// Capability ID that was exercised, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -92,12 +118,21 @@ pub struct HttpReceiptBody {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
     pub verdict: Verdict,
+    pub receipt_kind: ReceiptKind,
+    pub boundary_class: BoundaryClass,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_outcome: Option<ObservationOutcome>,
+    pub tool_origin: ToolOrigin,
+    pub redaction_mode: RedactionMode,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actor_chain: Vec<ActorRef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence: Vec<GuardEvidence>,
     pub response_status: u16,
     pub timestamp: u64,
     pub content_hash: String,
     pub policy_hash: String,
+    pub trust_level: TrustLevel,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capability_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -105,9 +140,37 @@ pub struct HttpReceiptBody {
     pub kernel_key: PublicKey,
 }
 
+impl HttpReceiptBody {
+    fn validate_authority_semantics(&self) -> chio_core_types::Result<()> {
+        if self.receipt_kind != ReceiptKind::MediatedDecision {
+            return Err(chio_core_types::Error::CanonicalJson(
+                "HTTP receipts must be mediated_decision receipts".to_string(),
+            ));
+        }
+        if self.boundary_class != BoundaryClass::Prevent {
+            return Err(chio_core_types::Error::CanonicalJson(
+                "HTTP receipts must use the prevent boundary class".to_string(),
+            ));
+        }
+        if self.observation_outcome.is_some() {
+            return Err(chio_core_types::Error::CanonicalJson(
+                "mediated HTTP receipts must not carry observation_outcome".to_string(),
+            ));
+        }
+        if self.trust_level != TrustLevel::Mediated {
+            return Err(chio_core_types::Error::CanonicalJson(
+                "HTTP receipts must use mediated trust level".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl HttpReceipt {
     /// Sign a receipt body with the kernel's keypair.
-    pub fn sign(body: HttpReceiptBody, keypair: &Keypair) -> chio_core_types::Result<Self> {
+    pub fn sign(mut body: HttpReceiptBody, keypair: &Keypair) -> chio_core_types::Result<Self> {
+        body.id = compute_http_receipt_id(&body)?;
+        body.validate_authority_semantics()?;
         let (signature, _bytes) = keypair.sign_canonical(&body)?;
         Ok(Self {
             id: body.id,
@@ -117,11 +180,18 @@ impl HttpReceipt {
             caller_identity_hash: body.caller_identity_hash,
             session_id: body.session_id,
             verdict: body.verdict,
+            receipt_kind: body.receipt_kind,
+            boundary_class: body.boundary_class,
+            observation_outcome: body.observation_outcome,
+            tool_origin: body.tool_origin,
+            redaction_mode: body.redaction_mode,
+            actor_chain: body.actor_chain,
             evidence: body.evidence,
             response_status: body.response_status,
             timestamp: body.timestamp,
             content_hash: body.content_hash,
             policy_hash: body.policy_hash,
+            trust_level: body.trust_level,
             capability_id: body.capability_id,
             metadata: body.metadata,
             kernel_key: body.kernel_key,
@@ -140,11 +210,18 @@ impl HttpReceipt {
             caller_identity_hash: self.caller_identity_hash.clone(),
             session_id: self.session_id.clone(),
             verdict: self.verdict.clone(),
+            receipt_kind: self.receipt_kind,
+            boundary_class: self.boundary_class,
+            observation_outcome: self.observation_outcome,
+            tool_origin: self.tool_origin,
+            redaction_mode: self.redaction_mode,
+            actor_chain: self.actor_chain.clone(),
             evidence: self.evidence.clone(),
             response_status: self.response_status,
             timestamp: self.timestamp,
             content_hash: self.content_hash.clone(),
             policy_hash: self.policy_hash.clone(),
+            trust_level: self.trust_level,
             capability_id: self.capability_id.clone(),
             metadata: self.metadata.clone(),
             kernel_key: self.kernel_key.clone(),
@@ -157,10 +234,30 @@ impl HttpReceipt {
         self.kernel_key.verify_canonical(&body, &self.signature)
     }
 
-    /// Whether this receipt records an allow verdict.
+    /// Recompute the content-addressed HTTP receipt id.
+    pub fn recompute_id(&self) -> chio_core_types::Result<String> {
+        compute_http_receipt_id(&self.body())
+    }
+
+    /// Whether this receipt id matches the canonical body fields.
+    pub fn receipt_id_valid(&self) -> chio_core_types::Result<bool> {
+        Ok(self.recompute_id()? == self.id)
+    }
+
+    /// Whether this receipt records an authoritative allow.
     #[must_use]
     pub fn is_allowed(&self) -> bool {
-        self.verdict.is_allowed()
+        self.is_authorized()
+    }
+
+    /// Whether this receipt is an authoritative Chio authorization.
+    #[must_use]
+    pub fn is_authorized(&self) -> bool {
+        self.receipt_kind == ReceiptKind::MediatedDecision
+            && self.boundary_class == BoundaryClass::Prevent
+            && self.observation_outcome.is_none()
+            && self.trust_level == TrustLevel::Mediated
+            && self.verdict.is_allowed()
     }
 
     /// Whether this receipt records a deny verdict.
@@ -186,12 +283,18 @@ impl HttpReceipt {
             tool_server: "http".to_string(),
             tool_name: format!("{} {}", self.method, self.route_pattern),
             action,
-            decision: self.verdict.to_decision(),
+            decision: Some(self.verdict.to_decision()),
+            receipt_kind: self.receipt_kind,
+            boundary_class: self.boundary_class,
+            observation_outcome: self.observation_outcome,
+            tool_origin: self.tool_origin,
+            redaction_mode: self.redaction_mode,
+            actor_chain: self.actor_chain.clone(),
             content_hash: self.content_hash.clone(),
             policy_hash: self.policy_hash.clone(),
             evidence: self.evidence.clone(),
             metadata: self.metadata.clone(),
-            trust_level: chio_core_types::receipt::TrustLevel::default(),
+            trust_level: self.trust_level,
             tenant_id: None,
             kernel_key: self.kernel_key.clone(),
         }
@@ -218,6 +321,18 @@ impl HttpReceipt {
                 .to_string(),
         ))
     }
+}
+
+fn compute_http_receipt_id(body: &HttpReceiptBody) -> chio_core_types::Result<String> {
+    let mut value = serde_json::to_value(body)?;
+    let Some(object) = value.as_object_mut() else {
+        return Err(chio_core_types::Error::CanonicalJson(
+            "HTTP receipt body did not serialize to an object".to_string(),
+        ));
+    };
+    object.remove("id");
+    let canonical = canonical_json_bytes(&value)?;
+    Ok(sha256_hex(&canonical))
 }
 
 #[must_use]
@@ -307,11 +422,18 @@ mod tests {
             caller_identity_hash: "abc123".to_string(),
             session_id: Some("sess-001".to_string()),
             verdict: Verdict::Allow,
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: Vec::new(),
             evidence: vec![],
             response_status: 200,
             timestamp: 1700000000,
             content_hash: "deadbeef".to_string(),
             policy_hash: "cafebabe".to_string(),
+            trust_level: TrustLevel::Mediated,
             capability_id: None,
             metadata: None,
             kernel_key: keypair.public_key(),
@@ -340,12 +462,31 @@ mod tests {
     }
 
     #[test]
+    fn sign_rejects_unsigned_authority_shape_drift() {
+        let kp = test_keypair();
+        let mut body = sample_body(&kp);
+        body.receipt_kind = ReceiptKind::TraceObservation;
+        body.boundary_class = BoundaryClass::DetectOnly;
+        body.observation_outcome = Some(ObservationOutcome::Observed);
+        body.trust_level = TrustLevel::Verified;
+
+        let error = HttpReceipt::sign(body, &kp).test_unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("HTTP receipts must be mediated_decision receipts"));
+    }
+
+    #[test]
     fn body_roundtrip() {
         let kp = test_keypair();
         let body = sample_body(&kp);
         let receipt = HttpReceipt::sign(body.clone(), &kp).test_unwrap();
         let extracted = receipt.body();
-        assert_eq!(extracted.id, body.id);
+        // sign() overwrites body.id with the content-addressed id, so the
+        // extracted body carries the signed id rather than the caller-supplied
+        // value.
+        assert_eq!(extracted.id, receipt.id);
+        assert_ne!(extracted.id, body.id);
         assert_eq!(extracted.route_pattern, body.route_pattern);
     }
 

@@ -1,8 +1,12 @@
 # Chio Agent Economy: Technical Design
 
-Status: Phase 1 shipped in v2.0; governed transaction controls shipped in v2.6; bounded payment interop shipped through v2.38
+Status: Historical internal milestone design; implemented economic primitives are part of the current v1 pre-release profile.
 Authors: Engineering
 Date: 2026-03-21 (updated 2026-04-02)
+
+> Historical internal milestone note. Any `v2.x` labels below are pre-release
+> implementation milestones, not Chio-owned protocol, schema, SDK, or runtime
+> versions. Current protocol posture is v1-only.
 
 ---
 
@@ -16,11 +20,11 @@ Three observations anchor the design:
 
 2. **The delegation chain is a cost-responsibility chain.** Each `DelegationLink` records who delegated what to whom, with `Attenuation` narrowing scope at each hop. Budget attenuation through delegation creates a tree of cost responsibility rooted at the original authorizer.
 
-3. **The receipt log is a billing ledger.** Every `ChioReceipt` is a signed, tamper-evident record of a decision. The existing `metadata: Option<serde_json::Value>` field is the natural insertion point for structured financial data. Receipts are already persisted in `SqliteReceiptStore` with indexed queries by capability, tool, and timestamp.
+3. **The receipt log is a billing ledger.** Every `ChioReceipt` is a kernel-signed record of a decision; tamper-evidence holds for any backend that preserves the signed canonical bytes, and the bundled `SqliteReceiptStore` additionally enforces append-only semantics through `BEFORE UPDATE` / `BEFORE DELETE` triggers. The existing `metadata: Option<serde_json::Value>` field is the natural insertion point for structured financial data. Receipts are already persisted in `SqliteReceiptStore` with indexed queries by capability, tool, and timestamp.
 
 The strategy is not to bolt a payment system onto Chio. It is to recognize that Chio is already 80% of a payment authorization system and close the remaining gaps with minimal, backward-compatible extensions.
 
-As of `v2.38`, the shipped payment-facing overlay is explicit and bounded:
+The current pre-release v1 payment-facing overlay is explicit and bounded:
 Chio can now project governed settlement into x402 requirements, prepare
 EIP-3009 authorization digests, evaluate Circle-managed-custody nanopayments,
 and assess ERC-4337/paymaster compatibility. Those surfaces remain
@@ -143,9 +147,9 @@ pub metadata: Option<serde_json::Value>,
 
 This field is signed as part of the receipt body and is available for structured financial data without schema changes to the receipt envelope.
 
-### 2.7 Analytics Substrate (Shipped in v2.0)
+### 2.7 Analytics Substrate (Internal Milestone)
 
-The local analytics join gap is now closed in the v2.0 runtime:
+The local analytics join gap described by that internal milestone:
 
 1. The receipt store persists a capability lineage index keyed by
    `capability_id`, so receipts can be joined to issuer, subject, grants, and
@@ -207,7 +211,9 @@ pub struct ToolGrant {
 }
 ```
 
-All new fields use `#[serde(default, skip_serializing_if = "Option::is_none")]` so existing tokens deserialize without error. However, `ToolGrant` currently has `#[serde(deny_unknown_fields)]` (line 162 of `capability.rs`), which means old kernels will reject tokens containing the new fields. This must be addressed before the new fields ship. Options: (a) remove `deny_unknown_fields` in a prior release so that deployed kernels learn to tolerate unknown fields before new fields appear, or (b) gate the new fields behind a protocol version and add a version negotiation step. Either way, a versioning and migration strategy is required -- this is a backward-compatibility-breaking change if not sequenced carefully.
+Current v1 does not define a second token negotiation path. New Chio-owned fields
+must either be part of the v1 schema before public release or be rejected
+fail-closed by v1 consumers until a future public evolution decision exists.
 
 #### 3.1.2 Attenuation for Cost Budgets
 
@@ -1192,24 +1198,24 @@ operator-managed sidecar data keyed by `receipt_id`.*
 
 ### Implementation Status
 
-**Phase 1 features shipped in v2.0.** The economic primitives described in
-Phase 1 are implemented and available in the current codebase. `v2.6` also
-shipped governed transaction metadata, x402 and ACP bridge integrations,
-truthful settlement linkage, settlement backlog reporting, and explicit
-invocation-plus-money budget dimensions on operator reports. Broader
-observability, Stripe-style adapters, and cross-org settlement automation
-remain planned.
+**Phase 1 features are implemented in the current pre-release v1 branch.** The
+economic primitives described in Phase 1 are implemented and available in the
+current codebase. Historical internal milestone work also added governed
+transaction metadata, x402 and ACP bridge integrations, truthful settlement
+linkage, settlement backlog reporting, and explicit invocation-plus-money
+budget dimensions on operator reports. Broader observability, Stripe-style
+adapters, and cross-org settlement automation remain planned.
 
-Operational guides for v2.0 features:
+Operational guides for current v1 features:
 
 - [MONETARY_BUDGETS_GUIDE.md](MONETARY_BUDGETS_GUIDE.md): configuring `max_cost_per_invocation`, `max_total_cost`, and financial receipt metadata
 - [VELOCITY_GUARDS.md](VELOCITY_GUARDS.md): token-bucket rate limiting per grant
 - [DPOP_INTEGRATION_GUIDE.md](DPOP_INTEGRATION_GUIDE.md): DPoP proof-of-possession setup and verification
 - [RECEIPT_QUERY_API.md](RECEIPT_QUERY_API.md): `GET /v1/receipts/query` filters, pagination, and CLI usage
 
-### Phase 1: Economic Primitives -- SHIPPED in v2.0
+### Phase 1: Economic Primitives -- Implemented In Current V1
 
-All Phase 1 deliverables shipped in v2.0:
+All Phase 1 deliverables are implemented in the current pre-release v1 branch:
 
 - `MonetaryAmount` type in `crates/chio-core/src/capability.rs`.
 - `max_cost_per_invocation` and `max_total_cost` fields on `ToolGrant`; `is_subset_of` enforces cost caps through delegation chains.
@@ -1242,9 +1248,9 @@ All Phase 1 deliverables shipped in v2.0:
 - Real-time cost streaming from receipt log.
 - Design partner integrations (2-3 agent framework vendors).
 
-### Phase 3: Payment Rail Integration (~3 months incremental work beyond the shipped v2.6 bridge baseline; maps to Q4 2026 in the Strategic Roadmap)
+### Phase 3: Payment Rail Integration (~3 months incremental work beyond the implemented bridge baseline; maps to Q4 2026 in the Strategic Roadmap)
 
-Shipped baseline in `v2.6`:
+Implemented bridge baseline:
 
 - `PaymentAdapter` trait and truthful settlement mapping in
   `crates/chio-kernel/src/payment.rs`

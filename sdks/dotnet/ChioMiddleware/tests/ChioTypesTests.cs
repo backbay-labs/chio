@@ -11,11 +11,22 @@ namespace Backbay.Chio.Tests;
 
 public class ChioTypesTests
 {
+    private static readonly string ReceiptId = new('a', 64);
+    private static readonly string ContentHash = new('b', 64);
+
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
+
+    [Fact]
+    public void VerdictDefaultIsNotAllow()
+    {
+        var verdict = new Verdict();
+        Assert.False(verdict.IsAllowed());
+        Assert.False(verdict.IsDenied());
+    }
 
     [Fact]
     public void VerdictAllow_Serialization()
@@ -110,16 +121,21 @@ public class ChioTypesTests
     {
         var receipt = new HttpReceipt
         {
-            Id = "receipt-001",
+            Id = ReceiptId,
             RequestId = "req-001",
             RoutePattern = "/pets/{petId}",
             Method = "GET",
             CallerIdentityHash = "abc123",
             Verdict = Verdict.Allow(),
+            ReceiptKind = "mediated_decision",
+            BoundaryClass = "prevent",
+            ToolOrigin = "caller_executed",
+            RedactionMode = "none",
+            TrustLevel = "mediated",
             Evidence = new List<GuardEvidence>(),
             ResponseStatus = 200,
             Timestamp = 1700000000,
-            ContentHash = "deadbeef",
+            ContentHash = ContentHash,
             PolicyHash = "cafebabe",
             KernelKey = "test-key",
             Signature = "test-sig",
@@ -128,8 +144,9 @@ public class ChioTypesTests
         var json = JsonSerializer.Serialize(receipt, _jsonOptions);
         var back = JsonSerializer.Deserialize<HttpReceipt>(json, _jsonOptions);
         Assert.NotNull(back);
-        Assert.Equal("receipt-001", back.Id);
+        Assert.Equal(ReceiptId, back.Id);
         Assert.True(back.Verdict.IsAllowed());
+        Assert.True(back.IsAuthorized());
         Assert.Equal(200, back.ResponseStatus);
     }
 
@@ -166,16 +183,21 @@ public class ChioTypesTests
         {
             "verdict": {"verdict": "allow"},
             "receipt": {
-                "id": "receipt-001",
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "request_id": "req-001",
                 "route_pattern": "/pets",
                 "method": "GET",
                 "caller_identity_hash": "hash",
                 "verdict": {"verdict": "allow"},
+                "receipt_kind": "mediated_decision",
+                "boundary_class": "prevent",
+                "tool_origin": "caller_executed",
+                "redaction_mode": "none",
+                "trust_level": "mediated",
                 "evidence": [],
                 "response_status": 200,
                 "timestamp": 1700000000,
-                "content_hash": "abc",
+                "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                 "policy_hash": "def",
                 "kernel_key": "key",
                 "signature": "sig"
@@ -187,7 +209,51 @@ public class ChioTypesTests
         var response = JsonSerializer.Deserialize<EvaluateResponse>(json, _jsonOptions);
         Assert.NotNull(response);
         Assert.True(response.Verdict.IsAllowed());
-        Assert.Equal("receipt-001", response.Receipt.Id);
+        Assert.True(response.Receipt.IsAuthorized());
+        Assert.Equal(ReceiptId, response.Receipt.Id);
+    }
+
+    [Fact]
+    public void VerifyReceiptResponseAuthorizesRequiresFullAuthorityTuple()
+    {
+        var receipt = new HttpReceipt
+        {
+            Id = ReceiptId,
+            RequestId = "req-001",
+            RoutePattern = "/pets",
+            Method = "GET",
+            CallerIdentityHash = "hash",
+            Verdict = Verdict.Allow(),
+            ReceiptKind = "mediated_decision",
+            BoundaryClass = "prevent",
+            ToolOrigin = "caller_executed",
+            RedactionMode = "none",
+            TrustLevel = "mediated",
+            ResponseStatus = 200,
+            Timestamp = 1700000000,
+            ContentHash = ContentHash,
+            PolicyHash = "policy",
+            KernelKey = "key",
+            Signature = "signature",
+        };
+        var response = new VerifyReceiptResponse
+        {
+            Ok = true,
+            Authorized = true,
+            SignatureValid = true,
+            SignerTrusted = true,
+            ReceiptIdValid = true,
+            ParameterHashValid = true,
+            ReceiptKind = "mediated_decision",
+            BoundaryClass = "prevent",
+            TrustLevel = "mediated",
+            Result = "allow",
+            SignerKeyHex = new string('d', 64),
+        };
+
+        Assert.True(response.Authorizes(receipt));
+        response.SignatureValid = false;
+        Assert.False(response.Authorizes(receipt));
     }
 
     [Fact]

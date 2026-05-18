@@ -6,7 +6,7 @@
 // consumers can plug in any OTel SDK version without coupling the
 // core ACP proxy to a specific OTel release.
 
-// ChioReceipt is already imported via attestation.rs in the include! pattern.
+// ChioReceipt and chio_receipt_id are already imported through the include! pattern.
 
 /// An OTel-compatible span representation for a receipt.
 ///
@@ -24,7 +24,8 @@ pub struct ReceiptSpan {
     pub parent_span_id: String,
     /// The tool name that was invoked.
     pub tool_name: String,
-    /// The verdict: "allow", "deny", "cancelled", or "incomplete".
+    /// The semantic verdict, such as "allow", "deny", "trace_observation",
+    /// or "advisory_evaluation".
     pub verdict: String,
     /// The capability ID that authorized the invocation.
     pub capability_id: String,
@@ -136,12 +137,42 @@ fn default_service_name() -> String {
 }
 
 /// Convert an Chio receipt into an OTel-compatible span.
-pub fn receipt_to_span(receipt: &ChioReceipt, session_trace_id: &str) -> ReceiptSpan {
+///
+/// Pass `Some(&trusted_kernel_keys)` with the operator-pinned signer set to mark
+/// receipts as authorized in the resulting span. Pass `None` for trustless callers
+/// (e.g. trace/observation exporters): `signer_trusted` and `authorized` will be
+/// false, but `Decision::Allow` still surfaces as `verdict = "allow"` and the
+/// other decision/kind values still surface verbatim.
+pub fn receipt_to_span(
+    receipt: &ChioReceipt,
+    session_trace_id: &str,
+    trusted_kernel_keys: Option<&std::collections::BTreeSet<String>>,
+) -> ReceiptSpan {
+    let semantics = receipt.semantic_fields();
+    let receipt_id_valid = chio_receipt_id(&receipt.body())
+        .map(|id| id == receipt.id)
+        .unwrap_or(false);
+    let signature_valid = receipt.verify_signature().unwrap_or(false);
+    let parameter_hash_valid = receipt.action.verify_hash().unwrap_or(false);
+    let signer_trusted = trusted_kernel_keys
+        .map(|trusted| trusted.contains(&receipt.kernel_key.to_hex()))
+        .unwrap_or(false);
+    let authorized = receipt_id_valid
+        && signature_valid
+        && parameter_hash_valid
+        && signer_trusted
+        && semantics.is_authorized(receipt.decision.as_ref());
+    // The verdict reports the receipt's decision verbatim. The `authorized`
+    // attribute separately captures whether the signer is trusted and all
+    // integrity checks passed. Trustless callers (no signer pin set) still
+    // see verdict="allow" for an Allow decision so downstream consumers can
+    // filter consistently on the verdict field.
     let verdict = match &receipt.decision {
-        chio_core::receipt::Decision::Allow => "allow",
-        chio_core::receipt::Decision::Deny { .. } => "deny",
-        chio_core::receipt::Decision::Cancelled { .. } => "cancelled",
-        chio_core::receipt::Decision::Incomplete { .. } => "incomplete",
+        Some(chio_core::receipt::Decision::Allow) => "allow",
+        Some(chio_core::receipt::Decision::Deny { .. }) => "deny",
+        Some(chio_core::receipt::Decision::Cancelled { .. }) => "cancelled",
+        Some(chio_core::receipt::Decision::Incomplete { .. }) => "incomplete",
+        _ => semantics.receipt_kind.as_str(),
     };
 
     // Derive span_id from receipt ID (take first 16 hex chars or pad).
@@ -164,6 +195,34 @@ pub fn receipt_to_span(receipt: &ChioReceipt, session_trace_id: &str) -> Receipt
             value: verdict.to_string(),
         },
         SpanAttribute {
+            key: "chio.authorized".to_string(),
+            value: authorized.to_string(),
+        },
+        SpanAttribute {
+            key: "chio.signer_trusted".to_string(),
+            value: signer_trusted.to_string(),
+        },
+        SpanAttribute {
+            key: "chio.receipt_id_valid".to_string(),
+            value: receipt_id_valid.to_string(),
+        },
+        SpanAttribute {
+            key: "chio.signature_valid".to_string(),
+            value: signature_valid.to_string(),
+        },
+        SpanAttribute {
+            key: "chio.parameter_hash_valid".to_string(),
+            value: parameter_hash_valid.to_string(),
+        },
+        SpanAttribute {
+            key: "chio.receipt_kind".to_string(),
+            value: semantics.receipt_kind.as_str().to_string(),
+        },
+        SpanAttribute {
+            key: "chio.boundary_class".to_string(),
+            value: semantics.boundary_class.as_str().to_string(),
+        },
+        SpanAttribute {
             key: "chio.capability_id".to_string(),
             value: receipt.capability_id.clone(),
         },
@@ -178,7 +237,7 @@ pub fn receipt_to_span(receipt: &ChioReceipt, session_trace_id: &str) -> Receipt
     ];
 
     // Add deny reason if applicable.
-    if let chio_core::receipt::Decision::Deny { reason, guard } = &receipt.decision {
+    if let Some(chio_core::receipt::Decision::Deny { reason, guard }) = &receipt.decision {
         attributes.push(SpanAttribute {
             key: "chio.deny_reason".to_string(),
             value: reason.clone(),

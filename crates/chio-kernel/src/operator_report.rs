@@ -24,7 +24,7 @@ use crate::evidence_export::{
     EvidenceChildReceiptScope, EvidenceExportQuery, EvidenceLineageReferences,
 };
 use crate::receipt_analytics::{AnalyticsTimeBucket, ReceiptAnalyticsResponse};
-use crate::receipt_query::ReceiptQuery;
+use crate::receipt_query::{ReceiptQuery, ReceiptReadBoundary, ReceiptReadContext};
 use crate::receipt_store::FederatedEvidenceShareSummary;
 use crate::CostAttributionReport;
 
@@ -114,6 +114,9 @@ pub struct OperatorReportQuery {
     pub authorization_limit: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub economic_limit: Option<usize>,
+    /// Auth-derived read authority. This is never accepted from request bodies.
+    #[serde(skip)]
+    pub read_context: Option<ReceiptReadContext>,
 }
 
 impl Default for OperatorReportQuery {
@@ -133,6 +136,7 @@ impl Default for OperatorReportQuery {
             metered_limit: Some(50),
             authorization_limit: Some(50),
             economic_limit: Some(50),
+            read_context: None,
         }
     }
 }
@@ -149,6 +153,7 @@ impl OperatorReportQuery {
             until: self.until,
             group_limit: self.group_limit,
             time_bucket: self.time_bucket,
+            read_context: self.read_context.clone(),
         }
     }
 
@@ -162,21 +167,37 @@ impl OperatorReportQuery {
             since: self.since,
             until: self.until,
             limit: self.attribution_limit,
+            read_context: self.read_context.clone(),
         }
     }
 
-    #[must_use]
-    pub fn to_evidence_export_query(&self) -> EvidenceExportQuery {
-        EvidenceExportQuery {
+    pub fn to_evidence_export_query(&self) -> Result<EvidenceExportQuery, String> {
+        let (tenant, read_boundary) = match self.read_context.as_ref() {
+            Some(ReceiptReadContext {
+                boundary: ReceiptReadBoundary::AdminAll,
+                ..
+            }) => (None, Some(ReceiptReadBoundary::AdminAll)),
+            Some(ReceiptReadContext {
+                boundary: ReceiptReadBoundary::TenantScoped { tenant },
+                ..
+            }) => (
+                Some(tenant.clone()),
+                Some(ReceiptReadBoundary::tenant_scoped(tenant.clone())),
+            ),
+            None => {
+                return Err(
+                    "operator report evidence export requires an explicit read context".to_string(),
+                );
+            }
+        };
+        Ok(EvidenceExportQuery {
             capability_id: self.capability_id.clone(),
             agent_subject: self.agent_subject.clone(),
             since: self.since,
             until: self.until,
-            // Phase 1.5: operator_report does not scope by tenant today.
-            // When multi-tenant surfaces are introduced the caller
-            // layer must populate this from the authenticated context.
-            tenant: None,
-        }
+            tenant,
+            read_boundary,
+        })
     }
 
     #[must_use]
@@ -231,6 +252,7 @@ impl OperatorReportQuery {
             issuer: None,
             partner: None,
             limit: self.group_limit,
+            read_context: self.read_context.clone(),
         }
     }
 }
@@ -253,6 +275,9 @@ pub struct BehavioralFeedQuery {
     pub until: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt_limit: Option<usize>,
+    /// Auth-derived read authority. This is never accepted from request bodies.
+    #[serde(skip)]
+    pub read_context: Option<ReceiptReadContext>,
 }
 
 impl Default for BehavioralFeedQuery {
@@ -265,6 +290,7 @@ impl Default for BehavioralFeedQuery {
             since: None,
             until: None,
             receipt_limit: Some(100),
+            read_context: None,
         }
     }
 }
@@ -293,6 +319,7 @@ impl BehavioralFeedQuery {
             tool_name: self.tool_name.clone(),
             since: self.since,
             until: self.until,
+            read_context: self.read_context.clone(),
             ..OperatorReportQuery::default()
         }
     }
@@ -311,10 +338,8 @@ impl BehavioralFeedQuery {
             cursor: None,
             limit: self.receipt_limit_or_default(),
             agent_subject: self.agent_subject.clone(),
-            // Phase 1.5: operator_report does not scope by tenant today.
-            // When multi-tenant surfaces are introduced the caller layer
-            // must populate this from the authenticated context.
             tenant_filter: None,
+            read_context: self.read_context.clone(),
         }
     }
 }
@@ -340,6 +365,9 @@ pub struct SharedEvidenceQuery {
     pub partner: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
+    /// Auth-derived read authority. This is never accepted from request bodies.
+    #[serde(skip)]
+    pub read_context: Option<ReceiptReadContext>,
 }
 
 impl Default for SharedEvidenceQuery {
@@ -354,6 +382,7 @@ impl Default for SharedEvidenceQuery {
             issuer: None,
             partner: None,
             limit: Some(50),
+            read_context: None,
         }
     }
 }
@@ -1028,7 +1057,8 @@ pub struct AuthorizationContextRow {
     pub subject_key: Option<String>,
     pub tool_server: String,
     pub tool_name: String,
-    pub decision: Decision,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<Decision>,
     pub authorization_details: Vec<GovernedAuthorizationDetail>,
     pub transaction_context: GovernedAuthorizationTransactionContext,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1259,7 +1289,10 @@ pub struct BehavioralFeedReceiptRow {
     pub issuer_key: Option<String>,
     pub tool_server: String,
     pub tool_name: String,
-    pub decision: Decision,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<Decision>,
+    #[serde(default)]
+    pub authorized: bool,
     pub settlement_status: SettlementStatus,
     pub reconciliation_state: SettlementReconciliationState,
     pub action_required: bool,
@@ -1489,6 +1522,7 @@ mod tests {
             since: Some(10),
             until: Some(20),
             receipt_limit: Some(5_000),
+            read_context: Some(ReceiptReadContext::local_operator_admin_all()),
         };
 
         assert_eq!(
@@ -1731,7 +1765,8 @@ mod tests {
             issuer_key: None,
             tool_server: "meter".to_string(),
             tool_name: "bill".to_string(),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            authorized: true,
             settlement_status: SettlementStatus::Settled,
             reconciliation_state: SettlementReconciliationState::Reconciled,
             action_required: false,

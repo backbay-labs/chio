@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -644,6 +645,254 @@ func TestBackoff_GrowsExponentially(t *testing.T) {
 	// Release phase has an independent budget.
 	if r.attemptExceeded(uid, retryPhaseRelease) {
 		t.Fatalf("release phase should not share the receipt budget")
+	}
+}
+
+// TestPodAnnotationDoesNotFlowIntoMediatedReceiptDecision asserts that a
+// malicious pod annotation cannot wash into the authoritative fields of the
+// mediated JobReceipt. The pod claims a substituted job_name, namespace,
+// capability_id, outcome, and rationale via its own
+// `chio.protocol/receipt` annotation. The controller must keep its
+// authoritative fields intact and surface the annotation only as
+// AdvisoryPodAnnotation with Source=pod_annotation_unverified.
+func TestPodAnnotationDoesNotFlowIntoMediatedReceiptDecision(t *testing.T) {
+	chio := &stubChioClient{nextReceiptID: "rcpt-ok"}
+	job := governedJob()
+	job.Annotations[AnnotationCapabilityID] = "cap-authoritative"
+	job.Spec.Template.Annotations = map[string]string{AnnotationCapabilityToken: "token-cap-authoritative"}
+	job.Annotations[AnnotationCapabilityExpiresAt] = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	job.Finalizers = []string{FinalizerName}
+	job.Status.Conditions = []batchv1.JobCondition{
+		{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
+	}
+	now := metav1.NewTime(time.Now().UTC())
+	job.Status.StartTime = &now
+	job.Status.CompletionTime = &now
+
+	maliciousPayload := `{` +
+		`"job_name":"substituted-job",` +
+		`"namespace":"attacker-controlled",` +
+		`"capability_id":"cap-substituted",` +
+		`"outcome":"succeeded",` +
+		`"rationale":"approved-by-pod",` +
+		`"decision":"allow"` +
+		`}`
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "demo-malicious",
+			Namespace: job.Namespace,
+			UID:       types.UID("pod-malicious"),
+			OwnerReferences: []metav1.OwnerReference{
+				{Kind: "Job", UID: job.UID, Name: job.Name, APIVersion: "batch/v1"},
+			},
+			Annotations: map[string]string{
+				PodAnnotationReceipt: maliciousPayload,
+			},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodSucceeded},
+	}
+
+	r, _ := buildReconciler(t, chio, job, pod)
+	key := types.NamespacedName{Namespace: job.Namespace, Name: job.Name}
+	reconcileUntilStable(t, r, key)
+
+	rcpt := chio.lastReceipt
+	if rcpt.JobName != job.Name {
+		t.Fatalf("authoritative JobName overridden by pod annotation: got %q want %q", rcpt.JobName, job.Name)
+	}
+	if rcpt.Namespace != job.Namespace {
+		t.Fatalf("authoritative Namespace overridden by pod annotation: got %q want %q", rcpt.Namespace, job.Namespace)
+	}
+	if rcpt.CapabilityID != "cap-authoritative" {
+		t.Fatalf("authoritative CapabilityID overridden by pod annotation: got %q want %q", rcpt.CapabilityID, "cap-authoritative")
+	}
+	if rcpt.Outcome != "succeeded" {
+		t.Fatalf("authoritative Outcome overridden by pod annotation: got %q want %q", rcpt.Outcome, "succeeded")
+	}
+	if rcpt.JobUID != string(job.UID) {
+		t.Fatalf("authoritative JobUID overridden by pod annotation: got %q want %q", rcpt.JobUID, string(job.UID))
+	}
+
+	if len(rcpt.Steps) != 1 {
+		t.Fatalf("expected exactly 1 step receipt, got %d", len(rcpt.Steps))
+	}
+	step := rcpt.Steps[0]
+	if step.PodName != "demo-malicious" {
+		t.Fatalf("controller-owned PodName overridden: got %q", step.PodName)
+	}
+	if step.AdvisoryPodAnnotation == nil {
+		t.Fatalf("expected advisory pod annotation to be populated")
+	}
+	advisory := step.AdvisoryPodAnnotation
+	if advisory.Source != chioapi.AdvisoryPodAnnotationSource {
+		t.Fatalf("advisory source mismatch: got %q want %q", advisory.Source, chioapi.AdvisoryPodAnnotationSource)
+	}
+	if advisory.Source != "pod_annotation_unverified" {
+		t.Fatalf("advisory source label drifted from the documented wire value: got %q", advisory.Source)
+	}
+	if advisory.AnnotationKey != PodAnnotationReceipt {
+		t.Fatalf("advisory annotation key mismatch: got %q want %q", advisory.AnnotationKey, PodAnnotationReceipt)
+	}
+	if advisory.Payload != maliciousPayload {
+		t.Fatalf("advisory payload did not preserve the verbatim annotation bytes")
+	}
+	if advisory.Truncated {
+		t.Fatalf("did not expect Truncated=true for a small payload")
+	}
+
+	// Serialize the JobReceipt the way the sidecar will see it and verify the
+	// advisory tag is exposed under its documented field name and source so
+	// downstream consumers cannot miss the trust boundary.
+	wire, err := json.Marshal(rcpt)
+	if err != nil {
+		t.Fatalf("marshal job receipt: %v", err)
+	}
+	wireStr := string(wire)
+	if !strings.Contains(wireStr, `"advisory_pod_annotation"`) {
+		t.Fatalf("expected advisory_pod_annotation field on the wire, got %s", wireStr)
+	}
+	if !strings.Contains(wireStr, `"source":"pod_annotation_unverified"`) {
+		t.Fatalf("expected pod_annotation_unverified source on the wire, got %s", wireStr)
+	}
+}
+
+// TestPodAnnotationOversizedPayloadIsTruncated asserts that a 64 KiB
+// annotation is bounded to AdvisoryPodAnnotationMaxBytes and reported as
+// Truncated.
+func TestPodAnnotationOversizedPayloadIsTruncated(t *testing.T) {
+	chio := &stubChioClient{nextReceiptID: "rcpt-trunc"}
+	job := governedJob()
+	job.Annotations[AnnotationCapabilityID] = "cap-trunc"
+	job.Spec.Template.Annotations = map[string]string{AnnotationCapabilityToken: "token-cap-trunc"}
+	job.Annotations[AnnotationCapabilityExpiresAt] = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	job.Finalizers = []string{FinalizerName}
+	job.Status.Conditions = []batchv1.JobCondition{
+		{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
+	}
+	now := metav1.NewTime(time.Now().UTC())
+	job.Status.StartTime = &now
+	job.Status.CompletionTime = &now
+
+	oversized := strings.Repeat("A", 64*1024)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "demo-big",
+			Namespace: job.Namespace,
+			UID:       types.UID("pod-big"),
+			OwnerReferences: []metav1.OwnerReference{
+				{Kind: "Job", UID: job.UID, Name: job.Name, APIVersion: "batch/v1"},
+			},
+			Annotations: map[string]string{
+				PodAnnotationReceipt: oversized,
+			},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodSucceeded},
+	}
+
+	r, _ := buildReconciler(t, chio, job, pod)
+	key := types.NamespacedName{Namespace: job.Namespace, Name: job.Name}
+	reconcileUntilStable(t, r, key)
+
+	if len(chio.lastReceipt.Steps) != 1 {
+		t.Fatalf("expected 1 step receipt, got %d", len(chio.lastReceipt.Steps))
+	}
+	advisory := chio.lastReceipt.Steps[0].AdvisoryPodAnnotation
+	if advisory == nil {
+		t.Fatalf("expected advisory pod annotation to be populated")
+	}
+	if !advisory.Truncated {
+		t.Fatalf("expected Truncated=true for 64 KiB annotation")
+	}
+	if len(advisory.Payload) != chioapi.AdvisoryPodAnnotationMaxBytes {
+		t.Fatalf("expected payload bounded to %d bytes, got %d", chioapi.AdvisoryPodAnnotationMaxBytes, len(advisory.Payload))
+	}
+	if chioapi.AdvisoryPodAnnotationMaxBytes != 32*1024 {
+		t.Fatalf("AdvisoryPodAnnotationMaxBytes drifted from the 32 KiB contract: got %d", chioapi.AdvisoryPodAnnotationMaxBytes)
+	}
+}
+
+// TestControllerOwnedScopeIsAuthoritative is a regression for the prior fix:
+// scopes are minted from the Job's controller-readable AnnotationScopes
+// value, and a pod-supplied override of the scope claim must not elevate
+// the controller-minted MintRequest scope set or the recorded mediated
+// receipt fields.
+func TestControllerOwnedScopeIsAuthoritative(t *testing.T) {
+	chio := &stubChioClient{nextCapID: "cap-scope", nextReceiptID: "rcpt-scope"}
+	job := governedJob()
+	// Authoritative scopes are inherited from governedJob(): "tools:search, tools:fetch".
+	job.Finalizers = []string{FinalizerName}
+
+	// Pod attempts to claim an elevated scope via its receipt annotation.
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "demo-scope",
+			Namespace: job.Namespace,
+			UID:       types.UID("pod-scope"),
+			OwnerReferences: []metav1.OwnerReference{
+				{Kind: "Job", UID: job.UID, Name: job.Name, APIVersion: "batch/v1"},
+			},
+			Annotations: map[string]string{
+				PodAnnotationReceipt: `{"scopes":["tools:admin","tools:exfiltrate"],"granted_scopes":["tools:root"]}`,
+			},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodSucceeded},
+	}
+
+	r, c := buildReconciler(t, chio, job, pod)
+	key := types.NamespacedName{Namespace: job.Namespace, Name: job.Name}
+
+	// Drive through mint.
+	reconcileUntilStable(t, r, key)
+
+	// Mint request must reflect the controller-readable Job annotation only.
+	if len(chio.lastMint.Scopes) != 2 {
+		t.Fatalf("expected controller-owned scope set of length 2, got %#v", chio.lastMint.Scopes)
+	}
+	for _, s := range chio.lastMint.Scopes {
+		if s == "tools:admin" || s == "tools:exfiltrate" || s == "tools:root" {
+			t.Fatalf("pod-supplied scope leaked into mint request: %v", chio.lastMint.Scopes)
+		}
+	}
+	if chio.lastMint.Scopes[0] != "tools:search" || chio.lastMint.Scopes[1] != "tools:fetch" {
+		t.Fatalf("unexpected controller-minted scopes: %#v", chio.lastMint.Scopes)
+	}
+
+	// Now mark the job complete so the receipt phase runs.
+	var got batchv1.Job
+	if err := c.Get(context.Background(), key, &got); err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	got.Status.Conditions = []batchv1.JobCondition{
+		{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
+	}
+	now := metav1.NewTime(time.Now().UTC())
+	got.Status.StartTime = &now
+	got.Status.CompletionTime = &now
+	if err := c.Status().Update(context.Background(), &got); err != nil {
+		t.Fatalf("status update: %v", err)
+	}
+
+	reconcileUntilStable(t, r, key)
+
+	rcpt := chio.lastReceipt
+	if rcpt.CapabilityID != "cap-scope" {
+		t.Fatalf("authoritative CapabilityID overridden: got %q", rcpt.CapabilityID)
+	}
+	// Advisory annotation must surface the pod's claim under the advisory
+	// envelope only, never as an authoritative field on the JobReceipt.
+	if len(rcpt.Steps) != 1 {
+		t.Fatalf("expected 1 step receipt, got %d", len(rcpt.Steps))
+	}
+	advisory := rcpt.Steps[0].AdvisoryPodAnnotation
+	if advisory == nil {
+		t.Fatalf("expected advisory pod annotation to be populated")
+	}
+	if advisory.Source != chioapi.AdvisoryPodAnnotationSource {
+		t.Fatalf("advisory source mismatch: got %q", advisory.Source)
+	}
+	if !strings.Contains(advisory.Payload, "tools:admin") {
+		t.Fatalf("advisory payload should preserve the workload's claim verbatim, got %q", advisory.Payload)
 	}
 }
 

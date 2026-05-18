@@ -184,19 +184,39 @@ def chio_approval_node(
             raise
 
         sidecar_approval_id: str | None = None
-        if receipt.decision.is_denied:
+        decision = receipt.decision
+        if decision is None:
             raise ChioLangGraphError(
-                receipt.decision.reason or "denied by Chio kernel",
+                "non-authorizing Chio receipt",
                 node_name=node_name,
                 tool_server=tool_server,
                 tool_name=node_name,
-                guard=receipt.decision.guard,
-                reason=receipt.decision.reason,
                 receipt_id=receipt.id,
-                decision=receipt.decision.model_dump(exclude_none=True),
             )
-        if receipt.decision.verdict == "pending_approval":
+        if decision.is_denied:
+            raise ChioLangGraphError(
+                decision.reason or "denied by Chio kernel",
+                node_name=node_name,
+                tool_server=tool_server,
+                tool_name=node_name,
+                guard=decision.guard,
+                reason=decision.reason,
+                receipt_id=receipt.id,
+                decision=decision.model_dump(exclude_none=True),
+            )
+        if decision.verdict == "pending_approval":
             sidecar_approval_id = _approval_id_from_receipt(receipt)
+        elif not receipt.is_allowed:
+            raise ChioLangGraphError(
+                decision.reason or "non-authorizing Chio receipt",
+                node_name=node_name,
+                tool_server=tool_server,
+                tool_name=node_name,
+                guard=decision.guard,
+                reason=decision.reason,
+                receipt_id=receipt.id,
+                decision=decision.model_dump(exclude_none=True),
+            )
 
         # Local policy may request a pause even when the sidecar allowed.
         require_approval = sidecar_approval_id is not None

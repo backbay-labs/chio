@@ -367,7 +367,7 @@ class ChioConsumerMiddleware:
                 )
             raise
 
-        if receipt.is_denied:
+        if not receipt.is_allowed:
             return self._handle_deny(
                 message=message,
                 receipt=receipt,

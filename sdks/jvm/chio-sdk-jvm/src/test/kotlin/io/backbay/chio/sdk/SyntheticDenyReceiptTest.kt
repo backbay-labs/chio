@@ -23,7 +23,7 @@ class SyntheticDenyReceiptTest {
                 reason = "sidecar down",
                 guard = "chio-streaming-sidecar",
             )
-        assertEquals("[unsigned] sidecar down", once.decision.reason)
+        assertEquals("[unsigned] sidecar down", once.decision?.reason)
 
         val twice =
             SyntheticDenyReceipt.synthesize(
@@ -34,7 +34,7 @@ class SyntheticDenyReceiptTest {
                 reason = "[unsigned] sidecar down",
                 guard = "g",
             )
-        assertEquals("[unsigned] sidecar down", twice.decision.reason)
+        assertEquals("[unsigned] sidecar down", twice.decision?.reason)
     }
 
     @Test

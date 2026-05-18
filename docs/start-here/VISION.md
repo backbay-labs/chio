@@ -9,6 +9,10 @@ broader market-position story remains strategic rather than proved. See
 [docs/protocols/STRATEGIC-VISION.md](protocols/STRATEGIC-VISION.md) and
 [docs/release/QUALIFICATION.md](release/QUALIFICATION.md).
 
+Chio is pre-release. The current Chio-owned protocol, schema, SDK, and runtime
+surfaces are v1-only. Roadmap labels in this narrative are internal
+milestones, not protocol or wire compatibility versions.
+
 ---
 
 ## 1. The Problem
@@ -185,13 +189,17 @@ Creusot/Kani.
 
 The trust control plane -- capability authority, revocation store, budget store, receipt store -- runs in a leader/follower HA configuration with durable sequence-based replication. Budget writes advance on monotonic sequence numbers. Failover preserves invariants. This is tested through a repeat-run qualification lane that proves deterministic behavior under leader transitions.
 
-### Full MCP Compatibility Surface
+### Qualified MCP Adapter Coverage
 
-Chio wraps existing MCP servers without modification. The MCP adapter supports
-tools, resources, prompts, completions, nested flows, auth discovery,
-notifications, roots, sampling, elicitation, and the task lifecycle. Existing
-deployments migrate incrementally: wrap your MCP server in Chio and gain
-authorization, attestation, and audit without rewriting a line of tool code.
+Chio wraps existing MCP servers on the adapter paths qualified by the current
+repo. The adapter covers core tool invocation and selected MCP surfaces where
+Chio can preserve its control boundary: capability evaluation before dispatch,
+guard evidence, and signed receipts. MCP features that execute outside Chio's
+decision path, depend on remote provider semantics, or lack current
+qualification remain future or detect-only work rather than full compatibility
+claims. Existing deployments can still migrate incrementally by wrapping MCP
+servers first, then adding deeper policy and receipt coverage as surfaces are
+qualified.
 
 ---
 
@@ -211,7 +219,7 @@ When Agent A delegates a capability to Agent B, the delegation chain records who
 
 **The receipt log has the structure of a billing ledger.**
 
-Every receipt records: the capability that authorized the action, the tool that was invoked, the parameters that were passed, the decision that was rendered, the timestamp, and the kernel's cryptographic signature. When monetary budgets are added (see Roadmap), the receipt log becomes a billing ledger directly -- each receipt is a billing event with no transformation required. The receipt log is a pre-audited, cryptographically signed, append-only ledger that happens to also be a compliance record and an operational audit trail. Merkle commitment plus signed checkpoint publication over the receipt log is the planned enhancement that adds tamper-evident ordering guarantees and portable verification.
+Every mediated decision receipt records: the capability that authorized the action, the tool that was invoked, the parameters that were passed, the authorization decision, the timestamp, and the kernel's cryptographic signature. Trace and advisory receipts record observation semantics and outcomes instead of authorization decisions. When monetary budgets are added (see Roadmap), mediated receipts can become billing events with no transformation required. The receipt log is a pre-audited, cryptographically signed, append-only ledger that happens to also be a compliance record and an operational audit trail. Merkle commitment plus signed checkpoint publication over the receipt log is the planned enhancement that adds tamper-evident ordering guarantees and portable verification.
 
 **The guard pipeline IS a compliance engine.**
 
@@ -290,7 +298,7 @@ implementation plan.
 | **Formal verification** | Implementation-linked P1-P10 core with audited assumptions | None | None | None | None | None | None |
 | **Fail-closed guarantee** | Runtime-tested and fail-closed by design | Implementation-dependent | No enforcement layer | Implementation-dependent | N/A | N/A | Proposed |
 | **Guard pipeline** | 7 composable guards with evidence capture | N/A | N/A | N/A | N/A | N/A | N/A |
-| **MCP compatibility** | Full wrap-and-run migration | N/A | Native | N/A | N/A | N/A | N/A |
+| **MCP compatibility** | Qualified wrap-and-run adapter paths | N/A | Native | N/A | N/A | N/A | N/A |
 
 The competitive picture is clear. Payment protocols solve payment. Discovery
 protocols solve discovery. Communication protocols solve communication. None of

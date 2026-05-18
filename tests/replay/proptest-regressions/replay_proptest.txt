@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 7c311fc08a4e983d49cc33f0cc5e250050e2186e004910d116ddbd65c9ec510a # shrinks to tuple = ReceiptTuple { decision: Allow, payload: Object {"bytes": Array [], "magnitude": Number(0), "method": String("a")}, clock: 0, nonce: "a0a0a000" }

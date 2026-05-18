@@ -490,6 +490,8 @@ fn sign_one_with_backend(
     body: ChioReceiptBody,
     backend: &dyn SigningBackend,
 ) -> Result<ChioReceipt, KernelError> {
+    use chio_core::receipt::{chio_receipt_id, ChioReceiptSigningBody};
+
     let backend_key = backend.public_key();
     if body.kernel_key.algorithm() != backend_key.algorithm() || body.kernel_key != backend_key {
         return Err(KernelError::ReceiptSigningFailed(
@@ -497,8 +499,33 @@ fn sign_one_with_backend(
         ));
     }
 
-    let canonical = canonical_json_shared_bytes(&body)
-        .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?;
+    // Mirror the synchronous classical and hybrid sibling paths so the bytes
+    // this task signs are byte-identical to receipts produced via
+    // `build_and_sign_receipt`. `ChioReceipt::sign_with_backend` performs
+    // three steps before signing: validate semantics, compute the
+    // content-addressed id, and build the `ChioReceiptSigningBody` wrapper
+    // (id plus `ChioReceiptIdInput`). Replicating that ordering here keeps
+    // the byte-identity contract intact across the inline and async signing
+    // funnels. The reference fix lives in `receipt_support.rs` as
+    // `sign_receipt_body_hybrid_canonical`.
+    let mut body = body;
+    body.validate_signable_semantics().map_err(|error| {
+        KernelError::ReceiptSigningFailed(format!(
+            "receipt body failed semantic validation: {error}"
+        ))
+    })?;
+    body.id = chio_receipt_id(&body).map_err(|error| {
+        KernelError::ReceiptSigningFailed(format!(
+            "canonical JSON encoding of receipt id input failed: {error}"
+        ))
+    })?;
+    let signing_body = ChioReceiptSigningBody::from(&body);
+
+    let canonical = canonical_json_shared_bytes(&signing_body).map_err(|error| {
+        KernelError::ReceiptSigningFailed(format!(
+            "canonical JSON encoding of receipt signing body failed: {error}"
+        ))
+    })?;
     let (signature, _canonical) = sign_shared_canonical_with_backend(backend, canonical)
         .map_err(|error| KernelError::ReceiptSigningFailed(error.to_string()))?
         .into_parts();
@@ -523,6 +550,12 @@ fn receipt_from_signed_body(
         tool_name: body.tool_name,
         action: body.action,
         decision: body.decision,
+        receipt_kind: body.receipt_kind,
+        boundary_class: body.boundary_class,
+        observation_outcome: body.observation_outcome,
+        tool_origin: body.tool_origin,
+        redaction_mode: body.redaction_mode,
+        actor_chain: body.actor_chain,
         content_hash: body.content_hash,
         policy_hash: body.policy_hash,
         evidence: body.evidence,

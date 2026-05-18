@@ -26,7 +26,8 @@ use std::sync::{Arc, Mutex};
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction, TrustLevel,
+    chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision, GuardEvidence, ToolCallAction,
+    TrustLevel,
 };
 use chio_kernel::settlement_observer::{
     self, SettlementObserverStatus, SETTLEMENT_OBSERVER_STATUS_SCHEMA,
@@ -69,7 +70,11 @@ impl SettlementHook for RecordingHook {
     }
 }
 
-fn build_receipt(index: u64, kp: &Keypair) -> ChioReceipt {
+/// Build a signed receipt for the test batch. Returns the signed receipt
+/// paired with the content-addressed id the signing pipeline computes for
+/// the body. The caller can use the returned id to assert observation
+/// ordering without having to hardcode the canonical hash.
+fn build_receipt(index: u64, kp: &Keypair) -> (ChioReceipt, String) {
     let metadata = serde_json::json!({
         "financial": {
             "approved_max": {"units": 100 + index, "currency": "USD"}
@@ -77,14 +82,20 @@ fn build_receipt(index: u64, kp: &Keypair) -> ChioReceipt {
     });
     let action = ToolCallAction::from_parameters(serde_json::json!({"i": index}))
         .expect("test action constructs");
-    let body = ChioReceiptBody {
+    let mut body = ChioReceiptBody {
         id: format!("rcpt-{index:03}"),
         timestamp: 1_000 + index,
         capability_id: format!("cap-{index}"),
         tool_server: "srv".to_string(),
         tool_name: "tool".to_string(),
         action,
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: format!("ch-{index}"),
         policy_hash: "policy-1".to_string(),
         evidence: vec![GuardEvidence {
@@ -97,18 +108,26 @@ fn build_receipt(index: u64, kp: &Keypair) -> ChioReceipt {
         tenant_id: None,
         kernel_key: kp.public_key(),
     };
-    ChioReceipt::sign(body, kp).expect("test receipt signs")
+    // Pre-compute the content-addressed id so the caller knows ahead of
+    // time what id the signed receipt will carry. `ChioReceipt::sign`
+    // rewrites `body.id` to this same canonical hash before signing.
+    body.id = chio_receipt_id(&body).expect("canonical receipt id computes");
+    let canonical_id = body.id.clone();
+    let receipt = ChioReceipt::sign(body, kp).expect("test receipt signs");
+    (receipt, canonical_id)
 }
 
 #[test]
 fn ten_receipts_produce_ten_settlements_with_byte_identical_receipts() {
     let kp = Keypair::generate();
-    let receipts: Vec<ChioReceipt> = (0..10).map(|i| build_receipt(i, &kp)).collect();
+    let signed: Vec<(ChioReceipt, String)> = (0..10).map(|i| build_receipt(i, &kp)).collect();
+    let receipts: Vec<&ChioReceipt> = signed.iter().map(|(r, _)| r).collect();
+    let expected_ids: Vec<&str> = signed.iter().map(|(_, id)| id.as_str()).collect();
 
     // Baseline canonical bytes computed BEFORE any hook is invoked.
     let baseline_bytes: Vec<Vec<u8>> = receipts
         .iter()
-        .map(|receipt| canonical_json_bytes(receipt).expect("baseline canonical bytes"))
+        .map(|receipt| canonical_json_bytes(*receipt).expect("baseline canonical bytes"))
         .collect();
 
     let hook = Arc::new(RecordingHook::new());
@@ -119,6 +138,7 @@ fn ten_receipts_produce_ten_settlements_with_byte_identical_receipts() {
         statuses.push(settlement_observer::run_observer(
             Some(&hook_handle),
             receipt,
+            &[receipt.kernel_key.clone()],
         ));
     }
 
@@ -140,7 +160,7 @@ fn ten_receipts_produce_ten_settlements_with_byte_identical_receipts() {
 
     // Invariant 2: receipts are byte-identical pre and post observer.
     for (receipt, baseline) in receipts.iter().zip(baseline_bytes.iter()) {
-        let after = canonical_json_bytes(receipt).expect("post-observer canonical bytes");
+        let after = canonical_json_bytes(*receipt).expect("post-observer canonical bytes");
         assert_eq!(
             &after, baseline,
             "settlement hook must NEVER mutate receipt bytes"
@@ -149,9 +169,13 @@ fn ten_receipts_produce_ten_settlements_with_byte_identical_receipts() {
 
     // Invariant 3: observation order matches receipt order, and the
     // documented `(finalized_at, receipt_id)` ordering key sorts the
-    // same as input order (here strictly increasing finalized_at).
+    // same as input order (here strictly increasing finalized_at). The
+    // observed `receipt_id` is the canonical content-addressed id that
+    // `ChioReceipt::sign` derives from the body; we pull it from
+    // `expected_ids` so the assertion stays decoupled from the SHA-256
+    // hash of the body fixture.
     for (i, observation) in observed.iter().enumerate() {
-        assert_eq!(observation.receipt_id, format!("rcpt-{i:03}"));
+        assert_eq!(observation.receipt_id, expected_ids[i]);
         assert_eq!(observation.finalized_at, 1_000 + i as u64);
         let key = observation.ordering_key();
         assert_eq!(key.0, observation.finalized_at);
@@ -175,14 +199,15 @@ fn no_settlement_baseline_matches_with_settlement_canonical_bytes() {
     // pairwise. This is the "byte-equivalent of the no-settlement
     // baseline" assertion in P2.T4.
     let kp = Keypair::generate();
-    let receipts_no_hook: Vec<ChioReceipt> = (0..10).map(|i| build_receipt(i, &kp)).collect();
-    let receipts_with_hook: Vec<ChioReceipt> = (0..10).map(|i| build_receipt(i, &kp)).collect();
+    let receipts_no_hook: Vec<ChioReceipt> = (0..10).map(|i| build_receipt(i, &kp).0).collect();
+    let receipts_with_hook: Vec<ChioReceipt> = (0..10).map(|i| build_receipt(i, &kp).0).collect();
 
     let hook: Arc<dyn SettlementHook> = Arc::new(RecordingHook::new());
 
     // Run the observer for the with-hook variant only.
     for receipt in &receipts_with_hook {
-        let _status = settlement_observer::run_observer(Some(&hook), receipt);
+        let _status =
+            settlement_observer::run_observer(Some(&hook), receipt, &[receipt.kernel_key.clone()]);
     }
 
     for (no_hook, with_hook) in receipts_no_hook.iter().zip(receipts_with_hook.iter()) {

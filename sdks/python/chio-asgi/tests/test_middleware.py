@@ -168,6 +168,7 @@ class TestAllowedRequest:
         ) as MockClient:
             instance = MockClient.return_value
             instance.evaluate_http_request = AsyncMock(return_value=evaluation)
+            instance.verify_http_receipt = AsyncMock(return_value=True)
 
             config = ChioASGIConfig(sidecar_url="http://mock:9090")
             mw = ChioASGIMiddleware(_echo_app, config=config)
@@ -197,6 +198,7 @@ class TestDeniedRequest:
         ) as MockClient:
             instance = MockClient.return_value
             instance.evaluate_http_request = AsyncMock(return_value=evaluation)
+            instance.verify_http_receipt = AsyncMock(return_value=True)
 
             config = ChioASGIConfig(sidecar_url="http://mock:9090")
             mw = ChioASGIMiddleware(_echo_app, config=config)
@@ -241,14 +243,7 @@ class TestSidecarUnavailable:
             )
             assert start_msg["status"] == 503
 
-    async def test_fail_open(self) -> None:
-        observed_passthrough = None
-
-        async def app_with_passthrough(scope: Scope, receive: Receive, send: Send) -> None:
-            nonlocal observed_passthrough
-            observed_passthrough = scope.get("state", {}).get("chio_passthrough")
-            await _echo_app(scope, receive, send)
-
+    async def test_legacy_fail_open_setting_still_fails_closed(self) -> None:
         with patch(
             "chio_asgi.middleware.ChioClient", autospec=True
         ) as MockClient:
@@ -260,7 +255,7 @@ class TestSidecarUnavailable:
             config = ChioASGIConfig(
                 sidecar_url="http://mock:9090", fail_open=True
             )
-            mw = ChioASGIMiddleware(app_with_passthrough, config=config)
+            mw = ChioASGIMiddleware(_echo_app, config=config)
 
             scope = _make_scope()
             send, messages = _make_send()
@@ -269,12 +264,9 @@ class TestSidecarUnavailable:
             start_msg = next(
                 m for m in messages if m.get("type") == "http.response.start"
             )
-            assert start_msg["status"] == 200
+            assert start_msg["status"] == 503
             header_dict = dict(start_msg.get("headers", []))
             assert b"x-chio-receipt" not in header_dict
-            assert observed_passthrough is not None
-            assert observed_passthrough.mode == "allow_without_receipt"
-            assert observed_passthrough.error == "chio_sidecar_unreachable"
 
 
 class TestReceiptCallback:
@@ -287,6 +279,7 @@ class TestReceiptCallback:
         ) as MockClient:
             instance = MockClient.return_value
             instance.evaluate_http_request = AsyncMock(return_value=evaluation)
+            instance.verify_http_receipt = AsyncMock(return_value=True)
 
             config = ChioASGIConfig(sidecar_url="http://mock:9090")
             mw = ChioASGIMiddleware(
@@ -298,6 +291,32 @@ class TestReceiptCallback:
             await mw(scope, _make_receive(), send)
 
             callback.assert_awaited_once_with(evaluation.receipt)
+
+
+class TestReceiptVerification:
+    async def test_unverified_allow_fails_closed(self) -> None:
+        evaluation = _make_evaluation(allowed=True, receipt_id="r-unverified")
+
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            instance = MockClient.return_value
+            instance.evaluate_http_request = AsyncMock(return_value=evaluation)
+            instance.verify_http_receipt = AsyncMock(return_value=False)
+
+            config = ChioASGIConfig(sidecar_url="http://mock:9090")
+            mw = ChioASGIMiddleware(_echo_app, config=config)
+
+            scope = _make_scope()
+            send, messages = _make_send()
+            await mw(scope, _make_receive(), send)
+
+            start_msg = next(
+                m for m in messages if m.get("type") == "http.response.start"
+            )
+            assert start_msg["status"] == 502
+            header_dict = dict(start_msg.get("headers", []))
+            assert b"x-chio-receipt" in header_dict
 
 
 class TestCapabilityIdExtraction:

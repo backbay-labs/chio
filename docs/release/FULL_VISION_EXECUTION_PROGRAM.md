@@ -1,8 +1,12 @@
 # Full Vision Execution Program
 
 **Date:** 2026-03-23
-**Status:** Active
+**Status:** Historical internal milestone narrative
 **Scope:** Execute the roadmap through the Q2 2027 trust/economy vision as a dependency-driven multi-track program
+
+> Chio-owned protocol, schema, runtime, SDK, and storage surfaces are current
+> v1 only. This document is not active protocol execution guidance unless a
+> section is reconciled with accepted ADRs and `spec/PROTOCOL.md`.
 
 ---
 
@@ -219,7 +223,7 @@
 
 ---
 
-## Active Wave: Wave 5
+## Historical Wave: Wave 5
 
 ### Completed In This Session
 
@@ -314,7 +318,7 @@
 
 - `P3-01` completed on 2026-03-23
   - added the new `chio-reputation` workspace crate without creating a `chio-kernel` dependency cycle
-  - shipped deterministic local scorecards over the persisted v2 substrate: receipts, lineage, budget usage, and optional incident inputs
+  - shipped deterministic local scorecards over the current unreleased v1 substrate: receipts, lineage, budget usage, and optional incident inputs
   - implemented truthful `unknown` metric handling plus composite-score renormalization for partially available local data
   - verified with crate-specific fixture tests and a full `cargo test --workspace` run
 - `P3-02` completed on 2026-03-23

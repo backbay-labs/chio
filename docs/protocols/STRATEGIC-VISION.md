@@ -35,7 +35,8 @@ partner/ecosystem thesis remains future.
 
 **Current defensible claim:** Chio is a cryptographically signed, fail-closed,
 intent-aware governance control plane on the qualified authoritative HTTP, MCP,
-OpenAI, A2A, and ACP surfaces.
+A2A, and ACP surfaces. OpenAI remains deferred until caller-executed function
+tool mediation is separately implemented and qualified.
 
 **Strategic thesis:** Chio could become the comptroller of the agent economy --
 but only if the broader cross-protocol, economic, federated-governance, and
@@ -216,7 +217,7 @@ the multi-surface story holds under real operator workloads.
 |------|--------------|-----------------|
 | **Capability tokens** | Attenuated, time-bounded, subject-bound, revocable, with bounded Lean support for attenuation | Shipped in the core model |
 | **Guard evidence** | Composable fail-closed guards with signed evidence capture | Shipped; advanced stateful guards remain planned |
-| **Receipt signing** | Kernel-signed receipts on shipped MCP, A2A, ACP live-path, OpenAI, and HTTP/API substrate flows | Shipped on current live paths; generic orchestration remains future |
+| **Receipt signing** | Kernel-signed receipts on shipped MCP, A2A, ACP live-path, and HTTP/API substrate flows | Shipped on current live paths; OpenAI remains deferred; generic orchestration remains future |
 | **Merkle commitment** | Append-only receipt log with checkpoint publication | Shipped in the receipt architecture |
 | **Formal verification** | Bounded verified-core model, claim registry, and runtime qualification outside that boundary | Real but not full theorem-prover coverage |
 | **Economic primitives** | Budgets, settlement hooks, and insurance-linked framing in the security path | Mixed: some pieces shipped, broader market story is a strategic bet |
@@ -279,15 +280,16 @@ These items create new market categories or defensible network effects.
 |------|-----------|-----------------|--------|
 | Capability attenuation SDK | Programmatic sub-agent delegation with provable subset guarantees | `chio-core` | |
 | Receipt dashboard expansion | The dashboard ships today; the strategic work is adding cross-protocol traces, compliance views, and certificate inspection | `chio-cli/dashboard` | |
-| OpenAI function calling adapter | Fourth protocol edge, capturing the OpenAI ecosystem | `chio-openai` | [Shipped] |
+| OpenAI function calling adapter | Deferred caller-executed function-tool mediation surface | Future crate TBD | Blocked until v1 receipt authority and adapter qualification |
 | WASM guard runtime | Custom guards authored in any language compiled to WASM, sandboxed execution | `chio-guards` | [Shipped] |
 | Kubernetes admission controller | Enforce Chio capability policies at pod deployment time | `sdks/k8s` | [Shipped] |
 
 **Why Tier 3 last:** These are force multipliers that assume Tier 1 and Tier 2
 are complete. The WASM guard runtime and K8s controller extend Chio into
-infrastructure-level enforcement. The OpenAI adapter captures a major remaining
-agent ecosystem. The dashboard work here is expansion of an existing operator
-surface, not net-new UI creation.
+infrastructure-level enforcement. The OpenAI adapter remains deferred and must
+not be treated as shipped or authoritative until the v1 receipt authority gates
+and adapter qualification tests land. The dashboard work here is expansion of
+an existing operator surface, not net-new UI creation.
 
 ### Tier 4: Next Horizon
 
@@ -445,10 +447,11 @@ Chio can honestly claim a stronger breakthrough today:
   control plane with shared executor registry resolution, signed
   route-selection evidence, receipt-bearing multi-hop route execution, and a
   shared lifecycle contract across the qualified authoritative HTTP, MCP,
-  OpenAI tool execution, A2A skills, and ACP capabilities
+  A2A skills, and ACP capabilities. OpenAI tool execution remains deferred
+  until the v1 receipt and read-boundary gates are merged.
 - Chio ships a cryptographically signed, fail-closed governance kernel and a
   bounded protocol-aware cross-protocol execution fabric across HTTP APIs,
-  MCP, OpenAI tool execution, A2A skills, and ACP capabilities
+  MCP, A2A skills, and ACP capabilities
 - the shipped orchestrator now supports explicit metadata-driven qualified
   non-native authoritative bridge execution through registered target
   executors rather than collapsing every authoritative path directly to
@@ -646,7 +649,7 @@ Current shipped and planned integrations, ordered by expected adoption impact.
 
 | Integration | Description | Status |
 |-------------|-------------|--------|
-| **OpenAI function calling adapter** | Wrap OpenAI-style function calls through the Chio kernel | Shipped |
+| **OpenAI function calling adapter** | Wrap caller-executed OpenAI-style function calls through the Chio kernel | Deferred until separately implemented and qualified |
 | **HTTP/OpenAPI sidecar** | Reverse-proxy adoption path for any documented API, with manifest generation from OpenAPI and `x-chio-*` policy hints | Shipped |
 | **Python / TypeScript / Go substrate SDKs** | Multi-language middleware and wrapper packages around the Rust kernel | Shipped |
 | **LangChain / LlamaIndex wrappers** | Python packages that inject Chio authorization into existing agent frameworks | Planned |

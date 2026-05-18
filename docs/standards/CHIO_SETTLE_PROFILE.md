@@ -2,8 +2,13 @@
 
 ## Purpose
 
-This profile closes `v2.37` by freezing the bounded `chio-settle` runtime that
-Chio now actually ships over the official web3 contract family.
+This profile freezes the bounded `chio-settle` runtime, originally tracked
+under historical internal milestone `v2.37`, as implemented in the current
+pre-release v1 workspace over the official web3 contract family.
+
+> Version posture: this is a pre-release standards profile. Internal `v2.x`
+> milestone labels are historical planning labels, not Chio-owned protocol,
+> schema, SDK, or runtime versions. Current protocol posture is v1-only.
 
 The later `v2.38` interop work does not widen `chio-settle` itself into a
 generic bridge, scheduler, or gas-sponsorship system. Those overlays remain
@@ -89,7 +94,8 @@ The shipped operator surface is explicit and narrow:
 
 ## Related Interop Surfaces
 
-`chio-settle` now interoperates with additional bounded `v2.38` overlays:
+`chio-settle` interoperates with additional bounded overlays that were tracked
+under historical internal milestone `v2.38`:
 
 - `docs/standards/CHIO_AUTOMATION_PROFILE.md` for settlement and bond watchdog
   jobs

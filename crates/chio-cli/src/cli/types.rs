@@ -1254,6 +1254,10 @@ enum TrustCommands {
         #[arg(long, env = "CHIO_TRUST_SERVICE_TOKEN", hide_env_values = true)]
         service_token: String,
 
+        /// Tenant-scoped read token in tenant=token form. Repeat to add tenants.
+        #[arg(long = "tenant-read-token", hide_env_values = true)]
+        tenant_read_tokens: Vec<String>,
+
         /// Public base URL this trust-control node advertises to peers and clients.
         #[arg(long)]
         advertise_url: Option<String>,
@@ -2697,6 +2701,28 @@ enum ReceiptCommands {
         /// Cursor for pagination (seq value to start after).
         #[arg(long)]
         cursor: Option<u64>,
+        /// Strict tenant read boundary for local receipt DB inspection.
+        /// Required for local --receipt-db reads unless --admin-all is set.
+        #[arg(long, conflicts_with = "admin_all")]
+        tenant: Option<String>,
+        /// Explicit local operator read across all tenants. Required for
+        /// local --receipt-db reads unless --tenant is set; the local CLI
+        /// will not silently default to admin-all.
+        #[arg(long, default_value_t = false)]
+        admin_all: bool,
+    },
+    /// Report receipt-store writer and checkpoint health.
+    Health,
+    /// Wait until all accepted receipt writes before the barrier are durable.
+    Flush {
+        /// Receipt writer flush-barrier timeout in milliseconds.
+        #[arg(long, default_value_t = 5000, value_parser = clap::value_parser!(u64).range(1..))]
+        timeout_ms: u64,
+    },
+    /// Inspect or create receipt-log checkpoints.
+    Checkpoint {
+        #[command(subcommand)]
+        command: ReceiptCheckpointCommands,
     },
     /// Explain why a receipt was allowed or denied.
     ///
@@ -2718,14 +2744,11 @@ enum ReceiptCommands {
     /// legacy spelling `--explain-bilateral` is retained as a
     /// deprecated alias.
     Explain {
-        /// Legacy receipt ID (`rcpt_...`). v2 bodyHash explanation is
-        /// supported only when the v2 receipt JSON is supplied through
-        /// `--input-file`; persisted DB/control-plane bodyHash lookup is
-        /// not implemented on this CLI path. Use a sentinel (e.g.
-        /// `bilateral`) when reading a bilateral artifact via
-        /// `--input-file`; the receipt_id is informational for that path.
+        /// Receipt ID. Use a sentinel (e.g. `bilateral`) when reading a
+        /// bilateral artifact via `--input-file`; the receipt_id is
+        /// informational for that path.
         receipt_id: String,
-        /// Optional JSON file containing one v1 or v2 receipt, or a
+        /// Optional JSON file containing one receipt, or a
         /// `BilateralCoSignArtifacts` document.
         #[arg(long)]
         input_file: Option<PathBuf>,
@@ -2742,12 +2765,51 @@ enum ReceiptCommands {
         /// against pinned passport keys.
         #[arg(long, alias = "explain-bilateral", default_value_t = false)]
         inspect_bilateral: bool,
+        /// Strict tenant read boundary for local receipt DB lookup.
+        /// Required for local --receipt-db reads unless --admin-all is set.
+        #[arg(long, conflicts_with = "admin_all")]
+        tenant: Option<String>,
+        /// Explicit local operator read across all tenants. Required for
+        /// local --receipt-db reads unless --tenant is set; the local CLI
+        /// will not silently default to admin-all.
+        #[arg(long, default_value_t = false)]
+        admin_all: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum ReceiptCheckpointCommands {
+    /// Show committed and checkpointed receipt-log ranges.
+    Status {
+        /// Maximum pending entries to include in the next-range preview.
+        #[arg(long, default_value_t = 1000, value_parser = clap::value_parser!(u64).range(1..))]
+        max_batch: u64,
+    },
+    /// Create a checkpoint for the next contiguous committed receipt-log range.
+    Create {
+        /// Hex seed file for the checkpoint signing key.
+        #[arg(long)]
+        kernel_seed_file: PathBuf,
+        /// Maximum committed entries to include in this checkpoint.
+        #[arg(long, default_value_t = 1000, value_parser = clap::value_parser!(u64).range(1..))]
+        max_batch: u64,
+    },
+    /// Verify persisted checkpoint chain and transparency projections.
+    Verify,
 }
 
 #[derive(Subcommand)]
 enum EvidenceCommands {
     /// Export a verifiable local evidence package into a directory.
+    ///
+    /// Tenant-scoped exports include kernel-signed checkpoint bodies whose
+    /// per-batch Merkle tree covers receipts from all tenants in the same
+    /// batch. The exported manifest carries a `disclosureNotice` field that
+    /// enumerates the cross-tenant aggregate fields this discloses (batch
+    /// seq range, tree size, Merkle root, predecessor digest). The
+    /// disclosure is unavoidable without protocol-level per-tenant subtree
+    /// proofs; see docs/release/COMPLIANCE_EVIDENCE_EXPORT_PLAN.md for the
+    /// full notice.
     Export {
         /// Output directory for the evidence package. Must not already contain files.
         #[arg(long)]
@@ -2764,6 +2826,18 @@ enum EvidenceCommands {
         /// Include tool receipts with timestamp <= this Unix seconds value.
         #[arg(long)]
         until: Option<u64>,
+        /// Tenant read boundary for the export. Derived from operator auth in
+        /// service paths. Tenant-scoped exports attach a manifest-level
+        /// `disclosureNotice` documenting the cross-tenant aggregate
+        /// metadata signed checkpoints inherently reveal.
+        #[arg(long)]
+        tenant: Option<String>,
+        /// Explicitly export across all tenants as an administrative
+        /// operation. Admin-all exports do not attach a tenant disclosure
+        /// notice because the operator already requested cross-tenant
+        /// visibility.
+        #[arg(long, default_value_t = false, conflicts_with = "tenant")]
+        admin_all: bool,
         /// Optional policy file to attach to the export package.
         #[arg(long)]
         policy_file: Option<PathBuf>,
@@ -2821,6 +2895,12 @@ enum EvidenceFederationPolicyCommands {
         /// Optional upper timestamp bound for the allowed export window.
         #[arg(long)]
         until: Option<u64>,
+        /// Bind this policy to one tenant-scoped receipt export.
+        #[arg(long, conflicts_with = "admin_all")]
+        tenant: Option<String>,
+        /// Bind this policy to explicit admin-all receipt export authority.
+        #[arg(long, default_value_t = false)]
+        admin_all: bool,
         /// Expiration time for the policy document, in Unix seconds.
         #[arg(long)]
         expires_at: u64,
@@ -3646,6 +3726,10 @@ enum CertCommands {
         /// Path to the certificate JSON file.
         #[arg(long)]
         certificate: PathBuf,
+
+        /// Trusted kernel public key used to verify the certificate signer.
+        #[arg(long)]
+        trusted_kernel_pubkey: PathBuf,
 
         /// Enable full-bundle verification (re-verify all receipt signatures).
         #[arg(long, default_value_t = false)]

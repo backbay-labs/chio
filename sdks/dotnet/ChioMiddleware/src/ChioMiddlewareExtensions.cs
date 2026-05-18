@@ -2,8 +2,7 @@
 //
 // Intercepts all HTTP requests, extracts caller identity, sends evaluation
 // requests to the Chio sidecar kernel, and either allows the request to
-// proceed with a signed receipt, allows a fail-open passthrough without a
-// receipt when configured, or returns a structured deny response.
+// proceed with a verified signed receipt or returns a structured deny response.
 
 using System.Security.Cryptography;
 using System.Text;
@@ -35,8 +34,8 @@ public class ChioMiddlewareOptions
     public int TimeoutSeconds { get; set; } = 5;
 
     /// <summary>
-    /// Behavior when sidecar is unreachable: "deny" (fail-closed, default)
-    /// or "allow" (fail-open).
+    /// Legacy option retained for source compatibility. Current v1 always
+    /// denies when the sidecar is unreachable.
     /// </summary>
     public string OnSidecarError { get; set; } = "deny";
 
@@ -164,18 +163,16 @@ public class ChioProtectMiddleware
         }
         catch (ChioSidecarException ex)
         {
-            if (_options.OnSidecarError == "allow")
+            _logger.LogError(ex, "Chio sidecar error");
+            if (ex.Code == ChioErrorCodes.InvalidReceipt)
             {
-                context.Items[ChioContextKeys.Passthrough] = new ChioPassthrough
+                await WriteJsonError(context, 502, new ChioErrorResponse
                 {
-                    Mode = "allow_without_receipt",
-                    Error = ChioErrorCodes.SidecarUnreachable,
-                    Message = $"Chio sidecar error: {ex.Message}",
-                };
-                await _next(context);
+                    Error = ChioErrorCodes.InvalidReceipt,
+                    Message = $"Chio sidecar receipt verification failed: {ex.Message}",
+                });
                 return;
             }
-            _logger.LogError(ex, "Chio sidecar error");
             await WriteJsonError(context, 502, new ChioErrorResponse
             {
                 Error = ChioErrorCodes.SidecarUnreachable,
@@ -185,17 +182,6 @@ public class ChioProtectMiddleware
         }
         catch (Exception ex)
         {
-            if (_options.OnSidecarError == "allow")
-            {
-                context.Items[ChioContextKeys.Passthrough] = new ChioPassthrough
-                {
-                    Mode = "allow_without_receipt",
-                    Error = ChioErrorCodes.SidecarUnreachable,
-                    Message = $"Chio sidecar error: {ex.Message}",
-                };
-                await _next(context);
-                return;
-            }
             _logger.LogError(ex, "Chio sidecar error");
             await WriteJsonError(context, 502, new ChioErrorResponse
             {
@@ -205,11 +191,9 @@ public class ChioProtectMiddleware
             return;
         }
 
-        // Attach receipt ID.
-        context.Response.Headers["X-Chio-Receipt-Id"] = result.Receipt.Id;
-
-        // Check verdict.
-        if (result.Verdict.IsDenied())
+        // Check verdicts. Anything other than explicit allow from both the
+        // response and embedded receipt fails closed.
+        if (!result.Verdict.IsAllowed() || !result.Receipt.IsAuthorized())
         {
             var status = result.Verdict.HttpStatus > 0 ? result.Verdict.HttpStatus : 403;
             await WriteJsonError(context, status, new ChioErrorResponse
@@ -222,7 +206,10 @@ public class ChioProtectMiddleware
             return;
         }
 
-        // Request allowed -- forward to next middleware.
+        // Attach receipt ID after authorization and receipt verification.
+        context.Response.Headers["X-Chio-Receipt-Id"] = result.Receipt.Id;
+
+        // Request allowed and verified -- forward to next middleware.
         await _next(context);
     }
 

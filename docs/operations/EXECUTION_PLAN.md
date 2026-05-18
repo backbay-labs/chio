@@ -70,45 +70,51 @@ Post-review closing work is now split into focused epics:
 - `E13` policy and adoption unification
 - `E14` hardening and release candidate
 
+> Historical internal planning note. `v2.x` labels below are pre-release
+> implementation milestones, not Chio-owned protocol, schema, SDK, or runtime
+> versions. Current protocol posture is v1-only.
+
 See [POST_REVIEW_EXECUTION_PLAN.md](POST_REVIEW_EXECUTION_PLAN.md) and the new epic specs in [epics/README.md](epics/README.md).
 
-## v2.0 Shipped Features
+## Pre-Release v1 Implemented Features
 
-The following items that appear as planned work elsewhere in this document shipped in v2.0. References to them as "planned" or "proposed" in earlier sections are superseded by this note.
+The following items are implemented in the current pre-release v1 branch. They
+are not public v2 protocol features. References to them as "planned" or
+"proposed" in earlier sections are superseded by this note.
 
-### Monetary budgets (shipped in v2.0)
+### Monetary budgets (implemented in current v1)
 
 `MonetaryAmount`, `max_cost_per_invocation`, and `max_total_cost` on `ToolGrant` are implemented in `crates/chio-core/src/capability.rs`. `BudgetStore::try_charge_cost` enforces atomic monetary limits in `crates/chio-kernel/src/budget_store.rs`. `FinancialReceiptMetadata` is embedded in the receipt `metadata` field for every monetized invocation. See [AGENT_ECONOMY.md](AGENT_ECONOMY.md) for the full design; Phase 1 of that document is now implemented. Operator guide: [MONETARY_BUDGETS_GUIDE.md](MONETARY_BUDGETS_GUIDE.md).
 
-### DPoP proof-of-possession (shipped in v2.0)
+### DPoP proof-of-possession (implemented in current v1)
 
 `ToolGrant.dpop_required` enables per-grant DPoP enforcement. The kernel validates `chio.dpop_proof.v1` proofs with nonce replay prevention. Implementation is in `crates/chio-kernel/src/dpop.rs`. Operator guide: [DPOP_INTEGRATION_GUIDE.md](DPOP_INTEGRATION_GUIDE.md).
 
-### Receipt query API (shipped in v2.0)
+### Receipt query API (implemented in current v1)
 
 `GET /v1/receipts/query` on the trust-control service supports eight filter dimensions and cursor-based pagination. The CLI exposes `chio receipt list` with equivalent filters. Capability lineage JOINs (`/v1/lineage/{capability_id}/chain`, `GET /v1/agents/{subject_key}/receipts`) are also available. See `crates/chio-kernel/src/receipt_query.rs` and `crates/chio-kernel/src/capability_lineage.rs`. Operator guide: [RECEIPT_QUERY_API.md](RECEIPT_QUERY_API.md).
 
-### Velocity guard (shipped in v2.0)
+### Velocity guard (implemented in current v1)
 
 `VelocityGuard` token-bucket rate limiting per `(capability_id, grant_index)` is in `crates/chio-guards/src/velocity.rs`. It runs in the standard guard pipeline before any tool server invocation. Operator guide: [VELOCITY_GUARDS.md](VELOCITY_GUARDS.md).
 
-### Merkle-committed receipt batches (shipped in v2.0)
+### Merkle-committed receipt batches (implemented in current v1)
 
 `KernelCheckpoint` commits batches of receipts to a Merkle root signed by the kernel key. See `crates/chio-kernel/src/checkpoint.rs`.
 
-### SIEM exporters (shipped in v2.0)
+### SIEM exporters (implemented in current v1)
 
 Splunk HEC and Elasticsearch bulk exporters with a bounded dead-letter queue ship in `crates/chio-siem`, enabled via `--features siem` on `chio-cli`.
 
-### Receipt retention with time/size rotation (shipped in v2.0)
+### Receipt retention with time/size rotation (implemented in current v1)
 
 `RetentionConfig` on `KernelConfig` supports automatic archival by age (days) and live database size. See `crates/chio-kernel/src/receipt_store.rs`.
 
-### TypeScript SDK 1.0 (shipped in v2.0)
+### TypeScript SDK (implemented in current v1)
 
 `@chio-protocol/sdk` v1.0.0 ships in `packages/sdk/chio-ts/`. It covers capability invariants, receipt verification, DPoP proof construction, a receipt query client, and Streamable HTTP session management.
 
-### Compliance documents (shipped in v2.0)
+### Compliance documents (implemented in current v1)
 
 Operator-facing compliance references are in `docs/compliance/`:
 
@@ -619,7 +625,7 @@ Replace local-only trust assumptions with service-backed trust.
 
 - SQLite backend first
 - append-only semantics at application layer
-- receipt query API for verification and ops -- **shipped in v2.0** as `GET /v1/receipts/query` on the trust-control service and `chio receipt list` CLI; see `crates/chio-kernel/src/receipt_query.rs`
+- receipt query API for verification and ops, implemented in current v1 as `GET /v1/receipts/query` on the trust-control service and `chio receipt list` CLI; see `crates/chio-kernel/src/receipt_query.rs`
 
 #### `WP7.3` Remote runtime
 

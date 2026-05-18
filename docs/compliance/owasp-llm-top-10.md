@@ -14,7 +14,7 @@ maintainer: Chio Protocol Team
 | Framework | OWASP Top 10 for Large Language Model Applications |
 | Edition | 2025 |
 | Scope | LLM01 through LLM10 |
-| Chio Version | v2.0 Phase 15 draft |
+| Chio Profile | Current v1-only pre-release profile; draft originally tracked under internal phase 15 |
 | Document Date | 2026-04-16 |
 
 ---

@@ -103,7 +103,13 @@ fn sample_receipt() -> ChioReceipt {
             tool_server: "shell".to_string(),
             tool_name: "bash".to_string(),
             action: valid_tool_action(serde_json::json!({})),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-1".to_string(),
             policy_hash: "policy-1".to_string(),
             evidence: Vec::new(),
@@ -163,6 +169,162 @@ fn sqlite_receipt_store_persists_across_reopen() {
 }
 
 #[test]
+fn sqlite_receipt_store_configures_durable_pragmas() {
+    let path = unique_db_path("chio-receipts-pragmas");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let connection = store.connection().test_unwrap();
+
+    let journal_mode: String = connection
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .test_unwrap();
+    let synchronous: i64 = connection
+        .query_row("PRAGMA synchronous", [], |row| row.get(0))
+        .test_unwrap();
+    let busy_timeout: i64 = connection
+        .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+        .test_unwrap();
+    let foreign_keys: i64 = connection
+        .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+        .test_unwrap();
+
+    assert!(journal_mode.eq_ignore_ascii_case("wal"));
+    assert_eq!(synchronous, 2);
+    assert!(busy_timeout >= 5000);
+    assert_eq!(foreign_keys, 1);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn flush_receipt_writes_reports_prior_committed_entries() {
+    let path = unique_db_path("chio-receipts-flush");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+
+    store
+        .append_chio_receipt(&sample_receipt_with_id("rcpt-flush-1"))
+        .test_unwrap();
+    store
+        .append_child_receipt(&sample_child_receipt_with_id_and_timestamp("flush-2", 2))
+        .test_unwrap();
+
+    let report = store.flush_receipt_writes().test_unwrap();
+
+    assert!(report.writer.accepted_total >= 1);
+    assert!(report.writer.committed_total >= 1);
+    assert_eq!(report.latest_committed_entry_seq, 2);
+    assert_eq!(report.latest_checkpointed_entry_seq, 0);
+    assert_eq!(report.uncheckpointed_start_seq, Some(1));
+    assert_eq!(report.uncheckpointed_end_seq, Some(2));
+    assert!(report.wal_checkpoint.is_some());
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn empty_store_reports_zero_committed_entry_for_operator_surfaces() {
+    let path = unique_db_path("chio-receipts-empty-operator-surfaces");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+
+    assert_eq!(store.latest_committed_entry_seq().test_unwrap(), 0);
+
+    let health = store.receipt_store_health().test_unwrap();
+    assert!(health.healthy);
+    assert_eq!(health.latest_committed_entry_seq, 0);
+    assert_eq!(health.latest_checkpointed_entry_seq, 0);
+    assert_eq!(health.uncheckpointed_start_seq, None);
+    assert_eq!(health.uncheckpointed_end_seq, None);
+
+    let flush = store.flush_receipt_writes().test_unwrap();
+    assert_eq!(flush.latest_committed_entry_seq, 0);
+    assert_eq!(flush.latest_checkpointed_entry_seq, 0);
+    assert_eq!(flush.uncheckpointed_start_seq, None);
+    assert_eq!(flush.uncheckpointed_end_seq, None);
+
+    let status = store.receipt_checkpoint_status(Some(10)).test_unwrap();
+    assert!(status.healthy);
+    assert_eq!(status.latest_committed_entry_seq, 0);
+    assert_eq!(status.latest_checkpointed_entry_seq, 0);
+    assert_eq!(status.next_range, None);
+
+    let created = <SqliteReceiptStore as ReceiptStore>::create_next_receipt_checkpoint(
+        &store,
+        10,
+        &receipt_test_keypair(),
+    )
+    .test_unwrap();
+    assert!(!created.created);
+    assert_eq!(created.latest_committed_entry_seq, 0);
+    assert_eq!(created.latest_checkpointed_entry_seq, 0);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn checkpoint_range_requires_contiguous_claim_log() {
+    let path = unique_db_path("chio-receipts-checkpoint-gap");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+
+    store
+        .append_chio_receipt(&sample_receipt_with_id("rcpt-gap-1"))
+        .test_unwrap();
+    store
+        .append_chio_receipt(&sample_receipt_with_id_and_timestamp("rcpt-gap-2", 2))
+        .test_unwrap();
+    store
+        .append_chio_receipt(&sample_receipt_with_id_and_timestamp("rcpt-gap-3", 3))
+        .test_unwrap();
+    let connection = store.connection().test_unwrap();
+    connection
+        .execute_batch("DROP TRIGGER IF EXISTS claim_receipt_log_entries_reject_delete;")
+        .test_unwrap();
+    connection
+        .execute(
+            "DELETE FROM claim_receipt_log_entries WHERE entry_seq = 2",
+            [],
+        )
+        .test_unwrap();
+
+    let error = store.next_checkpoint_range(3).test_unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("claim receipt log has a gap in checkpoint range"));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn canonical_bytes_range_rejects_partial_checkpoint_range() {
+    let path = unique_db_path("chio-receipts-partial-range");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+
+    store
+        .append_chio_receipt(&sample_receipt_with_id("rcpt-range-1"))
+        .test_unwrap();
+    store
+        .append_chio_receipt(&sample_receipt_with_id_and_timestamp("rcpt-range-2", 2))
+        .test_unwrap();
+    let connection = store.connection().test_unwrap();
+    connection
+        .execute_batch("DROP TRIGGER IF EXISTS claim_receipt_log_entries_reject_delete;")
+        .test_unwrap();
+    connection
+        .execute(
+            "DELETE FROM claim_receipt_log_entries WHERE entry_seq = 2",
+            [],
+        )
+        .test_unwrap();
+
+    let error = store.receipts_canonical_bytes_range(1, 2).test_unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("claim receipt log has a gap in range 1..=2"));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn sqlite_receipt_store_lists_filtered_receipts() {
     let path = unique_db_path("chio-receipts-filtered");
     let store = SqliteReceiptStore::open(&path).test_unwrap();
@@ -207,7 +369,11 @@ fn sample_receipt_with_id(id: &str) -> ChioReceipt {
 }
 
 fn sample_receipt_with_id_and_timestamp(id: &str, timestamp: u64) -> ChioReceipt {
-    let keypair = Keypair::generate();
+    let keypair = receipt_test_keypair();
+    sample_receipt_with_keypair(id, timestamp, &keypair)
+}
+
+fn sample_receipt_with_keypair(id: &str, timestamp: u64, keypair: &Keypair) -> ChioReceipt {
     ChioReceipt::sign(
         ChioReceiptBody {
             id: id.to_string(),
@@ -216,7 +382,13 @@ fn sample_receipt_with_id_and_timestamp(id: &str, timestamp: u64) -> ChioReceipt
             tool_server: "shell".to_string(),
             tool_name: "bash".to_string(),
             action: valid_tool_action(serde_json::json!({})),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-1".to_string(),
             policy_hash: "policy-1".to_string(),
             evidence: Vec::new(),
@@ -228,6 +400,44 @@ fn sample_receipt_with_id_and_timestamp(id: &str, timestamp: u64) -> ChioReceipt
         &keypair,
     )
     .test_unwrap()
+}
+
+fn sample_receipt_with_keypair_and_tenant(
+    id: &str,
+    timestamp: u64,
+    tenant_id: &str,
+    keypair: &Keypair,
+) -> ChioReceipt {
+    ChioReceipt::sign(
+        ChioReceiptBody {
+            id: id.to_string(),
+            timestamp,
+            capability_id: format!("cap-{id}"),
+            tool_server: "shell".to_string(),
+            tool_name: "bash".to_string(),
+            action: valid_tool_action(serde_json::json!({"receipt": id})),
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
+            content_hash: format!("content-{id}"),
+            policy_hash: "policy-1".to_string(),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: chio_core::TrustLevel::default(),
+            tenant_id: Some(tenant_id.to_string()),
+            kernel_key: keypair.public_key(),
+        },
+        keypair,
+    )
+    .test_unwrap()
+}
+
+fn receipt_test_keypair() -> Keypair {
+    Keypair::from_seed(&[0x42; 32])
 }
 
 fn legacy_receipt_with_mismatched_parameter_hash(id: &str) -> ChioReceipt {
@@ -243,7 +453,13 @@ fn legacy_receipt_with_mismatched_parameter_hash(id: &str) -> ChioReceipt {
                 parameters: serde_json::json!({ "cmd": "echo legacy" }),
                 parameter_hash: "0".repeat(64),
             },
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-1".to_string(),
             policy_hash: "policy-1".to_string(),
             evidence: Vec::new(),
@@ -259,6 +475,14 @@ fn legacy_receipt_with_mismatched_parameter_hash(id: &str) -> ChioReceipt {
 
 fn sample_child_receipt_with_id_and_timestamp(id: &str, timestamp: u64) -> ChildRequestReceipt {
     let keypair = Keypair::generate();
+    sample_child_receipt_with_keypair_and_timestamp(id, timestamp, &keypair)
+}
+
+fn sample_child_receipt_with_keypair_and_timestamp(
+    id: &str,
+    timestamp: u64,
+    keypair: &Keypair,
+) -> ChildRequestReceipt {
     ChildRequestReceipt::sign(
         ChildRequestReceiptBody {
             id: id.to_string(),
@@ -273,7 +497,7 @@ fn sample_child_receipt_with_id_and_timestamp(id: &str, timestamp: u64) -> Child
             metadata: None,
             kernel_key: keypair.public_key(),
         },
-        &keypair,
+        keypair,
     )
     .test_unwrap()
 }
@@ -688,7 +912,7 @@ fn seed_legacy_projectionless_store(
                 receipt.capability_id,
                 receipt.tool_server,
                 receipt.tool_name,
-                support::decision_kind(&receipt.decision),
+                support::decision_kind(receipt.decision.as_ref()),
                 receipt.policy_hash,
                 receipt.content_hash,
                 serde_json::to_string(receipt).test_unwrap(),
@@ -788,6 +1012,124 @@ fn append_chio_receipt_returning_seq_returns_seq() {
 }
 
 #[test]
+fn append_chio_receipt_consuming_authorization_rejects_reuse_after_reopen() {
+    let path = unique_db_path("chio-auth-consume");
+    let keypair = receipt_test_keypair();
+    let tenant_id = "tenant-acp";
+    let authorization =
+        sample_receipt_with_keypair_and_tenant("auth-consume", 101, tenant_id, &keypair);
+    let consumer =
+        sample_receipt_with_keypair_and_tenant("consumer-consume", 102, tenant_id, &keypair);
+    let replay_consumer =
+        sample_receipt_with_keypair_and_tenant("consumer-replay", 103, tenant_id, &keypair);
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    store.append_chio_receipt(&authorization).test_unwrap();
+    store.flush_receipt_writes().test_unwrap();
+    let consumption = AuthorizationReceiptConsumption {
+        authorization_receipt_id: authorization.id.clone(),
+        consumer_receipt_id: consumer.id.clone(),
+        request_id: "auth-consume-request".to_string(),
+        session_id: "auth-consume-session".to_string(),
+        tool_call_id: "auth-consume-tool-call".to_string(),
+        tenant_id: Some(tenant_id.to_string()),
+        parameter_hash: "auth-consume-parameter-hash".to_string(),
+        consumed_at_unix_ms: 101_000,
+    };
+    store
+        .append_chio_receipt_consuming_authorization(&consumer, &consumption)
+        .test_unwrap();
+    drop(store);
+
+    let reopened = SqliteReceiptStore::open(&path).test_unwrap();
+    let replay = AuthorizationReceiptConsumption {
+        consumer_receipt_id: replay_consumer.id.clone(),
+        consumed_at_unix_ms: 102_000,
+        ..consumption
+    };
+    let error = reopened
+        .append_chio_receipt_consuming_authorization(&replay_consumer, &replay)
+        .test_unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("authorization receipt already consumed"),
+        "unexpected error: {error}"
+    );
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn append_returned_claim_log_seqs_survive_reopen() {
+    let path = unique_db_path("chio-receipts-seq-reopen");
+    let tool_seq;
+    let child_seq;
+    {
+        let store = SqliteReceiptStore::open(&path).test_unwrap();
+        tool_seq = store
+            .append_chio_receipt_returning_seq(&sample_receipt_with_id("rcpt-seq-reopen-tool"))
+            .test_unwrap();
+        child_seq = ReceiptStore::append_child_receipt_returning_seq(
+            &store,
+            &sample_child_receipt_with_id_and_timestamp("child-seq-reopen", 2),
+        )
+        .test_unwrap()
+        .test_expect("sqlite child seq");
+        assert_eq!(store.latest_committed_entry_seq().test_unwrap(), child_seq);
+    }
+
+    let reopened = SqliteReceiptStore::open(&path).test_unwrap();
+    let rows = load_claim_log_rows(&reopened);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].0, tool_seq);
+    assert_eq!(rows[0].2, "tool_receipt");
+    assert_eq!(rows[1].0, child_seq);
+    assert_eq!(rows[1].2, "child_receipt");
+    assert_eq!(
+        reopened.latest_committed_entry_seq().test_unwrap(),
+        child_seq
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn open_existing_missing_path_does_not_create_database_file() {
+    let path = unique_db_path("chio-receipts-open-existing-missing");
+
+    let error = SqliteReceiptStore::open_existing(&path).test_unwrap_err();
+    assert!(matches!(
+        error,
+        chio_kernel::ReceiptStoreError::NotFound(message)
+            if message.contains("does not exist")
+    ));
+    assert!(
+        !path.exists(),
+        "open_existing must not create {}",
+        path.display()
+    );
+}
+
+#[test]
+fn open_existing_rejects_touched_empty_database_file() {
+    let path = unique_db_path("chio-receipts-open-existing-empty");
+    fs::write(&path, "").test_unwrap();
+
+    let error = SqliteReceiptStore::open_existing(&path).test_unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("not an initialized Chio receipt store"),
+        "unexpected error: {error}"
+    );
+    assert!(
+        path.exists(),
+        "open_existing should refuse, not remove, an empty database file"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn append_chio_receipt_rejects_invalid_signature() {
     let path = unique_db_path("chio-receipts-invalid-signature");
     let store = SqliteReceiptStore::open(&path).test_unwrap();
@@ -802,6 +1144,23 @@ fn append_chio_receipt_rejects_invalid_signature() {
     ));
 
     let _ = fs::remove_file(path);
+}
+
+#[test]
+fn receipt_operation_reports_keep_stable_null_json_fields() {
+    let report = chio_kernel::ReceiptFlushReport::default();
+    let value = serde_json::to_value(&report).test_unwrap();
+
+    assert!(value.get("latestCheckpointSeq").test_unwrap().is_null());
+    assert!(value.get("uncheckpointedStartSeq").test_unwrap().is_null());
+    assert!(value.get("uncheckpointedEndSeq").test_unwrap().is_null());
+    assert!(value.get("walCheckpoint").test_unwrap().is_null());
+    assert!(value.get("dbSizeBytes").test_unwrap().is_null());
+    assert!(value["writer"]
+        .get("lastCommitUnixMs")
+        .test_unwrap()
+        .is_null());
+    assert!(value["writer"].get("lastError").test_unwrap().is_null());
 }
 
 #[test]
@@ -844,7 +1203,13 @@ fn append_chio_receipt_rejects_mismatched_parameter_hash() {
                 parameters: serde_json::json!({ "cmd": "echo changed" }),
                 parameter_hash: "bad-parameter-hash".to_string(),
             },
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-1".to_string(),
             policy_hash: "policy-1".to_string(),
             evidence: Vec::new(),
@@ -900,7 +1265,7 @@ fn list_tool_receipts_preserves_legacy_mismatched_parameter_hash_rows() {
                     receipt.capability_id.as_str(),
                     receipt.tool_server.as_str(),
                     receipt.tool_name.as_str(),
-                    support::decision_kind(&receipt.decision),
+                    support::decision_kind(receipt.decision.as_ref()),
                     receipt.policy_hash.as_str(),
                     receipt.content_hash.as_str(),
                     serde_json::to_string(&receipt).test_unwrap(),
@@ -914,7 +1279,7 @@ fn list_tool_receipts_preserves_legacy_mismatched_parameter_hash_rows() {
         .test_unwrap();
 
     assert_eq!(receipts.len(), 1);
-    assert_eq!(receipts[0].id, "rcpt-legacy-row");
+    assert_eq!(receipts[0].id, receipt.id);
     assert!(!receipts[0].action.verify_hash().test_unwrap());
 
     let _ = fs::remove_file(path);
@@ -949,11 +1314,11 @@ fn evidence_export_rejects_tampered_persisted_tool_receipt() {
     });
 
     let error = store
-        .build_evidence_export_bundle(&EvidenceExportQuery::default())
+        .build_evidence_export_bundle(&EvidenceExportQuery::admin_all())
         .test_unwrap_err();
     let message = error.to_string();
     assert!(message.contains("persisted tool receipt seq"));
-    assert!(message.contains("tampered-export-receipt"));
+    assert!(message.contains(&receipt.id));
     assert!(message.contains("invalid signature"));
 
     let _ = fs::remove_file(path);
@@ -969,12 +1334,16 @@ fn behavioral_feed_report_rejects_tampered_persisted_tool_receipt() {
         receipt.tool_name = "sh".to_string();
     });
 
+    let query = BehavioralFeedQuery {
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
+        ..BehavioralFeedQuery::default()
+    };
     let error = store
-        .query_behavioral_feed_receipts(&BehavioralFeedQuery::default())
+        .query_behavioral_feed_receipts(&query)
         .test_unwrap_err();
     let message = error.to_string();
     assert!(message.contains("persisted tool receipt seq"));
-    assert!(message.contains("tampered-report-receipt"));
+    assert!(message.contains(&receipt.id));
     assert!(message.contains("invalid signature"));
 
     let _ = fs::remove_file(path);
@@ -997,8 +1366,34 @@ fn claim_log_replay_rejects_tampered_persisted_tool_receipt() {
         .test_unwrap_err();
     let message = error.to_string();
     assert!(message.contains("claim-log tool receipt seq"));
-    assert!(message.contains("tampered-claim-log-receipt"));
+    assert!(message.contains(&receipt.id));
     assert!(message.contains("invalid signature"));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn append_child_receipt_fails_closed_on_existing_claim_log_projection_drift() {
+    let path = unique_db_path("chio-claim-log-child-append-drift");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_receipt_with_id("tampered-claim-log-before-child-append");
+    store.append_chio_receipt(&receipt).test_unwrap();
+    tamper_claim_log_tool_receipt(&store, &receipt.id, |receipt| {
+        receipt.tool_name = "sh".to_string();
+    });
+
+    let error = store
+        .append_child_receipt(&sample_child_receipt_with_id_and_timestamp(
+            "child-after-claim-log-drift",
+            2,
+        ))
+        .test_unwrap_err();
+
+    assert!(
+        error.to_string().contains("claim receipt log entry")
+            && error.to_string().contains("diverges"),
+        "unexpected error: {error}"
+    );
 
     let _ = fs::remove_file(path);
 }
@@ -1108,7 +1503,13 @@ fn claim_log_projection_uses_capability_lineage_when_receipt_lacks_attribution()
             tool_server: "shell".to_string(),
             tool_name: "bash".to_string(),
             action: valid_tool_action(serde_json::json!({ "cmd": "echo projection" })),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-claim-log-lineage".to_string(),
             policy_hash: "policy-claim-log-lineage".to_string(),
             evidence: Vec::new(),
@@ -1222,6 +1623,103 @@ fn append_receipt_batch_commits_multiple_receipts_together(
 }
 
 #[test]
+fn duplicate_tool_receipt_bytes_return_existing_claim_log_seq() {
+    let path = unique_db_path("chio-receipts-duplicate-tool");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_receipt_with_id("rcpt-duplicate-tool");
+
+    let first = store
+        .append_chio_receipt_returning_seq(&receipt)
+        .test_unwrap();
+    let second = store
+        .append_chio_receipt_returning_seq(&receipt)
+        .test_unwrap();
+
+    assert_eq!(first, second);
+    assert!(first > 0);
+    assert_eq!(store.tool_receipt_count().test_unwrap(), 1);
+    assert_eq!(load_claim_log_rows(&store).len(), 1);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn duplicate_tool_receipt_id_with_different_bytes_conflicts() {
+    let path = unique_db_path("chio-receipts-duplicate-tool-conflict");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_receipt_with_id("rcpt-duplicate-tool-conflict");
+    let raw_json = serde_json::to_string(&receipt).test_unwrap();
+    let mut connection = store.connection().test_unwrap();
+
+    {
+        let tx = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .test_unwrap();
+        let seq = append_chio_receipt_tx(&tx, &receipt, &raw_json).test_unwrap();
+        assert_eq!(seq, 1);
+        tx.commit().test_unwrap();
+    }
+
+    let tx = connection
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .test_unwrap();
+    let error = append_chio_receipt_tx(&tx, &receipt, &format!("{raw_json}\n")).test_unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("already exists with different content"));
+    drop(tx);
+    drop(connection);
+    assert_eq!(store.tool_receipt_count().test_unwrap(), 1);
+    assert_eq!(load_claim_log_rows(&store).len(), 1);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn duplicate_child_receipt_bytes_return_existing_claim_log_seq() {
+    let path = unique_db_path("chio-receipts-duplicate-child");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_child_receipt_with_id_and_timestamp("child-duplicate", 2);
+
+    let first = ReceiptStore::append_child_receipt_returning_seq(&store, &receipt)
+        .test_unwrap()
+        .test_expect("sqlite child seq");
+    let second = ReceiptStore::append_child_receipt_returning_seq(&store, &receipt)
+        .test_unwrap()
+        .test_expect("sqlite child seq");
+
+    assert_eq!(first, second);
+    assert!(first > 0);
+    assert_eq!(store.child_receipt_count().test_unwrap(), 1);
+    assert_eq!(load_claim_log_rows(&store).len(), 1);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn duplicate_child_receipt_id_with_different_bytes_conflicts() {
+    let path = unique_db_path("chio-receipts-duplicate-child-conflict");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_child_receipt_with_id_and_timestamp("child-duplicate-conflict", 2);
+    let conflicting = sample_child_receipt_with_id_and_timestamp("child-duplicate-conflict", 3);
+
+    ReceiptStore::append_child_receipt_returning_seq(&store, &receipt)
+        .test_unwrap()
+        .test_expect("sqlite child seq");
+    let error =
+        ReceiptStore::append_child_receipt_returning_seq(&store, &conflicting).test_unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("already exists with different content"));
+    assert_eq!(store.child_receipt_count().test_unwrap(), 1);
+    assert_eq!(load_claim_log_rows(&store).len(), 1);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn append_receipt_batch_rolls_back_all_receipts_on_batch_error(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let path = unique_db_path("chio-receipts-group-rollback");
@@ -1314,7 +1812,7 @@ fn receipt_commit_flush_reports_queued_batch_error() -> Result<(), Box<dyn std::
         .map_err(|_| std::io::Error::other("send receipt append command"))?;
 
     let error = match store.flush_receipt_writes() {
-        Ok(()) => panic!("expected timestamp conflict when flushing receipt writes"),
+        Ok(_) => panic!("expected timestamp conflict when flushing receipt writes"),
         Err(error) => error,
     };
     assert!(matches!(
@@ -1454,10 +1952,8 @@ fn store_and_load_checkpoint_by_seq() {
     }
 
     // Build checkpoint.
-    let kp = Keypair::generate();
-    let bytes: Vec<Vec<u8>> = (0..5)
-        .map(|i| format!("receipt-bytes-{i}").into_bytes())
-        .collect();
+    let kp = receipt_test_keypair();
+    let bytes = canonical_receipt_bytes(&store, seqs[0], seqs[4]);
     let cp = build_checkpoint(1, seqs[0], seqs[4], &bytes, &kp).test_unwrap();
 
     // Store and retrieve.
@@ -1479,11 +1975,115 @@ fn store_and_load_checkpoint_by_seq() {
 }
 
 #[test]
+fn store_checkpoint_rejects_merkle_root_mismatch_with_claim_log() {
+    let path = unique_db_path("chio-receipts-cp-merkle-mismatch");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_receipt_with_id("rcpt-merkle-mismatch");
+    let seq = store
+        .append_chio_receipt_returning_seq(&receipt)
+        .test_unwrap();
+    let kp = receipt_test_keypair();
+    let checkpoint = build_checkpoint(1, seq, seq, &[b"wrong-bytes".to_vec()], &kp).test_unwrap();
+
+    let error = ReceiptStore::store_checkpoint(&store, &checkpoint).test_unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("merkle_root does not match claim receipt log range"),
+        "unexpected error: {error}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn store_checkpoint_rejects_first_checkpoint_that_skips_committed_prefix() {
+    let path = unique_db_path("chio-receipts-cp-skipped-prefix");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+
+    let first_receipt = sample_receipt_with_id("rcpt-prefix-1");
+    let second_receipt = sample_receipt_with_id("rcpt-prefix-2");
+    store
+        .append_chio_receipt_returning_seq(&first_receipt)
+        .test_unwrap();
+    let second_seq = store
+        .append_chio_receipt_returning_seq(&second_receipt)
+        .test_unwrap();
+
+    let kp = receipt_test_keypair();
+    let checkpoint = build_checkpoint(
+        1,
+        second_seq,
+        second_seq,
+        &canonical_receipt_bytes(&store, second_seq, second_seq),
+        &kp,
+    )
+    .test_unwrap();
+
+    let error = ReceiptStore::store_checkpoint(&store, &checkpoint).test_unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("first checkpoint must start at entry_seq 1"),
+        "unexpected error: {error}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn load_checkpoint_by_seq_returns_none_for_missing() {
     let path = unique_db_path("chio-receipts-cp-missing");
     let store = SqliteReceiptStore::open(&path).test_unwrap();
     let result = store.load_checkpoint_by_seq(999).test_unwrap();
     assert!(result.is_none());
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn store_checkpoint_rejects_contiguous_successor_without_predecessor_digest() {
+    let path = unique_db_path("chio-receipts-cp-missing-predecessor-digest");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+
+    let mut seqs = Vec::new();
+    for i in 0..2usize {
+        let receipt = sample_receipt_with_id(&format!("rcpt-missing-digest-{i}"));
+        seqs.push(
+            store
+                .append_chio_receipt_returning_seq(&receipt)
+                .test_unwrap(),
+        );
+    }
+
+    let checkpoint_kp = receipt_test_keypair();
+    let first = build_checkpoint(
+        1,
+        seqs[0],
+        seqs[0],
+        &canonical_receipt_bytes(&store, seqs[0], seqs[0]),
+        &checkpoint_kp,
+    )
+    .test_unwrap();
+    ReceiptStore::store_checkpoint(&store, &first).test_unwrap();
+
+    let second = build_checkpoint(
+        2,
+        seqs[1],
+        seqs[1],
+        &canonical_receipt_bytes(&store, seqs[1], seqs[1]),
+        &checkpoint_kp,
+    )
+    .test_unwrap();
+
+    let error = ReceiptStore::store_checkpoint(&store, &second).test_unwrap_err();
+    assert!(
+        error.to_string().contains("missing predecessor digest")
+            || error
+                .to_string()
+                .contains("checkpoint predecessor digest is required"),
+        "unexpected error: {error}"
+    );
+
     let _ = fs::remove_file(path);
 }
 
@@ -1502,7 +2102,7 @@ fn trait_store_checkpoint_enforces_predecessor_continuity() {
         );
     }
 
-    let checkpoint_kp = Keypair::generate();
+    let checkpoint_kp = receipt_test_keypair();
     let first = build_checkpoint(
         1,
         seqs[0],
@@ -1534,7 +2134,7 @@ fn trait_store_checkpoint_enforces_predecessor_continuity() {
 fn append_receipt_fails_closed_when_earlier_checkpoint_row_is_corrupted() {
     let path = unique_db_path("chio-receipts-cp-fail-closed");
     let store = SqliteReceiptStore::open(&path).test_unwrap();
-    let kp = Keypair::generate();
+    let kp = receipt_test_keypair();
 
     let first = build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &kp).test_unwrap();
     let second = build_checkpoint_with_previous(
@@ -1590,7 +2190,7 @@ fn trait_store_checkpoint_installs_immutable_checkpoint_triggers() {
     let seq = store
         .append_chio_receipt_returning_seq(&receipt)
         .test_unwrap();
-    let checkpoint_kp = Keypair::generate();
+    let checkpoint_kp = receipt_test_keypair();
     let checkpoint = build_checkpoint(
         1,
         seq,
@@ -1634,7 +2234,7 @@ fn trait_store_checkpoint_rejects_conflicting_rewritten_checkpoint_rows() {
         );
     }
 
-    let checkpoint_kp = Keypair::generate();
+    let checkpoint_kp = receipt_test_keypair();
     let first = build_checkpoint(
         1,
         seqs[0],
@@ -1666,15 +2266,37 @@ fn trait_store_checkpoint_rejects_conflicting_rewritten_checkpoint_rows() {
 fn store_checkpoint_rejects_wrong_predecessor_digest() {
     let path = unique_db_path("chio-receipts-cp-continuity");
     let store = SqliteReceiptStore::open(&path).test_unwrap();
-    let kp = Keypair::generate();
+    let kp = receipt_test_keypair();
 
-    let first_batch = vec![b"first-1".to_vec(), b"first-2".to_vec()];
-    let first = build_checkpoint(1, 1, 2, &first_batch, &kp).test_unwrap();
+    let mut seqs = Vec::new();
+    for i in 0..4usize {
+        let receipt = sample_receipt_with_id(&format!("rcpt-predecessor-digest-{i}"));
+        seqs.push(
+            store
+                .append_chio_receipt_returning_seq(&receipt)
+                .test_unwrap(),
+        );
+    }
+
+    let first = build_checkpoint(
+        1,
+        seqs[0],
+        seqs[1],
+        &canonical_receipt_bytes(&store, seqs[0], seqs[1]),
+        &kp,
+    )
+    .test_unwrap();
     ReceiptStore::store_checkpoint(&store, &first).test_unwrap();
 
-    let second_batch = vec![b"second-1".to_vec(), b"second-2".to_vec()];
-    let mut second =
-        build_checkpoint_with_previous(2, 3, 4, &second_batch, &kp, Some(&first)).test_unwrap();
+    let mut second = build_checkpoint_with_previous(
+        2,
+        seqs[2],
+        seqs[3],
+        &canonical_receipt_bytes(&store, seqs[2], seqs[3]),
+        &kp,
+        Some(&first),
+    )
+    .test_unwrap();
     second.body.previous_checkpoint_sha256 = Some("not-the-real-digest".to_string());
     second.signature = kp.sign(&chio_core::canonical_json_bytes(&second.body).test_unwrap());
     let error = ReceiptStore::store_checkpoint(&store, &second).test_unwrap_err();
@@ -1689,14 +2311,34 @@ fn store_checkpoint_rejects_wrong_predecessor_digest() {
 fn store_checkpoint_rejects_conflicting_rewrite() {
     let path = unique_db_path("chio-receipts-cp-rewrite");
     let store = SqliteReceiptStore::open(&path).test_unwrap();
-    let kp = Keypair::generate();
+    let kp = receipt_test_keypair();
 
-    let checkpoint =
-        build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &kp).test_unwrap();
+    let first = sample_receipt_with_id("rcpt-rewrite-first");
+    let second = sample_receipt_with_id("rcpt-rewrite-second");
+    let first_seq = store
+        .append_chio_receipt_returning_seq(&first)
+        .test_unwrap();
+    let second_seq = store
+        .append_chio_receipt_returning_seq(&second)
+        .test_unwrap();
+    let checkpoint = build_checkpoint(
+        1,
+        first_seq,
+        second_seq,
+        &canonical_receipt_bytes(&store, first_seq, second_seq),
+        &kp,
+    )
+    .test_unwrap();
     ReceiptStore::store_checkpoint(&store, &checkpoint).test_unwrap();
 
-    let conflicting =
-        build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"changed".to_vec()], &kp).test_unwrap();
+    let conflicting = build_checkpoint(
+        1,
+        first_seq,
+        second_seq,
+        &[b"one".to_vec(), b"changed".to_vec()],
+        &kp,
+    )
+    .test_unwrap();
     let error = ReceiptStore::store_checkpoint(&store, &conflicting).test_unwrap_err();
     assert!(error
         .to_string()
@@ -1706,19 +2348,433 @@ fn store_checkpoint_rejects_conflicting_rewrite() {
 }
 
 #[test]
+fn store_checkpoint_rejects_missing_projection_atomically() {
+    let path = unique_db_path("chio-receipts-cp-projection-missing");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_receipt_with_id("rcpt-projection-missing");
+    let seq = store
+        .append_chio_receipt_returning_seq(&receipt)
+        .test_unwrap();
+    let checkpoint_kp = receipt_test_keypair();
+    let checkpoint = build_checkpoint(
+        1,
+        seq,
+        seq,
+        &canonical_receipt_bytes(&store, seq, seq),
+        &checkpoint_kp,
+    )
+    .test_unwrap();
+
+    store
+        .connection()
+        .test_unwrap()
+        .execute_batch("DROP TRIGGER IF EXISTS kernel_checkpoints_project_tree_head;")
+        .test_unwrap();
+    let error = ReceiptStore::store_checkpoint(&store, &checkpoint).test_unwrap_err();
+
+    assert!(
+        error.to_string().contains("projection") && error.to_string().contains("missing"),
+        "unexpected error: {error}"
+    );
+    let count: i64 = store
+        .connection()
+        .test_unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM kernel_checkpoints WHERE checkpoint_seq = 1",
+            [],
+            |row| row.get(0),
+        )
+        .test_unwrap();
+    assert_eq!(count, 0);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn store_checkpoint_idempotent_rechecks_projection_rows() {
+    let path = unique_db_path("chio-receipts-cp-idempotent-projection-drift");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_receipt_with_id("rcpt-idempotent-projection-drift");
+    let seq = store
+        .append_chio_receipt_returning_seq(&receipt)
+        .test_unwrap();
+    let checkpoint_kp = receipt_test_keypair();
+    let checkpoint = build_checkpoint(
+        1,
+        seq,
+        seq,
+        &canonical_receipt_bytes(&store, seq, seq),
+        &checkpoint_kp,
+    )
+    .test_unwrap();
+    ReceiptStore::store_checkpoint(&store, &checkpoint).test_unwrap();
+
+    let connection = store.connection().test_unwrap();
+    connection
+        .execute_batch(
+            r#"
+            DROP TRIGGER IF EXISTS checkpoint_tree_heads_reject_delete;
+            DELETE FROM checkpoint_tree_heads WHERE checkpoint_seq = 1;
+            "#,
+        )
+        .test_unwrap();
+
+    let error = ReceiptStore::store_checkpoint(&store, &checkpoint).test_unwrap_err();
+    assert!(
+        error.to_string().contains("projection") && error.to_string().contains("missing"),
+        "unexpected error: {error}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn receipt_checkpoint_status_reports_projection_drift() {
+    let path = unique_db_path("chio-receipts-cp-status-projection-drift");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_receipt_with_id("rcpt-status-projection-drift");
+    let seq = store
+        .append_chio_receipt_returning_seq(&receipt)
+        .test_unwrap();
+    let checkpoint_kp = receipt_test_keypair();
+    let checkpoint = build_checkpoint(
+        1,
+        seq,
+        seq,
+        &canonical_receipt_bytes(&store, seq, seq),
+        &checkpoint_kp,
+    )
+    .test_unwrap();
+    ReceiptStore::store_checkpoint(&store, &checkpoint).test_unwrap();
+
+    let connection = store.connection().test_unwrap();
+    connection
+        .execute_batch(
+            r#"
+            DROP TRIGGER IF EXISTS checkpoint_publication_metadata_reject_delete;
+            DELETE FROM checkpoint_publication_metadata WHERE checkpoint_seq = 1;
+            "#,
+        )
+        .test_unwrap();
+
+    let report = store.receipt_checkpoint_status(Some(10)).test_unwrap();
+    assert!(!report.healthy);
+    assert!(
+        report
+            .checkpoint_error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("projection"),
+        "unexpected report: {report:?}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn open_existing_checkpoint_status_does_not_repair_missing_projection() {
+    let path = unique_db_path("chio-receipts-cp-open-existing-projection-drift");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_receipt_with_id("rcpt-open-existing-projection-drift");
+    let seq = store
+        .append_chio_receipt_returning_seq(&receipt)
+        .test_unwrap();
+    let checkpoint_kp = receipt_test_keypair();
+    let checkpoint = build_checkpoint(
+        1,
+        seq,
+        seq,
+        &canonical_receipt_bytes(&store, seq, seq),
+        &checkpoint_kp,
+    )
+    .test_unwrap();
+    ReceiptStore::store_checkpoint(&store, &checkpoint).test_unwrap();
+
+    let connection = store.connection().test_unwrap();
+    connection
+        .execute_batch(
+            r#"
+            DROP TRIGGER IF EXISTS checkpoint_publication_metadata_reject_delete;
+            DELETE FROM checkpoint_publication_metadata WHERE checkpoint_seq = 1;
+            "#,
+        )
+        .test_unwrap();
+    drop(connection);
+    drop(store);
+
+    let reopened = SqliteReceiptStore::open_existing(&path).test_unwrap();
+    let report = reopened.receipt_checkpoint_status(Some(10)).test_unwrap();
+    assert!(!report.healthy);
+    assert!(
+        report
+            .checkpoint_error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("projection"),
+        "unexpected report: {report:?}"
+    );
+    let missing_count: i64 = reopened
+        .connection()
+        .test_unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM checkpoint_publication_metadata WHERE checkpoint_seq = 1",
+            [],
+            |row| row.get(0),
+        )
+        .test_unwrap();
+    assert_eq!(
+        missing_count, 0,
+        "open_existing/status must not repair checkpoint projection rows"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn receipt_checkpoint_status_reports_extra_projection_drift() {
+    let path = unique_db_path("chio-receipts-cp-status-extra-projection");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_receipt_with_id("rcpt-status-extra-projection");
+    let seq = store
+        .append_chio_receipt_returning_seq(&receipt)
+        .test_unwrap();
+    let checkpoint_kp = receipt_test_keypair();
+    let checkpoint = build_checkpoint(
+        1,
+        seq,
+        seq,
+        &canonical_receipt_bytes(&store, seq, seq),
+        &checkpoint_kp,
+    )
+    .test_unwrap();
+    ReceiptStore::store_checkpoint(&store, &checkpoint).test_unwrap();
+
+    let connection = store.connection().test_unwrap();
+    connection
+        .execute_batch(
+            r#"
+            PRAGMA foreign_keys = OFF;
+            INSERT INTO checkpoint_tree_heads (
+                checkpoint_seq,
+                batch_start_seq,
+                batch_end_seq,
+                tree_size,
+                merkle_root,
+                issued_at,
+                kernel_key,
+                previous_checkpoint_sha256,
+                statement_json,
+                signature
+            )
+            SELECT
+                999,
+                batch_start_seq,
+                batch_end_seq,
+                tree_size,
+                merkle_root,
+                issued_at,
+                kernel_key,
+                previous_checkpoint_sha256,
+                statement_json,
+                signature
+            FROM checkpoint_tree_heads
+            WHERE checkpoint_seq = 1;
+            PRAGMA foreign_keys = ON;
+            "#,
+        )
+        .test_unwrap();
+
+    let report = store.receipt_checkpoint_status(Some(10)).test_unwrap();
+    assert!(!report.healthy);
+    assert!(
+        report
+            .checkpoint_error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("projection drift"),
+        "unexpected report: {report:?}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn store_checkpoint_rejects_mixed_receipt_signer_range() {
+    let path = unique_db_path("chio-receipts-cp-mixed-signer-range");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let first_keypair = receipt_test_keypair();
+    let second_keypair = Keypair::from_seed(&[0x43; 32]);
+    let first_receipt = sample_receipt_with_keypair("rcpt-mixed-signer-1", 1, &first_keypair);
+    let second_receipt = sample_receipt_with_keypair("rcpt-mixed-signer-2", 2, &second_keypair);
+    let first_seq = store
+        .append_chio_receipt_returning_seq(&first_receipt)
+        .test_unwrap();
+    let second_seq = store
+        .append_chio_receipt_returning_seq(&second_receipt)
+        .test_unwrap();
+    let checkpoint = build_checkpoint(
+        1,
+        first_seq,
+        second_seq,
+        &canonical_receipt_bytes(&store, first_seq, second_seq),
+        &receipt_test_keypair(),
+    )
+    .test_unwrap();
+
+    let error = ReceiptStore::store_checkpoint(&store, &checkpoint).test_unwrap_err();
+    assert!(
+        error.to_string().contains("mixed receipt signer"),
+        "unexpected error: {error}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn store_checkpoint_rejects_checkpoint_key_that_does_not_match_receipt_signer() {
+    let path = unique_db_path("chio-receipts-cp-wrong-kernel-key");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_receipt_with_id("rcpt-wrong-checkpoint-key");
+    let seq = store
+        .append_chio_receipt_returning_seq(&receipt)
+        .test_unwrap();
+    let checkpoint = build_checkpoint(
+        1,
+        seq,
+        seq,
+        &canonical_receipt_bytes(&store, seq, seq),
+        &receipt_test_keypair(),
+    )
+    .test_unwrap();
+
+    let error = ReceiptStore::store_checkpoint(&store, &checkpoint).test_unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("does not match receipt signer key"),
+        "unexpected error: {error}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn create_next_receipt_checkpoint_respects_max_batch() {
+    let path = unique_db_path("chio-receipts-cp-create-next-max-batch");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    for index in 0..5 {
+        store
+            .append_chio_receipt_returning_seq(&sample_receipt_with_id(&format!(
+                "rcpt-create-next-max-batch-{index}"
+            )))
+            .test_unwrap();
+    }
+
+    let report = <SqliteReceiptStore as ReceiptStore>::create_next_receipt_checkpoint(
+        &store,
+        2,
+        &Keypair::generate(),
+    )
+    .test_unwrap();
+
+    assert!(report.created);
+    assert_eq!(report.checkpoint_seq, Some(1));
+    assert_eq!(report.batch_start_seq, Some(1));
+    assert_eq!(report.batch_end_seq, Some(2));
+    assert_eq!(report.latest_committed_entry_seq, 5);
+    assert_eq!(report.latest_checkpointed_entry_seq, 2);
+    assert_eq!(
+        store
+            .receipt_checkpoint_status(Some(2))
+            .test_unwrap()
+            .next_range,
+        Some(chio_kernel::ReceiptCheckpointRange {
+            start_seq: 3,
+            end_seq: 4
+        })
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn concurrent_create_next_receipt_checkpoint_produces_one_checkpoint() {
+    let path = unique_db_path("chio-receipts-cp-create-next-concurrent");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    for index in 0..3 {
+        store
+            .append_chio_receipt_returning_seq(&sample_receipt_with_id(&format!(
+                "rcpt-create-next-concurrent-{index}"
+            )))
+            .test_unwrap();
+    }
+    drop(store);
+
+    let barrier = Arc::new(Barrier::new(2));
+    let mut handles = Vec::new();
+    for _ in 0..2 {
+        let path = path.clone();
+        let barrier = Arc::clone(&barrier);
+        handles.push(thread::spawn(move || {
+            let store = SqliteReceiptStore::open(&path).test_unwrap();
+            barrier.wait();
+            store
+                .create_next_receipt_checkpoint(10, &receipt_test_keypair())
+                .test_unwrap()
+        }));
+    }
+
+    let reports = handles
+        .into_iter()
+        .map(|handle| handle.join().unwrap_or_else(|_| panic!("thread panicked")))
+        .collect::<Vec<_>>();
+
+    assert_eq!(reports.iter().filter(|report| report.created).count(), 1);
+    assert!(reports
+        .iter()
+        .all(|report| report.latest_checkpointed_entry_seq == 3));
+
+    let reopened = SqliteReceiptStore::open(&path).test_unwrap();
+    let status = reopened.receipt_checkpoint_status(Some(10)).test_unwrap();
+    assert!(status.healthy);
+    assert_eq!(status.latest_checkpoint_seq, Some(1));
+    assert_eq!(status.latest_checkpointed_entry_seq, 3);
+    assert!(status.next_range.is_none());
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn store_checkpoint_accepts_contiguous_predecessor() {
     let path = unique_db_path("chio-receipts-cp-predecessor");
     let store = SqliteReceiptStore::open(&path).test_unwrap();
-    let kp = Keypair::generate();
+    let kp = receipt_test_keypair();
 
-    let first = build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &kp).test_unwrap();
+    let mut seqs = Vec::new();
+    for i in 0..4usize {
+        let receipt = sample_receipt_with_id(&format!("rcpt-contiguous-predecessor-{i}"));
+        seqs.push(
+            store
+                .append_chio_receipt_returning_seq(&receipt)
+                .test_unwrap(),
+        );
+    }
+
+    let first = build_checkpoint(
+        1,
+        seqs[0],
+        seqs[1],
+        &canonical_receipt_bytes(&store, seqs[0], seqs[1]),
+        &kp,
+    )
+    .test_unwrap();
     ReceiptStore::store_checkpoint(&store, &first).test_unwrap();
 
     let second = build_checkpoint_with_previous(
         2,
-        3,
-        4,
-        &[b"three".to_vec(), b"four".to_vec()],
+        seqs[2],
+        seqs[3],
+        &canonical_receipt_bytes(&store, seqs[2], seqs[3]),
         &kp,
         Some(&first),
     )
@@ -1770,30 +2826,22 @@ fn receipt_log_includes_child_receipts_in_unified_surface() {
     let path = unique_db_path("chio-receipts-claim-log");
     let store = SqliteReceiptStore::open(&path).test_unwrap();
 
-    store
-        .append_chio_receipt(&sample_receipt_with_id_and_timestamp("claim-tool-1", 10))
-        .test_unwrap();
+    let tool_before = sample_receipt_with_id_and_timestamp("claim-tool-1", 10);
+    let tool_after = sample_receipt_with_id_and_timestamp("claim-tool-2", 12);
+    store.append_chio_receipt(&tool_before).test_unwrap();
     store
         .append_child_receipt(&sample_child_receipt_with_id_and_timestamp(
             "claim-child-1",
             11,
         ))
         .test_unwrap();
-    store
-        .append_chio_receipt(&sample_receipt_with_id_and_timestamp("claim-tool-2", 12))
-        .test_unwrap();
+    store.append_chio_receipt(&tool_after).test_unwrap();
 
     let rows = load_claim_log_rows(&store);
     assert_eq!(
         rows,
         vec![
-            (
-                1,
-                "claim-tool-1".to_string(),
-                "tool_receipt".to_string(),
-                1,
-                10
-            ),
+            (1, tool_before.id.clone(), "tool_receipt".to_string(), 1, 10),
             (
                 2,
                 "claim-child-1".to_string(),
@@ -1801,13 +2849,7 @@ fn receipt_log_includes_child_receipts_in_unified_surface() {
                 1,
                 11
             ),
-            (
-                3,
-                "claim-tool-2".to_string(),
-                "tool_receipt".to_string(),
-                2,
-                12
-            ),
+            (3, tool_after.id.clone(), "tool_receipt".to_string(), 2, 12),
         ]
     );
 
@@ -1822,11 +2864,10 @@ fn append_receipt_sequences_follow_unified_claim_log() {
     let path = unique_db_path("chio-receipts-claim-log-seq");
     let store = SqliteReceiptStore::open(&path).test_unwrap();
 
+    let first_tool = sample_receipt_with_id_and_timestamp("claim-seq-tool-1", 10);
+    let second_tool = sample_receipt_with_id_and_timestamp("claim-seq-tool-2", 12);
     let first_tool_seq = store
-        .append_chio_receipt_returning_seq(&sample_receipt_with_id_and_timestamp(
-            "claim-seq-tool-1",
-            10,
-        ))
+        .append_chio_receipt_returning_seq(&first_tool)
         .test_unwrap();
     let child_seq = ReceiptStore::append_child_receipt_returning_seq(
         &store,
@@ -1835,10 +2876,7 @@ fn append_receipt_sequences_follow_unified_claim_log() {
     .test_unwrap()
     .test_expect("sqlite store should return child claim-log seq");
     let second_tool_seq = store
-        .append_chio_receipt_returning_seq(&sample_receipt_with_id_and_timestamp(
-            "claim-seq-tool-2",
-            12,
-        ))
+        .append_chio_receipt_returning_seq(&second_tool)
         .test_unwrap();
 
     assert_eq!(first_tool_seq, 1);
@@ -1851,9 +2889,9 @@ fn append_receipt_sequences_follow_unified_claim_log() {
             .map(|(entry_seq, receipt_id, _, _, _)| (entry_seq, receipt_id))
             .collect::<Vec<_>>(),
         vec![
-            (1, "claim-seq-tool-1".to_string()),
+            (1, first_tool.id),
             (2, "claim-seq-child-1".to_string()),
-            (3, "claim-seq-tool-2".to_string()),
+            (3, second_tool.id),
         ]
     );
 
@@ -1865,9 +2903,11 @@ fn receipt_log_includes_child_receipts_in_tree() {
     let path = unique_db_path("chio-receipts-claim-tree");
     let store = SqliteReceiptStore::open(&path).test_unwrap();
 
-    let tool_before = sample_receipt_with_id_and_timestamp("claim-tree-tool-1", 10);
-    let child = sample_child_receipt_with_id_and_timestamp("claim-tree-child-1", 11);
-    let tool_after = sample_receipt_with_id_and_timestamp("claim-tree-tool-2", 12);
+    let checkpoint_kp = receipt_test_keypair();
+    let tool_before = sample_receipt_with_keypair("claim-tree-tool-1", 10, &checkpoint_kp);
+    let child =
+        sample_child_receipt_with_keypair_and_timestamp("claim-tree-child-1", 11, &checkpoint_kp);
+    let tool_after = sample_receipt_with_keypair("claim-tree-tool-2", 12, &checkpoint_kp);
 
     store.append_chio_receipt(&tool_before).test_unwrap();
     store.append_child_receipt(&child).test_unwrap();
@@ -1877,13 +2917,7 @@ fn receipt_log_includes_child_receipts_in_tree() {
     assert_eq!(
         claim_rows,
         vec![
-            (
-                1,
-                "claim-tree-tool-1".to_string(),
-                "tool_receipt".to_string(),
-                1,
-                10
-            ),
+            (1, tool_before.id.clone(), "tool_receipt".to_string(), 1, 10),
             (
                 2,
                 "claim-tree-child-1".to_string(),
@@ -1891,13 +2925,7 @@ fn receipt_log_includes_child_receipts_in_tree() {
                 1,
                 11
             ),
-            (
-                3,
-                "claim-tree-tool-2".to_string(),
-                "tool_receipt".to_string(),
-                2,
-                12
-            ),
+            (3, tool_after.id.clone(), "tool_receipt".to_string(), 2, 12),
         ]
     );
 
@@ -1921,7 +2949,6 @@ fn receipt_log_includes_child_receipts_in_tree() {
         .map(|(_, bytes)| bytes)
         .collect::<Vec<_>>();
 
-    let checkpoint_kp = Keypair::generate();
     let checkpoint =
         build_checkpoint(1, start_seq, end_seq, &canonical, &checkpoint_kp).test_unwrap();
     assert_eq!(checkpoint.body.tree_size as u64, 3);
@@ -1971,7 +2998,7 @@ fn store_checkpoint_projects_tree_heads_and_predecessor_witnesses() {
         );
     }
 
-    let checkpoint_kp = Keypair::generate();
+    let checkpoint_kp = receipt_test_keypair();
     let first = build_checkpoint(
         1,
         seqs[0],
@@ -2066,7 +3093,7 @@ fn open_backfills_claim_log_and_checkpoint_transparency_projections() {
     let path = unique_db_path("chio-receipts-legacy-projections");
     let tool_receipt = sample_receipt_with_id_and_timestamp("legacy-tool-1", 20);
     let child_receipt = sample_child_receipt_with_id_and_timestamp("legacy-child-1", 21);
-    let checkpoint_kp = Keypair::generate();
+    let checkpoint_kp = receipt_test_keypair();
     let first = build_checkpoint(1, 1, 1, &[b"legacy-one".to_vec()], &checkpoint_kp).test_unwrap();
     let second = build_checkpoint_with_previous(
         2,
@@ -2162,13 +3189,34 @@ fn open_backfills_claim_log_and_checkpoint_transparency_projections() {
 fn record_checkpoint_publication_trust_anchor_binding_is_idempotent_and_visible_in_export_summary()
 {
     let path = unique_db_path("chio-receipts-publication-binding");
-    let checkpoint_kp = Keypair::generate();
-    let first = build_checkpoint(1, 1, 1, &[b"alpha".to_vec()], &checkpoint_kp).test_unwrap();
-    let second =
-        build_checkpoint_with_previous(2, 2, 2, &[b"beta".to_vec()], &checkpoint_kp, Some(&first))
-            .test_unwrap();
-
     let mut store = SqliteReceiptStore::open(&path).test_unwrap();
+    let first_receipt = sample_receipt_with_id("publication-binding-first");
+    let second_receipt = sample_receipt_with_id("publication-binding-second");
+    let first_seq = store
+        .append_chio_receipt_returning_seq(&first_receipt)
+        .test_unwrap();
+    let second_seq = store
+        .append_chio_receipt_returning_seq(&second_receipt)
+        .test_unwrap();
+    let checkpoint_kp = receipt_test_keypair();
+    let first = build_checkpoint(
+        1,
+        first_seq,
+        first_seq,
+        &canonical_receipt_bytes(&store, first_seq, first_seq),
+        &checkpoint_kp,
+    )
+    .test_unwrap();
+    let second = build_checkpoint_with_previous(
+        2,
+        second_seq,
+        second_seq,
+        &canonical_receipt_bytes(&store, second_seq, second_seq),
+        &checkpoint_kp,
+        Some(&first),
+    )
+    .test_unwrap();
+
     store.store_checkpoint(&first).test_unwrap();
     store.store_checkpoint(&second).test_unwrap();
 
@@ -2280,7 +3328,13 @@ fn receipt_analytics_groups_by_agent_tool_and_time() {
                 tool_server: tool_server.to_string(),
                 tool_name: tool_name.to_string(),
                 action: valid_tool_action(serde_json::json!({})),
-                decision,
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
+                decision: Some(decision),
                 content_hash: format!("content-{id}"),
                 policy_hash: "policy-analytics".to_string(),
                 evidence: Vec::new(),
@@ -2340,6 +3394,7 @@ fn receipt_analytics_groups_by_agent_tool_and_time() {
         .query_receipt_analytics(&ReceiptAnalyticsQuery {
             group_limit: Some(10),
             time_bucket: Some(AnalyticsTimeBucket::Day),
+            read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
             ..ReceiptAnalyticsQuery::default()
         })
         .test_unwrap();
@@ -2470,7 +3525,13 @@ fn cost_attribution_report_aggregates_matching_corpus_and_limits_detail_rows() {
                 tool_server: "shell".to_string(),
                 tool_name: "bash".to_string(),
                 action: valid_tool_action(serde_json::json!({})),
-                decision,
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
+                decision: Some(decision),
                 content_hash: format!("content-{id}"),
                 policy_hash: "policy-cost".to_string(),
                 evidence: Vec::new(),
@@ -2530,6 +3591,7 @@ fn cost_attribution_report_aggregates_matching_corpus_and_limits_detail_rows() {
     let report = store
         .query_cost_attribution_report(&CostAttributionQuery {
             limit: Some(1),
+            read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
             ..CostAttributionQuery::default()
         })
         .test_unwrap();
@@ -2642,7 +3704,13 @@ fn economic_receipt_projection_report_joins_signed_envelope_with_reconciliation_
             tool_server: "model".to_string(),
             tool_name: "infer".to_string(),
             action: valid_tool_action(serde_json::json!({ "prompt": "hello" })),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-economic-1".to_string(),
             policy_hash: "policy-economic-1".to_string(),
             evidence: Vec::new(),
@@ -2800,6 +3868,7 @@ fn economic_receipt_projection_report_joins_signed_envelope_with_reconciliation_
         .query_economic_receipt_projection_report(&OperatorReportQuery {
             capability_id: Some("cap-economic".to_string()),
             economic_limit: Some(10),
+            read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
             ..OperatorReportQuery::default()
         })
         .test_unwrap();
@@ -2890,7 +3959,13 @@ fn economic_completion_flow_report_bundles_receipts_underwriting_and_credit_arti
             tool_server: "shell".to_string(),
             tool_name: "bash".to_string(),
             action: valid_tool_action(serde_json::json!({ "cmd": "echo flow" })),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-flow-1".to_string(),
             policy_hash: "policy-flow-1".to_string(),
             evidence: Vec::new(),
@@ -3060,12 +4135,15 @@ fn economic_completion_flow_report_bundles_receipts_underwriting_and_credit_arti
         .test_unwrap();
 
     let report = store
-        .query_economic_completion_flow_report(&chio_kernel::ExposureLedgerQuery {
-            agent_subject: Some(subject_key.to_string()),
-            receipt_limit: Some(10),
-            decision_limit: Some(10),
-            ..chio_kernel::ExposureLedgerQuery::default()
-        })
+        .query_economic_completion_flow_report(
+            &chio_kernel::ExposureLedgerQuery {
+                agent_subject: Some(subject_key.to_string()),
+                receipt_limit: Some(10),
+                decision_limit: Some(10),
+                ..chio_kernel::ExposureLedgerQuery::default()
+            },
+            chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        )
         .test_unwrap();
 
     assert_eq!(report.schema, chio_kernel::ECONOMIC_COMPLETION_FLOW_SCHEMA);
@@ -3192,7 +4270,13 @@ fn compliance_report_counts_proof_and_lineage_coverage() {
                 tool_server: "shell".to_string(),
                 tool_name: "bash".to_string(),
                 action: valid_tool_action(serde_json::json!({})),
-                decision,
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
+                decision: Some(decision),
                 content_hash: format!("content-{id}"),
                 policy_hash: "policy-compliance".to_string(),
                 evidence: Vec::new(),
@@ -3242,6 +4326,7 @@ fn compliance_report_counts_proof_and_lineage_coverage() {
             agent_subject: Some(subject_hex.clone()),
             tool_server: Some("shell".to_string()),
             tool_name: Some("bash".to_string()),
+            read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
             ..OperatorReportQuery::default()
         })
         .test_unwrap();
@@ -3313,7 +4398,13 @@ fn receipt_store_authorization_context_report_does_not_mark_asserted_call_chain_
             tool_server: "shell".to_string(),
             tool_name: "bash".to_string(),
             action: valid_tool_action(serde_json::json!({ "cmd": "echo delegated" })),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-auth-asserted".to_string(),
             policy_hash: "policy-auth-asserted".to_string(),
             evidence: Vec::new(),
@@ -3382,6 +4473,7 @@ fn receipt_store_authorization_context_report_does_not_mark_asserted_call_chain_
         .query_authorization_context_report(&OperatorReportQuery {
             capability_id: Some(capability.id),
             authorization_limit: Some(10),
+            read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
             ..OperatorReportQuery::default()
         })
         .test_unwrap();
@@ -3456,7 +4548,13 @@ fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
             tool_server: "shell".to_string(),
             tool_name: "bash".to_string(),
             action: valid_tool_action(serde_json::json!({ "cmd": "echo parent" })),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-parent-lineage".to_string(),
             policy_hash: "policy-lineage".to_string(),
             evidence: Vec::new(),
@@ -3478,7 +4576,13 @@ fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
             tool_server: "shell".to_string(),
             tool_name: "bash".to_string(),
             action: valid_tool_action(serde_json::json!({ "cmd": "echo child" })),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-child-lineage".to_string(),
             policy_hash: "policy-lineage".to_string(),
             evidence: Vec::new(),
@@ -3650,6 +4754,7 @@ fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
         .query_authorization_context_report(&OperatorReportQuery {
             capability_id: Some(capability.id),
             authorization_limit: Some(10),
+            read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
             ..OperatorReportQuery::default()
         })
         .test_unwrap();
@@ -3690,6 +4795,7 @@ fn receipt_lineage_verification_backfills_from_governed_call_chain_metadata() {
         .query_authorization_review_pack(&OperatorReportQuery {
             capability_id: Some("cap-lineage-links".to_string()),
             authorization_limit: Some(10),
+            read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
             ..OperatorReportQuery::default()
         })
         .test_unwrap();
@@ -3720,7 +4826,13 @@ fn receipt_lineage_statement_links_parent_and_child_receipts() {
             tool_server: "shell".to_string(),
             tool_name: "bash".to_string(),
             action: valid_tool_action(serde_json::json!({ "cmd": "echo parent" })),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-lineage-parent".to_string(),
             policy_hash: "policy-lineage-parent".to_string(),
             evidence: Vec::new(),
@@ -3742,7 +4854,13 @@ fn receipt_lineage_statement_links_parent_and_child_receipts() {
             tool_server: "shell".to_string(),
             tool_name: "bash".to_string(),
             action: valid_tool_action(serde_json::json!({ "cmd": "echo child" })),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-lineage-child".to_string(),
             policy_hash: "policy-lineage-child".to_string(),
             evidence: Vec::new(),
@@ -5446,12 +6564,10 @@ fn liability_claim_lifecycle_persists_package_through_payout_receipt() {
                 .record_credit_loss_lifecycle(&loss_event)
                 .test_unwrap();
 
-            store
-                .append_chio_receipt(&sample_receipt_with_id("claim-rcpt-1"))
-                .test_unwrap();
-            store
-                .append_chio_receipt(&sample_receipt_with_id("claim-rcpt-2"))
-                .test_unwrap();
+            let claim_receipt_1 = sample_receipt_with_id("claim-rcpt-1");
+            let claim_receipt_2 = sample_receipt_with_id("claim-rcpt-2");
+            store.append_chio_receipt(&claim_receipt_1).test_unwrap();
+            store.append_chio_receipt(&claim_receipt_2).test_unwrap();
 
             let missing_receipt_claim = signed_liability_claim_package_fixture(
                 "claim-missing-receipt",
@@ -5471,7 +6587,7 @@ fn liability_claim_lifecycle_persists_package_through_payout_receipt() {
                 bound_coverage.clone(),
                 bond.clone(),
                 loss_event.clone(),
-                vec!["claim-rcpt-1".to_string(), "claim-rcpt-2".to_string()],
+                vec![claim_receipt_1.id.clone(), claim_receipt_2.id.clone()],
             );
             store.record_liability_claim_package(&claim).test_unwrap();
             assert!(matches!(
@@ -5547,4 +6663,355 @@ fn liability_claim_lifecycle_persists_package_through_payout_receipt() {
         .test_unwrap()
         .join()
         .test_unwrap();
+}
+
+/// Regression: the `inflight` health counter must not saturate to 0 or leak
+/// phantom increments when the commit actor drains a request between
+/// `try_send` returning Ok and the caller's `fetch_add`.
+///
+/// Before the fix, `inflight.fetch_add(1)` ran AFTER `try_send`, so the
+/// worker could dequeue, commit, and run `atomic_saturating_sub` before the
+/// appender thread observed the send result. The increment then leaked past
+/// the drain, leaving `health.writer.inflight` stuck at a positive value
+/// after a flush, OR saturating the worker's subtraction to 0 mid-flight and
+/// underreporting concurrent writes.
+///
+/// This stress test runs many concurrent appenders within a bounded time
+/// budget, polls `inflight` from a sampler thread, then drains via
+/// `flush_receipt_writes` and asserts the post-drain invariants:
+///   - `inflight == 0` after flush (no phantom leaked increment),
+///   - `accepted_total == committed_total` (no lost commits),
+///   - sampler never observed `inflight > accepted_total + thread_count`
+///     slack (catches the pre-fix leak-past-drain signature).
+///
+/// The race window on the buggy code is genuinely narrow because the worker
+/// runs a SQL commit between dequeue and decrement (milliseconds), while the
+/// caller's `fetch_add` follows `try_send` in nanoseconds. The test acts as
+/// a regression guard pinning the post-fix accounting invariant rather than
+/// a deterministic reproducer.
+#[test]
+fn append_inflight_counter_does_not_underflow_on_concurrent_drain() {
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::time::Instant;
+
+    let path = unique_db_path("chio-receipts-inflight-race");
+    let store = Arc::new(SqliteReceiptStore::open(&path).test_unwrap());
+
+    let thread_count = 12usize;
+    let max_appends_per_thread = 1024usize;
+    let total_budget = Duration::from_millis(200);
+    let total_cap: usize = thread_count * max_appends_per_thread;
+
+    let start_barrier = Arc::new(Barrier::new(thread_count + 1));
+    let stop = Arc::new(AtomicBool::new(false));
+    let observed_max_inflight = Arc::new(AtomicU64::new(0));
+    let total_appended = Arc::new(AtomicU64::new(0));
+
+    // Appender threads: race to enqueue receipts as fast as possible until
+    // `stop` is set or the per-thread cap is hit.
+    let mut appenders = Vec::with_capacity(thread_count);
+    for worker in 0..thread_count {
+        let store = Arc::clone(&store);
+        let start_barrier = Arc::clone(&start_barrier);
+        let stop = Arc::clone(&stop);
+        let total_appended = Arc::clone(&total_appended);
+        appenders.push(thread::spawn(move || -> u64 {
+            start_barrier.wait();
+            let mut local: u64 = 0;
+            for receipt_index in 0..max_appends_per_thread {
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
+                let receipt =
+                    sample_receipt_with_id(&format!("rcpt-inflight-race-{worker}-{receipt_index}"));
+                match store.append_chio_receipt_returning_seq(&receipt) {
+                    Ok(_) => {
+                        local += 1;
+                        total_appended.fetch_add(1, Ordering::SeqCst);
+                    }
+                    Err(_) => {
+                        // The actor channel may saturate under pressure; the
+                        // bug we are exercising is independent of saturation.
+                        thread::yield_now();
+                    }
+                }
+            }
+            local
+        }));
+    }
+
+    // Sampler thread: poll the inflight counter while appenders run. If the
+    // counter ever exceeds the cumulative accepted-total by more than a
+    // bounded slack, the speculative increment leaked past drain.
+    let sampler_store = Arc::clone(&store);
+    let sampler_stop = Arc::clone(&stop);
+    let sampler_max = Arc::clone(&observed_max_inflight);
+    let sampler_leak = Arc::new(AtomicBool::new(false));
+    let sampler_leak_clone = Arc::clone(&sampler_leak);
+    let slack = u64::try_from(thread_count).unwrap_or(u64::MAX);
+    let sampler = thread::spawn(move || {
+        while !sampler_stop.load(Ordering::SeqCst) {
+            let counters = match sampler_store.receipt_store_health() {
+                Ok(report) => report.writer,
+                Err(_) => {
+                    thread::yield_now();
+                    continue;
+                }
+            };
+            let inflight = counters.inflight;
+            let accepted = counters.accepted_total;
+            let previous = sampler_max.load(Ordering::SeqCst);
+            if inflight > previous {
+                let _ = sampler_max.compare_exchange(
+                    previous,
+                    inflight,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                );
+            }
+            // Pre-fix race signature: late `fetch_add` ran after the worker
+            // drained N items, so `inflight` briefly exceeded the number of
+            // accepted commands. The slack tolerates the fact that a thread
+            // can hold an unincremented receipt between `fetch_add` (now
+            // pre-send) and its corresponding decrement.
+            if inflight > accepted.saturating_add(slack) {
+                sampler_leak_clone.store(true, Ordering::SeqCst);
+            }
+            thread::yield_now();
+        }
+    });
+
+    // Release appenders; bound total work by `total_budget`.
+    start_barrier.wait();
+    let start = Instant::now();
+    while start.elapsed() < total_budget {
+        if total_appended.load(Ordering::SeqCst) as usize >= total_cap {
+            break;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    stop.store(true, Ordering::SeqCst);
+
+    for handle in appenders {
+        let _ = handle.join().test_unwrap();
+    }
+    sampler.join().test_unwrap();
+
+    // Drain the actor so every accepted command has been committed and the
+    // worker has run its decrement.
+    let report = store.flush_receipt_writes().test_unwrap();
+
+    let writer = report.writer;
+    assert_eq!(
+        writer.inflight, 0,
+        "inflight must return to 0 after flush; leaked phantom inflight indicates the pre-fix race \
+         (try_send visible to worker before fetch_add): accepted={}, committed={}, inflight={}",
+        writer.accepted_total, writer.committed_total, writer.inflight
+    );
+    assert_eq!(
+        writer.accepted_total, writer.committed_total,
+        "every accepted append must commit cleanly under drain; mismatch indicates a leak: \
+         accepted={}, committed={}, failed={}",
+        writer.accepted_total, writer.committed_total, writer.failed_total
+    );
+    assert!(
+        !sampler_leak.load(Ordering::SeqCst),
+        "sampler observed inflight > accepted_total + thread_count slack during the run, which \
+         means a speculative increment leaked past drain (pre-fix race signature); \
+         observed_max_inflight={}",
+        observed_max_inflight.load(Ordering::SeqCst)
+    );
+    // Sanity: the run actually exercised concurrent traffic.
+    let appended = total_appended.load(Ordering::SeqCst);
+    assert!(
+        appended > 0,
+        "stress run did not append any receipts within the budget; raise the budget or check the \
+         actor channel"
+    );
+    assert_eq!(
+        writer.committed_total, appended,
+        "committed_total ({}) must equal the number of successful appends ({})",
+        writer.committed_total, appended
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+const TRANSPARENCY_PROJECTION_GUARD_TRIGGER_NAMES: &[&str] = &[
+    "chio_tool_receipts_reject_update",
+    "chio_tool_receipts_reject_delete",
+    "chio_child_receipts_reject_update",
+    "chio_child_receipts_reject_delete",
+    "claim_receipt_log_entries_reject_update",
+    "claim_receipt_log_entries_reject_delete",
+    "checkpoint_tree_heads_reject_update",
+    "checkpoint_tree_heads_reject_delete",
+    "checkpoint_predecessor_witnesses_reject_update",
+    "checkpoint_predecessor_witnesses_reject_delete",
+    "checkpoint_publication_metadata_reject_update",
+    "checkpoint_publication_metadata_reject_delete",
+    "checkpoint_publication_trust_anchor_bindings_reject_update",
+    "checkpoint_publication_trust_anchor_bindings_reject_delete",
+];
+
+fn trigger_exists(store: &SqliteReceiptStore, name: &str) -> bool {
+    let connection = store.connection().test_unwrap();
+    let row: Option<String> = connection
+        .query_row(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = ?1",
+            rusqlite::params![name],
+            |row| row.get(0),
+        )
+        .optional()
+        .test_unwrap();
+    row.is_some()
+}
+
+#[test]
+fn open_existing_reinstalls_projection_guards() {
+    // `SqliteReceiptStore::open_existing` runs
+    // `ensure_transparency_projection_guards` against the connection it
+    // opens, which must reinstall every immutability trigger that
+    // protects the transparency projection rows. Drop a representative
+    // subset before reopening and confirm the reopen restores the full
+    // guard set.
+    let path = unique_db_path("chio-receipts-open-existing-guards");
+
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    store
+        .append_chio_receipt(&sample_receipt_with_id("rcpt-open-existing-guards"))
+        .test_unwrap();
+    drop(store);
+
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    for trigger in TRANSPARENCY_PROJECTION_GUARD_TRIGGER_NAMES {
+        assert!(
+            trigger_exists(&store, trigger),
+            "trigger {trigger} should be present after initial open"
+        );
+    }
+
+    let dropped_triggers: &[&str] = &[
+        "chio_tool_receipts_reject_update",
+        "chio_tool_receipts_reject_delete",
+        "claim_receipt_log_entries_reject_update",
+        "claim_receipt_log_entries_reject_delete",
+    ];
+    {
+        let connection = store.connection().test_unwrap();
+        for trigger in dropped_triggers {
+            connection
+                .execute_batch(&format!("DROP TRIGGER IF EXISTS {trigger};"))
+                .test_unwrap();
+        }
+    }
+    for trigger in dropped_triggers {
+        assert!(
+            !trigger_exists(&store, trigger),
+            "trigger {trigger} should be absent after explicit drop"
+        );
+    }
+    drop(store);
+
+    let reopened = SqliteReceiptStore::open_existing(&path).test_unwrap();
+    for trigger in TRANSPARENCY_PROJECTION_GUARD_TRIGGER_NAMES {
+        assert!(
+            trigger_exists(&reopened, trigger),
+            "trigger {trigger} should be reinstalled by open_existing"
+        );
+    }
+
+    let _ = fs::remove_file(path);
+}
+
+fn tamper_canonical_bytes_of_uncheckpointed_receipt(
+    store: &SqliteReceiptStore,
+    receipt_id: &str,
+    mutate: impl FnOnce(&mut ChioReceipt),
+) {
+    // Tamper the canonical-bytes (`raw_json`) columns on BOTH the
+    // `chio_tool_receipts` source row and the `claim_receipt_log_entries`
+    // projection row using the same mutation. Tampering only one of the
+    // two would trip the
+    // `validate_claim_receipt_log_projection_current()` drift check
+    // before the uncheckpointed canonical-bytes range scan runs, masking
+    // the corruption signal we are trying to surface from
+    // `receipt_store_health()`.
+    let connection = store.connection().test_unwrap();
+    connection
+        .execute_batch(
+            r#"
+            DROP TRIGGER IF EXISTS chio_tool_receipts_reject_update;
+            DROP TRIGGER IF EXISTS claim_receipt_log_entries_reject_update;
+            "#,
+        )
+        .test_unwrap();
+    let raw_json = connection
+        .query_row(
+            "SELECT raw_json FROM chio_tool_receipts WHERE receipt_id = ?1",
+            rusqlite::params![receipt_id],
+            |row| row.get::<_, String>(0),
+        )
+        .test_unwrap();
+    let mut receipt: ChioReceipt = serde_json::from_str(&raw_json).test_unwrap();
+    mutate(&mut receipt);
+    let tampered = serde_json::to_string(&receipt).test_unwrap();
+    connection
+        .execute(
+            "UPDATE chio_tool_receipts SET raw_json = ?1 WHERE receipt_id = ?2",
+            rusqlite::params![tampered, receipt_id],
+        )
+        .test_unwrap();
+    connection
+        .execute(
+            "UPDATE claim_receipt_log_entries SET raw_json = ?1 \
+                 WHERE receipt_id = ?2 AND receipt_kind = 'tool_receipt'",
+            rusqlite::params![tampered, receipt_id],
+        )
+        .test_unwrap();
+}
+
+#[test]
+fn health_detects_invalid_uncheckpointed_receipt_bytes() {
+    // `receipt_store_health()` scans the uncheckpointed range via
+    // `load_claim_tree_canonical_bytes_range`, which decodes and
+    // signature-verifies each receipt. Corrupting the canonical bytes
+    // of a receipt that has not yet been checkpointed must surface as
+    // an error out of `receipt_store_health()`. We bypass the
+    // checkpointer entirely by never calling
+    // `create_next_receipt_checkpoint`, leaving the appended receipts
+    // in the uncheckpointed range.
+    let path = unique_db_path("chio-receipts-health-uncheckpointed");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+
+    let receipt = sample_receipt_with_id_and_timestamp("rcpt-health-tamper", 1);
+    let seq = store
+        .append_chio_receipt_returning_seq(&receipt)
+        .test_unwrap();
+    store.flush_receipt_writes().test_unwrap();
+
+    // Sanity: with the receipt appended but no checkpoint produced, the
+    // health probe must classify the receipt as uncheckpointed.
+    let healthy = store.receipt_store_health().test_unwrap();
+    assert!(
+        healthy.healthy,
+        "store must be healthy before tampering: {healthy:?}"
+    );
+    assert_eq!(healthy.latest_committed_entry_seq, seq);
+    assert_eq!(healthy.latest_checkpointed_entry_seq, 0);
+    assert_eq!(healthy.uncheckpointed_start_seq, Some(seq));
+    assert_eq!(healthy.uncheckpointed_end_seq, Some(seq));
+
+    tamper_canonical_bytes_of_uncheckpointed_receipt(&store, &receipt.id, |receipt| {
+        receipt.tool_name = "sh".to_string();
+    });
+
+    let error = store.receipt_store_health().test_unwrap_err();
+    let message = error.to_string();
+    assert!(
+        message.contains("invalid signature") || message.contains("verification failed"),
+        "unexpected health error: {message}"
+    );
+
+    let _ = fs::remove_file(path);
 }

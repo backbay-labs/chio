@@ -5,7 +5,7 @@
   "claimLevel": "technical_control_plane_thesis",
   "decision": "technical_claim_qualified_market_thesis_not_yet_qualified",
   "qualifiedClaim": {
-    "summary": "Chio ships a cryptographically signed, fail-closed, intent-aware governance control plane with shared executor registry resolution, signed route-selection evidence, multi-hop receipt lineage, and a shared lifecycle contract across the qualified authoritative HTTP, MCP, OpenAI, A2A, and ACP surfaces.",
+    "summary": "Chio ships a cryptographically signed, fail-closed, intent-aware governance control plane with shared executor registry resolution, signed route-selection evidence, multi-hop receipt lineage, and a shared lifecycle contract across the qualified authoritative HTTP, MCP, A2A, and ACP surfaces. OpenAI remains deferred until caller-executed function-tool mediation is separately implemented and qualified.",
     "constraints": [
       "Only the supported authoritative protocol surfaces are claim-eligible.",
       "Compatibility helpers remain non-authoritative and non-claim-eligible.",
@@ -33,7 +33,7 @@
       "witnesses": [
         "crates/chio-cross-protocol/src/lib.rs",
         "crates/chio-mcp-edge/src/runtime.rs",
-        "crates/chio-openai/src/lib.rs"
+        "docs/adr/ADR-0010-current-v1-receipt-kind-trace-semantics.md"
       ]
     },
     {
@@ -62,11 +62,10 @@
     },
     {
       "id": "CTRL3-03",
-      "summary": "Signed route-selection evidence is surfaced consistently on qualified HTTP/API, MCP, OpenAI, A2A, and ACP authoritative paths.",
+      "summary": "Signed route-selection evidence is surfaced consistently on qualified HTTP/API, MCP, A2A, and ACP authoritative paths. OpenAI remains deferred until separately qualified.",
       "witnesses": [
         "crates/chio-cross-protocol/src/lib.rs",
         "crates/chio-http-core/src/authority.rs",
-        "crates/chio-openai/src/lib.rs",
         "crates/chio-mcp-edge/src/runtime.rs",
         "crates/chio-a2a-edge/src/lib.rs",
         "crates/chio-acp-edge/src/lib.rs"

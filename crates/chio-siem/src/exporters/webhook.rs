@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use zeroize::Zeroizing;
 
-use crate::alerting::{derive_severity, AlertSeverity};
+use crate::alerting::{derive_event_severity, AlertSeverity};
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::exporters::require_https_endpoint;
@@ -217,13 +217,13 @@ impl WebhookExporter {
 
     fn should_forward(&self, event: &SiemEvent) -> bool {
         if let Some(min) = self.config.min_severity {
-            if derive_severity(&event.receipt) < min {
+            if derive_event_severity(event) < min {
                 return false;
             }
         }
 
         let guards: Vec<&str> = match &event.receipt.decision {
-            Decision::Deny { guard, .. } => {
+            Some(Decision::Deny { guard, .. }) => {
                 let mut gs: Vec<&str> = vec![guard.as_str()];
                 gs.extend(event.receipt.evidence.iter().map(|g| g.guard_name.as_str()));
                 gs

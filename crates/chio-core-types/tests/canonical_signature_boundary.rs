@@ -27,7 +27,13 @@ fn receipt_body(keypair: &Keypair) -> ChioReceiptBody {
         tool_name: "echo".to_string(),
         action: ToolCallAction::from_parameters(json!({"b": 2, "a": 1}))
             .test_unwrap("build receipt action"),
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: sha256_hex(b"content"),
         policy_hash: sha256_hex(b"policy"),
         evidence: vec![],
@@ -83,10 +89,10 @@ fn tampering_any_signed_receipt_field_fails_verification() {
         .test_unwrap("verify tampered policy receipt"));
 
     let mut tampered_decision = receipt.clone();
-    tampered_decision.decision = Decision::Deny {
+    tampered_decision.decision = Some(Decision::Deny {
         reason: "tampered".to_string(),
         guard: "test".to_string(),
-    };
+    });
     assert!(!tampered_decision
         .verify_signature()
         .test_unwrap("verify tampered decision receipt"));

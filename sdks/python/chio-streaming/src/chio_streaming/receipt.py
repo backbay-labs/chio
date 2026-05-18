@@ -117,7 +117,7 @@ def build_envelope(
     if not request_id:
         raise ChioStreamingConfigError("build_envelope requires a non-empty request_id")
 
-    verdict = "allow" if receipt.is_allowed else "deny"
+    verdict = "allow" if receipt.is_allowed else ("deny" if receipt.is_denied else "none")
     metadata = dict(extra_metadata or {})
 
     payload: dict[str, Any] = {

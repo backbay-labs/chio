@@ -20,10 +20,12 @@ import {
   type EvaluateResponse,
   type HttpMethod,
   CHIO_ERROR_CODES,
-  isDenied,
+  isAuthoritativeVerification,
+  isAuthorizedHttpReceipt,
+  isAllowed,
   resolveConfig,
   buildChioHttpRequest,
-  interceptWebRequest,
+  type Verdict,
 } from "@chio-protocol/node-http";
 import { createHash } from "node:crypto";
 
@@ -40,6 +42,14 @@ export interface ChioElysiaConfig extends ChioConfig {
 const VALID_METHODS = new Set<string>([
   "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS",
 ]);
+
+function verdictStatus(verdict: Verdict): number {
+  return "http_status" in verdict ? verdict.http_status : 403;
+}
+
+function verdictReason(verdict: Verdict): string {
+  return "reason" in verdict ? verdict.reason : "request was not authorized";
+}
 
 /**
  * Create an Elysia plugin that evaluates every request against Chio.
@@ -144,28 +154,34 @@ export function chio(config: ChioElysiaConfig = {}) {
       });
 
       try {
-        const result = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
+      const result = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
 
-        // Set receipt header
-        set.headers["X-Chio-Receipt-Id"] = result.receipt.id;
-
-        if (isDenied(result.verdict)) {
-          set.status = result.verdict.http_status;
+        if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(result.receipt)) {
+          set.status = verdictStatus(result.verdict);
           return {
             error: CHIO_ERROR_CODES.ACCESS_DENIED,
-            message: result.verdict.reason,
+            message: verdictReason(result.verdict),
             receipt_id: result.receipt.id,
             suggestion: "provide a valid capability token in the X-Chio-Capability header or chio_capability query parameter",
           };
         }
 
+        const verification = await resolved.client.verifyReceipt(result.receipt);
+        if (!isAuthoritativeVerification(verification, result.receipt)) {
+          set.status = 502;
+          return {
+            error: CHIO_ERROR_CODES.INVALID_RECEIPT,
+            message: "sidecar returned an unverified receipt",
+            receipt_id: result.receipt.id,
+          };
+        }
+
+        // Set receipt header after authorization and receipt verification.
+        set.headers["X-Chio-Receipt-Id"] = result.receipt.id;
+
         // Allow the request to proceed
         return undefined;
       } catch (error) {
-        if (resolved.onSidecarError === "allow") {
-          return undefined;
-        }
-
         const message = error instanceof Error ? error.message : String(error);
         set.status = 502;
         return {

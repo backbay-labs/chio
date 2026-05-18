@@ -1,16 +1,17 @@
 # Chiodos Bilateral Co-Signed Invocation: An in-toto Predicate Proposal
 
-**Status:** Draft v0.1 | **Date:** 2026-05-04
+**Status:** v1 (Chio-owned pre-release spec carrying an in-toto WG proposal) | **Date:** 2026-05-04
 **Intended audience:** in-toto Attestation WG; OpenSSF AI/ML Security
 WG; CoSAI Workstream 4. **Editors:** chio maintainers, per
 [CHIODOS_CONCEPT.md](../docs/research/CHIODOS_CONCEPT.md) section 5.
 
-This document proposes a new in-toto attestation predicate type for
-**bilateral co-signed runtime invocations** between two distinct
-organisational kernels. It is a draft proposal, not a finalised
-standard. The intent is either to land chiodos's bilateral-co-signed
-invocation semantics in the in-toto vocabulary or to confirm in writing
-the structural gap that motivates the chio-namespaced fallback.
+This document specifies the shipped Chio-owned predicate type
+`chio.bilateral-cosign-invocation.v1` for **bilateral co-signed runtime
+invocations** between two distinct organisational kernels, and carries
+the matching in-toto WG proposal that mirrors it. The intent is either
+to land chiodos's bilateral-co-signed invocation semantics in the
+in-toto vocabulary or to confirm in writing the structural gap that
+motivates the chio-namespaced predicate.
 
 The keywords MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT, MAY are to
 be interpreted as described in RFC 2119. Canonical JSON serialisation
@@ -21,12 +22,15 @@ follows RFC 8785 (JCS). DSSE follows the Secure Systems Lab spec
 
 ## 1. Status
 
-- **Version:** Draft v0.1; **Date:** 2026-05-04.
+- **Version:** v1 (Chio-owned pre-release spec carrying an in-toto WG
+  proposal); **Date:** 2026-05-04.
 - **Intended audience:** in-toto Attestation WG (primary), OpenSSF AI/ML
   Security WG (secondary), CoSAI Workstream 4 (secondary).
-- **Disposition:** Open for comment. Chio will adopt the chio-namespaced
-  fallback predicate type (section 3) immediately and switch to the
-  in-toto vocabulary once (or if) accepted.
+- **Disposition:** Chio ships the Chio-owned predicate type
+  `chio.bilateral-cosign-invocation.v1` (section 3) today and proposes
+  the matching in-toto canonical URI for adoption by the in-toto WG.
+  Implementations switch to the in-toto vocabulary once (or if) it is
+  accepted.
 - **Engagement contacts named:** Aditya Sirish A Yelgundhalli (in-toto),
   Tom Hennen (SLSA). See section 12.
 
@@ -95,7 +99,7 @@ Chiodos offline package verification is verifier-owned. The proof package
 MUST NOT define its own peer pins, accepted ladder refs, action-class
 policy, workflow-intersection acceptance hash, revocation checkpoint, BBS
 issuer trust, authority lifecycle, or disclosure policy. Those values are
-supplied by `chio.chiodos.verifier-trust-bundle.v3` plus the required
+supplied by `chio.chiodos.verifier-trust-bundle.v1` plus the required
 `chio.chiodos.verification-context.v1`. A verifier MUST reject packages
 whose embedded hints disagree with the trust bundle or whose BBS proof
 nonce is not bound to the verifier context.

@@ -71,11 +71,11 @@ if len(set(proof.get("disclosed_indices", []))) != len(proof.get("disclosed_indi
     raise SystemExit("Chiodos BBS fixture disclosed indices must be unique")
 if package.get("schema") != "chio.chiodos.proof-package.v1":
     raise SystemExit("Chiodos proof package uses the wrong schema")
-if trust_bundle.get("schema") != "chio.chiodos.verifier-trust-bundle.v3":
+if trust_bundle.get("schema") != "chio.chiodos.verifier-trust-bundle.v1":
     raise SystemExit("Chiodos verifier trust bundle uses the wrong schema")
 if context.get("schema") != "chio.chiodos.verification-context.v1":
     raise SystemExit("Chiodos verification context uses the wrong schema")
-if report.get("schema") != "chio.chiodos.verifier-report.v2":
+if report.get("schema") != "chio.chiodos.verifier-report.v1":
     raise SystemExit("Chiodos verifier report uses the wrong schema")
 if not report.get("accepted"):
     raise SystemExit("Chiodos verifier report is not accepted")
@@ -210,11 +210,11 @@ expected_schemas = {
     "governance-receipt.schema.json": "chio.governance-receipt.v1",
     "lease-scope-binding.schema.json": "chio.chiodos-lease-scope-binding.v1",
     "proof-package.schema.json": "chio.chiodos.proof-package.v1",
-    "verifier-trust-bundle.schema.json": "chio.chiodos.verifier-trust-bundle.v3",
+    "verifier-trust-bundle.schema.json": "chio.chiodos.verifier-trust-bundle.v1",
     "workflow-intersection.schema.json": "chio.chiodos-workflow-intersection.v1",
     "trusted-issuer-registry.schema.json": "chio.chiodos.trusted-issuer-registry.v1",
     "selective-disclosure-proof.schema.json": "chio.selective-disclosure-proof.v1",
-    "verifier-report.schema.json": "chio.chiodos.verifier-report.v2",
+    "verifier-report.schema.json": "chio.chiodos.verifier-report.v1",
     "revocation-checkpoint.schema.json": "chio.chiodos.revocation-checkpoint.v1",
     "verification-context.schema.json": "chio.chiodos.verification-context.v1",
     "negative-fixture-corpus.schema.json": "chio.chiodos.negative-fixture-corpus.v1",

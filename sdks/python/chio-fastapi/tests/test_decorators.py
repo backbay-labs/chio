@@ -68,6 +68,7 @@ class TestChioRequires:
         mock_client.evaluate_http_request = AsyncMock(
             return_value=_make_evaluation(allowed=True)
         )
+        mock_client.verify_http_receipt = AsyncMock(return_value=True)
         set_chio_client(mock_client)
 
         @app.post("/deploy")
@@ -93,6 +94,7 @@ class TestChioRequires:
         mock_client.evaluate_http_request = AsyncMock(
             return_value=_make_evaluation(allowed=False)
         )
+        mock_client.verify_http_receipt = AsyncMock(return_value=False)
         set_chio_client(mock_client)
 
         @app.post("/deploy")
@@ -154,6 +156,7 @@ class TestChioRequires:
         mock_client.evaluate_http_request = AsyncMock(
             return_value=_make_evaluation(allowed=True)
         )
+        mock_client.verify_http_receipt = AsyncMock(return_value=True)
         set_chio_client(mock_client)
 
         @app.get("/read")
@@ -164,6 +167,28 @@ class TestChioRequires:
         client = TestClient(app)
         resp = client.get("/read?chio_capability=cap-qp")
         assert resp.status_code == 200
+
+        set_chio_client(None)
+
+    def test_unverified_allow_returns_502(self) -> None:
+        app = FastAPI()
+
+        mock_client = AsyncMock()
+        mock_client.evaluate_http_request = AsyncMock(
+            return_value=_make_evaluation(allowed=True)
+        )
+        mock_client.verify_http_receipt = AsyncMock(return_value=False)
+        set_chio_client(mock_client)
+
+        @app.get("/read")
+        @chio_requires("read-server", "read")
+        async def read_handler(request: Request) -> dict:
+            return {"data": "ok"}
+
+        client = TestClient(app)
+        resp = client.get("/read?chio_capability=cap-qp")
+        assert resp.status_code == 502
+        assert resp.json()["error"]["code"] == "CHIO_INTERNAL_ERROR"
 
         set_chio_client(None)
 

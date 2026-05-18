@@ -149,12 +149,22 @@ def chio_requires(
 
             receipt = evaluation.receipt
 
-            if receipt.is_denied:
+            if not evaluation.verdict.is_allowed or not receipt.is_allowed:
                 return chio_error_response(
                     receipt.verdict.http_status or 403,
                     ChioErrorCode.GUARD_DENIED,
                     receipt.verdict.reason or "denied",
                     guard=receipt.verdict.guard,
+                )
+            try:
+                verification = await client.verify_http_receipt(receipt)
+            except (ChioConnectionError, ChioTimeoutError, ChioError):
+                verification = None
+            if verification is None or not verification.authorizes(receipt):
+                return chio_error_response(
+                    502,
+                    ChioErrorCode.INTERNAL_ERROR,
+                    "Chio sidecar returned an unverified receipt",
                 )
 
             # Attach receipt to request state

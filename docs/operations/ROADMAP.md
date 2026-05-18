@@ -1,13 +1,20 @@
 # Chio Universal Security Kernel: Execution Roadmap
 
+> Historical internal planning note. `v2.x` labels in this document are
+> pre-release implementation milestones, not Chio-owned protocol, schema, SDK,
+> or runtime versions. Current protocol posture is v1-only; use
+> `spec/PROTOCOL.md`, `spec/README.md`, and
+> `docs/release/RELEASE_CANDIDATE.md` for the live boundary.
+
 > **Date**: April 2026
 > **Synthesized from**: 35 protocol docs, 13 guard docs, 8 research agents,
 > 6 review agents, 3 critique cycles, and the priority adjustments in
 > `docs/protocols/REVIEW-FINDINGS-AND-NEXT-STEPS.md`.
 >
 > **Canonical type contract**: `docs/protocols/ADR-TYPE-EVOLUTION.md`
-> **Priority source of truth**: This document. Where other docs disagree,
-> this roadmap takes precedence.
+> **Historical priority note**: This document was the source of truth for the
+> milestone program it records. It does not override the current v1-only
+> protocol posture.
 
 ---
 

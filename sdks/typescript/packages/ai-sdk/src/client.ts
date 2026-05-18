@@ -4,11 +4,10 @@
  * The sidecar exposes `POST /chio/evaluate` which accepts an `ChioHttpRequest`
  * payload. For AI SDK tool calls, this client builds a synthetic HTTP request
  * envelope that carries the tool identity plus arguments while remaining
- * decodable by the sidecar's HTTP substrate. It also normalizes both the
- * canonical `EvaluateResponse { verdict, receipt, evidence }` shape and the
- * older Lambda evaluator's flatter `{ receipt_id, decision }` shape to a
- * stable `ChioReceipt` API, while staying deliberately small so the Vercel AI
- * SDK wrapper does not pull in the full HTTP-substrate package.
+ * decodable by the sidecar's HTTP substrate. It normalizes the canonical
+ * `EvaluateResponse { verdict, receipt, evidence }` shape to a stable
+ * `ChioReceipt` API, while staying deliberately small so the Vercel AI SDK
+ * wrapper does not pull in the full HTTP-substrate package.
  *
  * Transport uses `globalThis.fetch` (Node >= 20 ships it natively) and
  * supports a pluggable `fetch` override for testing.
@@ -31,7 +30,13 @@ export interface ChioDecision {
 /** Minimal shape of a sidecar-issued receipt we care about. */
 export interface ChioReceipt {
   id: string;
-  decision: ChioDecision;
+  decision?: ChioDecision | undefined;
+  receipt_kind: "mediated_decision" | "trace_observation" | "advisory_evaluation";
+  boundary_class: "prevent" | "detect_only" | "advisory_only";
+  observation_outcome?: string | undefined;
+  tool_origin: "caller_executed" | "host_executed_provider_reported" | "host_executed_unmediated";
+  redaction_mode: "none" | "summary" | "redacted";
+  trust_level: "mediated" | "verified" | "advisory";
   // Additional fields (tool_server, tool_name, signature, ...) are ignored
   // by this client but preserved on the wire for higher-level consumers.
   [key: string]: unknown;
@@ -221,16 +226,30 @@ export class ChioClient {
         );
       }
 
-      const receipt = normalizeReceipt(await response.json());
-      if (receipt == null || typeof receipt !== "object" || receipt.decision == null) {
+      const receipt = normalizeReceipt(await response.json(), this.debug);
+      if (receipt == null || typeof receipt !== "object" || typeof receipt.id !== "string") {
         throw new ChioClientError(
           "chio_invalid_receipt",
-          "sidecar response missing `decision` field",
+          "sidecar response missing receipt id",
+        );
+      }
+      if (!hasStructuralAuthorityFields(receipt)) {
+        throw new ChioClientError(
+          "chio_invalid_receipt",
+          "sidecar receipt missing structural v1 authority fields",
+        );
+      }
+      if (isAllowDecision(receipt.decision) && !isAuthoritativeAllowReceipt(receipt)) {
+        throw new ChioClientError(
+          "chio_invalid_receipt",
+          "allow receipt is not a mediated prevent authorization",
         );
       }
       this.debug?.("chio.evaluate.response", {
         id: receipt.id,
-        verdict: receipt.decision.verdict,
+        verdict: receipt.decision?.verdict ?? "none",
+        receipt_kind: receipt.receipt_kind,
+        boundary_class: receipt.boundary_class,
       });
       return receipt;
     } catch (error) {
@@ -311,7 +330,10 @@ function sha256Hex(input: Uint8Array): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
-function normalizeReceipt(raw: unknown): ChioReceipt {
+function normalizeReceipt(
+  raw: unknown,
+  debug?: ((message: string, data?: unknown) => void) | undefined,
+): ChioReceipt {
   if (raw == null || typeof raw !== "object") {
     throw new ChioClientError(
       "chio_invalid_receipt",
@@ -319,43 +341,130 @@ function normalizeReceipt(raw: unknown): ChioReceipt {
     );
   }
   const record = raw as Record<string, unknown>;
-  const recordDecision = normalizeDecision(record.decision) ?? normalizeDecision(record.verdict);
-  if (typeof record.id === "string" && recordDecision != null) {
-    return {
-      ...record,
-      decision: recordDecision,
-    } as ChioReceipt;
+  if (typeof record.id === "string") {
+    // Bare receipt: no enveloping EvaluateResponse, so there is no
+    // separate top-level verdict to carry through.
+    return liftReceiptDecision(record, undefined, debug);
   }
   if (record.receipt != null && typeof record.receipt === "object") {
     const receipt = record.receipt as Record<string, unknown>;
-    const receiptDecision =
-      normalizeDecision(receipt.decision)
-      ?? normalizeDecision(receipt.verdict)
-      ?? normalizeDecision(record.verdict);
-    if (typeof receipt.id === "string" && receiptDecision != null) {
-      return {
-        ...receipt,
-        decision: receiptDecision,
-      } as ChioReceipt;
+    if (typeof receipt.id === "string") {
+      // EvaluateResponse envelope: the top-level `verdict` is the
+      // already-parsed authoritative verdict for the request. Pass it
+      // down so the receipt-side lifting can fall back to it when the
+      // receipt body lacks a parseable `decision`/`verdict`.
+      return liftReceiptDecision(receipt, record.verdict, debug);
     }
-  }
-  if (typeof record.receipt_id === "string" && typeof record.decision === "string") {
-    return {
-      ...record,
-      id: record.receipt_id,
-      decision: {
-        verdict: record.decision as ChioVerdict,
-        reason: typeof record.reason === "string" ? record.reason : undefined,
-      },
-    };
   }
   throw new ChioClientError(
     "chio_invalid_receipt",
-    "sidecar response missing a recognizable receipt decision shape",
+    "sidecar response missing a recognizable receipt id",
   );
 }
 
+/**
+ * Reconcile the receipt verdict carried on the wire with the typed
+ * `decision` field consumed by `chioTool`.
+ *
+ * The Rust `HttpReceipt` wire shape carries a tagged `verdict` enum
+ * (`{"verdict":"allow"}`, `{"verdict":"deny", "reason":..., "guard":...}`,
+ * ...). Earlier evaluator contracts published a sibling `decision` object;
+ * the modern sidecar does not. To stay compatible with both we:
+ *
+ *   1. Try the canonical `decision` field first.
+ *   2. Fall back to lifting `receipt.verdict` into `decision` when the
+ *      sidecar omits `decision`. The Rust `HttpReceipt.verdict` is a
+ *      tagged-enum object (`{"verdict":"allow"}`) and is the
+ *      authoritative source on the modern wire.
+ *   3. As a last resort, fall back to the top-level EvaluateResponse
+ *      verdict (passed in as `parentVerdict`) when both receipt-side
+ *      fields are malformed or missing. Without this fallback, an
+ *      otherwise-allowed tool use is silently denied because
+ *      `chioTool` requires `decision.verdict === "allow"`.
+ *   4. When both are present and disagree, prefer the typed `decision`
+ *      field and emit a `chio.evaluate.decision_verdict_mismatch` debug
+ *      event so operators can detect drift.
+ *
+ * The original `verdict` field is preserved on the spread output so
+ * downstream consumers that inspect raw wire fields keep working.
+ */
+function liftReceiptDecision(
+  receipt: Record<string, unknown>,
+  parentVerdict: unknown,
+  debug?: ((message: string, data?: unknown) => void) | undefined,
+): ChioReceipt {
+  const decisionFromDecisionField = normalizeDecision(receipt.decision);
+  const decisionFromVerdictField = normalizeDecision(receipt.verdict);
+  const decisionFromParentVerdict = normalizeDecision(parentVerdict);
+
+  let decision: ChioDecision | undefined;
+  if (decisionFromDecisionField != null) {
+    decision = decisionFromDecisionField;
+    if (
+      decisionFromVerdictField != null
+      && decisionFromVerdictField.verdict !== decisionFromDecisionField.verdict
+    ) {
+      debug?.("chio.evaluate.decision_verdict_mismatch", {
+        receipt_id: typeof receipt.id === "string" ? receipt.id : undefined,
+        decision_verdict: decisionFromDecisionField.verdict,
+        wire_verdict: decisionFromVerdictField.verdict,
+      });
+    }
+  } else if (decisionFromVerdictField != null) {
+    decision = decisionFromVerdictField;
+  } else if (decisionFromParentVerdict != null) {
+    decision = decisionFromParentVerdict;
+  }
+
+  return {
+    ...receipt,
+    ...(decision == null ? {} : { decision }),
+  } as ChioReceipt;
+}
+
+function isAllowDecision(decision: ChioDecision | undefined): boolean {
+  return decision?.verdict === "allow";
+}
+
+function hasStructuralAuthorityFields(receipt: ChioReceipt): boolean {
+  return (
+    (receipt.receipt_kind === "mediated_decision"
+      || receipt.receipt_kind === "trace_observation"
+      || receipt.receipt_kind === "advisory_evaluation")
+    && (receipt.boundary_class === "prevent"
+      || receipt.boundary_class === "detect_only"
+      || receipt.boundary_class === "advisory_only")
+    && (receipt.tool_origin === "caller_executed"
+      || receipt.tool_origin === "host_executed_provider_reported"
+      || receipt.tool_origin === "host_executed_unmediated")
+    && (receipt.redaction_mode === "none"
+      || receipt.redaction_mode === "summary"
+      || receipt.redaction_mode === "redacted")
+    && (receipt.trust_level === "mediated"
+      || receipt.trust_level === "verified"
+      || receipt.trust_level === "advisory")
+  );
+}
+
+function isAuthoritativeAllowReceipt(receipt: ChioReceipt): boolean {
+  return receipt.receipt_kind === "mediated_decision"
+    && receipt.boundary_class === "prevent"
+    && receipt.observation_outcome == null
+    && receipt.trust_level === "mediated"
+    && receipt.decision?.verdict === "allow";
+}
+
 function normalizeDecision(raw: unknown): ChioDecision | undefined {
+  // Accept both the legacy plain-string form and the canonical Rust
+  // tagged-enum form. The Rust `Verdict` enum uses
+  // `#[serde(tag = "verdict", rename_all = "snake_case")]` so an Allow
+  // variant serializes as `{"verdict":"allow"}` and a Deny variant as
+  // `{"verdict":"deny","reason":...,"guard":...,"http_status":403}`. The
+  // older SDK contract published a plain string in `receipt.decision`,
+  // so we honor both shapes here.
+  if (typeof raw === "string") {
+    return verdictFromTag(raw, undefined);
+  }
   if (raw == null || typeof raw !== "object") {
     return undefined;
   }
@@ -363,25 +472,24 @@ function normalizeDecision(raw: unknown): ChioDecision | undefined {
   if (typeof record.verdict !== "string") {
     return undefined;
   }
-  switch (record.verdict) {
+  return verdictFromTag(record.verdict, record);
+}
+
+function verdictFromTag(
+  verdict: string,
+  context: Record<string, unknown> | undefined,
+): ChioDecision | undefined {
+  const guard = typeof context?.guard === "string" ? context.guard : undefined;
+  const reason = typeof context?.reason === "string" ? context.reason : undefined;
+  switch (verdict) {
     case "allow":
       return { verdict: "allow" };
     case "deny":
-      return {
-        verdict: "deny",
-        guard: typeof record.guard === "string" ? record.guard : undefined,
-        reason: typeof record.reason === "string" ? record.reason : undefined,
-      };
+      return { verdict: "deny", guard, reason };
     case "cancel":
-      return {
-        verdict: "cancel",
-        reason: typeof record.reason === "string" ? record.reason : undefined,
-      };
+      return { verdict: "cancel", reason };
     case "incomplete":
-      return {
-        verdict: "incomplete",
-        reason: typeof record.reason === "string" ? record.reason : undefined,
-      };
+      return { verdict: "incomplete", reason };
     default:
       return undefined;
   }

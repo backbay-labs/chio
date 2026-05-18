@@ -11,7 +11,6 @@ from pydantic import TypeAdapter, ValidationError
 from chio_sdk._generated import (
     CapabilityToken as GeneratedCapabilityToken,
     ChioCapabilitytoken,
-    ChioCapabilitytokenV2,
 )
 from chio_sdk._generated.capability import Constraint as GeneratedConstraint
 from chio_sdk._generated.jsonrpc import ChioJsonRpc20Response
@@ -52,10 +51,10 @@ def _generated_v1_token() -> dict[str, object]:
     }
 
 
-def _generated_v2_token() -> dict[str, object]:
+def _generated_attenuated_token() -> dict[str, object]:
     return {
-        "schema": "chio.capability.v2",
-        "id": "cap-v2",
+        "schema": "chio.capability.v1",
+        "id": "cap-attenuated",
         "issuer": "a" * 64,
         "subject": "b" * 64,
         "scope": {"grants": []},
@@ -102,22 +101,22 @@ class TestGeneratedWireModels:
         token = GeneratedCapabilityToken.model_validate(_generated_v1_token())
         assert isinstance(token, ChioCapabilitytoken)
 
-    def test_top_level_capability_token_alias_accepts_v2(self) -> None:
-        token = GeneratedCapabilityToken.model_validate(_generated_v2_token())
-        assert isinstance(token, ChioCapabilitytokenV2)
+    def test_top_level_capability_token_alias_accepts_attenuated_current(self) -> None:
+        token = GeneratedCapabilityToken.model_validate(_generated_attenuated_token())
+        assert isinstance(token, ChioCapabilitytoken)
 
     def test_top_level_capability_token_constructor_dispatches(self) -> None:
         token_v1 = GeneratedCapabilityToken(**_generated_v1_token())
-        token_v2 = GeneratedCapabilityToken(**_generated_v2_token())
+        token_attenuated = GeneratedCapabilityToken(**_generated_attenuated_token())
 
         assert isinstance(token_v1, ChioCapabilitytoken)
-        assert isinstance(token_v2, ChioCapabilitytokenV2)
+        assert isinstance(token_attenuated, ChioCapabilitytoken)
 
-    def test_top_level_capability_token_schema_includes_both_versions(self) -> None:
+    def test_top_level_capability_token_schema_is_current(self) -> None:
         schema = GeneratedCapabilityToken.model_json_schema()
         serialized = json.dumps(schema)
         assert "chio.capability.v1" in serialized
-        assert "chio.capability.v2" in serialized
+        assert "chio.capability.experimental" not in serialized
 
     def test_top_level_capability_token_type_adapter_dispatches_python(self) -> None:
         token = GeneratedCapabilityToken.model_validate(_generated_v1_token())
@@ -129,22 +128,24 @@ class TestGeneratedWireModels:
         adapted_v1 = TypeAdapter(GeneratedCapabilityToken).validate_python(
             _generated_v1_token()
         )
-        adapted_v2 = TypeAdapter(GeneratedCapabilityToken).validate_python(
-            _generated_v2_token()
+        adapted_attenuated = TypeAdapter(GeneratedCapabilityToken).validate_python(
+            _generated_attenuated_token()
         )
         assert isinstance(adapted_v1, ChioCapabilitytoken)
-        assert isinstance(adapted_v2, ChioCapabilitytokenV2)
+        assert isinstance(adapted_attenuated, ChioCapabilitytoken)
 
-    def test_top_level_capability_token_json_dispatch_accepts_v2(self) -> None:
+    def test_top_level_capability_token_json_dispatch_accepts_attenuated_current(
+        self,
+    ) -> None:
         token = GeneratedCapabilityToken.model_validate_json(
-            json.dumps(_generated_v2_token())
+            json.dumps(_generated_attenuated_token())
         )
-        assert isinstance(token, ChioCapabilitytokenV2)
+        assert isinstance(token, ChioCapabilitytoken)
 
         adapted = TypeAdapter(GeneratedCapabilityToken).validate_json(
-            json.dumps(_generated_v2_token())
+            json.dumps(_generated_attenuated_token())
         )
-        assert isinstance(adapted, ChioCapabilitytokenV2)
+        assert isinstance(adapted, ChioCapabilitytoken)
 
     def test_constraint_value_payload_round_trips(self) -> None:
         constraint = GeneratedConstraint.model_validate(
@@ -576,6 +577,11 @@ class TestChioReceipt:
                 parameter_hash="abc",
             ),
             decision=Decision.allow(),
+            receipt_kind="mediated_decision",
+            boundary_class="prevent",
+            tool_origin="caller_executed",
+            redaction_mode="none",
+            trust_level="mediated",
             content_hash="deadbeef",
             policy_hash="cafebabe",
             kernel_key="kernelkey",
@@ -593,6 +599,11 @@ class TestChioReceipt:
             tool_name="write_file",
             action=ToolCallAction(parameters={}, parameter_hash="x"),
             decision=Decision.deny("forbidden", "PathGuard"),
+            receipt_kind="mediated_decision",
+            boundary_class="prevent",
+            tool_origin="caller_executed",
+            redaction_mode="none",
+            trust_level="mediated",
             content_hash="aa",
             policy_hash="bb",
             evidence=[
@@ -621,10 +632,15 @@ class TestHttpReceipt:
             method="GET",
             caller_identity_hash="abc",
             verdict=Verdict.allow(),
+            receipt_kind="mediated_decision",
+            boundary_class="prevent",
+            tool_origin="caller_executed",
+            redaction_mode="none",
             response_status=200,
             timestamp=1700000000,
             content_hash="x",
             policy_hash="y",
+            trust_level="mediated",
             kernel_key="k",
             signature="s",
         )

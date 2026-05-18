@@ -149,7 +149,8 @@ internal class ChioFlinkEvaluator<IN>(
                 )
         }
 
-        if (receipt.isDenied()) {
+        val receiptAuthorized = receipt.isAllowed() && c.verifyReceipt(receipt)
+        if (!receiptAuthorized) {
             metrics?.denyTotal?.inc()
             val originalBytes = BodyCoercion.canonicalBodyBytes(element)
             val dlqRecord =

@@ -12,6 +12,45 @@ from django.http import HttpResponse, JsonResponse
 from chio_django.middleware import ChioDjangoMiddleware, _extract_caller
 
 
+def _allow_http_receipt(receipt_id: str) -> dict:
+    return {
+        "id": receipt_id,
+        "request_id": "req-1",
+        "route_pattern": "/protected",
+        "method": "GET",
+        "caller_identity_hash": "a" * 64,
+        "verdict": {"verdict": "allow"},
+        "receipt_kind": "mediated_decision",
+        "boundary_class": "prevent",
+        "tool_origin": "caller_executed",
+        "redaction_mode": "none",
+        "trust_level": "mediated",
+        "evidence": [],
+        "response_status": 200,
+        "timestamp": 1_700_000_000,
+        "content_hash": "b" * 64,
+        "policy_hash": "c" * 64,
+        "kernel_key": "d" * 64,
+        "signature": "e" * 128,
+    }
+
+
+def _verify_report(authorized: bool) -> dict:
+    return {
+        "signature_valid": authorized,
+        "signer_trusted": authorized,
+        "receipt_id_valid": authorized,
+        "parameter_hash_valid": authorized,
+        "receipt_kind": "mediated_decision",
+        "boundary_class": "prevent",
+        "trust_level": "mediated",
+        "result": "allow" if authorized else "deny",
+        "authorized": authorized,
+        "signer_key_hex": "d" * 64,
+        "ok": authorized,
+    }
+
+
 class TestExtractCaller:
     def test_bearer_token(self) -> None:
         factory = RequestFactory()
@@ -70,12 +109,12 @@ class TestMiddlewareAllowed(TestCase):
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
             "verdict": {"verdict": "allow"},
-            "receipt": {
-                "id": "receipt-1",
-                "verdict": {"verdict": "allow"},
-            },
+            "receipt": _allow_http_receipt("receipt-1"),
         }
-        mock_post.return_value = mock_resp
+        verify_resp = MagicMock()
+        verify_resp.status_code = 200
+        verify_resp.json.return_value = _verify_report(True)
+        mock_post.side_effect = [mock_resp, verify_resp]
 
         def get_response(request):
             return JsonResponse({"status": "ok"})
@@ -87,6 +126,7 @@ class TestMiddlewareAllowed(TestCase):
 
         assert response.status_code == 200
         assert response["X-Chio-Receipt"] == "receipt-1"
+        assert mock_post.call_count == 2
 
 
 class TestMiddlewareDenied(TestCase):
@@ -142,17 +182,38 @@ class TestMiddlewareSidecarDown(TestCase):
 
         assert response.status_code == 503
 
-    @override_settings(CHIO_FAIL_OPEN=True)
     @patch("chio_django.middleware.httpx.post")
-    def test_fail_open(self, mock_post: MagicMock) -> None:
+    def test_fail_open_setting_still_fails_closed(self, mock_post: MagicMock) -> None:
         import httpx
         mock_post.side_effect = httpx.ConnectError("connection refused")
 
-        observed_request = None
+        def get_response(request):
+            return JsonResponse({"status": "ok"})
+
+        with override_settings(CHIO_FAIL_OPEN=True):
+            mw = ChioDjangoMiddleware(get_response)
+            factory = RequestFactory()
+            request = factory.get("/protected")
+            response = mw(request)
+
+        assert response.status_code == 503
+
+
+class TestMiddlewareReceiptVerification(TestCase):
+    @patch("chio_django.middleware.httpx.post")
+    def test_legacy_valid_true_fails_closed(self, mock_post: MagicMock) -> None:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "verdict": {"verdict": "allow"},
+            "receipt": _allow_http_receipt("receipt-legacy-valid"),
+        }
+        verify_resp = MagicMock()
+        verify_resp.status_code = 200
+        verify_resp.json.return_value = {"valid": True}
+        mock_post.side_effect = [mock_resp, verify_resp]
 
         def get_response(request):
-            nonlocal observed_request
-            observed_request = request
             return JsonResponse({"status": "ok"})
 
         mw = ChioDjangoMiddleware(get_response)
@@ -160,11 +221,65 @@ class TestMiddlewareSidecarDown(TestCase):
         request = factory.get("/protected")
         response = mw(request)
 
-        assert response.status_code == 200
-        assert "X-Chio-Receipt" not in response
-        assert observed_request is not None
-        assert observed_request.chio_passthrough.mode == "allow_without_receipt"
-        assert observed_request.chio_passthrough.error == "chio_sidecar_unreachable"
+        assert response.status_code == 502
+        body = json.loads(response.content)
+        assert body["error"]["code"] == "CHIO_INVALID_RECEIPT"
+
+    @patch("chio_django.middleware.httpx.post")
+    def test_unverified_allow_fails_closed(self, mock_post: MagicMock) -> None:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "verdict": {"verdict": "allow"},
+            "receipt": _allow_http_receipt("receipt-3"),
+        }
+        verify_resp = MagicMock()
+        verify_resp.status_code = 200
+        verify_resp.json.return_value = _verify_report(False)
+        mock_post.side_effect = [mock_resp, verify_resp]
+
+        def get_response(request):
+            return JsonResponse({"status": "ok"})
+
+        mw = ChioDjangoMiddleware(get_response)
+        factory = RequestFactory()
+        request = factory.get("/protected")
+        response = mw(request)
+
+        assert response.status_code == 502
+        body = json.loads(response.content)
+        assert body["error"]["code"] == "CHIO_INVALID_RECEIPT"
+
+    @patch("chio_django.middleware.httpx.post")
+    def test_incomplete_fails_closed(self, mock_post: MagicMock) -> None:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "verdict": {
+                "verdict": "incomplete",
+                "reason": "sidecar timeout",
+                "http_status": 503,
+            },
+            "receipt": {
+                "id": "receipt-4",
+                "verdict": {
+                    "verdict": "incomplete",
+                    "reason": "sidecar timeout",
+                },
+            },
+        }
+        mock_post.return_value = mock_resp
+
+        def get_response(request):
+            return JsonResponse({"status": "ok"})
+
+        mw = ChioDjangoMiddleware(get_response)
+        factory = RequestFactory()
+        request = factory.get("/protected")
+        response = mw(request)
+
+        assert response.status_code == 503
+        assert mock_post.call_count == 1
 
 
 class TestMiddlewareBadSidecarResponse(TestCase):

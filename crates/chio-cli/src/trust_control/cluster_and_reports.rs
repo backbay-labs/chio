@@ -26,7 +26,7 @@ async fn handle_internal_cluster_status(
     let replication = match cluster_replication_heads(&state) {
         Ok(replication) => replication,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     let peers = match cluster.lock() {
@@ -94,10 +94,7 @@ async fn handle_internal_cluster_status(
     .into_response()
 }
 
-fn internal_cluster_http_error(
-    context: &'static str,
-    error: &dyn std::fmt::Display,
-) -> Response {
+fn internal_cluster_http_error(context: &'static str, error: &dyn std::fmt::Display) -> Response {
     warn!(error = %error, "{context}");
     plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, context)
 }
@@ -227,13 +224,13 @@ async fn handle_internal_authority_snapshot(
         let authority = match SqliteCapabilityAuthority::open(path) {
             Ok(authority) => authority,
             Err(error) => {
-                return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+                return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
             }
         };
         let snapshot = match authority.snapshot() {
             Ok(snapshot) => snapshot,
             Err(error) => {
-                return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+                return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
             }
         };
         return Json(authority_snapshot_view(snapshot)).into_response();
@@ -266,7 +263,7 @@ async fn handle_internal_revocations_delta(
     ) {
         Ok(records) => records,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     Json(RevocationDeltaResponse {
@@ -295,18 +292,21 @@ async fn handle_internal_tool_receipts_delta(
         Ok(store) => store,
         Err(response) => return response,
     };
-    let records = match store
-        .list_tool_receipts_after_seq(query.after_seq.unwrap_or(0), list_limit(query.limit))
-    {
+    let read_context = ReceiptReadContext::admin_service();
+    let records = match store.list_tool_receipts_after_seq_with_context(
+        &read_context,
+        query.after_seq.unwrap_or(0),
+        list_limit(query.limit),
+    ) {
         Ok(records) => records,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     let records = match stored_tool_receipt_views(records) {
         Ok(records) => records,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     Json(ReceiptDeltaResponse { records }).into_response()
@@ -326,18 +326,21 @@ async fn handle_internal_child_receipts_delta(
         Ok(store) => store,
         Err(response) => return response,
     };
-    let records = match store
-        .list_child_receipts_after_seq(query.after_seq.unwrap_or(0), list_limit(query.limit))
-    {
+    let read_context = ReceiptReadContext::admin_service();
+    let records = match store.list_child_receipts_after_seq_with_context(
+        &read_context,
+        query.after_seq.unwrap_or(0),
+        list_limit(query.limit),
+    ) {
         Ok(records) => records,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     let records = match stored_child_receipt_views(records) {
         Ok(records) => records,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     Json(ReceiptDeltaResponse { records }).into_response()
@@ -364,7 +367,7 @@ async fn handle_internal_budgets_delta(
     ) {
         Ok(events) => events,
         Err(error) => {
-            return internal_cluster_http_error("failed to collect budget mutation deltas", &error)
+            return internal_cluster_http_error("failed to collect budget mutation deltas", &error);
         }
     };
     let records = if mutation_events.is_empty() {
@@ -373,7 +376,10 @@ async fn handle_internal_budgets_delta(
         match collect_budget_projection_views_for_events(&store, &mutation_events) {
             Ok(records) => records,
             Err(error) => {
-                return internal_cluster_http_error("failed to collect budget projection deltas", &error)
+                return internal_cluster_http_error(
+                    "failed to collect budget projection deltas",
+                    &error,
+                );
             }
         }
     };
@@ -403,7 +409,7 @@ async fn handle_internal_lineage_delta(
     {
         Ok(records) => records,
         Err(error) => {
-            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
     Json(LineageDeltaResponse {
@@ -686,7 +692,10 @@ fn import_budget_delta_response(
         .collect::<Result<Vec<_>, _>>()?;
     store.import_snapshot_records(&usage_records, &mutation_records)?;
 
-    let previous_cursor_seq = current_cursor.as_ref().map(|cursor| cursor.seq).unwrap_or(0);
+    let previous_cursor_seq = current_cursor
+        .as_ref()
+        .map(|cursor| cursor.seq)
+        .unwrap_or(0);
     let mut next_cursor = current_cursor;
     for event in &response.mutation_events {
         next_cursor = Some(merge_budget_cursor(
@@ -1035,7 +1044,7 @@ fn json_response_with_leader_visibility_and_budget_commit<T: Serialize>(
             return plain_http_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 &format!("failed to serialize trust control response: {error}"),
-            )
+            );
         }
     };
     let Value::Object(map) = &mut value else {
@@ -1056,7 +1065,7 @@ fn json_response_with_leader_visibility_and_budget_commit<T: Serialize>(
                     return plain_http_error(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &format!("failed to serialize cluster authority lease metadata: {error}"),
-                    )
+                    );
                 }
             };
             map.insert("clusterAuthority".to_string(), authority_lease);
@@ -1069,7 +1078,7 @@ fn json_response_with_leader_visibility_and_budget_commit<T: Serialize>(
                 return plain_http_error(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     &format!("failed to serialize budget quorum commit metadata: {error}"),
-                )
+                );
             }
         };
         map.insert("budgetCommit".to_string(), budget_commit);
@@ -1457,12 +1466,34 @@ fn stored_lineage_views(records: Vec<StoredCapabilitySnapshot>) -> Vec<StoredLin
         .collect()
 }
 
-fn decision_kind(decision: &Decision) -> &'static str {
+fn decision_kind(decision: Option<&Decision>) -> &'static str {
     match decision {
-        Decision::Allow => "allow",
-        Decision::Deny { .. } => "deny",
-        Decision::Cancelled { .. } => "cancelled",
-        Decision::Incomplete { .. } => "incomplete",
+        Some(Decision::Allow) => "allow",
+        Some(Decision::Deny { .. }) => "deny",
+        Some(Decision::Cancelled { .. }) => "cancelled",
+        Some(Decision::Incomplete { .. }) => "incomplete",
+        None => "none",
+    }
+}
+
+/// Mirror of the store-side `receipt_decision_kind` logic so that
+/// CLI-driven filter queries against `chio_tool_receipts.decision_kind`
+/// see the same value that was persisted at write time.
+///
+/// Trace and advisory receipts carry no `Decision` and store their
+/// semantics-derived kind (e.g. `trace_observation`) in the column,
+/// so a plain `decision_kind(receipt.decision)` would produce `"none"`
+/// and miss those rows.
+fn receipt_decision_kind(receipt: &ChioReceipt) -> &'static str {
+    let semantics = receipt.semantic_fields();
+    if !semantics.is_authorized(receipt.decision.as_ref())
+        && matches!(&receipt.decision, Some(Decision::Allow))
+    {
+        return semantics.receipt_kind.as_str();
+    }
+    match receipt.decision.as_ref() {
+        Some(decision) => decision_kind(Some(decision)),
+        None => semantics.receipt_kind.as_str(),
     }
 }
 
@@ -1493,21 +1524,24 @@ fn budget_visibility_matches(
 fn normalize_cluster_url(value: &str) -> Result<String, CliError> {
     let normalized = value.trim().trim_end_matches('/');
     if normalized.is_empty() {
-        return Err(CliError::cli_other_error("cluster URL must not be empty".to_string()));
+        return Err(CliError::cli_other_error(
+            "cluster URL must not be empty".to_string(),
+        ));
     }
     Ok(normalized.to_string())
 }
 
 fn normalize_cluster_config_url(value: &str, allow_local: bool) -> Result<String, CliError> {
     let normalized = normalize_cluster_url(value)?;
-    let parsed = Url::parse(&normalized)
-        .map_err(|error| CliError::cli_other_error(format!("cluster URL must be valid: {error}")))?;
+    let parsed = Url::parse(&normalized).map_err(|error| {
+        CliError::cli_other_error(format!("cluster URL must be valid: {error}"))
+    })?;
     match parsed.scheme() {
         "http" | "https" => {}
         scheme => {
             return Err(CliError::cli_other_error(format!(
                 "cluster URL scheme `{scheme}` is not allowed"
-            )))
+            )));
         }
     }
     if allow_local {
@@ -1545,7 +1579,9 @@ fn validate_cluster_url_host(parsed: &Url) -> Result<(), CliError> {
                 CliError::cli_other_error("cluster URL must include a resolvable port".to_string())
             })?;
             let addrs = (host, port).to_socket_addrs().map_err(|error| {
-                CliError::cli_other_error(format!("cluster URL host `{host}` could not be resolved: {error}"))
+                CliError::cli_other_error(format!(
+                    "cluster URL host `{host}` could not be resolved: {error}"
+                ))
             })?;
             for addr in addrs {
                 if chio_external_guards::denied_external_guard_ip(addr.ip()) {
@@ -1559,7 +1595,7 @@ fn validate_cluster_url_host(parsed: &Url) -> Result<(), CliError> {
         None => {
             return Err(CliError::cli_other_error(
                 "cluster URL must include a host".to_string(),
-            ))
+            ));
         }
     }
     Ok(())
@@ -1657,9 +1693,10 @@ fn build_cluster_state_snapshot(
     let (tool_receipts, child_receipts, lineage) =
         if let Some(path) = state.config.receipt_db_path.as_deref() {
             let store = SqliteReceiptStore::open(path)?;
+            let read_context = ReceiptReadContext::admin_service();
             (
-                collect_tool_receipt_views(&store)?,
-                collect_child_receipt_views(&store)?,
+                collect_tool_receipt_views(&store, &read_context)?,
+                collect_child_receipt_views(&store, &read_context)?,
                 collect_lineage_views(&store)?,
             )
         } else {
@@ -1906,11 +1943,16 @@ fn collect_revocation_views(
 
 fn collect_tool_receipt_views(
     store: &SqliteReceiptStore,
+    read_context: &ReceiptReadContext,
 ) -> Result<Vec<StoredReceiptView>, CliError> {
     let mut after_seq = 0u64;
     let mut records = Vec::new();
     loop {
-        let batch = store.list_tool_receipts_after_seq(after_seq, MAX_LIST_LIMIT)?;
+        let batch = store.list_tool_receipts_after_seq_with_context(
+            read_context,
+            after_seq,
+            MAX_LIST_LIMIT,
+        )?;
         if batch.is_empty() {
             break;
         }
@@ -1923,11 +1965,16 @@ fn collect_tool_receipt_views(
 
 fn collect_child_receipt_views(
     store: &SqliteReceiptStore,
+    read_context: &ReceiptReadContext,
 ) -> Result<Vec<StoredReceiptView>, CliError> {
     let mut after_seq = 0u64;
     let mut records = Vec::new();
     loop {
-        let batch = store.list_child_receipts_after_seq(after_seq, MAX_LIST_LIMIT)?;
+        let batch = store.list_child_receipts_after_seq_with_context(
+            read_context,
+            after_seq,
+            MAX_LIST_LIMIT,
+        )?;
         if batch.is_empty() {
             break;
         }
@@ -2086,7 +2133,8 @@ fn merge_budget_cursor(current: Option<BudgetCursor>, candidate: BudgetCursor) -
     match current {
         Some(existing)
             if existing.seq > candidate.seq
-                || (existing.seq == candidate.seq && existing.updated_at >= candidate.updated_at) =>
+                || (existing.seq == candidate.seq
+                    && existing.updated_at >= candidate.updated_at) =>
         {
             existing
         }
@@ -2332,9 +2380,7 @@ async fn forward_authority_post_to_leader<B: Serialize>(
             })?;
         if let Ok(status) = client.cluster_status() {
             update_peer_reachable(state, &leader_url);
-            if status.has_quorum
-                && status.leader_url.as_deref() == Some(leader_url.as_str())
-            {
+            if status.has_quorum && status.leader_url.as_deref() == Some(leader_url.as_str()) {
                 if let Some(lease) = status.authority_lease.as_ref() {
                     if lease.lease_valid && lease.leader_url == leader_url {
                         authority_term = lease.term;
@@ -2599,10 +2645,7 @@ fn clear_cluster_peer_auth_failures(node_id: &str) {
     }
 }
 
-fn cluster_peer_auth_unverified_failure_key(
-    node_id: &str,
-    endpoint: &str,
-) -> String {
+fn cluster_peer_auth_unverified_failure_key(node_id: &str, endpoint: &str) -> String {
     let payload = format!("{node_id}\0{endpoint}");
     format!("unverified:{}", sha256_hex(payload.as_bytes()))
 }
@@ -2822,14 +2865,30 @@ fn refresh_authority_mutation_fence(state: &TrustServiceState) -> Result<(), Res
 }
 
 fn validate_service_auth(headers: &HeaderMap, service_token: &str) -> Result<(), Response> {
-    let header = headers
-        .get(AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default();
-    let provided = header.strip_prefix("Bearer ").unwrap_or_default();
+    if service_token.is_empty() {
+        return Err(plain_http_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "control service token must be non-empty",
+        ));
+    }
+    let Some(provided) = control_bearer_token(headers) else {
+        return Err(missing_or_invalid_control_token());
+    };
     if bool::from(provided.as_bytes().ct_eq(service_token.as_bytes())) {
         return Ok(());
     }
+    Err(missing_or_invalid_control_token())
+}
+
+fn control_bearer_token(headers: &HeaderMap) -> Option<&str> {
+    let header = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())?;
+    let provided = header.strip_prefix("Bearer ")?;
+    (!provided.is_empty()).then_some(provided)
+}
+
+fn missing_or_invalid_control_token() -> Response {
     let mut response = plain_http_error(
         StatusCode::UNAUTHORIZED,
         "missing or invalid control bearer token",
@@ -2837,7 +2896,103 @@ fn validate_service_auth(headers: &HeaderMap, service_token: &str) -> Result<(),
     response
         .headers_mut()
         .insert(WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
-    Err(response)
+    response
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ResolvedControlReadPrincipal {
+    AdminService,
+    TenantRead { tenant_id: String },
+}
+
+impl ResolvedControlReadPrincipal {
+    fn receipt_read_context(&self) -> ReceiptReadContext {
+        match self {
+            Self::AdminService => ReceiptReadContext::admin_service(),
+            Self::TenantRead { tenant_id } => {
+                ReceiptReadContext::authenticated_tenant(tenant_id.clone())
+            }
+        }
+    }
+
+    fn authorize_evidence_export_query(
+        &self,
+        mut query: EvidenceExportQuery,
+    ) -> Result<EvidenceExportQuery, Response> {
+        match self {
+            Self::AdminService => Ok(query),
+            Self::TenantRead { tenant_id } => {
+                match &query.read_boundary {
+                    Some(ReceiptReadBoundary::AdminAll) => {
+                        return Err(plain_http_error(
+                            StatusCode::FORBIDDEN,
+                            "tenant read token cannot request admin-all evidence export",
+                        ));
+                    }
+                    Some(ReceiptReadBoundary::TenantScoped { tenant }) if tenant != tenant_id => {
+                        return Err(plain_http_error(
+                            StatusCode::FORBIDDEN,
+                            "tenant read token cannot export evidence for another tenant",
+                        ));
+                    }
+                    Some(ReceiptReadBoundary::TenantScoped { .. }) => {}
+                    None => {
+                        query.read_boundary = Some(ReceiptReadBoundary::TenantScoped {
+                            tenant: tenant_id.clone(),
+                        });
+                    }
+                }
+                if query
+                    .tenant
+                    .as_deref()
+                    .is_some_and(|tenant| tenant != tenant_id)
+                {
+                    return Err(plain_http_error(
+                        StatusCode::FORBIDDEN,
+                        "tenant read token cannot narrow evidence export to another tenant",
+                    ));
+                }
+                query.tenant = Some(tenant_id.clone());
+                Ok(query)
+            }
+        }
+    }
+}
+
+fn resolve_control_read_principal(
+    headers: &HeaderMap,
+    config: &TrustServiceConfig,
+) -> Result<ResolvedControlReadPrincipal, Response> {
+    if config.service_token.is_empty() {
+        return Err(plain_http_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "control service token must be non-empty",
+        ));
+    }
+    if config
+        .tenant_read_tokens
+        .values()
+        .any(|token| token == &config.service_token)
+    {
+        return Err(plain_http_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "control tenant read token must not equal service token",
+        ));
+    }
+    let Some(provided) = control_bearer_token(headers) else {
+        return Err(missing_or_invalid_control_token());
+    };
+    if bool::from(provided.as_bytes().ct_eq(config.service_token.as_bytes())) {
+        return Ok(ResolvedControlReadPrincipal::AdminService);
+    }
+    for (tenant_id, token) in &config.tenant_read_tokens {
+        if bool::from(provided.as_bytes().ct_eq(token.as_bytes())) {
+            return Ok(ResolvedControlReadPrincipal::TenantRead {
+                tenant_id: tenant_id.clone(),
+            });
+        }
+    }
+    Err(missing_or_invalid_control_token())
 }
 
 fn validate_metered_billing_reconciliation_request(
@@ -2877,14 +3032,18 @@ fn validate_metered_billing_reconciliation_request(
 fn load_capability_authority(
     config: &TrustServiceConfig,
 ) -> Result<Box<dyn CapabilityAuthority>, Response> {
-    match (config.authority_seed_path.as_deref(), config.authority_db_path.as_deref()) {
+    match (
+        config.authority_seed_path.as_deref(),
+        config.authority_db_path.as_deref(),
+    ) {
         (Some(_), Some(_)) => Err(plain_http_error(
             StatusCode::CONFLICT,
             "trust control service requires either --authority-seed-file or --authority-db, not both",
         )),
         (Some(path), None) => {
-            let keypair = load_or_create_authority_keypair(path)
-                .map_err(|error| plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()))?;
+            let keypair = load_or_create_authority_keypair(path).map_err(|error| {
+                plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+            })?;
             Ok(issuance::wrap_capability_authority(
                 Box::new(LocalCapabilityAuthority::new(keypair)),
                 config.issuance_policy.clone(),
@@ -3070,10 +3229,19 @@ pub fn build_signed_behavioral_feed(
     query: &BehavioralFeedQuery,
 ) -> Result<SignedBehavioralFeed, CliError> {
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
-    let report =
-        build_behavioral_feed_report(&receipt_store, receipt_db_path, budget_db_path, query)
-            .map_err(|response| CliError::cli_other_error(response_status_text(&response)))?;
+    // Load the signing keypair up front so its public key anchors the
+    // reputation scoring trust set (chio-reputation::receipt_integrity_valid
+    // fails closed on an empty set).
     let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
+    let trusted_kernel_keys = vec![keypair.public_key().to_hex()];
+    let report = build_behavioral_feed_report(
+        &receipt_store,
+        receipt_db_path,
+        budget_db_path,
+        query,
+        &trusted_kernel_keys,
+    )
+    .map_err(|response| CliError::cli_other_error(response_status_text(&response)))?;
     SignedBehavioralFeed::sign(report, &keypair).map_err(Into::into)
 }
 
@@ -3167,6 +3335,7 @@ fn build_behavioral_feed_report(
     receipt_db_path: &Path,
     budget_db_path: Option<&Path>,
     query: &BehavioralFeedQuery,
+    trusted_kernel_keys: &[String],
 ) -> Result<BehavioralFeedReport, Response> {
     let normalized_query = query.normalized();
     let operator_query = normalized_query.to_operator_report_query();
@@ -3192,6 +3361,7 @@ fn build_behavioral_feed_report(
                 normalized_query.since,
                 normalized_query.until,
                 generated_at,
+                trusted_kernel_keys,
             )
             .map_err(|error| {
                 plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
@@ -3243,6 +3413,7 @@ pub fn build_signed_exposure_ledger_report(
 fn build_economic_completion_flow_report(
     receipt_store: &SqliteReceiptStore,
     query: &ExposureLedgerQuery,
+    read_context: chio_kernel::ReceiptReadContext,
 ) -> Result<EconomicCompletionFlowReport, TrustHttpError> {
     let normalized_query = query.normalized();
     if let Err(message) = normalized_query.validate() {
@@ -3250,13 +3421,25 @@ fn build_economic_completion_flow_report(
     }
 
     receipt_store
-        .query_economic_completion_flow_report(&normalized_query)
+        .query_economic_completion_flow_report(&normalized_query, read_context)
         .map_err(trust_http_error_from_receipt_store)
 }
 
 fn build_exposure_ledger_report(
     receipt_store: &SqliteReceiptStore,
     query: &ExposureLedgerQuery,
+) -> Result<ExposureLedgerReport, TrustHttpError> {
+    build_exposure_ledger_report_with_context(
+        receipt_store,
+        query,
+        chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+    )
+}
+
+fn build_exposure_ledger_report_with_context(
+    receipt_store: &SqliteReceiptStore,
+    query: &ExposureLedgerQuery,
+    read_context: chio_kernel::ReceiptReadContext,
 ) -> Result<ExposureLedgerReport, TrustHttpError> {
     let normalized_query = query.normalized();
     if let Err(message) = normalized_query.validate() {
@@ -3271,6 +3454,7 @@ fn build_exposure_ledger_report(
         since: normalized_query.since,
         until: normalized_query.until,
         receipt_limit: normalized_query.receipt_limit,
+        read_context: Some(read_context),
     };
     let (_, _, _, selection) = receipt_store
         .query_behavioral_feed_receipts(&behavioral_query)
@@ -3365,7 +3549,8 @@ fn build_exposure_ledger_report(
             |position, amount| {
                 position.quoted_premium_units =
                     position.quoted_premium_units.saturating_add(amount.units);
-                if entry.lifecycle_state == chio_kernel::UnderwritingDecisionLifecycleState::Active {
+                if entry.lifecycle_state == chio_kernel::UnderwritingDecisionLifecycleState::Active
+                {
                     position.active_quoted_premium_units = position
                         .active_quoted_premium_units
                         .saturating_add(amount.units);
@@ -3411,10 +3596,19 @@ pub fn build_signed_credit_scorecard_report(
     query: &ExposureLedgerQuery,
 ) -> Result<SignedCreditScorecardReport, CliError> {
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
-    let report =
-        build_credit_scorecard_report(&receipt_store, receipt_db_path, budget_db_path, None, query)
-            .map_err(CliError::from)?;
+    // Load the signing keypair up front so its public key anchors the
+    // reputation scoring trust set.
     let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
+    let trusted_kernel_keys = vec![keypair.public_key().to_hex()];
+    let report = build_credit_scorecard_report(
+        &receipt_store,
+        receipt_db_path,
+        budget_db_path,
+        None,
+        query,
+        &trusted_kernel_keys,
+    )
+    .map_err(CliError::from)?;
     SignedCreditScorecardReport::sign(report, &keypair).map_err(Into::into)
 }
 
@@ -3488,14 +3682,19 @@ fn issue_signed_capital_allocation_decision_detailed(
     request: &CapitalAllocationDecisionRequest,
 ) -> Result<SignedCapitalAllocationDecision, TrustHttpError> {
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
+    // Load the signing keypair up front so its public key anchors the
+    // reputation scoring trust set, then reuse it to sign the artifact.
+    let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)
+        .map_err(|error| TrustHttpError::internal(error.to_string()))?;
+    let trusted_kernel_keys = vec![keypair.public_key().to_hex()];
     let artifact = build_capital_allocation_decision_artifact_from_store(
         &receipt_store,
         receipt_db_path,
         budget_db_path,
         certification_registry_file,
         request,
+        &trusted_kernel_keys,
     )?;
-    let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
     SignedCapitalAllocationDecision::sign(artifact, &keypair)
         .map_err(|error| TrustHttpError::internal(error.to_string()))
 }
@@ -3507,6 +3706,7 @@ fn build_capital_allocation_decision_artifact_from_store(
     budget_db_path: Option<&Path>,
     certification_registry_file: Option<&Path>,
     request: &CapitalAllocationDecisionRequest,
+    trusted_kernel_keys: &[String],
 ) -> Result<CapitalAllocationDecisionArtifact, TrustHttpError> {
     let issued_at = unix_timestamp_now();
     let normalized_query = request.query.normalized();
@@ -3528,6 +3728,7 @@ fn build_capital_allocation_decision_artifact_from_store(
         since: normalized_query.since,
         until: normalized_query.until,
         receipt_limit: normalized_query.receipt_limit,
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
     };
     let (_, _, _, selection) = receipt_store
         .query_behavioral_feed_receipts(&behavioral_query)
@@ -3570,6 +3771,7 @@ fn build_capital_allocation_decision_artifact_from_store(
             certification_registry_file,
             None,
             &normalized_query.exposure_query(),
+            trusted_kernel_keys,
         )?)
     } else {
         None
@@ -3914,6 +4116,7 @@ mod cluster_and_reports_tests {
         TrustServiceConfig {
             listen: "127.0.0.1:0".parse().test_unwrap(),
             service_token: "token".to_string(),
+            tenant_read_tokens: BTreeMap::new(),
             receipt_db_path: None,
             revocation_db_path: None,
             authority_seed_path: None,
@@ -3951,8 +4154,7 @@ mod cluster_and_reports_tests {
         config.receipt_db_path = receipt_db_path;
         config.revocation_db_path = revocation_db_path;
         config.budget_db_path = budget_db_path;
-        let cluster =
-            build_cluster_state(&config, config.listen).test_unwrap();
+        let cluster = build_cluster_state(&config, config.listen).test_unwrap();
         TrustServiceState {
             config,
             enterprise_provider_registry: None,
@@ -3983,7 +4185,13 @@ mod cluster_and_reports_tests {
                 tool_server: "wrapped-http-mock".to_string(),
                 tool_name: "echo_json".to_string(),
                 action: ToolCallAction::from_parameters(parameters).test_unwrap(),
-                decision: Decision::Allow,
+                decision: Some(Decision::Allow),
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
                 content_hash: "content-hash".to_string(),
                 policy_hash: "policy-hash".to_string(),
                 evidence: Vec::new(),
@@ -4043,11 +4251,12 @@ mod cluster_and_reports_tests {
         invalid.peer_urls = vec!["http://127.0.0.1:3300".to_string()];
         invalid.authority_seed_path = Some(unique_temp_path("authority", "seed"));
 
-        let error = build_cluster_state(&invalid, invalid.listen)
-            .test_unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("--authority-db instead of --authority-seed-file"));
+        let error = build_cluster_state(&invalid, invalid.listen).test_unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("--authority-db instead of --authority-seed-file")
+        );
 
         assert!(
             build_cluster_state(&base_config(), "127.0.0.1:0".parse().test_unwrap())
@@ -4083,12 +4292,11 @@ mod cluster_and_reports_tests {
 
     #[test]
     fn cluster_peer_url_validation_rejects_local_networks_by_default() {
-        let error = normalize_cluster_config_url("http://127.0.0.1:3300", false)
-            .test_unwrap_err();
+        let error = normalize_cluster_config_url("http://127.0.0.1:3300", false).test_unwrap_err();
         assert!(error.to_string().contains("--allow-local-peer-urls"));
 
-        let normalized = normalize_cluster_config_url(" http://127.0.0.1:3300/ ", true)
-            .test_unwrap();
+        let normalized =
+            normalize_cluster_config_url(" http://127.0.0.1:3300/ ", true).test_unwrap();
         assert_eq!(normalized, "http://127.0.0.1:3300");
     }
 
@@ -4127,8 +4335,8 @@ mod cluster_and_reports_tests {
         assert_eq!(with_quorum.leader_url.as_deref(), Some("http://node-a"));
         assert_eq!(with_quorum.reachable_nodes, 2);
         assert_eq!(with_quorum.election_term, 1);
-        let with_quorum_lease = cluster_authority_lease_view_locked(&mut cluster, &with_quorum)
-            .test_unwrap();
+        let with_quorum_lease =
+            cluster_authority_lease_view_locked(&mut cluster, &with_quorum).test_unwrap();
         assert_eq!(with_quorum_lease.lease_epoch, 1);
         assert!(with_quorum_lease.lease_id.contains("http://node-a"));
         assert!(with_quorum_lease.lease_expires_at >= unix_timestamp_now());
@@ -4208,9 +4416,7 @@ mod cluster_and_reports_tests {
 
         let scalar = json_response_with_leader_visibility(&state, "not-an-object");
         assert_eq!(scalar.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        let body = to_bytes(scalar.into_body(), usize::MAX)
-            .await
-            .test_unwrap();
+        let body = to_bytes(scalar.into_body(), usize::MAX).await.test_unwrap();
         let text = String::from_utf8(body.to_vec()).test_unwrap();
         assert!(text.contains("success responses must be JSON objects"));
     }
@@ -4385,9 +4591,62 @@ mod cluster_and_reports_tests {
             "issue-token"
         );
         assert!(validate_service_auth(&headers, "issue-token").is_ok());
+        assert_eq!(
+            validate_service_auth(&headers, "")
+                .test_unwrap_err()
+                .status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
 
-        let invalid_auth = validate_service_auth(&headers, "other-token")
-            .test_unwrap_err();
+        let mut config = base_config();
+        config
+            .tenant_read_tokens
+            .insert("tenant-a".to_string(), "tenant-read-token".to_string());
+        let admin_principal = resolve_control_read_principal(&headers, &config).test_unwrap();
+        assert_eq!(admin_principal, ResolvedControlReadPrincipal::AdminService);
+        config
+            .tenant_read_tokens
+            .insert("tenant-collision".to_string(), "issue-token".to_string());
+        assert_eq!(
+            resolve_control_read_principal(&headers, &config)
+                .test_unwrap_err()
+                .status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        config.tenant_read_tokens.remove("tenant-collision");
+
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer tenant-read-token"),
+        );
+        let tenant_principal = resolve_control_read_principal(&headers, &config).test_unwrap();
+        assert_eq!(
+            tenant_principal,
+            ResolvedControlReadPrincipal::TenantRead {
+                tenant_id: "tenant-a".to_string()
+            }
+        );
+        assert!(validate_service_auth(&headers, "issue-token").is_err());
+        assert!(
+            tenant_principal
+                .authorize_evidence_export_query(EvidenceExportQuery::admin_all())
+                .is_err()
+        );
+        let tenant_export = tenant_principal
+            .authorize_evidence_export_query(EvidenceExportQuery::default())
+            .test_unwrap();
+        assert_eq!(tenant_export.tenant.as_deref(), Some("tenant-a"));
+        assert_eq!(
+            tenant_export.read_boundary,
+            Some(ReceiptReadBoundary::TenantScoped {
+                tenant: "tenant-a".to_string()
+            })
+        );
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer issue-token"),
+        );
+        let invalid_auth = validate_service_auth(&headers, "other-token").test_unwrap_err();
         assert_eq!(invalid_auth.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
             invalid_auth
@@ -4479,8 +4738,7 @@ mod cluster_and_reports_tests {
             );
             headers.insert(
                 CLUSTER_AUTH_SIGNATURE_HEADER,
-                HeaderValue::from_str(&format!("deadbeef-{attempt}"))
-                    .test_unwrap(),
+                HeaderValue::from_str(&format!("deadbeef-{attempt}")).test_unwrap(),
             );
             let response = validate_cluster_peer_auth(
                 &headers,
@@ -4593,8 +4851,7 @@ mod cluster_and_reports_tests {
         );
 
         {
-            let revocation_store = SqliteRevocationStore::open(&source_revocation_db)
-                .test_unwrap();
+            let revocation_store = SqliteRevocationStore::open(&source_revocation_db).test_unwrap();
             revocation_store
                 .upsert_revocation(&RevocationRecord {
                     capability_id: "cap-1".to_string(),
@@ -4603,8 +4860,7 @@ mod cluster_and_reports_tests {
                 .test_unwrap();
         }
         {
-            let receipt_store =
-                SqliteReceiptStore::open(&source_receipt_db).test_unwrap();
+            let receipt_store = SqliteReceiptStore::open(&source_receipt_db).test_unwrap();
             receipt_store
                 .append_chio_receipt(&sample_tool_receipt("tool-1", "cap-1"))
                 .test_unwrap();
@@ -4616,8 +4872,7 @@ mod cluster_and_reports_tests {
                 .test_unwrap();
         }
         {
-            let budget_store =
-                SqliteBudgetStore::open(&source_budget_db).test_unwrap();
+            let budget_store = SqliteBudgetStore::open(&source_budget_db).test_unwrap();
             budget_store
                 .try_charge_cost_with_ids(
                     "cap-1",
@@ -4660,8 +4915,7 @@ mod cluster_and_reports_tests {
         );
 
         let generated_at = snapshot.generated_at;
-        apply_cluster_snapshot(&target_state, "http://node-a", snapshot)
-            .test_unwrap();
+        apply_cluster_snapshot(&target_state, "http://node-a", snapshot).test_unwrap();
 
         let revocations = SqliteRevocationStore::open(&target_revocation_db)
             .test_unwrap()
@@ -4670,8 +4924,7 @@ mod cluster_and_reports_tests {
         assert_eq!(revocations.len(), 1);
         assert_eq!(revocations[0].capability_id, "cap-1");
 
-        let receipt_store =
-            SqliteReceiptStore::open(&target_receipt_db).test_unwrap();
+        let receipt_store = SqliteReceiptStore::open(&target_receipt_db).test_unwrap();
         assert_eq!(
             receipt_store
                 .list_tool_receipts_after_seq(0, MAX_LIST_LIMIT)
@@ -4762,8 +5015,7 @@ mod cluster_and_reports_tests {
         );
 
         {
-            let budget_store =
-                SqliteBudgetStore::open(&source_budget_db).test_unwrap();
+            let budget_store = SqliteBudgetStore::open(&source_budget_db).test_unwrap();
             let allowed = budget_store
                 .try_charge_cost_with_ids(
                     "cap-denied-only",
@@ -4777,10 +5029,12 @@ mod cluster_and_reports_tests {
                 )
                 .test_unwrap();
             assert!(!allowed);
-            assert!(budget_store
-                .list_usages_after(MAX_LIST_LIMIT, None)
-                .test_unwrap()
-                .is_empty());
+            assert!(
+                budget_store
+                    .list_usages_after(MAX_LIST_LIMIT, None)
+                    .test_unwrap()
+                    .is_empty()
+            );
             let delta =
                 collect_budget_mutation_event_views_after_seq(&budget_store, 0, MAX_LIST_LIMIT)
                     .test_unwrap();
@@ -4788,13 +5042,11 @@ mod cluster_and_reports_tests {
             assert_eq!(delta[0].event_seq, 1);
             assert_eq!(delta[0].allowed, Some(false));
             assert_eq!(delta[0].usage_seq, None);
-            assert!(collect_budget_mutation_event_views_after_seq(
-                &budget_store,
-                1,
-                MAX_LIST_LIMIT
-            )
-            .test_unwrap()
-            .is_empty());
+            assert!(
+                collect_budget_mutation_event_views_after_seq(&budget_store, 1, MAX_LIST_LIMIT)
+                    .test_unwrap()
+                    .is_empty()
+            );
         }
 
         let snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
@@ -4809,15 +5061,15 @@ mod cluster_and_reports_tests {
         assert_eq!(snapshot.budget_mutation_events[0].allowed, Some(false));
         assert_eq!(snapshot.budget_mutation_events[0].usage_seq, None);
 
-        apply_cluster_snapshot(&target_state, "http://node-a", snapshot)
-            .test_unwrap();
+        apply_cluster_snapshot(&target_state, "http://node-a", snapshot).test_unwrap();
 
-        let target_store =
-            SqliteBudgetStore::open(&target_budget_db).test_unwrap();
-        assert!(target_store
-            .list_usages_after(MAX_LIST_LIMIT, None)
-            .test_unwrap()
-            .is_empty());
+        let target_store = SqliteBudgetStore::open(&target_budget_db).test_unwrap();
+        assert!(
+            target_store
+                .list_usages_after(MAX_LIST_LIMIT, None)
+                .test_unwrap()
+                .is_empty()
+        );
         let mutation_events = target_store
             .list_mutation_events(10, Some("cap-denied-only"), Some(0))
             .test_unwrap();
@@ -4860,8 +5112,7 @@ mod cluster_and_reports_tests {
         );
 
         {
-            let budget_store =
-                SqliteBudgetStore::open(&source_budget_db).test_unwrap();
+            let budget_store = SqliteBudgetStore::open(&source_budget_db).test_unwrap();
             budget_store
                 .upsert_usage(&chio_kernel::BudgetUsageRecord {
                     capability_id: "cap-usage-only".to_string(),
@@ -4873,10 +5124,12 @@ mod cluster_and_reports_tests {
                     total_cost_realized_spend: 375,
                 })
                 .test_unwrap();
-            assert!(budget_store
-                .list_mutation_events(10, Some("cap-usage-only"), Some(0))
-                .test_unwrap()
-                .is_empty());
+            assert!(
+                budget_store
+                    .list_mutation_events(10, Some("cap-usage-only"), Some(0))
+                    .test_unwrap()
+                    .is_empty()
+            );
         }
 
         update_peer_budget_cursor(
@@ -4897,11 +5150,9 @@ mod cluster_and_reports_tests {
         assert_eq!(snapshot.budgets[0].capability_id, "cap-usage-only");
         assert_eq!(snapshot.budgets[0].seq, Some(42));
 
-        apply_cluster_snapshot(&target_state, "http://node-a", snapshot)
-            .test_unwrap();
+        apply_cluster_snapshot(&target_state, "http://node-a", snapshot).test_unwrap();
 
-        let target_store =
-            SqliteBudgetStore::open(&target_budget_db).test_unwrap();
+        let target_store = SqliteBudgetStore::open(&target_budget_db).test_unwrap();
         let usages = target_store
             .list_usages_after(MAX_LIST_LIMIT, None)
             .test_unwrap();
@@ -4911,10 +5162,12 @@ mod cluster_and_reports_tests {
         assert_eq!(usages[0].seq, 42);
         assert_eq!(usages[0].total_cost_exposed, 550);
         assert_eq!(usages[0].total_cost_realized_spend, 375);
-        assert!(target_store
-            .list_mutation_events(10, Some("cap-usage-only"), Some(0))
-            .test_unwrap()
-            .is_empty());
+        assert!(
+            target_store
+                .list_mutation_events(10, Some("cap-usage-only"), Some(0))
+                .test_unwrap()
+                .is_empty()
+        );
         drop(target_store);
 
         assert!(
@@ -4968,24 +5221,22 @@ mod cluster_and_reports_tests {
             mutation_events: Vec::new(),
         };
 
-        let outcome = import_budget_delta_response(&mut store, &response, None)
-            .test_unwrap();
+        let outcome = import_budget_delta_response(&mut store, &response, None).test_unwrap();
         assert_eq!(outcome.applied_count, 1);
         assert!(outcome.should_continue);
         assert_eq!(outcome.next_cursor.test_unwrap().seq, 42);
 
-        let usage = store
-            .get_usage("cap-legacy", 0)
-            .test_unwrap()
-            .test_unwrap();
+        let usage = store.get_usage("cap-legacy", 0).test_unwrap().test_unwrap();
         assert_eq!(usage.invocation_count, 3);
         assert_eq!(usage.seq, 42);
         assert_eq!(usage.total_cost_exposed, 55);
         assert_eq!(usage.total_cost_realized_spend, 21);
-        assert!(store
-            .list_mutation_events(10, Some("cap-legacy"), Some(0))
-            .test_unwrap()
-            .is_empty());
+        assert!(
+            store
+                .list_mutation_events(10, Some("cap-legacy"), Some(0))
+                .test_unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -5035,8 +5286,7 @@ mod cluster_and_reports_tests {
             }
         }
 
-        let initial_target_consensus =
-            cluster_consensus_view(&target_state).test_unwrap();
+        let initial_target_consensus = cluster_consensus_view(&target_state).test_unwrap();
         assert_eq!(
             initial_target_consensus.leader_url.as_deref(),
             Some("http://node-0")
@@ -5046,19 +5296,13 @@ mod cluster_and_reports_tests {
         let snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
         assert_eq!(snapshot.election_term, 1);
         assert_eq!(
-            snapshot
-                .authority_lease
-                .as_ref()
-                .test_unwrap()
-                .leader_url,
+            snapshot.authority_lease.as_ref().test_unwrap().leader_url,
             "http://node-a"
         );
 
-        apply_cluster_snapshot(&target_state, "http://node-a", snapshot)
-            .test_unwrap();
+        apply_cluster_snapshot(&target_state, "http://node-a", snapshot).test_unwrap();
 
-        let seeded_consensus =
-            cluster_consensus_view(&target_state).test_unwrap();
+        let seeded_consensus = cluster_consensus_view(&target_state).test_unwrap();
         assert_eq!(
             seeded_consensus.leader_url.as_deref(),
             Some("http://node-0")
@@ -5072,8 +5316,7 @@ mod cluster_and_reports_tests {
     #[test]
     fn build_cluster_state_seeds_persisted_authority_fence_term() {
         let authority_db_path = unique_temp_path("cluster-authority-fence", "sqlite3");
-        let authority =
-            SqliteCapabilityAuthority::open(&authority_db_path).test_unwrap();
+        let authority = SqliteCapabilityAuthority::open(&authority_db_path).test_unwrap();
         authority
             .seed_cluster_fence(Some("http://node-b"), 7)
             .test_unwrap();
@@ -5097,8 +5340,7 @@ mod cluster_and_reports_tests {
     fn build_cluster_state_discards_persisted_authority_fence_for_unknown_leader() {
         let authority_db_path =
             unique_temp_path("cluster-authority-fence-unknown-leader", "sqlite3");
-        let authority =
-            SqliteCapabilityAuthority::open(&authority_db_path).test_unwrap();
+        let authority = SqliteCapabilityAuthority::open(&authority_db_path).test_unwrap();
         authority
             .seed_cluster_fence(Some("http://node-z"), 7)
             .test_unwrap();
@@ -5125,8 +5367,7 @@ mod cluster_and_reports_tests {
     fn build_cluster_state_discards_persisted_authority_fence_after_rotation() {
         let authority_db_path =
             unique_temp_path("cluster-authority-fence-stale-generation", "sqlite3");
-        let authority =
-            SqliteCapabilityAuthority::open(&authority_db_path).test_unwrap();
+        let authority = SqliteCapabilityAuthority::open(&authority_db_path).test_unwrap();
         authority
             .seed_cluster_fence(Some("http://node-b"), 7)
             .test_unwrap();
@@ -5172,8 +5413,8 @@ mod cluster_and_reports_tests {
         }
 
         let snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
-        let error = apply_cluster_snapshot(&target_state, "http://node-a", snapshot)
-            .test_unwrap_err();
+        let error =
+            apply_cluster_snapshot(&target_state, "http://node-a", snapshot).test_unwrap_err();
         let error_text = error.to_string();
         assert!(
             error_text.contains("directory") || error_text.contains("open database file"),

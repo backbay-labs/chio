@@ -1,4 +1,5 @@
 use super::*;
+use chio_kernel::ReceiptReadContext;
 use subtle::ConstantTimeEq;
 
 pub(super) fn install_admin_routes(router: Router<RemoteAppState>) -> Router<RemoteAppState> {
@@ -250,7 +251,9 @@ async fn handle_admin_tool_receipts(
         Ok(store) => store,
         Err(response) => return response,
     };
-    let receipts = match store.list_tool_receipts(
+    let read_context = ReceiptReadContext::admin_service();
+    let receipts = match store.list_tool_receipts_with_context(
+        &read_context,
         admin_list_limit(query.limit),
         query.capability_id.as_deref(),
         query.tool_server.as_deref(),
@@ -321,7 +324,9 @@ async fn handle_admin_child_receipts(
         Ok(store) => store,
         Err(response) => return response,
     };
-    let receipts = match store.list_child_receipts(
+    let read_context = ReceiptReadContext::admin_service();
+    let receipts = match store.list_child_receipts_with_context(
+        &read_context,
         admin_list_limit(query.limit),
         query.session_id.as_deref(),
         query.parent_request_id.as_deref(),

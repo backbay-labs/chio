@@ -33,8 +33,8 @@ func normalizeMethod(method string) (string, bool) {
 	return "", false
 }
 
-// buildChioHTTPRequest constructs an ChioHTTPRequest from a net/http request.
-func buildChioHTTPRequest(r *http.Request, method, routePattern string, caller CallerIdentity) ChioHTTPRequest {
+// buildChioHTTPRequest constructs a ChioHTTPRequest from a net/http request.
+func buildChioHTTPRequest(r *http.Request, method, routePattern string, caller CallerIdentity) (ChioHTTPRequest, error) {
 	// Parse query parameters.
 	query := make(map[string]string)
 	for key, values := range r.URL.Query() {
@@ -54,13 +54,14 @@ func buildChioHTTPRequest(r *http.Request, method, routePattern string, caller C
 	var bodyLength int64
 	if r.Body != nil {
 		bodyBytes, err := io.ReadAll(r.Body)
-		if err == nil {
-			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-			bodyLength = int64(len(bodyBytes))
-			if len(bodyBytes) > 0 {
-				h := sha256.Sum256(bodyBytes)
-				bodyHash = hex.EncodeToString(h[:])
-			}
+		if err != nil {
+			return ChioHTTPRequest{}, err
+		}
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		bodyLength = int64(len(bodyBytes))
+		if len(bodyBytes) > 0 {
+			h := sha256.Sum256(bodyBytes)
+			bodyHash = hex.EncodeToString(h[:])
 		}
 	}
 
@@ -79,7 +80,7 @@ func buildChioHTTPRequest(r *http.Request, method, routePattern string, caller C
 		SessionID:    "",
 		CapabilityID: capabilityID,
 		Timestamp:    time.Now().Unix(),
-	}
+	}, nil
 }
 
 func extractCapabilityToken(r *http.Request) string {

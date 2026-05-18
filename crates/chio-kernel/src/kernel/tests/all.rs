@@ -10,7 +10,7 @@ use std::thread;
 use chio_core::capability::{
     compute_attenuation_witness, scope_hash, AttenuationProof, CallChainContinuationAudience,
     CallChainContinuationToken, CallChainContinuationTokenBody, CapabilityToken,
-    CapabilityTokenBody, CapabilityTokenV2Body, ChioScope, Constraint, DelegationLink,
+    CapabilityTokenBody, CapabilityTokenAttenuationBody, ChioScope, Constraint, DelegationLink,
     DelegationLinkBody, GovernedApprovalDecision, GovernedApprovalToken,
     GovernedApprovalTokenBody, GovernedAutonomyContext, GovernedAutonomyTier,
     GovernedCallChainContext, GovernedTransactionIntent, GovernedUpstreamCallChainProof,
@@ -25,9 +25,7 @@ use chio_core::credit::{
     CREDIT_BOND_ARTIFACT_SCHEMA, CREDIT_BOND_REPORT_SCHEMA,
 };
 use chio_core::crypto::{Keypair, PublicKey};
-use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, ChioReceiptV2, Decision, ToolCallAction,
-};
+use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
 use chio_core::session::{
     CompleteOperation, CompletionArgument, CompletionReference, CreateMessageOperation,
     GetPromptOperation, OperationContext, RequestId, SamplingMessage, SamplingTool,
@@ -79,13 +77,6 @@ impl SqliteReceiptStore {
                     terminal_state TEXT NOT NULL,
                     policy_hash TEXT NOT NULL,
                     outcome_hash TEXT NOT NULL,
-                    raw_json TEXT NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS chio_receipts_v2 (
-                    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-                    body_hash TEXT NOT NULL UNIQUE,
-                    legacy_receipt_id_alias TEXT,
                     raw_json TEXT NOT NULL
                 );
 
@@ -270,51 +261,6 @@ impl ReceiptStore for SqliteReceiptStore {
         Ok(())
     }
 
-    fn supports_chio_receipt_v2(&self) -> bool {
-        true
-    }
-
-    fn append_chio_receipt_v2(
-        &self,
-        receipt: &ChioReceiptV2,
-        legacy_receipt_id_alias: Option<&str>,
-    ) -> Result<u64, ReceiptStoreError> {
-        let raw_json = serde_json::to_string(receipt)?;
-        let connection = self.connection()?;
-        let rows = connection.execute(
-            r#"
-                INSERT INTO chio_receipts_v2 (
-                    body_hash,
-                    legacy_receipt_id_alias,
-                    raw_json
-                ) VALUES (?1, ?2, ?3)
-                ON CONFLICT(body_hash) DO NOTHING
-                "#,
-            params![receipt.body_hash.as_str(), legacy_receipt_id_alias, raw_json],
-        )?;
-        if rows > 0 {
-            Ok(connection.last_insert_rowid().max(0) as u64)
-        } else {
-            Ok(0)
-        }
-    }
-
-    fn contains_chio_receipt_v2_body_hash(
-        &self,
-        body_hash: &str,
-    ) -> Result<bool, ReceiptStoreError> {
-        let found = self
-            .connection()?
-            .query_row(
-                "SELECT 1 FROM chio_receipts_v2 WHERE body_hash = ?1",
-                params![body_hash],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some();
-        Ok(found)
-    }
-
     fn supports_kernel_signed_checkpoints(&self) -> bool {
         true
     }
@@ -425,6 +371,91 @@ impl ReceiptStore for SqliteReceiptStore {
             params![checkpoint.body.checkpoint_seq as i64, raw_json],
         )?;
         Ok(())
+    }
+
+    fn create_next_receipt_checkpoint(
+        &self,
+        max_batch: u64,
+        keypair: &Keypair,
+    ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
+        if max_batch == 0 {
+            return Err(ReceiptStoreError::Conflict(
+                "checkpoint max_batch must be greater than zero".to_string(),
+            ));
+        }
+        let latest_committed_entry_seq = self.connection()?.query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM chio_tool_receipts",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        let latest_committed_entry_seq = latest_committed_entry_seq.max(0) as u64;
+        let previous_checkpoint = self.load_latest_checkpoint()?;
+        let latest_checkpointed_entry_seq = previous_checkpoint
+            .as_ref()
+            .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
+        if latest_committed_entry_seq <= latest_checkpointed_entry_seq {
+            return Ok(ReceiptCheckpointCreateReport {
+                created: false,
+                checkpoint_seq: None,
+                batch_start_seq: None,
+                batch_end_seq: None,
+                latest_committed_entry_seq,
+                latest_checkpointed_entry_seq,
+            });
+        }
+        let batch_start_seq = latest_checkpointed_entry_seq + 1;
+        let batch_end_seq = latest_committed_entry_seq.min(batch_start_seq + max_batch - 1);
+        let receipt_bytes_with_seqs =
+            self.receipts_canonical_bytes_range(batch_start_seq, batch_end_seq)?;
+        let expected_len = batch_end_seq - batch_start_seq + 1;
+        if receipt_bytes_with_seqs.len() as u64 != expected_len
+            || receipt_bytes_with_seqs
+                .first()
+                .map(|(seq, _)| *seq)
+                .unwrap_or(0)
+                != batch_start_seq
+            || receipt_bytes_with_seqs
+                .last()
+                .map(|(seq, _)| *seq)
+                .unwrap_or(0)
+                != batch_end_seq
+        {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "checkpoint receipt range {}..={} is not contiguous",
+                batch_start_seq, batch_end_seq
+            )));
+        }
+        let receipt_bytes = receipt_bytes_with_seqs
+            .into_iter()
+            .map(|(_, bytes)| bytes)
+            .collect::<Vec<_>>();
+        let checkpoint_seq = previous_checkpoint
+            .as_ref()
+            .map_or(Ok(1), |checkpoint| {
+                checkpoint.body.checkpoint_seq.checked_add(1).ok_or_else(|| {
+                    ReceiptStoreError::Conflict(
+                        "checkpoint_seq overflow while creating receipt checkpoint".to_string(),
+                    )
+                })
+            })?;
+        let checkpoint = build_checkpoint_with_previous(
+            checkpoint_seq,
+            batch_start_seq,
+            batch_end_seq,
+            &receipt_bytes,
+            keypair,
+            previous_checkpoint.as_ref(),
+        )
+        .map_err(|error| ReceiptStoreError::Conflict(format!("checkpoint build failed: {error}")))?;
+        self.store_checkpoint(&checkpoint)?;
+        Ok(ReceiptCheckpointCreateReport {
+            created: true,
+            checkpoint_seq: Some(checkpoint.body.checkpoint_seq),
+            batch_start_seq: Some(checkpoint.body.batch_start_seq),
+            batch_end_seq: Some(checkpoint.body.batch_end_seq),
+            latest_committed_entry_seq,
+            latest_checkpointed_entry_seq: checkpoint.body.batch_end_seq,
+        })
     }
 
     fn load_checkpoint_by_seq(
@@ -701,15 +732,14 @@ fn make_config() -> KernelConfig {
         max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     }
 }
 
 fn make_kernel(config: KernelConfig) -> ChioKernel {
-    let kernel = ChioKernel::new(config);
-    kernel.set_receipt_v2_default(false);
-    kernel
+    ChioKernel::new(config)
 }
 
 fn make_signed_receipt(kp: &Keypair, id: &str) -> ChioReceipt {
@@ -717,12 +747,18 @@ fn make_signed_receipt(kp: &Keypair, id: &str) -> ChioReceipt {
         ChioReceiptBody {
             id: id.to_string(),
             timestamp: 1_700_000_100,
-            capability_id: "cap-receipt-v2".to_string(),
+            capability_id: "cap-receipt".to_string(),
             tool_server: "srv".to_string(),
             tool_name: "echo".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"message": "hello"}))
                 .expect("tool action"),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: "0".repeat(64),
             policy_hash: "1".repeat(64),
             evidence: Vec::new(),
@@ -768,7 +804,7 @@ fn kernel_rejects_classical_capability_under_pq_required_floor() {
 }
 
 #[test]
-fn production_evaluate_rejects_direct_v2_without_trust_root_resolver() {
+fn production_evaluate_rejects_direct_attenuated_without_trust_root_resolver() {
     let issuer = make_keypair();
     let subject = make_keypair();
     let mut config = make_config();
@@ -776,32 +812,31 @@ fn production_evaluate_rejects_direct_v2_without_trust_root_resolver() {
     let mut kernel = make_kernel(config);
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
-    let capability = make_direct_v2_capability(
+    let capability = make_direct_attenuated_capability(
         &issuer,
         &subject.public_key(),
         make_scope(vec![make_grant("srv-a", "read_file")]),
     );
     let response = kernel
         .evaluate_tool_call_blocking(&make_request(
-            "req-direct-v2",
+            "req-direct-attenuated",
             &capability,
             "read_file",
             "srv-a",
         ))
-        .expect("v2 rejection should produce a deny receipt");
+        .expect("attenuated rejection should produce a deny receipt");
 
     assert_eq!(response.verdict, Verdict::Deny);
     let reason = response.reason.unwrap_or_default();
     assert!(
-        reason.contains("v2 chain-binding") && reason.contains("trust-root"),
-        "expected v2 chain-binding deny, got: {reason}"
+        reason.contains("chain-binding") && reason.contains("trust-root"),
+        "expected chain-binding deny, got: {reason}"
     );
 }
 
 #[test]
-fn local_default_receipt_v2_without_store_uses_v1_and_invokes_tool() {
+fn local_default_without_store_invokes_tool() {
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_v2_default(true);
     let invocations = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(SideEffectServer::new(
         "srv-a",
@@ -823,119 +858,15 @@ fn local_default_receipt_v2_without_store_uses_v1_and_invokes_tool() {
             "read_file",
             "srv-a",
         ))
-        .expect("local default without a v2 store should fall back to v1");
+        .expect("local default without a receipt store should invoke the tool");
 
     assert_eq!(response.verdict, Verdict::Allow);
     assert_eq!(
         invocations.load(Ordering::SeqCst),
         1,
-        "ordinary local dispatch must not require a v2 receipt store"
+        "ordinary local dispatch must not require a receipt store"
     );
     assert_eq!(kernel.receipt_log().len(), 1);
-}
-
-#[test]
-fn receipt_v2_replay_set_rolls_back_when_persistence_fails() {
-    let keypair = make_keypair();
-    let mut config = make_config();
-    config.keypair = keypair.clone();
-    let mut kernel = make_kernel(config);
-    kernel.set_receipt_store(Box::new(FailingV2ReceiptStore));
-    let receipt = make_signed_receipt(&keypair, "rcpt-v2-rollback");
-    let v2 = kernel
-        .mint_chio_receipt_v2_from_v1_for_test(&receipt)
-        .expect("mint v2 receipt");
-
-    let err = kernel
-        .record_chio_receipt_v2(&v2, Some(receipt.id.as_str()))
-        .expect_err("v2 persistence failure must surface");
-    assert!(
-        format!("{err}").contains("v2 receipt persistence failed"),
-        "unexpected error: {err}"
-    );
-    assert!(
-        !kernel.contains_chio_receipt_v2_body_hash(&v2.body_hash),
-        "failed persistence must not poison the in-memory replay set"
-    );
-}
-
-#[test]
-fn record_receipt_v2_without_store_fails_before_replay_insert() {
-    let keypair = make_keypair();
-    let mut config = make_config();
-    config.keypair = keypair.clone();
-    let kernel = make_kernel(config);
-    let receipt = make_signed_receipt(&keypair, "rcpt-v2-no-store");
-    let v2 = kernel
-        .mint_chio_receipt_v2_from_v1_for_test(&receipt)
-        .expect("mint v2 receipt");
-
-    let err = kernel
-        .record_chio_receipt_v2(&v2, Some(receipt.id.as_str()))
-        .expect_err("v2 record without durable store must fail");
-    assert!(
-        format!("{err}").contains("no durable v2-capable receipt store configured"),
-        "unexpected error: {err}"
-    );
-    assert!(
-        !kernel.contains_chio_receipt_v2_body_hash(&v2.body_hash),
-        "missing persistence must not insert into the in-memory replay set"
-    );
-}
-
-#[test]
-fn receipt_v2_zero_seq_replay_conflict_rolls_back() {
-    let keypair = make_keypair();
-    let mut config = make_config();
-    config.keypair = keypair.clone();
-    let mut kernel = make_kernel(config);
-    kernel.set_receipt_store(Box::new(ZeroSeqV2ReceiptStore));
-    let receipt = make_signed_receipt(&keypair, "rcpt-v2-zero-seq");
-    let v2 = kernel
-        .mint_chio_receipt_v2_from_v1_for_test(&receipt)
-        .expect("mint v2 receipt");
-
-    let err = kernel
-        .record_chio_receipt_v2(&v2, Some(receipt.id.as_str()))
-        .expect_err("zero seq means durable replay conflict");
-    assert!(
-        format!("{err}").contains("already exists"),
-        "unexpected error: {err}"
-    );
-    assert!(
-        !kernel.contains_chio_receipt_v2_body_hash(&v2.body_hash),
-        "durable replay conflict must not poison the in-memory replay set"
-    );
-}
-
-#[test]
-fn receipt_v2_failure_prevents_v1_persistence() {
-    let keypair = make_keypair();
-    let mut config = make_config();
-    config.keypair = keypair.clone();
-    let mut kernel = make_kernel(config);
-    kernel.set_receipt_v2_default(true);
-    let v1_called = std::sync::Arc::new(AtomicBool::new(false));
-    kernel.set_receipt_store(Box::new(V2FailsBeforeV1Store {
-        v1_called: std::sync::Arc::clone(&v1_called),
-    }));
-    let subject = Keypair::generate();
-    let capability = make_capability(&kernel, &subject, ChioScope::default(), 60);
-    let request = make_request("req-v2-before-v1", &capability, "echo", "srv");
-    let receipt = make_signed_receipt(&keypair, "rcpt-v2-before-v1");
-
-    let err = kernel
-        .record_chio_receipt_with_federation(&request, &receipt)
-        .expect_err("v2 persistence failure must abort before v1 append");
-
-    assert!(
-        format!("{err}").contains("v2 receipt persistence failed"),
-        "unexpected error: {err}"
-    );
-    assert!(
-        !v1_called.load(Ordering::SeqCst),
-        "v1 receipt append must not happen after v2 persistence fails"
-    );
 }
 
 fn unique_receipt_db_path(prefix: &str) -> std::path::PathBuf {
@@ -988,7 +919,7 @@ fn make_capability(
         .unwrap()
 }
 
-fn make_direct_v2_capability(
+fn make_direct_attenuated_capability(
     issuer: &Keypair,
     subject: &PublicKey,
     scope: ChioScope,
@@ -997,10 +928,10 @@ fn make_direct_v2_capability(
     let parent_hash = scope_hash(&scope).expect("hash parent scope");
     let child_hash = scope_hash(&scope).expect("hash child scope");
     let witness = compute_attenuation_witness(&scope, &scope).expect("compute attenuation witness");
-    CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body: CapabilityTokenBody {
-                id: "cap-direct-v2".to_string(),
+                id: "cap-direct-attenuated".to_string(),
                 issuer: issuer.public_key(),
                 subject: subject.clone(),
                 scope,
@@ -1019,7 +950,7 @@ fn make_direct_v2_capability(
         },
         issuer,
     )
-    .expect("sign v2 capability")
+    .expect("sign attenuated capability")
 }
 
 fn make_request(
@@ -1151,24 +1082,73 @@ fn tool_call_stream_output(output: Option<ToolCallOutput>) -> Option<ToolCallStr
     }
 }
 
-fn make_delegation_link(
+fn assert_content_addressed_receipt_id(id: &str) {
+    assert_eq!(id.len(), 64, "receipt id should be a SHA-256 hex digest");
+    assert!(
+        id.chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
+        "receipt id should be lowercase hex"
+    );
+}
+
+fn make_chain_bound_delegation_link(
     capability_id: &str,
     delegator_kp: &Keypair,
-    delegatee_kp: &Keypair,
+    delegatee: &PublicKey,
+    authorized_scope: &ChioScope,
     timestamp: u64,
 ) -> DelegationLink {
     DelegationLink::sign(
         DelegationLinkBody {
             capability_id: capability_id.to_string(),
             delegator: delegator_kp.public_key(),
-            delegatee: delegatee_kp.public_key(),
+            delegatee: delegatee.clone(),
             attenuations: vec![],
             timestamp,
-            scope_hash: None,
+            scope_hash: Some(scope_hash(authorized_scope).unwrap()),
         },
         delegator_kp,
     )
     .unwrap()
+}
+
+fn make_chain_bound_capability(
+    kernel: &ChioKernel,
+    id: &str,
+    subject: PublicKey,
+    scope: ChioScope,
+    delegation_chain: Vec<DelegationLink>,
+    proof_parent_scope: &ChioScope,
+    budget_share_bps: Option<u16>,
+) -> CapabilityToken {
+    let proof = AttenuationProof {
+        parent_scope_hash: scope_hash(proof_parent_scope).unwrap(),
+        child_scope_hash: scope_hash(&scope).unwrap(),
+        normalized_subset_proof: compute_attenuation_witness(proof_parent_scope, &scope).unwrap(),
+    };
+    CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
+            body: CapabilityTokenBody {
+                id: id.to_string(),
+                issuer: kernel.config.keypair.public_key(),
+                subject,
+                scope,
+                issued_at: current_unix_timestamp(),
+                expires_at: current_unix_timestamp() + 300,
+                delegation_chain,
+            },
+            caveats: vec![],
+            scope_attenuations: vec![],
+            attenuation_proof: proof,
+            budget_share_bps,
+        },
+        &kernel.config.keypair,
+    )
+    .unwrap()
+}
+
+fn set_capability_trust_root_for_scope(kernel: &ChioKernel, scope: &ChioScope) {
+    kernel.set_capability_trust_root(kernel.config.keypair.public_key(), scope_hash(scope).unwrap());
 }
 
 struct V2DelegatedChildInput<'a> {
@@ -1209,8 +1189,8 @@ fn make_v2_delegated_child(input: V2DelegatedChildInput<'_>) -> CapabilityToken 
     )
     .unwrap();
 
-    CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body: CapabilityTokenBody {
                 id: input.id.to_string(),
                 issuer: input.kernel.config.keypair.public_key(),
@@ -1992,96 +1972,6 @@ impl ReceiptStore for FailingRequestLineageReceiptStore {
     }
 }
 
-#[derive(Default)]
-struct FailingV2ReceiptStore;
-
-impl ReceiptStore for FailingV2ReceiptStore {
-    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
-        Ok(())
-    }
-
-    fn supports_chio_receipt_v2(&self) -> bool {
-        true
-    }
-
-    fn append_child_receipt(
-        &self,
-        _receipt: &ChildRequestReceipt,
-    ) -> Result<(), ReceiptStoreError> {
-        Ok(())
-    }
-
-    fn append_chio_receipt_v2(
-        &self,
-        _receipt: &ChioReceiptV2,
-        _legacy_receipt_id_alias: Option<&str>,
-    ) -> Result<u64, ReceiptStoreError> {
-        Err(ReceiptStoreError::Conflict(
-            "v2 receipt write failed".to_string(),
-        ))
-    }
-}
-
-#[derive(Default)]
-struct ZeroSeqV2ReceiptStore;
-
-impl ReceiptStore for ZeroSeqV2ReceiptStore {
-    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
-        Ok(())
-    }
-
-    fn supports_chio_receipt_v2(&self) -> bool {
-        true
-    }
-
-    fn append_child_receipt(
-        &self,
-        _receipt: &ChildRequestReceipt,
-    ) -> Result<(), ReceiptStoreError> {
-        Ok(())
-    }
-
-    fn append_chio_receipt_v2(
-        &self,
-        _receipt: &ChioReceiptV2,
-        _legacy_receipt_id_alias: Option<&str>,
-    ) -> Result<u64, ReceiptStoreError> {
-        Ok(0)
-    }
-}
-
-struct V2FailsBeforeV1Store {
-    v1_called: std::sync::Arc<AtomicBool>,
-}
-
-impl ReceiptStore for V2FailsBeforeV1Store {
-    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
-        self.v1_called.store(true, Ordering::SeqCst);
-        Ok(())
-    }
-
-    fn supports_chio_receipt_v2(&self) -> bool {
-        true
-    }
-
-    fn append_child_receipt(
-        &self,
-        _receipt: &ChildRequestReceipt,
-    ) -> Result<(), ReceiptStoreError> {
-        Ok(())
-    }
-
-    fn append_chio_receipt_v2(
-        &self,
-        _receipt: &ChioReceiptV2,
-        _legacy_receipt_id_alias: Option<&str>,
-    ) -> Result<u64, ReceiptStoreError> {
-        Err(ReceiptStoreError::Conflict(
-            "v2 receipt write failed".to_string(),
-        ))
-    }
-}
-
 impl ResourceProvider for FilesystemResourceProvider {
     fn list_resources(&self) -> Vec<ResourceDefinition> {
         vec![
@@ -2266,7 +2156,7 @@ fn kernel_persists_tool_receipts_to_sqlite_store() {
     assert_eq!(count, 1);
     assert_eq!(distinct_count, 1);
     assert_eq!(child_count, 0);
-    assert!(receipt_id.starts_with("rcpt-"));
+    assert_content_addressed_receipt_id(&receipt_id);
 
     drop(connection);
     let _ = std::fs::remove_file(path);
@@ -2798,21 +2688,25 @@ fn revoked_ancestor_capability_denies_descendant() {
         .unwrap();
     drop(seed_store);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    set_capability_trust_root_for_scope(&kernel, &scope);
+    kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
-    let link = make_delegation_link(&parent.id, &parent_kp, &child_kp, current_unix_timestamp());
-    let child = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-child".to_string(),
-            issuer: kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope,
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
-            delegation_chain: vec![link],
-        },
-        &kernel.config.keypair,
-    )
-    .unwrap();
+    let link = make_chain_bound_delegation_link(
+        &parent.id,
+        &parent_kp,
+        &child_kp.public_key(),
+        &scope,
+        current_unix_timestamp(),
+    );
+    let child = make_chain_bound_capability(
+        &kernel,
+        "cap-child",
+        child_kp.public_key(),
+        scope.clone(),
+        vec![link],
+        &scope,
+        None,
+    );
 
     kernel.revoke_capability(&parent.id).unwrap();
 
@@ -2841,7 +2735,7 @@ fn delegated_tool_call_records_observed_capability_lineage() {
     let mut parent_grant = make_grant("srv-a", "read_file");
     parent_grant.operations.push(Operation::Delegate);
     let parent_scope = make_scope(vec![parent_grant]);
-    let parent = make_capability(&kernel, &parent_kp, parent_scope, 300);
+    let parent = make_capability(&kernel, &parent_kp, parent_scope.clone(), 300);
     let child_scope = make_scope(vec![make_grant("srv-a", "read_file")]);
     seed_store
         .record_capability_snapshot(&parent, None)
@@ -2849,23 +2743,26 @@ fn delegated_tool_call_records_observed_capability_lineage() {
     drop(seed_store);
 
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    set_capability_trust_root_for_scope(&kernel, &parent_scope);
     kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
     let link_timestamp = current_unix_timestamp();
-    let link = make_delegation_link(&parent.id, &parent_kp, &child_kp, link_timestamp);
-    let child = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-observed-child".to_string(),
-            issuer: kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope: child_scope,
-            issued_at: link_timestamp,
-            expires_at: parent.expires_at,
-            delegation_chain: vec![link],
-        },
-        &kernel.config.keypair,
-    )
-    .unwrap();
+    let link = make_chain_bound_delegation_link(
+        &parent.id,
+        &parent_kp,
+        &child_kp.public_key(),
+        &parent_scope,
+        link_timestamp,
+    );
+    let child = make_chain_bound_capability(
+        &kernel,
+        "cap-observed-child",
+        child_kp.public_key(),
+        child_scope,
+        vec![link],
+        &parent_scope,
+        None,
+    );
 
     let response = kernel
         .evaluate_tool_call_blocking(&make_request("req-observed", &child, "read_file", "srv-a"))
@@ -2905,22 +2802,26 @@ fn delegated_tool_call_without_parent_snapshot_denies() {
     let parent_scope = make_scope(vec![parent_grant]);
     let parent = make_capability(&kernel, &parent_kp, parent_scope.clone(), 300);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    set_capability_trust_root_for_scope(&kernel, &parent_scope);
+    kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
     let child_scope = make_scope(vec![make_grant("srv-a", "read_file")]);
-    let link = make_delegation_link(&parent.id, &parent_kp, &child_kp, current_unix_timestamp());
-    let child = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-missing-parent".to_string(),
-            issuer: kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope: child_scope,
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
-            delegation_chain: vec![link],
-        },
-        &kernel.config.keypair,
-    )
-    .unwrap();
+    let link = make_chain_bound_delegation_link(
+        &parent.id,
+        &parent_kp,
+        &child_kp.public_key(),
+        &parent_scope,
+        current_unix_timestamp(),
+    );
+    let child = make_chain_bound_capability(
+        &kernel,
+        "cap-missing-parent",
+        child_kp.public_key(),
+        child_scope,
+        vec![link],
+        &parent_scope,
+        None,
+    );
 
     let response = kernel
         .evaluate_tool_call_blocking(&make_request(
@@ -2952,28 +2853,32 @@ fn delegated_tool_call_without_delegate_operation_denies() {
     let child_kp = make_keypair();
 
     let parent_scope = make_scope(vec![make_grant("srv-a", "read_file")]);
-    let parent = make_capability(&kernel, &parent_kp, parent_scope, 300);
+    let parent = make_capability(&kernel, &parent_kp, parent_scope.clone(), 300);
     seed_store
         .record_capability_snapshot(&parent, None)
         .unwrap();
     drop(seed_store);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    set_capability_trust_root_for_scope(&kernel, &parent_scope);
+    kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
     let child_scope = make_scope(vec![make_grant("srv-a", "read_file")]);
-    let link = make_delegation_link(&parent.id, &parent_kp, &child_kp, current_unix_timestamp());
-    let child = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-missing-delegate".to_string(),
-            issuer: kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope: child_scope,
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
-            delegation_chain: vec![link],
-        },
-        &kernel.config.keypair,
-    )
-    .unwrap();
+    let link = make_chain_bound_delegation_link(
+        &parent.id,
+        &parent_kp,
+        &child_kp.public_key(),
+        &parent_scope,
+        current_unix_timestamp(),
+    );
+    let child = make_chain_bound_capability(
+        &kernel,
+        "cap-missing-delegate",
+        child_kp.public_key(),
+        child_scope,
+        vec![link],
+        &parent_scope,
+        None,
+    );
 
     let response = kernel
         .evaluate_tool_call_blocking(&make_request(
@@ -3016,29 +2921,33 @@ fn delegated_tool_call_with_scope_escalation_denies() {
         }],
         ..ChioScope::default()
     };
-    let parent = make_capability(&kernel, &parent_kp, parent_scope, 300);
+    let parent = make_capability(&kernel, &parent_kp, parent_scope.clone(), 300);
     seed_store
         .record_capability_snapshot(&parent, None)
         .unwrap();
     drop(seed_store);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    set_capability_trust_root_for_scope(&kernel, &parent_scope);
+    kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
     let child_scope = make_scope(vec![make_grant("srv-a", "read_file")]);
     let link_timestamp = current_unix_timestamp();
-    let link = make_delegation_link(&parent.id, &parent_kp, &child_kp, link_timestamp);
-    let child = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-escalated-child".to_string(),
-            issuer: kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope: child_scope,
-            issued_at: link_timestamp,
-            expires_at: parent.expires_at,
-            delegation_chain: vec![link],
-        },
-        &kernel.config.keypair,
-    )
-    .unwrap();
+    let link = make_chain_bound_delegation_link(
+        &parent.id,
+        &parent_kp,
+        &child_kp.public_key(),
+        &child_scope,
+        link_timestamp,
+    );
+    let child = make_chain_bound_capability(
+        &kernel,
+        "cap-escalated-child",
+        child_kp.public_key(),
+        child_scope.clone(),
+        vec![link],
+        &child_scope,
+        None,
+    );
 
     let response = kernel
         .evaluate_tool_call_blocking(&make_request(
@@ -3078,27 +2987,26 @@ fn delegated_tool_call_with_delegatee_subject_mismatch_denies() {
         .unwrap();
     drop(seed_store);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    set_capability_trust_root_for_scope(&kernel, &parent_scope);
+    kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
     let child_scope = make_scope(vec![make_grant("srv-a", "read_file")]);
-    let link = make_delegation_link(
+    let link = make_chain_bound_delegation_link(
         &parent.id,
         &parent_kp,
-        &other_child_kp,
+        &other_child_kp.public_key(),
+        &parent_scope,
         current_unix_timestamp(),
     );
-    let child = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-delegatee-mismatch".to_string(),
-            issuer: kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope: child_scope,
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
-            delegation_chain: vec![link],
-        },
-        &kernel.config.keypair,
-    )
-    .unwrap();
+    let child = make_chain_bound_capability(
+        &kernel,
+        "cap-delegatee-mismatch",
+        child_kp.public_key(),
+        child_scope,
+        vec![link],
+        &parent_scope,
+        None,
+    );
 
     let response = kernel
         .evaluate_tool_call_blocking(&make_request(
@@ -3138,14 +3046,19 @@ fn delegated_tool_call_exceeding_configured_max_depth_denies() {
     let root = make_capability(&kernel, &root_kp, delegable_scope.clone(), 300);
     seed_store.record_capability_snapshot(&root, None).unwrap();
 
-    let root_to_parent =
-        make_delegation_link(&root.id, &root_kp, &parent_kp, current_unix_timestamp());
+    let root_to_parent = make_chain_bound_delegation_link(
+        &root.id,
+        &root_kp,
+        &parent_kp.public_key(),
+        &delegable_scope,
+        current_unix_timestamp(),
+    );
     let parent = CapabilityToken::sign(
         CapabilityTokenBody {
             id: "cap-max-depth-parent".to_string(),
             issuer: kernel.config.keypair.public_key(),
             subject: parent_kp.public_key(),
-            scope: delegable_scope,
+            scope: delegable_scope.clone(),
             issued_at: current_unix_timestamp(),
             expires_at: current_unix_timestamp() + 300,
             delegation_chain: vec![root_to_parent.clone()],
@@ -3159,23 +3072,26 @@ fn delegated_tool_call_exceeding_configured_max_depth_denies() {
     drop(seed_store);
 
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    set_capability_trust_root_for_scope(&kernel, &delegable_scope);
+    kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
     let child_scope = make_scope(vec![make_grant("srv-a", "read_file")]);
-    let parent_to_child =
-        make_delegation_link(&parent.id, &parent_kp, &child_kp, current_unix_timestamp());
-    let child = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-max-depth-child".to_string(),
-            issuer: kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope: child_scope,
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
-            delegation_chain: vec![root_to_parent, parent_to_child],
-        },
-        &kernel.config.keypair,
-    )
-    .unwrap();
+    let parent_to_child = make_chain_bound_delegation_link(
+        &parent.id,
+        &parent_kp,
+        &child_kp.public_key(),
+        &delegable_scope,
+        current_unix_timestamp(),
+    );
+    let child = make_chain_bound_capability(
+        &kernel,
+        "cap-max-depth-child",
+        child_kp.public_key(),
+        child_scope,
+        vec![root_to_parent, parent_to_child],
+        &delegable_scope,
+        None,
+    );
 
     let response = kernel
         .evaluate_tool_call_blocking(&make_request("req-max-depth", &child, "read_file", "srv-a"))
@@ -3208,14 +3124,19 @@ fn delegated_tool_call_with_truncated_ancestor_chain_denies() {
     let root = make_capability(&kernel, &root_kp, delegable_scope.clone(), 300);
     seed_store.record_capability_snapshot(&root, None).unwrap();
 
-    let root_to_parent =
-        make_delegation_link(&root.id, &root_kp, &parent_kp, current_unix_timestamp());
+    let root_to_parent = make_chain_bound_delegation_link(
+        &root.id,
+        &root_kp,
+        &parent_kp.public_key(),
+        &delegable_scope,
+        current_unix_timestamp(),
+    );
     let parent = CapabilityToken::sign(
         CapabilityTokenBody {
             id: "cap-truncated-parent".to_string(),
             issuer: kernel.config.keypair.public_key(),
             subject: parent_kp.public_key(),
-            scope: delegable_scope,
+            scope: delegable_scope.clone(),
             issued_at: current_unix_timestamp(),
             expires_at: current_unix_timestamp() + 300,
             delegation_chain: vec![root_to_parent],
@@ -3229,23 +3150,26 @@ fn delegated_tool_call_with_truncated_ancestor_chain_denies() {
     drop(seed_store);
 
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    set_capability_trust_root_for_scope(&kernel, &delegable_scope);
+    kernel.register_budget_parent(parent.id.clone(), 10_000).unwrap();
 
     let child_scope = make_scope(vec![make_grant("srv-a", "read_file")]);
-    let parent_to_child =
-        make_delegation_link(&parent.id, &parent_kp, &child_kp, current_unix_timestamp());
-    let child = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-truncated-child".to_string(),
-            issuer: kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope: child_scope,
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
-            delegation_chain: vec![parent_to_child],
-        },
-        &kernel.config.keypair,
-    )
-    .unwrap();
+    let parent_to_child = make_chain_bound_delegation_link(
+        &parent.id,
+        &parent_kp,
+        &child_kp.public_key(),
+        &delegable_scope,
+        current_unix_timestamp(),
+    );
+    let child = make_chain_bound_capability(
+        &kernel,
+        "cap-truncated-child",
+        child_kp.public_key(),
+        child_scope,
+        vec![parent_to_child],
+        &delegable_scope,
+        None,
+    );
 
     let response = kernel
         .evaluate_tool_call_blocking(&make_request(
@@ -5177,12 +5101,12 @@ fn session_operation_read_resource_enforces_session_roots_for_filesystem_resourc
     assert_eq!(receipt.tool_server, "session");
     assert_eq!(
             receipt.decision,
-            Decision::Deny {
+            Some(Decision::Deny {
                 reason:
                     "filesystem-backed resource path /workspace/private/ops.md is outside the negotiated roots"
                         .to_string(),
                 guard: "session_roots".to_string(),
-            }
+            })
         );
 }
 
@@ -5225,10 +5149,10 @@ fn session_operation_read_resource_fails_closed_when_filesystem_roots_are_missin
     assert!(receipt.is_denied());
     assert_eq!(
         receipt.decision,
-        Decision::Deny {
+        Some(Decision::Deny {
             reason: "no enforceable filesystem roots are available for this session".to_string(),
             guard: "session_roots".to_string(),
-        }
+        })
     );
 }
 
@@ -5711,6 +5635,7 @@ fn make_monetary_config() -> KernelConfig {
         max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     }
@@ -7338,28 +7263,28 @@ fn governed_call_chain_receipt_observes_capability_lineage_subjects() {
         .unwrap();
     drop(seed_store);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    set_capability_trust_root_for_scope(&kernel, &root_scope);
     kernel
         .register_budget_parent(root_capability.id.clone(), 10_000)
         .unwrap();
 
-    let delegated_capability = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-governed-child".to_string(),
-            issuer: kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope: make_scope(vec![make_grant("srv-echo", "delegate")]),
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
-            delegation_chain: vec![make_delegation_link(
-                &root_capability.id,
-                &root_kp,
-                &child_kp,
-                current_unix_timestamp(),
-            )],
-        },
-        &kernel.config.keypair,
-    )
-    .unwrap();
+    let child_scope = make_scope(vec![make_grant("srv-echo", "delegate")]);
+    let link = make_chain_bound_delegation_link(
+        &root_capability.id,
+        &root_kp,
+        &child_kp.public_key(),
+        &root_scope,
+        current_unix_timestamp(),
+    );
+    let delegated_capability = make_chain_bound_capability(
+        &kernel,
+        "cap-governed-child",
+        child_kp.public_key(),
+        child_scope,
+        vec![link],
+        &root_scope,
+        None,
+    );
 
     let request_id = "req-governed-capability-lineage";
     let root_subject = root_kp.public_key().to_hex();
@@ -7423,34 +7348,35 @@ fn governed_call_chain_receipt_verifies_signed_upstream_delegator_proof() {
 
     let mut root_grant = make_grant("srv-echo", "delegate");
     root_grant.operations.push(Operation::Delegate);
-    let root_capability = make_capability(&kernel, &root_kp, make_scope(vec![root_grant]), 300);
+    let root_scope = make_scope(vec![root_grant]);
+    let root_capability = make_capability(&kernel, &root_kp, root_scope.clone(), 300);
     seed_store
         .record_capability_snapshot(&root_capability, None)
         .unwrap();
     drop(seed_store);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    set_capability_trust_root_for_scope(&kernel, &root_scope);
     kernel
         .register_budget_parent(root_capability.id.clone(), 10_000)
         .unwrap();
 
-    let delegated_capability = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-governed-upstream-proof".to_string(),
-            issuer: kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope: make_scope(vec![make_grant("srv-echo", "delegate")]),
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
-            delegation_chain: vec![make_delegation_link(
-                &root_capability.id,
-                &root_kp,
-                &child_kp,
-                current_unix_timestamp(),
-            )],
-        },
-        &kernel.config.keypair,
-    )
-    .unwrap();
+    let child_scope = make_scope(vec![make_grant("srv-echo", "delegate")]);
+    let link = make_chain_bound_delegation_link(
+        &root_capability.id,
+        &root_kp,
+        &child_kp.public_key(),
+        &root_scope,
+        current_unix_timestamp(),
+    );
+    let delegated_capability = make_chain_bound_capability(
+        &kernel,
+        "cap-governed-upstream-proof",
+        child_kp.public_key(),
+        child_scope,
+        vec![link],
+        &root_scope,
+        None,
+    );
 
     let root_subject = root_kp.public_key().to_hex();
     let call_chain = GovernedCallChainContext {
@@ -7649,10 +7575,11 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
 
     let mut root_grant = make_grant("srv-echo", "delegate");
     root_grant.operations.push(Operation::Delegate);
+    let root_scope = make_scope(vec![root_grant]);
     let root_capability = make_capability(
         &verified_kernel,
         &root_kp,
-        make_scope(vec![root_grant]),
+        root_scope.clone(),
         300,
     );
     seed_store
@@ -7660,25 +7587,28 @@ fn governed_call_chain_receipt_follows_asserted_observed_verified_execution_orde
         .unwrap();
     drop(seed_store);
     verified_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
+    set_capability_trust_root_for_scope(&verified_kernel, &root_scope);
+    verified_kernel
+        .register_budget_parent(root_capability.id.clone(), 10_000)
+        .unwrap();
 
-    let delegated_capability = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-governed-execution-order".to_string(),
-            issuer: verified_kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope: make_scope(vec![make_grant("srv-echo", "delegate")]),
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
-            delegation_chain: vec![make_delegation_link(
-                &root_capability.id,
-                &root_kp,
-                &child_kp,
-                current_unix_timestamp(),
-            )],
-        },
-        &verified_kernel.config.keypair,
-    )
-    .unwrap();
+    let child_scope = make_scope(vec![make_grant("srv-echo", "delegate")]);
+    let link = make_chain_bound_delegation_link(
+        &root_capability.id,
+        &root_kp,
+        &child_kp.public_key(),
+        &root_scope,
+        current_unix_timestamp(),
+    );
+    let delegated_capability = make_chain_bound_capability(
+        &verified_kernel,
+        "cap-governed-execution-order",
+        child_kp.public_key(),
+        child_scope,
+        vec![link],
+        &root_scope,
+        None,
+    );
 
     let root_subject = root_kp.public_key().to_hex();
     let call_chain = GovernedCallChainContext {
@@ -7754,31 +7684,35 @@ fn governed_request_rejects_upstream_call_chain_proof_subject_mismatch() {
 
     let mut root_grant = make_grant("srv-echo", "delegate");
     root_grant.operations.push(Operation::Delegate);
-    let root_capability = make_capability(&kernel, &root_kp, make_scope(vec![root_grant]), 300);
+    let root_scope = make_scope(vec![root_grant]);
+    let root_capability = make_capability(&kernel, &root_kp, root_scope.clone(), 300);
     seed_store
         .record_capability_snapshot(&root_capability, None)
         .unwrap();
     drop(seed_store);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
 
-    let delegated_capability = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-governed-upstream-proof-subject-mismatch".to_string(),
-            issuer: kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope: make_scope(vec![make_grant("srv-echo", "delegate")]),
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
-            delegation_chain: vec![make_delegation_link(
-                &root_capability.id,
-                &root_kp,
-                &child_kp,
-                current_unix_timestamp(),
-            )],
-        },
-        &kernel.config.keypair,
-    )
-    .unwrap();
+    set_capability_trust_root_for_scope(&kernel, &root_scope);
+    kernel
+        .register_budget_parent(root_capability.id.clone(), 10_000)
+        .unwrap();
+    let child_scope = make_scope(vec![make_grant("srv-echo", "delegate")]);
+    let link = make_chain_bound_delegation_link(
+        &root_capability.id,
+        &root_kp,
+        &child_kp.public_key(),
+        &root_scope,
+        current_unix_timestamp(),
+    );
+    let delegated_capability = make_chain_bound_capability(
+        &kernel,
+        "cap-governed-upstream-proof-subject-mismatch",
+        child_kp.public_key(),
+        child_scope,
+        vec![link],
+        &root_scope,
+        None,
+    );
 
     let root_subject = root_kp.public_key().to_hex();
     let call_chain = GovernedCallChainContext {
@@ -7842,31 +7776,35 @@ fn governed_request_rejects_call_chain_delegator_subject_that_conflicts_with_cap
 
     let mut root_grant = make_grant("srv-echo", "delegate");
     root_grant.operations.push(Operation::Delegate);
-    let root_capability = make_capability(&kernel, &root_kp, make_scope(vec![root_grant]), 300);
+    let root_scope = make_scope(vec![root_grant]);
+    let root_capability = make_capability(&kernel, &root_kp, root_scope.clone(), 300);
     seed_store
         .record_capability_snapshot(&root_capability, None)
         .unwrap();
     drop(seed_store);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()));
 
-    let delegated_capability = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-governed-child-mismatch".to_string(),
-            issuer: kernel.config.keypair.public_key(),
-            subject: child_kp.public_key(),
-            scope: make_scope(vec![make_grant("srv-echo", "delegate")]),
-            issued_at: current_unix_timestamp(),
-            expires_at: current_unix_timestamp() + 300,
-            delegation_chain: vec![make_delegation_link(
-                &root_capability.id,
-                &root_kp,
-                &child_kp,
-                current_unix_timestamp(),
-            )],
-        },
-        &kernel.config.keypair,
-    )
-    .unwrap();
+    set_capability_trust_root_for_scope(&kernel, &root_scope);
+    kernel
+        .register_budget_parent(root_capability.id.clone(), 10_000)
+        .unwrap();
+    let child_scope = make_scope(vec![make_grant("srv-echo", "delegate")]);
+    let link = make_chain_bound_delegation_link(
+        &root_capability.id,
+        &root_kp,
+        &child_kp.public_key(),
+        &root_scope,
+        current_unix_timestamp(),
+    );
+    let delegated_capability = make_chain_bound_capability(
+        &kernel,
+        "cap-governed-child-mismatch",
+        child_kp.public_key(),
+        child_scope,
+        vec![link],
+        &root_scope,
+        None,
+    );
 
     let response = kernel
         .evaluate_tool_call_blocking(&ToolCallRequest {
@@ -8047,7 +7985,13 @@ fn cross_kernel_continuation_token_verifies_parent_receipt_hash_and_session_anch
             tool_name: "delegate".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({ "stage": "parent" }))
                 .unwrap(),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: chio_core::crypto::sha256_hex(br#"{"ok":true}"#),
             policy_hash: "policy-parent-continuation".to_string(),
             evidence: Vec::new(),
@@ -10428,10 +10372,7 @@ fn velocity_guard_denial_produces_signed_deny_receipt_no_panic() {
         "counting guard should deny 3rd invocation"
     );
     // Verify it's a properly signed deny receipt (not a panic/unwrap).
-    assert!(
-        r3.receipt.id.starts_with("rcpt-"),
-        "receipt should have valid id"
-    );
+    assert_content_addressed_receipt_id(&r3.receipt.id);
     assert!(r3.reason.is_some(), "denial should have a reason");
 }
 
@@ -10981,6 +10922,7 @@ fn make_dpop_kernel_and_cap(
         max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     };

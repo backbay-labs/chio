@@ -9,14 +9,15 @@ import "encoding/json"
 // Chio annotation keys for pod configuration.
 const (
 	// AnnotationCapabilityToken is the pod annotation containing the Chio
-	// capability token. Required unless the pod is exempt.
+	// capability token.
 	AnnotationCapabilityToken = "chio.protocol/capability-token"
 
-	// AnnotationRequiredScopes is a comma-separated list of required Chio
-	// scopes for the pod's namespace or label selector.
+	// AnnotationRequiredScopes is a legacy pod annotation name. The admission
+	// webhook does not trust pod-supplied scope requirements.
 	AnnotationRequiredScopes = "chio.backbay.io/required-scopes"
 
-	// AnnotationExempt exempts a pod from the capability token requirement.
+	// AnnotationExempt is a legacy pod annotation name. The admission webhook
+	// does not trust pod-supplied exemptions.
 	AnnotationExempt = "chio.backbay.io/exempt"
 
 	// AnnotationInject triggers sidecar injection when set to "true".

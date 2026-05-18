@@ -128,18 +128,21 @@ async def _evaluate_sidecar(
             receipt_id=exc.receipt_id,
         ) from exc
 
-    if receipt.is_denied:
+    if not receipt.is_allowed:
         decision = receipt.decision
         raise ChioIACError(
-            f"Chio denied pulumi {phase}: {decision.reason or 'denied by Chio kernel'}",
+            f"Chio denied pulumi {phase}: "
+            f"{decision.reason if decision is not None and decision.reason is not None else 'non-authorizing Chio receipt'}",
             subcommand=phase,
             capability_id=capability_id,
             tool_server=tool_server,
             tool_name=tool_name,
-            guard=decision.guard,
-            reason=decision.reason,
+            guard=decision.guard if decision is not None else None,
+            reason=decision.reason if decision is not None else None,
             receipt_id=receipt.id,
-            decision=decision.model_dump(exclude_none=True),
+            decision=decision.model_dump(exclude_none=True)
+            if decision is not None
+            else None,
         )
 
     return receipt

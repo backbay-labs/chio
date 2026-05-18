@@ -1,7 +1,9 @@
 """Synchronous HTTP client for the Chio Lambda Extension.
 
 The extension exposes a localhost evaluator at ``http://127.0.0.1:9090/v1/evaluate``
-that accepts a JSON tool-call description and returns ``{"decision": "allow" | "deny", ...}``.
+that accepts a JSON tool-call description and returns a non-authoritative
+evaluation observation. Handlers must require an authoritative
+``mediated_decision`` / ``prevent`` allow before executing.
 Because Lambda handlers are typically synchronous, this client is synchronous by
 default and uses :class:`httpx.Client` under the hood.
 
@@ -11,9 +13,10 @@ The client is **fail-closed**:
   :class:`ChioLambdaError` and callers must treat the request as denied.
 * If the extension returns a non-JSON body or an HTTP error, the same exception
   is raised.
-* If the extension returns ``"decision": "deny"``, the returned
-  :class:`EvaluateVerdict` has ``denied=True`` and carries the ``reason`` so
-  the handler can surface a structured error.
+* If the extension returns a deny, advisory, trace-only, or otherwise
+  non-authoritative observation, the returned :class:`EvaluateVerdict` has
+  ``denied=True`` and carries the ``reason`` so the handler can surface a
+  structured error.
 """
 
 from __future__ import annotations
@@ -41,6 +44,10 @@ class EvaluateVerdict:
 
     decision: str
     receipt_id: str
+    authorized: bool
+    authoritative: bool
+    receipt_kind: str
+    boundary_class: str
     reason: str | None
     capability_id: str
     tool_server: str
@@ -49,8 +56,14 @@ class EvaluateVerdict:
 
     @property
     def allowed(self) -> bool:
-        """True if the extension decided the call may proceed."""
-        return self.decision == "allow"
+        """True only for authoritative Chio authorization."""
+        return (
+            self.decision == "allow"
+            and self.authorized
+            and self.authoritative
+            and self.receipt_kind == "mediated_decision"
+            and self.boundary_class == "prevent"
+        )
 
     @property
     def denied(self) -> bool:
@@ -181,6 +194,10 @@ class ChioLambdaClient:
             return EvaluateVerdict(
                 decision=str(data["decision"]),
                 receipt_id=str(data["receipt_id"]),
+                authorized=bool(data.get("authorized", False)),
+                authoritative=bool(data.get("authoritative", False)),
+                receipt_kind=str(data.get("receipt_kind", "")),
+                boundary_class=str(data.get("boundary_class", "")),
                 reason=data.get("reason"),
                 capability_id=str(data.get("capability_id", capability_id)),
                 tool_server=str(data.get("tool_server", tool_server)),

@@ -1614,8 +1614,8 @@ fn harden_python_capability_negotiation(path: &Path) -> Result<(), XtaskError> {
     replace_python_codegen_snippet(
         path,
         &mut body,
-        "    maxCapabilitySchema: MaxCapabilitySchema\n",
-        "    maxCapabilitySchema: MaxCapabilitySchema\n\n    @model_validator(mode=\"after\")\n    def _validate_feature_names(self) -> \"ChioCapabilityNegotiationV1\":\n        if self.features is None:\n            return self\n        for name in self.features:\n            if not _CHIO_FEATURE_NAME_RE.match(name):\n                raise ValueError(\n                    f\"capability feature name {name!r} does not match \"\n                    f\"propertyNames pattern ^[a-z0-9_.-]{{1,96}}$\"\n                )\n        return self\n",
+        "    features: dict[str, bool] | None = Field(\n        None,\n        description=\"String-keyed feature bitset. Peers proceed only with the intersection of true values advertised by both sides.\",\n    )\n",
+        "    features: dict[str, bool] | None = Field(\n        None,\n        description=\"String-keyed feature bitset. Peers proceed only with the intersection of true values advertised by both sides.\",\n    )\n\n    @model_validator(mode=\"after\")\n    def _validate_feature_names(self) -> \"ChioCapabilityNegotiationV1\":\n        if self.features is None:\n            return self\n        for name in self.features:\n            if not _CHIO_FEATURE_NAME_RE.match(name):\n                raise ValueError(\n                    f\"capability feature name {name!r} does not match \"\n                    f\"propertyNames pattern ^[a-z0-9_.-]{{1,96}}$\"\n                )\n        return self\n",
     )?;
     fs::write(path, body).map_err(|err| XtaskError::Io(display_path(path), err))
 }
@@ -1752,17 +1752,8 @@ fn build_python_top_init(schema_digest: &str, subpackages: &PythonSubpackageExpo
     let has_capability_v1 = subpackages.iter().any(|(subpkg, classes)| {
         subpkg == "capability" && classes.iter().any(|name| name == "ChioCapabilitytoken")
     });
-    let has_capability_v2 = subpackages.iter().any(|(subpkg, classes)| {
-        subpkg == "capability" && classes.iter().any(|name| name == "ChioCapabilitytokenV2")
-    });
     if has_capability_v1 {
-        if has_capability_v2 {
-            imports.push_str(
-                "\nclass _CapabilityTokenMeta(type):\n    def __instancecheck__(cls, instance):\n        return isinstance(instance, (ChioCapabilitytoken, ChioCapabilitytokenV2))\n\n\nclass CapabilityToken(metaclass=_CapabilityTokenMeta):\n    \"\"\"Version-aware facade for canonical Chio capability tokens.\"\"\"\n\n    def __new__(cls, *args, **kwargs):\n        if len(args) > 1:\n            raise TypeError(\"CapabilityToken accepts at most one positional value\")\n        if args and kwargs:\n            raise TypeError(\"CapabilityToken accepts a value or keyword fields, not both\")\n        obj = args[0] if args else kwargs\n        return cls.model_validate(obj)\n\n    @classmethod\n    def __get_pydantic_core_schema__(cls, source_type, handler):\n        return core_schema.union_schema(\n            [\n                handler.generate_schema(ChioCapabilitytokenV2),\n                handler.generate_schema(ChioCapabilitytoken),\n            ]\n        )\n\n    @classmethod\n    def __get_pydantic_json_schema__(cls, schema, handler):\n        return handler(schema)\n\n    @classmethod\n    def _adapter(cls):\n        return TypeAdapter(cls)\n\n    @classmethod\n    def model_validate(cls, obj, *args, **kwargs):\n        return cls._adapter().validate_python(obj, *args, **kwargs)\n\n    @classmethod\n    def model_validate_json(cls, json_data, *args, **kwargs):\n        return cls._adapter().validate_json(json_data, *args, **kwargs)\n\n    @classmethod\n    def model_json_schema(cls, *args, **kwargs):\n        return cls._adapter().json_schema(*args, **kwargs)\n",
-            );
-        } else {
-            imports.push_str("\nCapabilityToken = ChioCapabilitytoken\n");
-        }
+        imports.push_str("\nCapabilityToken = ChioCapabilitytoken\n");
         all_names.push("CapabilityToken".to_string());
     }
     all_names.sort();

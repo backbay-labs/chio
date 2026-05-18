@@ -132,16 +132,31 @@ data class HttpReceipt(
     @JsonProperty("caller_identity_hash") val callerIdentityHash: String,
     @JsonProperty("session_id") val sessionId: String? = null,
     @JsonProperty("verdict") val verdict: Verdict,
+    @JsonProperty("receipt_kind") val receiptKind: String,
+    @JsonProperty("boundary_class") val boundaryClass: String,
+    @JsonProperty("observation_outcome") val observationOutcome: String? = null,
+    @JsonProperty("tool_origin") val toolOrigin: String,
+    @JsonProperty("redaction_mode") val redactionMode: String,
+    @JsonProperty("actor_chain") val actorChain: List<Map<String, Any?>> = emptyList(),
     @JsonProperty("evidence") val evidence: List<GuardEvidence> = emptyList(),
     @JsonProperty("response_status") val responseStatus: Int,
     @JsonProperty("timestamp") val timestamp: Long,
     @JsonProperty("content_hash") val contentHash: String,
     @JsonProperty("policy_hash") val policyHash: String,
+    @JsonProperty("trust_level") val trustLevel: String,
     @JsonProperty("capability_id") val capabilityId: String? = null,
     @JsonProperty("metadata") val metadata: Any? = null,
     @JsonProperty("kernel_key") val kernelKey: String,
     @JsonProperty("signature") val signature: String,
 ) : Serializable {
+    @JsonIgnore
+    fun isAuthorized(): Boolean =
+        receiptKind == "mediated_decision" &&
+            boundaryClass == "prevent" &&
+            observationOutcome == null &&
+            trustLevel == "mediated" &&
+            verdict.isAllowed()
+
     companion object {
         private const val serialVersionUID: Long = 1L
     }
@@ -174,6 +189,39 @@ data class EvaluateResponse(
     @JsonProperty("receipt") val receipt: HttpReceipt,
     @JsonProperty("evidence") val evidence: List<GuardEvidence> = emptyList(),
 ) : Serializable {
+    companion object {
+        private const val serialVersionUID: Long = 1L
+    }
+}
+
+/** Structured authority result returned by /chio/verify. */
+data class VerifyReceiptResponse(
+    @JsonProperty("signature_valid") val signatureValid: Boolean,
+    @JsonProperty("signer_trusted") val signerTrusted: Boolean,
+    @JsonProperty("receipt_id_valid") val receiptIdValid: Boolean,
+    @JsonProperty("parameter_hash_valid") val parameterHashValid: Boolean,
+    @JsonProperty("receipt_kind") val receiptKind: String,
+    @JsonProperty("boundary_class") val boundaryClass: String,
+    @JsonProperty("trust_level") val trustLevel: String,
+    @JsonProperty("result") val result: String,
+    @JsonProperty("authorized") val authorized: Boolean,
+    @JsonProperty("signer_key_hex") val signerKeyHex: String,
+    @JsonProperty("ok") val ok: Boolean,
+) : Serializable {
+    @JsonIgnore
+    fun authorizes(receipt: HttpReceipt): Boolean =
+        ok &&
+            authorized &&
+            signatureValid &&
+            signerTrusted &&
+            receiptIdValid &&
+            parameterHashValid &&
+            receiptKind == "mediated_decision" &&
+            boundaryClass == "prevent" &&
+            trustLevel == "mediated" &&
+            (result == "allow" || result == "authorized" || result == "Authorized") &&
+            receipt.isAuthorized()
+
     companion object {
         private const val serialVersionUID: Long = 1L
     }

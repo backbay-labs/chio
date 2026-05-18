@@ -5,7 +5,7 @@
   "claimLevel": "bounded_protocol_aware_execution_fabric",
   "decision": "bounded_claim_qualified_use_universal_control_plane_gate_for_stronger_claim",
   "qualifiedClaim": {
-    "summary": "Chio ships a cryptographically signed, fail-closed governance kernel and a bounded protocol-aware cross-protocol execution fabric across HTTP APIs, MCP, OpenAI tool execution, A2A skills, and ACP capabilities.",
+    "summary": "Chio ships a cryptographically signed, fail-closed governance kernel and a bounded protocol-aware cross-protocol execution fabric across HTTP APIs, MCP, A2A skills, and ACP capabilities. OpenAI tool execution remains deferred until separately implemented and qualified.",
     "constraints": [
       "Only the supported authoritative paths are claim-eligible.",
       "Lifecycle and bridge-fidelity limits remain explicit on published surfaces, including the deferred-task A2A/ACP authoritative lifecycle path.",
@@ -157,7 +157,6 @@
       "commands": [
         "cargo test -p chio-cross-protocol -p chio-mcp-edge -p chio-acp-edge -p chio-a2a-edge",
         "cargo test -p chio-http-core -p chio-api-protect -p chio-tower",
-        "cargo test -p chio-openai-adapter",
         "cargo test -p chio-acp-proxy",
         "npm test (sdks/typescript/packages/node-http)",
         "npm test (sdks/typescript/packages/express)",
@@ -209,7 +208,6 @@
       "logs/chio-http-core.log",
       "logs/chio-api-protect.log",
       "logs/chio-tower.log",
-      "logs/chio-openai.log",
       "logs/chio-acp-proxy.log",
       "logs/ts-node-http.log",
       "logs/ts-express.log",

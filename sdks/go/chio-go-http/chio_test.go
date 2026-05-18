@@ -2,12 +2,23 @@ package chio
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+type failingReadCloser struct{}
+
+func (failingReadCloser) Read(_ []byte) (int, error) {
+	return 0, errors.New("body read failed")
+}
+
+func (failingReadCloser) Close() error {
+	return nil
+}
 
 // mockSidecar creates a test HTTP server that simulates the Chio sidecar kernel.
 func mockSidecar(t *testing.T, verdict Verdict) *httptest.Server {
@@ -32,16 +43,21 @@ func mockSidecar(t *testing.T, verdict Verdict) *httptest.Server {
 			resp := EvaluateResponse{
 				Verdict: verdict,
 				Receipt: HTTPReceipt{
-					ID:                 "receipt-test-001",
+					ID:                 authorizedReceiptID,
 					RequestID:          req.RequestID,
 					RoutePattern:       req.RoutePattern,
 					Method:             req.Method,
 					CallerIdentityHash: "test-hash",
 					Verdict:            verdict,
+					ReceiptKind:        "mediated_decision",
+					BoundaryClass:      "prevent",
+					ToolOrigin:         "caller_executed",
+					RedactionMode:      "none",
+					TrustLevel:         "mediated",
 					Evidence:           []GuardEvidence{},
 					ResponseStatus:     responseStatus,
 					Timestamp:          req.Timestamp,
-					ContentHash:        "test-content-hash",
+					ContentHash:        authorizedContentHash,
 					PolicyHash:         "test-policy-hash",
 					KernelKey:          "test-kernel-key",
 					Signature:          "test-signature",
@@ -51,6 +67,9 @@ func mockSidecar(t *testing.T, verdict Verdict) *httptest.Server {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
 
+		case "/chio/verify":
+			writeVerifyResponse(w, true)
+
 		case "/chio/health":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"status":"ok"}`))
@@ -59,6 +78,11 @@ func mockSidecar(t *testing.T, verdict Verdict) *httptest.Server {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
+}
+
+func writeVerifyResponse(w http.ResponseWriter, valid bool) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(verifyReceiptBody(valid, valid))
 }
 
 func TestProtect_AllowedGET(t *testing.T) {
@@ -85,8 +109,8 @@ func TestProtect_AllowedGET(t *testing.T) {
 	if receiptID == "" {
 		t.Fatal("expected X-Chio-Receipt-Id header")
 	}
-	if receiptID != "receipt-test-001" {
-		t.Fatalf("expected receipt-test-001, got %s", receiptID)
+	if receiptID != authorizedReceiptID {
+		t.Fatalf("expected %s, got %s", authorizedReceiptID, receiptID)
 	}
 }
 
@@ -122,8 +146,169 @@ func TestProtect_DeniedPOST(t *testing.T) {
 	if errResp.Error != ErrAccessDenied {
 		t.Fatalf("expected error code %s, got %s", ErrAccessDenied, errResp.Error)
 	}
-	if errResp.ReceiptID != "receipt-test-001" {
-		t.Fatalf("expected receipt_id receipt-test-001, got %s", errResp.ReceiptID)
+	if errResp.ReceiptID != authorizedReceiptID {
+		t.Fatalf("expected receipt_id %s, got %s", authorizedReceiptID, errResp.ReceiptID)
+	}
+}
+
+func TestProtect_IncompleteFailsClosed(t *testing.T) {
+	sidecar := mockSidecar(t, Verdict{
+		Verdict:    "incomplete",
+		Reason:     "sidecar could not finish evaluation",
+		HTTPStatus: http.StatusServiceUnavailable,
+	})
+	defer sidecar.Close()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("inner handler should not be called for incomplete evaluation")
+	})
+
+	handler := Protect(inner, WithSidecarURL(sidecar.URL))
+
+	req := httptest.NewRequest(http.MethodGet, "/pets", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+	var errResp ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&errResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+	if errResp.Error != ErrAccessDenied {
+		t.Fatalf("expected error code %s, got %s", ErrAccessDenied, errResp.Error)
+	}
+}
+
+func TestProtect_UnverifiedAllowFailsClosed(t *testing.T) {
+	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/chio/evaluate":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("failed to read request body: %v", err)
+			}
+			var req ChioHTTPRequest
+			if err := json.Unmarshal(body, &req); err != nil {
+				t.Fatalf("failed to unmarshal request: %v", err)
+			}
+			resp := EvaluateResponse{
+				Verdict: Verdict{Verdict: "allow"},
+				Receipt: HTTPReceipt{
+					ID:             "receipt-unverified",
+					RequestID:      req.RequestID,
+					RoutePattern:   req.RoutePattern,
+					Method:         req.Method,
+					Verdict:        Verdict{Verdict: "allow"},
+					ReceiptKind:    "mediated_decision",
+					BoundaryClass:  "prevent",
+					ToolOrigin:     "caller_executed",
+					RedactionMode:  "none",
+					TrustLevel:     "mediated",
+					ResponseStatus: 200,
+					ContentHash:    authorizedContentHash,
+					KernelKey:      "test-kernel-key",
+					Signature:      "bad-signature",
+				},
+				Evidence: []GuardEvidence{},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		case "/chio/verify":
+			writeVerifyResponse(w, false)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer sidecar.Close()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("inner handler should not be called for unverified allow")
+	})
+
+	handler := Protect(inner, WithSidecarURL(sidecar.URL))
+
+	req := httptest.NewRequest(http.MethodGet, "/pets", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("X-Chio-Receipt-Id"); got != "" {
+		t.Fatalf("expected no verified receipt header, got %q", got)
+	}
+	var errResp ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&errResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+	if errResp.Error != ErrInvalidReceipt {
+		t.Fatalf("expected error code %s, got %s", ErrInvalidReceipt, errResp.Error)
+	}
+}
+
+func TestProtect_VerifierWithoutFullAuthorityTupleFailsClosed(t *testing.T) {
+	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/chio/evaluate":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("failed to read request body: %v", err)
+			}
+			var req ChioHTTPRequest
+			if err := json.Unmarshal(body, &req); err != nil {
+				t.Fatalf("failed to unmarshal request: %v", err)
+			}
+			resp := EvaluateResponse{
+				Verdict: Verdict{Verdict: "allow"},
+				Receipt: HTTPReceipt{
+					ID:             authorizedReceiptID,
+					RequestID:      req.RequestID,
+					RoutePattern:   req.RoutePattern,
+					Method:         req.Method,
+					Verdict:        Verdict{Verdict: "allow"},
+					ReceiptKind:    "mediated_decision",
+					BoundaryClass:  "prevent",
+					ToolOrigin:     "caller_executed",
+					RedactionMode:  "none",
+					TrustLevel:     "mediated",
+					ResponseStatus: 200,
+					ContentHash:    authorizedContentHash,
+					KernelKey:      "test-kernel-key",
+					Signature:      "test-signature",
+				},
+				Evidence: []GuardEvidence{},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		case "/chio/verify":
+			body := verifyReceiptBody(true, true)
+			body.ReceiptIDValid = false
+			_ = json.NewEncoder(w).Encode(body)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer sidecar.Close()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("inner handler should not be called for verifier authority mismatch")
+	})
+
+	handler := Protect(inner, WithSidecarURL(sidecar.URL))
+	req := httptest.NewRequest(http.MethodGet, "/pets", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("X-Chio-Receipt-Id"); got != "" {
+		t.Fatalf("expected no verified receipt header, got %q", got)
 	}
 }
 
@@ -144,6 +329,31 @@ func TestProtect_UnsupportedMethod(t *testing.T) {
 	}
 }
 
+func TestProtect_BodyReadFailureFailsClosed(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("inner handler should not be called when request body cannot be read")
+	})
+
+	handler := Protect(inner, WithSidecarURL("http://127.0.0.1:1"))
+
+	req := httptest.NewRequest(http.MethodPost, "/pets", nil)
+	req.Body = failingReadCloser{}
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+	var errResp ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&errResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+	if errResp.Error != ErrEvaluationFailed {
+		t.Fatalf("expected error code %s, got %s", ErrEvaluationFailed, errResp.Error)
+	}
+}
+
 func TestProtect_SidecarUnreachable_FailClosed(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		t.Fatal("inner handler should not be called when sidecar is down and fail-closed")
@@ -161,16 +371,13 @@ func TestProtect_SidecarUnreachable_FailClosed(t *testing.T) {
 	}
 }
 
-func TestProtect_SidecarUnreachable_FailOpen(t *testing.T) {
-	var observedPassthrough *ChioPassthrough
+func TestProtect_SidecarUnreachable_LegacyFailOpenSettingStillFailsClosed(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		passthrough, ok := GetChioPassthrough(r)
-		if !ok {
-			t.Fatal("expected fail-open passthrough context")
+		if _, ok := GetChioPassthrough(r); ok {
+			t.Fatal("did not expect passthrough context")
 		}
-		observedPassthrough = passthrough
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("passed through"))
+		_, _ = w.Write([]byte("should not run"))
 	})
 
 	handler := Protect(inner,
@@ -184,25 +391,21 @@ func TestProtect_SidecarUnreachable_FailOpen(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 (fail-open), got %d", rec.Code)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
 	}
 	if got := rec.Header().Get("X-Chio-Receipt-Id"); got != "" {
-		t.Fatalf("expected no Chio receipt header on fail-open passthrough, got %q", got)
-	}
-	if observedPassthrough == nil {
-		t.Fatal("expected observed passthrough")
-	}
-	if observedPassthrough.Mode != "allow_without_receipt" {
-		t.Fatalf("expected allow_without_receipt, got %q", observedPassthrough.Mode)
-	}
-	if observedPassthrough.Error != ErrSidecarUnreachable {
-		t.Fatalf("expected %q, got %q", ErrSidecarUnreachable, observedPassthrough.Error)
+		t.Fatalf("expected no Chio receipt header, got %q", got)
 	}
 }
 
 func TestProtect_BearerIdentityExtraction(t *testing.T) {
 	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chio/verify" {
+			writeVerifyResponse(w, true)
+			return
+		}
+
 		body, _ := io.ReadAll(r.Body)
 		var req ChioHTTPRequest
 		_ = json.Unmarshal(body, &req)
@@ -217,12 +420,18 @@ func TestProtect_BearerIdentityExtraction(t *testing.T) {
 		resp := EvaluateResponse{
 			Verdict: Verdict{Verdict: "allow"},
 			Receipt: HTTPReceipt{
-				ID:             "receipt-bearer",
+				ID:             authorizedReceiptID,
 				RequestID:      req.RequestID,
 				RoutePattern:   req.RoutePattern,
 				Method:         req.Method,
 				Verdict:        Verdict{Verdict: "allow"},
+				ReceiptKind:    "mediated_decision",
+				BoundaryClass:  "prevent",
+				ToolOrigin:     "caller_executed",
+				RedactionMode:  "none",
+				TrustLevel:     "mediated",
 				ResponseStatus: 200,
+				ContentHash:    authorizedContentHash,
 				KernelKey:      "key",
 				Signature:      "sig",
 			},
@@ -252,6 +461,11 @@ func TestProtect_BearerIdentityExtraction(t *testing.T) {
 
 func TestProtect_CustomRouteResolver(t *testing.T) {
 	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chio/verify" {
+			writeVerifyResponse(w, true)
+			return
+		}
+
 		body, _ := io.ReadAll(r.Body)
 		var req ChioHTTPRequest
 		_ = json.Unmarshal(body, &req)
@@ -263,12 +477,18 @@ func TestProtect_CustomRouteResolver(t *testing.T) {
 		resp := EvaluateResponse{
 			Verdict: Verdict{Verdict: "allow"},
 			Receipt: HTTPReceipt{
-				ID:             "receipt-route",
+				ID:             authorizedReceiptID,
 				RequestID:      req.RequestID,
 				RoutePattern:   req.RoutePattern,
 				Method:         req.Method,
 				Verdict:        Verdict{Verdict: "allow"},
+				ReceiptKind:    "mediated_decision",
+				BoundaryClass:  "prevent",
+				ToolOrigin:     "caller_executed",
+				RedactionMode:  "none",
+				TrustLevel:     "mediated",
 				ResponseStatus: 200,
+				ContentHash:    authorizedContentHash,
 				KernelKey:      "key",
 				Signature:      "sig",
 			},
@@ -308,6 +528,11 @@ func TestProtect_CustomRouteResolver(t *testing.T) {
 func TestProtect_ForwardsQueryCapabilityTokenToSidecar(t *testing.T) {
 	observedCapability := ""
 	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chio/verify" {
+			writeVerifyResponse(w, true)
+			return
+		}
+
 		observedCapability = r.Header.Get("X-Chio-Capability")
 
 		body, _ := io.ReadAll(r.Body)
@@ -317,12 +542,18 @@ func TestProtect_ForwardsQueryCapabilityTokenToSidecar(t *testing.T) {
 		resp := EvaluateResponse{
 			Verdict: Verdict{Verdict: "allow"},
 			Receipt: HTTPReceipt{
-				ID:             "receipt-query-capability",
+				ID:             authorizedReceiptID,
 				RequestID:      req.RequestID,
 				RoutePattern:   req.RoutePattern,
 				Method:         req.Method,
 				Verdict:        Verdict{Verdict: "allow"},
+				ReceiptKind:    "mediated_decision",
+				BoundaryClass:  "prevent",
+				ToolOrigin:     "caller_executed",
+				RedactionMode:  "none",
+				TrustLevel:     "mediated",
 				ResponseStatus: 200,
+				ContentHash:    authorizedContentHash,
 				KernelKey:      "key",
 				Signature:      "sig",
 			},
@@ -504,6 +735,11 @@ func TestConformance_HTTPReceiptSerialization(t *testing.T) {
 		Method:             "GET",
 		CallerIdentityHash: "abc123",
 		Verdict:            Verdict{Verdict: "allow"},
+		ReceiptKind:        "mediated_decision",
+		BoundaryClass:      "prevent",
+		ToolOrigin:         "caller_executed",
+		RedactionMode:      "none",
+		TrustLevel:         "mediated",
 		Evidence:           []GuardEvidence{},
 		ResponseStatus:     200,
 		Timestamp:          1700000000,

@@ -1211,11 +1211,17 @@ void test_feature_helpers_and_middleware() {
 }
 
 void test_http_substrate_evaluator() {
+  const std::string verified_authority =
+      "{\"signature_valid\":true,\"signer_trusted\":true,"
+      "\"receipt_id_valid\":true,\"parameter_hash_valid\":true,"
+      "\"receipt_kind\":\"mediated_decision\",\"boundary_class\":\"prevent\","
+      "\"trust_level\":\"mediated\",\"result\":\"allow\",\"authorized\":true,"
+      "\"signer_key_hex\":\"dddd\",\"ok\":true}";
   auto transport = std::make_shared<FakeTransport>(std::vector<chio::HttpResponse>{
       {200, {}, "{\"verdict\":\"allow\",\"receipt\":{\"id\":\"r1\"}}"},
       {200, {}, "{\"verdict\":\"allow\",\"receipt\":{\"id\":\"r2\"}}"},
-      {200, {}, "{\"metadata\":{\"valid\":true},\"valid\":false}"},
-      {200, {}, "{\"valid\":true}"},
+      {200, {}, "{\"metadata\":{\"legacy_valid\":true},\"ok\":false,\"authorized\":false}"},
+      {200, {}, verified_authority},
       {503, {}, "{\"status\":\"degraded\"}"},
   });
 
@@ -1261,7 +1267,7 @@ void test_http_substrate_evaluator() {
 
   const auto false_verified = evaluator.verify_receipt("{\"receipt\":{\"id\":\"r1\"}}");
   require(false_verified.ok(), false_verified.error().message);
-  require(!false_verified.value(), "expected top-level valid=false to fail");
+  require(!false_verified.value(), "expected ok=false to fail");
 
   const auto verified = evaluator.verify_receipt("{\"receipt\":{\"id\":\"r1\"}}");
   require(verified.ok(), verified.error().message);
@@ -1277,9 +1283,24 @@ void test_http_substrate_evaluator() {
 }
 
 void test_http_substrate_middleware_verdict_parsing() {
+  const std::string verified_authority =
+      "{\"signature_valid\":true,\"signer_trusted\":true,"
+      "\"receipt_id_valid\":true,\"parameter_hash_valid\":true,"
+      "\"receipt_kind\":\"mediated_decision\",\"boundary_class\":\"prevent\","
+      "\"trust_level\":\"mediated\",\"result\":\"allow\",\"authorized\":true,"
+      "\"signer_key_hex\":\"dddd\",\"ok\":true}";
   auto transport = std::make_shared<FakeTransport>(std::vector<chio::HttpResponse>{
+      {200, {}, "{\"verdict\":\"allow\",\"reason\":\"ok\"}"},
       {200, {}, "{\"verdict\":\"allow\",\"reason\":\"ok\",\"receipt\":{\"id\":\"receipt-42\"},\"evidence\":[]}"},
+      {200, {}, verified_authority},
       {200, {}, "{\"verdict\":{\"verdict\":\"allow\"},\"receipt\":{\"id\":\"nested-allow-receipt\"},\"evidence\":[]}"},
+      {200, {}, verified_authority},
+      {200, {}, "{\"verdict\":\"allow\",\"receipt\":{\"id\":\"non-authoritative-receipt\"},\"evidence\":[]}"},
+      {200, {}, "{\"signature_valid\":true,\"signer_trusted\":true,"
+                 "\"receipt_id_valid\":true,\"parameter_hash_valid\":true,"
+                 "\"receipt_kind\":\"trace_observation\",\"boundary_class\":\"detect_only\","
+                 "\"trust_level\":\"verified\",\"result\":\"allow\",\"authorized\":false,"
+                 "\"signer_key_hex\":\"dddd\",\"ok\":true}"},
       {200, {}, "{\"verdict\":{\"verdict\":\"deny\",\"reason\":\"blocked by policy\",\"guard\":\"policy\"},\"receipt\":{\"id\":\"nested-deny-receipt\"},\"evidence\":[]}"},
       {200, {}, "{\"receipt\":{\"id\":\"missing-verdict-receipt\"},\"evidence\":[]}"},
       {200, {}, "{not-json"},
@@ -1293,18 +1314,30 @@ void test_http_substrate_middleware_verdict_parsing() {
   chio::http::Middleware middleware(
       chio::http::Evaluator("http://127.0.0.1:9090/", transport));
 
+  const auto raw_allow = middleware.evaluate_fail_closed(request);
+  require_eq(raw_allow.verdict, "deny", "raw allow without receipt fails closed");
+  require_eq(raw_allow.reason, "allow verdict missing receipt", "raw allow denial reason");
+
   const auto allow = middleware.evaluate_fail_closed(request);
   require_eq(allow.verdict, "allow", "allow verdict");
   require_eq(chio::http::receipt_id_from_verdict(allow),
              "receipt-42",
              "receipt id extraction");
   require_contains(allow.receipt_json, "\"id\":\"receipt-42\"", "receipt json");
+  require_contains(transport->requests[2].url, "/chio/verify", "allow receipt verify request");
+  require_contains(transport->requests[2].body, "\"id\":\"receipt-42\"", "allow verify body");
 
   const auto nested_allow = middleware.evaluate_fail_closed(request);
   require_eq(nested_allow.verdict, "allow", "nested allow verdict");
   require_eq(chio::http::receipt_id_from_verdict(nested_allow),
              "nested-allow-receipt",
              "nested allow receipt id extraction");
+
+  const auto non_authoritative_allow = middleware.evaluate_fail_closed(request);
+  require_eq(non_authoritative_allow.verdict, "deny", "non-authoritative allow fails closed");
+  require_eq(non_authoritative_allow.reason,
+             "allow receipt is not authoritative",
+             "non-authoritative allow reason");
 
   const auto nested_deny = middleware.evaluate_fail_closed(request);
   require_eq(nested_deny.verdict, "deny", "nested deny verdict");

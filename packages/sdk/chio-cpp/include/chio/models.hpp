@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -51,7 +52,9 @@ struct Task {
 
 struct Receipt {
   std::string receipt_id;
-  std::string decision;
+  std::optional<std::string> decision;
+  std::string receipt_kind;
+  std::string boundary_class;
   std::string raw_json;
 };
 

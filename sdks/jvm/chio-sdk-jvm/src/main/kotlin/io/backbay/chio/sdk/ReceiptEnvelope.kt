@@ -65,7 +65,12 @@ data class ReceiptEnvelope(
             if (requestId.isEmpty()) {
                 throw ChioValidationError("build_envelope requires a non-empty request_id")
             }
-            val verdict = if (receipt.isAllowed()) "allow" else "deny"
+            val verdict =
+                when {
+                    receipt.isAllowed() -> "allow"
+                    receipt.isDenied() -> "deny"
+                    else -> "none"
+                }
             val metadata: Map<String, Any?> = extraMetadata ?: emptyMap()
 
             val payload =

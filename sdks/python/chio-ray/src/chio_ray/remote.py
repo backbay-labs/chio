@@ -121,19 +121,25 @@ async def _evaluate_allow_or_raise(
         if owned:
             await client.close()
 
-    if receipt.is_denied:
+    if not receipt.is_allowed:
         decision = receipt.decision
         err = ChioRayError(
-            decision.reason or "denied by Chio kernel",
+            decision.reason
+            if decision is not None and decision.reason is not None
+            else "non-authorizing Chio receipt",
             task_name=tool_name,
             actor_class=actor_class,
             method_name=method_name,
             capability_id=capability_id,
             tool_server=tool_server,
-            guard=decision.guard,
-            reason=decision.reason or "denied by Chio kernel",
+            guard=decision.guard if decision is not None else None,
+            reason=decision.reason
+            if decision is not None and decision.reason is not None
+            else "non-authorizing Chio receipt",
             receipt_id=receipt.id,
-            decision=decision.model_dump(exclude_none=True),
+            decision=decision.model_dump(exclude_none=True)
+            if decision is not None
+            else None,
         )
         raise _permission_error(err)
 

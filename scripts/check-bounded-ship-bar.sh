@@ -601,8 +601,8 @@ claim_b_fixture() {
   fi
 }
 
-claim_b_fixture "B1 single-entry verifier" "b1_capability_v2_single_entry_no_bypass.rs"
-claim_b_fixture "B2 receipt v2 pre-dispatch fail-closed" "b2_receipt_v2_failclosed_pre_dispatch.rs"
+claim_b_fixture "B1 chain-binding verifier" "attenuation_witness_rejects_inflated_parent_scope.rs"
+claim_b_fixture "B2 current protocol primitives" "protocol_primitives_t1.rs"
 claim_b_fixture "B3 anchor-batch async-only" "b3_anchor_batch_sync_path_rejected_under_public_witness.rs"
 
 b4_interim_fixture="$bar2_root/b4_bilateral_dsse_signature_slice.rs"

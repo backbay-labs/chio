@@ -354,6 +354,7 @@ pub fn build_kernel(loaded_policy: policy::LoadedPolicy, kernel_kp: &Keypair) ->
         max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: kernel_policy.require_web3_evidence,
+        allow_ephemeral_receipt_log: kernel_policy.allow_ephemeral_receipt_log,
         checkpoint_batch_size: kernel_policy.checkpoint_batch_size,
         retention_config: None,
     };
@@ -641,6 +642,7 @@ mod tests {
             require_web3_evidence,
             checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
+            allow_ephemeral_receipt_log: true,
         })
     }
 

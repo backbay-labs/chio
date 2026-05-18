@@ -14,7 +14,7 @@ maintainer: Chio Protocol Team
 | Framework | Payment Card Industry Data Security Standard v4.0 |
 | Published | March 2022, fully effective March 31, 2025 |
 | Scope | All 12 requirement groups |
-| Chio Version | v2.0 Phase 15 draft |
+| Chio Profile | Current v1-only pre-release profile; draft originally tracked under internal phase 15 |
 | Document Date | 2026-04-16 |
 
 ---

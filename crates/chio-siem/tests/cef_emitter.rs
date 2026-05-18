@@ -7,7 +7,7 @@ use chio_core::receipt::{
 use chio_siem::{CefExporter, CefExporterConfig, SiemEvent};
 
 fn deny_receipt() -> ChioReceipt {
-    let keypair = Keypair::generate();
+    let keypair = Keypair::from_seed(&[41_u8; 32]);
     let body = ChioReceiptBody {
         id: "rc-deny-1".to_string(),
         timestamp: 1_712_345_678,
@@ -18,10 +18,16 @@ fn deny_receipt() -> ChioReceipt {
             parameters: serde_json::json!({"cmd": "ls"}),
             parameter_hash: "param-hash".to_string(),
         },
-        decision: Decision::Deny {
+        decision: Some(Decision::Deny {
             reason: "forbidden path".to_string(),
             guard: "ForbiddenPathGuard".to_string(),
-        },
+        }),
+        receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+        boundary_class: chio_core::BoundaryClass::Prevent,
+        observation_outcome: None,
+        tool_origin: chio_core::ToolOrigin::CallerExecuted,
+        redaction_mode: chio_core::RedactionMode::None,
+        actor_chain: Vec::new(),
         content_hash: "content-hash".to_string(),
         policy_hash: "policy-hash".to_string(),
         evidence: vec![GuardEvidence {

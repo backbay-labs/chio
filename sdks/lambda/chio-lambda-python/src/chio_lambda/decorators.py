@@ -74,7 +74,7 @@ def chio_tool(
     -------
     Callable
         Decorator. The wrapped function is only executed when the extension
-        returns ``decision == "allow"``.
+        returns an authoritative allow result.
     """
     shared_client_slot: list[ChioLambdaClient] = [client] if client is not None else []
 

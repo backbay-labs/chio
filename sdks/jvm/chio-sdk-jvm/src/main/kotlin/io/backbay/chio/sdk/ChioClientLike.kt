@@ -12,4 +12,6 @@ interface ChioClientLike {
         toolName: String,
         parameters: Map<String, Any?>,
     ): ChioReceipt
+
+    fun verifyReceipt(receipt: ChioReceipt): Boolean = false
 }

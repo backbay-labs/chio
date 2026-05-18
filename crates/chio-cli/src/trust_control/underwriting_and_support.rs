@@ -964,15 +964,21 @@ pub fn build_signed_underwriting_policy_input(
     query: &UnderwritingPolicyInputQuery,
 ) -> Result<SignedUnderwritingPolicyInput, CliError> {
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
+    // Load the signing keypair up front so its public key can anchor the
+    // reputation scoring trust set; an empty set would silently filter every
+    // signed receipt out (see chio-reputation::receipt_integrity_valid).
+    let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
+    let trusted_kernel_keys = vec![keypair.public_key().to_hex()];
     let report = build_underwriting_policy_input(
         &receipt_store,
         receipt_db_path,
         budget_db_path,
         certification_registry_file,
         query,
+        chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        &trusted_kernel_keys,
     )
     .map_err(CliError::from)?;
-    let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
     SignedUnderwritingPolicyInput::sign(report, &keypair).map_err(Into::into)
 }
 
@@ -981,6 +987,7 @@ pub fn build_underwriting_decision_report(
     budget_db_path: Option<&Path>,
     certification_registry_file: Option<&Path>,
     query: &UnderwritingPolicyInputQuery,
+    trusted_kernel_keys: &[String],
 ) -> Result<UnderwritingDecisionReport, CliError> {
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     build_underwriting_decision_report_from_store(
@@ -989,6 +996,8 @@ pub fn build_underwriting_decision_report(
         budget_db_path,
         certification_registry_file,
         query,
+        chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        trusted_kernel_keys,
     )
     .map_err(CliError::from)
 }
@@ -999,6 +1008,8 @@ fn build_underwriting_decision_report_from_store(
     budget_db_path: Option<&Path>,
     certification_registry_file: Option<&Path>,
     query: &UnderwritingPolicyInputQuery,
+    read_context: chio_kernel::ReceiptReadContext,
+    trusted_kernel_keys: &[String],
 ) -> Result<UnderwritingDecisionReport, TrustHttpError> {
     let input = build_underwriting_policy_input(
         receipt_store,
@@ -1006,6 +1017,8 @@ fn build_underwriting_decision_report_from_store(
         budget_db_path,
         certification_registry_file,
         query,
+        read_context,
+        trusted_kernel_keys,
     )?;
     let policy = UnderwritingDecisionPolicy::default();
     chio_kernel::evaluate_underwriting_policy_input(input, &policy)
@@ -1017,6 +1030,7 @@ pub fn build_underwriting_simulation_report(
     budget_db_path: Option<&Path>,
     certification_registry_file: Option<&Path>,
     request: &UnderwritingSimulationRequest,
+    trusted_kernel_keys: &[String],
 ) -> Result<UnderwritingSimulationReport, CliError> {
     let receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     build_underwriting_simulation_report_from_store(
@@ -1025,6 +1039,8 @@ pub fn build_underwriting_simulation_report(
         budget_db_path,
         certification_registry_file,
         request,
+        chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        trusted_kernel_keys,
     )
     .map_err(CliError::from)
 }
@@ -1035,6 +1051,8 @@ fn build_underwriting_simulation_report_from_store(
     budget_db_path: Option<&Path>,
     certification_registry_file: Option<&Path>,
     request: &UnderwritingSimulationRequest,
+    read_context: chio_kernel::ReceiptReadContext,
+    trusted_kernel_keys: &[String],
 ) -> Result<UnderwritingSimulationReport, TrustHttpError> {
     let input = build_underwriting_policy_input(
         receipt_store,
@@ -1042,6 +1060,8 @@ fn build_underwriting_simulation_report_from_store(
         budget_db_path,
         certification_registry_file,
         &request.query,
+        read_context,
+        trusted_kernel_keys,
     )?;
     let default_evaluation = chio_kernel::evaluate_underwriting_policy_input(
         input.clone(),
@@ -1079,6 +1099,7 @@ pub fn issue_signed_underwriting_decision(
         certification_registry_file,
         query,
         supersedes_decision_id,
+        chio_kernel::ReceiptReadContext::local_operator_admin_all(),
     )
     .map_err(CliError::from)
 }
@@ -1091,16 +1112,25 @@ fn issue_signed_underwriting_decision_detailed(
     certification_registry_file: Option<&Path>,
     query: &UnderwritingPolicyInputQuery,
     supersedes_decision_id: Option<&str>,
+    read_context: chio_kernel::ReceiptReadContext,
 ) -> Result<SignedUnderwritingDecision, TrustHttpError> {
     let mut receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
+    // Load the signing keypair first so its public key anchors the reputation
+    // scoring trust set (chio-reputation::receipt_integrity_valid fails closed
+    // on an empty set, which would zero out the reputation contribution).
+    let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)
+        .map_err(|error| TrustHttpError::internal(error.to_string()))?;
+    let trusted_kernel_keys = vec![keypair.public_key().to_hex()];
     let report = build_underwriting_decision_report_from_store(
         &receipt_store,
         receipt_db_path,
         budget_db_path,
         certification_registry_file,
         query,
+        read_context.clone(),
+        &trusted_kernel_keys,
     )?;
-    let quoted_exposure = build_underwriting_quoted_exposure(&receipt_store, query)?;
+    let quoted_exposure = build_underwriting_quoted_exposure(&receipt_store, query, read_context)?;
     let mut artifact = chio_kernel::build_underwriting_decision_artifact(
         report,
         unix_timestamp_now(),
@@ -1109,7 +1139,6 @@ fn issue_signed_underwriting_decision_detailed(
     )
     .map_err(TrustHttpError::bad_request)?;
     quoted_exposure.apply_to_artifact(&mut artifact);
-    let keypair = load_behavioral_feed_signing_keypair(authority_seed_path, authority_db_path)?;
     let signed = SignedUnderwritingDecision::sign(artifact, &keypair)
         .map_err(|error| TrustHttpError::internal(error.to_string()))?;
     receipt_store
@@ -1218,7 +1247,12 @@ fn build_exposure_ledger_receipt_entry(
         issuer_key: receipt.issuer_key.clone(),
         tool_server: receipt.tool_server.clone(),
         tool_name: receipt.tool_name.clone(),
-        decision: receipt.decision.clone(),
+        decision: receipt
+            .decision
+            .clone()
+            .unwrap_or(Decision::Incomplete {
+                reason: "non-mediated receipt has no decision".to_string(),
+            }),
         settlement_status: receipt.settlement_status.clone(),
         action_required: receipt.action_required,
         governed_max_amount,
@@ -1301,6 +1335,7 @@ fn accumulate_exposure_position<F>(
 fn build_underwriting_quoted_exposure(
     receipt_store: &SqliteReceiptStore,
     query: &UnderwritingPolicyInputQuery,
+    read_context: chio_kernel::ReceiptReadContext,
 ) -> Result<UnderwritingQuotedExposure, TrustHttpError> {
     let normalized_query = query.normalized();
     if let Err(message) = normalized_query.validate() {
@@ -1315,6 +1350,7 @@ fn build_underwriting_quoted_exposure(
         since: normalized_query.since,
         until: normalized_query.until,
         receipt_limit: normalized_query.receipt_limit,
+        read_context: Some(read_context),
     };
     let (_, _, _, selection) = receipt_store
         .query_behavioral_feed_receipts(&behavioral_query)
@@ -1416,6 +1452,8 @@ fn build_underwriting_policy_input(
     budget_db_path: Option<&Path>,
     certification_registry_file: Option<&Path>,
     query: &UnderwritingPolicyInputQuery,
+    read_context: chio_kernel::ReceiptReadContext,
+    trusted_kernel_keys: &[String],
 ) -> Result<UnderwritingPolicyInput, TrustHttpError> {
     let normalized_query = query.normalized();
     if let Err(message) = normalized_query.validate() {
@@ -1430,6 +1468,7 @@ fn build_underwriting_policy_input(
         since: normalized_query.since,
         until: normalized_query.until,
         receipt_limit: normalized_query.receipt_limit,
+        read_context: Some(read_context),
     };
     let operator_query = behavioral_query.to_operator_report_query();
     let activity = receipt_store
@@ -1451,6 +1490,7 @@ fn build_underwriting_policy_input(
                 normalized_query.since,
                 normalized_query.until,
                 generated_at,
+                trusted_kernel_keys,
             )
             .map(underwriting_reputation_from_behavioral_summary)
             .map_err(|error| TrustHttpError::internal(error.to_string()))?,
@@ -1960,6 +2000,9 @@ fn trust_http_error_from_receipt_store(error: ReceiptStoreError) -> TrustHttpErr
     match error {
         ReceiptStoreError::NotFound(message) => TrustHttpError::new(StatusCode::NOT_FOUND, message),
         ReceiptStoreError::Conflict(message) => TrustHttpError::new(StatusCode::CONFLICT, message),
+        ReceiptStoreError::ReadBoundary(message) => {
+            TrustHttpError::new(StatusCode::FORBIDDEN, message)
+        }
         other => TrustHttpError::internal(other.to_string()),
     }
 }
@@ -2056,6 +2099,23 @@ fn load_behavioral_feed_signing_keypair(
                 .to_string(),
         )),
     }
+}
+
+/// Derive a trusted-kernel-key list from a trust service's configured authority
+/// material. Returns the local kernel's public key when an authority source is
+/// configured, or `None` when neither a seed file nor authority db is present.
+/// Plumbing this into reputation scoring prevents an empty trust set from
+/// silently filtering out every locally signed receipt (see
+/// `chio-reputation::receipt_integrity_valid`).
+pub(crate) fn trusted_kernel_keys_from_service_config(
+    config: &TrustServiceConfig,
+) -> Option<Vec<String>> {
+    let keypair = load_behavioral_feed_signing_keypair(
+        config.authority_seed_path.as_deref(),
+        config.authority_db_path.as_deref(),
+    )
+    .ok()?;
+    Some(vec![keypair.public_key().to_hex()])
 }
 
 #[cfg(test)]

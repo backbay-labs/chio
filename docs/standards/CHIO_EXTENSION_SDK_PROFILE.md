@@ -2,8 +2,12 @@
 
 ## Purpose
 
-This document defines Chio's shipped extension contract for the `v2.29`
-official-stack milestone.
+This document defines Chio's current pre-release v1 extension contract,
+originally tracked under historical internal milestone `v2.29`.
+
+> Version posture: this is a pre-release standards profile. Internal `v2.x`
+> milestone labels are historical planning labels, not Chio-owned protocol,
+> schema, SDK, or runtime versions. Current protocol posture is v1-only.
 
 It freezes:
 

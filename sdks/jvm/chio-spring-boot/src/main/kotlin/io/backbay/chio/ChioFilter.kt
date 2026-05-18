@@ -3,11 +3,10 @@
  *
  * Intercepts all requests, extracts caller identity, sends evaluation
  * requests to the Chio sidecar kernel, and either allows the request to
- * proceed with a signed receipt, allows a fail-open passthrough without a
- * receipt when configured, or returns a structured deny response.
+ * proceed with a verified signed receipt or returns a structured deny
+ * response.
  *
- * Fails closed by default: if the sidecar is unreachable, the request
- * is denied.
+ * Fails closed: if the sidecar is unreachable, the request is denied.
  */
 package io.backbay.chio
 
@@ -47,7 +46,7 @@ const val CHIO_PASSTHROUGH_ATTRIBUTE = "chioPassthrough"
  *
  * @param sidecarUrl Base URL of the Chio sidecar kernel.
  * @param timeoutSeconds HTTP timeout for sidecar calls.
- * @param onSidecarError Behavior when sidecar is unreachable: "deny" (default) or "allow".
+ * @param onSidecarError Legacy option retained for source compatibility. Current v1 always denies.
  * @param identityExtractor Custom identity extraction function.
  * @param routeResolver Custom route pattern resolver.
  */
@@ -138,14 +137,6 @@ class ChioFilter(
         try {
             result = client.evaluate(chioRequest, capabilityToken)
         } catch (e: ChioSidecarException) {
-            if (config.onSidecarError == "allow") {
-                cachedRequest.setAttribute(
-                    CHIO_PASSTHROUGH_ATTRIBUTE,
-                    ChioPassthrough(message = "Chio sidecar error: ${e.message}"),
-                )
-                chain.doFilter(cachedRequest, response)
-                return
-            }
             writeJsonError(
                 httpResponse,
                 502,
@@ -156,14 +147,6 @@ class ChioFilter(
             )
             return
         } catch (e: Exception) {
-            if (config.onSidecarError == "allow") {
-                cachedRequest.setAttribute(
-                    CHIO_PASSTHROUGH_ATTRIBUTE,
-                    ChioPassthrough(message = "Chio sidecar error: ${e.message}"),
-                )
-                chain.doFilter(cachedRequest, response)
-                return
-            }
             writeJsonError(
                 httpResponse,
                 502,
@@ -175,11 +158,9 @@ class ChioFilter(
             return
         }
 
-        // Attach receipt ID.
-        httpResponse.setHeader("X-Chio-Receipt-Id", result.receipt.id)
-
-        // Check verdict.
-        if (result.verdict.isDenied()) {
+        // Check verdict and signed receipt semantics. Anything other than
+        // explicit response allow plus mediated receipt authorization fails closed.
+        if (!result.verdict.isAllowed() || !result.receipt.isAuthorized()) {
             val status = result.verdict.httpStatus ?: 403
             writeJsonError(
                 httpResponse,
@@ -193,6 +174,28 @@ class ChioFilter(
             )
             return
         }
+
+        val receiptValid =
+            try {
+                client.verifyReceipt(result.receipt)
+            } catch (_: Exception) {
+                false
+            }
+        if (!receiptValid) {
+            writeJsonError(
+                httpResponse,
+                502,
+                ChioErrorResponse(
+                    error = ChioErrorCodes.INVALID_RECEIPT,
+                    message = "Chio sidecar returned an unverified receipt",
+                    receiptId = result.receipt.id,
+                ),
+            )
+            return
+        }
+
+        // Attach receipt ID only after semantic and signature verification.
+        httpResponse.setHeader("X-Chio-Receipt-Id", result.receipt.id)
 
         // Request allowed -- forward to next filter/servlet.
         chain.doFilter(cachedRequest, response)

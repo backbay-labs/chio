@@ -10,18 +10,26 @@
     "method",
     "caller_identity_hash",
     "verdict",
+    "receipt_kind",
+    "boundary_class",
+    "tool_origin",
+    "redaction_mode",
     "response_status",
     "timestamp",
     "content_hash",
     "policy_hash",
+    "trust_level",
     "kernel_key",
     "signature"
   ],
+  "not": {
+    "required": ["observation_outcome"]
+  },
   "properties": {
     "id": {
       "type": "string",
-      "minLength": 1,
-      "description": "Unique receipt ID. UUIDv7 recommended."
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Authoritative content-addressed receipt id over the canonical HTTP receipt body excluding id and signature."
     },
     "request_id": {
       "type": "string",
@@ -50,6 +58,41 @@
     "verdict": {
       "$ref": "verdict.schema.json",
       "description": "The kernel's verdict."
+    },
+    "receipt_kind": {
+      "type": "string",
+      "const": "mediated_decision",
+      "description": "HTTP receipts are authoritative mediated decisions."
+    },
+    "boundary_class": {
+      "type": "string",
+      "const": "prevent",
+      "description": "HTTP receipts authorize through a preventive boundary."
+    },
+    "observation_outcome": {
+      "description": "Forbidden on mediated HTTP receipts."
+    },
+    "tool_origin": {
+      "type": "string",
+      "enum": [
+        "caller_executed",
+        "host_executed_provider_reported",
+        "host_executed_unmediated"
+      ],
+      "description": "Where the protected effect executes relative to Chio."
+    },
+    "redaction_mode": {
+      "type": "string",
+      "enum": ["none", "summary", "redacted"],
+      "description": "Redaction mode applied to signed receipt details."
+    },
+    "actor_chain": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object"
+      },
+      "description": "Actor chain associated with the HTTP decision."
     },
     "evidence": {
       "type": "array",
@@ -94,6 +137,11 @@
     "policy_hash": {
       "type": "string",
       "description": "SHA-256 hex hash of the policy that was applied."
+    },
+    "trust_level": {
+      "type": "string",
+      "const": "mediated",
+      "description": "HTTP receipts must use mediated trust level."
     },
     "capability_id": {
       "type": ["string", "null"],

@@ -2167,7 +2167,7 @@ impl ChioMcpEdge {
             ),
             Ok(SessionOperationResponse::ResourceReadDenied { receipt }) => {
                 let reason = match &receipt.decision {
-                    Decision::Deny { reason, .. } => reason.clone(),
+                    Some(Decision::Deny { reason, .. }) => reason.clone(),
                     _ => "filesystem-backed resource read denied".to_string(),
                 };
                 let uri = receipt

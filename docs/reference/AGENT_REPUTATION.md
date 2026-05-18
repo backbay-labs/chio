@@ -1,8 +1,12 @@
 # Agent Reputation System
 
-**Status:** Design proposal with Phase 1 local scoring, issuance gating, `did:chio`, and Agent Passport alpha shipped
+**Status:** Design proposal with Phase 1 local scoring, issuance gating, `did:chio`, and Agent Passport alpha implemented in the current pre-release v1 branch
 **Date:** 2026-03-23
 **Authors:** Chio Protocol Team
+
+> Historical internal milestone note. `v2.x` labels in this document are
+> pre-release implementation milestones, not Chio-owned protocol, schema, SDK,
+> or runtime versions. Current protocol posture is v1-only.
 
 ---
 
@@ -10,13 +14,15 @@
 
 Chio already emits most of the raw events needed to build a comprehensive local
 agent reputation system. Every tool invocation -- whether allowed, denied,
-cancelled, or incomplete -- produces a signed `ChioReceipt` appended to an
-append-only log with signed Merkle checkpoints and inclusion proofs.
+cancelled, or incomplete -- produces a signed `ChioReceipt` appended to the
+configured receipt store; the bundled SQLite-backed store enforces append-only
+semantics through `BEFORE UPDATE` / `BEFORE DELETE` triggers and is paired with
+signed Merkle checkpoints and inclusion proofs.
 Every capability token records its scope, delegation chain, time bounds, and
 invocation budget.
 
-Those Phase 1 local persistence prerequisites are now present in the v2.0
-runtime:
+Those Phase 1 local persistence prerequisites are present in the current
+pre-release v1 branch:
 
 1. A capability lineage index keyed by `capability_id`, so receipts can be
    joined to `CapabilityToken.subject`, issuer, grants, and delegation
@@ -34,9 +40,11 @@ Three properties make this uniquely valuable:
    receipt. The audit trail is total.
 
 2. **Integrity.** Receipts are Ed25519-signed by the Kernel and stored in
-   an append-only log. Merkle checkpoints and inclusion proofs are now
-   shipped in v2, enabling tamper-evident receipt verification locally and in
-   exported evidence bundles.
+   the configured receipt store; the bundled SQLite-backed store enforces
+   append-only semantics through `BEFORE UPDATE` / `BEFORE DELETE` triggers.
+   Merkle checkpoints and inclusion proofs are implemented in the pre-release
+   v1 durability path, enabling tamper-evident receipt verification locally
+   and in exported evidence bundles.
 
 3. **Network effects.** If a portable, cryptographically verifiable agent
    reputation layer gains adoption, each additional receipt and each
@@ -51,7 +59,7 @@ Every metric below is computable from fields that already exist on
 usage records, provided the runtime persists the local join paths described in
 Section 1.
 
-**Note on agent identification:** v2.0 receipts can carry
+**Note on agent identification:** Current v1 receipts can carry
 `metadata.attribution.subject_key`, which provides the acting agent's public
 key directly. The capability lineage index is still needed when the scorer
 needs the full grant set, issuer history, or delegation chain for that
@@ -113,7 +121,7 @@ resource_stewardship(agent, capability_id, grant_index) =
     and   receipt.decision == Allow
 ```
 
-In v2.0 this metric can use `receipt.metadata.attribution.grant_index` as the
+In that internal milestone this metric can use `receipt.metadata.attribution.grant_index` as the
 deterministic receipt-side grant join. The lineage index remains useful for
 recovering the full grant definition and delegation context for that receipt.
 
@@ -469,8 +477,9 @@ After probation:
 ## 5. Portable Trust Credentials
 
 Agent reputation must be portable across organizations and Kernel operators.
-Chio receipts are already signed and timestamped (Merkle commitment is now shipped in v2) --
-they are natural candidates for standardized verifiable credentials.
+Chio receipts are already signed and timestamped. Merkle commitment was tracked
+under an internal pre-release milestone; the current public protocol posture is
+v1-only. They are natural candidates for standardized verifiable credentials.
 
 ### 5.1 Receipt-Derived Reputation Attestations as W3C Verifiable Credentials
 
@@ -836,7 +845,7 @@ capability_issuance(agent, requested_scope) =
         deny("requested scope exceeds tier ceiling")
 ```
 
-This now ships in v2 as a shared capability-authority wrapper. The wrapper
+This is now part of the current unreleased v1 capability-authority wrapper. The wrapper
 materializes `extensions.reputation` from HushSpec, computes the subject's
 local scorecard from persisted receipts, capability lineage, and budget usage,
 and denies issuance when the requested TTL or grant scope exceeds the current
@@ -1043,9 +1052,10 @@ issuance, switching protocols also means rebuilding the integration.
 
 ### Phase 1: Internal Reputation Computation
 
-**Timeline:** Ready to begin on top of the v2.0 local data substrate. Phase 1
-does not require cross-organizational coordination; it builds directly on the
-capability lineage index and receipt attribution path described in Section 1.
+**Timeline:** Ready to begin on top of the current local data substrate. Phase
+1 does not require cross-organizational coordination; it builds directly on
+the capability lineage index and receipt attribution path described in Section
+1.
 
 **Scope:**
 - Implement reputation metrics computation from persisted receipts, the local

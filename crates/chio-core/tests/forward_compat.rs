@@ -1,8 +1,8 @@
-// Forward-compatibility integration tests for chio-core serialized types.
+// Unknown-field tolerance integration tests for chio-core serialized types.
 //
 // These tests prove that chio-core types tolerate unknown fields during
-// deserialization (i.e., a v1.0 kernel can deserialize a v2.0 token that
-// contains fields it does not yet know about, and vice versa).
+// deserialization without exposing a runtime compatibility lane before public
+// release.
 //
 // Strategy for each test: (1) create a valid instance, (2) serialize to
 // serde_json::Value, (3) inject unknown fields, (4) re-serialize to string,
@@ -62,7 +62,13 @@ fn make_receipt_body(kp: &Keypair) -> ChioReceiptBody {
         tool_server: "srv-files".to_string(),
         tool_name: "file_read".to_string(),
         action,
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: sha256_hex(br#"{"ok":true}"#),
         policy_hash: "deadbeefdeadbeef".to_string(),
         evidence: vec![GuardEvidence {
@@ -134,11 +140,11 @@ fn make_child_receipt_body(kp: &Keypair) -> ChildRequestReceiptBody {
 }
 
 // ---------------------------------------------------------------------------
-// Test 1: v1_token_accepted_by_v2
+// Test 1: token_round_trips
 // Proves basic round-trip still works with no unknown fields injected.
 // ---------------------------------------------------------------------------
 #[test]
-fn v1_token_accepted_by_v2() {
+fn token_round_trips() {
     let kp = Keypair::generate();
     let body = make_token_body(&kp);
     let token = CapabilityToken::sign(body, &kp).unwrap();
@@ -155,12 +161,12 @@ fn v1_token_accepted_by_v2() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 2: v2_token_with_unknown_fields_accepted
+// Test 2: token_with_unknown_fields_accepted
 // Proves unknown fields injected at the top level and inside ToolGrant are
 // silently ignored during deserialization.
 // ---------------------------------------------------------------------------
 #[test]
-fn v2_token_with_unknown_fields_accepted() {
+fn token_with_unknown_fields_accepted() {
     let kp = Keypair::generate();
     let body = make_token_body(&kp);
     let original_id = body.id.clone();
@@ -169,14 +175,14 @@ fn v2_token_with_unknown_fields_accepted() {
     // Serialize to Value, inject unknown fields at multiple levels.
     let mut value: serde_json::Value = serde_json::to_value(&token).unwrap();
 
-    // Inject at the top level (simulates v2.0 adding a new root field)
+    // Inject at the top level.
     value["future_field"] = serde_json::Value::String("some_future_value".to_string());
-    value["v3_data"] = serde_json::json!({"nested_key": true, "count": 42});
+    value["future_data"] = serde_json::json!({"nested_key": true, "count": 42});
 
-    // Inject inside scope.grants[0] (simulates future v3.0 unknown fields)
+    // Inject inside scope.grants[0].
     if let Some(grant) = value["scope"]["grants"].get_mut(0) {
-        grant["v3_billing_ref"] = serde_json::json!("billing-acct-001");
-        grant["v3_priority"] = serde_json::Value::Number(serde_json::Number::from(5));
+        grant["future_billing_ref"] = serde_json::json!("billing-acct-001");
+        grant["future_priority"] = serde_json::Value::Number(serde_json::Number::from(5));
     }
 
     let json_with_unknowns = serde_json::to_string(&value).unwrap();
@@ -201,11 +207,11 @@ fn v2_token_with_unknown_fields_accepted() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 3: v2_receipt_with_unknown_fields_accepted
+// Test 3: receipt_with_unknown_fields_accepted
 // Proves receipts tolerate unknown fields at multiple nesting levels.
 // ---------------------------------------------------------------------------
 #[test]
-fn v2_receipt_with_unknown_fields_accepted() {
+fn receipt_with_unknown_fields_accepted() {
     let kp = Keypair::generate();
     let body = make_receipt_body(&kp);
     let original_id = body.id.clone();
@@ -215,12 +221,12 @@ fn v2_receipt_with_unknown_fields_accepted() {
 
     // Inject at top level
     value["billing_ref"] = serde_json::Value::String("inv-2026-0001".to_string());
-    value["v3_trace_id"] = serde_json::json!("trace-abc123");
+    value["future_trace_id"] = serde_json::json!("trace-abc123");
 
     // Inject inside evidence[0]
     if let Some(ev) = value["evidence"].get_mut(0) {
         ev["confidence_score"] = serde_json::json!(0.98);
-        ev["v3_rule_version"] = serde_json::json!("1.2.0");
+        ev["future_rule_version"] = serde_json::json!("1.2.0");
     }
 
     // Inject inside action
@@ -240,11 +246,11 @@ fn v2_receipt_with_unknown_fields_accepted() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 4: v2_manifest_with_unknown_fields_accepted
+// Test 4: manifest_with_unknown_fields_accepted
 // Proves manifests tolerate unknown fields in all manifest type layers.
 // ---------------------------------------------------------------------------
 #[test]
-fn v2_manifest_with_unknown_fields_accepted() {
+fn manifest_with_unknown_fields_accepted() {
     let kp = Keypair::generate();
     let body = make_manifest_body(&kp);
     let original_server_id = body.server_id.clone();
@@ -253,17 +259,17 @@ fn v2_manifest_with_unknown_fields_accepted() {
     let mut value: serde_json::Value = serde_json::to_value(&manifest).unwrap();
 
     // Inject at the ToolManifest level
-    value["schema_version"] = serde_json::json!("2.0");
-    value["v3_billing_account"] = serde_json::json!("acct-xyz");
+    value["schema_version"] = serde_json::json!("draft-next");
+    value["future_billing_account"] = serde_json::json!("acct-xyz");
 
     // Inject inside tools[0] (ToolDefinition)
     if let Some(tool) = value["tools"].get_mut(0) {
         tool["rate_limit"] = serde_json::json!({"per_minute": 60});
-        tool["v3_cost_per_call"] = serde_json::json!({"amount": 1, "currency": "Chio"});
+        tool["future_cost_per_call"] = serde_json::json!({"amount": 1, "currency": "Chio"});
 
         // Inject inside annotations (ToolAnnotations)
         tool["annotations"]["sandboxed"] = serde_json::json!(true);
-        tool["annotations"]["v3_energy_class"] = serde_json::json!("A");
+        tool["annotations"]["future_energy_class"] = serde_json::json!("A");
     }
 
     let json_with_unknowns = serde_json::to_string(&value).unwrap();
@@ -323,10 +329,10 @@ fn delegation_link_with_unknown_fields() {
 
     let mut value: serde_json::Value = serde_json::to_value(&link).unwrap();
 
-    // Inject unknown fields that a v2.0 delegation protocol might add
+    // Inject unknown fields that a later delegation profile might add.
     value["expiry_override"] = serde_json::json!(1_999_999);
-    value["v3_reason"] = serde_json::json!("sub-agent spawn");
-    value["v3_audit_id"] = serde_json::json!("aud-00123");
+    value["future_reason"] = serde_json::json!("sub-agent spawn");
+    value["future_audit_id"] = serde_json::json!("aud-00123");
 
     let json_with_unknowns = serde_json::to_string(&value).unwrap();
 
@@ -354,9 +360,9 @@ fn child_receipt_with_unknown_fields() {
 
     let mut value: serde_json::Value = serde_json::to_value(&receipt).unwrap();
 
-    // Inject unknown fields simulating v2.0 child receipt extensions
+    // Inject unknown fields simulating child receipt extensions.
     value["sampling_cost"] = serde_json::json!({"tokens": 512, "model": "claude-3"});
-    value["v3_trace_parent"] = serde_json::json!("00-abc123-xyz456-01");
+    value["future_trace_parent"] = serde_json::json!("00-abc123-xyz456-01");
 
     let json_with_unknowns = serde_json::to_string(&value).unwrap();
 

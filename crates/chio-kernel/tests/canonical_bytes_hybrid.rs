@@ -34,10 +34,24 @@ use chio_core::crypto::{
     Ed25519Backend, HybridBackend, Keypair, MlDsa65Backend, PublicKey, SharedCanonicalBytes,
     SigningAlgorithm, SigningBackend,
 };
-use chio_core::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    chio_receipt_id, ChioReceiptBody, ChioReceiptSigningBody, Decision, ToolCallAction, TrustLevel,
+};
 use chio_kernel::{
     sign_receipt_body_hybrid_canonical, sign_receipt_body_with_backend, SignedHybridReceipt,
 };
+
+/// Canonical JSON bytes of the authoritative `ChioReceiptSigningBody`
+/// wrapper that both signing paths sign. The wrapper binds the
+/// content-addressed receipt id (`chio_receipt_id`) to the
+/// `ChioReceiptIdInput` that derived it. Tests use this helper to
+/// compare produced bytes against the authoritative signed bytes.
+fn canonical_signing_wrapper_bytes(body: &ChioReceiptBody) -> Vec<u8> {
+    let mut body = body.clone();
+    body.id = chio_receipt_id(&body).unwrap();
+    let signing_body = ChioReceiptSigningBody::from(&body);
+    canonical_json_bytes(&signing_body).unwrap()
+}
 
 fn fixture_classical_seed() -> [u8; 32] {
     let raw = b"chio-m03-p5-t3-canonbytes-class!";
@@ -61,7 +75,13 @@ fn build_body(kernel_key: PublicKey) -> ChioReceiptBody {
         tool_server: "audit-server".to_string(),
         tool_name: "report".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({"q": "canonical"})).unwrap(),
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: "2222222222222222222222222222222222222222222222222222222222222222"
             .to_string(),
         policy_hash: "policy-canon".to_string(),
@@ -84,28 +104,45 @@ fn shared_canonical_bytes_match_legacy_classical_path() {
     let backend = Ed25519Backend::new(kp.clone());
     let body = build_body(kp.public_key());
 
-    // Legacy path: re-canonicalize the body the way the existing
-    // `sign_receipt_body_with_backend` flow does.
-    let legacy_canonical_bytes = canonical_json_bytes(&body).unwrap();
+    // Authoritative signing-wrapper bytes: re-derive the way both
+    // signing paths do internally (id from `ChioReceiptIdInput`, wrap
+    // into `ChioReceiptSigningBody`, canonicalize). The bare body
+    // bytes are NOT what either path signs; the wrapper is.
+    let wrapper_bytes = canonical_signing_wrapper_bytes(&body);
     let legacy_receipt = sign_receipt_body_with_backend(body.clone(), &backend).unwrap();
 
     // New path: consume the M06 SharedCanonicalBytes newtype.
     let SignedHybridReceipt { receipt, canonical } =
         sign_receipt_body_hybrid_canonical(body, &backend).unwrap();
 
-    // The shared buffer matches the legacy buffer byte-for-byte.
+    // The shared buffer matches the authoritative signing-wrapper
+    // bytes byte-for-byte. This pins the contract that
+    // `sign_receipt_body_hybrid_canonical` signs the
+    // `ChioReceiptSigningBody` wrapper, NOT the bare `ChioReceiptBody`.
     assert_eq!(
         canonical.as_bytes(),
-        legacy_canonical_bytes.as_slice(),
-        "shared CanonicalBytes drifted from legacy canonical_json_bytes"
+        wrapper_bytes.as_slice(),
+        "shared CanonicalBytes drifted from authoritative ChioReceiptSigningBody bytes"
     );
-    // The signed receipt is byte-identical to the legacy receipt.
+    // The signed receipt is byte-identical to the legacy receipt: the
+    // hybrid path and classical path produce the same signed envelope
+    // when fed the same body and Ed25519 backend (Ed25519 signatures
+    // are deterministic per RFC 8032).
     assert_eq!(
         canonical_json_bytes(&receipt).unwrap(),
         canonical_json_bytes(&legacy_receipt).unwrap(),
         "hybrid-canonical receipt envelope drifted from legacy receipt"
     );
     assert_eq!(receipt.signature.algorithm(), SigningAlgorithm::Ed25519);
+
+    // Verify the produced signature against the exact shared wrapper
+    // bytes the backend signed.
+    assert!(
+        receipt
+            .kernel_key
+            .verify(canonical.as_bytes(), &receipt.signature),
+        "signature MUST verify against the exact ChioReceiptSigningBody bytes"
+    );
 }
 
 #[test]
@@ -200,12 +237,79 @@ fn shared_bytes_round_trip_through_serde_after_signing() {
     let body = build_body(hybrid.public_key());
 
     let signed = sign_receipt_body_hybrid_canonical(body.clone(), &hybrid).unwrap();
-    // Re-encode the body and verify the shared buffer byte-matches.
-    let body_bytes = canonical_json_bytes(&body).unwrap();
-    assert_eq!(signed.canonical.as_bytes(), body_bytes.as_slice());
+    // The shared buffer matches the authoritative
+    // `ChioReceiptSigningBody` wrapper bytes, NOT the bare body bytes.
+    let wrapper_bytes = canonical_signing_wrapper_bytes(&body);
+    assert_eq!(signed.canonical.as_bytes(), wrapper_bytes.as_slice());
     // The signed receipt itself round-trips through serde without
     // drift.
     let receipt_json = serde_json::to_vec(&signed.receipt).unwrap();
     let restored: chio_core::receipt::ChioReceipt = serde_json::from_slice(&receipt_json).unwrap();
     assert!(restored.verify_signature().unwrap());
+}
+
+#[test]
+fn hybrid_canonical_and_classical_paths_sign_identical_bytes_under_ed25519() {
+    // PR 682 contract: `sign_receipt_body_hybrid_canonical` must sign
+    // the authoritative `ChioReceiptSigningBody` wrapper (id plus
+    // `ChioReceiptIdInput`), not the bare `ChioReceiptBody`. Under a
+    // classical-only Ed25519 backend this means the signed bytes -- and
+    // therefore the deterministic Ed25519 signature -- must match the
+    // sibling non-hybrid path byte-for-byte for the same body.
+    let kp = Keypair::from_seed(&fixture_classical_seed());
+    let backend = Ed25519Backend::new(kp.clone());
+    let body = build_body(kp.public_key());
+
+    // Sign through both entrypoints.
+    let classical_receipt = sign_receipt_body_with_backend(body.clone(), &backend).unwrap();
+    let SignedHybridReceipt {
+        receipt: hybrid_receipt,
+        canonical,
+    } = sign_receipt_body_hybrid_canonical(body.clone(), &backend).unwrap();
+
+    // The receipt id is content-addressed and identical across paths.
+    assert_eq!(
+        classical_receipt.id, hybrid_receipt.id,
+        "receipt id must be identical across signing paths"
+    );
+
+    // The signed bytes are byte-identical: both paths canonicalize the
+    // same `ChioReceiptSigningBody` wrapper.
+    let expected_wrapper_bytes = canonical_signing_wrapper_bytes(&body);
+    assert_eq!(
+        canonical.as_bytes(),
+        expected_wrapper_bytes.as_slice(),
+        "hybrid-canonical path must sign the ChioReceiptSigningBody wrapper bytes"
+    );
+
+    // Ed25519 is deterministic per RFC 8032, so identical input bytes
+    // and identical keys produce byte-identical signatures.
+    assert_eq!(
+        canonical_json_bytes(&classical_receipt.signature).unwrap(),
+        canonical_json_bytes(&hybrid_receipt.signature).unwrap(),
+        "Ed25519 signatures must be byte-identical across the two signing paths"
+    );
+
+    // The receipt envelopes themselves are byte-identical.
+    assert_eq!(
+        canonical_json_bytes(&classical_receipt).unwrap(),
+        canonical_json_bytes(&hybrid_receipt).unwrap(),
+        "signed receipt envelope must be byte-identical across paths"
+    );
+
+    // Cross-path verification: the classical path's signature MUST
+    // verify against the hybrid path's shared canonical bytes (and
+    // vice versa).
+    assert!(
+        classical_receipt
+            .kernel_key
+            .verify(canonical.as_bytes(), &classical_receipt.signature),
+        "classical signature MUST verify against the hybrid path's shared canonical bytes"
+    );
+    assert!(
+        hybrid_receipt
+            .kernel_key
+            .verify(&expected_wrapper_bytes, &hybrid_receipt.signature),
+        "hybrid path signature MUST verify against independently computed wrapper bytes"
+    );
 }

@@ -8,7 +8,8 @@ for capability-based policy evaluation.
 - Preserves `ReadableStream` / async-generator return values without
   buffering, so `streamText` / `streamObject` / SSE keep working.
 - Keeps full TypeScript generic inference from the underlying `tool()`.
-- Fails closed by default; opt-in fail-open for degraded-mode operation.
+- Fails closed when the sidecar is unreachable, including when legacy
+  `onSidecarError: "allow"` is supplied.
 
 ## Install
 
@@ -104,7 +105,7 @@ const progressiveTool = chioTool({
 | `scope`           | `ChioToolScope`                        | Chio evaluation binding (`toolServer`, `toolName`, `capabilityToken`, ...). |
 | `client`          | `ChioClient`                           | Optional shared client.                                                 |
 | `clientOptions`   | `ChioClientOptions`                    | Inline client options (`sidecarUrl`, `timeoutMs`, `fetch`, `debug`).    |
-| `onSidecarError`  | `"deny"` \| `"allow"`                 | Default `"deny"` -- throw on transport failure.                         |
+| `onSidecarError`  | `"deny"` \| `"allow"`                 | Legacy source-compatibility setting. Current v1 throws on transport failure. |
 | `debug`           | `(message, data?) => void`            | Optional debug hook; the wrapper never writes to stdout.                |
 | `resolveCapabilityToken` | `(capabilityId) => token`       | Optional resolver when `scope.capabilityId` is only an indirection key. |
 

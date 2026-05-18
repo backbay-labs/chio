@@ -308,6 +308,19 @@ pub struct SignedHybridReceipt {
 /// canonical JSON byte buffer is built once, signed once, and shared by
 /// every downstream consumer (storage, lineage anchor, federation cosign).
 ///
+/// # Authoritative signing input
+///
+/// The bytes signed are the canonical JSON encoding of the
+/// [`chio_core::receipt::ChioReceiptSigningBody`] wrapper, which binds
+/// the content-addressed receipt id to the
+/// [`chio_core::receipt::ChioReceiptIdInput`] that derived it. This is
+/// the same byte sequence the classical sibling
+/// [`sign_receipt_body_with_backend`] signs (it delegates to
+/// [`chio_kernel_core::sign_receipt`] and then
+/// [`chio_core::receipt::ChioReceipt::sign_with_backend`]). The two
+/// paths produce byte-identical signed bytes for the same body and
+/// backend.
+///
 /// # Trust-boundary discipline
 ///
 /// - Fail-closed: if `body.kernel_key` does not match `backend.public_key()`
@@ -328,7 +341,11 @@ pub struct SignedHybridReceipt {
 ///
 /// Returns [`KernelError::ReceiptSigningFailed`] when:
 /// - `body.kernel_key` does not match the backend's public key, OR
-/// - canonical JSON encoding of the body fails, OR
+/// - `body` fails semantic validation (see
+///   [`chio_core::receipt::ChioReceiptBody::validate_signable_semantics`]),
+///   OR
+/// - canonical JSON encoding of the receipt id input or signing wrapper
+///   fails, OR
 /// - the signing backend itself rejects the message (for example, FIPS
 ///   ECDSA backends that fail to acquire OS randomness).
 pub fn sign_receipt_body_hybrid_canonical(
@@ -338,6 +355,7 @@ pub fn sign_receipt_body_hybrid_canonical(
     use chio_core::crypto::{
         canonical_json_shared_bytes, sign_shared_canonical_with_backend, PublicKey,
     };
+    use chio_core::receipt::{chio_receipt_id, ChioReceiptSigningBody};
 
     // Fail-closed kernel-key match BEFORE any cryptographic work. Mirrors
     // `chio_kernel_core::sign_receipt` so the byte-identity contract holds
@@ -349,11 +367,32 @@ pub fn sign_receipt_body_hybrid_canonical(
         ));
     }
 
-    // Build the M06 SharedCanonicalBytes once. This is the byte buffer the
-    // classical half hashes and the ML-DSA-65 half signs.
-    let canonical = canonical_json_shared_bytes(&body).map_err(|error| {
+    // Mirror the classical sibling path so the two entrypoints sign the
+    // same authoritative `ChioReceiptSigningBody` wrapper (id plus
+    // `ChioReceiptIdInput`). `ChioReceipt::sign_with_backend` performs
+    // three steps: validate semantics, compute the content-addressed
+    // id, and build the wrapper. We replicate them here so the bytes the
+    // hybrid backend signs are byte-identical to what the classical
+    // sibling signs for the same body.
+    let mut body = body;
+    body.validate_signable_semantics().map_err(|error| {
         KernelError::ReceiptSigningFailed(format!(
-            "canonical JSON encoding of receipt body failed: {error}"
+            "receipt body failed semantic validation: {error}"
+        ))
+    })?;
+    body.id = chio_receipt_id(&body).map_err(|error| {
+        KernelError::ReceiptSigningFailed(format!(
+            "canonical JSON encoding of receipt id input failed: {error}"
+        ))
+    })?;
+    let signing_body = ChioReceiptSigningBody::from(&body);
+
+    // Build the M06 SharedCanonicalBytes once over the authoritative
+    // signing wrapper. This is the byte buffer the classical half
+    // hashes and the ML-DSA-65 half signs.
+    let canonical = canonical_json_shared_bytes(&signing_body).map_err(|error| {
+        KernelError::ReceiptSigningFailed(format!(
+            "canonical JSON encoding of receipt signing body failed: {error}"
         ))
     })?;
 
@@ -384,6 +423,12 @@ pub fn sign_receipt_body_hybrid_canonical(
         tool_name: body.tool_name,
         action: body.action,
         decision: body.decision,
+        receipt_kind: body.receipt_kind,
+        boundary_class: body.boundary_class,
+        observation_outcome: body.observation_outcome,
+        tool_origin: body.tool_origin,
+        redaction_mode: body.redaction_mode,
+        actor_chain: body.actor_chain,
         content_hash: body.content_hash,
         policy_hash: body.policy_hash,
         evidence: body.evidence,
@@ -550,7 +595,16 @@ pub(super) fn merge_metadata_objects(
         (Some(mut base), Some(extra)) => {
             if let (Some(base_obj), Some(extra_obj)) = (base.as_object_mut(), extra.as_object()) {
                 for (key, value) in extra_obj {
-                    base_obj.insert(key.clone(), value.clone());
+                    match (base_obj.get_mut(key), value.as_object()) {
+                        (Some(serde_json::Value::Object(base_nested)), Some(extra_nested)) => {
+                            for (nested_key, nested_value) in extra_nested {
+                                base_nested.insert(nested_key.clone(), nested_value.clone());
+                            }
+                        }
+                        _ => {
+                            base_obj.insert(key.clone(), value.clone());
+                        }
+                    }
                 }
             }
             Some(base)

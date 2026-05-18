@@ -1,8 +1,8 @@
 # Protocol Bridges and Edge Documentation
 
-**Version:** 3.0
+**Version:** 1.0
 **Date:** 2026-04-14
-**Status:** Normative companion to PROTOCOL.md
+**Status:** Normative companion to PROTOCOL.md for the current v1 profile
 
 This document specifies how the Chio kernel's trust contract extends to
 external protocol surfaces through bridges and edges. Each section covers
@@ -12,6 +12,12 @@ receipt integration.
 All bridges and edges share the same security invariant: every mediated
 action flows through the Chio kernel guard pipeline, producing a signed
 receipt regardless of the upstream or downstream protocol.
+
+Sections for crates that are not yet implemented are planning constraints, not
+shipped protocol surface. They MUST NOT be read as adapter execution approval
+until current v1 receipt semantics, durable receipt commit behavior, semantic
+authority verification, and tenant read-boundary authority are merged and
+tested.
 
 ---
 
@@ -427,17 +433,19 @@ resolves them or `tool/cancel` marks them cancelled before execution.
 
 ---
 
-## 4. OpenAI Adapter (`chio-openai`)
+## 4. Deferred OpenAI Adapter Planning (future crate TBD)
 
 ### 4.1 Overview
 
-The OpenAI adapter intercepts OpenAI-style `tool_use` / function-calling
-requests and routes them through the Chio kernel for capability validation
-and receipt signing. It supports both the Chat Completions API format and
-the Responses API format.
+This deferred OpenAI surface is outside the current v1 execution surface. This
+section records the future caller-executed function-tool shape that an adapter
+MUST satisfy after the receipt/read-boundary gates are complete. Hosted OpenAI
+tools, remote MCP execution, connectors, and provider-reported tool activity
+remain trace-only unless a later ticket proves a Chio-owned dispatch boundary.
 
-Every function call produces a signed receipt. Guards fail closed by
-default.
+When implemented, every caller-executed function call that reaches the Chio
+kernel MUST produce a signed mediated receipt. Provider-reported observations
+MUST NOT be mapped to authorization receipts.
 
 ### 4.2 Function Definition Generation
 
@@ -521,10 +529,10 @@ The result message format:
 }
 ```
 
-### 4.5 Responses API Support
+### 4.5 Future Responses API Support
 
-The adapter also supports the OpenAI Responses API format. The
-extraction flow:
+When a future OpenAI adapter is qualified, the caller-executed function-tool
+path may support the OpenAI Responses API format. The planned extraction flow:
 
 1. The response contains an `output` array with items typed as
    `"function_call"`.

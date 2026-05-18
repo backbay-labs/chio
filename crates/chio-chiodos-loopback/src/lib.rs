@@ -32,7 +32,8 @@ use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
 use chio_core_types::capability::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+    ActorRef, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, ReceiptKind, RedactionMode,
+    ToolCallAction, ToolOrigin, TrustLevel,
 };
 use chio_federation::{
     sign_chiodos_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef, DsseEnvelope,
@@ -49,7 +50,7 @@ use chio_selective_disclosure::{
 };
 use chio_workflow::receipt::{
     StepOutcome, StepRecord, WorkflowOutcome, WorkflowReceipt, WorkflowReceiptBody,
-    WORKFLOW_RECEIPT_SCHEMA_V2,
+    WORKFLOW_RECEIPT_SCHEMA,
 };
 use serde::Serialize;
 
@@ -200,7 +201,16 @@ fn receipt_body(
         tool_server: vendor.server_id.to_string(),
         tool_name: vendor.tool_name.to_string(),
         action,
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: ReceiptKind::MediatedDecision,
+        boundary_class: BoundaryClass::Prevent,
+        observation_outcome: None,
+        tool_origin: ToolOrigin::CallerExecuted,
+        redaction_mode: RedactionMode::None,
+        actor_chain: vec![ActorRef {
+            actor_id: "agent:chiodos-loopback".to_string(),
+            actor_kind: Some("agent".to_string()),
+        }],
         content_hash: sha256_hex(vendor.output_label),
         policy_hash: sha256_hex(format!("policy:{}", vendor.tool_name).as_bytes()),
         evidence: Vec::new(),
@@ -744,7 +754,7 @@ fn validate_runtime_receipt_for_vendor(
             receipt.id, receipt.capability_id, vendor.lease_id
         )));
     }
-    if !matches!(&receipt.decision, Decision::Allow) {
+    if !matches!(&receipt.decision, Some(Decision::Allow)) {
         return Err(ChiodosPackageError::Inconsistent(format!(
             "runtime receipt {} was not an allow receipt",
             receipt.id
@@ -1169,7 +1179,7 @@ fn build_proof_package_unchecked(
 
     let workflow_body = WorkflowReceiptBody {
         id: WORKFLOW_ID.to_string(),
-        schema: WORKFLOW_RECEIPT_SCHEMA_V2.to_string(),
+        schema: WORKFLOW_RECEIPT_SCHEMA.to_string(),
         started_at: GENERATED_AT_UNIX_MS / 1000,
         completed_at: (GENERATED_AT_UNIX_MS / 1000) + 42,
         skill_id: "refund-underwriting".to_string(),

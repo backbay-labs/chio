@@ -858,6 +858,7 @@ fn require_receipt_db_path(receipt_db_path: Option<&Path>) -> Result<&Path, CliE
 fn cmd_trust_serve(
     listen: SocketAddr,
     service_token: &str,
+    tenant_read_tokens: &[String],
     policy_path: Option<&Path>,
     enterprise_providers_file: Option<&Path>,
     federation_policies_file: Option<&Path>,
@@ -880,6 +881,20 @@ fn cmd_trust_serve(
     peer_urls: &[String],
     cluster_sync_interval_ms: u64,
 ) -> Result<(), CliError> {
+    if service_token.trim().is_empty() {
+        return Err(CliError::cli_other_error(
+            "trust serve requires a non-empty --service-token".to_string(),
+        ));
+    }
+    let tenant_read_tokens = parse_tenant_read_tokens(tenant_read_tokens)?;
+    if let Some((tenant_id, _)) = tenant_read_tokens
+        .iter()
+        .find(|(_, token)| token.as_str() == service_token)
+    {
+        return Err(CliError::cli_other_error(format!(
+            "--tenant-read-token for tenant {tenant_id} must not equal --service-token"
+        )));
+    }
     let (issuance_policy, runtime_assurance_policy) = policy_path
         .map(load_policy)
         .transpose()?
@@ -888,6 +903,7 @@ fn cmd_trust_serve(
     trust_control::serve(trust_control::TrustServiceConfig {
         listen,
         service_token: service_token.to_string(),
+        tenant_read_tokens,
         receipt_db_path: receipt_db_path.map(Path::to_path_buf),
         revocation_db_path: revocation_db_path.map(Path::to_path_buf),
         authority_seed_path: authority_seed_path.map(Path::to_path_buf),
@@ -910,6 +926,30 @@ fn cmd_trust_serve(
         peer_urls: peer_urls.to_vec(),
         cluster_sync_interval: std::time::Duration::from_millis(cluster_sync_interval_ms.max(50)),
     })
+}
+
+fn parse_tenant_read_tokens(specs: &[String]) -> Result<std::collections::BTreeMap<String, String>, CliError> {
+    let mut parsed = std::collections::BTreeMap::new();
+    for spec in specs {
+        let (tenant, token) = spec.split_once('=').ok_or_else(|| {
+            CliError::cli_other_error(
+                "--tenant-read-token must use tenant=token form".to_string(),
+            )
+        })?;
+        let tenant = tenant.trim();
+        let token = token.trim();
+        if tenant.is_empty() || token.is_empty() {
+            return Err(CliError::cli_other_error(
+                "--tenant-read-token tenant and token must be non-empty".to_string(),
+            ));
+        }
+        if parsed.insert(tenant.to_string(), token.to_string()).is_some() {
+            return Err(CliError::cli_other_error(format!(
+                "duplicate --tenant-read-token for tenant {tenant}"
+            )));
+        }
+    }
+    Ok(parsed)
 }
 
 fn cmd_trust_revoke(
@@ -1135,6 +1175,7 @@ fn cmd_trust_evidence_share_list(
         issuer: args.issuer.map(ToOwned::to_owned),
         partner: args.partner.map(ToOwned::to_owned),
         limit: Some(args.limit),
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
     };
 
     let report = if let Some(url) = backend.control_url {
@@ -1250,6 +1291,7 @@ fn cmd_trust_authorization_context_list(
         since: args.since,
         until: args.until,
         authorization_limit: Some(args.limit),
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
         ..chio_kernel::OperatorReportQuery::default()
     };
 
@@ -1344,6 +1386,7 @@ fn cmd_trust_authorization_context_review_pack(
         since: args.since,
         until: args.until,
         authorization_limit: Some(args.limit),
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
         ..chio_kernel::OperatorReportQuery::default()
     };
 
@@ -1415,6 +1458,7 @@ fn cmd_trust_behavioral_feed_export(
         since: args.since,
         until: args.until,
         receipt_limit: Some(args.receipt_limit),
+        read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
     };
 
     let feed = if let Some(url) = backend.query.control_url {
@@ -1808,12 +1852,14 @@ fn cmd_trust_credit_facility_evaluate(
                     .to_string(),
             )
         })?;
+        let trusted_kernel_keys = trusted_kernel_keys_from_authority(backend.authority_seed_path)?;
         trust_control::build_credit_facility_report(
             receipt_db_path,
             backend.budget_db_path,
             backend.certification_registry_file,
             None,
             &query,
+            &trusted_kernel_keys,
         )?
     };
 
@@ -1981,12 +2027,14 @@ fn cmd_trust_credit_bond_evaluate(
                     .to_string(),
             )
         })?;
+        let trusted_kernel_keys = trusted_kernel_keys_from_authority(backend.authority_seed_path)?;
         trust_control::build_credit_bond_report(
             receipt_db_path,
             backend.budget_db_path,
             backend.certification_registry_file,
             None,
             &query,
+            &trusted_kernel_keys,
         )?
     };
 

@@ -519,8 +519,8 @@ the final
 The chiodos-specific fields on each step
 (`dual_signed_receipt_ref`, `governance_receipt_ref`,
 `parent_receipt_sha256`, `consistency_anchor`, `destructive`,
-`amount_minor`, `currency`, `kyc_tier_at_time`) map to the workflow
-receipt v2 step context and the package-carried tool receipt. The strict
+`amount_minor`, `currency`, `kyc_tier_at_time`) map to the current workflow
+step context and the package-carried tool receipt. The strict
 verifier checks the step record against the tool receipt, bilateral DSSE
 envelope, lease scope binding, governance receipt, and workflow chain.
 
@@ -709,7 +709,7 @@ performs:
    against the pinned peers in the verifier-owned trust bundle.
 2. For each step, recompute `parent_receipt_sha256`, the bilateral DSSE envelope hash, and the `chiodos:consistency:<workflow_id>:<step_index>` anchor.
 3. Verify the capability lease and governance receipt against verifier-owned authority roots and recompute the lease scope digest from `chio.chiodos-lease-scope-binding.v1`.
-4. Verify the `chio.workflow-receipt.v2` aggregate signature and detached vendor co-signatures.
+4. Verify the `chio.workflow-receipt.v1` aggregate signature and detached vendor co-signatures.
 5. Verify the signed `chio.chiodos.revocation-checkpoint.v1` in the verifier trust bundle and reject revoked peers, vendors, BBS issuers, lease authorities, and governance authorities.
 6. Verify the BBS+ reveal-set disclosure envelope against the trusted issuer key, verifier-owned disclosure policy, and `chio.chiodos.verification-context.v1` nonce binding.
 7. Verify the package `chio.chiodos-workflow-intersection.v1` hash against the trust bundle and confirm every step's action class is verifier-owned.

@@ -197,6 +197,11 @@ pub struct KernelPolicyConfig {
     #[serde(default)]
     pub require_web3_evidence: bool,
 
+    /// Allow local process-only receipt logs when no durable receipt store is
+    /// configured. This is intended for tests and local scaffolds only.
+    #[serde(default)]
+    pub allow_ephemeral_receipt_log: bool,
+
     /// Number of receipts between Merkle checkpoint snapshots.
     #[serde(default = "default_checkpoint_batch_size")]
     pub checkpoint_batch_size: u64,
@@ -211,6 +216,7 @@ impl Default for KernelPolicyConfig {
             allow_sampling_tool_use: false,
             allow_elicitation: false,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: false,
             checkpoint_batch_size: default_checkpoint_batch_size(),
         }
     }

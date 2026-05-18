@@ -13,6 +13,7 @@
 
 use std::sync::Arc;
 
+use chio_core::crypto::PublicKey;
 use chio_core::receipt::ChioReceipt;
 use chio_settle::{SettlementHook, SettlementHookError, SettlementObservation, SettlementOutcome};
 
@@ -80,10 +81,14 @@ impl SettlementObserverStatus {
 /// keys, so the lookup is canonical-first with a legacy fallback for
 /// external receipts that pre-date the kernel canonical shape.
 #[must_use]
-pub fn build_observation(receipt: &ChioReceipt) -> Option<SettlementObservation> {
-    use chio_core::receipt::Decision;
-
-    if !matches!(receipt.decision, Decision::Allow) {
+fn build_observation_unchecked(receipt: &ChioReceipt) -> Option<SettlementObservation> {
+    if !receipt.verify_signature().ok()? {
+        return None;
+    }
+    if !receipt.action.verify_hash().ok()? {
+        return None;
+    }
+    if !receipt.is_allowed() {
         return None;
     }
 
@@ -137,6 +142,31 @@ pub fn build_observation(receipt: &ChioReceipt) -> Option<SettlementObservation>
     })
 }
 
+/// Build an observation only when the receipt signer is explicitly trusted.
+#[must_use]
+pub fn build_observation(
+    receipt: &ChioReceipt,
+    trusted_kernel_keys: &[PublicKey],
+) -> Option<SettlementObservation> {
+    if trusted_kernel_keys.is_empty()
+        || !trusted_kernel_keys
+            .iter()
+            .any(|trusted| trusted == &receipt.kernel_key)
+    {
+        return None;
+    }
+    build_observation_unchecked(receipt)
+}
+
+/// Build an observation only when the receipt signer is explicitly trusted.
+#[must_use]
+pub fn build_observation_with_trusted_signers(
+    receipt: &ChioReceipt,
+    trusted_kernel_keys: &[PublicKey],
+) -> Option<SettlementObservation> {
+    build_observation(receipt, trusted_kernel_keys)
+}
+
 /// Run the registered settlement hook against a freshly signed receipt.
 ///
 /// Settlement is observer-only relative to receipt bytes: the receipt
@@ -149,12 +179,14 @@ pub fn build_observation(receipt: &ChioReceipt) -> Option<SettlementObservation>
 pub fn run_observer(
     hook: Option<&Arc<dyn SettlementHook>>,
     receipt: &ChioReceipt,
+    trusted_kernel_keys: &[PublicKey],
 ) -> SettlementObserverStatus {
     let Some(hook) = hook else {
         return SettlementObserverStatus::NotRegistered;
     };
 
-    let Some(observation) = build_observation(receipt) else {
+    let Some(observation) = build_observation_with_trusted_signers(receipt, trusted_kernel_keys)
+    else {
         return SettlementObserverStatus::skipped("receipt outside marketplace surface");
     };
 
@@ -175,9 +207,17 @@ mod tests {
     };
 
     fn sign_with(body_metadata: serde_json::Value, decision: Decision) -> ChioReceipt {
-        let kp = Keypair::generate();
         let action = ToolCallAction::from_parameters(serde_json::json!({}))
             .expect("test tool-call action constructs");
+        sign_with_action(body_metadata, decision, action)
+    }
+
+    fn sign_with_action(
+        body_metadata: serde_json::Value,
+        decision: Decision,
+        action: ToolCallAction,
+    ) -> ChioReceipt {
+        let kp = Keypair::generate();
         let body = ChioReceiptBody {
             id: "rcpt-test".to_string(),
             timestamp: 100,
@@ -185,7 +225,13 @@ mod tests {
             tool_server: "srv-1".to_string(),
             tool_name: "tool-1".to_string(),
             action,
-            decision,
+            decision: Some(decision),
+            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: "ch-1".to_string(),
             policy_hash: "ph-1".to_string(),
             evidence: vec![GuardEvidence {
@@ -235,7 +281,7 @@ mod tests {
                 guard: "G".to_string(),
             },
         );
-        assert!(build_observation(&receipt).is_none());
+        assert!(build_observation(&receipt, &[receipt.kernel_key.clone()]).is_none());
     }
 
     #[test]
@@ -246,13 +292,40 @@ mod tests {
             }),
             Decision::Allow,
         );
-        assert!(build_observation(&receipt).is_none());
+        assert!(build_observation(&receipt, &[receipt.kernel_key.clone()]).is_none());
     }
 
     #[test]
     fn build_observation_skips_when_metadata_missing_financial_section() {
         let receipt = sign_with(serde_json::json!({}), Decision::Allow);
-        assert!(build_observation(&receipt).is_none());
+        assert!(build_observation(&receipt, &[receipt.kernel_key.clone()]).is_none());
+    }
+
+    #[test]
+    fn build_observation_skips_invalid_signature() {
+        let mut receipt = sign_with(
+            serde_json::json!({
+                "financial": {"approved_max": {"units": 250, "currency": "USD"}}
+            }),
+            Decision::Allow,
+        );
+        receipt.tool_name = "tampered".to_string();
+        assert!(build_observation(&receipt, &[receipt.kernel_key.clone()]).is_none());
+    }
+
+    #[test]
+    fn build_observation_skips_mismatched_action_hash() {
+        let mut action = ToolCallAction::from_parameters(serde_json::json!({"path": "/tmp/a"}))
+            .expect("test tool-call action constructs");
+        action.parameters = serde_json::json!({"path": "/tmp/b"});
+        let receipt = sign_with_action(
+            serde_json::json!({
+                "financial": {"approved_max": {"units": 250, "currency": "USD"}}
+            }),
+            Decision::Allow,
+            action,
+        );
+        assert!(build_observation(&receipt, &[receipt.kernel_key.clone()]).is_none());
     }
 
     #[test]
@@ -263,8 +336,9 @@ mod tests {
             }),
             Decision::Allow,
         );
-        let observation = build_observation(&receipt).expect("priced receipt yields observation");
-        assert_eq!(observation.receipt_id, "rcpt-test");
+        let observation = build_observation(&receipt, &[receipt.kernel_key.clone()])
+            .expect("priced receipt yields observation");
+        assert_eq!(observation.receipt_id, receipt.id);
         assert_eq!(observation.finalized_at, 100);
         assert_eq!(
             observation.amount,
@@ -277,6 +351,17 @@ mod tests {
     }
 
     #[test]
+    fn build_observation_rejects_untrusted_signer() {
+        let receipt = sign_with(
+            serde_json::json!({
+                "financial": {"approved_max": {"units": 250, "currency": "USD"}}
+            }),
+            Decision::Allow,
+        );
+        assert!(build_observation(&receipt, &[]).is_none());
+    }
+
+    #[test]
     fn run_observer_returns_not_registered_without_hook() {
         let receipt = sign_with(
             serde_json::json!({
@@ -284,7 +369,7 @@ mod tests {
             }),
             Decision::Allow,
         );
-        let status = run_observer(None, &receipt);
+        let status = run_observer(None, &receipt, &[receipt.kernel_key.clone()]);
         assert!(matches!(status, SettlementObserverStatus::NotRegistered));
     }
 
@@ -297,11 +382,11 @@ mod tests {
             Decision::Allow,
         );
         let hook: Arc<dyn SettlementHook> = Arc::new(AcceptingHook);
-        let status = run_observer(Some(&hook), &receipt);
+        let status = run_observer(Some(&hook), &receipt, &[receipt.kernel_key.clone()]);
         match status {
             SettlementObserverStatus::Observed {
                 outcome: SettlementOutcome::Accepted { transcript_id, .. },
-            } => assert_eq!(transcript_id, "ts-rcpt-test"),
+            } => assert_eq!(transcript_id, format!("ts-{}", receipt.id)),
             other => panic!("expected accepted outcome, got {other:?}"),
         }
     }
@@ -315,7 +400,7 @@ mod tests {
             Decision::Allow,
         );
         let hook: Arc<dyn SettlementHook> = Arc::new(FailingHook);
-        let status = run_observer(Some(&hook), &receipt);
+        let status = run_observer(Some(&hook), &receipt, &[receipt.kernel_key.clone()]);
         assert!(matches!(status, SettlementObserverStatus::Skipped { .. }));
     }
 
@@ -341,7 +426,7 @@ mod tests {
             }),
             Decision::Allow,
         );
-        let observation = build_observation(&receipt)
+        let observation = build_observation(&receipt, &[receipt.kernel_key.clone()])
             .expect("canonical FinancialReceiptMetadata shape yields observation");
         assert_eq!(observation.amount.units, 250);
         assert_eq!(observation.amount.currency, "USD");
@@ -358,7 +443,7 @@ mod tests {
             }),
             Decision::Allow,
         );
-        assert!(build_observation(&receipt).is_none());
+        assert!(build_observation(&receipt, &[receipt.kernel_key.clone()]).is_none());
     }
 
     #[test]
@@ -370,7 +455,7 @@ mod tests {
             Decision::Allow,
         );
         let hook: Arc<dyn SettlementHook> = Arc::new(FailingHook);
-        let status = run_observer(Some(&hook), &receipt);
+        let status = run_observer(Some(&hook), &receipt, &[receipt.kernel_key.clone()]);
         assert!(matches!(
             status,
             SettlementObserverStatus::HookFailed { .. }

@@ -1,17 +1,17 @@
 # Provider Integrations
 
 Chio's provider-native adapter track mediates closed provider tool-call APIs
-before they cross the Chio trust boundary. The supported M07 set is OpenAI
-Responses, Anthropic Messages, and Amazon Bedrock Converse. All three adapters
-lift native tool-call shapes into the shared `ProviderAdapter` fabric, run the
-same kernel verdict path, and lower allowed or denied results back into the
-provider's native response shape.
+only when Chio owns the caller-executed dispatch path before effect. In the
+current v1 pre-release protocol, OpenAI adapter execution is deferred and must
+not be treated as shipped, authoritative, or supported. Provider-reported tool
+activity is trace-only unless a later ticket proves a Chio-owned mediation
+boundary and lands the required receipt/read-boundary gates.
 
 ## Pinned Versions
 
 | Provider | Adapter crate | Upstream pin | Scope | Re-record rule |
 | -------- | ------------- | ------------ | ----- | -------------- |
-| OpenAI | `chio-openai` with `provider-adapter` feature | Responses API snapshot `2026-04-25` | Responses API batch and SSE tool-call traffic | Pin bumps must update the crate metadata, README, fixture corpus, and event-name table. |
+| OpenAI | Deferred, crate name TBD | Refresh official tool docs before ticketing | Caller-executed function tools only after v1 receipt authority and adapter qualification land | Do not claim a present-tense OpenAI package or authoritative OpenAI mediation surface. |
 | Anthropic | `chio-anthropic-tools-adapter` | `anthropic-version: 2023-06-01` | Messages API tool-use traffic; `computer-use` beta behind feature and manifest allowlist | Header bumps must re-record Anthropic fixtures and re-check server-tool allowlist behavior. |
 | Bedrock | `chio-bedrock-converse-adapter` | `aws-sdk-bedrockruntime = "1.130.0"`; `bedrock.converse.v1`; region `us-east-1` | Bedrock Runtime `Converse` and `ConverseStream` tool-use traffic | SDK, API marker, or region bumps must re-record Bedrock fixtures and re-run principal mapping checks. |
 

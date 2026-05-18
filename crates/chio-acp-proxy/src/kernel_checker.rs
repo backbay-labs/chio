@@ -19,6 +19,8 @@ use serde_json::json;
 const ACP_GUARD_READ_TOOL: &str = "fs/read_text_file";
 const ACP_GUARD_WRITE_TOOL: &str = "fs/write_text_file";
 const ACP_GUARD_TERMINAL_TOOL: &str = "terminal/create";
+const ACP_GUARD_TERMINAL_KILL_TOOL: &str = "terminal/kill";
+const ACP_GUARD_TERMINAL_RELEASE_TOOL: &str = "terminal/release";
 
 struct AcpGuardCapabilityBridge;
 
@@ -105,6 +107,8 @@ impl ToolServerConnection for AcpAuthorityToolServer {
             ACP_GUARD_READ_TOOL.to_string(),
             ACP_GUARD_WRITE_TOOL.to_string(),
             ACP_GUARD_TERMINAL_TOOL.to_string(),
+            ACP_GUARD_TERMINAL_KILL_TOOL.to_string(),
+            ACP_GUARD_TERMINAL_RELEASE_TOOL.to_string(),
         ]
     }
 
@@ -157,19 +161,40 @@ impl KernelCapabilityChecker {
                 ACP_GUARD_READ_TOOL,
                 json!({
                     "path": request.resource,
+                    "authorization_parameter_hash": request.authorization_parameter_hash,
+                    "operation_payload": request.operation_payload,
                 }),
             )),
             "fs_write" => Ok((
                 ACP_GUARD_WRITE_TOOL,
                 json!({
                     "path": request.resource,
+                    "authorization_parameter_hash": request.authorization_parameter_hash,
+                    "operation_payload": request.operation_payload,
                 }),
             )),
             "terminal" => Ok((
                 ACP_GUARD_TERMINAL_TOOL,
                 json!({
                     "command": request.resource,
-                    "args": [],
+                    "authorization_parameter_hash": request.authorization_parameter_hash,
+                    "operation_payload": request.operation_payload,
+                }),
+            )),
+            "terminal_kill" => Ok((
+                ACP_GUARD_TERMINAL_KILL_TOOL,
+                json!({
+                    "terminalId": request.resource,
+                    "authorization_parameter_hash": request.authorization_parameter_hash,
+                    "operation_payload": request.operation_payload,
+                }),
+            )),
+            "terminal_release" => Ok((
+                ACP_GUARD_TERMINAL_RELEASE_TOOL,
+                json!({
+                    "terminalId": request.resource,
+                    "authorization_parameter_hash": request.authorization_parameter_hash,
+                    "operation_payload": request.operation_payload,
                 }),
             )),
             other => Err(CapabilityCheckError::Internal(format!(
@@ -182,12 +207,25 @@ impl KernelCapabilityChecker {
         &self,
         request: &AcpCapabilityRequest,
         arguments: &Value,
+        tool_call_id: &str,
+        kernel_request_id: &str,
     ) -> Value {
         json!({
             "sessionId": request.session_id,
+            "toolCallId": tool_call_id,
             "operation": request.operation,
             "resource": request.resource,
             "arguments": arguments,
+            "operationPayload": request.operation_payload,
+            "receipt_context": {
+                "request_id": kernel_request_id,
+                "authorization_correlation_id": request.authorization_correlation_id,
+                "session_id": request.session_id,
+                "tool_call_id": tool_call_id,
+                "operation": request.operation,
+                "resource": request.resource,
+                "authorization_parameter_hash": request.authorization_parameter_hash,
+            },
         })
     }
 }
@@ -204,6 +242,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                     allowed: false,
                     capability_id: None,
                     receipt_id: None,
+                    receipt_request_id: None,
                     reason: "no capability token presented".to_string(),
                 });
             }
@@ -216,9 +255,35 @@ impl CapabilityChecker for KernelCapabilityChecker {
                     allowed: false,
                     capability_id: None,
                     receipt_id: None,
+                    receipt_request_id: None,
                     reason: error.to_string(),
                 });
             }
+        };
+        // ACP fs/read_text_file, fs/write_text_file, and terminal/create
+        // request parameters do not carry a toolCallId. Only the operations
+        // that mutate an existing tool call (terminal_kill, terminal_release)
+        // require the binding at the live authorization step; for the file
+        // and terminal-create operations the matching toolCallId arrives on
+        // the later session/update notification.
+        let tool_call_id_required =
+            matches!(request.operation.as_str(), "terminal_kill" | "terminal_release");
+        let tool_call_id = match request
+            .tool_call_id
+            .as_deref()
+            .filter(|tool_call_id| !tool_call_id.trim().is_empty())
+        {
+            Some(tool_call_id) => tool_call_id,
+            None if tool_call_id_required => {
+                return Ok(AcpVerdict {
+                    allowed: false,
+                    capability_id: Some(capability.id.clone()),
+                    receipt_id: None,
+                    receipt_request_id: None,
+                    reason: "ACP authorization requires a tool_call_id binding".to_string(),
+                });
+            }
+            None => "",
         };
         let (tool_name, arguments) = match self.map_request(request) {
             Ok(mapped) => mapped,
@@ -227,36 +292,45 @@ impl CapabilityChecker for KernelCapabilityChecker {
                     allowed: false,
                     capability_id: Some(capability.id.clone()),
                     receipt_id: None,
+                    receipt_request_id: None,
                     reason: error.to_string(),
                 });
             }
         };
         let request_hash = chio_core::sha256_hex(
-            serde_json::to_string(&json!({
+            &chio_core::canonical::canonical_json_bytes(&json!({
                 "sessionId": request.session_id,
+                "toolCallId": tool_call_id,
                 "operation": request.operation,
                 "resource": request.resource,
+                "authorization_parameter_hash": request.authorization_parameter_hash,
+                "operation_payload": request.operation_payload,
             }))
-            .unwrap_or_default()
-            .as_bytes(),
+            .map_err(|error| CapabilityCheckError::Internal(error.to_string()))?,
         );
+        let kernel_request_id = format!("acp-live-guard-{request_hash}");
         let orchestrated = CrossProtocolOrchestrator::new(self.kernel.as_ref())
             .execute(
                 &AcpGuardCapabilityBridge,
                 CrossProtocolExecutionRequest {
                     origin_request_id: format!("acp-guard-{}-{request_hash}", request.session_id),
-                    kernel_request_id: format!("acp-live-guard-{request_hash}"),
+                    kernel_request_id: kernel_request_id.clone(),
                     target_protocol: DiscoveryProtocol::Native,
                     target_server_id: self.server_id.clone(),
                     target_tool_name: tool_name.to_string(),
                     agent_id: capability.subject.to_hex(),
                     arguments: arguments.clone(),
                     capability: capability.clone(),
-                    source_envelope: self.build_source_envelope(request, &arguments),
+                    source_envelope: self.build_source_envelope(
+                        request,
+                        &arguments,
+                        tool_call_id,
+                        &kernel_request_id,
+                    ),
                     dpop_proof: None,
                     governed_intent: None,
                     approval_token: None,
-            model_metadata: None,
+                    model_metadata: None,
                 },
             )
             .map_err(|error| CapabilityCheckError::Internal(error.to_string()))?;
@@ -264,18 +338,21 @@ impl CapabilityChecker for KernelCapabilityChecker {
         let response = orchestrated.response;
         let capability_id = Some(response.receipt.capability_id.clone());
         let receipt_id = Some(response.receipt.id.clone());
+        let receipt_request_id = Some(response.request_id.clone());
 
         match response.verdict {
             KernelVerdict::Allow => Ok(AcpVerdict {
                 allowed: true,
                 capability_id,
                 receipt_id,
+                receipt_request_id,
                 reason: "authorized through kernel-backed ACP guard pipeline".to_string(),
             }),
             KernelVerdict::Deny => Ok(AcpVerdict {
                 allowed: false,
                 capability_id,
                 receipt_id,
+                receipt_request_id,
                 reason: response
                     .reason
                     .unwrap_or_else(|| "kernel denied ACP operation".to_string()),
@@ -284,6 +361,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                 allowed: false,
                 capability_id,
                 receipt_id,
+                receipt_request_id,
                 reason: response
                     .reason
                     .unwrap_or_else(|| "ACP operation requires approval".to_string()),

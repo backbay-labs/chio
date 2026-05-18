@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/record/v1",
   "title": "Chio Receipt Record",
-  "description": "A signed Chio receipt: proof that a tool call was evaluated by the Kernel. Mirrors the serde shape of `ChioReceipt` in `crates/chio-core-types/src/receipt.rs`. The `signature` field covers the canonical JSON of `ChioReceiptBody` (every field below except `algorithm` and `signature`). The `algorithm` envelope field is informational (verification dispatches off the self-describing hex prefix on the signature itself) and is omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Optional fields (`evidence`, `metadata`, `trust_level`, `tenant_id`, `algorithm`) are skipped on the wire when set to their default or unset values.",
+  "description": "A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical ChioReceiptIdInput.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,9 +12,13 @@
     "tool_server",
     "tool_name",
     "action",
-    "decision",
+    "receipt_kind",
+    "boundary_class",
+    "tool_origin",
+    "redaction_mode",
     "content_hash",
     "policy_hash",
+    "trust_level",
     "kernel_key",
     "signature"
   ],
@@ -22,7 +26,8 @@
     "id": {
       "type": "string",
       "minLength": 1,
-      "description": "Unique receipt ID. UUIDv7 recommended."
+      "description": "Authoritative content-addressed receipt id.",
+      "pattern": "^[0-9a-f]{64}$"
     },
     "timestamp": {
       "type": "integer",
@@ -50,6 +55,58 @@
     "decision": {
       "$ref": "#/$defs/decision"
     },
+    "receipt_kind": {
+      "type": "string",
+      "enum": [
+        "mediated_decision",
+        "trace_observation",
+        "advisory_evaluation"
+      ],
+      "description": "Signed semantic class for this v1 receipt."
+    },
+    "boundary_class": {
+      "type": "string",
+      "enum": [
+        "prevent",
+        "detect_only",
+        "advisory_only"
+      ],
+      "description": "Signed runtime boundary class. `cannot_see` is planning metadata only and is not valid on signed runtime receipts."
+    },
+    "observation_outcome": {
+      "type": "string",
+      "enum": [
+        "observed",
+        "evaluated",
+        "dropped"
+      ],
+      "description": "Signed outcome for trace and advisory records. Omitted for mediated decisions."
+    },
+    "tool_origin": {
+      "type": "string",
+      "enum": [
+        "caller_executed",
+        "host_executed_provider_reported",
+        "host_executed_unmediated"
+      ],
+      "description": "Signed classification of where the tool effect executed relative to Chio."
+    },
+    "redaction_mode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "summary",
+        "redacted"
+      ],
+      "description": "Signed redaction mode applied to receipt details."
+    },
+    "actor_chain": {
+      "type": "array",
+      "description": "Signed actor attribution chain. Omitted from the wire when empty.",
+      "items": {
+        "$ref": "#/$defs/actorRef"
+      }
+    },
     "content_hash": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
@@ -72,13 +129,17 @@
     },
     "trust_level": {
       "type": "string",
-      "enum": ["mediated", "verified", "advisory"],
-      "description": "Strength of kernel mediation that produced this receipt. Defaults to `mediated`. Older receipts that omit this field deserialize to `mediated` for backward compatibility."
+      "enum": [
+        "mediated",
+        "verified",
+        "advisory"
+      ],
+      "description": "Strength of kernel mediation that produced this receipt. Must cohere with receipt_kind: mediated_decision uses mediated, trace_observation uses verified, and advisory_evaluation uses advisory."
     },
     "tenant_id": {
       "type": "string",
       "minLength": 1,
-      "description": "Phase 1.5 multi-tenant receipt isolation: tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields. Omitted from the wire when unset so single-tenant receipts remain byte-identical."
+      "description": "Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields."
     },
     "kernel_key": {
       "type": "string",
@@ -87,20 +148,116 @@
     },
     "algorithm": {
       "type": "string",
-      "enum": ["ed25519", "p256", "p384"],
-      "description": "Signing algorithm envelope hint. Omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field."
+      "enum": [
+        "ed25519",
+        "p256",
+        "p384"
+      ],
+      "description": "Signing algorithm envelope hint. Verification dispatches off the signature hex prefix, not this field."
     },
     "signature": {
       "type": "string",
       "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$",
-      "description": "Hex-encoded signature over the canonical JSON of the receipt body. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream."
+      "description": "Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream."
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "receipt_kind": {
+            "const": "mediated_decision"
+          }
+        },
+        "required": [
+          "receipt_kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "boundary_class": {
+            "const": "prevent"
+          },
+          "trust_level": {
+            "const": "mediated"
+          }
+        },
+        "not": {
+          "required": [
+            "observation_outcome"
+          ]
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "decision"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "receipt_kind": {
+            "const": "trace_observation"
+          }
+        },
+        "required": [
+          "receipt_kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "observation_outcome"
+        ],
+        "properties": {
+          "boundary_class": {
+            "const": "detect_only"
+          },
+          "trust_level": {
+            "const": "verified"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "receipt_kind": {
+            "const": "advisory_evaluation"
+          }
+        },
+        "required": [
+          "receipt_kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "observation_outcome"
+        ],
+        "properties": {
+          "boundary_class": {
+            "const": "advisory_only"
+          },
+          "trust_level": {
+            "const": "advisory"
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "toolCallAction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["parameters", "parameter_hash"],
+      "required": [
+        "parameters",
+        "parameter_hash"
+      ],
       "description": "Describes the tool call that was evaluated. Mirrors `ToolCallAction`.",
       "properties": {
         "parameters": {
@@ -115,20 +272,28 @@
     },
     "decision": {
       "type": "object",
-      "required": ["verdict"],
+      "required": [
+        "verdict"
+      ],
       "description": "The Kernel's verdict on the tool call. Internally tagged enum mirroring `Decision` in `chio-core-types` (`#[serde(tag = \"verdict\", rename_all = \"snake_case\")]`).",
       "oneOf": [
         {
           "additionalProperties": false,
           "properties": {
-            "verdict": { "const": "allow" }
+            "verdict": {
+              "const": "allow"
+            }
           },
-          "required": ["verdict"]
+          "required": [
+            "verdict"
+          ]
         },
         {
           "additionalProperties": false,
           "properties": {
-            "verdict": { "const": "deny" },
+            "verdict": {
+              "const": "deny"
+            },
             "reason": {
               "type": "string",
               "description": "Human-readable reason for the denial."
@@ -138,36 +303,53 @@
               "description": "The guard or validation step that triggered the denial."
             }
           },
-          "required": ["verdict", "reason", "guard"]
+          "required": [
+            "verdict",
+            "reason",
+            "guard"
+          ]
         },
         {
           "additionalProperties": false,
           "properties": {
-            "verdict": { "const": "cancelled" },
+            "verdict": {
+              "const": "cancelled"
+            },
             "reason": {
               "type": "string",
               "description": "Human-readable reason for the cancellation."
             }
           },
-          "required": ["verdict", "reason"]
+          "required": [
+            "verdict",
+            "reason"
+          ]
         },
         {
           "additionalProperties": false,
           "properties": {
-            "verdict": { "const": "incomplete" },
+            "verdict": {
+              "const": "incomplete"
+            },
             "reason": {
               "type": "string",
               "description": "Human-readable reason for the incomplete terminal state."
             }
           },
-          "required": ["verdict", "reason"]
+          "required": [
+            "verdict",
+            "reason"
+          ]
         }
       ]
     },
     "guardEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["guard_name", "verdict"],
+      "required": [
+        "guard_name",
+        "verdict"
+      ],
       "description": "Evidence from a single guard's evaluation. Mirrors `GuardEvidence`.",
       "properties": {
         "guard_name": {
@@ -182,6 +364,23 @@
         "details": {
           "type": "string",
           "description": "Optional details about the guard's decision."
+        }
+      }
+    },
+    "actorRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_id"
+      ],
+      "properties": {
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor_kind": {
+          "type": "string",
+          "minLength": 1
         }
       }
     }

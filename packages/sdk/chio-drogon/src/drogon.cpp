@@ -37,6 +37,7 @@ Options& configured_options() {
 
 bool parse_json(const std::string& input, Json::Value* out);
 std::string string_field(const Json::Value& value, const char* name);
+std::string compact_json(const Json::Value& value);
 
 std::string lower_ascii(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
@@ -277,6 +278,12 @@ std::string string_field(const Json::Value& value, const char* name) {
   return field.asString();
 }
 
+std::string compact_json(const Json::Value& value) {
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, value);
+}
+
 std::string receipt_id_from_response(const Json::Value& root) {
   auto id = string_field(root, "receipt_id");
   if (!id.empty()) {
@@ -368,8 +375,8 @@ std::string json_escape(std::string_view value) {
   return response;
 }
 
-bool fail_open_without_receipt(const Options& options) {
-  return options.sidecar_failure_mode == SidecarFailureMode::FailOpenWithoutReceipt;
+bool fail_open_without_receipt(const Options& /*options*/) {
+  return false;
 }
 
 std::string sidecar_url(const Options& options) {
@@ -490,8 +497,9 @@ void ChioMiddleware::invoke(const ::drogon::HttpRequestPtr& req,
   }
 
   const auto id = receipt_id_from_response(root);
+  const auto receipt_verdict = verdict_from_response(root["receipt"]);
 
-  if (verdict.verdict != "allow") {
+  if (verdict.verdict != "allow" || receipt_verdict.verdict != "allow") {
     auto reason = verdict.reason;
     if (reason.empty()) {
       reason = "request denied";
@@ -499,6 +507,22 @@ void ChioMiddleware::invoke(const ::drogon::HttpRequestPtr& req,
     middleware_cb(chio_error_response(::drogon::k403Forbidden,
                                       "chio_access_denied",
                                       std::move(reason),
+                                      id));
+    return;
+  }
+
+  const auto& receipt = root["receipt"];
+  if (!receipt.isObject()) {
+    middleware_cb(chio_error_response(::drogon::k502BadGateway,
+                                      "chio_invalid_receipt",
+                                      "chio sidecar response missing receipt"));
+    return;
+  }
+  auto verified = evaluator.verify_receipt(compact_json(receipt));
+  if (!verified || !verified.value()) {
+    middleware_cb(chio_error_response(::drogon::k502BadGateway,
+                                      "chio_invalid_receipt",
+                                      "chio sidecar returned an unverified receipt",
                                       id));
     return;
   }

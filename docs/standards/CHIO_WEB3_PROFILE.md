@@ -2,14 +2,17 @@
 
 ## Purpose
 
-This profile freezes Chio's first official web3 settlement boundary for
-`v2.30`. It defines the trust profile, contract package, chain configuration,
-anchoring proof bundle, oracle evidence envelope, settlement dispatch
-artifact, settlement execution receipt, and qualification matrix that the
-official web3 stack must honor.
+This profile freezes Chio's first official web3 settlement boundary,
+originally tracked under historical internal milestone `v2.30`. It defines the trust
+profile, contract package, chain configuration, anchoring proof bundle, oracle
+evidence envelope, settlement dispatch artifact, settlement execution receipt,
+and qualification matrix that the official web3 stack must honor.
 
-As of `v2.34`, that frozen artifact layer also has a packaged runtime
-realization:
+> Version posture: this is a pre-release standards profile. Internal `v2.x`
+> milestone labels are historical planning labels, not Chio-owned protocol,
+> schema, SDK, or runtime versions. Current protocol posture is v1-only.
+
+Historical internal milestone `v2.34` added a packaged runtime realization:
 
 - Solidity sources under `contracts/src/`
 - compiled ABI and bytecode artifacts under `contracts/artifacts/`
@@ -22,7 +25,7 @@ The objective is specific: Chio can now reconcile one real external rail
 execution path without allowing web3 adapters to replace canonical Chio truth,
 hide custody assumptions, or widen trust through chain activity alone.
 
-As of `v2.38`, Chio also ships bounded runtime overlays for:
+Historical internal milestone `v2.38` added bounded runtime overlays for:
 
 - Functions-based Ed25519 fallback audits on EVM
 - automation jobs for anchoring and settlement watchdog flows
@@ -30,14 +33,14 @@ As of `v2.38`, Chio also ships bounded runtime overlays for:
 - one explicit payment-interop layer for x402, EIP-3009, Circle, and
   ERC-4337/paymaster compatibility
 
-As of `v2.39`, Chio also ships bounded production-operations overlays for:
+Historical internal milestone `v2.39` added bounded operations overlays for:
 
 - runtime reports across `chio-link`, `chio-anchor`, and `chio-settle`
 - explicit emergency modes for anchor publication and settlement dispatch
 - one deployment-promotion policy with gas and latency budgets
 - one reviewer-facing external qualification matrix and partner-proof package
 
-As of `v2.40`, Chio also ships runtime-hardening overlays for:
+Historical internal milestone `v2.40` added runtime-hardening overlays for:
 
 - concurrency-safe escrow and bond identity derived from contract truth rather
   than local mutable nonce state
@@ -46,7 +49,7 @@ As of `v2.40`, Chio also ships runtime-hardening overlays for:
 - explicit contract/runtime parity checks plus bond-reserve and oracle-
   authority reconciliation
 
-As of `v2.41`, Chio also ships hosted-qualification overlays for:
+Historical internal milestone `v2.41` added hosted-qualification overlays for:
 
 - hosted release qualification that stages the bounded web3 bundle under
   `target/release-qualification/web3-runtime/`

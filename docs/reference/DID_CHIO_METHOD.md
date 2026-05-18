@@ -1,6 +1,7 @@
 # `did:chio` Method
 
-**Status:** shipped in v2 portable-trust lane  
+**Status:** legacy compatibility method for current v1 profile; originally
+tracked under an internal portable-trust milestone
 **Date:** 2026-03-23
 
 **Transition note:** Phase 29 of the Chio rename freezes `did:chio` as a legacy

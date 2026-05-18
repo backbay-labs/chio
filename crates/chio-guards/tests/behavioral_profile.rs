@@ -46,7 +46,13 @@ fn make_receipt(id: &str, capability_id: &str, timestamp: u64, decision: Decisio
             tool_server: "srv".to_string(),
             tool_name: "tool".to_string(),
             action,
-            decision,
+            decision: Some(decision),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "ch".to_string(),
             policy_hash: "ph".to_string(),
             evidence: Vec::new(),
@@ -110,6 +116,7 @@ impl ReceiptFeedSource for SqliteFeed {
                     since: Some(since),
                     until: Some(until),
                     limit: 200,
+                    read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                     ..Default::default()
                 })
                 .map_err(|e| KernelError::Internal(format!("sqlite query: {e}")))?;

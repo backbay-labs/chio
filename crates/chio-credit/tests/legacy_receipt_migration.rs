@@ -31,7 +31,13 @@ fn legacy_receipt(decision: Decision, metadata: Option<serde_json::Value>) -> Ch
         tool_server: "legacy-srv".to_string(),
         tool_name: "legacy-tool".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({"k": "v"})).unwrap(),
-        decision,
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
+        decision: Some(decision),
         content_hash: sha256_hex(b"{}"),
         policy_hash: "policy-v0".to_string(),
         evidence: vec![GuardEvidence {
@@ -52,8 +58,10 @@ fn account_for(receipt: &ChioReceipt) -> LocalCreditAccount<Ed25519Backend> {
     // signing identity is intentionally distinct. The hook must
     // verify the receipt against its embedded kernel_key, not
     // against the account's identity.
-    let _ = receipt;
-    LocalCreditAccount::new(Ed25519Backend::new(Keypair::generate()))
+    LocalCreditAccount::new_with_trusted_kernel_keys(
+        Ed25519Backend::new(Keypair::generate()),
+        [receipt.kernel_key.clone()],
+    )
 }
 
 fn assert_zero_iou_and_byte_stable(receipt: ChioReceipt) {

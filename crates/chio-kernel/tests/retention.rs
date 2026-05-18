@@ -50,6 +50,27 @@ mod retention {
         tenant_id: Option<String>,
     ) -> ChioReceipt {
         let keypair = Keypair::generate();
+        receipt_with_capability_ts_tenant_and_keypair(
+            id,
+            capability_id,
+            timestamp,
+            tenant_id,
+            &keypair,
+        )
+    }
+
+    /// Sign a receipt with a caller-supplied keypair so a batch of receipts
+    /// shares one signer. The checkpoint protocol requires every receipt in
+    /// a checkpoint range to have the same `kernel_key` as the checkpoint
+    /// itself, so tests that build a checkpoint over a receipt batch route
+    /// through this helper.
+    fn receipt_with_capability_ts_tenant_and_keypair(
+        id: &str,
+        capability_id: &str,
+        timestamp: u64,
+        tenant_id: Option<String>,
+        keypair: &Keypair,
+    ) -> ChioReceipt {
         let action = ToolCallAction::from_parameters(serde_json::json!({}))
             .expect("hash receipt parameters");
         ChioReceipt::sign(
@@ -60,7 +81,13 @@ mod retention {
                 tool_server: "shell".to_string(),
                 tool_name: "bash".to_string(),
                 action,
-                decision: Decision::Allow,
+                decision: Some(Decision::Allow),
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
                 content_hash: "content-1".to_string(),
                 policy_hash: "policy-1".to_string(),
                 evidence: Vec::new(),
@@ -69,7 +96,7 @@ mod retention {
                 tenant_id,
                 kernel_key: keypair.public_key(),
             },
-            &keypair,
+            keypair,
         )
         .expect("sign receipt")
     }
@@ -78,8 +105,27 @@ mod retention {
         receipt_with_capability_and_ts(id, "cap-1", timestamp)
     }
 
+    fn receipt_with_ts_and_keypair(id: &str, timestamp: u64, keypair: &Keypair) -> ChioReceipt {
+        receipt_with_capability_ts_tenant_and_keypair(id, "cap-1", timestamp, None, keypair)
+    }
+
     fn receipt_with_tenant(id: &str, timestamp: u64, tenant_id: &str) -> ChioReceipt {
         receipt_with_capability_ts_and_tenant(id, "cap-1", timestamp, Some(tenant_id.to_string()))
+    }
+
+    fn receipt_with_tenant_and_keypair(
+        id: &str,
+        timestamp: u64,
+        tenant_id: &str,
+        keypair: &Keypair,
+    ) -> ChioReceipt {
+        receipt_with_capability_ts_tenant_and_keypair(
+            id,
+            "cap-1",
+            timestamp,
+            Some(tenant_id.to_string()),
+            keypair,
+        )
     }
 
     fn child_receipt_with_ts(id: &str, timestamp: u64) -> ChildRequestReceipt {
@@ -254,12 +300,25 @@ mod retention {
         let archive_path = unique_db_path("retention-tenant-checkpoint-archive");
 
         let mut store = SqliteReceiptStore::open(&live_path).unwrap();
+        // Share one signer across the batch so the checkpoint signer-binding
+        // check (every receipt in the checkpoint range must use the same
+        // `kernel_key` as the checkpoint) passes.
         let checkpoint_key = Keypair::generate();
         let tenant_a_seq = store
-            .append_chio_receipt_returning_seq(&receipt_with_tenant("rcpt-a-old", 100, "tenant-a"))
+            .append_chio_receipt_returning_seq(&receipt_with_tenant_and_keypair(
+                "rcpt-a-old",
+                100,
+                "tenant-a",
+                &checkpoint_key,
+            ))
             .unwrap();
         let tenant_b_seq = store
-            .append_chio_receipt_returning_seq(&receipt_with_tenant("rcpt-b-old", 100, "tenant-b"))
+            .append_chio_receipt_returning_seq(&receipt_with_tenant_and_keypair(
+                "rcpt-b-old",
+                100,
+                "tenant-b",
+                &checkpoint_key,
+            ))
             .unwrap();
         let canonical = store
             .receipts_canonical_bytes_range(tenant_a_seq, tenant_b_seq)
@@ -443,10 +502,13 @@ mod retention {
         let mut store = SqliteReceiptStore::open(&live_path).unwrap();
         let kp = Keypair::generate();
 
-        // Insert 10 receipts with timestamp < 500.
+        // Insert 10 receipts with timestamp < 500. Every receipt is signed
+        // with `kp` so the checkpoint's signer-binding check (all receipts
+        // in the range share the checkpoint's kernel_key) passes.
         let mut seqs = Vec::new();
         for i in 0..10usize {
-            let receipt = receipt_with_ts(&format!("rcpt-verify-{i}"), 100 + i as u64);
+            let receipt =
+                receipt_with_ts_and_keypair(&format!("rcpt-verify-{i}"), 100 + i as u64, &kp);
             let seq = store.append_chio_receipt_returning_seq(&receipt).unwrap();
             seqs.push(seq);
         }
@@ -514,10 +576,12 @@ mod retention {
         let mut store = SqliteReceiptStore::open(&live_path).unwrap();
         let kp = Keypair::generate();
 
-        // Insert 10 receipts for batch 1 (timestamps 100-109).
+        // Insert 10 receipts for batch 1 (timestamps 100-109). All receipts
+        // share `kp` so the checkpoint's signer-binding check passes.
         let mut batch1_seqs = Vec::new();
         for i in 0..10usize {
-            let receipt = receipt_with_ts(&format!("rcpt-batch1-{i}"), 100 + i as u64);
+            let receipt =
+                receipt_with_ts_and_keypair(&format!("rcpt-batch1-{i}"), 100 + i as u64, &kp);
             let seq = store.append_chio_receipt_returning_seq(&receipt).unwrap();
             batch1_seqs.push(seq);
         }
@@ -530,10 +594,12 @@ mod retention {
         let cp1 = build_checkpoint(1, batch1_seqs[0], batch1_seqs[9], &bv1, &kp).unwrap();
         store.store_checkpoint(&cp1).unwrap();
 
-        // Insert 10 receipts for batch 2 (timestamps 200-209).
+        // Insert 10 receipts for batch 2 (timestamps 200-209). Same signer
+        // as batch 1 so checkpoint 2 also covers a single-signer range.
         let mut batch2_seqs = Vec::new();
         for i in 0..10usize {
-            let receipt = receipt_with_ts(&format!("rcpt-batch2-{i}"), 200 + i as u64);
+            let receipt =
+                receipt_with_ts_and_keypair(&format!("rcpt-batch2-{i}"), 200 + i as u64, &kp);
             let seq = store.append_chio_receipt_returning_seq(&receipt).unwrap();
             batch2_seqs.push(seq);
         }

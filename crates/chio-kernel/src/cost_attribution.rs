@@ -1,6 +1,8 @@
 use chio_core::receipt::{FinancialBudgetAuthorityReceiptMetadata, SettlementStatus};
 use serde::{Deserialize, Serialize};
 
+use crate::receipt_query::ReceiptReadContext;
+
 /// Maximum number of detailed attribution rows returned in a single report.
 pub const MAX_COST_ATTRIBUTION_LIMIT: usize = 200;
 
@@ -22,6 +24,9 @@ pub struct CostAttributionQuery {
     pub until: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
+    /// Auth-derived read authority. This is never accepted from request bodies.
+    #[serde(skip)]
+    pub read_context: Option<ReceiptReadContext>,
 }
 
 impl Default for CostAttributionQuery {
@@ -34,6 +39,7 @@ impl Default for CostAttributionQuery {
             since: None,
             until: None,
             limit: Some(100),
+            read_context: None,
         }
     }
 }
