@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 31d733bff1206a7961e2e9bccbc59a4de576f3e3f9cfaf465469e3c66d48fba7
+# Schema sha256: 7223531823b07d4fb9431326768d3983613ee0dfdc0d30b28876f52d7a901e0b
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -29,7 +29,7 @@ from pydantic_core import core_schema
 #: SHA-256 of the lexicographically sorted concatenation of every
 #: ``spec/schemas/chio-wire/v1/**/*.schema.json`` byte stream that was
 #: fed into datamodel-code-generator at build time.
-SCHEMA_SHA256 = "31d733bff1206a7961e2e9bccbc59a4de576f3e3f9cfaf465469e3c66d48fba7"
+SCHEMA_SHA256 = "7223531823b07d4fb9431326768d3983613ee0dfdc0d30b28876f52d7a901e0b"
 
 from .agent import Algorithm as AgentAlgorithm, AttenuationProof as AgentAttenuationProof, Caveat as AgentCaveat, ChioAgentmessageHeartbeat, ChioAgentmessageListCapabilities, ChioAgentmessageToolCallRequest, Constraint as AgentConstraint, DelegationChainItem as AgentDelegationChainItem, Grant as AgentGrant, MaxCostPerInvocation as AgentMaxCostPerInvocation, MaxTotalCost as AgentMaxTotalCost, Operation as AgentOperation, PromptGrant as AgentPromptGrant, ResourceGrant as AgentResourceGrant, Scope as AgentScope, ScopeAttenuation as AgentScopeAttenuation
 from .anchor import Body, CheckpointId, ChioAnchorBatchV1, Inclusion, Kind as AnchorKind, Witness, WitnessReceipt, WitnessState, WitnessState1, WitnessState2, WitnessState3
@@ -37,17 +37,15 @@ from .capability import Algorithm as CapabilityAlgorithm, Attenuation, Attenuati
 from .error import ChioToolcallerrorCapabilityDenied, ChioToolcallerrorCapabilityExpired, ChioToolcallerrorCapabilityRevoked, ChioToolcallerrorInternalError, ChioToolcallerrorPolicyDenied, ChioToolcallerrorToolServerError, Detail as ErrorDetail
 from .federation import CapabilityLeaseRef, ChioBilateralDsseSignatureSliceEnvelope, ChioBilateralDsseSignatureSliceStatement, CoSign, CrossOrgVisibility, Digest, GovernanceReceiptRef, HashRecord, JointDisposition, KernelIdentity, PolicyEvaluationSummary, PolicyVerdict, Predicate, Signature, SubjectItem, Verdict as FederationVerdict
 from .jsonrpc import ChioJsonRpc20Notification, ChioJsonRpc20Request, ChioJsonRpc20Response, ChioJsonRpc20Response1, ChioJsonRpc20Response2, Error as JsonrpcError
-from .kernel import Action, ActorChainItem, Algorithm as KernelAlgorithm, AttenuationProof as KernelAttenuationProof, BoundaryClass as KernelBoundaryClass, Capability, Caveat as KernelCaveat, ChioKernelmessageCapabilityList, ChioKernelmessageCapabilityRevoked, ChioKernelmessageHeartbeat, ChioKernelmessageToolCallChunk, ChioKernelmessageToolCallResponse, Constraint as KernelConstraint, Decision as KernelDecision, Decision6, Decision7, Decision8, DelegationChainItem as KernelDelegationChainItem, Detail as KernelDetail, Error as KernelError, Error10, Error11, Error12, Error13, Error9, EvidenceItem, Grant as KernelGrant, MaxCostPerInvocation as KernelMaxCostPerInvocation, MaxTotalCost as KernelMaxTotalCost, ObservationOutcome as KernelObservationOutcome, Operation as KernelOperation, PromptGrant as KernelPromptGrant, Receipt, ReceiptKind as KernelReceiptKind, RedactionMode as KernelRedactionMode, ResourceGrant as KernelResourceGrant, Result, Result1, Result2, Result3, Result4, Scope as KernelScope, ScopeAttenuation as KernelScopeAttenuation, ToolOrigin as KernelToolOrigin, TrustLevel as KernelTrustLevel
+from .kernel import Algorithm as KernelAlgorithm, AttenuationProof as KernelAttenuationProof, Capability, Caveat as KernelCaveat, ChioKernelmessageCapabilityList, ChioKernelmessageCapabilityRevoked, ChioKernelmessageHeartbeat, ChioKernelmessageToolCallChunk, ChioKernelmessageToolCallResponse, Constraint as KernelConstraint, DelegationChainItem as KernelDelegationChainItem, Detail as KernelDetail, Error as KernelError, Error10, Error11, Error12, Error13, Error9, Grant as KernelGrant, MaxCostPerInvocation as KernelMaxCostPerInvocation, MaxTotalCost as KernelMaxTotalCost, Operation as KernelOperation, PromptGrant as KernelPromptGrant, ResourceGrant as KernelResourceGrant, Result, Result1, Result2, Result3, Result4, Scope as KernelScope, ScopeAttenuation as KernelScopeAttenuation
 from .provenance import ChioProvenanceAttestationBundle, ChioProvenanceCallChainContext, ChioProvenanceStamp, ChioProvenanceVerdictLink, ChioProvenanceVerdictLink1, ChioProvenanceVerdictLink2, ChioProvenanceVerdictLink3, ChioProvenanceVerdictLink4, CredentialKind as ProvenanceCredentialKind, EvidenceClass as ProvenanceEvidenceClass, Scheme as ProvenanceScheme, Statement, Tier as ProvenanceTier, Verdict as ProvenanceVerdict, WorkloadIdentity as ProvenanceWorkloadIdentity
-from .receipt import ActorRef, Algorithm as ReceiptAlgorithm, BoundaryClass as ReceiptBoundaryClass, ChioReceiptLineageStatement, ChioReceiptMerkleInclusionProof, ChioReceiptRecord, Decision as ReceiptDecision, Decision1, Decision2, Decision3, Decision4, EvidenceClass as ReceiptEvidenceClass, GuardEvidence, ObservationOutcome as ReceiptObservationOutcome, ReceiptKind as ReceiptReceiptKind, RedactionMode as ReceiptRedactionMode, RelationKind, SessionAnchorReference, ToolCallAction, ToolOrigin as ReceiptToolOrigin, TrustLevel as ReceiptTrustLevel
+from .receipt import ActorRef, Algorithm as ReceiptAlgorithm, BoundaryClass, ChioReceiptLineageStatement, ChioReceiptMerkleInclusionProof, ChioReceiptRecord, Decision, Decision1, Decision2, Decision3, Decision4, EvidenceClass as ReceiptEvidenceClass, GuardEvidence, ObservationOutcome, ReceiptKind, RedactionMode, RelationKind, SessionAnchorReference, ToolCallAction, ToolOrigin, TrustLevel
 from .result import ChioToolcallresultCancelled, ChioToolcallresultErr, ChioToolcallresultIncomplete, ChioToolcallresultOk, ChioToolcallresultStreamComplete, Detail as ResultDetail, Error as ResultError, Error1, Error2, Error3, Error4, Error5
 from .trust_control import ChioTrustControlAuthorityLease, ChioTrustControlLeaseHeartbeat, ChioTrustControlLeaseTermination, ChioTrustControlRuntimeAttestationEvidence, CredentialKind as TrustControlCredentialKind, Reason, Scheme as TrustControlScheme, Tier as TrustControlTier, WorkloadIdentity as TrustControlWorkloadIdentity
 
 CapabilityToken = ChioCapabilitytoken
 
 __all__ = [
-    "Action",
-    "ActorChainItem",
     "ActorRef",
     "AgentAlgorithm",
     "AgentAttenuationProof",
@@ -66,6 +64,7 @@ __all__ = [
     "Attenuation",
     "AttenuationWitness",
     "Body",
+    "BoundaryClass",
     "Capability",
     "CapabilityAlgorithm",
     "CapabilityAttenuationProof",
@@ -128,13 +127,11 @@ __all__ = [
     "ChioTrustControlRuntimeAttestationEvidence",
     "CoSign",
     "CrossOrgVisibility",
+    "Decision",
     "Decision1",
     "Decision2",
     "Decision3",
     "Decision4",
-    "Decision6",
-    "Decision7",
-    "Decision8",
     "DelegationLink",
     "Digest",
     "Error1",
@@ -148,7 +145,6 @@ __all__ = [
     "Error5",
     "Error9",
     "ErrorDetail",
-    "EvidenceItem",
     "FederationVerdict",
     "GovernanceReceiptRef",
     "GrantKind",
@@ -160,10 +156,8 @@ __all__ = [
     "JsonrpcError",
     "KernelAlgorithm",
     "KernelAttenuationProof",
-    "KernelBoundaryClass",
     "KernelCaveat",
     "KernelConstraint",
-    "KernelDecision",
     "KernelDelegationChainItem",
     "KernelDetail",
     "KernelError",
@@ -171,17 +165,13 @@ __all__ = [
     "KernelIdentity",
     "KernelMaxCostPerInvocation",
     "KernelMaxTotalCost",
-    "KernelObservationOutcome",
     "KernelOperation",
     "KernelPromptGrant",
-    "KernelReceiptKind",
-    "KernelRedactionMode",
     "KernelResourceGrant",
     "KernelScope",
     "KernelScopeAttenuation",
-    "KernelToolOrigin",
-    "KernelTrustLevel",
     "MonetaryAmount",
+    "ObservationOutcome",
     "PolicyEvaluationSummary",
     "PolicyVerdict",
     "Predicate",
@@ -192,16 +182,10 @@ __all__ = [
     "ProvenanceVerdict",
     "ProvenanceWorkloadIdentity",
     "Reason",
-    "Receipt",
     "ReceiptAlgorithm",
-    "ReceiptBoundaryClass",
-    "ReceiptDecision",
     "ReceiptEvidenceClass",
-    "ReceiptObservationOutcome",
-    "ReceiptReceiptKind",
-    "ReceiptRedactionMode",
-    "ReceiptToolOrigin",
-    "ReceiptTrustLevel",
+    "ReceiptKind",
+    "RedactionMode",
     "RelationKind",
     "Result",
     "Result1",
@@ -218,10 +202,12 @@ __all__ = [
     "Subset",
     "ToolCallAction",
     "ToolGrant",
+    "ToolOrigin",
     "TrustControlCredentialKind",
     "TrustControlScheme",
     "TrustControlTier",
     "TrustControlWorkloadIdentity",
+    "TrustLevel",
     "Witness",
     "WitnessReceipt",
     "WitnessState",

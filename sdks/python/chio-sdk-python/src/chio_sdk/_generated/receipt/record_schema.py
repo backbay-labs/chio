@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 31d733bff1206a7961e2e9bccbc59a4de576f3e3f9cfaf465469e3c66d48fba7
+# Schema sha256: 7223531823b07d4fb9431326768d3983613ee0dfdc0d30b28876f52d7a901e0b
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -14,7 +14,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, conint, constr
 
 
 class ReceiptKind(Enum):
@@ -192,7 +192,7 @@ class ActorRef(BaseModel):
 
 class ChioReceiptRecord(BaseModel):
     """
-    A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical receipt body excluding id, algorithm, and signature.
+    A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical ChioReceiptIdInput.
     """
 
     model_config = ConfigDict(
@@ -273,45 +273,6 @@ class ChioReceiptRecord(BaseModel):
     signature: constr(pattern=r"^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$") = (
         Field(
             ...,
-            description="Hex-encoded signature over the canonical JSON of the receipt body. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
+            description="Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.",
         )
     )
-
-    @model_validator(mode="after")
-    def _validate_semantic_coherence(self) -> "ChioReceiptRecord":
-        if self.receipt_kind is ReceiptKind.mediated_decision:
-            if self.decision is None:
-                raise ValueError("mediated_decision receipts must include decision")
-            if self.boundary_class is not BoundaryClass.prevent:
-                raise ValueError("mediated_decision receipts must use boundary_class prevent")
-            if self.trust_level is not TrustLevel.mediated:
-                raise ValueError("mediated_decision receipts must use trust_level mediated")
-            if self.observation_outcome is not None:
-                raise ValueError("mediated_decision receipts must omit observation_outcome")
-            return self
-
-        if self.receipt_kind is ReceiptKind.trace_observation:
-            if self.decision is not None:
-                raise ValueError("trace_observation receipts must omit decision")
-            if self.boundary_class is not BoundaryClass.detect_only:
-                raise ValueError("trace_observation receipts must use boundary_class detect_only")
-            if self.trust_level is not TrustLevel.verified:
-                raise ValueError("trace_observation receipts must use trust_level verified")
-            if self.observation_outcome is None:
-                raise ValueError("trace_observation receipts must include observation_outcome")
-            return self
-
-        if self.receipt_kind is ReceiptKind.advisory_evaluation:
-            if self.decision is not None:
-                raise ValueError("advisory_evaluation receipts must omit decision")
-            if self.boundary_class is not BoundaryClass.advisory_only:
-                raise ValueError(
-                    "advisory_evaluation receipts must use boundary_class advisory_only"
-                )
-            if self.trust_level is not TrustLevel.advisory:
-                raise ValueError("advisory_evaluation receipts must use trust_level advisory")
-            if self.observation_outcome is None:
-                raise ValueError("advisory_evaluation receipts must include observation_outcome")
-            return self
-
-        raise ValueError("receipt_kind must be a current v1 receipt kind")
