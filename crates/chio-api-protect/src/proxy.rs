@@ -25,7 +25,10 @@ use chio_core_types::capability::{
     ToolGrant,
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
-use chio_core_types::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+use chio_core_types::receipt::{
+    BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, ObservationOutcome, ReceiptKind,
+    RedactionMode, ToolCallAction, ToolOrigin, TrustLevel,
+};
 use chio_http_core::{
     client_builder_with_contract, handle_batch_respond, handle_get_approval, handle_list_pending,
     handle_respond, http_status_metadata_decision, http_status_metadata_final, send_with_contract,
@@ -1920,22 +1923,33 @@ async fn sidecar_evaluate_tool_call_handler(
         .await
         .contains(&evaluate_request.capability_id);
 
-    let decision = if revoked {
-        Decision::Deny {
-            reason: "capability has been revoked".to_string(),
-            guard: "CapabilityRevocation".to_string(),
-        }
-    } else if let Some(claimed) = claimed_hash.as_ref() {
-        if !claimed.is_empty() && *claimed != parameter_hash {
-            Decision::Deny {
-                reason: "parameter_hash does not match canonical hash of parameters".to_string(),
-                guard: "ParameterHashMismatch".to_string(),
-            }
-        } else {
-            Decision::Allow
-        }
+    let hash_mismatch = match claimed_hash.as_ref() {
+        Some(claimed) => !claimed.is_empty() && *claimed != parameter_hash,
+        None => false,
+    };
+
+    // The sidecar `/v1/evaluate` alias only checks revocation state and the
+    // canonical parameter hash; it does not present a capability token,
+    // validate its scope, or run the kernel's authorization pipeline. Emit
+    // an `AdvisoryEvaluation` receipt (no signed `Decision`, advisory trust
+    // level) so downstream v1 authority gates do not mistake this alias
+    // outcome for a kernel-mediated authorization.
+    let alias_check_outcome = if revoked {
+        "capability_revoked"
+    } else if hash_mismatch {
+        "parameter_hash_mismatch"
     } else {
-        Decision::Allow
+        "alias_checks_passed"
+    };
+
+    // `Dropped` signals "the alias-side checks would refuse to proceed";
+    // `Evaluated` signals "the alias evaluated the call but did not
+    // synchronously authorize anything". Neither implies the kernel mediated
+    // the tool call.
+    let observation_outcome = if revoked || hash_mismatch {
+        ObservationOutcome::Dropped
+    } else {
+        ObservationOutcome::Evaluated
     };
 
     let action = ToolCallAction {
@@ -1951,12 +1965,12 @@ async fn sidecar_evaluate_tool_call_handler(
             tool_server: evaluate_request.tool_server,
             tool_name: evaluate_request.tool_name,
             action,
-            decision: Some(decision),
-            receipt_kind: Default::default(),
-            boundary_class: Default::default(),
-            observation_outcome: None,
-            tool_origin: Default::default(),
-            redaction_mode: Default::default(),
+            decision: None,
+            receipt_kind: ReceiptKind::AdvisoryEvaluation,
+            boundary_class: BoundaryClass::AdvisoryOnly,
+            observation_outcome: Some(observation_outcome),
+            tool_origin: ToolOrigin::HostExecutedUnmediated,
+            redaction_mode: RedactionMode::None,
             actor_chain: Vec::new(),
             content_hash: chio_core_types::sha256_hex(&body_bytes),
             policy_hash: manual_receipt_policy_hash(
@@ -1965,9 +1979,10 @@ async fn sidecar_evaluate_tool_call_handler(
             evidence: Vec::new(),
             metadata: Some(serde_json::json!({
                 "evaluation_kind": "sidecar_tool_call_alias",
-                "limitation": "kernel-driven tool-call evaluation is not yet wired through the sidecar; this receipt records cap-revocation and parameter-hash checks only",
+                "alias_check_outcome": alias_check_outcome,
+                "limitation": "kernel-driven tool-call evaluation is not yet wired through the sidecar; this receipt records cap-revocation and parameter-hash checks only and must not be treated as kernel-mediated authorization",
             })),
-            trust_level: chio_core_types::receipt::TrustLevel::default(),
+            trust_level: TrustLevel::Advisory,
             tenant_id: None,
             kernel_key: state.signer_keypair.public_key(),
         },
@@ -5094,7 +5109,18 @@ paths:
         let receipt: ChioReceipt = serde_json::from_slice(&receipt_bytes).test_unwrap();
         assert!(receipt.verify_signature().test_unwrap());
         assert_eq!(receipt.capability_id, token.id);
-        assert!(matches!(receipt.decision, Some(Decision::Allow)));
+        // The sidecar alias-only path emits advisory receipts (no decision)
+        // so v1 authority gates cannot mistake the result for a kernel-
+        // mediated authorization.
+        assert!(receipt.decision.is_none());
+        assert_eq!(receipt.receipt_kind, ReceiptKind::AdvisoryEvaluation);
+        assert_eq!(receipt.boundary_class, BoundaryClass::AdvisoryOnly);
+        assert_eq!(receipt.trust_level, TrustLevel::Advisory);
+        assert_eq!(
+            receipt.observation_outcome,
+            Some(ObservationOutcome::Evaluated)
+        );
+        assert!(!receipt.is_allowed());
 
         // Now feed it back through `/v1/receipts/verify`.
         let verify_body = serde_json::to_value(&receipt).test_unwrap();
@@ -5110,7 +5136,7 @@ paths:
         )
         .test_unwrap();
         assert_eq!(verify_json["valid"], true);
-        assert_eq!(verify_json["decision"], "allow");
+        assert_eq!(verify_json["decision"], "none");
         assert_eq!(verify_json["receipt_id"], receipt.id);
     }
 
@@ -5223,7 +5249,23 @@ paths:
                 .test_unwrap(),
         )
         .test_unwrap();
-        assert!(receipt.is_denied());
+        // The alias-only path must not emit an authorizing or mediated
+        // receipt; revocation is surfaced via the advisory observation
+        // outcome and the recorded alias check outcome.
+        assert!(receipt.decision.is_none());
+        assert!(!receipt.is_allowed());
+        assert_eq!(receipt.receipt_kind, ReceiptKind::AdvisoryEvaluation);
+        assert_eq!(receipt.trust_level, TrustLevel::Advisory);
+        assert_eq!(
+            receipt.observation_outcome,
+            Some(ObservationOutcome::Dropped)
+        );
+        let alias_outcome = receipt
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("alias_check_outcome"))
+            .and_then(|v| v.as_str());
+        assert_eq!(alias_outcome, Some("capability_revoked"));
         assert!(receipt.verify_signature().test_unwrap());
 
         let _ = std::fs::remove_file(receipt_db);
@@ -5251,10 +5293,23 @@ paths:
                 .test_unwrap(),
         )
         .test_unwrap();
-        assert!(receipt.is_denied());
-        match &receipt.decision {
-            Some(Decision::Deny { guard, .. }) => assert_eq!(guard, "ParameterHashMismatch"),
-            other => panic!("expected ParameterHashMismatch, got {other:?}"),
-        }
+        // Parameter-hash mismatch is surfaced as an advisory observation
+        // outcome of `Dropped` plus an explicit `parameter_hash_mismatch`
+        // alias-check outcome in metadata; the signed receipt must not
+        // carry an authorization decision.
+        assert!(receipt.decision.is_none());
+        assert!(!receipt.is_allowed());
+        assert_eq!(receipt.receipt_kind, ReceiptKind::AdvisoryEvaluation);
+        assert_eq!(receipt.trust_level, TrustLevel::Advisory);
+        assert_eq!(
+            receipt.observation_outcome,
+            Some(ObservationOutcome::Dropped)
+        );
+        let alias_outcome = receipt
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("alias_check_outcome"))
+            .and_then(|v| v.as_str());
+        assert_eq!(alias_outcome, Some("parameter_hash_mismatch"));
     }
 }

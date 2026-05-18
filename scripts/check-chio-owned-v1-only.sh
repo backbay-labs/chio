@@ -41,6 +41,10 @@ rg -n --hidden \
   --glob '!**/node_modules/**' \
   --glob '!**/.git/**' \
   --glob '!scripts/check-chio-owned-v1-only.sh' \
+  --glob '!**/CHANGELOG.md' \
+  --glob '!docs/adr/**' \
+  --glob '!**/in-toto/**' \
+  --glob '!**/runtime-trace/**' \
   "$pattern" \
   crates spec sdks packages scripts docs formal xtask >"$tmp" || true
 
@@ -76,6 +80,38 @@ while IFS= read -r line; do
 
   # External ecosystem/tool versions are not Chio-owned schema or API versions.
   if [[ "$text" =~ pydantic_v2|Pydantic\ v2|oapi-codegen\ v2|OpenAPI\ 3|IPv4|IPv6|UUID-v4|uuid-v4|uuid::now_v7|envoy\.service\.auth\.v3|Envoy\ ext_authz\ v3|PagerDuty\ Events\ API\ v2|Rekor\ v2|cosign\ at\ v2 ]]; then
+    continue
+  fi
+
+  # Chiodos and Pheromone are independently-versioned subsystems that ship
+  # inside the Chio repo but are not the v1 Chio-owned wire / SDK / receipt
+  # surface this scan is intended to gate. Their schema IDs use their own
+  # version numbering (chio.chiodos.*.vN, chio.pheromone.*.vN) and may
+  # legitimately advance past v1 ahead of the v1 wire surface.
+  if [[ "$text" =~ chio\.chiodos\.[A-Za-z0-9_.-]+\.v[2-9][0-9]* ]]; then
+    continue
+  fi
+  if [[ "$text" =~ chio\.pheromone\.[A-Za-z0-9_.-]+\.v[2-9][0-9]* ]]; then
+    continue
+  fi
+
+  # Chiodos bilateral-cosign / 3-vendor proof-package fixtures embed
+  # workflow-receipt slices keyed at v2 as fixture data; the canonical
+  # Chio-owned workflow-receipt schema (spec/WORKFLOW.md) remains v1.
+  # Limit this exclusion to chiodos test/fixture/example surfaces.
+  if [[ "$text" =~ chio\.workflow-receipt\.v[2-9][0-9]* ]] && \
+     [[ "$path" =~ (^|/)(chio-chiodos-|chiodos-)|fixtures/|examples/chiodos- ]]; then
+    continue
+  fi
+
+  # The Cargo feature `delegation_v2` is retained as a backward-compat
+  # alias for external manifests; documentation and the Cargo.toml line
+  # that defines the alias are intentional and not remnants.
+  if [[ "$text" =~ feature\ \`delegation_v2\`|features\ =\ \[\"delegation_v2\"\]|delegation_v2\ =\ \[ ]]; then
+    continue
+  fi
+  if [[ "$text" =~ delegation_v2 ]] && \
+     [[ "$path" == "crates/chio-core-types/Cargo.toml" ]]; then
     continue
   fi
 
