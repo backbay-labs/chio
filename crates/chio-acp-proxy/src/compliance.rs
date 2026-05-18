@@ -4,9 +4,44 @@
 // continuity, scope, budget, guard evidence, and delegation. Produces
 // a signed compliance certificate or aborts with a typed error.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::chio_receipt_id;
 use chio_core::crypto::Signature;
+
+/// One-shot guard for the empty-`trusted_kernel_keys` warning.
+///
+/// `ComplianceConfig` derives `Default`, which yields an empty
+/// `trusted_kernel_keys` set. With the empty set, every receipt is
+/// rejected with `UntrustedKernelKey` and neither generation nor
+/// verification can succeed. That is the operator contract -- the
+/// trust set MUST be populated -- but a silent rejection is hostile
+/// for first-time callers. Emit a single tracing warning the first
+/// time we observe an empty set during validation so operators see a
+/// clear breadcrumb without flooding the log.
+static EMPTY_TRUSTED_KEYS_WARNED: AtomicBool = AtomicBool::new(false);
+
+fn warn_empty_compliance_trusted_keys_once() {
+    if EMPTY_TRUSTED_KEYS_WARNED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        tracing::warn!(
+            target: "chio_acp_proxy::compliance",
+            "ComplianceConfig has no trusted_kernel_keys configured; all receipts will fail \
+             integrity validation with UntrustedKernelKey, and compliance certificate \
+             generation and verification will not succeed. Populate \
+             ComplianceConfig::trusted_kernel_keys with the operator-pinned kernel keys \
+             before calling generate_compliance_certificate or verify_compliance_certificate."
+        );
+    }
+}
+
+#[cfg(test)]
+fn reset_empty_compliance_trusted_keys_warning_for_tests() {
+    EMPTY_TRUSTED_KEYS_WARNED.store(false, Ordering::Release);
+}
 
 /// Error types that abort compliance certificate generation.
 #[derive(Debug, thiserror::Error)]
@@ -150,6 +185,14 @@ pub struct ComplianceConfig {
     /// Expected tenant for all receipts. None disables tenant checking.
     pub expected_tenant_id: Option<String>,
     /// Trusted kernel keys allowed to sign receipts and certificates.
+    ///
+    /// MUST be populated by the operator with the kernel public keys
+    /// that are authorized to sign receipts in this deployment. An
+    /// empty set is a misconfiguration: every receipt will be rejected
+    /// with `UntrustedKernelKey`, blocking both generation and
+    /// verification of compliance certificates. The first observed
+    /// empty-set evaluation logs a one-shot tracing warning to make
+    /// this contract visible to operators.
     pub trusted_kernel_keys: std::collections::BTreeSet<String>,
 }
 
@@ -284,6 +327,14 @@ fn validate_compliance_receipt(
         });
     }
     let kernel_key_hex = receipt.kernel_key.to_hex();
+    if config.trusted_kernel_keys.is_empty() {
+        // Operator contract: the trust set must be populated. Emit a
+        // one-shot warning so the misconfiguration is visible, then
+        // fall through to the standard untrusted-key rejection (an
+        // empty trust set contains nothing, so every receipt fails the
+        // membership check that follows).
+        warn_empty_compliance_trusted_keys_once();
+    }
     if !config.trusted_kernel_keys.contains(&kernel_key_hex) {
         return Err(ComplianceCertificateError::UntrustedKernelKey {
             receipt_id: receipt.id.clone(),
@@ -451,11 +502,46 @@ pub fn generate_compliance_certificate(
         .map_err(|e| ComplianceCertificateError::Serialization(e.to_string()))?;
     let signature = keypair.sign(&body_bytes);
 
-    Ok(ComplianceCertificate {
+    let certificate = ComplianceCertificate {
         body,
         signer_key: keypair.public_key(),
         signature,
-    })
+    };
+
+    // Self-verify before returning. If the caller's keypair does not
+    // match the kernel key recorded on the receipts (or the trust set
+    // does not include this signer), the certificate would silently be
+    // unverifiable. Fail closed here so generation never hands back a
+    // certificate that the matching verifier would reject.
+    //
+    // Trust-set independence: if the operator's `trusted_kernel_keys`
+    // set is empty (a misconfiguration covered by the empty-set warning
+    // elsewhere in this module), the signer-trust check below would
+    // reject every otherwise-valid certificate. To keep self-verify
+    // robust against that operator misconfiguration, augment the trust
+    // set with the certificate's own signer and the receipts' kernel
+    // key for the purpose of this check only.
+    let mut self_verify_config = config.clone();
+    self_verify_config
+        .trusted_kernel_keys
+        .insert(certificate.signer_key.to_hex());
+    self_verify_config
+        .trusted_kernel_keys
+        .insert(certificate.body.kernel_key.to_hex());
+    let self_verification = verify_compliance_certificate(
+        &certificate,
+        VerificationMode::Lightweight,
+        None,
+        &self_verify_config,
+    );
+    if !self_verification.passed {
+        return Err(ComplianceCertificateError::Signing(format!(
+            "generated compliance certificate failed self-verification: {}",
+            self_verification.summary
+        )));
+    }
+
+    Ok(certificate)
 }
 
 /// Verify a compliance certificate.

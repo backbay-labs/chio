@@ -10,11 +10,38 @@ use chio_core::crypto::Keypair;
 use chio_core::receipt::{ChioReceiptBody, Decision, ToolCallAction};
 use chio_kernel::receipt_store::{AuthorizationReceiptConsumption, ReceiptStore};
 
+/// Health snapshot for the kernel signer's checkpoint subsystem.
+///
+/// `sign_acp_receipt` never blocks a successful receipt append on a
+/// checkpoint error; instead, the most recent checkpoint failure is
+/// recorded here so callers can surface it via health endpoints or
+/// metrics. Consumers should treat `last_checkpoint_error` as a
+/// transient indicator: subsequent appends and checkpoint attempts
+/// will keep updating it.
+#[derive(Debug, Clone, Default)]
+pub struct KernelSignerCheckpointHealth {
+    /// Number of consecutive failed checkpoint attempts since the last
+    /// successful one. Reset to 0 on any successful checkpoint cycle.
+    pub consecutive_failures: u64,
+    /// The error message from the most recent failed checkpoint
+    /// attempt, if any. `None` when the last attempt succeeded (or no
+    /// attempt has run yet).
+    pub last_checkpoint_error: Option<String>,
+}
+
 /// Kernel-backed receipt signer.
 ///
 /// Holds the Ed25519 keypair and a mutable reference to the receipt
 /// store. Each signed receipt is appended to the store and, when the
 /// batch threshold is reached, a Merkle checkpoint is produced.
+///
+/// Checkpoint errors are decoupled from receipt signing: once an
+/// append has committed the receipt, a subsequent checkpoint failure
+/// is recorded into `checkpoint_health` and logged at WARN, but the
+/// caller still observes the signed receipt and the ACP message flow
+/// is not blocked. This matches the pre-rebase behaviour where
+/// "blocking receipt issuance on a checkpoint error would be
+/// disproportionate", while still surfacing the failure to operators.
 pub struct KernelReceiptSigner {
     keypair: Keypair,
     // Kept for receipt-provenance parity once signer metadata is surfaced.
@@ -22,6 +49,7 @@ pub struct KernelReceiptSigner {
     server_id: String,
     store: Mutex<Box<dyn ReceiptStore>>,
     checkpoint_batch_size: u64,
+    checkpoint_health: Mutex<KernelSignerCheckpointHealth>,
 }
 
 struct VerifiedAuthorizationContext {
@@ -51,6 +79,28 @@ impl KernelReceiptSigner {
             server_id: server_id.into(),
             store: Mutex::new(store),
             checkpoint_batch_size,
+            checkpoint_health: Mutex::new(KernelSignerCheckpointHealth::default()),
+        }
+    }
+
+    /// Return the current checkpoint-subsystem health snapshot.
+    ///
+    /// Useful for health endpoints and metrics. Cloned out of the
+    /// internal lock so callers do not hold the signer's mutex.
+    pub fn checkpoint_health(&self) -> KernelSignerCheckpointHealth {
+        match self.checkpoint_health.lock() {
+            Ok(guard) => guard.clone(),
+            // If the health mutex is poisoned (because a previous panic
+            // tore down a holder), report a synthesized health value
+            // that names the lock failure instead of panicking. This
+            // keeps health endpoints alive even in the unlikely
+            // poisoned-mutex case.
+            Err(err) => KernelSignerCheckpointHealth {
+                consecutive_failures: 0,
+                last_checkpoint_error: Some(format!(
+                    "checkpoint health lock poisoned: {err}"
+                )),
+            },
         }
     }
 
@@ -389,6 +439,31 @@ impl KernelReceiptSigner {
 
         Ok(())
     }
+
+    /// Note a checkpoint failure into the health snapshot and emit a
+    /// tracing warning. Does not return an error: callers must not
+    /// block successful receipt flows on checkpoint errors.
+    fn record_checkpoint_failure(&self, receipt_id: &str, err: &ReceiptSignError) {
+        let err_string = err.to_string();
+        tracing::warn!(
+            receipt_id = %receipt_id,
+            checkpoint_error = %err_string,
+            "ACP receipt checkpoint failed after successful append; receipt is durable, checkpoint subsystem will retry on next eligible batch"
+        );
+        if let Ok(mut health) = self.checkpoint_health.lock() {
+            health.consecutive_failures = health.consecutive_failures.saturating_add(1);
+            health.last_checkpoint_error = Some(err_string);
+        }
+    }
+
+    /// Note a successful checkpoint attempt (including no-op batches
+    /// below the batch threshold). Resets failure state.
+    fn record_checkpoint_success(&self) {
+        if let Ok(mut health) = self.checkpoint_health.lock() {
+            health.consecutive_failures = 0;
+            health.last_checkpoint_error = None;
+        }
+    }
 }
 
 impl ReceiptSigner for KernelReceiptSigner {
@@ -514,8 +589,18 @@ impl ReceiptSigner for KernelReceiptSigner {
         let receipt = ChioReceipt::sign(body, &self.keypair)
             .map_err(|e| ReceiptSignError::SigningFailed(format!("Ed25519 signing failed: {e}")))?;
 
-        // Append to the receipt store. When checkpointing is configured,
-        // checkpoint creation is part of the signing boundary and fails closed.
+        // Append to the receipt store. The append itself is part of
+        // the signing boundary and fails closed: if the receipt cannot
+        // be persisted, the caller must not believe a signed receipt
+        // exists.
+        //
+        // Checkpoint creation, by contrast, is decoupled. Once the
+        // receipt has been committed to the store, blocking the ACP
+        // message flow on a Merkle-checkpoint error would be
+        // disproportionate (the evidence is already durable). Record
+        // the failure into `checkpoint_health` and emit a tracing
+        // warning instead, then fall through to return the signed
+        // receipt to the caller.
         {
             let store = self.store.lock().map_err(|e| {
                 ReceiptSignError::SigningFailed(format!("store lock poisoned: {e}"))
@@ -543,7 +628,11 @@ impl ReceiptSigner for KernelReceiptSigner {
                     ReceiptSignError::SigningFailed(format!("receipt store append failed: {e}"))
                 })?;
             }
-            self.checkpoint_after_append(store.as_ref())?;
+            if let Err(err) = self.checkpoint_after_append(store.as_ref()) {
+                self.record_checkpoint_failure(&receipt.id, &err);
+            } else {
+                self.record_checkpoint_success();
+            }
         }
 
         tracing::info!(

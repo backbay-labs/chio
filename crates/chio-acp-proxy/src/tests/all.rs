@@ -5687,7 +5687,12 @@ mod attestation_and_telemetry_tests {
     }
 
     #[test]
-    fn kernel_receipt_signer_fails_closed_on_unsupported_checkpoint_store() {
+    fn kernel_receipt_signer_decouples_checkpoint_errors_from_message_flow() {
+        // Contract: once a receipt has been appended to the store, a
+        // subsequent checkpoint failure must NOT block the ACP message
+        // flow. The signed receipt is returned to the caller, and the
+        // checkpoint failure surfaces through `checkpoint_health` for
+        // operators to inspect.
         let keypair = Keypair::generate();
 
         let status_error_receipt = make_authorization_receipt(
@@ -5706,18 +5711,23 @@ mod attestation_and_telemetry_tests {
             }),
             1,
         );
-        let status_error = status_error_signer
+        let receipt = status_error_signer
             .sign_acp_receipt(&AcpReceiptRequest {
                 audit_entry: make_audit_entry("status-unsupported", "session-status"),
                 tool_server: "proxy-server".to_string(),
                 tool_name: "terminal/create".to_string(),
             })
-            .expect_err("unsupported checkpoint status should fail closed");
+            .expect("checkpoint failure must not block successful receipt append");
+        assert_eq!(receipt.tool_name, "terminal/create");
+        let health = status_error_signer.checkpoint_health();
+        assert_eq!(health.consecutive_failures, 1);
+        let recorded = health
+            .last_checkpoint_error
+            .as_deref()
+            .expect("checkpoint failure should be recorded in health");
         assert!(
-            status_error
-                .to_string()
-                .contains("receipt checkpoint status failed"),
-            "unexpected error: {status_error}"
+            recorded.contains("receipt checkpoint status failed"),
+            "unexpected recorded error: {recorded}"
         );
 
         let unsupported_state = Arc::new(Mutex::new(MockStoreState::default()));
@@ -5731,19 +5741,24 @@ mod attestation_and_telemetry_tests {
             Box::new(unsupported_store),
             1,
         );
-        let error = unsupported_signer
+        let receipt = unsupported_signer
             .sign_acp_receipt(&AcpReceiptRequest {
                 audit_entry: make_audit_entry("unsupported", "session-unsupported"),
                 tool_server: "proxy-server".to_string(),
                 tool_name: "terminal/create".to_string(),
             })
-            .expect_err("unsupported checkpoint store should fail closed");
+            .expect("unsupported checkpoint store must not block append");
+        assert_eq!(receipt.tool_name, "terminal/create");
+        let health = unsupported_signer.checkpoint_health();
+        assert_eq!(health.consecutive_failures, 1);
+        let recorded = health
+            .last_checkpoint_error
+            .as_deref()
+            .expect("checkpoint failure should be recorded in health");
         assert!(
-            error.to_string().contains("receipt checkpoint status failed")
-                || error
-                    .to_string()
-                    .contains("receipt checkpoint creation failed"),
-            "unexpected error: {error}"
+            recorded.contains("receipt checkpoint status failed")
+                || recorded.contains("receipt checkpoint creation failed"),
+            "unexpected recorded error: {recorded}"
         );
         let state = unsupported_state.lock().expect("shared state should lock");
         assert_eq!(state.appended_receipts.len(), 1);
@@ -5760,18 +5775,23 @@ mod attestation_and_telemetry_tests {
         };
         let empty_signer =
             KernelReceiptSigner::new(keypair, "proxy-server", Box::new(empty_store), 1);
-        let error = empty_signer
+        let receipt = empty_signer
             .sign_acp_receipt(&AcpReceiptRequest {
                 audit_entry: make_audit_entry("empty", "session-empty"),
                 tool_server: "proxy-server".to_string(),
                 tool_name: "terminal/create".to_string(),
             })
-            .expect_err("missing checkpoint bytes should fail closed");
+            .expect("missing checkpoint bytes must not block append");
+        assert_eq!(receipt.tool_name, "terminal/create");
+        let health = empty_signer.checkpoint_health();
+        assert_eq!(health.consecutive_failures, 1);
+        let recorded = health
+            .last_checkpoint_error
+            .as_deref()
+            .expect("checkpoint failure should be recorded in health");
         assert!(
-            error
-                .to_string()
-                .contains("checkpoint canonical bytes are missing"),
-            "unexpected error: {error}"
+            recorded.contains("checkpoint canonical bytes are missing"),
+            "unexpected recorded error: {recorded}"
         );
         let state = empty_state.lock().expect("shared state should lock");
         assert_eq!(state.appended_receipts.len(), 1);

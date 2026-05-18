@@ -259,6 +259,20 @@ fn tool_call_update_event_canonical_hash_input(
 /// Hashes only the explicit ACP wire fields; the `extra` map captured by
 /// `#[serde(flatten)]` is excluded so unknown JSON fields cannot silently
 /// alter the content hash. See `tool_call_event_canonical_hash_input`.
+///
+/// # Wire-format compatibility note
+///
+/// This canonicalization is INTENTIONALLY not backward-compatible with the
+/// prior `serde_json::to_string(event)` digest. The Chio v1 collapse
+/// re-grounded the receipt wire format on the canonical JSON pipeline so
+/// receipts produced by independent implementations agree on a single
+/// content hash for the same logical event. Previously stored receipts
+/// computed with the v0 (non-canonical) digest will therefore not match
+/// a freshly computed v1 digest of the same event payload, and
+/// `content_hash`-based deduplication or comparability across the
+/// v0/v1 boundary is not supported by design. v0 stores must be
+/// rebuilt or migrated by re-deriving content hashes from the
+/// preserved event payload before being mixed with v1 receipts.
 fn compute_content_hash(event: &ToolCallEvent) -> String {
     let canonical_input = tool_call_event_canonical_hash_input(event);
     let json = chio_core::canonical::canonical_json_bytes(&canonical_input).unwrap_or_default();
@@ -272,6 +286,11 @@ fn compute_content_hash(event: &ToolCallEvent) -> String {
 ///
 /// Hashes only the explicit ACP wire fields; the `extra` map captured by
 /// `#[serde(flatten)]` is excluded. See `tool_call_update_event_canonical_hash_input`.
+///
+/// See the wire-format compatibility note on `compute_content_hash`:
+/// this digest is intentionally v1-only and is not comparable with the
+/// v0 `serde_json::to_string` digest. v0/v1 cross-version comparison
+/// is not supported by design.
 fn compute_update_content_hash(event: &ToolCallUpdateEvent) -> String {
     let canonical_input = tool_call_update_event_canonical_hash_input(event);
     let json = chio_core::canonical::canonical_json_bytes(&canonical_input).unwrap_or_default();
