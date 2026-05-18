@@ -128,6 +128,7 @@ pub const CHIODOS_RUNTIME_FAILURE_CODES: &[&str] = &[
     "buyer_verification_empty_packet",
     "buyer_verification_invalid_state",
     "buyer_verification_missing_failure_code",
+    "chiodos_buyer_packet_dsse_unresolved",
     "chiodos_buyer_packet_hash_mismatch",
     "chiodos_buyer_packet_lineage_not_verified",
     "chiodos_buyer_packet_settlement_claimed",

@@ -371,6 +371,12 @@ pub fn compute_ladder_intersection(
                 "intersected destructive action resolves below receipt backed mode",
             );
         }
+        if destructive && consistency_model.as_deref() == Some("crdt_commutative") {
+            return rejected(
+                "chiodos_ladder_destructive_crdt_not_allowed",
+                "intersected destructive action cannot use crdt_commutative consistency",
+            );
+        }
         action_classes.push(LadderIntersectionActionClass {
             action_class_id: action_class_id.clone(),
             mode,
@@ -447,6 +453,12 @@ pub fn validate_ladder_intersection(
             return rejected(
                 "chiodos_ladder_destructive_below_floor",
                 "ladder intersection destructive action resolves below receipt backed mode",
+            );
+        }
+        if action.destructive && action.consistency_model == "crdt_commutative" {
+            return rejected(
+                "chiodos_ladder_destructive_crdt_not_allowed",
+                "ladder intersection destructive action cannot use crdt_commutative consistency",
             );
         }
     }

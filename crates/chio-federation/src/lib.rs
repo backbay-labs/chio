@@ -47,13 +47,14 @@ pub use bilateral::{
 };
 pub use bilateral_dsse::{
     build_chiodos_predicate, build_chiodos_statement, build_predicate, build_predicate_full,
-    build_statement, pae, receipt_subject_name, sign_chiodos_dsse_envelope, sign_dsse_envelope,
-    sign_dsse_envelope_full, sign_dsse_envelope_with_cosigner, verify_chiodos_dsse_envelope,
-    verify_dsse_envelope, BilateralPredicate, BilateralPredicateExtensions, CapabilityLeaseRef,
-    DsseEnvelope, DsseSignature, DsseStatement, GovernanceReceiptRef, HashRecord, KernelIdentity,
-    Keyid, PolicyEvaluationSummary, PolicyVerdict, StatementSubject, SubjectDigest,
-    TreatyBindingRef, BILATERAL_DSSE_ENVELOPE_SCHEMA, DEFAULT_CONSISTENCY_MODEL,
-    DEFAULT_COSIGN_MODE, DEFAULT_CROSS_ORG_VISIBILITY, PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA,
+    build_statement, pae, receipt_subject_name, sign_chiodos_dsse_envelope,
+    sign_chiodos_dsse_envelope_with_cosigner, sign_dsse_envelope, sign_dsse_envelope_full,
+    sign_dsse_envelope_with_cosigner, verify_chiodos_dsse_envelope, verify_dsse_envelope,
+    BilateralPredicate, BilateralPredicateExtensions, CapabilityLeaseRef, DsseEnvelope,
+    DsseSignature, DsseStatement, GovernanceReceiptRef, HashRecord, KernelIdentity, Keyid,
+    PolicyEvaluationSummary, PolicyVerdict, StatementSubject, SubjectDigest, TreatyBindingRef,
+    BILATERAL_DSSE_ENVELOPE_SCHEMA, DEFAULT_CONSISTENCY_MODEL, DEFAULT_COSIGN_MODE,
+    DEFAULT_CROSS_ORG_VISIBILITY, PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA,
     PREDICATE_TYPE_BILATERAL, PREDICATE_TYPE_CHIODOS_BILATERAL, STATEMENT_TYPE_V1,
 };
 pub use bilateral_verifier::{

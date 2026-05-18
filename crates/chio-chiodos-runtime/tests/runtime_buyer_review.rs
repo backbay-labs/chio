@@ -26,15 +26,18 @@ use chio_federation::{
 use std::io;
 
 #[test]
-fn buyer_attestation_packet_preserves_verified_lineage_boundary(
+fn buyer_attestation_packet_preserves_verified_lineage_boundary_without_accepting_unresolved_dsse(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (packet, lineage, continuation, admission, bilateral) = buyer_fixture()?;
 
-    let accepted =
+    let unresolved =
         verify_buyer_attestation_packet(&packet, &lineage, &continuation, &admission, &bilateral)?;
-    assert!(accepted.accepted);
-    assert_eq!(accepted.failure_code, None);
-    assert_eq!(accepted.verification_state, "hash_only");
+    assert!(!unresolved.accepted);
+    assert_eq!(
+        unresolved.failure_code.as_deref(),
+        Some("chiodos_buyer_packet_dsse_unresolved")
+    );
+    assert_eq!(unresolved.verification_state, "unresolved");
 
     let mut asserted = lineage.clone();
     asserted.evidence_class = "asserted".to_string();
@@ -61,6 +64,40 @@ fn buyer_attestation_packet_preserves_verified_lineage_boundary(
         denied.failure_code.as_deref(),
         Some("chiodos_buyer_packet_hash_mismatch")
     );
+    Ok(())
+}
+
+#[test]
+fn buyer_hash_only_packet_rejects_unresolved_dsse_hash() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut packet, lineage, continuation, admission, bilateral) = buyer_fixture()?;
+    packet.bilateral_dsse_sha256 = "f".repeat(64);
+
+    let denied =
+        verify_buyer_attestation_packet(&packet, &lineage, &continuation, &admission, &bilateral)?;
+
+    assert!(!denied.accepted);
+    assert_eq!(
+        denied.failure_code.as_deref(),
+        Some("chiodos_buyer_packet_dsse_unresolved")
+    );
+    assert_eq!(denied.verification_state, "unresolved");
+    Ok(())
+}
+
+#[test]
+fn buyer_hash_only_packet_rejects_claimed_admission_dsse_evidence(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (packet, lineage, continuation, admission, bilateral) = buyer_fixture()?;
+
+    let denied =
+        verify_buyer_attestation_packet(&packet, &lineage, &continuation, &admission, &bilateral)?;
+
+    assert!(!denied.accepted);
+    assert_eq!(
+        denied.failure_code.as_deref(),
+        Some("chiodos_buyer_packet_dsse_unresolved")
+    );
+    assert_eq!(denied.verification_state, "unresolved");
     Ok(())
 }
 
@@ -271,6 +308,11 @@ fn buyer_fixture() -> Result<BuyerFixture, Box<dyn std::error::Error>> {
             },
             CrossBoundaryEvidenceRef {
                 evidence_class: "bilateral_invocation".to_string(),
+                artifact_sha256: "4".repeat(64),
+                verified: true,
+            },
+            CrossBoundaryEvidenceRef {
+                evidence_class: "bilateral_dsse".to_string(),
                 artifact_sha256: "4".repeat(64),
                 verified: true,
             },

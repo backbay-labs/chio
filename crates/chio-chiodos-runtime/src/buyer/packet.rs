@@ -23,6 +23,24 @@ pub fn verify_buyer_attestation_packet(
     admission: &CrossBoundaryAdmissionReport,
     bilateral: &BilateralInvocation,
 ) -> Result<BuyerAttestationVerificationReport, ChiodosRuntimeError> {
+    verify_buyer_attestation_packet_with_resolved_dsse(
+        packet,
+        lineage,
+        continuation,
+        admission,
+        bilateral,
+        None,
+    )
+}
+
+pub(crate) fn verify_buyer_attestation_packet_with_resolved_dsse(
+    packet: &BuyerAttestationPacket,
+    lineage: &ReceiptLineageStatement,
+    continuation: &CrossKernelContinuation,
+    admission: &CrossBoundaryAdmissionReport,
+    bilateral: &BilateralInvocation,
+    resolved_bilateral_dsse_sha256: Option<&str>,
+) -> Result<BuyerAttestationVerificationReport, ChiodosRuntimeError> {
     validate_buyer_attestation_packet(packet)?;
     validate_receipt_lineage_statement(lineage)?;
     validate_cross_kernel_continuation(continuation)?;
@@ -101,12 +119,19 @@ pub fn verify_buyer_attestation_packet(
             checks,
         ));
     }
+    if resolved_bilateral_dsse_sha256 != Some(packet.bilateral_dsse_sha256.as_str()) {
+        return Ok(buyer_packet_unresolved_report(
+            packet,
+            "chiodos_buyer_packet_dsse_unresolved",
+            checks,
+        ));
+    }
     checks.push("chiodos_buyer.lineage_verified".to_string());
-    checks.push("chiodos_buyer.verification_state_hash_only".to_string());
+    checks.push("chiodos_buyer.bilateral_dsse_hash_resolved".to_string());
     Ok(BuyerAttestationVerificationReport {
         schema: CHIODOS_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA.to_string(),
         packet_id: packet.packet_id.clone(),
-        verification_state: "hash_only".to_string(),
+        verification_state: "hash_resolved".to_string(),
         accepted: true,
         failure_code: None,
         checks,
@@ -193,11 +218,11 @@ pub(crate) fn validate_buyer_attestation_verification_report(
     }
     validate_non_empty(&report.packet_id, "buyer_verification_empty_packet")?;
     match (report.accepted, report.verification_state.as_str()) {
-        (true, "hash_only") | (false, "rejected") => {}
+        (true, "hash_resolved") | (false, "rejected" | "unresolved") => {}
         _ => {
             return rejected(
                 "buyer_verification_invalid_state",
-                "buyer attestation packet verification state must describe hash-only or rejected review",
+                "buyer attestation packet verification state must describe resolved, unresolved, or rejected review",
             )
         }
     }
@@ -208,6 +233,21 @@ pub(crate) fn validate_buyer_attestation_verification_report(
         );
     }
     Ok(())
+}
+
+fn buyer_packet_unresolved_report(
+    packet: &BuyerAttestationPacket,
+    failure_code: &'static str,
+    checks: Vec<String>,
+) -> BuyerAttestationVerificationReport {
+    BuyerAttestationVerificationReport {
+        schema: CHIODOS_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA.to_string(),
+        packet_id: packet.packet_id.clone(),
+        verification_state: "unresolved".to_string(),
+        accepted: false,
+        failure_code: Some(failure_code.to_string()),
+        checks,
+    }
 }
 
 fn buyer_packet_rejection_report(

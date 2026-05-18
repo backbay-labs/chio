@@ -3,7 +3,8 @@ mod support;
 use chio_chiodos_runtime::{
     compute_ladder_intersection, evaluate_cross_boundary_admission,
     validate_cross_boundary_admission_report, validate_governance_ladder_manifest,
-    CrossBoundaryAdmissionInput, CrossBoundaryAdmissionReport, CrossBoundaryEvidenceRef,
+    validate_ladder_intersection, CrossBoundaryAdmissionInput, CrossBoundaryAdmissionReport,
+    CrossBoundaryEvidenceRef,
 };
 use std::io;
 use support::treaty::{treaty_action_class, treaty_manifest, treaty_scope};
@@ -133,6 +134,49 @@ fn treaty_cross_boundary_admission_requires_intersection_and_evidence(
     assert!(accepted.accepted);
     assert_eq!(accepted.mode, "receipt_backed");
     assert_eq!(accepted.consistency_model, "totally_ordered");
+    Ok(())
+}
+
+#[test]
+fn treaty_loaded_ladder_intersection_rejects_destructive_crdt_commutative(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let buyer = treaty_manifest(
+        "kernel.buyer",
+        treaty_action_class(
+            "receipt_backed",
+            true,
+            "totally_ordered",
+            vec!["governance_receipt"],
+        ),
+    );
+    let vendor = treaty_manifest(
+        "kernel.vendor-b",
+        treaty_action_class(
+            "receipt_backed",
+            true,
+            "totally_ordered",
+            vec!["governance_receipt"],
+        ),
+    );
+    let mut treaty = treaty_scope();
+    treaty.ladder_manifest_sha256s = vec![
+        chio_chiodos_runtime::governance_ladder_manifest_sha256(&buyer)?,
+        chio_chiodos_runtime::governance_ladder_manifest_sha256(&vendor)?,
+    ];
+    let mut intersection =
+        compute_ladder_intersection(&treaty, &[buyer, vendor], 1_800_000_010_000)?;
+    intersection.action_classes[0].destructive = true;
+    intersection.action_classes[0].consistency_model = "crdt_commutative".to_string();
+
+    let err = match validate_ladder_intersection(&intersection) {
+        Ok(()) => {
+            return Err(Box::new(io::Error::other(
+                "destructive crdt_commutative ladder intersection unexpectedly passed",
+            )));
+        }
+        Err(error) => error,
+    };
+    assert_eq!(err.code(), "chiodos_ladder_destructive_crdt_not_allowed");
     Ok(())
 }
 

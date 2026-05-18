@@ -80,6 +80,22 @@ pub trait RuntimeAdmissionHook: Send + Sync {
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KernelFederationTreatyDsseMetadata {
+    capability_lease_ref: chio_federation::CapabilityLeaseRef,
+    policy_evaluation_summary: chio_federation::PolicyEvaluationSummary,
+    #[serde(default)]
+    governance_receipt_ref: Option<chio_federation::GovernanceReceiptRef>,
+    #[serde(default)]
+    consistency_anchor: Option<String>,
+    #[serde(default)]
+    consistency_model: Option<String>,
+    #[serde(default)]
+    cross_org_visibility: Option<String>,
+    treaty_binding_ref: chio_federation::TreatyBindingRef,
+}
+
 // ---------------------------------------------------------------------------
 // Phase 1.5 multi-tenant receipt isolation.
 //
@@ -2552,6 +2568,51 @@ impl ChioKernel {
         self.config.keypair.public_key().to_hex()
     }
 
+    fn treaty_dsse_extensions_from_receipt_metadata(
+        &self,
+        receipt: &chio_core::receipt::ChioReceipt,
+    ) -> Result<Option<chio_federation::BilateralPredicateExtensions>, KernelError> {
+        let Some(metadata) = receipt.metadata.as_ref() else {
+            return Ok(None);
+        };
+        let Some(value) = metadata
+            .get("chiodos_runtime")
+            .and_then(|runtime| runtime.get("federation_treaty_dsse"))
+        else {
+            return Ok(None);
+        };
+        let material: KernelFederationTreatyDsseMetadata = serde_json::from_value(value.clone())
+            .map_err(|error| {
+                KernelError::Internal(format!(
+                    "federation treaty DSSE metadata is invalid: {error}"
+                ))
+            })?;
+        let mut treaty_binding_ref = material.treaty_binding_ref;
+        if treaty_binding_ref.request_sha256 != receipt.action.parameter_hash {
+            return Err(KernelError::Internal(
+                "federation treaty DSSE request hash does not match receipt action hash"
+                    .to_string(),
+            ));
+        }
+        treaty_binding_ref.outcome_sha256 = receipt.content_hash.clone();
+        treaty_binding_ref.remote_receipt_sha256 = chio_core::crypto::sha256_hex(
+            &chio_core::canonical::canonical_json_bytes(receipt).map_err(|error| {
+                KernelError::Internal(format!(
+                    "federation treaty DSSE receipt canonicalization failed: {error}"
+                ))
+            })?,
+        );
+        Ok(Some(chio_federation::BilateralPredicateExtensions {
+            capability_lease_ref: Some(material.capability_lease_ref),
+            policy_evaluation_summary: Some(material.policy_evaluation_summary),
+            governance_receipt_ref: material.governance_receipt_ref,
+            consistency_anchor: material.consistency_anchor,
+            consistency_model: material.consistency_model,
+            cross_org_visibility: material.cross_org_visibility,
+            treaty_binding_ref: Some(treaty_binding_ref),
+        }))
+    }
+
     /// Phase 20.3 post-sign hook. Invoked immediately after
     /// [`Self::build_and_sign_receipt`] so the local (tool-host)
     /// signature has already landed in the `ChioReceipt`. When
@@ -2604,18 +2665,34 @@ impl ChioKernel {
             cosigner.as_ref(),
         )
         .map_err(|e| KernelError::Internal(format!("bilateral co-sign failed: {e}")))?;
-        let dsse_envelope = chio_federation::sign_dsse_envelope_with_cosigner(
-            receipt,
-            &peer.public_key,
-            &self.config.keypair,
-            origin_kernel_id,
-            &local_kernel_id,
-            &request.tool_name,
-            current_unix_timestamp().saturating_mul(1000),
-            chio_federation::BilateralPredicateExtensions::default(),
-            cosigner.as_ref(),
-        )
-        .map_err(|e| KernelError::Internal(format!("bilateral DSSE co-sign failed: {e}")))?;
+        let timestamp_unix_ms = current_unix_timestamp().saturating_mul(1000);
+        let dsse_envelope =
+            if let Some(extensions) = self.treaty_dsse_extensions_from_receipt_metadata(receipt)? {
+                chio_federation::sign_chiodos_dsse_envelope_with_cosigner(
+                    receipt,
+                    &peer.public_key,
+                    &self.config.keypair,
+                    origin_kernel_id,
+                    &local_kernel_id,
+                    &request.tool_name,
+                    timestamp_unix_ms,
+                    extensions,
+                    cosigner.as_ref(),
+                )
+            } else {
+                chio_federation::sign_dsse_envelope_with_cosigner(
+                    receipt,
+                    &peer.public_key,
+                    &self.config.keypair,
+                    origin_kernel_id,
+                    &local_kernel_id,
+                    &request.tool_name,
+                    timestamp_unix_ms,
+                    chio_federation::BilateralPredicateExtensions::default(),
+                    cosigner.as_ref(),
+                )
+            }
+            .map_err(|e| KernelError::Internal(format!("bilateral DSSE co-sign failed: {e}")))?;
 
         self.federation_dual_receipts
             .insert(receipt.id.clone(), dual);

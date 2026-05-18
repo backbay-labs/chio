@@ -878,6 +878,80 @@ pub fn sign_dsse_envelope_with_cosigner(
     Ok(envelope)
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn sign_chiodos_dsse_envelope_with_cosigner(
+    receipt: &ChioReceipt,
+    org_a_public_key: &PublicKey,
+    org_b_keypair: &Keypair,
+    org_a_kernel_id: &str,
+    org_b_kernel_id: &str,
+    tool_name: &str,
+    timestamp_unix_ms: u64,
+    extensions: BilateralPredicateExtensions,
+    cosigner: &dyn BilateralCoSigningProtocol,
+) -> Result<DsseEnvelope, BilateralCoSigningError> {
+    let org_a_keyid = Keyid::from_public_key(org_a_public_key);
+    let org_b_pub = org_b_keypair.public_key();
+    let org_b_keyid = Keyid::from_public_key(&org_b_pub);
+
+    let predicate = build_chiodos_predicate(
+        receipt,
+        KernelIdentity {
+            kernel_id: org_a_kernel_id.to_string(),
+            passport_key_fingerprint: org_a_keyid.clone(),
+            alg: "ed25519".to_string(),
+        },
+        KernelIdentity {
+            kernel_id: org_b_kernel_id.to_string(),
+            passport_key_fingerprint: org_b_keyid.clone(),
+            alg: "ed25519".to_string(),
+        },
+        tool_name,
+        timestamp_unix_ms,
+        extensions,
+    )?;
+
+    let statement = build_chiodos_statement(receipt, predicate)?;
+    let statement_bytes = statement.canonical_bytes()?;
+    let pae_bytes = pae(PAYLOAD_TYPE_IN_TOTO, &statement_bytes);
+
+    let backend_b = Ed25519Backend::new(org_b_keypair.clone());
+    let sig_b = backend_b
+        .sign_bytes(&pae_bytes)
+        .map_err(|e| BilateralCoSigningError::TransportFailure(e.to_string()))?;
+    let request = DsseCoSigningRequest::new(
+        org_a_kernel_id.to_string(),
+        org_b_kernel_id.to_string(),
+        pae_bytes.clone(),
+        sig_b.clone(),
+    );
+    let response = cosigner.request_dsse_cosignature(&request)?;
+    if response.schema != crate::bilateral::BILATERAL_DSSE_COSIGNING_SCHEMA {
+        return Err(BilateralCoSigningError::UnsupportedSchema(response.schema));
+    }
+    if !org_a_public_key.verify(&pae_bytes, &response.org_a_signature) {
+        return Err(BilateralCoSigningError::OrgASignatureInvalid);
+    }
+
+    let envelope = DsseEnvelope {
+        payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
+        payload: BASE64_STANDARD.encode(&statement_bytes),
+        signatures: vec![
+            DsseSignature {
+                keyid: org_a_keyid.0.clone(),
+                sig: BASE64_STANDARD.encode(response.org_a_signature.to_bytes()),
+            },
+            DsseSignature {
+                keyid: org_b_keyid.0.clone(),
+                sig: BASE64_STANDARD.encode(sig_b.to_bytes()),
+            },
+        ],
+    };
+
+    verify_chiodos_dsse_envelope(&envelope, org_a_public_key, &org_b_pub)?;
+    Ok(envelope)
+}
+
 /// Verify a DSSE signature-slice envelope. Returns the parsed Statement on
 /// success so callers can drive subsequent checks (peer pinning, lease
 /// resolution, anchor reconciliation) against a single decoded payload.

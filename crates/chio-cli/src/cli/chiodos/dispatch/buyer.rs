@@ -294,7 +294,7 @@ pub(crate) fn buyer_review_verification_state(
     if has_strict_dsse && proof_accepted && existing_verifier_replayed {
         "strict_verified"
     } else {
-        "hash_only"
+        "provisional"
     }
 }
 
@@ -344,4 +344,3 @@ pub(crate) fn buyer_review_source_bytes<'a>(
         .find(|source| source.role == role)
         .map(|source| source.bytes.as_slice())
 }
-

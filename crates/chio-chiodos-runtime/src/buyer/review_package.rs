@@ -6,7 +6,7 @@ use crate::buyer::helpers::{
     buyer_review_check, buyer_review_rejection_report, buyer_review_verification_context_window,
     review_refs_by_role, validate_buyer_attestation_review_package,
 };
-use crate::buyer::packet::verify_buyer_attestation_packet;
+use crate::buyer::packet::verify_buyer_attestation_packet_with_resolved_dsse;
 use crate::buyer::proof_package::{
     verify_buyer_review_existing_verifier, verify_buyer_review_lineage_binding,
     verify_buyer_review_proof_package, verify_receipt_lineage_bundle,
@@ -223,8 +223,15 @@ fn verify_buyer_attestation_review_package_internal(
         None,
         "receipt lineage bundle root, leaf, and statement hash matched the buyer packet",
     ));
-    let packet_report =
-        verify_buyer_attestation_packet(&packet, &lineage, &continuation, &admission, &bilateral)?;
+    let bilateral_dsse_sha256 = canonical_sha256(&bilateral_dsse)?;
+    let packet_report = verify_buyer_attestation_packet_with_resolved_dsse(
+        &packet,
+        &lineage,
+        &continuation,
+        &admission,
+        &bilateral,
+        Some(&bilateral_dsse_sha256),
+    )?;
     if !packet_report.accepted {
         return Ok(buyer_review_rejection_report(
             package,
@@ -257,7 +264,6 @@ fn verify_buyer_attestation_review_package_internal(
             checks,
         ));
     }
-    let bilateral_dsse_sha256 = canonical_sha256(&bilateral_dsse)?;
     if bilateral_dsse_sha256 != packet.bilateral_dsse_sha256 {
         return Ok(buyer_review_rejection_report(
             package,

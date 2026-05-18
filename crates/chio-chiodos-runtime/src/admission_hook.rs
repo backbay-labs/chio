@@ -139,6 +139,7 @@ where
         }
         let admission_now_unix_ms = self.fixed_now_unix_ms.unwrap_or(context.now_unix_ms);
         let mut treaty_continuation_id_to_consume = None;
+        let mut federation_treaty_dsse = None;
         let mut runtime_action_class_id = None;
         match treaty_ref_from_request(context.request) {
             Ok(Some(treaty_ref)) => {
@@ -149,8 +150,9 @@ where
                     &treaty_ref,
                     admission_now_unix_ms,
                 ) {
-                    Ok(continuation_id) => {
-                        treaty_continuation_id_to_consume = continuation_id;
+                    Ok(verified) => {
+                        treaty_continuation_id_to_consume = verified.continuation_id;
+                        federation_treaty_dsse = verified.federation_treaty_dsse;
                     }
                     Err(ChiodosRuntimeError::Rejected { code, .. }) => {
                         return Ok(KernelRuntimeAdmissionDecision::deny(
@@ -224,6 +226,9 @@ where
             if let Some(continuation_id) = treaty_continuation_id_to_consume.as_deref() {
                 metadata["chiodos_runtime"]["reserved_treaty_continuation_id"] =
                     serde_json::json!(continuation_id);
+            }
+            if let Some(treaty_dsse) = federation_treaty_dsse {
+                metadata["chiodos_runtime"]["federation_treaty_dsse"] = treaty_dsse;
             }
             Ok(KernelRuntimeAdmissionDecision::allow(Some(metadata)))
         } else {

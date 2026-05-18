@@ -1,12 +1,12 @@
 use crate::{
-    canonical_sha256, CatchupRequest, CatchupResponse, PeerDirectory, PheromoneRelayClient,
-    PheromoneRelayError, PheromoneRelayHttpRequest, PheromoneRelayStore, RelayEventReport,
-    RelayHealthReport, RelayHttpVerificationContext, RelayMetricsFormat, RelayObservabilityInput,
-    RelayObservabilityReport, RelayOperatorReport, RelayOutboxBatch, RelayProfile,
-    RelayProfileLimits, RelayTickReport, SqlitePheromoneRelayStore, PHEROMONE_BATCH_RELAY_PATH,
-    PHEROMONE_CATCHUP_RELAY_PATH, PHEROMONE_CATCHUP_REQUEST_SCHEMA,
-    PHEROMONE_CATCHUP_RESPONSE_SCHEMA, PHEROMONE_HEALTH_PATH, PHEROMONE_READY_PATH,
-    PHEROMONE_RELAY_DRILL_REPORT_SCHEMA, PHEROMONE_RELAY_EVENT_REPORT_SCHEMA,
+    canonical_sha256, CatchupRequest, CatchupResponse, PeerDirectory, PeerDirectoryEntry,
+    PheromoneRelayClient, PheromoneRelayError, PheromoneRelayHttpRequest, PheromoneRelayStore,
+    RelayEventReport, RelayHealthReport, RelayHttpVerificationContext, RelayLadderRef,
+    RelayMetricsFormat, RelayObservabilityInput, RelayObservabilityReport, RelayOperatorReport,
+    RelayOutboxBatch, RelayProfile, RelayProfileLimits, RelayRole, RelayTickReport,
+    SqlitePheromoneRelayStore, PHEROMONE_BATCH_RELAY_PATH, PHEROMONE_CATCHUP_RELAY_PATH,
+    PHEROMONE_CATCHUP_REQUEST_SCHEMA, PHEROMONE_CATCHUP_RESPONSE_SCHEMA, PHEROMONE_HEALTH_PATH,
+    PHEROMONE_READY_PATH, PHEROMONE_RELAY_DRILL_REPORT_SCHEMA, PHEROMONE_RELAY_EVENT_REPORT_SCHEMA,
     PHEROMONE_RELAY_METRICS_PATH, PHEROMONE_RELAY_OBSERVABILITY_PATH,
     PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA, PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA,
     PHEROMONE_RELAY_TICK_REPORT_SCHEMA,
@@ -425,6 +425,11 @@ fn enforce_peer_batch_directory_scope(
 ) -> Result<(), PheromoneRelayError> {
     let peer = directory.peer(sender_kernel_id)?;
     let frame_count = batch.frames.len();
+    if !matches!(peer.relay_role, RelayRole::Origin | RelayRole::Hub) {
+        return Err(PheromoneRelayError::RelayProfileDenied(format!(
+            "peer {sender_kernel_id} is not authorized to submit inbound batches"
+        )));
+    }
     if frame_count > peer.max_batch_frames {
         return Err(PheromoneRelayError::RelayProfileDenied(format!(
             "peer {sender_kernel_id} submitted {frame_count} batch frames, exceeding directory max {}",
@@ -437,6 +442,7 @@ fn enforce_peer_batch_directory_scope(
             batch.treaty_id
         )));
     }
+    enforce_peer_transit_ladder_pins(peer, sender_kernel_id, batch)?;
     Ok(())
 }
 
@@ -510,6 +516,11 @@ pub(crate) fn validate_catchup_request(
         )));
     }
     let peer = service.directory.peer(authenticated_sender)?;
+    if !matches!(peer.relay_role, RelayRole::Receiver | RelayRole::Hub) {
+        return Err(PheromoneRelayError::CatchupDenied(format!(
+            "peer {authenticated_sender} is not authorized for catch-up"
+        )));
+    }
     if catchup.limit == 0 || catchup.limit > peer.max_catchup_frames {
         return Err(PheromoneRelayError::CatchupDenied(format!(
             "catch-up limit {} exceeds peer bound {}",
@@ -664,6 +675,11 @@ fn enforce_outbound_peer_batch_directory_scope(
     }
     let peer = directory.peer(recipient_kernel_id)?;
     let frame_count = batch.frames.len();
+    if !matches!(peer.relay_role, RelayRole::Receiver | RelayRole::Hub) {
+        return Err(PheromoneRelayError::RelayProfileDenied(format!(
+            "recipient {recipient_kernel_id} is not authorized to receive outbound batches"
+        )));
+    }
     if frame_count > peer.max_batch_frames {
         return Err(PheromoneRelayError::RelayProfileDenied(format!(
             "recipient {recipient_kernel_id} is limited to {} batch frames but queued batch has {frame_count}",
@@ -676,7 +692,43 @@ fn enforce_outbound_peer_batch_directory_scope(
             batch.treaty_id
         )));
     }
+    enforce_peer_transit_ladder_pins(peer, recipient_kernel_id, batch)?;
     Ok(())
+}
+
+fn enforce_peer_transit_ladder_pins(
+    peer: &PeerDirectoryEntry,
+    peer_kernel_id: &str,
+    batch: &PheromoneGossipBatch,
+) -> Result<(), PheromoneRelayError> {
+    for frame in &batch.frames {
+        let Some(chain) = frame.transit_chain.as_ref() else {
+            continue;
+        };
+        for hop in &chain.hops {
+            if hop.from_kernel_id != peer_kernel_id && hop.to_kernel_id != peer_kernel_id {
+                continue;
+            }
+            if !relay_ladder_ref_matches(&peer.accepted_ladder_refs, hop) {
+                return Err(PheromoneRelayError::RelayProfileDenied(format!(
+                    "peer {peer_kernel_id} transit ladder {}:{} is not pinned in the directory",
+                    hop.ladder_manifest_id, hop.ladder_manifest_sha256
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn relay_ladder_ref_matches(
+    accepted: &[RelayLadderRef],
+    hop: &chio_federation::PheromoneTransitHop,
+) -> bool {
+    accepted.iter().any(|reference| {
+        reference.ladder_manifest_id == hop.ladder_manifest_id
+            && reference.ladder_manifest_sha256 == hop.ladder_manifest_sha256
+            && reference.expires_at_unix_ms == hop.ladder_manifest_expires_at_unix_ms
+    })
 }
 
 pub(crate) fn mark_delivery_failure(

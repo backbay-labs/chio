@@ -5,8 +5,8 @@ pub(super) use chio_core_types::canonical::canonical_json_bytes;
 pub(super) use chio_core_types::crypto::sha256_hex;
 pub(super) use chio_core_types::Keypair;
 pub(super) use chio_federation::{
-    PheromoneDepositGossip, PheromoneGossipBatch, PHEROMONE_GOSSIP_BATCH_SCHEMA,
-    PHEROMONE_GOSSIP_SCHEMA,
+    PheromoneDepositGossip, PheromoneGossipBatch, PheromoneTransitChain, PheromoneTransitHop,
+    PHEROMONE_GOSSIP_BATCH_SCHEMA, PHEROMONE_GOSSIP_SCHEMA,
 };
 pub(super) use chio_pheromone::{
     agent_passport_jwk_thumbprint, agent_passport_key_hash, sign_deposit, PheromoneDepositBody,

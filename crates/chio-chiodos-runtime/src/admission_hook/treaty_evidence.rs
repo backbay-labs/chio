@@ -7,12 +7,17 @@ use super::dsse::verify_treaty_dsse_evidence;
 use super::store_artifacts::{load_bilateral_invocation_artifact, load_treaty_artifact};
 use super::treaty_ref::TreatyReference;
 
+pub(super) struct VerifiedTreatyReference {
+    pub(super) continuation_id: Option<String>,
+    pub(super) federation_treaty_dsse: Option<serde_json::Value>,
+}
+
 pub(super) fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
     store: &S,
     admission_id: &str,
     treaty_ref: &TreatyReference,
     now_unix_ms: u64,
-) -> Result<Option<String>, ChiodosRuntimeError> {
+) -> Result<VerifiedTreatyReference, ChiodosRuntimeError> {
     let Some(bundle) = store.bundle(admission_id)? else {
         return rejected(
             "missing_admission_bundle",
@@ -170,7 +175,7 @@ pub(super) fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
             present_evidence.push("bilateral_invocation".to_string());
             bilateral_invocation_sha256 = Some(invocation_binding_sha256);
         }
-        if let Some((envelope, _envelope_sha256)) = bilateral_dsse.as_ref() {
+        if let Some((envelope, envelope_sha256)) = bilateral_dsse.as_ref() {
             let treaty_evidence = TreatyEvidenceReview {
                 treaty_scope: &treaty_scope,
                 bundle: &bundle,
@@ -197,6 +202,11 @@ pub(super) fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
                     verified: true,
                 });
             }
+            verified_evidence.push(CrossBoundaryEvidenceRef {
+                evidence_class: "bilateral_dsse".to_string(),
+                artifact_sha256: envelope_sha256.clone(),
+                verified: true,
+            });
         }
     } else if requires_lineage
         || requires_bilateral
@@ -220,15 +230,68 @@ pub(super) fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
         now_unix_ms,
     })?;
     if report.accepted {
-        Ok(continuation
+        let federation_treaty_dsse = bilateral_dsse
             .as_ref()
-            .map(|(continuation, _)| continuation.continuation_id.clone()))
+            .map(|(envelope, _)| federation_treaty_dsse_metadata(envelope, &report))
+            .transpose()?;
+        Ok(VerifiedTreatyReference {
+            continuation_id: continuation
+                .as_ref()
+                .map(|(continuation, _)| continuation.continuation_id.clone()),
+            federation_treaty_dsse,
+        })
     } else {
         rejected(
             static_treaty_failure_code(report.failure_code.as_deref()),
             "cross-boundary treaty admission rejected",
         )
     }
+}
+
+fn federation_treaty_dsse_metadata(
+    envelope: &chio_federation::DsseEnvelope,
+    report: &CrossBoundaryAdmissionReport,
+) -> Result<serde_json::Value, ChiodosRuntimeError> {
+    let (statement, _) =
+        envelope
+            .decode_statement()
+            .map_err(|_| ChiodosRuntimeError::Rejected {
+                code: "chiodos_treaty_unverified_required_evidence",
+                detail: "bilateral DSSE evidence could not be decoded".to_string(),
+            })?;
+    let predicate = statement.predicate;
+    let capability_lease_ref =
+        predicate
+            .capability_lease_ref
+            .ok_or_else(|| ChiodosRuntimeError::Rejected {
+                code: "chiodos_treaty_unverified_required_evidence",
+                detail: "bilateral DSSE evidence is missing a capability lease ref".to_string(),
+            })?;
+    let policy_evaluation_summary =
+        predicate
+            .policy_evaluation_summary
+            .ok_or_else(|| ChiodosRuntimeError::Rejected {
+                code: "chiodos_treaty_unverified_required_evidence",
+                detail: "bilateral DSSE evidence is missing a policy summary".to_string(),
+            })?;
+    let mut treaty_binding_ref =
+        predicate
+            .treaty_binding_ref
+            .ok_or_else(|| ChiodosRuntimeError::Rejected {
+                code: "chiodos_treaty_unverified_required_evidence",
+                detail: "bilateral DSSE evidence is missing treaty binding refs".to_string(),
+            })?;
+    treaty_binding_ref.admission_report_sha256 = canonical_sha256(report)?;
+    serde_json::to_value(serde_json::json!({
+        "capability_lease_ref": capability_lease_ref,
+        "policy_evaluation_summary": policy_evaluation_summary,
+        "governance_receipt_ref": predicate.governance_receipt_ref,
+        "consistency_anchor": predicate.consistency_anchor,
+        "consistency_model": predicate.consistency_model,
+        "cross_org_visibility": predicate.cross_org_visibility,
+        "treaty_binding_ref": treaty_binding_ref
+    }))
+    .map_err(|error| ChiodosRuntimeError::Json(error.to_string()))
 }
 
 fn verify_continuation_evidence(
