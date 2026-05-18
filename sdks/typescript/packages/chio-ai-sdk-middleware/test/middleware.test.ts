@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import {
   ChioMiddlewareDeniedError,
   createChioMiddleware,
@@ -552,6 +552,91 @@ describe("receipt authority verification", () => {
       .rejects
       .toThrow(ChioMiddlewareDeniedError);
     expect(modelCalls).toBe(0);
+  });
+
+  it("denies on edge runtime without an explicit verifyReceipt (no fetch fallback)", async () => {
+    // Regression: previously the edge runtime fell through to a
+    // `/chio/verify` fetch against the localhost sidecar, which is
+    // unreachable from Vercel/Workers and turns every otherwise-allowed
+    // tool use into a misleading transport error. The fix denies with a
+    // clear reason instead. We must keep this verification in-process for
+    // edge runtimes (or via an explicit verifier) because the
+    // in-process @chio-protocol/edge `verify_receipt` binding needs a
+    // binary envelope the JSON `/chio/evaluate` response does not carry.
+    //
+    // To exercise applyReceiptAuthority on the edge path we have to bypass
+    // the `options.evaluate` short-circuit, so we stub the dynamic import
+    // of `@chio-protocol/edge` rather than the option. The stubbed
+    // wasm-level evaluator returns an allow envelope; the middleware then
+    // reaches applyReceiptAuthority and must deny because no verifyReceipt
+    // was provided and the legacy fetch fallback is disabled on edge.
+    mock.module("@chio-protocol/edge", () => ({
+      evaluate: () => ({
+        verdict: "allow",
+        receipt: { id: "r-edge-no-verifier" },
+      }),
+    }));
+
+    let modelCalls = 0;
+    let fetchCalls = 0;
+    const fetchMock = async () => {
+      fetchCalls += 1;
+      throw new Error(
+        "edge runtime must not fall through to fetch-based /chio/verify",
+      );
+    };
+
+    const wrapped = wrapWithChio({
+      async doGenerate() {
+        modelCalls += 1;
+        return { text: "should not run" };
+      },
+    }, {
+      runtime: "edge",
+      sidecarUrl: "http://sidecar.test",
+      fetch: fetchMock as typeof fetch,
+    });
+
+    await expect(wrapped.doGenerate({ tools: { search: {} } }))
+      .rejects
+      .toThrow(ChioMiddlewareDeniedError);
+    expect(modelCalls).toBe(0);
+    expect(fetchCalls).toBe(0);
+  });
+
+  it("authorizes on edge runtime when an explicit verifyReceipt is configured", async () => {
+    // Edge callers can still authorize by supplying their own verifier
+    // (the documented edge path uses @chio-protocol/edge `verify_receipt`
+    // directly). The middleware must not require fetch in that case.
+    mock.module("@chio-protocol/edge", () => ({
+      evaluate: () => ({
+        verdict: "allow",
+        receipt: { id: "r-edge-with-verifier" },
+      }),
+    }));
+
+    let modelCalls = 0;
+    let fetchCalls = 0;
+    const fetchMock = async () => {
+      fetchCalls += 1;
+      throw new Error("edge runtime with verifyReceipt must not hit fetch");
+    };
+
+    const wrapped = wrapWithChio({
+      async doGenerate() {
+        modelCalls += 1;
+        return { text: "ok" };
+      },
+    }, {
+      runtime: "edge",
+      fetch: fetchMock as typeof fetch,
+      verifyReceipt: () => authorityAllow(),
+    });
+
+    const result = await wrapped.doGenerate({ tools: { search: {} } });
+    expect(result).toEqual({ text: "ok" });
+    expect(modelCalls).toBe(1);
+    expect(fetchCalls).toBe(0);
   });
 
   it("fails closed when /chio/verify response omits required authority fields", async () => {

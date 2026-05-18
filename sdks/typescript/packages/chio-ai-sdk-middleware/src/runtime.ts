@@ -87,6 +87,14 @@ export async function evaluateWithChio(
  * default-configured callers continue to verify. Fail closed when the
  * sidecar response is non-OK or unreachable, when no fetch is available,
  * or when the resulting authority is missing required fields.
+ *
+ * On the edge runtime path the fetch-based fallback is deliberately
+ * disabled: Vercel/Workers deployments cannot reliably reach the
+ * documented localhost sidecar, and the in-process `@chio-protocol/edge`
+ * verifier needs a binary receipt envelope that the JSON receipt body
+ * does not carry. Edge callers without an explicit `verifyReceipt` are
+ * therefore denied with a clear reason, so silent allow-as-deny on the
+ * unreachable sidecar can never happen.
  */
 async function applyReceiptAuthority(
   evaluation: ChioEvaluation,
@@ -112,6 +120,21 @@ async function applyReceiptAuthority(
       );
     }
     return mergeAuthorityOrDeny(evaluation, authority);
+  }
+
+  // Edge runtimes (Vercel/Cloudflare Workers) often cannot make outbound
+  // fetch to the documented localhost sidecar, and the in-process
+  // `@chio-protocol/edge` `verify_receipt` binding requires a binary
+  // envelope the JSON `/chio/evaluate` response does not include. Fail
+  // closed with an actionable reason rather than letting the call fall
+  // through to a fetch that will be unreachable and silently turn an
+  // otherwise-allowed tool use into a misleading transport error.
+  const runtime = normalizeRuntime(runtimeOptions.runtime);
+  if (runtime === "edge") {
+    return denyForReason(
+      evaluation,
+      "Chio edge runtime requires an explicit verifyReceipt; the fetch-based /chio/verify fallback is unreachable from Vercel/Workers and the in-process edge verifier needs a binary envelope not present on /chio/evaluate responses",
+    );
   }
 
   // Reuse the same default localhost sidecar URL that the evaluate path

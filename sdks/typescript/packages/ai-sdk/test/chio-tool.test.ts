@@ -307,8 +307,43 @@ describe("chioTool: allow path invokes underlying execute", () => {
     expect(calls[0]!.headers["x-chio-capability"]).toBe(CAPABILITY_TOKEN);
   });
 
-  it("fails closed when an allow-shaped receipt is not cryptographically verified", async () => {
-    const { fetch } = fakeFetch([allowReceipt()]);
+  it("verifies via /chio/verify by default when no explicit verifier is configured", async () => {
+    // Without verifyReceipt, the wrapper must fall back to POSTing the
+    // raw receipt body to the sidecar's /chio/verify route (same default
+    // URL as the evaluate path) so default-configured callers continue to
+    // verify before invoking the underlying tool. This mirrors the
+    // chio-ai-sdk-middleware applyReceiptAuthority fallback.
+    const verifyBodies: string[] = [];
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const body = init?.body == null ? "" : String(init.body);
+      if (url.endsWith("/chio/evaluate")) {
+        return new Response(JSON.stringify(allowReceipt("r-default-verify")), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/chio/verify")) {
+        verifyBodies.push(body);
+        return new Response(
+          JSON.stringify({
+            receipt_kind: "mediated_decision",
+            boundary_class: "prevent",
+            trust_level: "mediated",
+            result: "allow",
+            authorized: true,
+            ok: true,
+            signer_trusted: true,
+            signature_valid: true,
+            receipt_id_valid: true,
+            parameter_hash_valid: true,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`unexpected fetch in default-verify test: ${url}`);
+    }) as typeof fetch;
+
     const wrapped = chioTool({
       parameters: z.object({ n: z.number() }),
       execute: async ({ n }: { n: number }) => ({ doubled: n * 2 }),
@@ -318,12 +353,99 @@ describe("chioTool: allow path invokes underlying execute", () => {
         capabilityId: "cap-1",
         capabilityToken: CAPABILITY_TOKEN,
       },
-      clientOptions: { fetch },
+      clientOptions: { fetch: fetchImpl, sidecarUrl: "http://sidecar.test" },
+    });
+
+    const result = await wrapped.execute!({ n: 21 });
+    expect(result).toEqual({ doubled: 42 });
+    expect(verifyBodies).toHaveLength(1);
+    // The Rust /chio/verify handler deserializes the request body
+    // directly as an HttpReceipt. Wrapping it as { receipt: ... } would
+    // cause the real sidecar to return 400, so the wrapper must POST the
+    // receipt body verbatim.
+    const parsed = JSON.parse(verifyBodies[0]!);
+    expect(parsed.id).toBe("r-default-verify");
+    expect(parsed.receipt).toBeUndefined();
+  });
+
+  it("fails closed when /chio/verify returns partial authority", async () => {
+    // The default /chio/verify path must still enforce that every
+    // authority field is set. A partial response (missing
+    // parameter_hash_valid) is treated as non-authorizing.
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/chio/evaluate")) {
+        return new Response(JSON.stringify(allowReceipt("r-partial-auth")), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/chio/verify")) {
+        return new Response(
+          JSON.stringify({
+            receipt_kind: "mediated_decision",
+            boundary_class: "prevent",
+            trust_level: "mediated",
+            result: "allow",
+            authorized: true,
+            ok: true,
+            signer_trusted: true,
+            signature_valid: true,
+            receipt_id_valid: true,
+            // parameter_hash_valid intentionally omitted
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`unexpected fetch in partial-authority test: ${url}`);
+    }) as typeof fetch;
+    const wrapped = chioTool({
+      parameters: z.object({ n: z.number() }),
+      execute: async ({ n }: { n: number }) => ({ doubled: n * 2 }),
+      scope: {
+        toolServer: "math",
+        toolName: "double",
+        capabilityId: "cap-1",
+        capabilityToken: CAPABILITY_TOKEN,
+      },
+      clientOptions: { fetch: fetchImpl, sidecarUrl: "http://sidecar.test" },
     });
 
     await expect(wrapped.execute!({ n: 21 })).rejects.toMatchObject({
       verdict: "incomplete",
-      receiptId: "r-allow",
+      receiptId: "r-partial-auth",
+    });
+  });
+
+  it("fails closed when /chio/verify is unreachable", async () => {
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/chio/evaluate")) {
+        return new Response(JSON.stringify(allowReceipt("r-verify-unreachable")), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/chio/verify")) {
+        throw new TypeError("connection refused");
+      }
+      throw new Error(`unexpected fetch in unreachable-verify test: ${url}`);
+    }) as typeof fetch;
+    const wrapped = chioTool({
+      parameters: z.object({ n: z.number() }),
+      execute: async ({ n }: { n: number }) => ({ doubled: n * 2 }),
+      scope: {
+        toolServer: "math",
+        toolName: "double",
+        capabilityId: "cap-1",
+        capabilityToken: CAPABILITY_TOKEN,
+      },
+      clientOptions: { fetch: fetchImpl, sidecarUrl: "http://sidecar.test" },
+    });
+
+    await expect(wrapped.execute!({ n: 21 })).rejects.toMatchObject({
+      verdict: "sidecar_unreachable",
+      receiptId: "r-verify-unreachable",
     });
   });
 

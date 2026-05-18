@@ -29,7 +29,12 @@
  * parameters and result type.
  */
 
-import { ChioClient, type ChioClientOptions, ChioClientError } from "./client.js";
+import {
+  ChioClient,
+  type ChioClientOptions,
+  ChioClientError,
+  resolveSidecarUrl,
+} from "./client.js";
 import { ChioToolError } from "./errors.js";
 
 /**
@@ -148,8 +153,14 @@ export interface ChioToolOptions<PARAMS, RESULT> extends ToolLike<PARAMS, RESULT
    */
   resolveCapabilityToken?: CapabilityTokenResolver | undefined;
   /**
-   * Verifies the signed receipt before tool execution. Required for an
-   * allow-shaped receipt to invoke the wrapped tool.
+   * Verifies the signed receipt before tool execution. When unset, the
+   * wrapper falls back to POSTing the receipt to the sidecar's
+   * `/chio/verify` route using the same default URL (`http://127.0.0.1:9090`
+   * unless overridden via `clientOptions.sidecarUrl` or the
+   * `CHIO_SIDECAR_URL` env var) the evaluate path uses, matching the
+   * documented default-sidecar deployment. Either an explicit verifier or
+   * a reachable sidecar `/chio/verify` is required for an allow-shaped
+   * receipt to invoke the wrapped tool.
    */
   verifyReceipt?: ChioReceiptVerifier | undefined;
 }
@@ -275,15 +286,13 @@ export function chioTool<PARAMS, RESULT>(
       });
     }
 
-    if (verifyReceipt == null) {
-      throw new ChioToolError({
-        verdict: "incomplete",
-        guard: "",
-        reason: `Chio receipt ${receipt.id} has no trusted receipt verifier configured`,
-        receiptId: receipt.id,
-      });
-    }
-    const authority = await verifyReceipt(receipt);
+    const authority = verifyReceipt != null
+      ? await verifyReceipt(receipt)
+      : await verifyReceiptViaSidecar(
+        receipt,
+        options.client,
+        options.clientOptions,
+      );
     if (!receiptAuthorityAllows(authority)) {
       throw new ChioToolError({
         verdict: "incomplete",
@@ -317,6 +326,129 @@ export function chioTool<PARAMS, RESULT>(
     execute: wrappedExecute,
   };
   return wrapped;
+}
+
+/**
+ * Default receipt-authority pathway when the caller did not supply a
+ * `verifyReceipt`. Mirrors the chio-ai-sdk-middleware fallback: POST the
+ * raw receipt body to the sidecar's `/chio/verify` route at the same
+ * resolved sidecar URL the evaluate path used, and parse the response
+ * into a `ChioReceiptAuthority`. Fails closed when the sidecar response
+ * is non-OK, the body is not parseable, or fetch is unavailable.
+ *
+ * The Rust `/chio/verify` handler in
+ * `crates/chio-api-protect/src/proxy.rs::sidecar_verify_handler`
+ * deserializes the request body directly as an `HttpReceipt`, so the
+ * receipt body MUST be sent unwrapped (not as `{ receipt: ... }`).
+ */
+async function verifyReceiptViaSidecar(
+  receipt: Record<string, unknown> & { id?: string },
+  client: ChioClient | undefined,
+  clientOptions: ChioClientOptions | undefined,
+): Promise<ChioReceiptAuthority> {
+  const baseUrl = client?.sidecarUrl ?? resolveSidecarUrl(clientOptions?.sidecarUrl);
+  const fetchImpl = clientOptions?.fetch ?? globalThis.fetch;
+  if (fetchImpl == null) {
+    throw new ChioToolError({
+      verdict: "incomplete",
+      guard: "",
+      reason: "no fetch implementation available for Chio /chio/verify fallback",
+      receiptId: typeof receipt.id === "string" ? receipt.id : undefined,
+    });
+  }
+
+  let response: Response;
+  try {
+    response = await fetchImpl(`${baseUrl}/chio/verify`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify(receipt),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ChioToolError({
+      verdict: "sidecar_unreachable",
+      guard: "",
+      reason: `Chio /chio/verify unreachable: ${message}`,
+      receiptId: typeof receipt.id === "string" ? receipt.id : undefined,
+    });
+  }
+
+  if (!response.ok) {
+    throw new ChioToolError({
+      verdict: "sidecar_unreachable",
+      guard: "",
+      reason: `Chio /chio/verify returned ${response.status}`,
+      receiptId: typeof receipt.id === "string" ? receipt.id : undefined,
+    });
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ChioToolError({
+      verdict: "sidecar_unreachable",
+      guard: "",
+      reason: `Chio /chio/verify returned non-JSON body: ${message}`,
+      receiptId: typeof receipt.id === "string" ? receipt.id : undefined,
+    });
+  }
+
+  return readAuthorityFromVerifyResponse(body);
+}
+
+function readAuthorityFromVerifyResponse(value: unknown): ChioReceiptAuthority {
+  if (value == null || typeof value !== "object") {
+    return {};
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    receipt_kind: receiptKindValue(stringField(record, "receipt_kind")),
+    boundary_class: boundaryClassValue(stringField(record, "boundary_class")),
+    trust_level: trustLevelValue(stringField(record, "trust_level")),
+    result: stringField(record, "result"),
+    authorized: booleanField(record, "authorized"),
+    ok: booleanField(record, "ok"),
+    signer_trusted: booleanField(record, "signer_trusted"),
+    signature_valid: booleanField(record, "signature_valid"),
+    receipt_id_valid: booleanField(record, "receipt_id_valid"),
+    parameter_hash_valid: booleanField(record, "parameter_hash_valid"),
+  };
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function booleanField(record: Record<string, unknown>, key: string): boolean | undefined {
+  const value = record[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function receiptKindValue(value: string | undefined): ChioReceiptAuthority["receipt_kind"] {
+  return value === "mediated_decision"
+    || value === "trace_observation"
+    || value === "advisory_evaluation"
+    ? value
+    : undefined;
+}
+
+function boundaryClassValue(value: string | undefined): ChioReceiptAuthority["boundary_class"] {
+  return value === "prevent" || value === "detect_only" || value === "advisory_only"
+    ? value
+    : undefined;
+}
+
+function trustLevelValue(value: string | undefined): ChioReceiptAuthority["trust_level"] {
+  return value === "mediated" || value === "verified" || value === "advisory"
+    ? value
+    : undefined;
 }
 
 function receiptAuthorityAllows(authority: ChioReceiptAuthority): boolean {

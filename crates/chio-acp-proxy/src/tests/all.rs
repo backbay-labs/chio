@@ -3488,6 +3488,147 @@ mod attestation_and_telemetry_tests {
         }
     }
 
+    /// Build a sequenced checker that always allows with a fresh
+    /// capability/receipt tuple, sized to a target number of authorizations.
+    fn always_allow_sequenced_checker(
+        requests: Arc<Mutex<Vec<AcpCapabilityRequest>>>,
+        count: usize,
+    ) -> SequencedChecker {
+        let verdicts = (0..count)
+            .map(|index| AcpVerdict {
+                allowed: true,
+                capability_id: Some(format!("cap-{index}")),
+                receipt_id: Some(format!("auth-{index}")),
+                receipt_request_id: Some(format!("req-{index}")),
+                reason: format!("allow #{index}"),
+            })
+            .collect();
+        SequencedChecker::new(requests, verdicts)
+    }
+
+    #[test]
+    fn interceptor_pending_capability_buffer_is_bounded() {
+        // Regression: previously the pending_capability_contexts buffer
+        // accepted unmatched contexts forever. Floods 100 toolCallId-less
+        // fs/read_text_file requests at a single session, then asserts
+        // the per-session pending buffer never exceeds the documented
+        // FIFO cap of 32 entries.
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let checker = always_allow_sequenced_checker(Arc::clone(&requests), 100);
+        let config = AcpProxyConfig::new("echo", "deadbeef")
+            .with_allowed_path_prefix("/home/user/project")
+            .with_allowed_command("cargo")
+            .with_server_id("proxy-server");
+        let interceptor = MessageInterceptor::with_kernel(
+            config,
+            None,
+            Some(Box::new(checker)),
+            AcpAttestationMode::BestEffort,
+        );
+
+        for index in 0..100 {
+            let read = json!({
+                "jsonrpc": "2.0",
+                "id": 400 + index,
+                "method": "fs/read_text_file",
+                "params": {
+                    "sessionId": "session-flood",
+                    "path": format!("/home/user/project/src/{index}.rs"),
+                    "capabilityToken": format!("token-{index}")
+                }
+            });
+            match interceptor
+                .intercept(Direction::AgentToClient, &read)
+                .expect("toolCallId-less fs reads should forward after the capability check")
+            {
+                InterceptResult::Forward(_) => {}
+                other => panic!("expected Forward, got {:?}", other),
+            }
+            // After every insertion the per-session pending buffer must
+            // stay within the documented FIFO cap.
+            assert!(
+                interceptor.pending_capability_context_count("session-flood") <= 32,
+                "pending capability context buffer exceeded cap of 32 after {} reads",
+                index + 1
+            );
+        }
+
+        // After flooding 100 contexts the final cap must hold.
+        assert_eq!(
+            interceptor.pending_capability_context_count("session-flood"),
+            32,
+            "pending capability buffer must hold exactly 32 contexts at the cap"
+        );
+    }
+
+    #[test]
+    fn interceptor_session_cancel_clears_pending_capability_contexts() {
+        // Regression: pending contexts that never bind to a session/update
+        // used to live for the lifetime of the proxy. A session/cancel
+        // now drains the per-session pending FIFO so captured
+        // authorization material does not leak across long-lived
+        // sessions.
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let checker = always_allow_sequenced_checker(Arc::clone(&requests), 4);
+        let config = AcpProxyConfig::new("echo", "deadbeef")
+            .with_allowed_path_prefix("/home/user/project")
+            .with_allowed_command("cargo")
+            .with_server_id("proxy-server");
+        let interceptor = MessageInterceptor::with_kernel(
+            config,
+            None,
+            Some(Box::new(checker)),
+            AcpAttestationMode::BestEffort,
+        );
+
+        for index in 0..4 {
+            let read = json!({
+                "jsonrpc": "2.0",
+                "id": 500 + index,
+                "method": "fs/read_text_file",
+                "params": {
+                    "sessionId": "session-cancel",
+                    "path": format!("/home/user/project/src/{index}.rs"),
+                    "capabilityToken": format!("token-{index}")
+                }
+            });
+            interceptor
+                .intercept(Direction::AgentToClient, &read)
+                .expect("fs/read should forward after the capability check");
+        }
+        assert_eq!(
+            interceptor.pending_capability_context_count("session-cancel"),
+            4,
+            "expected 4 pending contexts before session/cancel"
+        );
+
+        let cancel = json!({
+            "jsonrpc": "2.0",
+            "id": 599,
+            "method": "session/cancel",
+            "params": {
+                "sessionId": "session-cancel"
+            }
+        });
+        match interceptor
+            .intercept(Direction::AgentToClient, &cancel)
+            .expect("session/cancel should forward")
+        {
+            InterceptResult::Forward(_) => {}
+            other => panic!("expected Forward for session/cancel, got {:?}", other),
+        }
+        assert_eq!(
+            interceptor.pending_capability_context_count("session-cancel"),
+            0,
+            "session/cancel must drain pending capability contexts"
+        );
+        assert_eq!(
+            interceptor.live_capability_context_count_for_session("session-cancel"),
+            0,
+            "session/cancel must drop live capability contexts for the session"
+        );
+    }
+
     #[test]
     fn interceptor_checker_denies_and_errors_fail_closed_before_builtin_guards() {
         let deny_requests = Arc::new(Mutex::new(Vec::new()));

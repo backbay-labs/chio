@@ -1,5 +1,22 @@
 use std::collections::HashMap;
 
+/// Maximum number of pending capability contexts buffered per session.
+///
+/// Pending contexts accumulate when ACP `fs/read_text_file`,
+/// `fs/write_text_file`, or `terminal/create` requests pass the capability
+/// gate but their matching `session/update` `toolCallId` never arrives
+/// (the agent ignores the result, the session crashes, the IDE closes the
+/// tab) or arrives ambiguously (zero or several matching pending
+/// contexts). Without a bound the per-session FIFO would grow indefinitely
+/// across the lifetime of long-running sessions.
+///
+/// 32 is comfortably above any plausible in-flight depth for normal ACP
+/// agents -- a single tool call cycle queues at most one pending context,
+/// and even bursty editors do not pre-fetch dozens of files before any
+/// `session/update` arrives. When the cap is exceeded the oldest entry is
+/// evicted in FIFO order, preserving the most recent authorizations.
+const MAX_PENDING_CAPABILITY_CONTEXTS_PER_SESSION: usize = 32;
+
 /// Direction of a message flowing through the proxy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
@@ -174,6 +191,20 @@ impl MessageInterceptor {
             (Direction::AgentToClient, Some(AcpMethod::SessionUpdate)) => {
                 self.intercept_session_update(message)
             }
+            // -- Client-to-agent or agent-to-client: session cancel --
+            //
+            // session/cancel marks the end of a logical session: any
+            // pending capability contexts that have not been bound by
+            // now never will be (no future session/update can carry
+            // their toolCallId), so the per-session pending buffer is
+            // purged to release the captured authorization material.
+            // The live capability index is also dropped because every
+            // in-flight tool call associated with the session is
+            // implicitly cancelled.
+            (_, Some(AcpMethod::SessionCancel)) => {
+                self.intercept_session_cancel(message);
+                Ok(InterceptResult::Forward(message.clone()))
+            }
             // -- New ACP methods: forward unchanged (no guard needed) --
             (_, Some(AcpMethod::Authenticate))
             | (_, Some(AcpMethod::SessionLoad))
@@ -198,6 +229,29 @@ impl MessageInterceptor {
     #[cfg(test)]
     pub fn permission_mapper(&self) -> &PermissionMapper {
         &self.permission_mapper
+    }
+
+    /// Inspect the per-session pending capability buffer size for tests.
+    #[cfg(test)]
+    pub fn pending_capability_context_count(&self, session_id: &str) -> usize {
+        self.pending_capability_contexts
+            .lock()
+            .ok()
+            .and_then(|pending| pending.get(session_id).map(Vec::len))
+            .unwrap_or(0)
+    }
+
+    /// Inspect the live capability buffer size for tests.
+    #[cfg(test)]
+    pub fn live_capability_context_count_for_session(&self, session_id: &str) -> usize {
+        self.live_capability_contexts
+            .lock()
+            .ok()
+            .map(|contexts| {
+                let prefix = format!("tool:{session_id}:");
+                contexts.keys().filter(|key| key.starts_with(&prefix)).count()
+            })
+            .unwrap_or(0)
     }
 
     // -- private handlers --
@@ -738,10 +792,23 @@ impl MessageInterceptor {
             return;
         }
         if let Ok(mut pending) = self.pending_capability_contexts.lock() {
-            pending
-                .entry(session_id.to_string())
-                .or_default()
-                .push(PendingCapabilityContext { operation, context });
+            let entry = pending.entry(session_id.to_string()).or_default();
+            entry.push(PendingCapabilityContext { operation, context });
+            // Cap the per-session pending buffer at
+            // MAX_PENDING_CAPABILITY_CONTEXTS_PER_SESSION. When the cap is
+            // exceeded the oldest (FIFO) entry is evicted so unmatched
+            // contexts cannot grow without bound across long-lived
+            // sessions. The most recent authorizations are preserved
+            // because they are most likely to match the next
+            // session/update event.
+            while entry.len() > MAX_PENDING_CAPABILITY_CONTEXTS_PER_SESSION {
+                let _evicted = entry.remove(0);
+                tracing::warn!(
+                    session_id = %session_id,
+                    cap = MAX_PENDING_CAPABILITY_CONTEXTS_PER_SESSION,
+                    "evicted oldest pending capability context to enforce per-session cap"
+                );
+            }
         }
     }
 
@@ -825,6 +892,48 @@ impl MessageInterceptor {
     fn clear_tool_capability_context(&self, session_id: &str, tool_call_id: &str) {
         if let Ok(mut contexts) = self.live_capability_contexts.lock() {
             contexts.remove(&tool_capability_context_key(session_id, tool_call_id));
+        }
+    }
+
+    /// Clear all pending and live capability contexts for a session.
+    ///
+    /// Called on `session/cancel` so the per-session pending FIFO and the
+    /// `tool:<session>:*` live entries are released as soon as the agent
+    /// signals the session is over. Without this, sessions that cancel
+    /// before their pending `fs/read` / `terminal/create` requests bind to
+    /// a `session/update` would leak captured authorization material for
+    /// the lifetime of the proxy.
+    fn intercept_session_cancel(&self, message: &Value) {
+        let Some(params) = message.get("params") else {
+            return;
+        };
+        let session_id = params
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .or_else(|| params.get("session_id").and_then(Value::as_str));
+        let Some(session_id) = session_id else {
+            return;
+        };
+        if session_id.trim().is_empty() {
+            return;
+        }
+        let pending_drained = self
+            .pending_capability_contexts
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.remove(session_id))
+            .map(|entries| entries.len())
+            .unwrap_or(0);
+        if let Ok(mut contexts) = self.live_capability_contexts.lock() {
+            let tool_prefix = format!("tool:{session_id}:");
+            contexts.retain(|key, _| !key.starts_with(&tool_prefix));
+        }
+        if pending_drained > 0 {
+            tracing::info!(
+                session_id = %session_id,
+                pending_drained,
+                "session/cancel cleared pending capability contexts"
+            );
         }
     }
 }
