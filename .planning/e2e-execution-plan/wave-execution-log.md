@@ -127,3 +127,43 @@ Wave 2 close: parent paper is in submission-ready state for USENIX Security 2027
 - `papers/programmable-sovereignty/supplementary/` (lean-source.tar.gz + manifests + README)
 
 HUMAN GATE stacked for end-of-session: human registers an account at USENIX submission portal, uploads `paper-usenix.pdf`, attaches `supplementary/lean-source.tar.gz`, drafts Open Science statement (the supplementary `README.md` is a 1-page reviewer overview that the human can adapt for the Open Science appendix), drafts Ethics Considerations statement, clicks Submit.
+
+## Wave 3: dispatch start
+
+Timestamp: 2026-05-18 (same orchestrator session).
+
+Dispatched (parallel, single message, two Agent calls):
+- W3.a: V2 tier-1 Docker localhost federation. Skill: writing-plans + executing-plans (plan + scaffolding only; full implementation is 2-3 weeks per synthesis plan and out of scope for a single-subagent dispatch). Deliverable: detailed PLAN.md, docker-compose.yml stub, failing E2E test scaffolding, CI workflow file, all on a fresh branch.
+- W3.b: Sensor-grounded paper USENIX template conversion + anonymization audit-and-fix. Skill: executing-plans (mechanical work mirroring Wave 2.a/b for the parent paper).
+
+## Wave 3: deliverables landed
+
+Timestamp: 2026-05-18 (same orchestrator session).
+
+W3.a (V2 tier-1 federation plan + scaffolding) -- COMPLETE.
+- Landed on a separate branch `wave-3-v2-tier-1` (off `research/programmable-sovereignty-papers`). Single commit `b19c30c5a`. NOT merged to parent. Parked for future development.
+- `.planning/wave-3-v2-tier-1/PLAN.md`: 31 numbered tasks, 114 executable checkbox steps. Failing test first, then minimal implementation, then incremental enrichment.
+- `infra/federation-localhost/docker-compose.yml`: stub for two kernel containers on a bridge network.
+- `crates/chio-federation/tests/e2e_two_kernel_docker.rs`: failing E2E test, `#[ignore]`-gated so `cargo test --workspace` stays green.
+- `.github/workflows/federation-localhost.yml`: CI lane scaffolding.
+- `cargo check --workspace` exits 0 (45.9s); `cargo test -p chio-federation --test e2e_two_kernel_docker -- --ignored` correctly panics at the first contract assertion (compose file missing -> next PLAN.md task).
+- `tokio` added to `chio-federation` `[dev-dependencies]`; `tonic` / `prost` are introduced in PLAN.md task 1.
+- Voice-rule clean.
+
+W3.b (sensor-grounded USENIX prep) -- COMPLETE.
+- USENIX template `usenix2019_v3.sty` + `usenix-2020-09.sty` copied into `papers/sensor-grounded-admission/`.
+- New `paper-usenix.tex` built 4-pass clean: 12 pages total, 10 body (well under USENIX 13-page limit).
+- Anonymization fix: `paper.tex` author block rewritten from `Anonymous for external review\\Chio Project` to `Anonymous Author(s)\\Anonymous Institution` (uniform with parent paper Wave 1 Finding 1 convention).
+- Sensor-grounded `Makefile` copied from parent and reparameterized; `make submit-check` exit 0.
+- Supplementary package at `papers/sensor-grounded-admission/supplementary/`: lean-source.tar.gz (41 KB) verified buildable in scratch via `lake build`; proof-manifest.toml + theorem-inventory.json list the four sensor-grounded theorems with axiom output:
+  1. `admission_predicate_separates_healthy_and_degraded_witnesses` -- `[propext, Classical.choice, Quot.sound]`
+  2. `partition_contingency_mode_iff_degraded_subset` -- `[propext]`
+  3. `healthy_attestation_required_for_destructive_admission` -- `[propext]`
+  4. `degraded_sensor_admission_requires_re_attestation` -- `[propext, Quot.sound]`
+  All standard Lean 4 kernel axioms; no project-local axioms, no `sorry`.
+- Reviewer-facing `README.md` at `supplementary/`.
+- Voice-rule clean; Lean revert clean.
+
+Wave 3 close: sensor-grounded paper is in submission-ready state for USENIX Security 2027 Cycle 1; V2 tier-1 federation scaffolding parked on its own branch with a 31-task PLAN.md ready for future execution.
+
+HUMAN GATE stacked for end-of-session (sensor-grounded portal upload): same shape as parent paper.
