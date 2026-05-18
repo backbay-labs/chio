@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-05-18",
+  "paper": "Programmable Sovereignty: Lean-Attestable Constitutions Over Capability-Bounded Federated Receipts",
+  "target_venue": "USENIX Security 2027 Cycle 1",
+  "lean_toolchain": "leanprover/lean4:v4.28.0-rc1",
+  "theorems": [
+    {
+      "name": "treaty_admission_iff_predicate_intersection",
+      "module": "Chio.Treaty.Intersection",
+      "declaration": "Chio.Treaty.treaty_admission_iff_predicate_intersection",
+      "paper_section": "Section 4 (Formal Model), treaty intersection",
+      "axioms": ["propext"]
+    },
+    {
+      "name": "treaty_admission_stable_under_ladder_floor",
+      "module": "Chio.Treaty.Intersection",
+      "declaration": "Chio.Treaty.treaty_admission_stable_under_ladder_floor",
+      "paper_section": "Section 4 (Formal Model), ladder-floor stability",
+      "axioms": ["propext"]
+    },
+    {
+      "name": "amendment_admissible_iff_backward_refinement",
+      "module": "Chio.Treaty.Intersection",
+      "declaration": "Chio.Treaty.amendment_admissible_iff_backward_refinement",
+      "paper_section": "Section 4 (Formal Model), amendment refinement",
+      "axioms": []
+    },
+    {
+      "name": "amendment_without_refinement_rejected",
+      "module": "Chio.Treaty.Intersection",
+      "declaration": "Chio.Treaty.amendment_without_refinement_rejected",
+      "paper_section": "Section 4 (Formal Model), amendment refinement",
+      "axioms": []
+    }
+  ]
+}

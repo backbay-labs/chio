@@ -1,25 +1,25 @@
-% USENIX Security / NDSS variant build of paper.tex
+% USENIX Security build of paper.tex
 %
 % Per action-plan M10 (produce both USENIX and acmart builds from one source),
 % this file shares the content sections with paper.tex via \input{sections/...}
-% but switches the document class so the manuscript can target a USENIX-shaped
-% venue without rewriting the body.
+% but switches the document class so the manuscript targets USENIX Security
+% without rewriting the body.
 %
-% NOTE: this stand-in uses the standard article class with USENIX-flavored
-% defaults (10pt, two-column, letterpaper, Times). When the USENIX-track
-% submission timeline is firm, replace the \documentclass line with the
-% venue's official template (usenix2019_v3.cls for USENIX Security; the
-% Internet Society's NDSS template for NDSS).
-\documentclass[10pt,twocolumn,letterpaper]{article}
+% Target venue: USENIX Security 2027 (Cycle 1, deadline 2026-08-25).
+% Submission is double-blind; authors and affiliation are anonymized below.
+% The official template files (usenix2019_v3.sty, downloaded from
+% https://www.usenix.org/conferences/author-resources/paper-templates) sit
+% beside this .tex in the paper directory so the build is self-contained.
 
-\usepackage[letterpaper,margin=0.75in]{geometry}
-\usepackage{times}
+\documentclass[letterpaper,twocolumn,10pt]{article}
+\usepackage{usenix2019_v3}
+
+\usepackage{amsmath}
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{xurl}
-\usepackage{hyperref}
-\usepackage{cite}
 \usepackage{tikz}
+\usepackage{enumitem}
 \usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric}
 
 % Stand-ins for acmart macros the section sources use.
@@ -28,13 +28,23 @@
 \providecommand{\Description}[1]{}
 \Urlmuskip=0mu plus 1mu
 
-% Replace acmart's \maketitle preamble. USENIX papers usually have a flat
-% title block; the abstract sits in its own paragraph at the start.
-\title{Programmable Sovereignty: Lean-Attestable Constitutions Over Capability-Bounded Federated Receipts}
-\author{Anonymous for external review}
+% USENIX papers do not print a date.
 \date{}
 
+% USENIX titles are 14pt bold; the template's \maketitle handles formatting.
+\title{\Large \bf Programmable Sovereignty: Lean-Attestable Constitutions Over Capability-Bounded Federated Receipts}
+
+% Double-blind submission: anonymous author block per USENIX Security 2027
+% double-blind policy. Institution slot uses "Anonymous Institution" per
+% Wave 1 anonymization Finding 1 (uniform anonymous metadata across
+% submissions).
+\author{
+{\rm Anonymous Author(s)}\\
+Anonymous Institution
+}
+
 \begin{document}
+
 \maketitle
 
 \begin{abstract}
