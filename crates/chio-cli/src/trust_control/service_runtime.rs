@@ -1109,8 +1109,13 @@ fn evaluate_federation_policy_request(
 
     if let Some(minimum_score) = record.minimum_reputation_score {
         let read_context = chio_kernel::ReceiptReadContext::admin_service();
-        let trusted_kernel_keys =
-            trusted_kernel_keys_from_service_config(&state.config).unwrap_or_default();
+        let trusted_kernel_keys = trusted_kernel_keys_from_service_config(&state.config)
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "trust service authority material is configured but could not be loaded for federation admission: {error}"
+                ))
+            })?
+            .unwrap_or_default();
         let inspection = issuance::inspect_local_reputation_with_read_context(
             &request.subject_key,
             state.config.receipt_db_path.as_deref(),

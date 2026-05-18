@@ -440,8 +440,17 @@ async fn handle_credit_facility_report(
         Err(response) => return response,
     };
 
-    let trusted_kernel_keys =
-        trusted_kernel_keys_from_service_config(&state.config).unwrap_or_default();
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
     match build_credit_facility_report_from_store(
         &receipt_store,
         receipt_db_path,
@@ -537,8 +546,17 @@ async fn handle_credit_bond_report(
         Err(response) => return response,
     };
 
-    let trusted_kernel_keys =
-        trusted_kernel_keys_from_service_config(&state.config).unwrap_or_default();
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
     match build_credit_bond_report_from_store(
         &receipt_store,
         receipt_db_path,
@@ -732,8 +750,17 @@ async fn handle_credit_backtest_report(
         Err(response) => return response,
     };
 
-    let trusted_kernel_keys =
-        trusted_kernel_keys_from_service_config(&state.config).unwrap_or_default();
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
     match build_credit_backtest_report_from_store(
         &receipt_store,
         receipt_db_path,
@@ -1684,8 +1711,17 @@ async fn handle_underwriting_decision_report(
         Err(response) => return response,
     };
 
-    let trusted_kernel_keys =
-        trusted_kernel_keys_from_service_config(&state.config).unwrap_or_default();
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
     match build_underwriting_decision_report_from_store(
         &receipt_store,
         receipt_db_path,
@@ -1728,8 +1764,17 @@ async fn handle_underwriting_simulation_report(
         Err(response) => return response,
     };
 
-    let trusted_kernel_keys =
-        trusted_kernel_keys_from_service_config(&state.config).unwrap_or_default();
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
     match build_underwriting_simulation_report_from_store(
         &receipt_store,
         receipt_db_path,
@@ -1916,8 +1961,17 @@ async fn handle_local_reputation(
     }
 
     let read_context = ReceiptReadContext::admin_service();
-    let trusted_kernel_keys =
-        trusted_kernel_keys_from_service_config(&state.config).unwrap_or_default();
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
     match issuance::inspect_local_reputation_with_read_context(
         &subject_key,
         state.config.receipt_db_path.as_deref(),
@@ -1970,8 +2024,17 @@ async fn handle_reputation_compare(
     }
 
     let read_context = ReceiptReadContext::admin_service();
-    let trusted_kernel_keys =
-        trusted_kernel_keys_from_service_config(&state.config).unwrap_or_default();
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
     let local = match issuance::inspect_local_reputation_with_read_context(
         &subject_key,
         state.config.receipt_db_path.as_deref(),

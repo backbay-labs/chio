@@ -486,15 +486,20 @@ pub fn verify_compliance_certificate(
         .contains(&cert.signer_key.to_hex());
     let signer_matches_body = cert.signer_key == cert.body.kernel_key;
 
-    // 2. Body consistency checks.
-    let body_ok = cert.body.all_signatures_valid
+    // 2. Body consistency checks. `body_ok_excluding_signer_match` lets the
+    // failure summary distinguish a body that is broken in some way OTHER
+    // than signer-vs-body mismatch from one whose only fault is the mismatch.
+    // Without that split, every signer-mismatch failure also tripped the
+    // generic "body consistency check failed" reason, producing a redundant
+    // entry that obscured the underlying cause.
+    let body_ok_excluding_signer_match = cert.body.all_signatures_valid
         && cert.body.schema == COMPLIANCE_CERTIFICATE_SCHEMA
-        && signer_matches_body
         && cert.body.chain_continuous
         && cert.body.scope_compliant
         && cert.body.budget_compliant
         && cert.body.guards_compliant
         && cert.body.anomalies.is_empty();
+    let body_ok = body_ok_excluding_signer_match && signer_matches_body;
 
     if mode == VerificationMode::Lightweight || receipts.is_none() {
         return CertificateVerificationResult {
@@ -506,7 +511,13 @@ pub fn verify_compliance_certificate(
             summary: if sig_valid && signer_trusted && body_ok {
                 "lightweight verification passed".to_string()
             } else {
-                verification_failure_summary(sig_valid, signer_trusted, body_ok, signer_matches_body, 0)
+                verification_failure_summary(
+                    sig_valid,
+                    signer_trusted,
+                    body_ok_excluding_signer_match,
+                    signer_matches_body,
+                    0,
+                )
             },
         };
     }
@@ -536,7 +547,7 @@ pub fn verify_compliance_certificate(
             verification_failure_summary(
                 sig_valid,
                 signer_trusted,
-                body_ok,
+                body_ok_excluding_signer_match,
                 signer_matches_body,
                 failures,
             )
@@ -544,10 +555,18 @@ pub fn verify_compliance_certificate(
     }
 }
 
+/// Build a human-readable reason list for a failed certificate verification.
+///
+/// `body_ok_excluding_signer_match` must reflect ONLY the body conjuncts that
+/// are independent of the signer-vs-body comparison (schema, signatures,
+/// chain continuity, scope/budget/guards, anomalies). The signer mismatch is
+/// reported via its own dedicated reason, so folding it back into a generic
+/// "body consistency check failed" entry would produce a redundant message
+/// whose root cause is already named on the previous line.
 fn verification_failure_summary(
     sig_valid: bool,
     signer_trusted: bool,
-    body_ok: bool,
+    body_ok_excluding_signer_match: bool,
     signer_matches_body: bool,
     receipt_failures: u64,
 ) -> String {
@@ -561,7 +580,7 @@ fn verification_failure_summary(
     if !signer_matches_body {
         reasons.push("certificate signer does not match body kernel key".to_string());
     }
-    if !body_ok {
+    if !body_ok_excluding_signer_match {
         reasons.push("body consistency check failed".to_string());
     }
     if receipt_failures > 0 {

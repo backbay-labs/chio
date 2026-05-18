@@ -2103,19 +2103,27 @@ fn load_behavioral_feed_signing_keypair(
 
 /// Derive a trusted-kernel-key list from a trust service's configured authority
 /// material. Returns the local kernel's public key when an authority source is
-/// configured, or `None` when neither a seed file nor authority db is present.
+/// configured and loadable, or `Ok(None)` when neither a seed file nor
+/// authority db is present. Returns `Err(..)` when an authority source IS
+/// configured but cannot be loaded (missing file, malformed YAML, unreadable
+/// sqlite, etc.) so that operators see misconfigured trust roots at startup
+/// rather than discovering them later as silently-empty reputation scores.
+///
 /// Plumbing this into reputation scoring prevents an empty trust set from
 /// silently filtering out every locally signed receipt (see
 /// `chio-reputation::receipt_integrity_valid`).
 pub(crate) fn trusted_kernel_keys_from_service_config(
     config: &TrustServiceConfig,
-) -> Option<Vec<String>> {
-    let keypair = load_behavioral_feed_signing_keypair(
-        config.authority_seed_path.as_deref(),
-        config.authority_db_path.as_deref(),
-    )
-    .ok()?;
-    Some(vec![keypair.public_key().to_hex()])
+) -> Result<Option<Vec<String>>, CliError> {
+    let seed = config.authority_seed_path.as_deref();
+    let db = config.authority_db_path.as_deref();
+    match (seed, db) {
+        (None, None) => Ok(None),
+        (Some(_), Some(_)) | (Some(_), None) | (None, Some(_)) => {
+            let keypair = load_behavioral_feed_signing_keypair(seed, db)?;
+            Ok(Some(vec![keypair.public_key().to_hex()]))
+        }
+    }
 }
 
 #[cfg(test)]
