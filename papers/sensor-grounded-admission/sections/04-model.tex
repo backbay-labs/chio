@@ -57,7 +57,39 @@ The partition-contingency mode is
   &\quad \mathsf{attestedHealthy}(K, \hat r) \,\sqsubset\, \mathsf{Req}_K(\hat r.\mathit{family}),
 \end{aligned}
 \]
-where $\sqsubset$ denotes the strict-sublist relation (sublist witness paired with list inequality) and $\mathsf{attestedHealthy}$ is the order-preserving subsequence of $\mathsf{Req}_K$ entries that the attestation asserts healthy. The biconditional is \emph{partition\_\allowbreak contingency\_\allowbreak mode\_\allowbreak iff\_\allowbreak degraded\_\allowbreak subset}. The forward direction extracts the sublist witness from $\mathsf{attestedHealthy} = \mathsf{filter}(\cdot, \mathsf{Req}_K)$ and establishes list-distinctness from the strict length inequality. The backward direction recovers the strict length inequality via $\mathsf{Sublist.length\_le}$ together with $\mathsf{Sublist.eq\_of\_length}$. Both rely on the structural lemma that filtering preserves the sublist relation.
+where $\sqsubset$ denotes the strict-sublist relation (sublist witness paired with list inequality) and $\mathsf{attestedHealthy}$ is the order-preserving subsequence of $\mathsf{Req}_K$ entries that the attestation asserts healthy. The biconditional is \emph{partition\_\allowbreak contingency\_\allowbreak mode\_\allowbreak iff\_\allowbreak degraded\_\allowbreak subset}. The forward direction extracts the sublist witness from $\mathsf{attestedHealthy} = \mathsf{filter}(\cdot, \mathsf{Req}_K)$ and establishes list-distinctness from the strict length inequality. The backward direction recovers the strict length inequality via $\mathsf{Sublist.length\_le}$ together with $\mathsf{Sublist.eq\_of\_length}$. Both rely on the structural lemma that filtering preserves the sublist relation. Figure~\ref{fig:admission-decision-tree} renders the resulting three-way verdict as a single traversal over the attestation.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=8mm and 10mm,
+  every node/.style={font=\footnotesize, align=center},
+  rootbox/.style={draw, rounded corners=2pt, fill=black!5, inner sep=4pt, minimum width=42mm, minimum height=8mm},
+  decision/.style={diamond, draw, aspect=2.4, inner sep=1pt, minimum width=42mm, minimum height=11mm, fill=black!3},
+  accept/.style={draw, rounded corners=2pt, fill=green!18, inner sep=4pt, minimum width=38mm, minimum height=10mm},
+  caution/.style={draw, rounded corners=2pt, fill=yellow!30, inner sep=4pt, minimum width=38mm, minimum height=10mm},
+  reject/.style={draw, rounded corners=2pt, fill=red!18, inner sep=4pt, minimum width=38mm, minimum height=10mm},
+  arrow/.style={-{Latex[length=2mm]}, thick},
+  edgelabel/.style={font=\scriptsize, fill=white, inner sep=1pt}]
+  \node[rootbox] (root) {Receipt $\hat r = (r, A)$ arrives};
+  \node[decision, below=of root] (parse) {Does $A$ parse and verify?};
+  \node[reject, right=18mm of parse] (rej1) {Refuse\\\scriptsize\ttfamily attestation\_parse\_failed};
+  \node[decision, below=of parse] (cover) {$\mathsf{Req}_K \subseteq \mathsf{attHealthy}(A)$?};
+  \node[accept, left=15mm of cover] (acc) {Admit:\\receipt-backed mode};
+  \node[decision, below=of cover] (subset) {$\mathsf{attHealthy}(A) \sqsubset \mathsf{Req}_K$?};
+  \node[caution, left=15mm of subset] (pc) {Admit:\\partition-contingency\\\scriptsize(reconciliation obligation)};
+  \node[reject, right=15mm of subset] (rej2) {Refuse\\\scriptsize\ttfamily required\_set\_uncovered};
+  \draw[arrow] (root) -- (parse);
+  \draw[arrow] (parse) -- node[edgelabel, above]{no} (rej1);
+  \draw[arrow] (parse) -- node[edgelabel, right]{yes} (cover);
+  \draw[arrow] (cover) -- node[edgelabel, above]{yes} (acc);
+  \draw[arrow] (cover) -- node[edgelabel, right]{no} (subset);
+  \draw[arrow] (subset) -- node[edgelabel, above]{yes} (pc);
+  \draw[arrow] (subset) -- node[edgelabel, above]{no} (rej2);
+\end{tikzpicture}
+\caption{Admission decision tree. The attestation field drives a three-way verdict: receipt-backed admission when the healthy sensor set covers the constitution's required set; partition-contingency admission with a reconciliation obligation when the healthy set is a strict sublist of the required set; refusal otherwise. The decision is structurally decidable on the attestation field; Theorem~1 names the witness pair, Theorem~2 names the strict-sublist biconditional.}
+\label{fig:admission-decision-tree}
+\end{figure*}
 
 The destructive-admission floor is conditioned on a projection of the admission predicate's three-conjunct shape. The supporting theorem \emph{healthy\_\allowbreak attestation\_\allowbreak required\_\allowbreak for\_\allowbreak destructive\_\allowbreak admission} extracts the required-set coverage Boolean from any admitted receipt via a $\mathsf{Bool.and\_eq\_true}$ decomposition. The destructive-family discriminator appears in the signature for prose alignment with the floor's intended invariant but does not appear in the proof body; the projection holds for any admitted receipt, and a quorum-required admission rejects any cosigner whose attestation falls short of the required set.
 

@@ -4,7 +4,42 @@
 The substrate gains one structural addition: a signed attestation of the kernel's sensing posture, embedded in every receipt as a first-class field, canonicalized into the same subject digest as the receipt body. The attestation is not metadata. It is constitutional evidence at the same load-bearing rank as the receipt body, and the admission predicate is conditioned on it.
 
 \paragraph{Sensor-state attestation.}
-A sensor-state attestation is a finite list of provider records. Each record names a provider identifier, a provider kind tag (kernel callout, network-flow verdict, signature-drift detector, supply-chain runtime guard, behavioral telemetry, or a small fixed set of other tags), four Boolean state flags (\emph{installed}, \emph{active}, \emph{healthy}, \emph{degraded}), a list of degradation reason strings, a non-negative count of dropped events since the last attestation reset, and a non-negative count of deadline misses over the same window. The flags and counts are reported by the kernel's own observability path, which is part of the kernel's trusted code base; the attestation is a falsifiable signed claim about that path's state at the captured timestamp.
+A sensor-state attestation is a finite list of provider records. Each record names a provider identifier, a provider kind tag (kernel callout, network-flow verdict, signature-drift detector, supply-chain runtime guard, behavioral telemetry, or a small fixed set of other tags), four Boolean state flags (\emph{installed}, \emph{active}, \emph{healthy}, \emph{degraded}), a list of degradation reason strings, a non-negative count of dropped events since the last attestation reset, and a non-negative count of deadline misses over the same window. The flags and counts are reported by the kernel's own observability path, which is part of the kernel's trusted code base; the attestation is a falsifiable signed claim about that path's state at the captured timestamp. Figure~\ref{fig:attestation-layout} shows how the per-provider records sit beside the body inside the signed envelope.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  every node/.style={font=\footnotesize},
+  envbox/.style={draw, thick, rounded corners=2pt, inner sep=5pt},
+  hdr/.style={draw, rounded corners=1pt, fill=black!4, align=center, inner sep=3pt, minimum width=62mm},
+  body/.style={draw, rounded corners=1pt, fill=black!4, align=left, inner sep=3pt, minimum width=62mm},
+  attbox/.style={draw, rounded corners=1pt, fill=black!8, align=left, inner sep=3pt, minimum width=62mm},
+  sig/.style={draw, rounded corners=1pt, fill=black!4, align=center, inner sep=3pt, minimum width=62mm}]
+  \node[hdr] (env) {Signed receipt envelope (DSSE, Ed25519)};
+  \node[body, below=1.2mm of env] (rbody) {%
+    \textbf{Receipt body}\\
+    \scriptsize\ttfamily \{family, agent, action, evidence\}};
+  \node[attbox, below=1.2mm of rbody] (att) {%
+    \textbf{Sensor-state attestation}\\[1pt]
+    \begin{tabular}{@{}l@{\hspace{1mm}}c@{\hspace{0.7mm}}c@{\hspace{0.7mm}}c@{\hspace{0.7mm}}c@{\hspace{1mm}}c@{}}
+      \scriptsize\ttfamily provider & \scriptsize\textit{i} & \scriptsize\textit{a} & \scriptsize\textit{h} & \scriptsize\textit{d} & \scriptsize\textit{drop/miss} \\
+      \scriptsize\ttfamily endpointSec & \scriptsize T & \scriptsize T & \scriptsize T & \scriptsize F & \scriptsize 0/0 \\
+      \scriptsize\ttfamily networkExt  & \scriptsize T & \scriptsize T & \scriptsize T & \scriptsize F & \scriptsize 0/0 \\
+      \scriptsize\ttfamily sigDrift    & \scriptsize T & \scriptsize T & \scriptsize F & \scriptsize T & \scriptsize 3/1 \\
+      \scriptsize\ttfamily supplyGuard & \scriptsize T & \scriptsize F & \scriptsize F & \scriptsize F & \scriptsize 0/0 \\
+    \end{tabular}\\[1pt]
+    \scriptsize\ttfamily clock:\{capturedAt, src, sync, uncMs\}\\
+    \scriptsize\ttfamily substrateKeyId};
+  \node[sig, below=1.2mm of att] (signode) {Signature over canonical-JSON subject digest};
+  \node[envbox, fit=(env)(rbody)(att)(signode)] (envelope) {};
+  \draw[decorate, decoration={brace, amplitude=7pt, raise=1pt, mirror}]
+    (rbody.north west) -- (att.south west)
+    node[midway, left=10pt, align=right, font=\scriptsize]
+    {body and\\attestation\\both covered\\by subject\\digest};
+\end{tikzpicture}
+\caption{Sensor-state attestation traveling with every signed receipt. The substrate's signing key covers both the body bytes and the per-sensor health record, so the verifier evaluates substrate posture as part of admission, not as a side channel. Flag column headings: \emph{i}nstalled, \emph{a}ctive, \emph{h}ealthy, \emph{d}egraded.}
+\label{fig:attestation-layout}
+\end{figure}
 
 The four flags are not redundant. A provider \emph{installed} but not \emph{active} is configured and quiescent. A provider \emph{active} but not \emph{healthy} is running but not producing trustworthy output (clock skew, missing entitlement, hung downstream channel). A provider \emph{healthy} but \emph{degraded} is producing output with known limitations recorded in the degradation-reason list. The four flags together describe a provider's posture at a resolution where the constitution can name which combinations admit which receipt families.
 

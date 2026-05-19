@@ -401,3 +401,90 @@
   address      = {Berkeley, CA, USA},
   url          = {https://www.usenix.org/conference/hotsec-08/research-challenges-security-control-systems}
 }
+
+% --------------------------------------------------------------------------
+% 15. TEE-compromise primary sources (the residual-pushed-one-layer-down
+%     lineage for the single-key-collapse row in Section 9).
+% --------------------------------------------------------------------------
+
+@inproceedings{murdockPlundervolt2020,
+  author       = {Murdock, Kit and Oswald, David and Garcia, Flavio D. and Van Bulck, Jo and Gruss, Daniel and Piessens, Frank},
+  title        = {Plundervolt: Software-based Fault Injection Attacks against {Intel SGX}},
+  booktitle    = {Proceedings of the 41st IEEE Symposium on Security and Privacy (S\&P)},
+  year         = {2020},
+  publisher    = {IEEE},
+  address      = {Los Alamitos, CA, USA},
+  doi          = {10.1109/SP40000.2020.00057}
+}
+
+@inproceedings{vanbulckForeshadow2018,
+  author       = {Van Bulck, Jo and Minkin, Marina and Weisse, Ofir and Genkin, Daniel and Kasikci, Baris and
+                  Piessens, Frank and Silberstein, Mark and Wenisch, Thomas F. and Yarom, Yuval and Strackx, Raoul},
+  title        = {Foreshadow: Extracting the Keys to the {Intel SGX} Kingdom with Transient Out-of-Order Execution},
+  booktitle    = {Proceedings of the 27th USENIX Security Symposium},
+  pages        = {991--1008},
+  year         = {2018},
+  publisher    = {USENIX Association},
+  address      = {Berkeley, CA, USA},
+  url          = {https://www.usenix.org/conference/usenixsecurity18/presentation/bulck}
+}
+
+@inproceedings{moghimiDownfall2024,
+  author       = {Moghimi, Daniel},
+  title        = {Downfall: Exploiting Speculative Data Gathering},
+  booktitle    = {Proceedings of the 33rd USENIX Security Symposium},
+  year         = {2024},
+  publisher    = {USENIX Association},
+  address      = {Berkeley, CA, USA},
+  url          = {https://www.usenix.org/conference/usenixsecurity24/presentation/moghimi}
+}
+
+@inproceedings{koglerHalfDouble2022,
+  author       = {Kogler, Andreas and Juffinger, Jonas and Qazi, Salman and Kim, Yoongu and Lipp, Moritz and
+                  Boichat, Nicolas and Shiu, Eric and Nissler, Mattias and Gruss, Daniel},
+  title        = {{Half-Double}: Hammering From the Next Row Over},
+  booktitle    = {Proceedings of the 31st USENIX Security Symposium},
+  pages        = {3807--3824},
+  year         = {2022},
+  publisher    = {USENIX Association},
+  address      = {Berkeley, CA, USA},
+  url          = {https://www.usenix.org/conference/usenixsecurity22/presentation/kogler-half-double}
+}
+
+% --------------------------------------------------------------------------
+% 16. 2025-2026 dominant TEE systems (Section 8 coverage extension): GPU
+%     confidential compute, cloud confidential VM offerings, container-tier
+%     confidential workloads, and PC-tier security processors.
+% --------------------------------------------------------------------------
+
+@misc{nvidiaHopperCC2024,
+  author       = {{NVIDIA Corporation}},
+  title        = {{NVIDIA} {Hopper} Confidential Computing on {H100} and {H200} {GPUs}},
+  year         = {2024},
+  howpublished = {NVIDIA Confidential Computing Whitepaper and Hopper Architecture Documentation},
+  url          = {https://www.nvidia.com/en-us/data-center/solutions/confidential-computing/}
+}
+
+@misc{googleConfidentialComputing2024,
+  author       = {{Google LLC}},
+  title        = {Google Cloud Confidential Computing: Confidential {VMs}, Confidential {GKE} Nodes, and Confidential Space Attestation},
+  year         = {2024},
+  howpublished = {Google Cloud Documentation},
+  url          = {https://cloud.google.com/confidential-computing}
+}
+
+@misc{cncfConfidentialContainers2024,
+  author       = {{Cloud Native Computing Foundation}},
+  title        = {{CNCF} Confidential Containers: {Kata}-rooted Trusted Execution with Remote Attestation Service},
+  year         = {2024},
+  howpublished = {CNCF Confidential Containers project documentation},
+  url          = {https://confidentialcontainers.org/}
+}
+
+@misc{microsoftPluton2023,
+  author       = {{Microsoft Corporation}},
+  title        = {{Microsoft} {Pluton}: Security Processor Architecture for {Windows}-class Platforms},
+  year         = {2023},
+  howpublished = {Microsoft Pluton documentation and Project Mu firmware sources},
+  url          = {https://learn.microsoft.com/en-us/windows/security/hardware-security/pluton/microsoft-pluton-security-processor}
+}
