@@ -18,7 +18,7 @@ This shape differs structurally from generic DSSE provenance. SLSA provenance an
 ]
 \node[envelope, label={[font=\bfseries\small]above:DSSE Envelope (payload + 2 signatures)}] (env) {%
   \begin{tikzpicture}
-    \node[hdrlabel] (payhead) {payload (canonical JCS bytes)};
+    \node[hdrlabel, align=center] (payhead) {payload (canonical JCS bytes)\\\scriptsize\itshape\textmd{bindingTuple = ten fields below}};
     \node[field, below=2mm of payhead.south, anchor=north] (f1) {treaty-scope hash};
     \node[field, below=0.8mm of f1.south, anchor=north] (f2) {ladder-intersection hash};
     \node[field, below=0.8mm of f2.south, anchor=north] (f3) {request digest};
@@ -28,9 +28,6 @@ This shape differs structurally from generic DSSE provenance. SLSA provenance an
     \node[field, below=0.8mm of f6.south, anchor=north] (f7) {remote-receipt hash};
     \node[field, below=0.8mm of f7.south, anchor=north] (f8) {lease (epoch, expiry)};
     \node[field, below=0.8mm of f8.south, anchor=north] (f9) {signer kernel ids ($k_1, k_2$)};
-    \draw[decorate, decoration={brace, amplitude=7pt, mirror, raise=2pt}]
-      (f1.north east) -- (f9.south east);
-    \node[font=\scriptsize, align=left, right=12pt] at ($(f1.north east)!0.5!(f9.south east)$) (brace) {\textbf{bindingTuple}\\(ten fields)};
     \node[hdrlabel, right=22mm of payhead] (sighead) {signatures};
     \node[sigbox, below=2mm of sighead.south, anchor=north] (s1) {$\mathrm{sig}_1$\\\scriptsize signed by $k_1$};
     \node[sigbox, below=1.5mm of s1.south, anchor=north] (s2) {$\mathrm{sig}_2$\\\scriptsize signed by $k_2$};
@@ -98,9 +95,9 @@ Each verified signature is over the same canonical payload bytes; the verifier n
 \begin{tikzpicture}[
   node distance=3.5mm,
   every node/.style={font=\footnotesize},
-  gate/.style={draw, rectangle, rounded corners=2pt, minimum height=6mm, minimum width=46mm, align=left, inner sep=3pt},
+  gate/.style={draw, rectangle, rounded corners=2pt, minimum height=6mm, text width=55mm, align=left, inner sep=3pt},
   reject/.style={draw, rectangle, dashed, minimum height=5mm, minimum width=28mm, align=center, font=\scriptsize, fill=red!8, inner sep=2pt},
-  accept/.style={draw, rectangle, double, minimum height=6mm, minimum width=46mm, align=center, fill=green!10},
+  accept/.style={draw, rectangle, double, minimum height=6mm, text width=55mm, align=center, fill=green!10},
   arrow/.style={->, >=Stealth, thick},
   rejarrow/.style={->, >=Stealth, dashed, red!70!black},
 ]
