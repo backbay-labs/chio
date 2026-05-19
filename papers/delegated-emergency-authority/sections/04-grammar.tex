@@ -3,7 +3,31 @@
 
 \subsection{The construction}
 
-The grammar developed in this Part is small.
+The grammar this Article proposes formalizes a four-component requirement for any delegated emergency authority.
+At the moment an authority is exercised, the exercising actor must specify four things:
+the substantive action to be performed,
+a duration after which the authority lapses,
+a witness that the prior state remains constructively recoverable,
+and a predicate naming the actors whose concurrence is required to admit the action into the polity's history.
+The four components correspond to the doctrinal categories of substantive action, sunset, reversibility,
+and authorization procedure as those categories appear in existing constitutional and administrative law.
+The grammar's contribution is not the invention of any of the four categories,
+each of which has a long doctrinal pedigree.
+The contribution is the requirement that all four be present, simultaneously and at the moment of admission,
+as conditions of an exercise of authority that the legal order will recognize.
+
+The framing is structural rather than substantive.
+The grammar does not specify what content any of the four components should have in any particular case.
+The substantive action, the duration, the form of the rollback witness, and the membership of the quorum
+are all matters of democratic political choice that the grammar takes as exogenous.
+What the grammar adds is the requirement that, whatever content the political process assigns to the four
+components, the assignment must occur at the moment of admission and must be type-checkable at that moment
+rather than deferred to a later audit, review, or lapse step.
+The first three components correspond to features for which the existing statutory record provides
+systematic instances; the fourth, the quorum predicate, is the component that captures the
+Ackerman-Sunstein structural-correction proposals on supermajority defaults for emergency-power continuation.
+
+With that legal framing in place, the formal expression of the grammar can be stated compactly.
 A bounded executive action is a four-tuple
 \[
 a = (\text{act}, \TTL, w, q)
@@ -13,11 +37,6 @@ period of effect, $w$ is a typed rollback witness, and $q$ is the quorum predica
 must concur in the action's admission.
 The action $a$ is admissible into the polity's history only if the four-tuple is well-formed in the sense
 defined below.
-The four components correspond, on the legal side, to the doctrinal categories of substantive action,
-sunset, reversibility, and authorization procedure.
-The first three are the components for which the existing statutory record provides systematic instances.
-The fourth, the quorum predicate, is the component that captures the Ackerman-Sunstein structural-correction
-proposals on supermajority defaults for emergency-power continuation.
 
 The typed rollback witness $w$ is the load-bearing component of the construction.
 A typed rollback witness for an action $\text{act}$ is a proof, constructible at the moment of admission of $a$,
@@ -57,10 +76,11 @@ which was a post-hoc check rather than a precondition of admission.
 The grammar's reading of the article is that the action component was present but the other three components
 were either absent or unenforced at the type level.
 
-The DMCA-Section~230 takedown regime supplies $\text{act}$ (the removal) and an implicit $\TTL$
+The DMCA Section~512 notice-and-takedown regime, operating alongside Section~230's liability shield
+for platform self-regulation, supplies $\text{act}$ (the removal) and an implicit $\TTL$
 (the action takes effect immediately and remains in effect until or unless restored).
 The witness $w$ is not required at construction time.
-The counter-notice procedure is a post-hoc check, not a precondition of admission.
+The Section~512(g) counter-notice procedure is a post-hoc check, not a precondition of admission.
 The quorum $q$ is a single private actor, the platform's content-moderation function.
 
 GDPR Article~17 supplies $\text{act}$ and a procedural $q$ (the administrative process by which an erasure order

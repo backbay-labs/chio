@@ -8,8 +8,9 @@ illustrative workload is endpoint containment.
 A quarantine carries a constructive path back to the file's prior location and access-control state;
 a process suspension carries the inverse signal that returns the process to its running state;
 an egress restriction carries the prior network policy.
-Quorum tiers scale with severity, requiring a single operator's authorization for low-severity actions
-and concurrent device-level and operator-level signatures within a bounded window for higher-severity ones.
+The authorization requirement varies with the consequence of the action: routine actions
+require a single operator's assent, while actions of greater consequence require concurrent
+assent from both the device's local authority and a human operator within a specified time window.
 Each admitted action emits a signed receipt that is auditable in canonical form.}
 The constructibility of the witness is an empirical feature of the operational regime,
 not an a priori feature of the action's category (a point that carries over to the legal domains of Part~\ref{sec:cases}).
