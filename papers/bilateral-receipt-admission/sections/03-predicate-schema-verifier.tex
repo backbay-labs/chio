@@ -7,7 +7,7 @@ This shape differs structurally from generic DSSE provenance. SLSA provenance an
 
 \paragraph{The binding tuple.} The subject digest is the canonical hash of a ten-field tuple, and each field commits to a distinct constitutional precondition. The \emph{treaty-scope hash} pins the bilateral relationship in force (participant identities, named action classes, lifetime), so re-presenting the envelope under a different relationship is a hash miss rather than a re-routable token. The \emph{ladder-intersection hash} pins the joint mode-coverage decision (which action class was evaluated at which mode under the intersected ladder), so a sender cannot retroactively claim a lower-intensity floor than the one both sides agreed to. The \emph{admission-report hash} pins the receiving polity's intent: which predicates the receiver checks, which evidence it requires, and which fail-closed codes it has pre-declared. The \emph{continuation hash} pins the linkage to receipt-graph state by naming the prior receipt this envelope extends, so the envelope cannot be re-grafted onto a different graph position without invalidating the digest. The \emph{request hash} and \emph{outcome hash} commit to the canonical input and output bytes separately, so selective disclosure can later reveal one without the other while preserving the binding. The \emph{local-receipt} and \emph{remote-receipt} hashes carry the sender's and receiver's signed receipt bodies, respectively; the pair is what distinguishes bilateral admission from a unilateral attestation. The \emph{lease} field commits to a freshness window (a revocation epoch and an expiry), and the \emph{signer kernel ids} commit to the two cosigners' identifiers, so an envelope cannot be reassigned to a different pair of signers post-facto.
 
-\paragraph{Worked envelope.} A valid envelope, with placeholder hashes, has the canonical shape:
+\paragraph{Worked envelope.} A valid envelope, with placeholder hashes, has the canonical shape (each hex field below is the bare lowercase output of SHA-256, truncated here with an ellipsis for display):
 \begin{small}
 \begin{verbatim}
 { "_type": "in-toto-statement/v1",
@@ -17,14 +17,14 @@ This shape differs structurally from generic DSSE provenance. SLSA provenance an
     { "sha256": "9f1c...e0a4" } } ],
   "predicate": {
     "treatyId":         "treaty:opus-alpha:2026",
-    "treatyScopeHash":  "sha256:7b2a...",
-    "ladderInterHash":  "sha256:8c4d...",
-    "admissionRptHash": "sha256:a91e...",
-    "continuationHash": "sha256:5d22...",
-    "requestHash":      "sha256:11ff...",
-    "outcomeHash":      "sha256:33ee...",
-    "localReceiptHash": "sha256:6677...",
-    "remoteReceiptHash":"sha256:8899...",
+    "treatyScopeHash":  "7b2a...c1e0",
+    "ladderInterHash":  "8c4d...3f02",
+    "admissionRptHash": "a91e...204b",
+    "continuationHash": "5d22...8e07",
+    "requestHash":      "11ff...6a91",
+    "outcomeHash":      "33ee...b15d",
+    "localReceiptHash": "6677...d4cc",
+    "remoteReceiptHash":"8899...02ab",
     "lease": { "epoch": 412, "expiry": 1788000000 },
     "signerKids": [ "kid:opus#1", "kid:alpha#1" ] },
   "signatures": [
@@ -32,7 +32,7 @@ This shape differs structurally from generic DSSE provenance. SLSA provenance an
     { "keyid": "kid:alpha#1", "sig": "..." } ] }
 \end{verbatim}
 \end{small}
-The two \codepath{sig} slices are independent Ed25519 signatures over the identical canonical DSSE pre-authentication encoding of the payload bytes; the verifier never reaches the predicate gates until both bytes-level signatures verify under the keyids declared in the signature slices.
+The two \codepath{sig} slices are independent Ed25519 signatures over the identical canonical DSSE pre-authentication encoding of the payload bytes.
 
 \paragraph{Canonical encoding of the binding tuple.} The binding tuple is canonically encoded as an RFC 8785 JCS~\cite{rfc8785} object over a JSON record with ten named fields, one per constitutional precondition: \codepath{treatyScopeHash}, \codepath{ladderInterHash}, \codepath{admissionRptHash}, \codepath{continuationHash}, \codepath{requestHash}, \codepath{outcomeHash}, \codepath{localReceiptHash}, \codepath{remoteReceiptHash}, \codepath{leaseHash}, and \codepath{signerKidsHash}. Field names are fixed strings drawn from this enumeration; each field value is the hex encoding of a SHA-256 output, sixty-four lowercase ASCII characters with no \codepath{sha256:} prefix inside the binding object. The JCS rules force deterministic key ordering, minimal numeric form, and Unicode string normalization, so two implementations that agree on the input fields produce byte-identical encodings. The subject digest is then $\mathrm{SHA\text{-}256}(\mathrm{JCS}(\mathit{bindingObject}))$. The JCS layer supplies field-tag domain separation by construction: two distinct fields cannot collide on attacker-chosen content because their key strings differ in the canonical bytes that feed the digest. Raw concatenation, length-prefixed concatenation with field tags, and HKDF-Expand with field-tag info parameters are not used; the JCS choice inherits the deterministic-serialization guarantee already required for the outer DSSE envelope, and a second canonicalization surface would expose an additional attack surface without strengthening domain separation.
 
@@ -40,20 +40,17 @@ The two \codepath{sig} slices are independent Ed25519 signatures over the identi
 $\mathcal{S} = (\mathit{IssuerKeys},$
 $\mathit{KernelKeys},$
 $\mathit{LeaseEpoch})$
-and let $E$ be a bilateral envelope. The verifier accepts iff
+and let $E$ be a bilateral envelope. The verifier accepts iff six gates hold in order; (G3) and (G4) below each group two atomic clauses that together express one structural property (signer distinctness, trust-store membership):
 \begin{align*}
   \mathit{accept}(\mathcal{S},E) \iff{}
-  & \mathit{canonical}(E.\mathit{payload}) \;\wedge \\
-  & E.\mathit{predicateType} = \mathit{ChiodosBilateralV1} \;\wedge \\
-  & |E.\mathit{sigs}|=2 \;\wedge \\
-  & E.\mathit{sig}_1.\mathit{kid} \ne E.\mathit{sig}_2.\mathit{kid} \;\wedge \\
-  & E.\mathit{sig}_1.\mathit{kid} \in \mathit{IssuerKeys} \;\wedge \\
-  & E.\mathit{sig}_2.\mathit{kid} \in \mathit{KernelKeys} \;\wedge \\
-  & E.\mathit{payload}.\mathit{lease}.\mathit{epoch} \ge \mathcal{S}.\mathit{LeaseEpoch} \;\wedge \\
-  & E.\mathit{subjectDigest} = \\
-  & \quad H(\mathit{canonical}(E.\mathit{payload}.\mathit{bindingTuple})).
+  & \textsf{(G1)}\;\mathit{canonical}(E.\mathit{payload}) \;\wedge \\
+  & \textsf{(G2)}\;E.\mathit{predicateType} = \mathit{ChiodosBilateralV1} \;\wedge \\
+  & \textsf{(G3)}\;\bigl(|E.\mathit{sigs}|=2 \;\wedge\; E.\mathit{sig}_1.\mathit{kid} \ne E.\mathit{sig}_2.\mathit{kid}\bigr) \;\wedge \\
+  & \textsf{(G4)}\;\bigl(E.\mathit{sig}_1.\mathit{kid} \in \mathit{IssuerKeys} \;\wedge\; E.\mathit{sig}_2.\mathit{kid} \in \mathit{KernelKeys}\bigr) \;\wedge \\
+  & \textsf{(G5)}\;E.\mathit{payload}.\mathit{lease}.\mathit{epoch} \ge \mathcal{S}.\mathit{LeaseEpoch} \;\wedge \\
+  & \textsf{(G6)}\;E.\mathit{subjectDigest} = H(\mathit{canonical}(E.\mathit{payload}.\mathit{bindingTuple})).
 \end{align*}
-Each verified signature is over the same canonical payload bytes. The predicate is the conjunction of six gates, in that order; the verifier evaluates them left-to-right and returns one of five rejection codes at the first failure, or admits the envelope.
+Each verified signature is over the same canonical payload bytes; the verifier never reaches (G1)-(G6) until both bytes-level signatures verify under the keyids declared in the signature slices. The predicate is the conjunction of six gates (G1)-(G6), evaluated left-to-right. Five of the six gates produce uniquely-named rejection codes; the trust-store-membership gate (G4) is bundled with predicate-type-mismatch in the deployed verifier, because a signer outside both allowlists fails (G2) before (G4) is reached whenever the predicate type is the strict Chiodos profile and the trust store enumerates only Chiodos-issuing keys.
 
 \paragraph{noncanonical-payload.} The payload bytes fail RFC 8785 canonicalization: re-ordered keys, non-minimal numeric forms, unnormalized strings, or trailing whitespace. The verifier rejects rather than re-canonicalizing because the signature is over a specific byte sequence. The attack class defeated is the \emph{presentation attacker} who serves different byte sequences to different verifiers, each of which re-canonicalizes locally and reaches a different decision while the upstream signature is undisturbed; the same channel also underwrites equivocation against transparency-log witnesses. Closing it at the verifier protects the canonical-bytes assumption that selective disclosure, replay-detection, and witness consistency all depend on.
 
@@ -65,4 +62,4 @@ Each verified signature is over the same canonical payload bytes. The predicate 
 
 \paragraph{subject-digest-mismatch.} The DSSE subject digest is not the canonical hash of the binding tuple constructed from the payload's named fields. The attack class defeated is \emph{sibling-treaty cross-receipt substitution}: an attacker takes a bytes-valid envelope authorized under treaty $\tau_1$ and tries to re-present it under $\tau_2$ by editing the binding tuple's treaty-scope or ladder-intersection field while leaving the upstream signatures in place. Any field-level edit produces a hash miss against the digest the signers committed to. The same gate also rules out \emph{ladder-floor substitution}: the integrity check on the digest is structural, not field-by-field, so any tuple member that disagrees with the committed digest is rejected as a single failure rather than as a per-field diagnostic.
 
-The taxonomy is intentionally coarse. Each code names a conjunct of the admission predicate, not a structured failure report identifying which sub-field disagreed at the bit level. An adversary probing the verifier learns which gate first refused, not which inner field mismatched; the error surface leaks at most $\log_2 5 \approx 2.32$ bits per attempt, and that information is exactly what an auditor needs to identify which constitutional precondition failed.
+The taxonomy is intentionally coarse and is scoped to the post-signature gates: a signature-bytes failure denies the envelope before the six gates are evaluated and is not a member of the five rejection codes above. Each code names a conjunct of the admission predicate, not a structured failure report identifying which sub-field disagreed at the bit level. An adversary probing the verifier in the non-adaptive setting learns which gate first refused, not which inner field mismatched; the error surface leaks at most $\log_2 5 \approx 2.32$ bits per attempt, and that information is exactly what an auditor needs to identify which constitutional precondition failed.
