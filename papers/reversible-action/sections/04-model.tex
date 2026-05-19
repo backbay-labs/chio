@@ -52,51 +52,75 @@ conditional on $t$.
 \paragraph{The composition theorem.}
 The headline composition theorem
 \thm{ttl_bounded_amendment_chain_preserves_baseline} states that a
-chain of TTL-bounded amendments, each carrying a backward-refinement
-witness against a fixed baseline constitution, preserves the baseline
-at every instant:
+chain of TTL-bounded amendments, each carrying two witnesses (one
+that the pre-amendment constitution backward-refines a fixed baseline,
+and one per-step witness that the post-amendment constitution
+backward-refines the pre-amendment constitution), preserves the
+baseline at every instant:
 \[
   \forall t,\, \forall A \in \mathit{chain},\
     \mathsf{BackwardRefines}\bigl(\mathsf{activeAt}(A, t),\, \mathit{baseline}\bigr).
 \]
-The proof shape is structural rather than definitional. For each
-amendment $A$ in the chain, the conclusion case-splits on whether $t$
-falls inside or outside $A$'s window. Outside the window,
-$\mathsf{activeAt}(A, t) = \delta.\mathit{old} = \mathit{baseline}$ and
-the conclusion holds by reflexivity of $\mathsf{BackwardRefines}$ on a
-fixed constitution. Inside the window,
-$\mathsf{activeAt}(A, t) = \delta.\mathit{new}$ and the conclusion
-holds by the per-step refinement witness on $A$.
+The conclusion is pointwise over $A \in \mathit{chain}$ under a
+universal quantifier, not inductive over an evolving state. For each
+amendment $A$, the proof case-splits on the $\mathsf{activeAt}$
+conditional. Outside the window,
+$\mathsf{activeAt}(A, t) = \delta.\mathit{old}$, and the conclusion is
+the post-expiry hypothesis
+$\mathsf{BackwardRefines}(\delta.\mathit{old}, \mathit{baseline})$
+applied directly. Inside the window,
+$\mathsf{activeAt}(A, t) = \delta.\mathit{new}$, and the conclusion
+composes the per-step witness
+$\mathsf{BackwardRefines}(\delta.\mathit{new}, \delta.\mathit{old})$
+with the post-expiry hypothesis through transitivity of
+$\mathsf{BackwardRefines}$. Both arms consume the per-step witnesses
+as data rather than discharging by reflexivity, so each amendment in
+the chain contributes substantive content.
 
-The shape is the response-side dual of the parent paper's
+The shape is the response-side counterpart of the parent paper's
 \thm{essential_preserved_chain}, which composes per-step essential-
-admission witnesses over an amendment sequence. The dual relation is
-that the parent theorem ranges over receipts and a chain of
-constitutions; this theorem ranges over instants and a chain of
-TTL-bounded amendments. Both theorems are structurally inductive over
-the chain rather than definitional on a single step. The discharge in
-each case threads the per-step witness through the case analysis on
-the inductive variable.
+admission witnesses over an amendment sequence. The parent theorem
+ranges over receipts and a chain of constitutions and is structurally
+inductive over the chain; this theorem ranges over instants and a
+chain of TTL-bounded amendments and discharges pointwise per amendment
+with a case split on the TTL window. The witness-threading pattern is
+shared: each step in either chain contributes a per-step refinement
+witness that the discharge consumes as data.
 
 \paragraph{Rollback admissibility.}
 The supporting reduction \thm{rollback_admission_composes_with_refinement}
 states that a rollback receipt admissible under the post-amendment
-constitution remains admissible under the pre-amendment constitution
-given the refinement witness:
+syntactic constitution remains admissible under the pre-amendment
+syntactic constitution given the syntactic refinement witness over
+$\mathsf{admits}$:
 \[
   \mathsf{admits}(c_{\text{new}}, \mathit{rb}) = \text{true}
-    \;\wedge\; \mathsf{BackwardRefines}(c_{\text{new}}, c_{\text{old}})
+    \;\wedge\; \bigl(\forall \mathit{rid},\,
+       \mathsf{admits}(c_{\text{new}}, \mathit{rid}) = \text{true}
+       \Rightarrow \mathsf{admits}(c_{\text{old}}, \mathit{rid}) = \text{true}\bigr)
     \;\Rightarrow\; \mathsf{admits}(c_{\text{old}}, \mathit{rb}) = \text{true}.
 \]
 The proof is a direct application of the refinement hypothesis to the
-rollback receipt's admission. The theorem's role in the paper is the
-load-bearing reduction the headline composition leans on: it shows
-that the rollback receipt produced inside an amendment's TTL window
-does not become unadmittable when the window expires and the baseline
-returns. In the substrate, this is the property the auto-reversion
-relies on: the rollback receipt's canonical body is the same under
-both constitutions, and the predicates the baseline applies to it are
-a subset of the predicates the amended constitution applies.
+rollback receipt's admission. The reduction supplies the rollback-
+preservation step the headline composition leans on: a rollback
+receipt produced inside an amendment's TTL window remains admittable
+when the window expires and the baseline returns.
+
+The two theorems range over different objects. The composition theorem
+ranges over $\mathsf{Constitution}$ via $\mathsf{BackwardRefines}$
+(opaque receipt-to-Boolean closures); the rollback reduction ranges
+over $\mathsf{SyntacticConstitution}$ via $\mathsf{admits}$ (decidable
+denotation of a predicate ADT). The bridge between the two layers is
+the closure-to-syntactic soundness theorem in the parent paper's
+$\mathsf{PredicateLang}$: a syntactic constitution induces a closure
+constitution whose receipt-by-receipt admission decision agrees with
+$\mathsf{admits}$. Once that bridge is invoked, the composition
+theorem's $\mathsf{BackwardRefines}$ refines, on each receipt id, to
+the syntactic implication
+$\mathsf{admits}(c_{\text{new}}, \mathit{rid}) = \text{true} \Rightarrow
+ \mathsf{admits}(c_{\text{old}}, \mathit{rid}) = \text{true}$, which is
+the hypothesis the rollback reduction consumes. The bridge itself is
+not reproved here; the substrate inherits it from $\mathsf{PredicateLang}$.
 
 \paragraph{Bilateral destructive admission.}
 The bilateral reduction \thm{destructive_action_requires_bilateral_admission}

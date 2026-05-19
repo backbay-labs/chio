@@ -13,18 +13,19 @@ enforcement act has had no positive type-level discipline of its own:
 the only thing the type system enforced was that the act admitted, not
 that the act terminated, reverted, or carried a counterparty's signature.
 
-The construction here extends the type-level discipline to the response
-side for the class of actions whose effects are reversible by an inverse
-executor. A reversible executive action is a type whose constructor
-refuses to build a witness without a positive time-to-live duration and
-an action class tag; the inverse executor produces a rollback receipt
-that closes the action chain by referencing the original execution
-receipt and the executor key that signed the rollback. A destructive
-action, defined by the absence of an inverse executor, reduces admission
-to bilateral predicate intersection between a device polity that hosts
-the action and an operator polity that authorizes it; the reduction is
-the parent paper's treaty intersection theorem specialized to the
-destructive class.
+The reversible-action discipline extends the type-level rule from
+amendment admission to enforcement response, for the class of actions
+whose effects are reversible by an inverse executor. A reversible
+executive action is a type whose constructor refuses to build a witness
+without a positive time-to-live duration and an action class tag; the
+inverse executor produces a rollback receipt that closes the action
+chain by referencing the original execution receipt and the executor key
+that signed the rollback. A destructive action, defined by the absence
+of an inverse executor, reduces admission to bilateral predicate
+intersection between a device polity that hosts the action and an
+operator polity that authorizes it; the reduction specializes the prior
+treaty intersection theorem \cite{programmableSovereigntyAnonymous} to
+the destructive class.
 
 The load-bearing composition claim relates the response side to the
 amendment side. A TTL-bounded amendment is a constitutional delta paired
@@ -41,7 +42,8 @@ trajectory pinned to the baseline rather than drifting predicate-by-
 predicate into a ratchet.
 
 The contributions are four artifacts that follow the same falsifiability
-discipline as the parent construction.
+discipline as the prior substrate
+\cite{programmableSovereigntyAnonymous}.
 
 \begin{itemize}
   \item A formal model relating the executive-action type, its TTL
@@ -64,12 +66,11 @@ discipline as the parent construction.
     measurement does not cover (Section~\ref{sec:evaluation-ra}).
 \end{itemize}
 
-The claim being made is narrower than the title suggests. Sovereignty
-over reversible action is not a claim that a polity can compel or undo
-events in the physical world; the polity has authority only over its
-receipt log, and a rollback receipt is a statement about that log
-referencing an inverse executor's signed assertion that the OS operation
-completed. The receipt-log discipline is the falsifiable part; the
-physical reversibility is an empirical claim about specific executor
-pairs (rename and inverse rename, signal stop and signal continue) that
-the receipt schema records without itself proving.
+The sovereignty claim is bounded. Sovereignty over reversible action
+covers the polity's receipt log, not the physical world; a rollback
+receipt is a statement about that log referencing an inverse executor's
+signed assertion that the OS operation completed. The receipt-log
+discipline is the falsifiable part; the physical reversibility is an
+empirical claim about specific executor pairs (rename and inverse
+rename, signal stop and signal continue) that the receipt schema
+records without itself proving.

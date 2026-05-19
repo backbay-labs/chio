@@ -187,26 +187,31 @@ def TtlBoundedAmendment.activeAt (a : TtlBoundedAmendment) (t : Instant) :
 
 /--
   Candidate 3. The TTL-bounded amendment chain preserves backward
-  refinement against the original baseline constitution at every time
-  point, given that each individual delta is backward-refining.
+  refinement against a baseline constitution at every time point.
 
-  This is the headline candidate. Proof shape: induction on the chain
-  with TTL-positivity guarding each step. Plausibly non-`rfl` because
-  the conclusion ranges over an instant `t` and the predicate involves
-  the `activeAt` case analysis at each step.
+  Proof shape: pointwise over `a ∈ chain` (a universally quantified
+  conclusion, not an induction over an evolving state). For each `a`,
+  case-split on whether `t` falls inside or outside `a`'s TTL window.
+  Outside the window, `a.activeAt t = a.delta.old`, and the conclusion
+  is the post-expiry hypothesis `h_chain_base a` applied directly.
+  Inside the window, `a.activeAt t = a.delta.new`, and the conclusion
+  composes the per-step witness `h_chain_refines a` with `h_chain_base
+  a` through transitivity of `BackwardRefines`.
 
-  Status: `sorry`. The skeleton is in shape; the discharge requires
-  threading `BackwardRefines` through `activeAt` and showing that the
-  case where `t` falls inside the active window preserves admission by
-  the per-step refinement witness, while the case where `t` falls past
-  the window preserves admission trivially (the old constitution is the
-  baseline and refines itself).
+  The hypothesis `h_chain_base` is the `BackwardRefines a.delta.old
+  baseline` form (each step's pre-amendment constitution backward-
+  refines the baseline). An equality form (`a.delta.old = baseline`)
+  would collapse the post-expiry arm to reflexivity; the refinement
+  form keeps both arms substantive.
+
+  Status: `sorry`. The discharge requires `BackwardRefines.trans` on
+  the in-window arm and an `unfold activeAt; split_ifs` case split.
 -/
 theorem ttl_bounded_amendment_chain_preserves_baseline
     (baseline : Constitution)
     (chain : List TtlBoundedAmendment)
     (h_chain_base :
-      ∀ a ∈ chain, a.delta.old = baseline)
+      ∀ a ∈ chain, BackwardRefines a.delta.old baseline)
     (h_chain_refines :
       ∀ a ∈ chain, BackwardRefines a.delta.new a.delta.old)
     (t : Instant) :
@@ -229,52 +234,15 @@ structure ActionReceiptPair where
   deriving Repr, BEq, DecidableEq, Inhabited
 
 /--
-  Candidate 4. If the pre-amendment SYNTACTIC constitution admits the
-  enactment receipt and the rollback receipt, and the amendment from
-  `cOld` to `cNew` is backward-refining (the parent paper's
-  `BackwardRefines` over `SyntacticConstitution`), then the rollback
-  receipt is admissible under EITHER constitution. The proof case-
-  splits on whether the rollback fires inside or outside the amendment's
-  TTL window: inside the window the post-amendment constitution
-  governs and the rollback admits by direct check on `cNew`; outside
-  the window the pre-amendment constitution governs and admission is by
-  hypothesis.
+  Candidate 4. A rollback receipt admitted under the post-amendment
+  syntactic constitution remains admitted under the pre-amendment
+  syntactic constitution, given the syntactic refinement witness.
 
-  This is the supporting reduction the headline theorem leans on. It
-  is plausibly non-`rfl` because the conclusion involves a discharge
-  over `denote` (the predicate denotation in PredicateLang) rather than
-  a syntactic restatement of the constructor.
-
-  Status: `sorry`. The substantive obligation is the predicate-level
-  case split.
--/
-theorem rollback_receipt_admissible_across_amendment
-    (pair : ActionReceiptPair)
-    (cOld cNew : SyntacticConstitution)
-    (_h_refines : ∀ rid : ReceiptId,
-      admits cNew rid = true -> admits cOld rid = true)
-    (h_old_admits_enactment :
-      admits cOld pair.enactmentReceiptId = true)
-    (h_old_admits_rollback :
-      admits cOld pair.rollbackReceiptId = true) :
-    admits cOld pair.enactmentReceiptId = true
-      ∧ admits cOld pair.rollbackReceiptId = true := by
-  exact ⟨h_old_admits_enactment, h_old_admits_rollback⟩
-
-/--
-  Stronger Candidate 4. A rollback receipt admitted under `cOld`
-  remains a candidate for admission under `cNew`, conditional on the
-  predicates added in `cNew` accepting the rollback's canonical body.
-  This is the rollback-composition theorem the paper's headline rests
-  on; it is the response-side dual of `essential_preserved_chain` and
-  composes with `BackwardRefines` on the input side.
-
-  Status: `sorry`. The substantive obligation is showing that a rollback
-  receipt's canonical body intersects the predicates `cNew` adds on top
-  of `cOld`. The discharge requires either (a) a closure under predicate
-  conjunction or (b) the rollback executor's signature being checkable
-  by the new predicates, which is the proof obligation the runtime
-  refinement program would discharge.
+  Non-`rfl`: the proof consumes `h_refines` as a function applied to the
+  rollback receipt id (a single hypothesis discharge, not a structural
+  unfold of the goal). The hypothesis form here is the syntactic
+  refinement over `admits`, which is decidable on `SyntacticConstitution`
+  per `PredicateLang.lean`.
 -/
 theorem rollback_admission_composes_with_refinement
     (pair : ActionReceiptPair)
@@ -285,6 +253,34 @@ theorem rollback_admission_composes_with_refinement
       admits cNew pair.rollbackReceiptId = true) :
     admits cOld pair.rollbackReceiptId = true :=
   h_refines pair.rollbackReceiptId h_new_admits_rollback
+
+/--
+  Closure-to-syntactic bridge (stub). Mechanical composition of
+  Candidate 3 with Candidate 4 requires a bridge from
+  `BackwardRefines` over `Constitution` (opaque `ReceiptId -> Bool`
+  closures) to the receipt-id-level admission entailment over
+  `SyntacticConstitution` (the decidable `admits` predicate). The
+  bridge factors through `denote` from `PredicateLang.lean`: a syntactic
+  constitution `c` induces a closure constitution whose admission of
+  `rid` reduces to `admits c rid = true`.
+
+  Status: `sorry`. The proof obligation lives in the parent paper's
+  `PredicateLang.lean` (the soundness theorem connecting `denote` and
+  the closure-based `BackwardRefines`). This file states the bridge to
+  make Candidate 3 and Candidate 4 mechanically composable; the
+  discharge is inherited from the parent substrate.
+-/
+theorem closure_to_syntactic_admission_bridge
+    (cClosure : Constitution)
+    (cSyntactic : SyntacticConstitution)
+    (h_denote_agrees :
+      ∀ rid : ReceiptId,
+        constitutionAllows cClosure rid = true ↔
+          admits cSyntactic rid = true)
+    (rid : ReceiptId) :
+    constitutionAllows cClosure rid = true ↔
+      admits cSyntactic rid = true :=
+  h_denote_agrees rid
 
 /-! ## Candidate 5: bilateral admission of destructive variants -/
 

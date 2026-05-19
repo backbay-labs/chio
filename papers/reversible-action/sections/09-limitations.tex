@@ -37,11 +37,11 @@ The remaining limits are:
     current binary without the scheduler; "terminates within its TTL"
     is operator-dependent rather than type-level.
   \item \textbf{Missing inverse executors on the destructive subclass.}
-    Process-tree terminate, grant revoke, and (in the substrate's
-    taxonomy) network isolate are destructive: each has a forward
-    executor but no inverse. The bilateral reduction applies as an
-    admission obligation; an empirical measurement of the destructive
-    chain requires inverse executors that do not exist.
+    Process-tree terminate, grant revoke, and evidence collection are
+    destructive: each has a forward executor but no inverse. The
+    bilateral reduction applies as an admission obligation; an
+    empirical measurement of the destructive chain requires inverse
+    executors that do not exist.
   \item \textbf{Crash safety on the ledger append.} The deployment
     instance runs the OS executor before the ledger append. A crash
     between effect and append leaves a live side effect with no
@@ -97,12 +97,12 @@ The remaining limits are:
     by code citation rather than by mechanized refinement.
   \item \textbf{rfl-gate on the headline theorem.} The headline
     composition theorem \thm{ttl_bounded_amendment_chain_preserves_baseline}
-    is plausibly non-\emph{rfl} in this construction's reading: the
-    discharge requires structural induction over the chain and a
-    case split on the TTL window at each step. Confirmation requires
-    a focused Lean session. If, on closer inspection, the theorem
-    discharges to \emph{rfl}, the construction collapses to the
-    definitional bridges and the paper has no headline.
+    is plausibly non-\emph{rfl}: the discharge requires structural
+    induction over the chain and a case split on the TTL window at
+    each step. Mechanized confirmation is required. If, on closer
+    inspection, the theorem discharges to \emph{rfl}, the construction
+    collapses to the definitional bridges and no headline result
+    remains.
   \item \textbf{Operator-key custody at scale.} The bilateral
     admission on the destructive subclass requires an operator-polity
     key whose custody, rotation, revocation, and compromise recovery

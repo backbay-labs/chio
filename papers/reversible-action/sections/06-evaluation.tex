@@ -5,6 +5,22 @@ The evaluation reports four measurements achievable on the deployment
 instance described in Section~\ref{sec:implementation-ra}. Absent
 measurements are marked rather than estimated.
 
+The figures reported here are point measurements taken on a single
+development workstation (Apple Silicon, macOS 14.x, Darwin 23.x kernel)
+rather than statistically-confident measurements over N runs with
+reported confidence intervals. The substrate's executor structure and
+the canonical-byte signing path are reproducible on any host with the
+same Rust toolchain and a Unix-family filesystem, but the latency
+distributions are workstation-specific and the kernel-side cost terms
+(\codepath{fs::rename}, signal delivery, network-extension reload) are
+sensitive to the host's filesystem class, scheduler tuning, and
+extension load. A defensible USENIX-grade evaluation requires fresh
+runs against a documented hardware matrix with N$\geq$30 per cell, a
+stated warm-up policy, and confidence intervals on each latency cell;
+that protocol is named here as a deployment requirement and the
+present numbers are honest order-of-magnitude statements rather than
+publishable cells.
+
 \begin{table*}[t]
 \centering
 \caption{Measurement status. Withheld rows have a target surface but
@@ -41,6 +57,16 @@ the reload is the dominant term and varies with the extension's
 internal reload path. The rollback variant of each pair measures the
 inverse executor against the same shape, with the content-hash gate
 contributing a single hash recomputation.
+
+The receipt append is not atomic with the side effect. The forward
+executor invokes the OS primitive (\codepath{fs::rename},
+\codepath{libc::kill}, policy reload) before appending the execution
+receipt to the ledger; a crash in the window between effect and
+append leaves a live side effect with no execution record, weakening
+the "rollback closes the chain" property for that window. The race
+is named in Section~\ref{sec:limitations-ra} and closed by a
+write-ahead ledger redesign that appends a pending record before the
+effect and marks it succeeded after.
 
 \paragraph{Acknowledgement round-trip.}
 The acknowledgement round-trip measures from execution-receipt

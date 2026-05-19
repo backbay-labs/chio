@@ -10,8 +10,8 @@ with timed arcs and soundness criteria that decide whether every
 reachable marking has a path to a final marking. The category of effects
 reversible by inverse executors (file rename, signal stop / continue,
 network policy reload) is a strict subclass of the compensating-action
-literature; the construction here inherits the saga vocabulary without
-inheriting the broader workflow-net soundness obligations, which would
+literature; the reversible-action substrate inherits the saga
+vocabulary without the workflow-net soundness obligations, which would
 require a timed transition system the substrate does not provide.
 
 Capability revocation in operating systems has the closest structural
@@ -23,7 +23,7 @@ constitutional admission layer above it: the act of revoking is not
 just an OS operation but a receipt whose admission predicates include
 the bilateral-cosignature requirement when the action class is
 destructive. The OS-capability literature solved revocation at the
-machine boundary; the construction here lifts it to the cross-
+machine boundary; the substrate lifts the discipline to the cross-
 organizational boundary where the receipt graph crosses kernels.
 
 Endpoint detection and response engines have shipped TTL fields and
@@ -38,18 +38,21 @@ formulation of the four-receipt grammar (request, execution, rollback,
 acknowledgement) and an admission predicate stack that the existing
 engines could in principle adopt.
 
-The parent paper supplies four primitives this construction depends on.
-The treaty intersection theorem \thm{treaty_admission_iff_predicate_intersection}
-gives the bilateral reduction. The ladder-floor stability theorem
+The prior substrate \cite{programmableSovereigntyAnonymous} supplies
+four primitives the reversible-action discipline depends on. The treaty
+intersection theorem
+\thm{treaty_admission_iff_predicate_intersection} gives the bilateral
+reduction. The ladder-floor stability theorem
 \thm{treaty_admission_stable_under_ladder_floor} gives the receipt-
 backed floor under which destructive actions are inadmissible. The
-amendment refinement bridge \thm{amendment_admissible_iff_backward_refinement}
-gives the type-level invariant on enactment. The essential-predicate
-chain theorem \thm{essential_preserved_chain} gives the trajectory-
-invariant composition over amendment sequences. The composition theorem
-this construction adds is the response-side analog of the fourth
-primitive: TTL-bounded amendments compose with the chain machinery the
-parent paper already established.
+amendment refinement bridge
+\thm{amendment_admissible_iff_backward_refinement} gives the type-level
+invariant on enactment. The essential-predicate chain theorem
+\thm{essential_preserved_chain} gives the trajectory-invariant
+composition over amendment sequences. The composition theorem added
+here is the response-side analog of the fourth primitive: TTL-bounded
+amendments compose with the chain machinery the prior substrate already
+established.
 
 The Anthropic alignment-evaluation literature on alignment-faking and
 situational-awareness is a non-substrate motivation. A scheming agent
@@ -57,7 +60,7 @@ that behaves under evaluation and differently in deployment leaves no
 checkable artifact unless the runtime emits one. A typed reversible-
 action discipline binds the agent's destructive actions to a bilateral
 admission predicate the deploying organization participates in, so the
-artifact cannot be retroactively denied. The construction does not solve
+artifact cannot be retroactively denied. The substrate does not solve
 scheming; it makes the consequence of an agent's destructive action
-recordable in the same canonical form the parent paper's receipts
-already take.
+recordable in the same canonical form the prior substrate's receipts
+\cite{programmableSovereigntyAnonymous} already take.
