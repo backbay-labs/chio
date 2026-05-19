@@ -11,6 +11,7 @@
 \usepackage{booktabs}
 \usepackage{titlesec}
 \usepackage{footmisc}
+\usepackage{amsmath}
 
 \hypersetup{
   colorlinks=true,
@@ -67,23 +68,25 @@ This Article argues that the ratcheting pattern has a structural rather than mer
 Each of these regimes shares a missing element at the level of statutory grammar:
 the authority is granted without a typed rollback obligation that must be constructed
 at the moment of authorization.
-A typed rollback witness is a formal-methods construct, drawn from recent work in
-proof-carrying programmable governance.
+A typed rollback witness is a formal-methods construct, drawn from recent work on
+machine-checkable governance receipts.
 It is the requirement that an authority cannot be exercised unless,
 at the moment of its exercise,
 the actor exhibits a proof that the path back to the prior state is constructible.
 The grammar makes the corresponding class of unbounded emergency authority \emph{unconstructible}
-in the well-typed sense rather than only forbidden.
+as a matter of construction rather than only forbidden.
 The distinction matters because forbidden authority can be exercised against the prohibition;
-unconstructible authority cannot be exercised because the construction itself fails to type-check.
+unconstructible authority cannot be exercised because the construction itself fails.
 
-The Article develops the grammar against five case studies, situates it within the Schmitt-Agamben
+The Article applies the grammar to five case studies, situates it within the Schmitt-Agamben
 tradition on the state of exception, and exhibits one implementation drawn from a Lean-attestable
 governance substrate.
 The implementation is given as proof that the grammar is buildable, not as the centerpiece of the argument.
 The Article is structural; it does not defend any particular emergency authority on the merits.
 It argues that, where the structural grammar is available,
 its absence in current statutory practice is a defect for which the formal substrate provides a corrective.
+The Article's claim therefore is not abolition or expansion of any particular emergency authority
+but reformulation: any future grant should be enacted with the four-component grammar this Article specifies.
 \end{abstract}
 
 \input{sections/01-introduction}

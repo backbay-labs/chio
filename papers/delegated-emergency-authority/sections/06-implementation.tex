@@ -1,77 +1,17 @@
 \section{Implementation in Practice}
 \label{sec:implementation}
 
-This Part exhibits one implementation of the grammar.
-The implementation is a working example, not the centerpiece of the Article.
-A reader uninterested in the operational details may skim this Part without losing the structural argument.
-The point of the exhibition is to demonstrate that the grammar can be instantiated against a real workload,
-not to argue that the particular instantiation is the right one for the legal domains discussed in Part~\ref{sec:cases}.
-
-The implementation operates in a domain doctrinally distant from constitutional emergency powers:
-endpoint detection and response, the family of security software that monitors corporate workstations and servers
-for malicious activity and takes containment actions when malicious activity is detected.
-The doctrinal distance is the point.
-If the grammar can be instantiated in a domain where the temporal urgency is high (a security incident),
-the actor population is constrained (an incident-response team),
-and the action taken is consequential (quarantine, process termination, network isolation),
-then the grammar's applicability is not limited to domains in which the temporal urgency is low or the action is benign.
-
-The implementation, drawn from a security platform that integrates with the substrate cited in Part~\ref{sec:substrate},
-treats every containment action as a bounded executive action under the grammar.
-A request to quarantine a file, suspend a process, or restrict a process's network egress is constructed as a four-tuple
-$(\text{act}, \TTL, w, q)$.
-The $\text{act}$ component is the containment action.
-The $\TTL$ component is a bounded period (typically minutes to hours) after which the action expires unless extended.
-The $w$ component is a typed rollback witness:
-for a file quarantine, the witness is a constructive path back to the file's original location
-with its original permissions and access-control-list state;
-for a process suspension, the witness is the SIGCONT operation that restores the process to its running state;
-for an egress restriction, the witness is the network-policy reversion to the prior egress allowlist.
-The $q$ component is the quorum predicate: for low-severity actions, a single operator's authorization suffices;
-for high-severity actions (process termination, network isolation),
-the predicate requires the concurrence of a device-level signature and an operator-level signature within a
-specified time window.
-
-The substrate's admission hook gates the construction.
-A containment-action request that does not exhibit a well-formed witness $w$ fails admission and is denied.
-The denial occurs at the construction step, not after the action has been taken.
-The well-typedness of the action is enforced at the type level rather than at the audit level.
-
-The implementation surfaces several observations relevant to the Article's structural claim.
-The first is that the witness's constructibility is, in practice, a feature of the operational environment rather than
-a property of the action's substantive content.
-A file quarantine is constructibly reversible because the operating system provides a path back to the prior file state.
-A process suspension is constructibly reversible because the operating system provides a path back to the prior process state.
-A network egress restriction is constructibly reversible because the network policy enforcement mechanism provides a path
-back to the prior policy state.
-In each case, the constructibility is an empirical feature of the operational regime, not an a priori feature of the
-action's category.
-The implication for the legal domains discussed in Part~\ref{sec:cases} is that the constructibility of a rollback witness
-for actions in those domains is similarly an empirical question.
-Whether a surveillance authorization can exhibit a constructive rollback witness depends on the technical and operational
-features of the surveillance regime.
-Whether an erasure order can exhibit a constructive rollback witness depends on the storage and indexing features of the
-target system.
-Whether a use of military force can exhibit a constructive rollback witness depends on facts about the operational theater
-that the grammar does not specify.
-The grammar does not prescribe what is reversible.
-It prescribes only that what is admitted as a bounded executive action must, at admission, exhibit a witness for its reversibility.
-
-The second observation is that the grammar's discipline produces an operationally observable artifact:
-a receipt for each admitted action, signed by the admitting authority, containing the four-tuple components.
-The receipt is a public-witness artifact in the substrate's sense.
-The artifact is auditable in canonical form.
-The accumulation of receipts over the lifetime of the system produces a public history of the polity's actions
-that is structurally available for review.
-The legal-domain analog of this property is the observation that the grammar's discipline produces a record of
-delegated emergency authority that is, by construction, more reviewable than the existing statutory regimes provide.
-A polity that exercises emergency authority under the grammar's discipline emits, for each exercise,
-a typed and signed receipt that is part of a public history.
-The history is auditable in the substrate's sense, which is a stronger sense than the periodic reporting and
-declassification regimes that the existing statutory frameworks contemplate.
-
-The implementation is not, on its own, an argument that the grammar should be applied to the legal domains
-discussed in Part~\ref{sec:cases}.
-It is an existence proof for the grammar's buildability.
-The application of the grammar to legal domains is a separate question on which Part~\ref{sec:limits} takes up the
-principal objections.
+One implementation exhibits the grammar against an operational workload distant from constitutional emergency powers.
+In an incident-response context, every containment action is constructed as a four-tuple:
+the substantive action, a time-to-live, a typed rollback witness, and a quorum predicate.\footnote{The
+illustrative workload is endpoint containment.
+A quarantine carries a constructive path back to the file's prior location and access-control state;
+a process suspension carries the inverse signal that returns the process to its running state;
+an egress restriction carries the prior network policy.
+Quorum tiers scale with severity, requiring a single operator's authorization for low-severity actions
+and concurrent device-level and operator-level signatures within a bounded window for higher-severity ones.
+Each admitted action emits a signed receipt that is auditable in canonical form.}
+The constructibility of the witness is an empirical feature of the operational regime,
+not an a priori feature of the action's category (a point that carries over to the legal domains of Part~\ref{sec:cases}).
+The implementation is an existence proof for the grammar's buildability;
+it is not an argument that the grammar should apply to the legal regimes the Article examines.
