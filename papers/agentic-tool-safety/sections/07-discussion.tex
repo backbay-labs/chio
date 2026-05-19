@@ -19,49 +19,40 @@ Frontier-safety frameworks such as the Responsible Scaling Policy~\cite{anthropi
 \centering
 \begin{tikzpicture}[
   font=\footnotesize,
-  axisstyle/.style={thick, -{Latex[length=2.4mm]}},
-  axislabel/.style={font=\small\bfseries},
-  bullet/.style={font=\scriptsize, inner sep=1pt},
-  cell/.style={draw, thick, rounded corners=2pt, align=center, font=\scriptsize, inner sep=4pt, minimum width=32mm, minimum height=12mm},
-  accept/.style={cell, fill=green!12, draw=green!55!black},
-  reject/.style={cell, fill=red!7, draw=red!60!black, dashed},
-  gridline/.style={gray!55, dashed, thin}
+  cell/.style={draw, thick, align=center, font=\small, inner sep=6pt, minimum width=36mm, minimum height=16mm},
+  accept/.style={cell, fill=green!14, draw=green!55!black},
+  reject/.style={cell, fill=red!8, draw=red!60!black, dashed},
+  colhead/.style={font=\small\bfseries, align=center, inner sep=4pt},
+  rowhead/.style={font=\small\bfseries, align=center, inner sep=4pt, rotate=90},
+  outer/.style={font=\small\bfseries},
+  note/.style={font=\scriptsize\itshape, align=center, text=gray!50!black}
 ]
 
-% Axes (origin at bottom-left)
-\draw[axisstyle] (0,0) -- (9.4,0) node[right, axislabel, align=left] {Training-layer\\safety};
-\draw[axisstyle] (0,0) -- (0,6.0) node[above, axislabel, align=center] {Admission-layer safety};
+% Column headings (training-layer pass / fail)
+\node[colhead] at (2.1, 4.10) {passes};
+\node[colhead] at (6.7, 4.10) {fails};
+\node[outer] at (4.4, 4.85) {Training-layer check};
+\node[note] at (4.4, 5.65) {Constitutional AI, RLHF, alignment-faking research,};
+\node[note] at (4.4, 5.30) {scalable oversight, debate};
 
-% Quadrant threshold lines
-\draw[gridline] (4.5,0) -- (4.5,5.6);
-\draw[gridline] (0,3.0) -- (9.0,3.0);
+% Row headings (admission-layer pass / fail)
+\node[rowhead] at (-1.55, 2.55) {passes};
+\node[rowhead] at (-1.55, 0.45) {fails};
+\node[outer, rotate=90] at (-2.45, 1.50) {Admission-layer check};
+\node[note, rotate=90, align=center] at (-3.20, 1.50) {positive TTL, typed rollback witness,\\bilateral cosignature, substrate-issued receipts};
 
-% Quadrant cells
-\node[accept] at (6.75, 4.30) {Executed action\\\itshape both axes cleared};
-\node[reject] at (6.75, 1.50) {Admission-layer\\refusal};
-\node[reject] at (2.25, 4.30) {Training-layer\\refusal};
-\node[reject] at (2.25, 1.50) {Refusal on\\both axes};
+% 2x2 cells
+\node[accept] at (2.1, 2.55) {\textbf{Execute}\\\itshape both checks cleared};
+\node[reject] at (6.7, 2.55) {\textbf{Reject}\\\itshape training-layer\\\itshape would have caught};
+\node[reject] at (2.1, 0.45) {\textbf{Reject}\\\itshape admission-layer\\\itshape catches it};
+\node[reject] at (6.7, 0.45) {\textbf{Reject}\\\itshape both layers catch};
 
-% Training axis tick bullets (along x-axis, below the axis line)
-\node[bullet, anchor=north, align=center] at (0.95, -0.15) {Constitutional\\AI};
-\node[bullet, anchor=north] at (2.55, -0.15) {RLHF};
-\node[bullet, anchor=north, align=center] at (4.20, -0.15) {alignment-faking\\research};
-\node[bullet, anchor=north, align=center] at (6.10, -0.15) {scalable\\oversight};
-\node[bullet, anchor=north] at (7.80, -0.15) {debate};
-\node[bullet, anchor=north, font=\scriptsize\itshape] at (4.50, -1.55) {shapes what the model wants to do};
-
-% Admission axis tick bullets (along y-axis, left of axis line)
-\node[bullet, anchor=east] at (-0.15, 5.10) {positive TTL};
-\node[bullet, anchor=east] at (-0.15, 4.50) {typed rollback witness};
-\node[bullet, anchor=east] at (-0.15, 3.90) {bilateral cosignature};
-\node[bullet, anchor=east] at (-0.15, 3.30) {substrate-issued receipts};
-\node[bullet, anchor=east, font=\scriptsize\itshape, align=right] at (-0.15, 1.50) {shapes what\\the substrate\\executes};
-
-% Origin tick label
-\node[anchor=north east, font=\scriptsize, gray!70!black] at (-0.05, -0.05) {neither};
+% Light gridlines separating the four cells
+\draw[gray!50, thin] (-0.05, 1.55) -- (8.85, 1.55);
+\draw[gray!50, thin] (4.40, -0.50) -- (4.40, 3.55);
 
 \end{tikzpicture}
-\caption{Composition of training-layer and admission-layer safety as orthogonal axes. A tool call is executed only when both axes clear; training-layer interventions (Constitutional AI, RLHF, alignment-faking research, scalable oversight, debate) shape model behavior along one axis, while admission-layer constraints (positive TTL, typed rollback witness, bilateral cosignature, substrate-issued receipts) shape what the substrate is willing to execute along the other. A scheming model that evades training-layer interventions still faces admission-layer refusal at the point of tool-call evaluation; the three rejection quadrants name the failure modes.}
+\caption{The two safety layers compose as a logical conjunction. A tool call executes only when both layers pass it (upper-left cell). Any single layer can reject, and a misaligned model that evades the training-layer check still faces the admission-layer check at runtime: that is the second column, where admission-layer refusal catches what training-layer interventions did not. The two layers are orthogonal in the sense that they evaluate independent properties: training-layer interventions shape what the model wants to emit; admission-layer constraints shape what the substrate is willing to execute.}
 \label{fig:orthogonal-composition}
 \end{figure}
 
