@@ -4,13 +4,14 @@ Tool-using agents already behave like institutional actors, receiving delegated 
 
 We close that gap with a single cryptographic construction. A bilateral DSSE envelope of predicate type \codepath{chio.bilateral-cosign-invocation.v1} carries a subject digest computed over the canonical receipt body that binds treaty-scope hash, ladder-intersection hash, request and outcome digests, continuation hash, and the two participating kernels' receipt hashes. A strict verifier accepts the envelope iff (i) both signatures verify against signer keys that are independent and pinned in the verifier-owned trust store; (ii) the payload is canonical JSON; (iii) the statement type is in-toto and the predicate type is the strict Chiodos profile; (iv) the leases referenced by the payload are fresh against the verifier's revocation epoch; and (v) the subject digest equals the canonical hash of the bound tuple. Five rejection codes distinguish each failure class so downstream audit can identify which constitutional precondition failed.
 
-This paper defends the bilateral-DSSE primitive on its own technical merits. A companion paper extends the construction to a polity model with Lean-attestable amendments, treaty-of-treaties composition, and political-theory framing. The present paper deliberately scopes to the cryptographic and runtime primitives that survive without that framing.
+The bilateral-DSSE primitive is self-standing: its correctness is a property of the canonical-bytes envelope and the strict verifier alone, not of any higher-layer construction. Polity-scale claims, amendment refinement, and treaty-of-treaties composition appear in a separate manuscript whose substrate the present primitive does not duplicate.
 
-The contributions are four falsifiable artifacts:
+The contributions are five falsifiable artifacts:
 
 \begin{itemize}
   \item A DSSE predicate type and canonical subject-digest binding for bilateral cross-kernel admission, with a five-code rejection taxonomy.
   \item A Rust runtime with a pre-dispatch admission hook that fails closed on federated-origin requests, plus a strict bilateral verifier.
   \item A three-vendor buyer-closure that replays admitted and denied paths in the same canonical schema.
   \item A negative-result characterization: sibling-treaty cross-receipt substitution, BBS stub-vs-real disambiguation, single-lane witness compromise, and error-message oracles are rejected by construction.
+  \item A mechanically-checked accept-set witness in Lean 4 (\codepath{formal/lean4/Chio/Chio/Treaty/BilateralAccept.lean}) characterizing the verifier's accept relation as the conjunction of exactly the six gate predicates Section~\ref{sec:predicate} names, with three derived corollaries (monotonicity under issuer-key extension, conjunctive scope decomposition, contrapositive trust-store membership), depending only on Lean kernel axioms with no \codepath{sorry} and no custom assumptions.
 \end{itemize}
