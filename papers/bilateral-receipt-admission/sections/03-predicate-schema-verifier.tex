@@ -10,28 +10,37 @@ This shape differs structurally from generic DSSE provenance. SLSA provenance an
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
-  node distance=4mm and 6mm,
-  every node/.style={font=\small},
-  box/.style={draw, rectangle, minimum height=8mm, minimum width=18mm, align=center, inner sep=2pt},
-  field/.style={draw, rectangle, minimum height=5mm, minimum width=24mm, align=center, font=\footnotesize, inner sep=1pt},
-  envelope/.style={draw, thick, rectangle, rounded corners=2pt, inner sep=6pt},
+  font=\footnotesize,
+  envelope/.style={draw, thick, rounded corners=3pt, inner sep=8pt},
+  field/.style={draw, rectangle, minimum height=4.2mm, text width=38mm, align=left, font=\scriptsize, inner sep=2pt, fill=blue!4},
+  sigbox/.style={draw, rectangle, minimum height=7mm, minimum width=26mm, align=center, font=\scriptsize, inner sep=3pt, fill=green!8},
+  hdrlabel/.style={font=\bfseries\scriptsize, align=center},
 ]
-\node[envelope, label={[font=\bfseries\small]above:DSSE Envelope}] (env) {
+\node[envelope, label={[font=\bfseries\small]above:DSSE Envelope (payload + 2 signatures)}] (env) {%
   \begin{tikzpicture}
-    \node[box, fill=blue!8] (payload) {payload\\\footnotesize(canonical bytes)};
-    \node[box, fill=green!8, right=4mm of payload] (sigs) {signatures[2]\\\footnotesize $k_1, k_2$};
+    \node[hdrlabel] (payhead) {payload (canonical JCS bytes)};
+    \node[field, below=2mm of payhead.south, anchor=north] (f1) {treaty-scope hash};
+    \node[field, below=0.8mm of f1.south, anchor=north] (f2) {ladder-intersection hash};
+    \node[field, below=0.8mm of f2.south, anchor=north] (f3) {request digest};
+    \node[field, below=0.8mm of f3.south, anchor=north] (f4) {outcome digest};
+    \node[field, below=0.8mm of f4.south, anchor=north] (f5) {continuation hash};
+    \node[field, below=0.8mm of f5.south, anchor=north] (f6) {local-receipt hash};
+    \node[field, below=0.8mm of f6.south, anchor=north] (f7) {remote-receipt hash};
+    \node[field, below=0.8mm of f7.south, anchor=north] (f8) {lease (epoch, expiry)};
+    \node[field, below=0.8mm of f8.south, anchor=north] (f9) {signer kernel ids ($k_1, k_2$)};
+    \node[hdrlabel, right=18mm of payhead] (sighead) {signatures};
+    \node[sigbox, below=2mm of sighead.south, anchor=north] (s1) {sig$_1$ by $k_1$};
+    \node[sigbox, below=1.2mm of s1.south, anchor=north] (s2) {sig$_2$ by $k_2$};
+    \draw[decorate, decoration={brace, amplitude=4pt, mirror}]
+      ([xshift=1mm]f1.north east) -- ([xshift=1mm]f9.south east)
+      node[midway, right=6pt, font=\scriptsize, align=left] (brace) {bindingTuple\\(ten fields)};
   \end{tikzpicture}
 };
-\node[below=12mm of env, align=center, font=\small] (tuple) {%
-  \textbf{bindingTuple} = (treaty scope, ladder-intersection hash, request digest,\\
-  outcome digest, continuation hash, receipt$_1$, receipt$_2$, $k_1$, $k_2$, $\ldots$)%
-};
-\node[below=6mm of tuple, font=\small] (subj) {$\mathit{subjectDigest} = H(\mathit{canonical}(\mathit{bindingTuple}))$};
-\draw[->, thick] (env.south) -- (tuple.north);
-\draw[->, thick] (tuple.south) -- (subj.north);
+\node[below=5mm of env, font=\small] (hash) {$\mathit{subjectDigest} = H(\mathit{canonical}(\mathit{bindingTuple}))$};
+\draw[->, thick] (env.south) -- (hash.north);
 \end{tikzpicture}
-\caption{Bilateral DSSE envelope. The subject digest binds a canonical tuple of treaty-scope and request/outcome fields under two kernel-key signatures.}
-\Description{Diagram of a DSSE envelope containing a canonical payload and two signature slots, with the binding tuple decomposition and its hash to the subject digest shown below.}
+\caption{Bilateral DSSE envelope. The canonical payload binds a ten-field tuple, whose hash under canonical JCS encoding is the subject digest both kernel-key signatures cover.}
+\Description{A DSSE envelope diagram with two columns: the left column lists the ten fields of the binding tuple (treaty scope, ladder intersection, request digest, outcome digest, continuation hash, two receipt hashes, lease, signer kernel ids) all contained inside the canonical payload; the right column shows the two signature slots. Below the envelope, the subject digest equation shows that the subject digest is the hash of the canonical-encoded binding tuple.}
 \label{fig:envelope}
 \end{figure}
 
@@ -88,25 +97,25 @@ Each verified signature is over the same canonical payload bytes; the verifier n
 \begin{tikzpicture}[
   node distance=3.5mm,
   every node/.style={font=\footnotesize},
-  gate/.style={draw, rectangle, rounded corners=2pt, minimum height=6mm, minimum width=42mm, align=left, inner sep=3pt},
-  reject/.style={draw, rectangle, dashed, minimum height=5mm, minimum width=26mm, align=center, font=\scriptsize, fill=red!8, inner sep=2pt},
-  accept/.style={draw, rectangle, double, minimum height=6mm, minimum width=42mm, align=center, fill=green!10},
+  gate/.style={draw, rectangle, rounded corners=2pt, minimum height=6mm, minimum width=46mm, align=left, inner sep=3pt},
+  reject/.style={draw, rectangle, dashed, minimum height=5mm, minimum width=28mm, align=center, font=\scriptsize, fill=red!8, inner sep=2pt},
+  accept/.style={draw, rectangle, double, minimum height=6mm, minimum width=46mm, align=center, fill=green!10},
   arrow/.style={->, >=Stealth, thick},
   rejarrow/.style={->, >=Stealth, dashed, red!70!black},
 ]
 \node[gate] (g1) {(G1) canonical(payload)};
 \node[gate, below=of g1] (g2) {(G2) predicateType = ChiodosBilateralV1};
-\node[gate, below=of g2] (g3) {(G3) $|$sigs$|$=2 \, \&\, kids distinct};
-\node[gate, below=of g3] (g4) {(G4) kid$_1 \in$ IssuerKeys $\land$ kid$_2 \in$ KernelKeys};
+\node[gate, below=of g2] (g3) {(G3) $|$sigs$|=2 \;\wedge\;$ kids distinct};
+\node[gate, below=of g3] (g4) {(G4) kid$_1 \in$ IssuerKeys $\wedge$ kid$_2 \in$ KernelKeys};
 \node[gate, below=of g4] (g5) {(G5) lease.epoch $\geq$ S.LeaseEpoch};
 \node[gate, below=of g5] (g6) {(G6) subjectDigest = $H$(canonical(bindingTuple))};
 \node[accept, below=of g6] (ok) {accept};
 
-\node[reject, right=20mm of g1] (r1) {R1: noncanonical};
-\node[reject, right=20mm of g2] (r2) {R2: type mismatch};
-\node[reject, right=20mm of g3] (r3) {R3: signer reuse};
-\node[reject, right=20mm of g5] (r5) {R4: stale lease};
-\node[reject, right=20mm of g6] (r6) {R5: digest mismatch};
+\node[reject, right=18mm of g1] (r1) {R1: noncanonical};
+\node[reject, right=18mm of g2] (r2) {R2: type mismatch};
+\node[reject, right=18mm of g3] (r3) {R3: signer reuse};
+\node[reject, right=18mm of g5] (r5) {R4: stale lease};
+\node[reject, right=18mm of g6] (r6) {R5: digest mismatch};
 
 \draw[arrow] (g1.south) -- (g2.north);
 \draw[arrow] (g2.south) -- (g3.north);

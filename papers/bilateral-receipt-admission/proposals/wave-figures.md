@@ -111,3 +111,33 @@ The `.aux` file confirms label resolution:
 Both figures land on page 3 of the rendered PDF. Four-pass build
 (pdflatex, bibtex, pdflatex, pdflatex) closes with 0 errors, 0
 undefined references, and a 10-page output, matching the targets.
+
+## Update: envelope redesign and gate-symbol fix
+
+Two layout defects surfaced on visual review of page 3. In Figure 1
+the outer DSSE Envelope rectangle wrapped only the payload and
+signature stubs, while the bindingTuple decomposition sat as a single
+overlong horizontal line outside the envelope, breaking the visual
+claim that the tuple lives inside the canonical payload. In Figure 2
+gate G3 used `\&` between the cardinality and distinctness clauses,
+which TeX typesets as an italic ampersand and disagrees with the
+`$\land$` already used in G4 and the align block above.
+
+The redesigned Figure 1 places one outer rounded rectangle around a
+two-column inner layout: the left column is a vertical stack of ten
+labeled field boxes under a `payload (canonical JCS bytes)` header,
+the right column carries the two signature boxes under a `signatures`
+header, and a brace on the field stack labels the group as
+`bindingTuple (ten fields)`. The subjectDigest equation sits directly
+below the envelope with a single arrow descending from the envelope
+south edge. The `decorations.pathreplacing` library was added to the
+`\usetikzlibrary` line to support the brace. Figure 2's G3 now reads
+`|sigs|=2 $\wedge$ kids distinct`, matching G4's logical-AND notation,
+and the gate-box and rejection-box widths were widened by a few
+millimetres each so the longer math fits without crowding.
+
+Four-pass build after the redesign reports 0 errors, 0 undefined
+references, 10 pages. Page 3 rendered at 200 DPI confirms the envelope
+outer rectangle now contains the full field list, the signature
+column, and the brace; the hash equation reads cleanly beneath the
+envelope. Page 4 reflows without artefacts.
