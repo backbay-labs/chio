@@ -12,7 +12,7 @@ Each of the three is a place where naive admission middleware degrades into advi
 Each of the five rejection codes traces back to a specific gate position, and Table~\ref{tab:rejection-codes} maps the codes to their source locations. The taxonomy lives on the protocol surface, not in debugging output, because an audit consumer must be able to distinguish a wrong predicate type from a degenerate signer reuse from a stale lease from a sibling-treaty digest disagreement; each names a different constitutional precondition with a different remediation. The threat-model scope of the verifier is also worth naming explicitly. The construction binds two honest cosigners to canonical bytes against an arbitrary network adversary; a single actor who controls both signing keys, whether through cross-party key-custody compromise or through a single vendor operating both ends of a bilateral closure, sits outside the threat model. That case is treated as an operational assumption in \S\ref{sec:limits} and is independent of every gate in the verifier.
 
 \begin{table}[t]
-\footnotesize
+\scriptsize
 \caption{Five rejection codes mapped to verifier source locations.}
 \label{tab:rejection-codes}
 \begin{tabularx}{\columnwidth}{@{}lX@{}}
