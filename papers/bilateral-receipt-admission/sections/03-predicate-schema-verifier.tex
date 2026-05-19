@@ -5,7 +5,35 @@ The bilateral admission envelope is a DSSE statement~\cite{dsse} carrying the pr
 
 This shape differs structurally from generic DSSE provenance. SLSA provenance and in-toto link statements~\cite{slsa,torres2019intoto} bind a build pipeline to an artifact; their subject is the artifact digest and the predicate records build parameters. The bilateral profile binds a receipt-graph admission event to a treaty, with the subject digest taken over a tuple of hashes rather than an artifact, and with joint authorization intent expressed as two independent kernel signatures over identical canonical bytes. Without that intent record a receiver can verify that some party signed something, but cannot distinguish a shared action from two adjacent local logs that happen to name the same workflow.
 
-\paragraph{The binding tuple.} The subject digest is the canonical hash of a ten-field tuple, and each field commits to a distinct constitutional precondition. The \emph{treaty-scope hash} pins the bilateral relationship in force (participant identities, named action classes, lifetime), so re-presenting the envelope under a different relationship is a hash miss rather than a re-routable token. The \emph{ladder-intersection hash} pins the joint mode-coverage decision (which action class was evaluated at which mode under the intersected ladder), so a sender cannot retroactively claim a lower-intensity floor than the one both sides agreed to. The \emph{admission-report hash} pins the receiving polity's intent: which predicates the receiver checks, which evidence it requires, and which fail-closed codes it has pre-declared. The \emph{continuation hash} pins the linkage to receipt-graph state by naming the prior receipt this envelope extends, so the envelope cannot be re-grafted onto a different graph position without invalidating the digest. The \emph{request hash} and \emph{outcome hash} commit to the canonical input and output bytes separately, so selective disclosure can later reveal one without the other while preserving the binding. The \emph{local-receipt} and \emph{remote-receipt} hashes carry the sender's and receiver's signed receipt bodies, respectively; the pair is what distinguishes bilateral admission from a unilateral attestation. The \emph{lease} field commits to a freshness window (a revocation epoch and an expiry), and the \emph{signer kernel ids} commit to the two cosigners' identifiers, so an envelope cannot be reassigned to a different pair of signers post-facto.
+\paragraph{The binding tuple.} The subject digest is the canonical hash of a ten-field tuple, and each field commits to a distinct constitutional precondition. Figure~\ref{fig:envelope} visualizes the binding-tuple decomposition. The \emph{treaty-scope hash} pins the bilateral relationship in force (participant identities, named action classes, lifetime), so re-presenting the envelope under a different relationship is a hash miss rather than a re-routable token. The \emph{ladder-intersection hash} pins the joint mode-coverage decision (which action class was evaluated at which mode under the intersected ladder), so a sender cannot retroactively claim a lower-intensity floor than the one both sides agreed to. The \emph{admission-report hash} pins the receiving polity's intent: which predicates the receiver checks, which evidence it requires, and which fail-closed codes it has pre-declared. The \emph{continuation hash} pins the linkage to receipt-graph state by naming the prior receipt this envelope extends, so the envelope cannot be re-grafted onto a different graph position without invalidating the digest. The \emph{request hash} and \emph{outcome hash} commit to the canonical input and output bytes separately, so selective disclosure can later reveal one without the other while preserving the binding. The \emph{local-receipt} and \emph{remote-receipt} hashes carry the sender's and receiver's signed receipt bodies, respectively; the pair is what distinguishes bilateral admission from a unilateral attestation. The \emph{lease} field commits to a freshness window (a revocation epoch and an expiry), and the \emph{signer kernel ids} commit to the two cosigners' identifiers, so an envelope cannot be reassigned to a different pair of signers post-facto.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=4mm and 6mm,
+  every node/.style={font=\small},
+  box/.style={draw, rectangle, minimum height=8mm, minimum width=18mm, align=center, inner sep=2pt},
+  field/.style={draw, rectangle, minimum height=5mm, minimum width=24mm, align=center, font=\footnotesize, inner sep=1pt},
+  envelope/.style={draw, thick, rectangle, rounded corners=2pt, inner sep=6pt},
+]
+\node[envelope, label={[font=\bfseries\small]above:DSSE Envelope}] (env) {
+  \begin{tikzpicture}
+    \node[box, fill=blue!8] (payload) {payload\\\footnotesize(canonical bytes)};
+    \node[box, fill=green!8, right=4mm of payload] (sigs) {signatures[2]\\\footnotesize $k_1, k_2$};
+  \end{tikzpicture}
+};
+\node[below=12mm of env, align=center, font=\small] (tuple) {%
+  \textbf{bindingTuple} = (treaty scope, ladder-intersection hash, request digest,\\
+  outcome digest, continuation hash, receipt$_1$, receipt$_2$, $k_1$, $k_2$, $\ldots$)%
+};
+\node[below=6mm of tuple, font=\small] (subj) {$\mathit{subjectDigest} = H(\mathit{canonical}(\mathit{bindingTuple}))$};
+\draw[->, thick] (env.south) -- (tuple.north);
+\draw[->, thick] (tuple.south) -- (subj.north);
+\end{tikzpicture}
+\caption{Bilateral DSSE envelope. The subject digest binds a canonical tuple of treaty-scope and request/outcome fields under two kernel-key signatures.}
+\Description{Diagram of a DSSE envelope containing a canonical payload and two signature slots, with the binding tuple decomposition and its hash to the subject digest shown below.}
+\label{fig:envelope}
+\end{figure}
 
 \paragraph{Worked envelope.} A valid envelope, with placeholder hashes, has the canonical shape (each hex field below is the bare lowercase output of SHA-256, truncated here with an ellipsis for display):
 \begin{small}
@@ -53,7 +81,50 @@ and let $E$ be a bilateral envelope. The verifier accepts iff six gates hold in 
   & \textsf{(G6)}\;E.\mathit{subjectDigest} = \\
   & \qquad\;\; H(\mathit{canonical}(E.\mathit{payload}.\mathit{bindingTuple})).
 \end{align*}
-Each verified signature is over the same canonical payload bytes; the verifier never reaches (G1)-(G6) until both bytes-level signatures verify under the keyids declared in the signature slices. The predicate is the conjunction of six gates (G1)-(G6), evaluated left-to-right. Five of the six gates produce uniquely-named rejection codes; the trust-store-membership gate (G4) is bundled with predicate-type-mismatch in the deployed verifier, because a signer outside both allowlists fails (G2) before (G4) is reached whenever the predicate type is the strict Chiodos profile and the trust store enumerates only Chiodos-issuing keys.
+Each verified signature is over the same canonical payload bytes; the verifier never reaches (G1)-(G6) until both bytes-level signatures verify under the keyids declared in the signature slices. The predicate is the conjunction of six gates (G1)-(G6), evaluated left-to-right. Figure~\ref{fig:gates} renders the verifier gate sequence and the five rejection codes. Five of the six gates produce uniquely-named rejection codes; the trust-store-membership gate (G4) is bundled with predicate-type-mismatch in the deployed verifier, because a signer outside both allowlists fails (G2) before (G4) is reached whenever the predicate type is the strict Chiodos profile and the trust store enumerates only Chiodos-issuing keys.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=3.5mm,
+  every node/.style={font=\footnotesize},
+  gate/.style={draw, rectangle, rounded corners=2pt, minimum height=6mm, minimum width=42mm, align=left, inner sep=3pt},
+  reject/.style={draw, rectangle, dashed, minimum height=5mm, minimum width=26mm, align=center, font=\scriptsize, fill=red!8, inner sep=2pt},
+  accept/.style={draw, rectangle, double, minimum height=6mm, minimum width=42mm, align=center, fill=green!10},
+  arrow/.style={->, >=Stealth, thick},
+  rejarrow/.style={->, >=Stealth, dashed, red!70!black},
+]
+\node[gate] (g1) {(G1) canonical(payload)};
+\node[gate, below=of g1] (g2) {(G2) predicateType = ChiodosBilateralV1};
+\node[gate, below=of g2] (g3) {(G3) $|$sigs$|$=2 \, \&\, kids distinct};
+\node[gate, below=of g3] (g4) {(G4) kid$_1 \in$ IssuerKeys $\land$ kid$_2 \in$ KernelKeys};
+\node[gate, below=of g4] (g5) {(G5) lease.epoch $\geq$ S.LeaseEpoch};
+\node[gate, below=of g5] (g6) {(G6) subjectDigest = $H$(canonical(bindingTuple))};
+\node[accept, below=of g6] (ok) {accept};
+
+\node[reject, right=20mm of g1] (r1) {R1: noncanonical};
+\node[reject, right=20mm of g2] (r2) {R2: type mismatch};
+\node[reject, right=20mm of g3] (r3) {R3: signer reuse};
+\node[reject, right=20mm of g5] (r5) {R4: stale lease};
+\node[reject, right=20mm of g6] (r6) {R5: digest mismatch};
+
+\draw[arrow] (g1.south) -- (g2.north);
+\draw[arrow] (g2.south) -- (g3.north);
+\draw[arrow] (g3.south) -- (g4.north);
+\draw[arrow] (g4.south) -- (g5.north);
+\draw[arrow] (g5.south) -- (g6.north);
+\draw[arrow] (g6.south) -- (ok.north);
+
+\draw[rejarrow] (g1.east) -- (r1.west);
+\draw[rejarrow] (g2.east) -- (r2.west);
+\draw[rejarrow] (g3.east) -- (r3.west);
+\draw[rejarrow] (g5.east) -- (r5.west);
+\draw[rejarrow] (g6.east) -- (r6.west);
+\end{tikzpicture}
+\caption{Verifier gate evaluation. Five named rejection codes distinguish noncanonical payloads, predicate-type mismatch (which bundles G4 trust-store membership), signer reuse, stale leases, and subject-digest mismatch.}
+\Description{Vertical flow of six gate boxes labeled G1 through G6 with an accept box at the bottom; dashed arrows from each gate point to red-shaded rejection-code boxes on the right.}
+\label{fig:gates}
+\end{figure}
 
 \paragraph{noncanonical-payload.} The payload bytes fail RFC 8785 canonicalization: re-ordered keys, non-minimal numeric forms, unnormalized strings, or trailing whitespace. The verifier rejects rather than re-canonicalizing because the signature is over a specific byte sequence. The attack class defeated is the \emph{presentation attacker} who serves different byte sequences to different verifiers, each of which re-canonicalizes locally and reaches a different decision while the upstream signature is undisturbed; the same channel also underwrites equivocation against transparency-log witnesses. Closing it at the verifier protects the canonical-bytes assumption that selective disclosure, replay-detection, and witness consistency all depend on.
 

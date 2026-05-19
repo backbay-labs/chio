@@ -13,8 +13,52 @@ The substrate accepts a tool call wrapped in an admission envelope that carries 
 
 The envelope is typed. A reversible call without a TTL is not constructable: the substrate's input parser rejects it before any executor sees it. A destructive call without both a TTL and a bilateral cosignature is not constructable. The envelope is the syntactic constraint, not a runtime policy. The bilateral cosignature predicate for irreversible variants is developed concretely in a companion construction (anonymized for review): a two-party attestation whose admission predicate composes a small set of gates over canonical bytes.
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  stage/.style={draw, thick, rounded corners=2pt, fill=gray!8, align=center, inner sep=3pt, text width=1.4cm, minimum height=0.85cm},
+  gate/.style={draw, thick, diamond, aspect=1.7, fill=blue!7, draw=blue!55!black, align=center, inner sep=0pt, minimum width=1.5cm, minimum height=0.5cm, font=\scriptsize},
+  accept/.style={draw, thick, rounded corners=2pt, fill=green!10, draw=green!55!black, align=center, inner sep=3pt, text width=1.5cm, minimum height=0.85cm},
+  reject/.style={draw, thick, rounded corners=2pt, fill=red!7, draw=red!60!black, align=center, inner sep=2pt, text width=1.7cm, font=\scriptsize},
+  pass/.style={-{Latex[length=1.8mm]}, thick},
+  fail/.style={-{Latex[length=1.8mm]}, thick, red!55!black, dashed},
+  passlabel/.style={font=\scriptsize, above, inner sep=1pt},
+  faillabel/.style={font=\scriptsize, red!55!black, right, inner sep=1pt}
+]
+
+\node[stage] (env) at (0, 0) {Envelope\\emitted};
+\node[gate, right=0.3cm of env] (g1) {(1)\\capability};
+\node[gate, right=0.3cm of g1] (g2) {(2)\\class};
+\node[gate, right=0.3cm of g2] (g3) {(3)\\TTL $> 0$};
+\node[gate, right=0.3cm of g3] (g4) {(4)\\rollback\\slot};
+\node[accept, right=0.3cm of g4] (exec) {Executed\\+ receipt};
+
+\draw[pass] (env) -- (g1);
+\draw[pass] (g1) -- node[passlabel]{pass} (g2);
+\draw[pass] (g2) -- node[passlabel]{pass} (g3);
+\draw[pass] (g3) -- node[passlabel]{pass} (g4);
+\draw[pass] (g4) -- node[passlabel]{pass} (exec);
+
+\node[reject, below=0.95cm of g1] (r1) {\texttt{cap-denied}};
+\node[reject, below=0.95cm of g2] (r2) {\texttt{class-}\\\texttt{mismatch}};
+\node[reject, below=0.95cm of g3] (r3) {\texttt{ttl-invalid}};
+\node[reject, below=0.95cm of g4] (r4) {\texttt{rollback-}\\\texttt{missing}};
+
+\draw[fail] (g1.south) -- node[faillabel]{fail} (r1.north);
+\draw[fail] (g2.south) -- node[faillabel]{fail} (r2.north);
+\draw[fail] (g3.south) -- node[faillabel]{fail} (r3.north);
+\draw[fail] (g4.south) -- node[faillabel]{fail} (r4.north);
+
+\node[draw=red!55!black, dashed, thick, rounded corners=2pt, fit=(r1) (r2) (r3) (r4), inner sep=3pt, label={[font=\scriptsize\itshape, red!55!black]below:rejection receipt with named code}] {};
+
+\end{tikzpicture}
+\caption{Tool-call lifecycle with substrate-side admission gates. The model emits a candidate envelope; the substrate evaluates each gate left-to-right; rejection at any gate emits a named code; acceptance produces an admission receipt that closes the action chain. Gate (4) carries the rollback-receipt-slot check for reversible classes and the bilateral-cosignature check for destructive classes.}
+\label{fig:tool-call-lifecycle}
+\end{figure}
+
 \paragraph{The four operations.}
-Admission proceeds by four decidable operations. (1) \emph{Capability check}: the authorisation chain attenuates a valid trust root and the residual permits the call's intended effect on the named subject. (2) \emph{Class check}: the call's classified action class matches the envelope's declared class. (3) \emph{TTL check}: the envelope's declared TTL is positive and bounded by the substrate's per-class maximum. (4) \emph{Rollback slot}: for reversible and destructive classes, the envelope carries a typed rollback receipt slot; for destructive classes, a bilateral cosignature is also present from both the agent's operator polity and the tool server's host polity.
+Admission proceeds by four decidable operations (Figure~\ref{fig:tool-call-lifecycle}). (1) \emph{Capability check}: the authorisation chain attenuates a valid trust root and the residual permits the call's intended effect on the named subject. (2) \emph{Class check}: the call's classified action class matches the envelope's declared class. (3) \emph{TTL check}: the envelope's declared TTL is positive and bounded by the substrate's per-class maximum. (4) \emph{Rollback slot}: for reversible and destructive classes, the envelope carries a typed rollback receipt slot; for destructive classes, a bilateral cosignature is also present from both the agent's operator polity and the tool server's host polity.
 
 \paragraph{Structural theorems carried by the substrate.}
 The grammar carries three structural commitments whose proofs are discharged in companion work~\cite{programmableSovereignty2026}.

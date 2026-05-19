@@ -47,7 +47,63 @@ TTL duration $\mathit{ttl}$. The active constitution at instant $t$ is
 The case split is a substrate-level abstraction of the TTL scheduler's
 behavior. The scheduler advances the counter and reverts the amendment
 at $\mathit{t_{\text{expires}}}$; the model represents this as a
-conditional on $t$.
+conditional on $t$. Figure~\ref{fig:ttl-window} illustrates the
+evolution of an admitted amendment across the window boundary.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  >={Stealth[length=2.2mm,width=1.6mm]},
+  font=\small,
+  every node/.style={inner sep=2pt},
+]
+% main timeline
+\draw[->, thick] (0,0) -- (10.5,0) node[right] {$t$};
+
+% tick marks
+\draw[thick] (1.2,0.12) -- (1.2,-0.12);
+\draw[thick] (7.6,0.12) -- (7.6,-0.12);
+
+% tick labels
+\node[below=2pt] at (1.2,-0.12) {$t_0$};
+\node[below=2pt] at (7.6,-0.12) {$t_0 + T$};
+
+% region shading
+\fill[blue!8] (1.2,0.18) rectangle (7.6,1.05);
+\fill[gray!12] (7.6,0.18) rectangle (10.3,1.05);
+
+% region labels
+\node[align=center] at (4.4,0.62) {\textbf{in-window state}\\[1pt]
+  $\mathsf{activeAt}(A,t)=\delta.\mathit{new}$\\[1pt]
+  rollback witness valid};
+\node[align=center] at (8.95,0.62) {\textbf{expired}\\[1pt]
+  $\mathsf{activeAt}(A,t)=\delta.\mathit{old}$\\[1pt]
+  baseline restored};
+
+% admission event arrow
+\draw[->, thick] (1.2,1.55) -- (1.2,1.12);
+\node[above, align=center] at (1.2,1.55) {action admitted\\[1pt] ${\rm TTL}=T$};
+
+% auto-revert arrow
+\draw[->, thick] (7.6,1.55) -- (7.6,1.12);
+\node[above, align=center] at (7.6,1.55) {auto-revert\\[1pt] if no rollback receipt};
+
+% brace under in-window
+\draw[decorate, decoration={brace, mirror, amplitude=4pt}]
+  (1.2,-0.55) -- (7.6,-0.55)
+  node[midway, below=6pt, align=center]
+  {per-step $\mathsf{BackwardRefines}$ witness preserves baseline\\[1pt]
+   (Theorem~3: baseline preserved at every $t$)};
+\end{tikzpicture}
+\caption{TTL-window evolution. An admitted action is bound to a
+positive TTL $T$ at admission time $t_0$. Within the window
+$[t_0,\, t_0+T]$, a per-step refinement witness preserves the
+baseline. At $t_0+T$, auto-reversion fires if no explicit rollback
+receipt has closed the chain. The composition theorem
+(Theorem~3) states that the baseline is preserved at every
+instant.}
+\label{fig:ttl-window}
+\end{figure}
 
 \paragraph{The composition theorem.}
 The headline composition theorem

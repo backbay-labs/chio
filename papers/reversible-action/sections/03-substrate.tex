@@ -36,6 +36,31 @@ has been overwritten in the interim. Process-tree suspend via SIGSTOP
 and its inverse SIGCONT is a second instance: the inverse is valid
 against the surviving pid set, with the substrate recording which pids
 in the original target list have since exited.
+Figure~\ref{fig:variants} summarizes the five operational variants and
+the shape of the rollback witness each admits.
+
+\begin{figure}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}l l X l@{}}
+\toprule
+\textbf{Variant} & \textbf{Class} & \textbf{Rollback witness} & \textbf{TTL} \\
+\midrule
+File quarantine        & reversible  & content-hash-gated restore                       & auto-revert \\
+Persistence disable    & reversible  & content-hash-gated re-enable                     & auto-revert \\
+Process-tree suspend   & reversible  & SIGCONT (substrate-issued capability)            & auto-revert \\
+Egress restriction     & reversible  & capability-revoke (substrate-issued)             & auto-revert \\
+Process-tree terminate & destructive & absent; bilateral cosignature at admission       & no-revert   \\
+\bottomrule
+\end{tabularx}
+\caption{The five operational action variants and their rollback-witness
+shapes. Four reversible variants admit content-hash-gated or
+capability-token rollback witnesses constructible at the moment of
+admission; the destructive variant reduces admission to bilateral
+predicate intersection between a device polity and an operator polity,
+since no rollback witness is constructible.}
+\label{fig:variants}
+\end{figure}
 
 \paragraph{Four-receipt grammar.}
 Each action chain emits up to four receipt families. A request receipt
