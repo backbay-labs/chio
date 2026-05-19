@@ -1,6 +1,11 @@
 \section{Limitations}
 
-%% TODO: draft
+Three load-bearing limits sit at the primitive layer.
 
-% This section is a stub to be drafted by extracting the relevant content
-% from papers/programmable-sovereignty/. See README.md for the proposed structure.
+\paragraph{No live cross-process federation.} The multi-party setup runs in-process: two kernels share a clock and exchange canonical bytes through library calls rather than the network. Cross-process federation and partition reconciliation sit in the companion paper's deployment trajectory.
+
+\paragraph{Single-vendor key custody.} Bilateral DSSE carries party-independence only when the two signing keys are held by independent operators. If both kernels run under one custody domain the construction reduces to single-key signing, and operational discipline rather than cryptography carries the independence claim. A kernel-independence attestation primitive is named as future work.
+
+\paragraph{Observability gap.} The receipt log is the audit channel: every admission and denial appears as a canonical receipt with a rejection code. Live observability (denial-rate alerts, schema-mismatch fingerprinting, non-leaking telemetry) is not specified.
+
+Polity-level questions (citizenship, amendment, Hart-condition-(a) framing, trajectory-invariant theorems, sensor-state attestation) sit one layer above this primitive and are addressed in the companion paper.

@@ -1,6 +1,29 @@
 \section{Predicate Schema and Strict Verifier}
+\label{sec:predicate}
 
-%% TODO: draft
+The bilateral admission envelope is a DSSE statement~\cite{dsse} carrying the predicate type \codepath{chio.bilateral-cosign-invocation.v1}. The payload type is the in-toto statement type, the statement type is in-toto v1, and the predicate body is a single record over canonical JSON~\cite{rfc8785} that binds, in one tuple: treaty id, treaty-scope hash, ladder-intersection hash, admission-report hash, continuation hash, request-canonical hash, outcome-canonical hash, local-receipt hash, remote-receipt hash, capability lease, governance receipt reference, and the two signer kernel ids. The DSSE subject is a single digest whose preimage is the canonical hash of that tuple; the envelope carries exactly two signature slices, one per kernel keyid.
 
-% This section is a stub to be drafted by extracting the relevant content
-% from papers/programmable-sovereignty/. See README.md for the proposed structure.
+This shape differs structurally from generic DSSE provenance. SLSA provenance and in-toto link statements~\cite{slsa,torres2019intoto} bind a build pipeline to an artifact; their subject is the artifact digest and the predicate records build parameters. The bilateral profile binds a receipt-graph admission event to a treaty, with the subject digest taken over a tuple of hashes rather than an artifact, and with joint authorization intent expressed as two independent kernel signatures over identical canonical bytes. Without that intent record a receiver can verify that some party signed something, but cannot distinguish a shared action from two adjacent local logs that happen to name the same workflow.
+
+\paragraph{Verifier accept set.} For trust store $\mathcal{S}=(\mathit{IssuerKeys},\mathit{KernelKeys},\mathit{LeaseEpoch})$ and envelope $E$, the verifier accepts iff
+\begin{align*}
+  \mathit{accept}(\mathcal{S},E) \iff{} & \mathit{canonical}(E.\mathit{payload}) \;\wedge \\
+  & E.\mathit{predicateType} = \mathit{ChiodosBilateralV1} \;\wedge \\
+  & |E.\mathit{sigs}|=2 \;\wedge\; E.\mathit{sig}_1.\mathit{kid} \ne E.\mathit{sig}_2.\mathit{kid} \;\wedge \\
+  & E.\mathit{sig}_1.\mathit{kid} \in \mathit{IssuerKeys} \;\wedge\; E.\mathit{sig}_2.\mathit{kid} \in \mathit{KernelKeys} \;\wedge \\
+  & E.\mathit{payload}.\mathit{lease}.\mathit{epoch} \ge \mathcal{S}.\mathit{LeaseEpoch} \;\wedge \\
+  & E.\mathit{subjectDigest} = H(\mathit{canonical}(E.\mathit{payload}.\mathit{bindingTuple})).
+\end{align*}
+Each verified signature is over the same canonical payload bytes. The predicate is the conjunction of six gates, in that order; the verifier evaluates them left-to-right and returns one of five rejection codes at the first failure, or admits the envelope.
+
+\paragraph{noncanonical-payload.} The payload bytes fail RFC 8785 canonicalization: re-ordered keys, non-minimal numeric forms, unnormalized strings, or trailing whitespace. The verifier rejects rather than re-canonicalizing because the signature is over a specific byte sequence; an envelope that signs noncanonical bytes admits a presentation attacker who can serve different bytes to different verifiers without breaking any signature. The check protects the canonical-bytes assumption that downstream selective disclosure and replay both depend on.
+
+\paragraph{predicate-type-mismatch.} The DSSE statement carries a \codepath{predicateType} other than \codepath{chio.bilateral-cosign-invocation.v1}. Generic in-toto profiles do not bind admission-report and ladder-intersection hashes; treating an SLSA build provenance, a generic SCAI predicate, or a degenerate signed-JSON record as bilateral admission would let a sender substitute a weaker predicate and still pass syntactic envelope checks. Pinning the predicate string makes profile downgrade impossible without forging a signature.
+
+\paragraph{signer-reuse.} The two signature slices carry the same keyid, or distinct keyids that resolve to the same operator under verifier-owned attribution metadata. A single signer cannot produce two-party consent; party-independence is what distinguishes bilateral admission from a single kernel signing twice. The keyid-equality test is local; deeper operator-independence checks live in the trust store and depend on attestation evidence the verifier accepts out of band.
+
+\paragraph{stale-lease.} The capability lease referenced by the payload predates the verifier's current revocation epoch, or its expiry has passed. The lease binds the action's authority window; admitting a stale lease re-admits a window the issuer has already revoked, and turns the receipt graph into an append-anything store. Lease freshness is a verifier-side test against state the verifier owns, not a sender-asserted claim.
+
+\paragraph{subject-digest-mismatch.} The DSSE subject digest is not the canonical hash of the binding tuple constructed from the payload's named fields. This is the integrity check on the binding itself: a payload whose treaty-scope hash, ladder-intersection hash, request hash, outcome hash, and the two receipt hashes disagree with the digest the signers committed to is structurally not the envelope the signers intended. The mismatch also defeats sibling-treaty substitution, since a receipt issued under one treaty's ladder-intersection cannot satisfy another treaty's subject digest without colliding the hash.
+
+The taxonomy is intentionally coarse. Each code names a conjunct of the admission predicate, not a structured failure report identifying which sub-field disagreed at the bit level. An adversary probing the verifier learns which gate first refused, not which inner field mismatched; the error surface leaks at most $\log_2 5 \approx 2.32$ bits per attempt, and that information is exactly what an auditor needs to identify which constitutional precondition failed.

@@ -1,6 +1,26 @@
 \section{Formal Sketch}
+\label{sec:formal}
 
-%% TODO: draft
+The verifier of \S\ref{sec:predicate} has a freestanding structural theorem at the primitive layer. Strip the runtime to the three load-bearing structures: a trust store $\mathcal{S}$ with separate issuer-key and kernel-key allowlists, a bilateral envelope $E$ carrying a receipt id, a scope predicate, and two signature slices (one issuer-side, one kernel-side), and a denotational interpreter $\llbracket\cdot\rrbracket$ for the scope predicate against the receipt id. The accept relation is the conjunction
+\[
+  \mathit{accept}(\mathcal{S},E) \,=\, [E.\mathit{issuerSig}.\mathit{kid} \in \mathcal{S}.\mathit{issuerKeys}] \,\wedge\, [E.\mathit{kernelSig}.\mathit{kid} \in \mathcal{S}.\mathit{kernelKeys}] \,\wedge\, \llbracket E.\mathit{scope}\rrbracket(E.\mathit{receiptId}).
+\]
+Signature byte validity is abstracted into trust-store membership: the trust store names keys whose signatures the deployed verifier has separately checked, and the freestanding theorem inspects only the membership and scope conjuncts.
 
-% This section is a stub to be drafted by extracting the relevant content
-% from papers/programmable-sovereignty/. See README.md for the proposed structure.
+\begin{theorem}[Freestanding accept set]
+For every trust store $\mathcal{S}$ and bilateral envelope $E$,
+\[
+  \mathit{accept}(\mathcal{S},E) \;\Longleftrightarrow\;
+   E.\mathit{issuerSig}.\mathit{kid} \in \mathcal{S}.\mathit{issuerKeys}
+    \,\wedge\, E.\mathit{kernelSig}.\mathit{kid} \in \mathcal{S}.\mathit{kernelKeys}
+    \,\wedge\, \llbracket E.\mathit{scope}\rrbracket(E.\mathit{receiptId}) = \mathit{true}.
+\]
+\end{theorem}
+
+The bi-conditional is the load-bearing claim. The forward direction says the verifier returns true only when all three conjuncts hold; the reverse direction says no hidden side channel can sneak admission past any of the three. The proof is one Lean tactic line that unfolds the definition of \emph{accept} and rewrites the resulting Boolean conjunction. The Lean source is self-contained at the module level: it imports the predicate-language type and its denotational interpreter, but takes no dependency on the wider polity model, anchor-quorum machinery, or treaty-intersection construction. A reviewer can audit the file end-to-end at \codepath{formal/lean4/Chio/Chio/Treaty/BilateralAccept.lean}.
+
+Two corollaries follow definitionally. Accept-set monotonicity in the trust store says extending the issuer or kernel allowlist preserves prior accepts: adding a co-signing counterparty never invalidates an envelope that admitted under the smaller store. Accept-set conjunction over scope predicates says an envelope accepted under scope $p \wedge q$ remains accepted when its scope is rebound to $p$ alone or $q$ alone; this is the structural decomposition that lets a verifier evaluate joint admission against a treaty as the intersection of independently named predicates. Both corollaries are proved by unfolding \emph{accept} and rewriting on the freestanding theorem.
+
+The theorem deliberately stops short of three further obligations. It does not prove single-amendment backward refinement: the freestanding statement is over a fixed predicate language, not over amendments that propose a new predicate set, and the trajectory invariant that rules out constitutional ratchets is not in scope at the primitive layer. It does not prove polity-level admission: it speaks only of the verifier's accept set on a bilateral envelope, not of a polity's constitutional admission of a receipt against its own predicate set and citizenship roster. And it does not address the Hart-condition-(a) framing for state-like authority: the construction is a cryptographic primitive over canonical bytes, and the political-theory framing belongs to a different argument.
+
+Those three obligations are discharged separately in the companion polity paper: \thm{amendment_admissible_iff_backward_refinement} carries amendment refinement as a type-level invariant on the enactment constructor; \thm{treaty_admission_iff_predicate_intersection} carries treaty admission as the Boolean intersection of treaty scope, treaty constitution, and both polities' \emph{polityAdmits} relations; and the trajectory-invariant theorem \thm{essential_preserved_chain} rules out a chain of individually valid refinements that collapse to an adversary-only predicate over admitted history. The bilateral-DSSE primitive sits below all three: it is the byte-level admission gate the polity model depends on, with its own structural correctness theorem that does not borrow polity machinery.

@@ -1,6 +1,11 @@
 \section{Related Work}
 
-%% TODO: draft
+\paragraph{Supply-chain provenance.} SLSA~\cite{slsa}, Sigstore~\cite{sigstoreSecurity}, in-toto~\cite{torres2019intoto}, Rekor~\cite{rekorGithub}, and DSSE~\cite{dsse} describe build-time provenance: how an artifact was produced and by which pipeline. IRONDICT~\cite{hafeziIRONDICT2026} extends transparent dictionaries with polynomial commitments, the direction Rekor-style append-only logs are converging toward. Bilateral receipt admission targets the adjacent but distinct question of runtime cross-organizational action provenance: not how an artifact was built, but how an action was admitted at the receiving kernel under treaty-bound predicates.
 
-% This section is a stub to be drafted by extracting the relevant content
-% from papers/programmable-sovereignty/. See README.md for the proposed structure.
+\paragraph{Property attestation.} The closest formal lineage is property attestation: integrity-measurement architectures~\cite{sailerIMA2004}, semantic remote attestation~\cite{haldarSemanticAttestation2004}, property-based attestation~\cite{sadeghiPropertyAttestation2004}, and principles of remote attestation~\cite{cokerRemoteAttestation2011}. These attest properties of one system to a remote relying party; bilateral receipt admission attests that two systems jointly admitted an action over identical canonical bytes. Adjacent TEE-rooted attestation carries its own side-channel surface (UncoreBleed~\cite{uncoreBleed2026} on Intel SGX is a recent example) that complements rather than substitutes for canonical-bytes evidence.
+
+\paragraph{Policy languages and verified authorization.} Cedar establishes a Lean-plus-Rust pattern for proving policy decisions well-defined inside a single trust boundary~\cite{cedarOOPSLA2024,cedarFSE2024}. SAGA distributes access-control tokens from a user-controlled provider to constrain agent invocations~\cite{sagaNDSS2025}. Both work at the policy-decision layer inside one boundary; bilateral receipt admission proves a property at the cross-organizational admission layer, where the verifier replays a predicate over canonical bytes signed by two kernels. The layers compose.
+
+\paragraph{Agent and tool isolation.} IsolateGPT enforces per-app isolation with information-flow gates for LLM-based agents~\cite{isolategptNDSS2025}; Omega proposes a TEE-rooted agentic runtime with declarative policy evaluation~\cite{omegaTrustlets}. Both secure tool calls inside one operator's runtime; neither produces a cross-organizational artifact a third party can replay against a treaty predicate.
+
+\paragraph{Companion paper.} A companion paper situates the construction inside a polity model and formalizes the verifier's correctness as Lean theorems (\thm{treaty_admission_iff_predicate_intersection}, \thm{essential_preserved_chain}) with amendment as backward refinement. The present paper restricts to the primitives that survive without that framing.

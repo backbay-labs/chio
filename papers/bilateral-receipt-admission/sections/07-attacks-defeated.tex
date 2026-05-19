@@ -1,6 +1,13 @@
 \section{Attacks Defeated by Construction}
 
-%% TODO: draft
+Five classes of attack against cross-organizational receipt evidence are rejected structurally rather than by detection. Each rejection corresponds to a precondition the strict verifier checks before admission.
 
-% This section is a stub to be drafted by extracting the relevant content
-% from papers/programmable-sovereignty/. See README.md for the proposed structure.
+\paragraph{Sibling-treaty cross-receipt substitution.} A receipt issued under treaty $T_A$ cannot be replayed under sibling treaty $T_B$: the subject digest binds the treaty-scope hash and the ladder-intersection hash of $T_A$, and any verifier evaluating the envelope against $T_B$ returns subject-digest-mismatch.
+
+\paragraph{BBS stub-versus-real disambiguation.} A presentation cannot fool a verifier into accepting a BBS proof that does not bind to the canonical bytes the Ed25519 receipt was signed over. The strict verifier treats Ed25519 as authoritative; BBS is a presentation-layer projection of the same message vector, verified against the disclosed-attribute subset of the canonical body. A BBS-only presentation without a matching Ed25519 record is not admissible.
+
+\paragraph{Single-lane witness compromise.} Anchor lanes (Rekor, OpenTimestamps, Solana memo, EVM event) have uneven maturity. A compromised or stub witness on one lane cannot promote a false receipt to admission: the predicate-type binding requires the treaty's declared multi-lane witness policy, evaluated over the receipt's full anchor set rather than any single lane's say-so.
+
+\paragraph{Error-message oracles.} The five rejection codes (noncanonical-payload, predicate-type-mismatch, signer-reuse, stale-lease, subject-digest-mismatch) are coarse: each names a conjunct of the admission predicate, not a structured failure report. An adversary learns which conjunct first failed, not which sub-field disagreed at bit level.
+
+\paragraph{Constitutional ratchet at the policy layer.} An attacker proposing an amendment that loosens admission for already-admitted history targets the predicate set itself rather than any individual envelope. This is out of scope here; the companion paper's trajectory-invariant theorem (\thm{essential_preserved_chain}) obliges every amendment to refine the prior predicate set over admitted receipts.
