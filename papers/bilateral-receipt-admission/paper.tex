@@ -9,8 +9,20 @@
 \usepackage{tabularx}
 \usepackage{xurl}
 
-\newcommand{\codepath}[1]{\texttt{\detokenize{#1}}}
-\newcommand{\thm}[1]{\texttt{\detokenize{#1}}}
+\usepackage{seqsplit}
+\makeatletter
+% Allow line breaks inside code paths and theorem names by inserting
+% discretionary breaks after every character. \detokenize is expanded
+% inside an \edef so its character tokens reach \seqsplit.
+\newcommand{\codepath}[1]{\texttt{\bbsplit{#1}}}
+\newcommand{\thm}[1]{\texttt{\bbsplit{#1}}}
+\newcommand{\bbsplit}[1]{%
+  \begingroup
+    \edef\bb@arg{\detokenize{#1}}%
+    \expandafter\seqsplit\expandafter{\bb@arg}%
+  \endgroup
+}
+\makeatother
 \Urlmuskip=0mu plus 1mu
 
 \title{Bilateral Receipt Admission: Cross-Organizational Action Provenance with Treaty-Bound DSSE}

@@ -1,10 +1,14 @@
 \documentclass[11pt,letterpaper]{article}
 
 \usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{xcolor}
 \usepackage{url}
+\usepackage[T1]{fontenc}
+\usepackage{underscore}
 \usepackage{hyperref}
 
 \hypersetup{
@@ -16,9 +20,20 @@
 
 % Macro stubs matching the parent paper's conventions. The parent
 % defines these against acmart; this paper uses article and supplies
-% lightweight definitions.
-\newcommand{\codepath}[1]{\texttt{#1}}
-\newcommand{\thm}[1]{\texttt{#1}}
+% lightweight definitions. The underscore package above makes plain
+% `_' a text character so long snake_case identifiers in arguments
+% set as expected and can break across lines. The emergency-stretch
+% budget plus a small character-break helper let long CamelCase and
+% URL-style arguments wrap at any character when necessary.
+\setlength{\emergencystretch}{3em}
+\makeatletter
+\newcommand{\bbBreakString}[1]{%
+  \begingroup\ttfamily
+  \@tfor\bbch:=#1\do{\bbch\penalty\z@}%
+  \endgroup}
+\makeatother
+\newcommand{\codepath}[1]{\bbBreakString{#1}}
+\newcommand{\thm}[1]{\bbBreakString{#1}}
 
 \title{Programmable Sovereignty Over Reversible Action}
 \author{Anonymous for external review}

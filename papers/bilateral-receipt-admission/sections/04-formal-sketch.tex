@@ -2,19 +2,22 @@
 \label{sec:formal}
 
 The verifier of \S\ref{sec:predicate} has a freestanding structural theorem at the primitive layer. Strip the runtime to the three load-bearing structures: a trust store $\mathcal{S}$ with separate issuer-key and kernel-key allowlists, a bilateral envelope $E$ carrying a receipt id, a scope predicate, and two signature slices (one issuer-side, one kernel-side), and a denotational interpreter $\llbracket\cdot\rrbracket$ for the scope predicate against the receipt id. The accept relation is the conjunction
-\[
-  \mathit{accept}(\mathcal{S},E) \,=\, [E.\mathit{issuerSig}.\mathit{kid} \in \mathcal{S}.\mathit{issuerKeys}] \,\wedge\, [E.\mathit{kernelSig}.\mathit{kid} \in \mathcal{S}.\mathit{kernelKeys}] \,\wedge\, \llbracket E.\mathit{scope}\rrbracket(E.\mathit{receiptId}).
-\]
+\begin{align*}
+  \mathit{accept}(\mathcal{S},E) \,=\;
+    & [E.\mathit{issuerSig}.\mathit{kid} \in \mathcal{S}.\mathit{issuerKeys}] \\
+    {}\wedge{} & [E.\mathit{kernelSig}.\mathit{kid} \in \mathcal{S}.\mathit{kernelKeys}] \\
+    {}\wedge{} & \llbracket E.\mathit{scope}\rrbracket(E.\mathit{receiptId}).
+\end{align*}
 Signature byte validity is abstracted into trust-store membership: the trust store names keys whose signatures the deployed verifier has separately checked, and the freestanding theorem inspects only the membership and scope conjuncts.
 
 \begin{theorem}[Freestanding accept set]
 For every trust store $\mathcal{S}$ and bilateral envelope $E$,
-\[
+\begin{align*}
   \mathit{accept}(\mathcal{S},E) \;\Longleftrightarrow\;
-   E.\mathit{issuerSig}.\mathit{kid} \in \mathcal{S}.\mathit{issuerKeys}
-    \,\wedge\, E.\mathit{kernelSig}.\mathit{kid} \in \mathcal{S}.\mathit{kernelKeys}
-    \,\wedge\, \llbracket E.\mathit{scope}\rrbracket(E.\mathit{receiptId}) = \mathit{true}.
-\]
+    & E.\mathit{issuerSig}.\mathit{kid} \in \mathcal{S}.\mathit{issuerKeys} \\
+    {}\wedge{} & E.\mathit{kernelSig}.\mathit{kid} \in \mathcal{S}.\mathit{kernelKeys} \\
+    {}\wedge{} & \llbracket E.\mathit{scope}\rrbracket(E.\mathit{receiptId}) = \mathit{true}.
+\end{align*}
 \end{theorem}
 
 The bi-conditional is the load-bearing claim. The forward direction says the verifier returns true only when all three conjuncts hold; the reverse direction says no hidden side channel can sneak admission past any of the three. The proof is one Lean tactic line that unfolds the definition of \emph{accept} and rewrites the resulting Boolean conjunction. The Lean source is self-contained at the module level: it imports the predicate-language type and its denotational interpreter, but takes no dependency on the wider polity model, anchor-quorum machinery, or treaty-intersection construction. A reviewer can audit the file end-to-end at \codepath{formal/lean4/Chio/Chio/Treaty/BilateralAccept.lean}.

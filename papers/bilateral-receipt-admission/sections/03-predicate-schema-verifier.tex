@@ -5,14 +5,22 @@ The bilateral admission envelope is a DSSE statement~\cite{dsse} carrying the pr
 
 This shape differs structurally from generic DSSE provenance. SLSA provenance and in-toto link statements~\cite{slsa,torres2019intoto} bind a build pipeline to an artifact; their subject is the artifact digest and the predicate records build parameters. The bilateral profile binds a receipt-graph admission event to a treaty, with the subject digest taken over a tuple of hashes rather than an artifact, and with joint authorization intent expressed as two independent kernel signatures over identical canonical bytes. Without that intent record a receiver can verify that some party signed something, but cannot distinguish a shared action from two adjacent local logs that happen to name the same workflow.
 
-\paragraph{Verifier accept set.} For trust store $\mathcal{S}=(\mathit{IssuerKeys},\mathit{KernelKeys},\mathit{LeaseEpoch})$ and envelope $E$, the verifier accepts iff
+\paragraph{Verifier accept set.} Let the trust store
+$\mathcal{S} = (\mathit{IssuerKeys},$
+$\mathit{KernelKeys},$
+$\mathit{LeaseEpoch})$
+and let $E$ be a bilateral envelope. The verifier accepts iff
 \begin{align*}
-  \mathit{accept}(\mathcal{S},E) \iff{} & \mathit{canonical}(E.\mathit{payload}) \;\wedge \\
+  \mathit{accept}(\mathcal{S},E) \iff{}
+  & \mathit{canonical}(E.\mathit{payload}) \;\wedge \\
   & E.\mathit{predicateType} = \mathit{ChiodosBilateralV1} \;\wedge \\
-  & |E.\mathit{sigs}|=2 \;\wedge\; E.\mathit{sig}_1.\mathit{kid} \ne E.\mathit{sig}_2.\mathit{kid} \;\wedge \\
-  & E.\mathit{sig}_1.\mathit{kid} \in \mathit{IssuerKeys} \;\wedge\; E.\mathit{sig}_2.\mathit{kid} \in \mathit{KernelKeys} \;\wedge \\
+  & |E.\mathit{sigs}|=2 \;\wedge \\
+  & E.\mathit{sig}_1.\mathit{kid} \ne E.\mathit{sig}_2.\mathit{kid} \;\wedge \\
+  & E.\mathit{sig}_1.\mathit{kid} \in \mathit{IssuerKeys} \;\wedge \\
+  & E.\mathit{sig}_2.\mathit{kid} \in \mathit{KernelKeys} \;\wedge \\
   & E.\mathit{payload}.\mathit{lease}.\mathit{epoch} \ge \mathcal{S}.\mathit{LeaseEpoch} \;\wedge \\
-  & E.\mathit{subjectDigest} = H(\mathit{canonical}(E.\mathit{payload}.\mathit{bindingTuple})).
+  & E.\mathit{subjectDigest} = \\
+  & \quad H(\mathit{canonical}(E.\mathit{payload}.\mathit{bindingTuple})).
 \end{align*}
 Each verified signature is over the same canonical payload bytes. The predicate is the conjunction of six gates, in that order; the verifier evaluates them left-to-right and returns one of five rejection codes at the first failure, or admits the envelope.
 
