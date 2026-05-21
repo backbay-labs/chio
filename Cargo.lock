@@ -2643,6 +2643,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-attest-buyer"
+version = "0.1.0"
+dependencies = [
+ "chio-chiodos",
+ "chio-chiodos-runtime",
+ "chio-core-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "chio-attest-verify"
 version = "0.1.0"
 dependencies = [
@@ -2825,6 +2836,7 @@ dependencies = [
  "chio-api-protect",
  "chio-appraisal",
  "chio-arena",
+ "chio-attest-buyer",
  "chio-attest-verify",
  "chio-chiodos",
  "chio-chiodos-authority",
@@ -2858,6 +2870,7 @@ dependencies = [
  "chio-policy",
  "chio-replay-corpus",
  "chio-reputation",
+ "chio-runtime",
  "chio-settle",
  "chio-siem",
  "chio-store-sqlite",
@@ -3933,6 +3946,7 @@ dependencies = [
  "chio-federation",
  "chio-pheromone",
  "chio-store-sqlite",
+ "jsonschema",
  "rusqlite",
  "serde",
  "serde_json",
@@ -4050,6 +4064,16 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-runtime"
+version = "0.1.0"
+dependencies = [
+ "chio-chiodos-runtime",
+ "chio-core-types",
+ "chio-kernel",
+ "serde_json",
 ]
 
 [[package]]

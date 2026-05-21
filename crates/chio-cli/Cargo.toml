@@ -46,6 +46,7 @@ chio-listing = { path = "../chio-listing" }
 chio-policy = { path = "../chio-policy" }
 chio-mcp-adapter = { path = "../chio-mcp-adapter" }
 chio-mcp-remote = { path = "../chio-mcp-remote" }
+chio-attest-buyer = { path = "../chio-attest-buyer" }
 chio-attest-verify = { path = "../chio-attest-verify" }
 chio-weights = { path = "../chio-weights" }
 chio-conformance = { path = "../chio-conformance" }
@@ -54,6 +55,7 @@ chio-pheromone-relay = { path = "../chio-pheromone-relay" }
 chio-pheromone-runtime = { path = "../chio-pheromone-runtime" }
 chio-replay-corpus = { path = "../chio-replay-corpus" }
 chio-reputation = { path = "../chio-reputation" }
+chio-runtime = { path = "../chio-runtime" }
 chio-store-sqlite = { path = "../chio-store-sqlite" }
 chio-tee-frame = { path = "../chio-tee-frame" }
 chio-tool-call-fabric = { path = "../chio-tool-call-fabric" }
@@ -104,6 +106,7 @@ wiremock = "0.6"
 
 [features]
 siem = ["chio-siem"]
+tee-quotes = ["chio-attest-verify/tee-quotes"]
 
 [lints.clippy]
 unwrap_used = "deny"

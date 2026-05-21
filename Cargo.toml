@@ -69,6 +69,7 @@ members = [
     #
     # Supply-chain attestation
     "crates/chio-replay-corpus",
+    "crates/chio-attest-buyer",
     "crates/chio-attest-verify",
     "crates/chio-custody-hw",
     "crates/chio-weights",
@@ -85,6 +86,7 @@ members = [
     "crates/chio-chiodos-loopback",
     "crates/chio-chiodos-runtime-harness",
     "crates/chio-chiodos-runtime",
+    "crates/chio-runtime",
     "crates/chio-pheromone",
     "crates/chio-pheromone-relay",
     "crates/chio-pheromone-runtime",

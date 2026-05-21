@@ -1,0 +1,22 @@
+[package]
+name = "chio-runtime"
+description = "Chio runtime admission and orchestration boundary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_runtime"
+
+[dependencies]
+chio-chiodos-runtime = { path = "../chio-chiodos-runtime" }
+chio-core-types = { path = "../chio-core-types" }
+chio-kernel = { path = "../chio-kernel" }
+serde_json = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

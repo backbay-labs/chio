@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-runtime/v1/pheromone-policy.schema.json",
+  "title": "Chio Runtime Pheromone Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "policyId",
+        "verifierId",
+        "keyId",
+        "policyVersion",
+        "mode",
+        "issuedAtUnixMs",
+        "expiresAtUnixMs",
+        "allowedReputationEpochs",
+        "maxQueryReportAgeMs",
+        "minDistinctOriginPairs",
+        "runtimeTrustBundleSha256",
+        "peerWeightsSha256",
+        "rules"
+      ],
+      "properties": {
+        "schema": { "const": "chio.runtime.pheromone-policy.v1" },
+        "policyId": { "type": "string", "minLength": 1 },
+        "verifierId": { "type": "string", "minLength": 1 },
+        "keyId": { "type": "string", "minLength": 1 },
+        "policyVersion": { "type": "integer", "minimum": 1 },
+        "mode": { "enum": ["observe", "enforce"] },
+        "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+        "allowedReputationEpochs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "integer", "minimum": 0 },
+          "uniqueItems": true
+        },
+        "maxQueryReportAgeMs": { "type": "integer", "minimum": 1 },
+        "minDistinctOriginPairs": { "type": "integer", "minimum": 0 },
+        "runtimeTrustBundleSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "peerWeightsSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/rule" }
+        }
+      }
+    },
+    "signerKey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ruleId",
+        "subjectClass",
+        "subjectClassNamespace",
+        "actionClassId",
+        "direction",
+        "thresholdTotalStrength",
+        "effect"
+      ],
+      "properties": {
+        "ruleId": { "type": "string", "minLength": 1 },
+        "subjectClass": { "type": "string", "minLength": 1 },
+        "subjectClassNamespace": { "type": "string", "minLength": 1 },
+        "actionClassId": { "type": "string", "minLength": 1 },
+        "direction": { "enum": ["deny_if_at_or_above", "require_at_or_above"] },
+        "thresholdTotalStrength": { "type": "number", "minimum": 0 },
+        "effect": { "enum": ["deny", "require_review", "receipt_tag"] }
+      }
+    }
+  }
+}
