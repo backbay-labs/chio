@@ -6,11 +6,10 @@ use chio_core_types::canonical::{canonical_json_bytes, canonical_json_string};
 use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_core_types::receipt::{ChioReceipt, SignedExportEnvelope};
 use chio_federation::{
-    verify_chiodos_bilateral_invocation, ActionClassKind, DsseEnvelope,
+    verify_chio_bilateral_invocation, ActionClassKind, ChioBilateralVerifierConfig, DsseEnvelope,
     InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry, InMemoryReceiptStore, Keyid,
     LadderManifestRef, PeerPinSet, PinnedEpoch, PinnedPeer, ResolvedGovernanceReceipt,
-    ResolvedLease, RevocationOracle, StrictChiodosVerifierConfig, UnknownActionClassPolicy,
-    VerifierConfig,
+    ResolvedLease, RevocationOracle, UnknownActionClassPolicy, VerifierConfig,
 };
 use chio_governance::{
     verify_capability_lease, verify_destructive_authorization, verify_step_governance_boundary,
@@ -33,10 +32,20 @@ pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V1: &str = "chio.chiodos.verifier-trust-b
 pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V2: &str = "chio.chiodos.verifier-trust-bundle.v2";
 pub const VERIFIER_TRUST_BUNDLE_SCHEMA_V3: &str = "chio.chiodos.verifier-trust-bundle.v3";
 pub const VERIFIER_TRUST_BUNDLE_SCHEMA: &str = VERIFIER_TRUST_BUNDLE_SCHEMA_V3;
+pub const CHIO_FEDERATION_VERIFIER_TRUST_BUNDLE_SCHEMA_V1: &str =
+    "chio.federation.verifier-trust-bundle.v1";
 pub const REVOCATION_CHECKPOINT_SCHEMA: &str = "chio.chiodos.revocation-checkpoint.v1";
-pub const VERIFICATION_CONTEXT_SCHEMA: &str = "chio.chiodos.verification-context.v1";
+pub const CHIO_FEDERATION_REVOCATION_CHECKPOINT_SCHEMA_V1: &str =
+    "chio.federation.revocation-checkpoint.v1";
+pub const LEGACY_VERIFICATION_CONTEXT_SCHEMA: &str = "chio.chiodos.verification-context.v1";
+pub const CHIO_FEDERATION_VERIFICATION_CONTEXT_SCHEMA_V1: &str =
+    "chio.federation.verification-context.v1";
+pub const VERIFICATION_CONTEXT_SCHEMA: &str = CHIO_FEDERATION_VERIFICATION_CONTEXT_SCHEMA_V1;
 pub const WORKFLOW_INTERSECTION_SCHEMA: &str = "chio.chiodos-workflow-intersection.v1";
-pub const LEASE_SCOPE_BINDING_SCHEMA: &str = "chio.chiodos-lease-scope-binding.v1";
+pub const LEGACY_LEASE_SCOPE_BINDING_SCHEMA: &str = "chio.chiodos-lease-scope-binding.v1";
+pub const CHIO_FEDERATION_LEASE_SCOPE_BINDING_SCHEMA_V1: &str =
+    "chio.federation.lease-scope-binding.v1";
+pub const LEASE_SCOPE_BINDING_SCHEMA: &str = CHIO_FEDERATION_LEASE_SCOPE_BINDING_SCHEMA_V1;
 pub const WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID: &str = "workflow.grant_issue";
 pub const WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID: &str = "workflow.aggregate_publish";
 
@@ -244,7 +253,9 @@ struct VerificationContextNoncePreimage<'a> {
 
 impl ChiodosVerificationContext {
     pub fn validate(&self) -> Result<(), ChiodosPackageError> {
-        if self.schema != VERIFICATION_CONTEXT_SCHEMA {
+        if self.schema != VERIFICATION_CONTEXT_SCHEMA
+            && self.schema != LEGACY_VERIFICATION_CONTEXT_SCHEMA
+        {
             return Err(ChiodosPackageError::VerificationContext(format!(
                 "verification context schema {} is unsupported",
                 self.schema
@@ -335,7 +346,9 @@ impl ChiodosVerifierTrustBundle {
                     .to_string(),
             ));
         }
-        if document.schema != VERIFIER_TRUST_BUNDLE_SCHEMA_V3 {
+        if document.schema != VERIFIER_TRUST_BUNDLE_SCHEMA_V3
+            && document.schema != CHIO_FEDERATION_VERIFIER_TRUST_BUNDLE_SCHEMA_V1
+        {
             return Err(ChiodosPackageError::TrustBundle(format!(
                 "verifier trust bundle schema {} is unsupported",
                 document.schema
@@ -718,7 +731,9 @@ struct LeaseScopeBindingPreimage<'a> {
 
 impl LeaseScopeBindingArtifact {
     fn validate(&self) -> Result<(), ChiodosPackageError> {
-        if self.schema != LEASE_SCOPE_BINDING_SCHEMA {
+        if self.schema != LEASE_SCOPE_BINDING_SCHEMA
+            && self.schema != LEGACY_LEASE_SCOPE_BINDING_SCHEMA
+        {
             return Err(ChiodosPackageError::LeaseScopeBinding(format!(
                 "lease scope binding schema {} is unsupported",
                 self.schema
@@ -1006,7 +1021,9 @@ fn validate_disclosure_policy(policy: &ChiodosDisclosurePolicy) -> Result<(), Ch
 fn validate_revocation_checkpoint(
     checkpoint: &SignedChiodosRevocationCheckpoint,
 ) -> Result<(), ChiodosPackageError> {
-    if checkpoint.body.schema != REVOCATION_CHECKPOINT_SCHEMA {
+    if checkpoint.body.schema != REVOCATION_CHECKPOINT_SCHEMA
+        && checkpoint.body.schema != CHIO_FEDERATION_REVOCATION_CHECKPOINT_SCHEMA_V1
+    {
         return Err(ChiodosPackageError::TrustBundle(format!(
             "revocation checkpoint schema {} is unsupported",
             checkpoint.body.schema
@@ -1426,9 +1443,9 @@ fn verify_package_inner(
         unknown_action_class_policy: UnknownActionClassPolicy::Reject,
     };
     for envelope in &package.bilateral_envelopes {
-        verify_chiodos_bilateral_invocation(
+        verify_chio_bilateral_invocation(
             envelope,
-            &StrictChiodosVerifierConfig {
+            &ChioBilateralVerifierConfig {
                 base: &verifier_config,
             },
         )

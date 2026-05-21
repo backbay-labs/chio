@@ -78,7 +78,7 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
             )
         })?;
     let mut bilateral_invocation = chio_chiodos_runtime::BilateralInvocation {
-        schema: chio_chiodos_runtime::CHIODOS_BILATERAL_INVOCATION_SCHEMA.to_string(),
+        schema: chio_chiodos_runtime::CHIO_FEDERATION_BILATERAL_INVOCATION_SCHEMA.to_string(),
         invocation_id: format!("bilateral:runtime-loopback:closure:{step_index}"),
         treaty_id: treaty_context.treaty_scope.treaty_id.clone(),
         ladder_intersection_sha256: treaty_context.ladder_intersection_sha256.clone(),
@@ -105,7 +105,7 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
             },
         )?;
     let lineage_statement = chio_chiodos_runtime::ReceiptLineageStatement {
-        schema: chio_chiodos_runtime::CHIODOS_RECEIPT_LINEAGE_STATEMENT_SCHEMA.to_string(),
+        schema: chio_chiodos_runtime::CHIO_FEDERATION_RECEIPT_LINEAGE_STATEMENT_SCHEMA.to_string(),
         statement_id: format!("lineage:runtime-loopback:closure:{step_index}"),
         parent_receipt_sha256: local_receipt_sha256.clone(),
         child_receipt_sha256: tool_receipt_sha256.clone(),
@@ -134,7 +134,7 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
         )));
     }
     let lineage_bundle = chio_chiodos_runtime::ReceiptLineageBundle {
-        schema: chio_chiodos_runtime::CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
+        schema: chio_chiodos_runtime::CHIO_FEDERATION_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
         bundle_id: format!("{}:closure", treaty_context.lineage_bundle_id),
         root_receipt_sha256: local_receipt_sha256.clone(),
         leaf_receipt_sha256: tool_receipt_sha256.clone(),
@@ -236,7 +236,7 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
                 "Chiodos runtime buyer closure vendor key: {error}"
             ))
         })?;
-    let bilateral_dsse = chio_federation::sign_chiodos_dsse_envelope(
+    let bilateral_dsse = chio_federation::sign_chio_bilateral_dsse_envelope(
         receipt,
         &buyer_key,
         &vendor_key,
@@ -376,7 +376,112 @@ fn select_governance_receipt_id<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::select_governance_receipt_id;
+    use super::{build_runtime_loopback_buyer_closure, select_governance_receipt_id};
+    use crate::scenario::RuntimeLoopbackStep;
+    use crate::treaty::insert_runtime_loopback_treaty_context;
+
+    fn fixed_hash(ch: char) -> String {
+        ch.to_string().repeat(64)
+    }
+
+    fn destructive_runtime_loopback_step() -> RuntimeLoopbackStep {
+        let request = chio_chiodos_runtime::RuntimeRequestBinding {
+            request_id: "req-loopback-buyer-closure".to_string(),
+            capability_id: "cap-chiodos-workflow".to_string(),
+            server_id: "vendor-c.payments".to_string(),
+            tool_name: "stage_refund".to_string(),
+            tool_args_sha256: "b3381903fd6423aa4316775de66d10c173144264bacd0fd09f172e165841ebaf"
+                .to_string(),
+            origin_kernel_id: Some("did:chio:buyer-kernel".to_string()),
+            host_kernel_id: "did:chio:vendor-c".to_string(),
+        };
+        RuntimeLoopbackStep {
+            admission_profile: chio_chiodos_runtime::RuntimeAdmissionProfile {
+                schema: chio_chiodos_runtime::CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA.to_string(),
+                profile_id: "profile-loopback-buyer-closure".to_string(),
+                local_kernel_id: "did:chio:vendor-c".to_string(),
+                verifier_id: "did:chio:buyer-verifier".to_string(),
+                issued_at_unix_ms: 1_800_000_000_000,
+                expires_at_unix_ms: 1_800_003_600_000,
+            },
+            admission_bundle: chio_chiodos_runtime::RuntimeAdmissionBundle {
+                schema: chio_chiodos_runtime::CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA.to_string(),
+                admission_id: "adm-loopback-buyer-closure".to_string(),
+                binding: request.clone(),
+                workflow_id: "wf-chiodos-refund-001".to_string(),
+                workflow_grant_id: "cap-chiodos-workflow".to_string(),
+                step_index: 2,
+                destructive: true,
+                lease_id: Some("lease-vendor-c-refund".to_string()),
+                governance_receipt_id: Some("gov-refund-stage-authorization".to_string()),
+                trust_bundle_sha256: fixed_hash('b'),
+                verification_context_sha256: fixed_hash('c'),
+            },
+            request,
+            arguments: Some(serde_json::json!({
+                "caseRef": "refund-250",
+                "tool": "stage_refund",
+                "workflowId": "wf-chiodos-refund-001"
+            })),
+        }
+    }
+
+    #[test]
+    fn buyer_closure_emits_chio_federation_schemas() -> Result<(), crate::RuntimeLoopbackError> {
+        let step = destructive_runtime_loopback_step();
+        let store = chio_chiodos_runtime::InMemoryRuntimeAdmissionStore::new();
+        let vendor_key = chio_chiodos_loopback::runtime_vendor_keypair(2).map_err(|error| {
+            crate::RuntimeLoopbackError::message(format!(
+                "runtime loopback vendor key failed: {error}"
+            ))
+        })?;
+        let treaty_context = insert_runtime_loopback_treaty_context(
+            &store,
+            2,
+            &step,
+            &vendor_key,
+            step.arguments.as_ref().ok_or_else(|| {
+                crate::RuntimeLoopbackError::message(
+                    "runtime loopback test step missing arguments".to_string(),
+                )
+            })?,
+        )?;
+        let baseline_package = chio_chiodos_loopback::fixture_proof_package().map_err(|error| {
+            crate::RuntimeLoopbackError::message(format!(
+                "runtime loopback fixture package failed: {error}"
+            ))
+        })?;
+
+        let (_package, closure) = build_runtime_loopback_buyer_closure(
+            2,
+            &step,
+            &treaty_context,
+            &baseline_package,
+            1_800_000_001_000,
+        )?;
+
+        assert_eq!(
+            closure.bilateral_invocation.schema,
+            chio_chiodos_runtime::CHIO_FEDERATION_BILATERAL_INVOCATION_SCHEMA
+        );
+        assert_eq!(
+            closure.lineage_statement.schema,
+            chio_chiodos_runtime::CHIO_FEDERATION_RECEIPT_LINEAGE_STATEMENT_SCHEMA
+        );
+        assert_eq!(
+            closure.lineage_bundle.schema,
+            chio_chiodos_runtime::CHIO_FEDERATION_RECEIPT_LINEAGE_BUNDLE_SCHEMA
+        );
+        assert_eq!(
+            closure.continuation.schema,
+            chio_chiodos_runtime::CHIO_FEDERATION_CROSS_KERNEL_CONTINUATION_SCHEMA
+        );
+        assert_eq!(
+            closure.admission_report.schema,
+            chio_chiodos_runtime::CHIO_FEDERATION_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA
+        );
+        Ok(())
+    }
 
     #[test]
     fn governance_receipt_selection_uses_single_fallback_only_without_expected_id(

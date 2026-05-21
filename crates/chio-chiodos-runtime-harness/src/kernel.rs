@@ -141,7 +141,7 @@ pub(crate) fn runtime_loopback_policy_inputs(
         status: "active".to_string(),
     }];
     let trust_body = chio_chiodos_runtime::RuntimeVerifierTrustBundleV4 {
-        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA_V4.to_string(),
+        schema: chio_chiodos_runtime::CHIO_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA.to_string(),
         verifier_id: verifier_id.clone(),
         key_id: key_id.clone(),
         version: 1,
@@ -160,7 +160,7 @@ pub(crate) fn runtime_loopback_policy_inputs(
             ))
         })?;
     let weights_body = chio_chiodos_runtime::RuntimePeerWeights {
-        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PEER_WEIGHTS_SCHEMA.to_string(),
+        schema: chio_chiodos_runtime::CHIO_RUNTIME_PEER_WEIGHTS_SCHEMA.to_string(),
         verifier_id: verifier_id.clone(),
         key_id: key_id.clone(),
         reputation_epoch: 7,
@@ -178,7 +178,7 @@ pub(crate) fn runtime_loopback_policy_inputs(
             ))
         })?;
     let policy_body = chio_chiodos_runtime::RuntimePheromonePolicy {
-        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PHEROMONE_POLICY_SCHEMA.to_string(),
+        schema: chio_chiodos_runtime::CHIO_RUNTIME_PHEROMONE_POLICY_SCHEMA.to_string(),
         policy_id: "policy-runtime-loopback-risk".to_string(),
         verifier_id: verifier_id.clone(),
         key_id: key_id.clone(),
@@ -303,7 +303,7 @@ pub(crate) fn execute_runtime_loopback_step(
         keypair: vendor_key.clone(),
         ca_public_keys: vec![vendor_key.public_key()],
         max_delegation_depth: 5,
-        policy_hash: format!("chiodos-runtime-loopback-policy:{}", step_index),
+        policy_hash: format!("chio-runtime-loopback-policy:{}", step_index),
         allow_sampling: false,
         allow_sampling_tool_use: false,
         allow_elicitation: false,
@@ -413,10 +413,10 @@ pub(crate) fn execute_runtime_loopback_step(
         ))
     })?;
     let governed_intent = chio_core::capability::GovernedTransactionIntent {
-        id: format!("intent:chiodos-runtime-loopback:{}", step_index),
+        id: format!("intent:chio-runtime-loopback:{}", step_index),
         server_id: step.request.server_id.clone(),
         tool_name: step.request.tool_name.clone(),
-        purpose: "Chiodos live runtime loopback proof regeneration".to_string(),
+        purpose: "Chio live runtime loopback proof regeneration".to_string(),
         max_amount: None,
         commerce: None,
         metered_billing: None,
@@ -425,18 +425,18 @@ pub(crate) fn execute_runtime_loopback_step(
         autonomy: None,
         context: Some(if let Some(chiodos_treaty) = chiodos_treaty.as_ref() {
             serde_json::json!({
-                "chiodosAdmission": {
+                "chioAdmission": {
                     "admissionId": step.admission_bundle.admission_id,
                     "bundleSha256": bundle_sha256
                 },
-                "chiodosTreaty": chiodos_treaty.intent_context
+                "chioTreaty": chiodos_treaty.intent_context
             })
         } else {
             serde_json::json!({
-            "chiodosAdmission": {
-                "admissionId": step.admission_bundle.admission_id,
-                "bundleSha256": bundle_sha256
-            }
+                "chioAdmission": {
+                    "admissionId": step.admission_bundle.admission_id,
+                    "bundleSha256": bundle_sha256
+                }
             })
         }),
     };
@@ -472,7 +472,11 @@ pub(crate) fn execute_runtime_loopback_step(
             .receipt
             .metadata
             .as_ref()
-            .and_then(|metadata| metadata.pointer("/chiodos_runtime/failure_code"))
+            .and_then(|metadata| {
+                metadata
+                    .pointer("/chio_runtime/failure_code")
+                    .or_else(|| metadata.pointer("/chiodos_runtime/failure_code"))
+            })
             .and_then(serde_json::Value::as_str)
             .unwrap_or("unknown_runtime_loopback_failure");
         return Err(RuntimeLoopbackError::message(format!(
@@ -488,4 +492,74 @@ pub(crate) fn execute_runtime_loopback_step(
         receipt: response.receipt,
         treaty: chiodos_treaty,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::runtime_loopback_policy_inputs;
+    use crate::scenario::RuntimeLoopbackStep;
+
+    fn fixed_hash(ch: char) -> String {
+        ch.to_string().repeat(64)
+    }
+
+    fn runtime_loopback_step() -> RuntimeLoopbackStep {
+        let request = chio_chiodos_runtime::RuntimeRequestBinding {
+            request_id: "req-loopback-policy".to_string(),
+            capability_id: "cap-loopback-policy".to_string(),
+            server_id: "server.vendor".to_string(),
+            tool_name: "vendor.write_refund".to_string(),
+            tool_args_sha256: fixed_hash('a'),
+            origin_kernel_id: Some("kernel.buyer".to_string()),
+            host_kernel_id: "kernel.vendor".to_string(),
+        };
+        RuntimeLoopbackStep {
+            admission_profile: chio_chiodos_runtime::RuntimeAdmissionProfile {
+                schema: chio_chiodos_runtime::CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA.to_string(),
+                profile_id: "profile-loopback-policy".to_string(),
+                local_kernel_id: "kernel.vendor".to_string(),
+                verifier_id: "did:chio:buyer-verifier".to_string(),
+                issued_at_unix_ms: 1_800_000_000_000,
+                expires_at_unix_ms: 1_800_003_600_000,
+            },
+            admission_bundle: chio_chiodos_runtime::RuntimeAdmissionBundle {
+                schema: chio_chiodos_runtime::CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA.to_string(),
+                admission_id: "adm-loopback-policy".to_string(),
+                binding: request.clone(),
+                workflow_id: "wf-loopback-policy".to_string(),
+                workflow_grant_id: "grant-loopback-policy".to_string(),
+                step_index: 0,
+                destructive: false,
+                lease_id: None,
+                governance_receipt_id: None,
+                trust_bundle_sha256: fixed_hash('b'),
+                verification_context_sha256: fixed_hash('c'),
+            },
+            request,
+            arguments: None,
+        }
+    }
+
+    #[test]
+    fn runtime_loopback_policy_inputs_emit_chio_runtime_schemas(
+    ) -> Result<(), crate::RuntimeLoopbackError> {
+        let step = runtime_loopback_step();
+
+        let (signed_trust, _trusted_keys, _query_report, signed_policy, signed_weights) =
+            runtime_loopback_policy_inputs(&step, 1_800_000_010_000)?;
+
+        assert_eq!(
+            signed_trust.body.schema,
+            chio_chiodos_runtime::CHIO_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA
+        );
+        assert_eq!(
+            signed_weights.body.schema,
+            chio_chiodos_runtime::CHIO_RUNTIME_PEER_WEIGHTS_SCHEMA
+        );
+        assert_eq!(
+            signed_policy.body.schema,
+            chio_chiodos_runtime::CHIO_RUNTIME_PHEROMONE_POLICY_SCHEMA
+        );
+        Ok(())
+    }
 }

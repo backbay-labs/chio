@@ -1,0 +1,38 @@
+name: Chio Pheromone Transit
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-pheromone/**"
+      - "crates/chio-federation/src/pheromone_gossip.rs"
+      - "crates/chio-federation/tests/pheromone_gossip.rs"
+      - "examples/chio-3vendor/**"
+      - "spec/CHIO_PHEROMONE.md"
+      - "spec/schemas/chio-pheromone/**"
+      - "spec/schemas/registry.json"
+      - "scripts/check-chio-pheromone-transit.sh"
+      - "scripts/check-chio-pheromone-transit.sh"
+      - ".github/workflows/chio-pheromone-transit.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/chio-pheromone/**"
+      - "crates/chio-federation/src/pheromone_gossip.rs"
+      - "crates/chio-federation/tests/pheromone_gossip.rs"
+      - "examples/chio-3vendor/**"
+      - "spec/CHIO_PHEROMONE.md"
+      - "spec/schemas/chio-pheromone/**"
+      - "spec/schemas/registry.json"
+      - "scripts/check-chio-pheromone-transit.sh"
+      - "scripts/check-chio-pheromone-transit.sh"
+      - ".github/workflows/chio-pheromone-transit.yml"
+
+jobs:
+  chio-pheromone-transit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run Chio pheromone transit gate
+        run: bash scripts/check-chio-pheromone-transit.sh

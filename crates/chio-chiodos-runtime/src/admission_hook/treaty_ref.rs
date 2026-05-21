@@ -29,11 +29,14 @@ pub(super) fn treaty_ref_from_request(
     let Some(context) = intent.context.as_ref() else {
         return Ok(None);
     };
-    let Some(treaty) = context.get("chiodosTreaty") else {
+    let Some(treaty) = context
+        .get("chioTreaty")
+        .or_else(|| context.get("chiodosTreaty"))
+    else {
         return Ok(None);
     };
     let Some(object) = treaty.as_object() else {
-        return Err("invalid_chiodos_treaty_context");
+        return Err("invalid_chio_treaty_context");
     };
     for forbidden in [
         "trustRoot",
@@ -86,10 +89,10 @@ pub(super) fn treaty_ref_from_request(
         || ladder_intersection_id.trim().is_empty()
         || action_class_id.trim().is_empty()
     {
-        return Err("invalid_chiodos_treaty_context");
+        return Err("invalid_chio_treaty_context");
     }
     if !is_sha256_hex(treaty_scope_sha256) || !is_sha256_hex(ladder_intersection_sha256) {
-        return Err("invalid_chiodos_treaty_hash");
+        return Err("invalid_chio_treaty_hash");
     }
     let continuation = treaty_evidence_ref_from_context(
         object,

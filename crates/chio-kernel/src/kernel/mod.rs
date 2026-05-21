@@ -2576,7 +2576,8 @@ impl ChioKernel {
             return Ok(None);
         };
         let Some(value) = metadata
-            .get("chiodos_runtime")
+            .get("chio_runtime")
+            .or_else(|| metadata.get("chiodos_runtime"))
             .and_then(|runtime| runtime.get("federation_treaty_dsse"))
         else {
             return Ok(None);
@@ -2587,6 +2588,18 @@ impl ChioKernel {
                     "federation treaty DSSE metadata is invalid: {error}"
                 ))
             })?;
+        let consistency_model = material.consistency_model.clone().ok_or_else(|| {
+            KernelError::Internal(
+                "federation treaty DSSE consistency model is missing from runtime material"
+                    .to_string(),
+            )
+        })?;
+        if consistency_model != material.treaty_binding_ref.consistency_model {
+            return Err(KernelError::Internal(
+                "federation treaty DSSE consistency model does not match treaty binding"
+                    .to_string(),
+            ));
+        }
         let mut treaty_binding_ref = material.treaty_binding_ref;
         if treaty_binding_ref.request_sha256 != receipt.action.parameter_hash {
             return Err(KernelError::Internal(
@@ -2607,7 +2620,7 @@ impl ChioKernel {
             policy_evaluation_summary: Some(material.policy_evaluation_summary),
             governance_receipt_ref: material.governance_receipt_ref,
             consistency_anchor: material.consistency_anchor,
-            consistency_model: material.consistency_model,
+            consistency_model: Some(consistency_model),
             cross_org_visibility: material.cross_org_visibility,
             treaty_binding_ref: Some(treaty_binding_ref),
         }))
@@ -2656,6 +2669,14 @@ impl ChioKernel {
         };
 
         let local_kernel_id = self.federation_local_kernel_id();
+        let extensions = self
+            .treaty_dsse_extensions_from_receipt_metadata(receipt)?
+            .ok_or_else(|| {
+                KernelError::Internal(
+                    "federation runtime treaty material missing; refusing treaty-bound DSSE"
+                        .to_string(),
+                )
+            })?;
         let dual = chio_federation::co_sign_with_origin(
             origin_kernel_id,
             &peer.public_key,
@@ -2666,33 +2687,18 @@ impl ChioKernel {
         )
         .map_err(|e| KernelError::Internal(format!("bilateral co-sign failed: {e}")))?;
         let timestamp_unix_ms = current_unix_timestamp().saturating_mul(1000);
-        let dsse_envelope =
-            if let Some(extensions) = self.treaty_dsse_extensions_from_receipt_metadata(receipt)? {
-                chio_federation::sign_chiodos_dsse_envelope_with_cosigner(
-                    receipt,
-                    &peer.public_key,
-                    &self.config.keypair,
-                    origin_kernel_id,
-                    &local_kernel_id,
-                    &request.tool_name,
-                    timestamp_unix_ms,
-                    extensions,
-                    cosigner.as_ref(),
-                )
-            } else {
-                chio_federation::sign_dsse_envelope_with_cosigner(
-                    receipt,
-                    &peer.public_key,
-                    &self.config.keypair,
-                    origin_kernel_id,
-                    &local_kernel_id,
-                    &request.tool_name,
-                    timestamp_unix_ms,
-                    chio_federation::BilateralPredicateExtensions::default(),
-                    cosigner.as_ref(),
-                )
-            }
-            .map_err(|e| KernelError::Internal(format!("bilateral DSSE co-sign failed: {e}")))?;
+        let dsse_envelope = chio_federation::sign_chio_bilateral_dsse_envelope_with_cosigner(
+            receipt,
+            &peer.public_key,
+            &self.config.keypair,
+            origin_kernel_id,
+            &local_kernel_id,
+            &request.tool_name,
+            timestamp_unix_ms,
+            extensions,
+            cosigner.as_ref(),
+        )
+        .map_err(|e| KernelError::Internal(format!("bilateral DSSE co-sign failed: {e}")))?;
 
         self.federation_dual_receipts
             .insert(receipt.id.clone(), dual);
@@ -7257,14 +7263,16 @@ impl ChioKernel {
                 .as_ref()
                 .and_then(|intent| intent.context.as_ref())
                 .is_some_and(|context| {
-                    context.get("chiodosAdmission").is_some()
+                    context.get("chioAdmission").is_some()
+                        || context.get("chioTreaty").is_some()
+                        || context.get("chiodosAdmission").is_some()
                         || context.get("chiodosTreaty").is_some()
                 })
             {
                 return RuntimeAdmissionDecision::deny(
-                    "chiodos runtime admission hook is required for Chiodos-governed requests",
+                    "chio runtime admission hook is required for governed runtime requests",
                     Some(serde_json::json!({
-                        "chiodos_runtime": {
+                        "chio_runtime": {
                             "accepted": false,
                             "failure_code": "runtime_admission_hook_missing"
                         }

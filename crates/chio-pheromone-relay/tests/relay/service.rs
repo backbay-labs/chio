@@ -11,6 +11,64 @@ use super::common::{
 };
 
 #[test]
+fn public_relay_http_paths_are_chio_native() {
+    let paths = [
+        PHEROMONE_BATCH_RELAY_PATH,
+        PHEROMONE_CATCHUP_RELAY_PATH,
+        chio_pheromone_relay::PHEROMONE_HEALTH_PATH,
+        chio_pheromone_relay::PHEROMONE_READY_PATH,
+        PHEROMONE_RELAY_OBSERVABILITY_PATH,
+        chio_pheromone_relay::PHEROMONE_RELAY_METRICS_PATH,
+    ];
+
+    assert_eq!(PHEROMONE_BATCH_RELAY_PATH, "/v1/chio/pheromone/batches");
+    assert_eq!(PHEROMONE_CATCHUP_RELAY_PATH, "/v1/chio/pheromone/catchup");
+    assert_eq!(
+        PHEROMONE_RELAY_OBSERVABILITY_PATH,
+        "/v1/chio/pheromone/observability"
+    );
+    assert!(
+        paths
+            .iter()
+            .all(|path| path.starts_with("/v1/chio/pheromone/") && !path.contains("/chiodos/")),
+        "public relay HTTP paths must not expose Chiodos path segments: {paths:?}"
+    );
+
+    let request_schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../spec/schemas/chio-pheromone/v1/relay-http-request.schema.json"
+    ))
+    .unwrap();
+    let schema_paths = request_schema["properties"]["path"]["enum"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|path| path.as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        schema_paths,
+        ["/v1/chio/pheromone/batches", "/v1/chio/pheromone/catchup"]
+    );
+
+    let supervisor_profile: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../examples/chio-3vendor/fixtures/pheromone/relay/relay-supervisor-profile.json"
+    ))
+    .unwrap();
+    let fixture_paths = [
+        supervisor_profile["healthPath"].as_str().unwrap(),
+        supervisor_profile["readyPath"].as_str().unwrap(),
+        supervisor_profile["reverseProxy"]["pinnedPathPrefix"]
+            .as_str()
+            .unwrap(),
+    ];
+    assert!(
+        fixture_paths
+            .iter()
+            .all(|path| path.starts_with("/v1/chio/pheromone") && !path.contains("/chiodos/")),
+        "active Chio relay fixture paths must be Chio-native: {fixture_paths:?}"
+    );
+}
+
+#[test]
 fn relay_trend_report_aggregates_bounded_codes() {
     let profile = relay_alert_routing_profile_from_json(
         &serde_json::to_string(&alert_profile()).unwrap(),
@@ -311,6 +369,7 @@ async fn relay_rejects_authenticated_batch_with_unpinned_transit_ladder() {
             ladder_manifest_sha256: "f".repeat(64),
             ladder_manifest_expires_at_unix_ms: NOW + 60_000,
             ladder_intersection_id: "intersection:buyer:llamaworks".to_string(),
+            ladder_intersection_sha256: "f".repeat(64),
             action_class_id: "whisker.pheromone_deposit".to_string(),
             emitted_at_unix_ms: NOW,
         }],
@@ -490,6 +549,93 @@ async fn relay_catchup_rejects_origin_only_peer_role() {
         .as_str()
         .unwrap()
         .contains("not authorized for catch-up"));
+    server.abort();
+}
+
+#[tokio::test]
+async fn relay_catchup_rejects_returned_frame_with_unpinned_transit_ladder() {
+    let sender = key(1);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let mut document = directory(&sender, format!("http://{address}"));
+    document.peers[0].relay_role = RelayRole::Receiver;
+    let receiver_directory = PeerDirectory::from_document(document, NOW).unwrap();
+    let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+    let mut catchup_batch = sample_batch();
+    catchup_batch.recipient_kernel_id = "did:chio:llamaworks".to_string();
+    catchup_batch.frames[0].transit_chain = Some(PheromoneTransitChain {
+        hops: vec![PheromoneTransitHop {
+            from_kernel_id: "did:chio:buyer-kernel".to_string(),
+            to_kernel_id: "did:chio:llamaworks".to_string(),
+            treaty_id: catchup_batch.treaty_id.clone(),
+            ladder_manifest_id: "ladder:buyer:untrusted:v1".to_string(),
+            ladder_manifest_sha256: "f".repeat(64),
+            ladder_manifest_expires_at_unix_ms: NOW + 60_000,
+            ladder_intersection_id: "intersection:buyer:llamaworks".to_string(),
+            ladder_intersection_sha256: "f".repeat(64),
+            action_class_id: "whisker.pheromone_deposit".to_string(),
+            emitted_at_unix_ms: NOW,
+        }],
+    });
+    store
+        .enqueue_batch(
+            "did:chio:buyer-kernel",
+            "did:chio:llamaworks",
+            &catchup_batch.treaty_id,
+            &catchup_batch,
+            NOW,
+        )
+        .unwrap();
+    let service = PheromoneRelayService::new(
+        PheromoneRelayConfig {
+            local_kernel_id: "did:chio:buyer-kernel".to_string(),
+            profile: RelayProfile::Production,
+            now_unix_ms: NOW,
+            freshness_window_ms: 60_000,
+            max_body_bytes: 256_000,
+            use_system_clock: false,
+            operator_token: None,
+            report_dir: None,
+        },
+        receiver_directory,
+        Arc::new(AcceptingReceiver),
+        Arc::clone(&store),
+    );
+    let server = tokio::spawn(service.serve(listener));
+
+    let catchup = CatchupRequest {
+        schema: PHEROMONE_CATCHUP_REQUEST_SCHEMA.to_string(),
+        requester_kernel_id: "did:chio:llamaworks".to_string(),
+        responder_kernel_id: "did:chio:buyer-kernel".to_string(),
+        treaty_id: "treaty:buyer-llamaworks:support-ops".to_string(),
+        after_cursor: "0".to_string(),
+        limit: 4,
+    };
+    let signed_catchup = sign_relay_http_request(RelayHttpSigningInput {
+        sender_kernel_id: "did:chio:llamaworks",
+        recipient_kernel_id: "did:chio:buyer-kernel",
+        method: "POST",
+        path: PHEROMONE_CATCHUP_RELAY_PATH,
+        nonce: "relay-nonce-catchup-unpinned-ladder",
+        sent_at_unix_ms: NOW,
+        payload: &catchup,
+        keypair: &sender,
+    })
+    .unwrap();
+    let response = reqwest::Client::new()
+        .post(format!("http://{address}{PHEROMONE_CATCHUP_RELAY_PATH}"))
+        .json(&signed_catchup)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let report = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(report["code"].as_str(), Some("catchup_denied"));
+    assert!(report["detail"]
+        .as_str()
+        .unwrap()
+        .contains("transit ladder"));
     server.abort();
 }
 

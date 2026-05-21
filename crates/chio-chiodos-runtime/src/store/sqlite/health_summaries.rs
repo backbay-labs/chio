@@ -7,8 +7,8 @@ use super::leases_scheduler::{lease_count_by_state, stale_lease_count};
 use super::{query_count, sqlite_error, sqlite_i64, sqlite_u64, SqliteRuntimeOrchestrationStore};
 use crate::hash::canonical_sha256;
 use crate::schema::{
-    CHIODOS_RUNTIME_OPS_STATUS_REPORT_SCHEMA, CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA,
-    CHIODOS_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA,
+    CHIO_RUNTIME_OPS_STATUS_REPORT_SCHEMA, CHIO_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA,
+    CHIO_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA,
 };
 use crate::types::{
     RuntimeOpsStatusReport, RuntimeOrchestrationProfile, RuntimeOrchestrationStatusReport,
@@ -71,7 +71,7 @@ impl SqliteRuntimeOrchestrationStore {
             None
         };
         let report = RuntimeOrchestrationStatusReport {
-            schema: CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA.to_string(),
+            schema: CHIO_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA.to_string(),
             accepted: !degraded,
             failure_code,
             generated_at_unix_ms: now_unix_ms,
@@ -108,7 +108,7 @@ impl SqliteRuntimeOrchestrationStore {
             .is_some();
         if !run_exists {
             let report = RuntimeRecoveryDrillReport {
-                schema: CHIODOS_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA.to_string(),
+                schema: CHIO_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA.to_string(),
                 run_id: run_id.to_string(),
                 accepted: false,
                 failure_code: Some("runtime_recovery_run_not_found".to_string()),
@@ -178,7 +178,7 @@ impl SqliteRuntimeOrchestrationStore {
         };
         let blocked = failure_code.is_some();
         let report = RuntimeRecoveryDrillReport {
-            schema: CHIODOS_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA.to_string(),
+            schema: CHIO_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA.to_string(),
             run_id: run_id.to_string(),
             accepted: !blocked,
             failure_code: failure_code.clone(),
@@ -215,7 +215,7 @@ impl SqliteRuntimeOrchestrationStore {
         validate_non_empty(run_id, "runtime_recovery_empty_run_id")?;
         if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
             let report = RuntimeRecoveryDrillReport {
-                schema: CHIODOS_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA.to_string(),
+                schema: CHIO_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA.to_string(),
                 run_id: run_id.to_string(),
                 accepted: false,
                 failure_code: Some("runtime_recovery_supervisor_profile_stale".to_string()),
@@ -272,7 +272,7 @@ impl SqliteRuntimeOrchestrationStore {
             None
         };
         let report = RuntimeOpsStatusReport {
-            schema: CHIODOS_RUNTIME_OPS_STATUS_REPORT_SCHEMA.to_string(),
+            schema: CHIO_RUNTIME_OPS_STATUS_REPORT_SCHEMA.to_string(),
             accepted: !degraded,
             failure_code,
             generated_at_unix_ms: now_unix_ms,

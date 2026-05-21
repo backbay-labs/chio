@@ -23,8 +23,10 @@ pub fn evaluate_runtime_admission(
     input: RuntimeAdmissionInput<'_>,
 ) -> Result<RuntimeAdmissionReport, ChiodosRuntimeError> {
     let mut checks = Vec::new();
-    if input.profile.schema != CHIODOS_RUNTIME_ADMISSION_PROFILE_SCHEMA {
+    let report_schema = runtime_admission_report_schema(&input.profile.schema);
+    if !is_runtime_admission_profile_schema(&input.profile.schema) {
         return Ok(rejected_report(
+            report_schema,
             input.admission_id,
             "unsupported_profile_schema",
             checks,
@@ -34,19 +36,26 @@ pub fn evaluate_runtime_admission(
     if input.now_unix_ms < input.profile.issued_at_unix_ms
         || input.now_unix_ms >= input.profile.expires_at_unix_ms
     {
-        return Ok(rejected_report(input.admission_id, "stale_profile", checks));
+        return Ok(rejected_report(
+            report_schema,
+            input.admission_id,
+            "stale_profile",
+            checks,
+        ));
     }
     checks.push(passed("profile.freshness"));
 
     let Some(bundle) = input.store.bundle(input.admission_id)? else {
         return Ok(rejected_report(
+            report_schema,
             input.admission_id,
             "missing_admission_bundle",
             checks,
         ));
     };
-    if bundle.schema != CHIODOS_RUNTIME_ADMISSION_BUNDLE_SCHEMA {
+    if !is_runtime_admission_bundle_schema(&bundle.schema) {
         return Ok(rejected_report(
+            report_schema,
             input.admission_id,
             "unsupported_bundle_schema",
             checks,
@@ -58,6 +67,7 @@ pub fn evaluate_runtime_admission(
     if let Some(runtime_trust_input) = input.runtime_trust_input {
         if runtime_trust_input.body.verifier_id != input.profile.verifier_id {
             return Ok(rejected_report(
+                report_schema,
                 input.admission_id,
                 "runtime_trust_input_verifier_mismatch",
                 checks,
@@ -77,10 +87,18 @@ pub fn evaluate_runtime_admission(
                     runtime_trust_input.body.previous_hash_sha256.as_deref(),
                 ));
             }
-            Err(code) => return Ok(rejected_report(input.admission_id, code, checks)),
+            Err(code) => {
+                return Ok(rejected_report(
+                    report_schema,
+                    input.admission_id,
+                    code,
+                    checks,
+                ))
+            }
         }
     } else if !input.trusted_verifier_keys.is_empty() {
         return Ok(rejected_report(
+            report_schema,
             input.admission_id,
             "missing_runtime_trust_input",
             checks,
@@ -89,6 +107,7 @@ pub fn evaluate_runtime_admission(
 
     if bundle.binding.host_kernel_id != input.profile.local_kernel_id {
         return Ok(rejected_report(
+            report_schema,
             input.admission_id,
             "host_kernel_mismatch",
             checks,
@@ -98,6 +117,7 @@ pub fn evaluate_runtime_admission(
 
     if &bundle.binding != input.request {
         return Ok(rejected_report(
+            report_schema,
             input.admission_id,
             "request_binding_mismatch",
             checks,
@@ -123,6 +143,7 @@ pub fn evaluate_runtime_admission(
             Ok(result) => result,
             Err(code) => {
                 return Ok(rejected_report_with_policy(
+                    report_schema,
                     input.admission_id,
                     code,
                     checks,
@@ -136,6 +157,7 @@ pub fn evaluate_runtime_admission(
     if let Some(decision) = policy_decision.as_ref() {
         if decision.decision == "deny" {
             return Ok(rejected_report_with_policy(
+                report_schema,
                 input.admission_id,
                 "runtime_pheromone_policy_deny",
                 checks,
@@ -144,6 +166,7 @@ pub fn evaluate_runtime_admission(
         }
         if decision.decision == "escalate" {
             return Ok(rejected_report_with_policy(
+                report_schema,
                 input.admission_id,
                 "runtime_pheromone_policy_escalate",
                 checks,
@@ -156,6 +179,7 @@ pub fn evaluate_runtime_admission(
     if bundle.destructive {
         let Some(lease_id) = bundle.lease_id.as_deref() else {
             return Ok(rejected_report(
+                report_schema,
                 input.admission_id,
                 "missing_destructive_lease",
                 checks,
@@ -163,6 +187,7 @@ pub fn evaluate_runtime_admission(
         };
         if bundle.governance_receipt_id.is_none() {
             return Ok(rejected_report(
+                report_schema,
                 input.admission_id,
                 "missing_governance_receipt",
                 checks,
@@ -177,7 +202,12 @@ pub fn evaluate_runtime_admission(
                 checks.push(passed("destructive.lease_reserved"));
             }
             Err(ChiodosRuntimeError::Rejected { code, .. }) => {
-                return Ok(rejected_report(input.admission_id, code, checks));
+                return Ok(rejected_report(
+                    report_schema,
+                    input.admission_id,
+                    code,
+                    checks,
+                ));
             }
             Err(error) => return Err(error),
         }
@@ -194,7 +224,12 @@ pub fn evaluate_runtime_admission(
                         .store
                         .release_destructive_lease(lease_id, input.admission_id)?;
                 }
-                return Ok(rejected_report(input.admission_id, code, checks));
+                return Ok(rejected_report(
+                    report_schema,
+                    input.admission_id,
+                    code,
+                    checks,
+                ));
             }
             Err(error) => {
                 if let Some(lease_id) = consumed_destructive_lease_id.as_deref() {
@@ -208,7 +243,7 @@ pub fn evaluate_runtime_admission(
     }
 
     Ok(RuntimeAdmissionReport {
-        schema: CHIODOS_RUNTIME_ADMISSION_REPORT_SCHEMA.to_string(),
+        schema: report_schema.to_string(),
         admission_id: input.admission_id.to_string(),
         accepted: true,
         failure_code: None,
@@ -216,6 +251,7 @@ pub fn evaluate_runtime_admission(
         pheromone_advisory: pheromone_advisory.clone(),
         pheromone_policy_decision: policy_decision.clone(),
         receipt_metadata: receipt_metadata(
+            report_schema,
             &bundle,
             true,
             None,
@@ -224,6 +260,28 @@ pub fn evaluate_runtime_admission(
             policy_decision.as_ref(),
         ),
     })
+}
+
+fn is_runtime_admission_profile_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA | CHIODOS_RUNTIME_ADMISSION_PROFILE_SCHEMA
+    )
+}
+
+fn is_runtime_admission_bundle_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA | CHIODOS_RUNTIME_ADMISSION_BUNDLE_SCHEMA
+    )
+}
+
+fn runtime_admission_report_schema(profile_schema: &str) -> &'static str {
+    if profile_schema == CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA {
+        CHIO_RUNTIME_ADMISSION_REPORT_SCHEMA
+    } else {
+        CHIODOS_RUNTIME_ADMISSION_REPORT_SCHEMA
+    }
 }
 
 pub(crate) fn passed(code: &str) -> RuntimeAdmissionCheck {
@@ -241,7 +299,7 @@ fn validate_runtime_trust_input(
     checks: &mut Vec<RuntimeAdmissionCheck>,
 ) -> Result<RuntimeTrustFloorEntry, &'static str> {
     let body = &envelope.body;
-    if body.schema != CHIODOS_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA_V4 {
+    if !is_runtime_verifier_trust_bundle_schema(&body.schema) {
         return Err("unsupported_runtime_trust_schema");
     }
     checks.push(passed("runtime_trust.schema"));
@@ -308,6 +366,13 @@ fn validate_runtime_trust_input(
     })
 }
 
+fn is_runtime_verifier_trust_bundle_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA | CHIODOS_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA_V4
+    )
+}
+
 pub(crate) fn validate_runtime_trust_floor_transition(
     existing: Option<RuntimeTrustFloorEntry>,
     next: &RuntimeTrustFloorEntry,
@@ -347,21 +412,24 @@ pub(crate) fn validate_runtime_trust_floor_transition(
 }
 
 fn rejected_report(
+    report_schema: &str,
     admission_id: &str,
     failure_code: &'static str,
     checks: Vec<RuntimeAdmissionCheck>,
 ) -> RuntimeAdmissionReport {
-    rejected_report_with_policy(admission_id, failure_code, checks, None)
+    rejected_report_with_policy(report_schema, admission_id, failure_code, checks, None)
 }
 
 fn rejected_report_with_policy(
+    report_schema: &str,
     admission_id: &str,
     failure_code: &'static str,
     checks: Vec<RuntimeAdmissionCheck>,
     pheromone_policy_decision: Option<RuntimePheromonePolicyDecision>,
 ) -> RuntimeAdmissionReport {
+    let metadata_key = runtime_receipt_metadata_key(report_schema);
     RuntimeAdmissionReport {
-        schema: CHIODOS_RUNTIME_ADMISSION_REPORT_SCHEMA.to_string(),
+        schema: report_schema.to_string(),
         admission_id: admission_id.to_string(),
         accepted: false,
         failure_code: Some(failure_code.to_string()),
@@ -369,7 +437,7 @@ fn rejected_report_with_policy(
         pheromone_advisory: None,
         pheromone_policy_decision: pheromone_policy_decision.clone(),
         receipt_metadata: serde_json::json!({
-            "chiodos_runtime": {
+            metadata_key: {
                 "admission_id": admission_id,
                 "accepted": false,
                 "failure_code": failure_code,
@@ -380,6 +448,7 @@ fn rejected_report_with_policy(
 }
 
 fn receipt_metadata(
+    report_schema: &str,
     bundle: &RuntimeAdmissionBundle,
     accepted: bool,
     failure_code: Option<&str>,
@@ -387,8 +456,9 @@ fn receipt_metadata(
     pheromone_advisory: Option<&RuntimePheromoneAdvisory>,
     pheromone_policy_decision: Option<&RuntimePheromonePolicyDecision>,
 ) -> serde_json::Value {
+    let metadata_key = runtime_receipt_metadata_key(report_schema);
     serde_json::json!({
-        "chiodos_runtime": {
+        metadata_key: {
             "admission_id": bundle.admission_id,
             "accepted": accepted,
             "failure_code": failure_code,
@@ -405,6 +475,14 @@ fn receipt_metadata(
             "pheromone_policy_decision": pheromone_policy_decision
         }
     })
+}
+
+fn runtime_receipt_metadata_key(report_schema: &str) -> &'static str {
+    if report_schema == CHIO_RUNTIME_ADMISSION_REPORT_SCHEMA {
+        "chio_runtime"
+    } else {
+        "chiodos_runtime"
+    }
 }
 
 pub(crate) fn trust_floor_identity(verifier_id: &str, key_id: &str) -> String {

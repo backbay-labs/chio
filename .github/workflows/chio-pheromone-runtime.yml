@@ -1,0 +1,35 @@
+name: Chio Pheromone Runtime
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-pheromone-runtime/**"
+      - "crates/chio-pheromone/**"
+      - "crates/chio-federation/**"
+      - "crates/chio-cli/**"
+      - "examples/chio-3vendor/**"
+      - "spec/schemas/chio-pheromone/**"
+      - "scripts/check-chio-pheromone-runtime.sh"
+      - "scripts/check-chio-pheromone-runtime.sh"
+      - ".github/workflows/chio-pheromone-runtime.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/chio-pheromone-runtime/**"
+      - "crates/chio-pheromone/**"
+      - "crates/chio-federation/**"
+      - "crates/chio-cli/**"
+      - "examples/chio-3vendor/**"
+      - "spec/schemas/chio-pheromone/**"
+      - "scripts/check-chio-pheromone-runtime.sh"
+      - "scripts/check-chio-pheromone-runtime.sh"
+      - ".github/workflows/chio-pheromone-runtime.yml"
+
+jobs:
+  chio-pheromone-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check Chio pheromone runtime
+        run: bash scripts/check-chio-pheromone-runtime.sh

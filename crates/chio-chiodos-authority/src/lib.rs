@@ -1,4 +1,4 @@
-//! Runtime Chiodos authority artifact issuance.
+//! Runtime Chio federation authority artifact issuance.
 
 use std::collections::BTreeSet;
 
@@ -9,9 +9,9 @@ use chio_chiodos::{
     ChiodosTrustedWorkflowIntersection, ChiodosVerificationContext, ChiodosVerifierTrustBundle,
     ChiodosVerifierTrustBundleDocument, LeaseScopeBindingArtifact, PeerLadderBinding,
     SignedChiodosRevocationCheckpoint, TrustedBbsIssuer, VendorKeyBinding,
-    WorkflowIntersectionArtifact, LEASE_SCOPE_BINDING_SCHEMA, REVOCATION_CHECKPOINT_SCHEMA,
-    VERIFIER_TRUST_BUNDLE_SCHEMA, WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID,
-    WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID,
+    WorkflowIntersectionArtifact, CHIO_FEDERATION_REVOCATION_CHECKPOINT_SCHEMA_V1,
+    CHIO_FEDERATION_VERIFIER_TRUST_BUNDLE_SCHEMA_V1, LEASE_SCOPE_BINDING_SCHEMA,
+    WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID, WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID,
 };
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::{sha256_hex, Keypair, PublicKey};
@@ -23,13 +23,20 @@ use chio_governance::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const AUTHORITY_PROFILE_SCHEMA: &str = "chio.chiodos.authority-profile.v1";
-pub const ISSUANCE_REQUEST_SCHEMA: &str = "chio.chiodos.issuance-request.v1";
-pub const ISSUANCE_BUNDLE_SCHEMA: &str = "chio.chiodos.issuance-bundle.v1";
-pub const REVOCATION_PUBLICATION_REQUEST_SCHEMA: &str =
+pub const LEGACY_AUTHORITY_PROFILE_SCHEMA: &str = "chio.chiodos.authority-profile.v1";
+pub const LEGACY_ISSUANCE_REQUEST_SCHEMA: &str = "chio.chiodos.issuance-request.v1";
+pub const LEGACY_ISSUANCE_BUNDLE_SCHEMA: &str = "chio.chiodos.issuance-bundle.v1";
+pub const LEGACY_REVOCATION_PUBLICATION_REQUEST_SCHEMA: &str =
     "chio.chiodos.revocation-publication-request.v1";
-pub const PEER_PINS_SCHEMA: &str = "chio.chiodos.peer-pins.v1";
-pub const LOCAL_SIGNING_KEYS_SCHEMA: &str = "chio.chiodos.local-signing-keys.v1";
+pub const LEGACY_PEER_PINS_SCHEMA: &str = "chio.chiodos.peer-pins.v1";
+pub const LEGACY_LOCAL_SIGNING_KEYS_SCHEMA: &str = "chio.chiodos.local-signing-keys.v1";
+pub const AUTHORITY_PROFILE_SCHEMA: &str = "chio.federation.authority-profile.v1";
+pub const ISSUANCE_REQUEST_SCHEMA: &str = "chio.federation.issuance-request.v1";
+pub const ISSUANCE_BUNDLE_SCHEMA: &str = "chio.federation.issuance-bundle.v1";
+pub const REVOCATION_PUBLICATION_REQUEST_SCHEMA: &str =
+    "chio.federation.revocation-publication-request.v1";
+pub const PEER_PINS_SCHEMA: &str = "chio.federation.peer-pins.v1";
+pub const LOCAL_SIGNING_KEYS_SCHEMA: &str = "chio.federation.local-signing-keys.v1";
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum ChiodosAuthorityError {
@@ -158,7 +165,11 @@ pub struct PeerPinsDocument {
 
 impl AuthorityProfileDocument {
     pub fn validate(&self) -> Result<(), ChiodosAuthorityError> {
-        if self.schema != AUTHORITY_PROFILE_SCHEMA {
+        if !schema_is_supported(
+            &self.schema,
+            AUTHORITY_PROFILE_SCHEMA,
+            LEGACY_AUTHORITY_PROFILE_SCHEMA,
+        ) {
             return Err(ChiodosAuthorityError::Profile(format!(
                 "authority profile schema {} is unsupported",
                 self.schema
@@ -313,7 +324,11 @@ impl ChiodosRevocationAuthority {
 
 impl LocalAuthoritySigningKeysDocument {
     pub fn validate(&self) -> Result<(), ChiodosAuthorityError> {
-        if self.schema != LOCAL_SIGNING_KEYS_SCHEMA {
+        if !schema_is_supported(
+            &self.schema,
+            LOCAL_SIGNING_KEYS_SCHEMA,
+            LEGACY_LOCAL_SIGNING_KEYS_SCHEMA,
+        ) {
             return Err(ChiodosAuthorityError::SigningKeys(format!(
                 "local signing keys schema {} is unsupported",
                 self.schema
@@ -329,7 +344,11 @@ impl LocalAuthoritySigningKeysDocument {
 
 impl ChiodosIssuanceRequest {
     pub fn validate(&self) -> Result<(), ChiodosAuthorityError> {
-        if self.schema != ISSUANCE_REQUEST_SCHEMA {
+        if !schema_is_supported(
+            &self.schema,
+            ISSUANCE_REQUEST_SCHEMA,
+            LEGACY_ISSUANCE_REQUEST_SCHEMA,
+        ) {
             return Err(ChiodosAuthorityError::Request(format!(
                 "issuance request schema {} is unsupported",
                 self.schema
@@ -446,7 +465,11 @@ impl ChiodosIssuanceStepRequest {
 
 impl RevocationPublicationRequest {
     pub fn validate(&self) -> Result<(), ChiodosAuthorityError> {
-        if self.schema != REVOCATION_PUBLICATION_REQUEST_SCHEMA {
+        if !schema_is_supported(
+            &self.schema,
+            REVOCATION_PUBLICATION_REQUEST_SCHEMA,
+            LEGACY_REVOCATION_PUBLICATION_REQUEST_SCHEMA,
+        ) {
             return Err(ChiodosAuthorityError::Revocation(format!(
                 "revocation publication schema {} is unsupported",
                 self.schema
@@ -482,7 +505,7 @@ impl RevocationPublicationRequest {
 
 impl PeerPinsDocument {
     pub fn validate(&self) -> Result<(), ChiodosAuthorityError> {
-        if self.schema != PEER_PINS_SCHEMA {
+        if !schema_is_supported(&self.schema, PEER_PINS_SCHEMA, LEGACY_PEER_PINS_SCHEMA) {
             return Err(ChiodosAuthorityError::TrustBundle(format!(
                 "peer pins schema {} is unsupported",
                 self.schema
@@ -805,7 +828,7 @@ pub fn publish_revocation_checkpoint(
         &profile.revocation_authority.authority_id,
     )?;
     let body = ChiodosRevocationCheckpoint {
-        schema: REVOCATION_CHECKPOINT_SCHEMA.to_string(),
+        schema: CHIO_FEDERATION_REVOCATION_CHECKPOINT_SCHEMA_V1.to_string(),
         checkpoint_id: request.checkpoint_id.clone(),
         issued_at_unix_ms: request.issued_at_unix_ms,
         expires_at_unix_ms: request.expires_at_unix_ms,
@@ -831,7 +854,7 @@ pub fn assemble_verifier_trust_bundle(
         sha256: workflow_intersection_sha256,
     };
     let document = ChiodosVerifierTrustBundleDocument {
-        schema: VERIFIER_TRUST_BUNDLE_SCHEMA.to_string(),
+        schema: CHIO_FEDERATION_VERIFIER_TRUST_BUNDLE_SCHEMA_V1.to_string(),
         trusted_bbs_issuers: profile.trusted_bbs_issuers.clone(),
         peers: peer_pins.peers.clone(),
         vendors: peer_pins.vendors.clone(),
@@ -851,6 +874,10 @@ fn canonical_sha256<T: Serialize>(value: &T) -> Result<String, ChiodosAuthorityE
     let bytes = canonical_json_bytes(value)
         .map_err(|error| ChiodosAuthorityError::Canonical(error.to_string()))?;
     Ok(sha256_hex(&bytes))
+}
+
+fn schema_is_supported(schema: &str, chio_schema: &str, legacy_schema: &str) -> bool {
+    schema == chio_schema || schema == legacy_schema
 }
 
 fn required_window(
@@ -1198,6 +1225,122 @@ mod tests {
             "lease-stage-refund"
         );
         assert_eq!(bundle.verification_context.challenge, "challenge-001");
+    }
+
+    #[test]
+    fn chio_federation_authority_outputs_chio_native_wrapper_schemas() {
+        let profile = profile();
+        assert_eq!(profile.schema, "chio.federation.authority-profile.v1");
+
+        let request = request();
+        assert_eq!(request.schema, "chio.federation.issuance-request.v1");
+        assert_eq!(
+            request.verification_context.schema,
+            "chio.federation.verification-context.v1"
+        );
+
+        let keys = signing_keys();
+        assert_eq!(keys.schema, "chio.federation.local-signing-keys.v1");
+
+        let bundle = issue_authority_bundle(&profile, &request, &keys).expect("issue bundle");
+        assert_eq!(bundle.schema, "chio.federation.issuance-bundle.v1");
+        assert_eq!(
+            bundle.verification_context.schema,
+            "chio.federation.verification-context.v1"
+        );
+        assert!(bundle
+            .lease_scope_bindings
+            .iter()
+            .all(|binding| binding.schema == "chio.federation.lease-scope-binding.v1"));
+        assert!(bundle
+            .capability_leases
+            .iter()
+            .all(|lease| lease.body.schema == "chio.capability-lease.v1"));
+        assert!(bundle
+            .governance_receipts
+            .iter()
+            .all(|receipt| receipt.body.schema == "chio.governance-receipt.v1"));
+
+        let checkpoint_request = RevocationPublicationRequest {
+            schema: "chio.federation.revocation-publication-request.v1".to_string(),
+            checkpoint_id: "checkpoint-001".to_string(),
+            issued_at_unix_ms: NOW,
+            expires_at_unix_ms: NOW + 60_000,
+            epoch_height: 11,
+            previous_epoch_height: Some(10),
+            revoked_key_fingerprints: Vec::new(),
+        };
+        let checkpoint = publish_revocation_checkpoint(&profile, &checkpoint_request, &keys)
+            .expect("checkpoint");
+        assert_eq!(
+            checkpoint.body.schema,
+            "chio.federation.revocation-checkpoint.v1"
+        );
+
+        let peer_pins = PeerPinsDocument {
+            schema: "chio.federation.peer-pins.v1".to_string(),
+            peers: vec![chio_chiodos::PeerLadderBinding {
+                kernel_id: "did:chio:vendor-a".to_string(),
+                public_key: key(21).public_key(),
+                ladder_manifest_ref: LadderManifestRef {
+                    manifest_id: "ladder:vendor-a".to_string(),
+                    sha256: "f".repeat(64),
+                    issued_at_unix_ms: NOW - 1_000,
+                    expires_at_unix_ms: NOW + 60_000,
+                },
+            }],
+            vendors: vec![VendorKeyBinding {
+                vendor_id: "vendor-a".to_string(),
+                public_key: key(21).public_key(),
+            }],
+            action_classes: vec![
+                ChiodosTrustedActionClass {
+                    action_class_id: WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID.to_string(),
+                    tool_name: WORKFLOW_GRANT_ISSUE_ACTION_CLASS_ID.to_string(),
+                    kind: chio_chiodos::ChiodosActionClassKind::Routine,
+                },
+                ChiodosTrustedActionClass {
+                    action_class_id: WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID.to_string(),
+                    tool_name: WORKFLOW_AGGREGATE_PUBLISH_ACTION_CLASS_ID.to_string(),
+                    kind: chio_chiodos::ChiodosActionClassKind::Routine,
+                },
+            ],
+        };
+        let workflow_intersection = chio_chiodos::WorkflowIntersectionArtifact {
+            schema: chio_chiodos::WORKFLOW_INTERSECTION_SCHEMA.to_string(),
+            intersection_id: "workflow-intersection:001".to_string(),
+            workflow_id: "wf-001".to_string(),
+            workflow_grant_id: "cap-workflow".to_string(),
+            pairwise_intersection_refs: Vec::new(),
+            step_class_bindings: Vec::new(),
+            required_vendor_signers: Vec::new(),
+            aggregate_workflow_receipt_sha256: "a".repeat(64),
+        };
+        let trust_bundle = assemble_verifier_trust_bundle(
+            &profile,
+            &peer_pins,
+            &workflow_intersection,
+            ChiodosDisclosurePolicy {
+                projection_version: "chio.bbs-projection.workflow.v1".to_string(),
+                ciphersuite: "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_".to_string(),
+                message_count: 14,
+                required_disclosed_indices: vec![4, 8, 9, 10],
+                required_disclosed_fields: vec![
+                    "id".to_string(),
+                    "session_id".to_string(),
+                    "skill_id".to_string(),
+                    "skill_version".to_string(),
+                ],
+            },
+            checkpoint,
+        )
+        .expect("trust bundle assembles");
+        assert_eq!(
+            trust_bundle.schema,
+            "chio.federation.verifier-trust-bundle.v1"
+        );
+        ChiodosVerifierTrustBundle::from_document(trust_bundle)
+            .expect("Chio-native trust bundle remains verifier compatible");
     }
 
     #[test]

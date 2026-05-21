@@ -8,8 +8,8 @@ use crate::{
     PHEROMONE_CATCHUP_REQUEST_SCHEMA, PHEROMONE_CATCHUP_RESPONSE_SCHEMA, PHEROMONE_HEALTH_PATH,
     PHEROMONE_READY_PATH, PHEROMONE_RELAY_DRILL_REPORT_SCHEMA, PHEROMONE_RELAY_EVENT_REPORT_SCHEMA,
     PHEROMONE_RELAY_METRICS_PATH, PHEROMONE_RELAY_OBSERVABILITY_PATH,
-    PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA, PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA,
-    PHEROMONE_RELAY_TICK_REPORT_SCHEMA,
+    PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA, PHEROMONE_RELAY_PATH_PREFIX,
+    PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA, PHEROMONE_RELAY_TICK_REPORT_SCHEMA,
 };
 use async_trait::async_trait;
 use axum::extract::DefaultBodyLimit;
@@ -118,9 +118,9 @@ pub fn lint_relay_supervisor_profile(
     );
     push_drill_check(
         &mut checks,
-        profile.reverse_proxy.pinned_path_prefix == "/v1/chiodos/pheromone",
+        profile.reverse_proxy.pinned_path_prefix == PHEROMONE_RELAY_PATH_PREFIX,
         "pinned_path_prefix",
-        "reverse proxy pins the Chiodos pheromone path prefix",
+        "reverse proxy pins the Chio pheromone path prefix",
     );
     push_drill_check(
         &mut checks,
@@ -477,6 +477,8 @@ async fn handle_catchup_relay(
             peer.max_catchup_bytes,
         )
         .map_err(|error| relay_http_error(&service, error))?;
+    enforce_catchup_response_directory_scope(peer, &request.sender_kernel_id, &frames)
+        .map_err(|error| relay_http_error(&service, error))?;
     let response = CatchupResponse {
         schema: PHEROMONE_CATCHUP_RESPONSE_SCHEMA.to_string(),
         accepted: true,
@@ -532,6 +534,21 @@ pub(crate) fn validate_catchup_request(
             "peer {} is not subscribed to treaty {}",
             authenticated_sender, catchup.treaty_id
         )));
+    }
+    Ok(())
+}
+
+fn enforce_catchup_response_directory_scope(
+    peer: &PeerDirectoryEntry,
+    requester_kernel_id: &str,
+    frames: &[PheromoneGossipBatch],
+) -> Result<(), PheromoneRelayError> {
+    for batch in frames {
+        enforce_peer_transit_ladder_pins(peer, requester_kernel_id, batch).map_err(|error| {
+            PheromoneRelayError::CatchupDenied(format!(
+                "catch-up frame denied by directory pins: {error}"
+            ))
+        })?;
     }
     Ok(())
 }

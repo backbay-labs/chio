@@ -1,0 +1,126 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-retention-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000100000,
+  "retainedCount": 12,
+  "expiringSoonCount": 0,
+  "eligibleForDeleteCount": 0,
+  "blockedCount": 1,
+  "missingCount": 0,
+  "quarantineCount": 0,
+  "entries": [
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "alert_report",
+      "path": "reports/relay-alert-report.json",
+      "state": "retain",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact remains within retention window"
+    },
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "trend_report",
+      "path": "reports/relay-trend-report.json",
+      "state": "retain",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact remains within retention window"
+    },
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "handoff_report",
+      "path": "reports/relay-alert-handoff-report.json",
+      "state": "retain",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact remains within retention window"
+    },
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "normalization_report",
+      "path": "reports/relay-alert-normalization-report.json",
+      "state": "retain",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact remains within retention window"
+    },
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "delivery_report",
+      "path": "reports/relay-alert-delivery-report.json",
+      "state": "retain",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact remains within retention window"
+    },
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "acknowledgement_report",
+      "path": "reports/relay-alert-acknowledgement-report.json",
+      "state": "retain",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact remains within retention window"
+    },
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "drift_report",
+      "path": "reports/relay-alert-delivery-drift-report-v2.json",
+      "state": "retain",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact remains within retention window"
+    },
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "route_review_packet",
+      "path": "reports/relay-alert-route-review-packet.json",
+      "state": "retain",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact remains within retention window"
+    },
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "assurance_package",
+      "path": "reports/relay-alert-assurance-package.json",
+      "state": "blocked",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact is blocked from deletion by legal hold or source binding"
+    },
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "retention_profile",
+      "path": "profiles/relay-alert-assurance-retention-profile.json",
+      "state": "retain",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact remains within retention window"
+    },
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "normalized_delivery_evidence",
+      "path": "evidence/relay-alert-delivery-evidence-000.json",
+      "state": "retain",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact remains within retention window"
+    },
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "normalized_delivery_evidence",
+      "path": "evidence/relay-alert-delivery-evidence-001.json",
+      "state": "retain",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact remains within retention window"
+    },
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "artifactRole": "normalized_delivery_evidence",
+      "path": "evidence/relay-alert-delivery-evidence-002.json",
+      "state": "retain",
+      "retainUntilUnixMs": 1766001000000,
+      "detail": "artifact remains within retention window"
+    }
+  ],
+  "checks": [
+    {
+      "code": "retention_plan_only",
+      "accepted": true,
+      "detail": "retention evaluation is report-only and does not delete evidence"
+    }
+  ]
+}

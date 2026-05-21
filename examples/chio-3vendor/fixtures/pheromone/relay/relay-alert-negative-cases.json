@@ -1,0 +1,70 @@
+{
+  "schema": "chio.pheromone.relay-alert-negative-fixture-corpus.v1",
+  "cases": [
+    {
+      "id": "inline-token",
+      "target": "relay-alert-routing-profile",
+      "expectedFailureCode": "alert_routing_invalid"
+    },
+    {
+      "id": "dynamic-url",
+      "target": "relay-alert-routing-profile",
+      "expectedFailureCode": "alert_routing_invalid"
+    },
+    {
+      "id": "stale-report",
+      "target": "relay-alert-report",
+      "expectedFailureCode": "alert_source_invalid"
+    },
+    {
+      "id": "kernel-mismatch",
+      "target": "relay-alert-report",
+      "expectedFailureCode": "alert_source_invalid"
+    },
+    {
+      "id": "source-hash-mismatch",
+      "target": "relay-alert-report",
+      "expectedFailureCode": "alert_source_invalid"
+    },
+    {
+      "id": "overlong-suppression",
+      "target": "relay-alert-suppression-state",
+      "expectedFailureCode": "alert_routing_invalid"
+    },
+    {
+      "id": "critical-suppression",
+      "target": "relay-alert-report",
+      "expectedFailureCode": "alerts_firing"
+    },
+    {
+      "id": "dedupe-collision",
+      "target": "relay-alert-routing-profile",
+      "expectedFailureCode": "alert_routing_invalid"
+    },
+    {
+      "id": "missing-evidence",
+      "target": "relay-alert-report",
+      "expectedFailureCode": "alert_source_invalid"
+    },
+    {
+      "id": "timestamp-regression",
+      "target": "relay-alert-report",
+      "expectedFailureCode": "alert_source_invalid"
+    },
+    {
+      "id": "unknown-code-default-allow",
+      "target": "relay-alert-routing-profile",
+      "expectedFailureCode": "alert_routing_invalid"
+    },
+    {
+      "id": "unbounded-label-leakage",
+      "target": "relay-alert-report",
+      "expectedFailureCode": "alert_routing_invalid"
+    },
+    {
+      "id": "missing-metrics-false-all-clear",
+      "target": "relay-alert-report",
+      "expectedFailureCode": "alert_source_invalid"
+    }
+  ]
+}

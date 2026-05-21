@@ -35,9 +35,9 @@ use chio_core_types::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
 };
 use chio_federation::{
-    sign_chiodos_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef, DsseEnvelope,
-    GovernanceReceiptRef, HashRecord, Keyid, LadderManifestRef, PolicyEvaluationSummary,
-    PolicyVerdict, PREDICATE_TYPE_CHIODOS_BILATERAL,
+    sign_chio_bilateral_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
+    DsseEnvelope, GovernanceReceiptRef, HashRecord, Keyid, LadderManifestRef,
+    PolicyEvaluationSummary, PolicyVerdict, PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION,
 };
 use chio_governance::{
     CapabilityLeaseActionClass, GovernanceReceiptCaseKind, SignedCapabilityLease,
@@ -851,7 +851,7 @@ fn validate_runtime_artifact_for_issued_material(
     let (statement, _) = envelope
         .decode_statement()
         .map_err(|error| ChiodosPackageError::Federation(error.to_string()))?;
-    if statement.predicate_type != PREDICATE_TYPE_CHIODOS_BILATERAL {
+    if statement.predicate_type != PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION {
         return Err(ChiodosPackageError::Federation(format!(
             "runtime step {} DSSE predicate type {} is not strict Chiodos",
             index, statement.predicate_type
@@ -1124,7 +1124,7 @@ fn build_proof_package_unchecked(
                     cross_org_visibility: None,
                     treaty_binding_ref: None,
                 };
-                let envelope = sign_chiodos_dsse_envelope(
+                let envelope = sign_chio_bilateral_dsse_envelope(
                     &receipt,
                     &buyer_key,
                     &vendor_key,

@@ -1,0 +1,35 @@
+name: Chio Pheromone Directory Lifecycle
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-pheromone-relay/**"
+      - "crates/chio-cli/**"
+      - "examples/chio-3vendor/**"
+      - "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"
+      - "docs/release/chio-pheromone-relay/**"
+      - "spec/schemas/chio-pheromone/**"
+      - "spec/schemas/registry.json"
+      - "scripts/check-chio-pheromone-directory-lifecycle.sh"
+      - ".github/workflows/chio-pheromone-directory-lifecycle.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/chio-pheromone-relay/**"
+      - "crates/chio-cli/**"
+      - "examples/chio-3vendor/**"
+      - "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"
+      - "docs/release/chio-pheromone-relay/**"
+      - "spec/schemas/chio-pheromone/**"
+      - "spec/schemas/registry.json"
+      - "scripts/check-chio-pheromone-directory-lifecycle.sh"
+      - ".github/workflows/chio-pheromone-directory-lifecycle.yml"
+
+jobs:
+  chio-pheromone-directory-lifecycle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check Chio pheromone directory lifecycle
+        run: bash scripts/check-chio-pheromone-directory-lifecycle.sh

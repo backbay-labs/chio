@@ -1,0 +1,35 @@
+[Unit]
+Description=Chio pheromone relay service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=chio-relay
+Group=chio-relay
+RuntimeDirectory=chio-pheromone-relay
+StateDirectory=chio-pheromone-relay
+ConfigurationDirectory=chio
+UMask=0077
+ExecStart=/usr/local/bin/chio pheromone relay serve \
+  --listen 127.0.0.1:18080 \
+  --store /var/lib/chio-pheromone-relay/relay.sqlite3 \
+  --peer-directory-state /etc/chio/peer-directory-state.json \
+  --profile production \
+  --trusted-issuers /etc/chio/trusted-peer-directory-issuers.json \
+  --transit-policy /etc/chio/pheromone-transit-policy.json \
+  --proof-package /etc/chio/buyer-auditor-proof-package.json \
+  --trust-bundle /etc/chio/verifier-trust-bundle.json \
+  --context /etc/chio/verification-context.json \
+  --report-dir /var/lib/chio-pheromone-relay/reports \
+  --operator-token-env CHIO_RELAY_OPERATOR_TOKEN
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/chio-pheromone-relay
+
+[Install]
+WantedBy=multi-user.target

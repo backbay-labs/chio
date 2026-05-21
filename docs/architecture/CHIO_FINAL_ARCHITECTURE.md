@@ -33,36 +33,44 @@ stability promise.
 
 ### Pheromone substrate
 
-- `crates/chio-pheromone/src/lib.rs:220` defines
+- `crates/chio-pheromone/src/lib.rs:382` defines
   `ObservationCostVerificationMode`.
-- `crates/chio-pheromone/src/lib.rs:227` defines
+- `crates/chio-pheromone/src/lib.rs:389` defines
   `PheromoneScarcityPolicy` with `deny_unknown_fields`, but
-  `newcomer_horizon_epochs` still has a Rust-side serde default at line 235.
-  The target architecture forbids Rust-only defaults for live admission
-  semantics.
-- `crates/chio-pheromone/src/lib.rs:277` carries
+  `newcomer_horizon_epochs` is now an explicit field rather than a Rust-side
+  serde default.
+- `crates/chio-pheromone/src/lib.rs:454` carries
   `PheromoneValidationContext.scarcity_policies`.
-- `crates/chio-pheromone/src/lib.rs:318` to
-  `crates/chio-pheromone/src/lib.rs:328` has in-memory counters keyed by
+- `crates/chio-pheromone/src/lib.rs:494` to
+  `crates/chio-pheromone/src/lib.rs:508` has in-memory counters keyed by
   epoch, window, treaty, namespace, class, kernel, and passport dimensions.
-- `crates/chio-pheromone/src/lib.rs:503` still has an empty-policy
-  compatibility fallback. That is acceptable only for explicit read-only
-  historical verification, never for live receive.
-- `crates/chio-pheromone/src/lib.rs:1017` verifies cost commitment binding by
-  checking deposit fields against policy fields. It does not yet verify a
-  signed verifier statement or telemetry-chain inclusion proof. That is a real
-  P0 implementation gap for the final architecture.
+- `crates/chio-pheromone/src/lib.rs:684` now rejects empty live scarcity
+  policy material with `scarcity_policy_missing` instead of creating
+  compatibility admissions.
+- `crates/chio-pheromone/src/lib.rs:1322` verifies observation-cost commitments
+  by resolving receiver-owned verifier roots, checking trust-floor revocation,
+  verifying the signed statement, and proving the RFC 6962 telemetry inclusion
+  path.
 
 ### Pheromone runtime
 
-- `crates/chio-pheromone-runtime/src/lib.rs:137` defines
+- `crates/chio-pheromone-runtime/src/lib.rs:40` defines
+  `PheromoneRuntimeError`; workflow verification failures now use the
+  Chio-owned `chio_workflow_verification` boundary rather than exposing the
+  historical proof-package error type.
+- `crates/chio-pheromone-runtime/src/lib.rs:112` defines Chio-owned workflow
+  proof-package, trust-bundle, and verification-context wrappers for public
+  receiver construction, while the historical verifier types stay private
+  backend details.
+- `crates/chio-pheromone-runtime/src/lib.rs:155` defines
   `PheromoneAdmissionPolicyDocument`.
-- `crates/chio-pheromone-runtime/src/lib.rs:147` uses serde defaulting for
-  `scarcity_policies`, which can keep live policy parsing compatible with
-  empty-policy documents. Final live receive must reject that state.
-- `crates/chio-pheromone-runtime/src/lib.rs:166` parses transit policy JSON,
-  removes the `admission` object, and builds receiver config. This is the
-  correct boundary for schema validation before serde.
+- `crates/chio-pheromone-runtime/src/lib.rs:227` validates the transit policy
+  JSON schema before serde, line 239 rejects empty live scarcity policies, and
+  line 246 rejects overlapping scarcity windows during policy load.
+- `crates/chio-pheromone-runtime/src/lib.rs:634` builds
+  `VerifiedChioWorkflowResolver` from the Chio workflow wrappers and only then
+  delegates to the historical verifier core for read-only proof-package
+  validation.
 - `crates/chio-pheromone-runtime/src/lib.rs:639` persists
   `chio_pheromone_scarcity_buckets`; line 655 begins the more granular pair
   bucket table. The persistent model is close to the target bucket scope.
@@ -71,12 +79,14 @@ stability promise.
 
 - `crates/chio-pheromone-relay/src/service.rs:421` enforces inbound batch peer
   roles and calls pinned ladder checks at line 445.
-- `crates/chio-pheromone-relay/src/service.rs:496` validates catch-up
-  requests. In the current worktree it checks `Receiver | Hub` at line 519 and
-  treaty subscription at line 530.
-- `crates/chio-pheromone-relay/src/service.rs:665` enforces outbound receiver
+- `crates/chio-pheromone-relay/src/service.rs:498` validates catch-up
+  requests. In the current worktree it checks `Receiver | Hub` at line 521 and
+  treaty subscription at line 532. Returned catch-up frames are rechecked
+  against requester directory ladder pins at line 541 before a successful
+  response is served.
+- `crates/chio-pheromone-relay/src/service.rs:682` enforces outbound receiver
   or hub role, max batch size, treaty subscription, and pinned ladder refs.
-- `crates/chio-pheromone-relay/src/service.rs:699` binds transit hops to
+- `crates/chio-pheromone-relay/src/service.rs:716` binds transit hops to
   directory-pinned ladder references.
 
 The relay direction is right: access decisions use directory material, not
@@ -103,6 +113,16 @@ relay path, including catch-up and future replay endpoints.
 - `crates/chio-federation/src/bilateral_verifier.rs:494` defines
   `TreatyBoundBilateralDsseReview`; line 508 verifies the treaty-bound strict
   bilateral DSSE.
+- `crates/chio-federation/src/bilateral.rs`,
+  `crates/chio-federation/src/bilateral_dsse.rs`, and
+  `crates/chio-federation/src/bilateral_verifier.rs` now expose production
+  documentation and verifier error text as strict Chio bilateral DSSE wording;
+  historical Chiodos wording is confined to compatibility tests and old signed
+  artifacts.
+- `crates/chio-federation/src/lib.rs` and the active CLI receipt explain help
+  text now use Chio-named production wording for selective disclosure and DSSE
+  conformance. Focused public-surface guards keep stale Chiodos wording out of
+  those active production comments while preserving hidden compatibility paths.
 - `crates/chio-kernel/src/kernel/tests/federation_cosign.rs:334` verifies that
   runtime treaty metadata is preserved into kernel-produced DSSE. Line 439
   tests request, signer, lease, and governance mismatches fail closed.
@@ -114,31 +134,173 @@ relay path, including catch-up and future replay endpoints.
 - `crates/chio-cli/src/cli/types.rs:356` defines top-level `chio attest`.
 - `crates/chio-cli/src/cli/types.rs:362` defines top-level `chio runtime`.
 - `crates/chio-cli/src/cli/types.rs:368` defines top-level `chio pheromone`.
-- `crates/chio-cli/src/cli/types.rs:374` still exposes `chio chiodos` as a
-  compatibility surface. That is a transitional implementation fact, not the
-  final public shape.
-- `crates/chio-cli/src/cli/types.rs:529` normalizes the Chio-native commands
-  back into `ChiodosCommands`. This is acceptable only as an intermediate
-  implementation detail. Final handlers should be Chio-native and the legacy
-  path should call into them, not the reverse.
-- `docs/research/CHIODOS_3VENDOR_FIXTURE.md` says
-  `chio attest verify` is the preferred command, with `chio chiodos verify` as
-  a compatibility alias for signed artifacts.
-- `spec/schemas/registry.json` already registers many Chio pheromone schema
-  IDs, but their `artifactKind` values still say `chiodos_*`.
+- `crates/chio-cli/src/cli/types.rs:378` keeps a hidden `chio chiodos`
+  compatibility parser for migration, but `crates/chio-cli/src/cli/dispatch.rs:3`
+  rejects direct `chio chiodos ...` execution by default unless
+  `CHIO_ENABLE_LEGACY_CHIODOS_CLI` is set, and
+  `crates/chio-cli/src/cli/dispatch.rs:31` rejects parsed legacy Chiodos
+  command execution even when that env gate is enabled. The env-gated path is
+  for hidden help and command-tree inspection only.
+- `crates/chio-cli/src/cli/types.rs` now gives the public `chio runtime` and
+  `chio pheromone` command trees Chio-named type boundaries
+  (`ChioRuntimeCommands` and `ChioPheromoneCommands`). Hidden compatibility
+  paths retain internal Chiodos aliases while they delegate through the
+  Chio-named dispatch handlers.
+- The public `chio federation authority` and `chio federation treaty` command
+  trees now use Chio-named type boundaries (`ChioAuthorityCommands` and
+  `ChioTreatyCommands`). Hidden compatibility paths retain internal Chiodos
+  aliases for parse compatibility only.
+- The nested public `chio federation authority trust-bundle` tree now uses
+  `ChioTrustBundleCommands`; the Chiodos-named trust-bundle type remains only
+  as a hidden compatibility alias.
+- `docs/research/CHIODOS_3VENDOR_FIXTURE.md` points signed-artifact
+  verification at `chio attest legacy chiodos-v1 verify` and states that direct
+  `chio chiodos verify` is no longer executable in the main CLI.
+- `spec/schemas/registry.json` registers active Chio schema IDs with Chio-native
+  `artifactKind` values; legacy Chiodos schema entries are marked
+  `deprecated-read-compatible`. The schema registry gate now also fails active
+  Chio schema files whose JSON Schema `title` still uses Chiodos naming, and
+  fails active Chio schema text under the checked schema roots, including
+  `spec/schemas/chio-wire/`, when stale Chiodos wording appears.
 - `spec/schemas/MANIFEST.sha256` lists `cost-commitment.schema.json` and
-  `transit-policy.schema.json`, but the current worktree has
-  `spec/schemas/chio-pheromone/v1/scarcity-policy.schema.json` untracked and
-  not listed in the manifest. Schema semantics are not finalized until the
-  schema file is tracked, registered, and present in the manifest.
-- `scripts/check-chiodos-pheromone-runtime.sh` and
-  `scripts/check-chiodos-pheromone-transit.sh` validate Chio pheromone schema
-  IDs but remain Chiodos-named gate scripts.
+  `scarcity-policy.schema.json` plus `transit-policy.schema.json` under
+  `spec/schemas/chio-pheromone/v1/`.
+- `spec/schemas/chio-federation/v1/` now owns the active federation authority
+  wrapper schemas for authority profiles, issuance requests, issuance bundles,
+  local signing keys, revocation publication requests, revocation checkpoints,
+  peer pins, and verifier trust bundles. New authority emitters write
+  `chio.federation.*` wrapper IDs while historical `chio.chiodos.*` inputs
+  remain read-compatible.
+- `scripts/check-chio-pheromone-runtime.sh`,
+  `scripts/check-chio-pheromone-transit.sh`, and
+  `scripts/check-chio-authority-issuance.sh` own Chio pheromone schema,
+  fixture, public receive/query CLI validation, and federation authority
+  issuance validation. The old Chiodos-named script paths are compatibility
+  wrappers only.
+- `scripts/check-chio-pheromone-relay*.sh` and
+  `scripts/check-chio-pheromone-directory-lifecycle.sh` own relay, relay ops,
+  directory lifecycle, observability, and relay alert validation. The old
+  Chiodos-named relay gate script paths are compatibility wrappers only.
+- `scripts/check-chio-runtime-spine.sh`, `scripts/check-chio-runtime-policy.sh`,
+  `scripts/check-chio-runtime-proof-parity.sh`,
+  `scripts/check-chio-runtime-ops-hardening.sh`, and
+  `scripts/check-chio-runtime-orchestration.sh` own runtime spine, policy, proof
+  parity, ops, and orchestration validation. The old Chiodos-named runtime gate
+  script paths are compatibility wrappers only.
+- `scripts/check-chio-proof-package.sh`,
+  `scripts/check-chio-treaty-bound-provenance.sh`, and
+  `scripts/check-chio-live-treaty-buyer-closure.sh` own proof package,
+  treaty-bound provenance, and live treaty buyer closure validation. The old
+  Chiodos-named treaty and proof gate script paths are compatibility wrappers
+  only.
+- `spec/CHIO_PHEROMONE.md` and
+  `docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md` are the active Chio-named
+  pheromone spec and relay runbook, and `docs/release/chio-pheromone-relay/`
+  owns the active relay operator examples. The active Chio pheromone spec no
+  longer cites Chiodos-named design docs, and the Chio pheromone transit gate
+  rejects reintroduction of Chiodos-named references in that active spec. The
+  active Chio relay runbook likewise contains only Chio-native operator
+  wording, and the relay gate rejects Chiodos-named references in that runbook.
+  The legacy `CHIODOS_*` filenames are short compatibility notes for
+  historical citations only.
+- Legacy-named local gate scripts now invoke Chio-native command paths or the
+  explicit read-only legacy attest verifier; they do not execute direct
+  `chio chiodos ...` command paths.
+- Generated help for normal public Chio federation, runtime, and pheromone
+  commands no longer describes inputs as Chiodos material; Chiodos wording
+  remains on the explicit `chio attest legacy chiodos-v1 verify` surface.
+- `chio receipt explain bilateral` JSON and human output now describe legacy
+  DualSignedReceipt as non-section-6 conformant and the DSSE artifact as
+  treaty-bound Chio bilateral invocation material without emitting the old
+  Chiodos bilateral spec path.
+- `crates/chio-attest-buyer/src/lib.rs` is now the Chio-named buyer proof API
+  boundary. It now accepts live `chio.attest.buyer-attestation-packet.v1`
+  packets and `chio.attest.buyer-attestation-review-package.v1` full review
+  packages, and emits Chio verification and review report schemas, while still
+  bridging to the hardened historical buyer core for strict DSSE semantics.
+  Fallible public helpers now return the Chio-owned `BuyerAttestationError`
+  rather than publicly aliasing or reexporting the historical runtime error.
+- `crates/chio-cli/src/cli/chiodos/dispatch/buyer.rs` exposes Chio-named buyer
+  command handlers. Hidden Chiodos buyer commands delegate to those handlers,
+  and `chio attest buyer ...` no longer calls the hidden compatibility handlers
+  directly. Buyer review legacy proof replay now runs through
+  `chio_attest_buyer::verify_buyer_attestation_review_package_with_legacy_verifier_json`,
+  so the CLI no longer names `chio_chiodos::` or `chio_chiodos_runtime::` inside
+  the buyer dispatch module.
+- `crates/chio-cli/src/cli/chiodos/dispatch/verify.rs` exposes
+  `cmd_chio_attest_legacy_chiodos_v1_verify` for byte-preserving historical
+  proof-package verification. `chio attest legacy chiodos-v1 verify` is the
+  only attest CLI route to that Chio-named legacy handler; the old hidden
+  `chio attest verify` shortcut is rejected. Hidden `chio chiodos verify`
+  remains parse-compatible, but direct execution is blocked before artifact
+  handlers run.
+- `crates/chio-cli/src/cli/chiodos/dispatch/pheromone/runtime.rs:27` and
+  line 109 expose Chio-named pheromone receive and query handlers. The public
+  `chio pheromone receive/query` dispatcher calls those handlers at
+  `crates/chio-cli/src/cli/dispatch.rs:3143` and line 3161, while the hidden
+  Chiodos receive/query dispatcher delegates through compatibility wrappers.
+- `crates/chio-cli/src/cli/chiodos/dispatch/pheromone/*.rs` expose Chio-named
+  relay handlers for core relay, alert routing, delivery evidence, assurance
+  export/replay/recovery/archive/closeout, peer-directory rotation, and
+  supervisor lint. Public `chio pheromone ...` dispatch now uses Chio-named
+  command enum matches and calls Chio-named relay handlers throughout, while
+  hidden Chiodos pheromone dispatch calls compatibility wrappers.
+- The root public `chio pheromone relay` command tree now uses
+  `ChioPheromoneRelayCommands`; the Chiodos-named relay command type remains
+  only as a hidden compatibility alias.
+- The public `chio pheromone relay alert`, `directory`, and `supervisor`
+  subtrees now use Chio-named type boundaries. Their Chiodos-named command
+  types remain only as hidden compatibility aliases.
+- Nested `chio pheromone relay alert delivery` and `alert assurance` subtrees
+  now use Chio-named type boundaries. Their Chiodos-named delivery and
+  assurance type names remain only as hidden compatibility aliases.
+- `crates/chio-cli/src/cli/chiodos/dispatch/runtime/*.rs` expose Chio-named
+  runtime handlers for admission, signing and peer-weight hashing, pheromone
+  evaluation, orchestration, operations, retention planning, and loopback.
+  Public `chio runtime ...` dispatch now uses Chio-named command enum matches
+  and calls only Chio-named runtime handlers, while hidden Chiodos runtime
+  dispatch calls compatibility wrappers.
+- Nested public `chio runtime policy`, `peer-weights`, `pheromone`,
+  `orchestrate`, `ops`, and `ops retention` subtrees now use Chio-named type
+  boundaries. Their Chiodos-named command types remain only as hidden
+  compatibility aliases.
+- `crates/chio-runtime/src/lib.rs` is now the Chio-named runtime admission and
+  orchestration facade. Public `chio runtime ...` dispatch modules call
+  `chio_runtime::` instead of naming `chio_chiodos_runtime::` directly. The
+  facade now uses explicit runtime API exports rather than a wildcard reexport
+  of the historical runtime core, and its named public runtime error is no
+  longer a type alias to the historical runtime error. Its public kernel hook
+  is `ChioRuntimeAdmissionHook`, a Chio-named wrapper over the historical hook
+  while the implementation split continues. CLI-facing fallible runtime facade
+  helpers now return `chio_runtime::ChioRuntimeError` through thin wrappers
+  instead of direct-reexporting historical helper signatures.
+- `crates/chio-cli/src/cli/chiodos/dispatch/treaty.rs` exposes Chio-named
+  federation treaty handlers for intersection, admission, and packet
+  verification. Public `chio federation authority ...` and
+  `chio federation treaty ...` dispatch uses Chio-named command enum matches
+  and calls those handlers, while hidden Chiodos wrappers delegate for
+  compatibility.
+  Treaty intersection and cross-boundary admission helpers now live in
+  `chio-federation`, so the Chio federation treaty handler no longer calls
+  `chio_chiodos_runtime::` directly.
+- Treaty evidence validators now accept Chio-native federation IDs for
+  cross-kernel continuations, receipt lineage statements, receipt lineage
+  bundles, and bilateral invocations while preserving read compatibility for
+  historical `chio.chiodos.*` signed evidence.
+- `crates/chio-cli/src/cli/chiodos/dispatch/authority.rs` exposes Chio-named
+  federation authority handlers for issuance, checkpoint publication, and trust
+  bundle assembly. Public `chio federation authority ...` dispatch calls those
+  handlers, while hidden Chiodos authority wrappers delegate for compatibility.
 - `crates/chio-attest-verify/Cargo.toml:2` already defines
   `chio-attest-verify`; its description says it is the shared Sigstore
   verification surface for supply-chain attestation. Its README and lib trust
   boundary also cover Rekor, Fulcio, and TEE quote verification. Buyer proof
   verification must not be collapsed into that crate.
+- `chio attest runtime-quote verify` must not return success from
+  `report-data` equality alone. Report-data-only mode is an unresolved
+  diagnostic; accepted verification requires quote bytes, a TEE kind, verifier
+  collateral, and a `chio-attest-verify` backend compiled through the
+  `tee-quotes` feature.
 
 ## Target Boundaries
 
@@ -197,8 +359,9 @@ Owns federation primitives:
 - treaty scope and governance ladder references
 - strict DSSE verification
 - pheromone gossip envelope semantics that are transport-independent
-- future Chio-native schema IDs for treaty scope, ladder intersection, and
-  cross-boundary admission
+- Chio-native schema IDs for treaty scope, ladder intersection, and
+  cross-boundary admission, with legacy Chiodos IDs accepted only for
+  compatibility reads
 
 This crate should not know about CLI command compatibility.
 
@@ -219,7 +382,7 @@ before emitting a DSSE envelope.
 
 ### `chio-attest-buyer`
 
-Target module boundary, currently implemented through `chio-chiodos-runtime`:
+Target module boundary, with the first public API extraction now present:
 
 - buyer and auditor proof package verification
 - buyer packet and buyer review reporting
@@ -227,7 +390,19 @@ Target module boundary, currently implemented through `chio-chiodos-runtime`:
 - trust-bundle and verifier-context validation
 - strict DSSE hydration requirements
 
-This crate is the future owner for cross-vendor buyer proof. It may depend on
+This crate is the future owner for cross-vendor buyer proof. The current slice
+bridges to `chio-chiodos-runtime` to preserve the strict DSSE semantics while
+moving callers to the Chio-named boundary. The live packet/report boundary now
+uses `chio.attest.buyer-attestation-packet.v1` and
+`chio.attest.buyer-attestation-verification-report.v1`; the live full review
+boundary now uses `chio.attest.buyer-attestation-review-package.v1` and
+`chio.attest.buyer-attestation-review-report.v1`. Legacy proof replay for full
+buyer review now lives behind the `chio-attest-buyer` API instead of the CLI.
+Fallible JSON, hash, packet, review, and lineage helper APIs now return the
+Chio-owned `BuyerAttestationError`. Public buyer packet, review, lineage,
+continuation, bilateral invocation, runtime evidence manifest, report, and
+schema-ID types are Chio-owned in this crate; historical Chiodos runtime shapes
+are private conversion targets at the strict verifier edge. It may depend on
 `chio-federation` for treaty-bound DSSE verification, but it must not absorb
 Sigstore or TEE quote verification.
 
@@ -256,13 +431,21 @@ families, but the crate boundaries stay separate:
 
 ### `chio-runtime`
 
-Target module boundary, currently mixed through `chio-chiodos-runtime` and
-runtime-spine fixtures:
+Target module boundary, now present as a Chio-named explicit API boundary over
+the historical runtime core while the implementation split continues:
 
 - live admission profile, trust floor, trusted verifiers, peer weights, runtime
   evidence manifests, proof regeneration, and local orchestration reports
 - no public Chiodos command naming
 - no schema-invalid runtime policy accepted by Rust defaults
+
+The facade no longer wildcard-reexports the historical core and no longer
+aliases the historical runtime error as its named Chio runtime error. It also
+exposes a Chio-named admission hook wrapper instead of reexporting
+`ChiodosRuntimeAdmissionHook`. Public runtime admission evaluation now takes
+`ChioRuntimeAdmissionInput` and a `ChioRuntimeAdmissionStore` trait object, so
+callers no longer need to name the historical runtime admission input or store
+traits.
 
 ## Public CLI Model
 
@@ -292,8 +475,9 @@ Legacy command behavior:
 - bulk migration or byte-inspection tooling lives in a separate migration tool,
   not under the main public command tree
 - transition-only `chio chiodos ...` wrappers, if kept while migrating the
-  current codebase, must be hidden from normal help, must emit no new artifacts,
-  and must delegate to Chio-native handlers
+  current codebase, must be hidden from normal help, gated behind
+  `CHIO_ENABLE_LEGACY_CHIODOS_CLI`, must emit no new artifacts, and must be
+  limited to help or command-tree inspection in the main CLI
 - legacy verification must not rewrite signed bytes, schema IDs, or canonical
   payloads
 
@@ -322,12 +506,23 @@ Legacy signed artifact policy:
 
 - Existing signed artifacts with `chio.chiodos.*` schema IDs remain
   read-compatible when byte preservation matters.
+- Registry entries backed by `spec/schemas/chiodos/` are compatibility-only and
+  must carry `status: deprecated-read-compatible`.
 - A compatibility verifier may accept deprecated IDs only when the caller
   explicitly selects historical verification or the verifier context marks the
   artifact as legacy signed material.
 - Compatibility verification must never rewrite the signed bytes, schema ID, or
   canonical payload.
 - New emitters must not create `chio.chiodos.*` artifacts.
+
+Current enforcement: `scripts/check-chio-schema-registry.sh` fails any active
+`chiodos_*` artifact kind, any active Chio schema file that is not tracked by
+Git, any active Chio schema file absent from `registry.json` or
+`MANIFEST.sha256`, and any `spec/schemas/chiodos/` registry entry that is not
+marked `deprecated-read-compatible`. It also fails stale Chiodos wording in
+active Chio schema text, including active `chio-wire` schemas that are
+manifest-listed but not part of the newer Chio runtime/federation/attest
+registration sweep.
 
 ## Scarcity Policy v1
 
@@ -503,9 +698,10 @@ treaty_id, namespace, class)` so restarts cannot reset discount history.
 
 ## Observation-Cost Verification
 
-Current implementation validates only field binding. Final verification must
-prove that a trusted verifier attested real observation cost over telemetry
-that includes this deposit's observed event.
+Current implementation verifies more than field binding: live admission resolves
+trusted verifier roots from receiver-owned runtime policy, rejects revoked
+roots, verifies the signed cost statement, reconstructs the telemetry leaf, and
+checks the RFC 6962 inclusion proof for this deposit's observed event.
 
 ### Verifier Trust Root
 
@@ -530,12 +726,19 @@ The receiver's signed runtime policy owns the verifier roots. The root schema is
 Verifier roots are never accepted from the deposit, commitment, or relay frame.
 They resolve only from the receiver-owned runtime policy. Revocation comes from
 the receiver-owned Chio runtime trust-floor state, using final schema
-`chio.runtime.trust-floor-state.v1` and current compatibility schema
-`chio.chiodos.runtime-trust-floor-state.v1` until the schema cutover lands. A
-verifier root is usable only when it is valid for `receive_now_unix_ms`, allowed
-for the selected treaty and subject class, and not revoked in the current trust
-floor. Live receive denies revoked roots even when the commitment was signed
-before revocation; historical verification may expose an explicit as-of mode.
+`chio.runtime.trust-floor-state.v1`. The JSON store reads historical
+`chio.chiodos.runtime-trust-floor-state.v1` state and normalizes the next write
+to the Chio schema. A verifier root is usable only when it is valid for
+`receive_now_unix_ms`, allowed for the selected treaty and subject class, and
+not revoked in the current trust floor. Live receive denies revoked roots even
+when the commitment was signed before revocation; historical verification may
+expose an explicit as-of mode.
+
+Current verification:
+`runtime_trust_floor_store_normalizes_legacy_schema_on_write` proves the
+legacy-read, Chio-write boundary; `scripts/check-chio-pheromone-runtime.sh
+--schema-only` validates a Chio-native trust-floor state against
+`spec/schemas/chio-runtime/v1/trust-floor-state.schema.json`.
 
 ### Commitment Envelope
 
@@ -815,7 +1018,7 @@ unauthorized until it proves how it uses directory role and pin checks.
 
 ## Backlog
 
-### P0
+### P0 Verified In Current Worktree
 
 - Live receive without explicit scarcity policy rejects.
   Acceptance: focused receive test proves empty `scarcityPolicies` cannot
@@ -839,35 +1042,210 @@ unauthorized until it proves how it uses directory role and pin checks.
   Acceptance: gate fails if a schema file is untracked, unregistered, or missing
   from `MANIFEST.sha256`.
 
+Current verification: `runtime_policy_loader_rejects`,
+`mixed_batch_reports_partial_and_invalid_frame_consumes_no_admission_state`,
+`live_deposit_without_scarcity_policy_is_rejected`,
+`scarcity_policy_selection`, `verified_cost_commitment`,
+`scripts/check-chio-pheromone-runtime.sh --schema-only`, and
+`scripts/check-chio-pheromone-runtime.sh --negative-only` pass in this
+worktree. The negative gate runs public `chio pheromone receive/query` and
+validates replay and wrong-recipient rejection reports.
+
 ### P1
 
 - Chio-native CLI handlers own implementation.
   Acceptance: `chio federation`, `chio attest`, `chio runtime`, and
   `chio pheromone` route directly to native handlers; no final public
   `chio chiodos` command remains.
+  Current verification: root help contains no Chiodos command; direct
+  `chio chiodos help` exits with status 2 unless
+  `CHIO_ENABLE_LEGACY_CHIODOS_CLI=1` is set; focused dispatch tests prove
+  public Chio paths call Chio-named handlers, the explicit
+  `chio attest legacy chiodos-v1 verify` path remains available, hidden
+  `chio attest verify` is rejected, and env-gated direct `chio chiodos verify`
+  exits before dispatch without writing a report. Public `chio pheromone`
+  receive and relay serve proof-loading errors now use Chio boundary labels,
+  while hidden compatibility commands delegate through the same handlers.
+  Public `chio runtime` admission and pheromone evaluation query-report parse
+  errors also use Chio boundary labels.
 - Hash-only buyer packet CLI exposes unresolved DSSE semantics.
   Acceptance: standalone hash-only verification returns `accepted: false`,
   `verification_state: unresolved`, and a failure code unless full review
   supplied hydrated DSSE.
+  Current verification:
+  `buyer_packet_without_hydrated_dsse_is_unresolved`,
+  `buyer_hash_only_packet_rejects_unresolved_dsse_hash`, and
+  `buyer_hash_only_packet_rejects_claimed_admission_dsse_evidence` pass.
 - Relay role and pin checks cover every relay path.
   Acceptance: inbound, outbound, catch-up, and any replay endpoint have negative
   role and ladder-pin tests.
+  Current verification: inbound rejects non-origin roles, unsubscribed treaties,
+  and unpinned transit ladders; outbound delivery rechecks recipient scope and
+  receiver role before delivery; catch-up rejects origin-only requesters and
+  returned frames whose requester-touching transit hops are not directory-pinned.
 - Attestation boundaries are split.
   Acceptance: buyer proof moves toward `chio-attest-buyer`; existing
   `chio-attest-verify` remains the Sigstore and TEE verification crate and does
   not import buyer proof logic.
+  Current verification: `crates/chio-attest-buyer/src/lib.rs` owns the public
+  buyer proof API and the full-review legacy replay API, fallible public
+  helpers expose the Chio-owned `BuyerAttestationError`,
+  `crates/chio-cli/src/cli/chiodos/dispatch/buyer.rs` calls
+  `chio_attest_buyer` without direct historical verifier crate references, and
+  repository search shows no buyer proof API in `crates/chio-attest-verify`.
 
 ### P2
 
 - Chio-native schema IDs for attest, runtime, and federation.
   Acceptance: new fixtures emit Chio-native IDs; old IDs remain
   read-compatible only in historical mode.
+  Current verification: runtime trust-floor state writes
+  `chio.runtime.trust-floor-state.v1`, and federation treaty computation writes
+  `chio.federation.ladder-intersection.v1` plus
+  `chio.federation.cross-boundary-admission-report.v1`; Chio treaty scope
+  input `chio.federation.treaty-scope.v1` is accepted while legacy Chiodos
+  treaty IDs remain compatibility-readable. Buyer packet verification accepts
+  `chio.attest.buyer-attestation-packet.v1` and emits
+  `chio.attest.buyer-attestation-verification-report.v1` without accepting
+  hash-only DSSE as resolved. Buyer full review accepts
+  `chio.attest.buyer-attestation-review-package.v1` and emits
+  `chio.attest.buyer-attestation-review-report.v1`, while historical
+  `chio.chiodos.*` review packages remain read-compatible. Buyer explanation
+  JSON now emits `chio.attest.buyer-attestation-explanation.v1`, and public
+  buyer CLI errors use Chio boundary labels even when replaying historical
+  verifier internals. Public pheromone proof-package, trust-bundle, and
+  verification-context loading now uses Chio-owned public wrapper types and
+  reports Chio boundary labels while preserving historical signed evidence
+  semantics internally; CLI pheromone dispatch constructs those wrappers before
+  building a verified workflow resolver. Runtime
+  pheromone-query signed report loading likewise reports Chio boundary labels
+  before admission or policy evaluation. Buyer and runtime treaty evidence
+  validators accept Chio federation IDs for cross-kernel continuations, receipt
+  lineage statements, receipt lineage bundles, and bilateral invocations while
+  preserving historical signed evidence. Federation authority issuance now
+  writes Chio-native wrapper IDs for authority profiles, issuance requests,
+  issuance bundles, local signing keys, revocation publication requests,
+  revocation checkpoints, peer pins, and verifier trust bundles, with legacy
+  Chiodos wrapper IDs retained for read compatibility. Runtime admission now
+  accepts Chio-native admission profile and bundle schema IDs and emits
+  `chio.runtime.admission-report.v1` with `chio_runtime` receipt metadata for
+  Chio-native admission profiles, while legacy runtime admission schemas remain
+  read-compatible. Runtime trusted-verifier documents now accept
+  `chio.runtime.trusted-verifiers.v1`, and Chio-native verifier trust bundles,
+  runtime pheromone policies, and peer weights drive runtime admission while
+  emitting `chio.runtime.pheromone-policy-decision.v1`; the corresponding legacy
+  Chiodos runtime policy schemas remain read-compatible. Runtime proof drift
+  generation now emits `chio.runtime.proof-drift-report.v1`. Runtime workflow
+  reports, step evidence, evidence manifests, proof-regeneration inputs,
+  proof-regeneration reports, and proof parity reports now emit
+  `chio.runtime.workflow-run-report.v1`, `chio.runtime.step-evidence.v1`,
+  `chio.runtime.evidence-manifest.v1`,
+  `chio.runtime.proof-regeneration-input.v1`,
+  `chio.runtime.proof-regeneration-report.v1`, and
+  `chio.runtime.proof-parity-report.v1`; historical `chio.chiodos.*` runtime
+  proof and evidence schema IDs remain read-compatible. Runtime orchestration
+  plans, run reports, resume-plan outputs, and status reports now emit
+  `chio.runtime.orchestration-plan.v1`,
+  `chio.runtime.orchestration-run-report.v1`,
+  `chio.runtime.orchestration-resume-plan.v1`, and
+  `chio.runtime.orchestration-status-report.v1`; historical orchestration IDs
+  remain read-compatible. Runtime operations outputs now emit
+  `chio.runtime.run-lease.v1`, `chio.runtime.scheduler-tick-report.v1`,
+  `chio.runtime.evidence-sink-health-report.v1`,
+  `chio.runtime.recovery-drill-report.v1`,
+  `chio.runtime.artifact-retention-plan.v1`,
+  `chio.runtime.provider-health-report.v1`, and
+  `chio.runtime.ops-status-report.v1`; historical operations IDs remain
+  read-compatible. The JSON runtime admission store now persists
+  `chio.runtime.admission-store.v1` and upgrades historical store files to the
+  Chio schema on the next write. Runtime input/config documents now accept
+  Chio-native IDs for orchestration profiles, run contracts, supervisor
+  profiles, artifact-retention profiles, and provider bindings via
+  `chio.runtime.orchestration-profile.v1`, `chio.runtime.run-contract.v1`,
+  `chio.runtime.supervisor-profile.v1`,
+  `chio.runtime.artifact-retention-profile.v1`, and
+  `chio.runtime.provider-bindings.v1`; historical IDs remain read-compatible.
+  Active runtime negative-corpus and failure-code fixtures now use
+  `chio.runtime.ops-negative-fixture-corpus.v1`,
+  `chio.runtime.failure-code-registry.v1`, and
+  `chio.runtime.orchestration-negative-fixture-corpus.v1`; historical
+  Chiodos corpus IDs remain read-compatible only. The active Chio schema
+  registry gate now scans active Chio schema text, including `chio-wire`, so
+  new schema descriptions cannot reintroduce stale Chiodos wording; generated
+  Rust wire types were refreshed from the updated Chio wire schemas.
 - Crate/module rename plan.
   Acceptance: `chio-chiodos-runtime` no longer owns public module names after
   split; signed fixture compatibility tests still pass.
+  Current verification: `crates/chio-runtime` builds and tests as the
+  Chio-named runtime boundary without wildcard-reexporting the historical core
+  and without aliasing `ChioRuntimeError` to the historical runtime error;
+  `ChioRuntimeAdmissionHook` is a Chio-named wrapper rather than a public
+  reexport of `ChiodosRuntimeAdmissionHook`; `chio-federation` owns treaty
+  scope parsing, ladder intersection, and cross-boundary admission helpers used
+  by public federation treaty handlers; `chio-attest-buyer` public Chio schema
+  constants are local Chio-owned IDs rather than aliases to the historical
+  runtime crate; `chio-runtime` public Chio schema constants are local
+  Chio-owned IDs rather than reexports from the historical runtime crate;
+  `chio-pheromone-runtime` exposes Chio workflow proof-package, trust-bundle,
+  and verification-context wrappers and no longer exposes the historical
+  proof-package error type through its public workflow verification error;
+  `chio-runtime` now owns `ChioRuntimeAdmissionInput`,
+  `ChioRuntimeAdmissionStore`, and `ChioRuntimeTrustFloorStore`, and public
+  runtime admission dispatch uses those Chio facade types rather than
+  historical runtime input/store traits; active runtime admission dispatch test
+  fixtures now use the Chio-native `chio.runtime` subject namespace, and a CLI
+  source guard rejects the historical runtime namespace in active Chio runtime
+  dispatch tests;
+  `chio-federation` root and bilateral production docs, private helper names,
+  verifier errors, active CLI receipt explain help, and active receipt explain
+  output use Chio wording rather than Chiodos wording;
+  public CLI runtime dispatch modules and federation treaty dispatch modules no
+  longer contain `chio_chiodos_runtime::` references. The three-vendor fixture
+  generator adapts proof package, verifier trust bundle, and verification
+  context material through the `chio-pheromone-runtime` Chio workflow wrappers
+  before constructing `VerifiedChioWorkflowResolver`. The live treaty buyer
+  closure gate now selects the Chio-named
+  `strict_chio_signer_binds_treaty_runtime_refs` strict DSSE test.
 - Rename scripts and docs.
   Acceptance: gate scripts use Chio names; Chiodos-named scripts are wrappers or
   removed.
+  Current verification: active relay HTTP path constants, dashboard relay
+  fetchers, and reverse-proxy operator examples use `/v1/chio/pheromone/*`.
+  Launchd and systemd relay examples invoke `chio pheromone relay ...`, and
+  Chio-named relay and relay-alert gate scripts now run Chio-named CLI test
+  filters and chain through Chio-named directory lifecycle validation instead
+  of Chiodos-named gate scripts. The Chio pheromone transit gate now chains
+  through `scripts/check-chio-authority-issuance.sh`, while the old Chiodos
+  authority issuance script is a compatibility wrapper. Active Chio pheromone
+  workflows now watch `spec/CHIO_PHEROMONE.md`,
+  `docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md`, and the Chio-named
+  relay operator example directory and directory lifecycle workflow; the old
+  Chiodos spec and runbook filenames are compatibility notes only.
+  `scripts/check-chio-pheromone-transit.sh --schema-only` now rejects
+  Chiodos-named references in the active Chio pheromone spec, and
+  `scripts/check-chio-pheromone-relay.sh --schema-only` rejects them in the
+  active Chio relay runbook. The Chio pheromone directory lifecycle gate also
+  rejects legacy naming in active relay fixture details such as relay drill
+  reports. Active Chio pheromone gate scripts, workflows, and runtime/relay
+  tests read
+  `examples/chio-3vendor/fixtures`; the old `examples/chiodos-3vendor`
+  fixture root remains for historical signed-artifact compatibility.
+  `scripts/check-chio-authority-issuance.sh` validates active authority
+  artifacts against `spec/schemas/chio-federation/v1` and verifies the
+  historical proof package with the Chio-native verifier trust bundle.
+  Runtime spine, runtime policy, runtime proof parity, runtime ops hardening,
+  runtime orchestration, proof package, treaty-bound provenance, and live treaty
+  buyer closure workflows now invoke Chio-named gates. The active runtime ops
+  and orchestration gates validate mutable negative-corpus and failure-code
+  fixtures against `spec/schemas/chio-runtime/v1`; the active treaty-bound
+  provenance gate validates treaty negative-corpus fixtures against
+  `spec/schemas/chio-federation/v1`. The live treaty buyer closure gate rejects
+  stale legacy verifier naming in active `spec/PROTOCOL.md` prose while
+  preserving literal deprecated schema IDs needed for historical verification.
+  A full gate-surface rescan found no
+  `scripts/check-chiodos-*.sh` implementation that is not a Chio-wrapper
+  delegate and no `.github/workflows/chiodos-*.yml` file with active PR or push
+  triggers.
 
 ### P3
 
@@ -875,12 +1253,24 @@ unauthorized until it proves how it uses directory role and pin checks.
   Acceptance: `chio chiodos` is absent from the final public CLI; historical
   verification uses `chio attest legacy chiodos-v1 verify` or a
   separate migration tool.
+  Current verification: default binary execution rejects direct `chio chiodos`
+  before Clap prints the hidden compatibility tree; the env-gated path remains
+  only for hidden help inspection, while parsed command execution is rejected
+  before legacy handlers can emit artifacts.
 - Clean artifact kind names.
   Acceptance: registry has no `chiodos_*` artifact kinds except deprecated
   historical entries with explicit status.
+  Current verification: `scripts/check-chio-schema-registry.sh` enforces legacy
+  compatibility status, active Chio artifact-kind hygiene, Chio schema Git
+  tracking, Chio schema manifest coverage, and active Chio schema-title hygiene.
+  It also rejects stale Chiodos wording in active Chio schema text.
 - Conformance suite for Chio-native federation, attest, runtime, and pheromone.
   Acceptance: external implementer can verify fixtures without relying on
   Chiodos docs.
+  Current verification: `cargo test -p chio-conformance --test native_suite`
+  passes the native fixture run and required standards category/reference
+  coverage. This is not yet full final-surface conformance for every Chio
+  federation, attest, runtime, and pheromone artifact.
 
 ## Required Validation Gates
 
@@ -911,14 +1301,17 @@ No broad cargo gate is required for this document-only architecture pass.
 
 ## Risks
 
-- Current implementation can still drift because schema, registry, and manifest
-  discipline is not fully enforced.
-- The cost commitment path is not cryptographic enough yet.
-- Runtime serde defaults can silently accept policy omissions unless schema
-  validation is placed before parsing.
+- Release qualification can still drift because schema, registry, and manifest
+  discipline is enforced by focused gates rather than one complete release
+  qualification suite.
+- The cost commitment path now has signed-statement and Merkle-inclusion
+  coverage, but it still needs broader fixture and conformance coverage before
+  external implementers can rely on it without repo-specific tests.
+- New runtime policy loaders must keep schema validation before serde parsing;
+  direct parsing outside the validated path can reintroduce silent omissions.
 - A hard CLI cutover will break callers. That break is acceptable for new
   emitters because compatibility shims are more dangerous than explicit
   migration.
-- The Chiodos schema tree will remain for old signed artifacts. The risk is
-  manageable only if every such entry is marked as deprecated read-compatible
-  and no new emitter writes it.
+- The Chiodos schema tree will remain for old signed artifacts. The registry
+  now marks each such entry as `deprecated-read-compatible`; the remaining risk
+  is new emitters accidentally writing legacy IDs.

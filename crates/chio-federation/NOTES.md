@@ -18,7 +18,7 @@ on unknown action classes.
 ### Remaining Work
 
 1. Produce a step-by-step public coverage matrix against
-   `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`.
+   the strict treaty-bound bilateral invocation profile.
 2. Add interop vectors once an external implementation exists.
 3. Keep the signature-slice compatibility profile documented as non-Chiodos
    conformance evidence.

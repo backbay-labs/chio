@@ -11,7 +11,7 @@ pub fn build_runtime_orchestration_plan(
     let profile_sha256 = runtime_orchestration_profile_sha256(profile)?;
     if contract.profile_sha256 != profile_sha256 {
         return Ok(RuntimeOrchestrationPlan {
-            schema: CHIODOS_RUNTIME_ORCHESTRATION_PLAN_SCHEMA.to_string(),
+            schema: CHIO_RUNTIME_ORCHESTRATION_PLAN_SCHEMA.to_string(),
             run_id: contract.run_id.clone(),
             accepted: false,
             failure_code: Some("runtime_orchestration_profile_hash_mismatch".to_string()),
@@ -24,7 +24,7 @@ pub fn build_runtime_orchestration_plan(
     }
     if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
         return Ok(RuntimeOrchestrationPlan {
-            schema: CHIODOS_RUNTIME_ORCHESTRATION_PLAN_SCHEMA.to_string(),
+            schema: CHIO_RUNTIME_ORCHESTRATION_PLAN_SCHEMA.to_string(),
             run_id: contract.run_id.clone(),
             accepted: false,
             failure_code: Some("runtime_orchestration_profile_stale".to_string()),
@@ -49,7 +49,7 @@ pub fn build_runtime_orchestration_plan(
         })
         .collect();
     Ok(RuntimeOrchestrationPlan {
-        schema: CHIODOS_RUNTIME_ORCHESTRATION_PLAN_SCHEMA.to_string(),
+        schema: CHIO_RUNTIME_ORCHESTRATION_PLAN_SCHEMA.to_string(),
         run_id: contract.run_id.clone(),
         accepted: true,
         failure_code: None,
@@ -178,7 +178,7 @@ pub fn generate_runtime_proof_drift_report(
     let accepted =
         semantic_drifts.is_empty() && artifact_drifts.is_empty() && verifier_drifts.is_empty();
     let report = RuntimeProofDriftReport {
-        schema: CHIODOS_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA.to_string(),
+        schema: crate::CHIO_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA.to_string(),
         baseline_run_id: baseline_manifest.run_id.clone(),
         candidate_run_id: candidate_manifest.run_id.clone(),
         accepted,
@@ -274,7 +274,7 @@ pub fn generate_runtime_evidence_sink_health_report(
         None
     };
     let report = RuntimeEvidenceSinkHealthReport {
-        schema: CHIODOS_RUNTIME_EVIDENCE_SINK_HEALTH_REPORT_SCHEMA.to_string(),
+        schema: CHIO_RUNTIME_EVIDENCE_SINK_HEALTH_REPORT_SCHEMA.to_string(),
         run_id: run_id.to_string(),
         accepted: failure_code.is_none(),
         failure_code,
@@ -330,7 +330,7 @@ pub fn generate_runtime_provider_health_report(
     let checked_provider_count = u64::try_from(bindings.bindings.len()).unwrap_or(u64::MAX);
     let degraded_count = u64::try_from(degraded_provider_ids.len()).unwrap_or(u64::MAX);
     let report = RuntimeProviderHealthReport {
-        schema: CHIODOS_RUNTIME_PROVIDER_HEALTH_REPORT_SCHEMA.to_string(),
+        schema: CHIO_RUNTIME_PROVIDER_HEALTH_REPORT_SCHEMA.to_string(),
         accepted: failure_code.is_none(),
         failure_code,
         generated_at_unix_ms: now_unix_ms,
@@ -352,7 +352,7 @@ pub fn generate_runtime_artifact_retention_plan(
     validate_runtime_artifact_retention_profile(profile)?;
     if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
         let report = RuntimeArtifactRetentionPlan {
-            schema: CHIODOS_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA.to_string(),
+            schema: CHIO_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA.to_string(),
             accepted: false,
             failure_code: Some("runtime_retention_profile_stale".to_string()),
             generated_at_unix_ms: now_unix_ms,
@@ -400,7 +400,7 @@ pub fn generate_runtime_artifact_retention_plan(
         .try_into()
         .unwrap_or(u64::MAX);
     let report = RuntimeArtifactRetentionPlan {
-        schema: CHIODOS_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA.to_string(),
+        schema: CHIO_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA.to_string(),
         accepted: profile.dry_run_only,
         failure_code: if profile.dry_run_only {
             None

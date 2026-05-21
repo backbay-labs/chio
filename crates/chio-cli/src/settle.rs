@@ -286,8 +286,8 @@ fn list_dead_lettered(conn: &Connection) -> Result<Vec<DeadLetteredRow>, SettleS
 /// surface; callers control output format via `json`.
 pub fn cmd_settle_status(store_path: &Path, json: bool) -> Result<i32, SettleStatusError> {
     // Defensive: verify the file is at least readable before opening.
-    let _meta = fs::metadata(store_path)
-        .map_err(|err| SettleStatusError::Backend(err.to_string()))?;
+    let _meta =
+        fs::metadata(store_path).map_err(|err| SettleStatusError::Backend(err.to_string()))?;
     let report = SettleStatusReport::load(store_path)?;
     if json {
         println!("{}", report.render_json()?);

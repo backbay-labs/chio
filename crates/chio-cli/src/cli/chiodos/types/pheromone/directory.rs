@@ -1,12 +1,9 @@
+use super::RelayProfileArg;
 use clap::Subcommand;
 use std::path::PathBuf;
-use super::{
-    RelayProfileArg,
-};
-
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosPheromoneRelayDirectoryCommands {
+pub(crate) enum ChioPheromoneRelayDirectoryCommands {
     /// Inspect active peer-directory state.
     Inspect {
         /// Peer-directory state JSON.
@@ -70,7 +67,7 @@ pub(crate) enum ChiodosPheromoneRelayDirectoryCommands {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosPheromoneRelaySupervisorCommands {
+pub(crate) enum ChioPheromoneRelaySupervisorCommands {
     /// Lint a relay supervisor deployment profile.
     Lint {
         /// Relay supervisor profile JSON.

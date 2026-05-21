@@ -1,0 +1,13 @@
+{
+  "schema": "chio.pheromone.relay-alert-suppression-state.v1",
+  "localKernelId": "did:chio:dataco",
+  "entries": [
+    {
+      "alertCode": "stale_leases_present",
+      "routeId": "ops-digest",
+      "reason": "maintenance",
+      "startsAtUnixMs": 1766000000000,
+      "expiresAtUnixMs": 1766000300000
+    }
+  ]
+}

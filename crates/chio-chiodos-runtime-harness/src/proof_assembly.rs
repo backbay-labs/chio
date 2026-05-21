@@ -364,7 +364,7 @@ pub(crate) fn assemble_runtime_loopback_outputs(
             let admission_binding =
                 step_admission_binding(index, &admission_hashes, &admission_ids)?;
             step_evidence.push(chio_chiodos_runtime::RuntimeStepEvidence {
-                schema: chio_chiodos_runtime::CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
+                schema: chio_chiodos_runtime::CHIO_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
                 step_index: u64::try_from(step.step_index).map_err(|error| {
                     RuntimeLoopbackError::message(format!(
                         "Chiodos runtime step index conversion failed: {error}"
@@ -510,7 +510,8 @@ pub(crate) fn assemble_runtime_loopback_outputs(
                 )
             })?;
             let packet = chio_chiodos_runtime::BuyerAttestationPacket {
-                schema: chio_chiodos_runtime::CHIODOS_BUYER_ATTESTATION_PACKET_SCHEMA.to_string(),
+                schema: chio_chiodos_runtime::CHIO_ATTEST_BUYER_ATTESTATION_PACKET_SCHEMA
+                    .to_string(),
                 packet_id: format!("buyer-packet:{}", run_id),
                 buyer_id: closure.continuation.source_kernel_id.clone(),
                 capability_id: closure.bilateral_invocation.capability_id.clone(),
@@ -592,7 +593,7 @@ pub(crate) fn assemble_runtime_loopback_outputs(
     }
 
     let proof_regeneration_report = chio_chiodos_runtime::RuntimeProofRegenerationReport {
-        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA.to_string(),
+        schema: chio_chiodos_runtime::CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA.to_string(),
         run_id: run_id.to_string(),
         accepted,
         failure_code: if accepted { None } else { failure_code.clone() },
@@ -644,7 +645,7 @@ pub(crate) fn assemble_runtime_loopback_outputs(
         terminal_admission_report_sha256.as_deref(),
     )?;
     let workflow_report = chio_chiodos_runtime::RuntimeWorkflowRunReport {
-        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
+        schema: chio_chiodos_runtime::CHIO_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
         run_id: run_id.to_string(),
         accepted,
         failure_code,
@@ -681,7 +682,7 @@ pub(crate) fn assemble_runtime_loopback_outputs(
         "Chiodos runtime workflow run report canonical hash",
     )?;
     let manifest = chio_chiodos_runtime::RuntimeEvidenceManifest {
-        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        schema: chio_chiodos_runtime::CHIO_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
         run_id: run_id.to_string(),
         generated_at_unix_ms: now_unix_ms,
         workflow_run_report_sha256: workflow_run_report_sha256.clone(),
@@ -706,8 +707,7 @@ pub(crate) fn assemble_runtime_loopback_outputs(
     )?;
     if accepted {
         let regeneration_input = chio_chiodos_runtime::RuntimeProofRegenerationInput {
-            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA
-                .to_string(),
+            schema: chio_chiodos_runtime::CHIO_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA.to_string(),
             run_id: run_id.to_string(),
             evidence_manifest_sha256,
             workflow_run_report_sha256,

@@ -142,6 +142,7 @@ fn peer(
         established_at: now,
         rotation_due: now + 3_600,
         capabilities,
+        ladder_manifest_ref: None,
     }
 }
 

@@ -1,13 +1,9 @@
+use super::{
+    ChiodosAuthorityCommands, ChiodosBuyerCommands, ChiodosPheromoneCommands,
+    ChiodosRuntimeCommands, ChiodosTreatyCommands,
+};
 use clap::Subcommand;
 use std::path::PathBuf;
-use super::{
-    ChiodosAuthorityCommands,
-    ChiodosBuyerCommands,
-    ChiodosPheromoneCommands,
-    ChiodosRuntimeCommands,
-    ChiodosTreatyCommands,
-};
-
 
 #[derive(Subcommand)]
 pub(crate) enum ChiodosCommands {
@@ -60,4 +56,3 @@ pub(crate) enum ChiodosCommands {
         command: ChiodosPheromoneCommands,
     },
 }
-

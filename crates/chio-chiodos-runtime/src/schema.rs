@@ -1,86 +1,150 @@
+pub const CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA: &str = "chio.runtime.admission-profile.v1";
 pub const CHIODOS_RUNTIME_ADMISSION_PROFILE_SCHEMA: &str =
     "chio.chiodos.runtime-admission-profile.v1";
+pub const CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA: &str = "chio.runtime.admission-bundle.v1";
 pub const CHIODOS_RUNTIME_ADMISSION_BUNDLE_SCHEMA: &str =
     "chio.chiodos.runtime-admission-bundle.v1";
+pub const CHIO_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA: &str = "chio.runtime.verifier-trust-bundle.v1";
 pub const CHIODOS_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA_V4: &str =
     "chio.chiodos.verifier-trust-bundle.v4";
+pub const CHIO_RUNTIME_ADMISSION_REPORT_SCHEMA: &str = "chio.runtime.admission-report.v1";
 pub const CHIODOS_RUNTIME_ADMISSION_REPORT_SCHEMA: &str =
     "chio.chiodos.runtime-admission-report.v1";
+pub const CHIO_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA: &str = "chio.runtime.workflow-run-report.v1";
 pub const CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA: &str =
     "chio.chiodos.runtime-workflow-run-report.v1";
+pub const CHIO_RUNTIME_STEP_EVIDENCE_SCHEMA: &str = "chio.runtime.step-evidence.v1";
 pub const CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA: &str = "chio.chiodos.runtime-step-evidence.v1";
+pub const CHIO_RUNTIME_EVIDENCE_MANIFEST_SCHEMA: &str = "chio.runtime.evidence-manifest.v1";
 pub const CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA: &str =
     "chio.chiodos.runtime-evidence-manifest.v1";
+pub const CHIO_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA: &str =
+    "chio.runtime.proof-regeneration-input.v1";
 pub const CHIODOS_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA: &str =
     "chio.chiodos.runtime-proof-regeneration-input.v1";
+pub const CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA: &str =
+    "chio.runtime.proof-regeneration-report.v1";
 pub const CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA: &str =
     "chio.chiodos.runtime-proof-regeneration-report.v1";
+pub const CHIO_RUNTIME_PROOF_PARITY_REPORT_SCHEMA: &str = "chio.runtime.proof-parity-report.v1";
 pub const CHIODOS_RUNTIME_PROOF_PARITY_REPORT_SCHEMA: &str =
     "chio.chiodos.runtime-proof-parity-report.v1";
+pub const CHIO_RUNTIME_ADMISSION_STORE_SCHEMA: &str = "chio.runtime.admission-store.v1";
 pub const CHIODOS_RUNTIME_ADMISSION_STORE_SCHEMA: &str = "chio.chiodos.runtime-admission-store.v1";
+pub const CHIO_RUNTIME_TRUSTED_VERIFIERS_SCHEMA: &str = "chio.runtime.trusted-verifiers.v1";
 pub const CHIODOS_RUNTIME_TRUSTED_VERIFIERS_SCHEMA: &str =
     "chio.chiodos.runtime-trusted-verifiers.v1";
+pub const CHIO_RUNTIME_PHEROMONE_POLICY_SCHEMA: &str = "chio.runtime.pheromone-policy.v1";
 pub const CHIODOS_RUNTIME_PHEROMONE_POLICY_SCHEMA: &str =
     "chio.chiodos.runtime-pheromone-policy.v1";
+pub const CHIO_RUNTIME_PHEROMONE_POLICY_DECISION_SCHEMA: &str =
+    "chio.runtime.pheromone-policy-decision.v1";
 pub const CHIODOS_RUNTIME_PHEROMONE_POLICY_DECISION_SCHEMA: &str =
     "chio.chiodos.runtime-pheromone-policy-decision.v1";
+pub const CHIO_RUNTIME_PEER_WEIGHTS_SCHEMA: &str = "chio.runtime.peer-weights.v1";
 pub const CHIODOS_RUNTIME_PEER_WEIGHTS_SCHEMA: &str = "chio.chiodos.runtime-peer-weights.v1";
+pub const CHIO_RUNTIME_TRUST_FLOOR_STATE_SCHEMA: &str = "chio.runtime.trust-floor-state.v1";
 pub const CHIODOS_RUNTIME_TRUST_FLOOR_STATE_SCHEMA: &str =
     "chio.chiodos.runtime-trust-floor-state.v1";
+pub const CHIO_RUNTIME_ORCHESTRATION_PLAN_SCHEMA: &str = "chio.runtime.orchestration-plan.v1";
+pub const CHIO_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA: &str = "chio.runtime.orchestration-profile.v1";
 pub const CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA: &str =
     "chio.chiodos.runtime-orchestration-profile.v1";
+pub const CHIO_RUNTIME_RUN_CONTRACT_SCHEMA: &str = "chio.runtime.run-contract.v1";
 pub const CHIODOS_RUNTIME_RUN_CONTRACT_SCHEMA: &str = "chio.chiodos.runtime-run-contract.v1";
 pub const CHIODOS_RUNTIME_ORCHESTRATION_PLAN_SCHEMA: &str =
     "chio.chiodos.runtime-orchestration-plan.v1";
+pub const CHIO_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA: &str =
+    "chio.runtime.orchestration-run-report.v1";
 pub const CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA: &str =
     "chio.chiodos.runtime-orchestration-run-report.v1";
+pub const CHIO_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA: &str =
+    "chio.runtime.orchestration-resume-plan.v1";
 pub const CHIODOS_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA: &str =
     "chio.chiodos.runtime-orchestration-resume-plan.v1";
+pub const CHIO_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA: &str =
+    "chio.runtime.orchestration-status-report.v1";
 pub const CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA: &str =
     "chio.chiodos.runtime-orchestration-status-report.v1";
+pub const CHIO_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA: &str = "chio.runtime.proof-drift-report.v1";
 pub const CHIODOS_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA: &str =
     "chio.chiodos.runtime-proof-drift-report.v1";
 pub const CHIODOS_RUNTIME_ORCHESTRATION_NEGATIVE_CORPUS_SCHEMA: &str =
     "chio.chiodos.runtime-orchestration-negative-fixture-corpus.v1";
+pub const CHIO_RUNTIME_SUPERVISOR_PROFILE_SCHEMA: &str = "chio.runtime.supervisor-profile.v1";
 pub const CHIODOS_RUNTIME_SUPERVISOR_PROFILE_SCHEMA: &str =
     "chio.chiodos.runtime-supervisor-profile.v1";
+pub const CHIO_RUNTIME_RUN_LEASE_SCHEMA: &str = "chio.runtime.run-lease.v1";
 pub const CHIODOS_RUNTIME_RUN_LEASE_SCHEMA: &str = "chio.chiodos.runtime-run-lease.v1";
+pub const CHIO_RUNTIME_SCHEDULER_TICK_REPORT_SCHEMA: &str = "chio.runtime.scheduler-tick-report.v1";
 pub const CHIODOS_RUNTIME_SCHEDULER_TICK_REPORT_SCHEMA: &str =
     "chio.chiodos.runtime-scheduler-tick-report.v1";
+pub const CHIO_RUNTIME_EVIDENCE_SINK_HEALTH_REPORT_SCHEMA: &str =
+    "chio.runtime.evidence-sink-health-report.v1";
 pub const CHIODOS_RUNTIME_EVIDENCE_SINK_HEALTH_REPORT_SCHEMA: &str =
     "chio.chiodos.runtime-evidence-sink-health-report.v1";
+pub const CHIO_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA: &str = "chio.runtime.recovery-drill-report.v1";
 pub const CHIODOS_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA: &str =
     "chio.chiodos.runtime-recovery-drill-report.v1";
+pub const CHIO_RUNTIME_ARTIFACT_RETENTION_PROFILE_SCHEMA: &str =
+    "chio.runtime.artifact-retention-profile.v1";
 pub const CHIODOS_RUNTIME_ARTIFACT_RETENTION_PROFILE_SCHEMA: &str =
     "chio.chiodos.runtime-artifact-retention-profile.v1";
+pub const CHIO_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA: &str =
+    "chio.runtime.artifact-retention-plan.v1";
 pub const CHIODOS_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA: &str =
     "chio.chiodos.runtime-artifact-retention-plan.v1";
+pub const CHIO_RUNTIME_PROVIDER_BINDINGS_SCHEMA: &str = "chio.runtime.provider-bindings.v1";
 pub const CHIODOS_RUNTIME_PROVIDER_BINDINGS_SCHEMA: &str =
     "chio.chiodos.runtime-provider-bindings.v1";
+pub const CHIO_RUNTIME_PROVIDER_HEALTH_REPORT_SCHEMA: &str =
+    "chio.runtime.provider-health-report.v1";
 pub const CHIODOS_RUNTIME_PROVIDER_HEALTH_REPORT_SCHEMA: &str =
     "chio.chiodos.runtime-provider-health-report.v1";
+pub const CHIO_RUNTIME_OPS_STATUS_REPORT_SCHEMA: &str = "chio.runtime.ops-status-report.v1";
 pub const CHIODOS_RUNTIME_OPS_STATUS_REPORT_SCHEMA: &str =
     "chio.chiodos.runtime-ops-status-report.v1";
 pub const CHIODOS_RUNTIME_OPS_NEGATIVE_CORPUS_SCHEMA: &str =
     "chio.chiodos.runtime-ops-negative-fixture-corpus.v1";
 pub const CHIODOS_GOVERNANCE_LADDER_MANIFEST_SCHEMA: &str =
     "chio.chiodos.governance-ladder-manifest.v1";
+pub const CHIO_FEDERATION_TREATY_SCOPE_SCHEMA: &str = "chio.federation.treaty-scope.v1";
 pub const CHIODOS_TREATY_SCOPE_SCHEMA: &str = "chio.chiodos.treaty-scope.v1";
+pub const CHIO_FEDERATION_LADDER_INTERSECTION_SCHEMA: &str =
+    "chio.federation.ladder-intersection.v1";
 pub const CHIODOS_LADDER_INTERSECTION_SCHEMA: &str = "chio.chiodos.ladder-intersection.v1";
+pub const CHIO_FEDERATION_CROSS_KERNEL_CONTINUATION_SCHEMA: &str =
+    "chio.federation.cross-kernel-continuation.v1";
 pub const CHIODOS_CROSS_KERNEL_CONTINUATION_SCHEMA: &str =
     "chio.chiodos.cross-kernel-continuation.v1";
+pub const CHIO_FEDERATION_RECEIPT_LINEAGE_STATEMENT_SCHEMA: &str =
+    "chio.federation.receipt-lineage-statement.v1";
 pub const CHIODOS_RECEIPT_LINEAGE_STATEMENT_SCHEMA: &str =
     "chio.chiodos.receipt-lineage-statement.v1";
+pub const CHIO_FEDERATION_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA: &str =
+    "chio.federation.cross-boundary-admission-report.v1";
 pub const CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA: &str =
     "chio.chiodos.cross-boundary-admission-report.v1";
+pub const CHIO_FEDERATION_BILATERAL_INVOCATION_SCHEMA: &str =
+    "chio.federation.bilateral-invocation.v1";
 pub const CHIODOS_BILATERAL_INVOCATION_SCHEMA: &str = "chio.chiodos.bilateral-invocation.v1";
+pub const CHIO_ATTEST_BUYER_ATTESTATION_PACKET_SCHEMA: &str =
+    "chio.attest.buyer-attestation-packet.v1";
 pub const CHIODOS_BUYER_ATTESTATION_PACKET_SCHEMA: &str =
     "chio.chiodos.buyer-attestation-packet.v1";
+pub const CHIO_ATTEST_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA: &str =
+    "chio.attest.buyer-attestation-verification-report.v1";
 pub const CHIODOS_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA: &str =
     "chio.chiodos.buyer-attestation-verification-report.v1";
+pub const CHIO_FEDERATION_RECEIPT_LINEAGE_BUNDLE_SCHEMA: &str =
+    "chio.federation.receipt-lineage-bundle.v1";
 pub const CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA: &str = "chio.chiodos.receipt-lineage-bundle.v1";
+pub const CHIO_ATTEST_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA: &str =
+    "chio.attest.buyer-attestation-review-package.v1";
 pub const CHIODOS_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA: &str =
     "chio.chiodos.buyer-attestation-review-package.v1";
+pub const CHIO_ATTEST_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA: &str =
+    "chio.attest.buyer-attestation-review-report.v1";
 pub const CHIODOS_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA: &str =
     "chio.chiodos.buyer-attestation-review-report.v1";
 pub const CHIODOS_TREATY_NEGATIVE_CORPUS_SCHEMA: &str =

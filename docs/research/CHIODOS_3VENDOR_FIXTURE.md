@@ -26,7 +26,15 @@ sketches are illustrative (not strict canonical JSON); fields annotated
 Runnable artifacts live under
 `examples/chiodos-3vendor/fixtures/`. The committed buyer/auditor proof
 package is verified by `chio-chiodos` and by
-`chio chiodos verify --package <path> --trust-bundle <path> --context <path> --report <path>`.
+`chio attest legacy chiodos-v1 verify --package <path> --trust-bundle <path>
+--context <path> --report <path>`.
+The previous direct `chio chiodos verify` path is no longer executable in the
+main CLI; the explicit legacy attest path owns read-only verification of the
+committed signed artifacts.
+Signed artifact schema ids remain the existing `chio.chiodos.*` ids as
+deprecated read-compatible ids until a versioned Chio-native schema-id plan can
+prove byte-level fixture compatibility. The command rename does not rewrite
+schemas inside signed material.
 The BBS issuer key, peer pins, ladder refs, action-class policy,
 workflow-intersection hash, lease authorities, governance authorities,
 signed revocation checkpoint, and disclosure policy are supplied by the
@@ -832,7 +840,7 @@ In priority order:
 ## 15. Status
 
 Research note with runnable fixture companion. The committed fixture is
-verified by the production `chio-chiodos` crate and `chio chiodos verify`
+verified by the production `chio-chiodos` crate and `chio attest verify`
 using a verifier-owned trust bundle and verifier context. The fixture is
 generated through `chio-chiodos-authority` issuance rather than hand-built
 lease and governance helpers. Remaining open work is live pheromone

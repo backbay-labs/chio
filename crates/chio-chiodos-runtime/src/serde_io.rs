@@ -46,7 +46,7 @@ pub fn runtime_trusted_verifier_keys_from_json(
 ) -> Result<RuntimeTrustedVerifierKeysDocument, ChiodosRuntimeError> {
     let document: RuntimeTrustedVerifierKeysDocument =
         serde_json::from_str(json).map_err(|error| ChiodosRuntimeError::Json(error.to_string()))?;
-    if document.schema != CHIODOS_RUNTIME_TRUSTED_VERIFIERS_SCHEMA {
+    if !is_runtime_trusted_verifiers_schema(&document.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_trusted_verifiers_schema",
             detail: format!(
@@ -66,6 +66,13 @@ pub fn runtime_trusted_verifier_keys_from_json(
         }
     }
     Ok(document)
+}
+
+fn is_runtime_trusted_verifiers_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_TRUSTED_VERIFIERS_SCHEMA | CHIODOS_RUNTIME_TRUSTED_VERIFIERS_SCHEMA
+    )
 }
 
 pub fn signed_runtime_pheromone_policy_from_json(

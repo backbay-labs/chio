@@ -27,8 +27,8 @@
 //! ## Scope boundary
 //!
 //! This module emits both the legacy DSSE signature-slice profile and the
-//! strict Chiodos bilateral invocation predicate. The signature-slice profile
-//! stays available for compatibility; strict Chiodos conformance uses
+//! strict Chio bilateral invocation predicate. The signature-slice profile
+//! stays available for compatibility; strict Chio conformance uses
 //! `chio.bilateral-cosign-invocation.v1` and does not carry the local
 //! `receipt_canonical_json` helper field.
 
@@ -47,19 +47,19 @@ use crate::bilateral::{BilateralCoSigningError, BilateralCoSigningProtocol, Dsse
 // Constants (DSSE signature-slice profile)
 // ---------------------------------------------------------------------------
 
-/// DSSE v1 payload type used by chiodos bilateral signature-slice envelopes.
+/// DSSE v1 payload type used by chio bilateral signature-slice envelopes.
 ///
 /// The literal string is part of the PAE preimage: changing it changes the
 /// signed bytes.
 pub const PAYLOAD_TYPE_IN_TOTO: &str = "application/vnd.in-toto+json";
 
 /// Predicate type for the in-toto Statement carried in the DSSE signature
-/// slice. Deliberately distinct from the strict CHIODOS bilateral
+/// slice. Deliberately distinct from the strict Chio bilateral
 /// invocation predicate.
 pub const PREDICATE_TYPE_BILATERAL: &str = "chio.bilateral-signature-slice.v1";
 
-/// Predicate type for strict Chiodos bilateral invocation envelopes.
-pub const PREDICATE_TYPE_CHIODOS_BILATERAL: &str = "chio.bilateral-cosign-invocation.v1";
+/// Predicate type for strict Chio bilateral invocation envelopes.
+pub const PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION: &str = "chio.bilateral-cosign-invocation.v1";
 
 /// In-toto Statement `_type` per the v1 attestation framework (DSSE doc).
 pub const STATEMENT_TYPE_V1: &str = "https://in-toto.io/Statement/v1";
@@ -166,7 +166,7 @@ pub struct KernelIdentity {
 pub struct BilateralPredicate {
     /// Internal schema discriminator for the legacy signature-slice profile.
     ///
-    /// Strict Chiodos predicates omit this field because the signed
+    /// Strict Chio predicates omit this field because the signed
     /// `predicateType` is the verifier-facing schema discriminator.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
@@ -184,12 +184,12 @@ pub struct BilateralPredicate {
     /// was canonicalised (Unix milliseconds).
     pub timestamp_unix_ms: u64,
     /// SHA-256 over canonical tool arguments. Required by the strict
-    /// Chiodos profile and intentionally omitted from the legacy
+    /// Chio profile and intentionally omitted from the legacy
     /// signature-slice profile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_args_hash: Option<HashRecord>,
     /// Canonical-JSON of the underlying `ChioReceipt`. This is a legacy
-    /// signature-slice helper field and must be absent from strict Chiodos
+    /// signature-slice helper field and must be absent from strict Chio
     /// predicates.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt_canonical_json: Option<String>,
@@ -484,7 +484,7 @@ pub struct BilateralPredicateExtensions {
     /// `DEFAULT_CROSS_ORG_VISIBILITY` (`federated`).
     pub cross_org_visibility: Option<String>,
     /// Treaty-bound runtime evidence. Required by treaty-mode verifiers,
-    /// optional for non-treaty strict Chiodos DSSE.
+    /// optional for non-treaty strict Chio DSSE.
     pub treaty_binding_ref: Option<TreatyBindingRef>,
 }
 
@@ -511,7 +511,7 @@ pub fn build_predicate_full(
     Ok(predicate)
 }
 
-pub fn build_chiodos_predicate(
+pub fn build_chio_bilateral_invocation_predicate(
     receipt: &ChioReceipt,
     org_a: KernelIdentity,
     org_b: KernelIdentity,
@@ -611,7 +611,7 @@ pub fn build_statement(
     })
 }
 
-pub fn build_chiodos_statement(
+pub fn build_chio_bilateral_invocation_statement(
     receipt: &ChioReceipt,
     predicate: BilateralPredicate,
 ) -> Result<DsseStatement, BilateralCoSigningError> {
@@ -627,7 +627,7 @@ pub fn build_chiodos_statement(
             name: receipt_subject_name(&receipt.id),
             digest: SubjectDigest { sha256: digest_hex },
         }],
-        predicate_type: PREDICATE_TYPE_CHIODOS_BILATERAL.to_string(),
+        predicate_type: PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION.to_string(),
         predicate,
     })
 }
@@ -682,7 +682,7 @@ pub fn sign_dsse_envelope_full(
     let org_b_keyid = Keyid::from_public_key(&org_b_pub);
     if org_a_pub == org_b_pub || org_a_keyid == org_b_keyid {
         return Err(BilateralCoSigningError::CanonicalJson(
-            "strict Chiodos requires independent Org A and Org B signer keys".to_string(),
+            "strict Chio requires independent Org A and Org B signer keys".to_string(),
         ));
     }
 
@@ -740,7 +740,7 @@ pub fn sign_dsse_envelope_full(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn sign_chiodos_dsse_envelope(
+pub fn sign_chio_bilateral_dsse_envelope(
     receipt: &ChioReceipt,
     org_a_keypair: &Keypair,
     org_b_keypair: &Keypair,
@@ -755,7 +755,7 @@ pub fn sign_chiodos_dsse_envelope(
     let org_a_keyid = Keyid::from_public_key(&org_a_pub);
     let org_b_keyid = Keyid::from_public_key(&org_b_pub);
 
-    let predicate = build_chiodos_predicate(
+    let predicate = build_chio_bilateral_invocation_predicate(
         receipt,
         KernelIdentity {
             kernel_id: org_a_kernel_id.to_string(),
@@ -772,7 +772,7 @@ pub fn sign_chiodos_dsse_envelope(
         extensions,
     )?;
 
-    let statement = build_chiodos_statement(receipt, predicate)?;
+    let statement = build_chio_bilateral_invocation_statement(receipt, predicate)?;
     let statement_bytes = statement.canonical_bytes()?;
     let pae_bytes = pae(PAYLOAD_TYPE_IN_TOTO, &statement_bytes);
 
@@ -800,7 +800,7 @@ pub fn sign_chiodos_dsse_envelope(
         ],
     };
 
-    verify_chiodos_dsse_envelope(&envelope, &org_a_pub, &org_b_pub)?;
+    verify_chio_bilateral_dsse_envelope(&envelope, &org_a_pub, &org_b_pub)?;
     Ok(envelope)
 }
 
@@ -879,7 +879,7 @@ pub fn sign_dsse_envelope_with_cosigner(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn sign_chiodos_dsse_envelope_with_cosigner(
+pub fn sign_chio_bilateral_dsse_envelope_with_cosigner(
     receipt: &ChioReceipt,
     org_a_public_key: &PublicKey,
     org_b_keypair: &Keypair,
@@ -894,7 +894,7 @@ pub fn sign_chiodos_dsse_envelope_with_cosigner(
     let org_b_pub = org_b_keypair.public_key();
     let org_b_keyid = Keyid::from_public_key(&org_b_pub);
 
-    let predicate = build_chiodos_predicate(
+    let predicate = build_chio_bilateral_invocation_predicate(
         receipt,
         KernelIdentity {
             kernel_id: org_a_kernel_id.to_string(),
@@ -911,7 +911,7 @@ pub fn sign_chiodos_dsse_envelope_with_cosigner(
         extensions,
     )?;
 
-    let statement = build_chiodos_statement(receipt, predicate)?;
+    let statement = build_chio_bilateral_invocation_statement(receipt, predicate)?;
     let statement_bytes = statement.canonical_bytes()?;
     let pae_bytes = pae(PAYLOAD_TYPE_IN_TOTO, &statement_bytes);
 
@@ -948,7 +948,7 @@ pub fn sign_chiodos_dsse_envelope_with_cosigner(
         ],
     };
 
-    verify_chiodos_dsse_envelope(&envelope, org_a_public_key, &org_b_pub)?;
+    verify_chio_bilateral_dsse_envelope(&envelope, org_a_public_key, &org_b_pub)?;
     Ok(envelope)
 }
 
@@ -1108,8 +1108,8 @@ pub fn verify_dsse_envelope(
     Ok(statement)
 }
 
-/// Verify a strict Chiodos bilateral invocation DSSE envelope.
-pub fn verify_chiodos_dsse_envelope(
+/// Verify a strict Chio bilateral invocation DSSE envelope.
+pub fn verify_chio_bilateral_dsse_envelope(
     envelope: &DsseEnvelope,
     org_a_public_key: &PublicKey,
     org_b_public_key: &PublicKey,
@@ -1141,13 +1141,13 @@ pub fn verify_chiodos_dsse_envelope(
             statement.statement_type, STATEMENT_TYPE_V1
         )));
     }
-    if statement.predicate_type != PREDICATE_TYPE_CHIODOS_BILATERAL {
+    if statement.predicate_type != PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION {
         return Err(BilateralCoSigningError::CanonicalJson(format!(
-            "predicate.type_unrecognised: signature-slice profile '{}' is not strict Chiodos '{}'",
-            statement.predicate_type, PREDICATE_TYPE_CHIODOS_BILATERAL
+            "predicate.type_unrecognised: signature-slice profile '{}' is not strict Chio '{}'",
+            statement.predicate_type, PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION
         )));
     }
-    validate_chiodos_predicate(&statement.predicate)?;
+    validate_chio_predicate(&statement.predicate)?;
 
     if statement.subject.len() != 1 {
         return Err(BilateralCoSigningError::CanonicalJson(format!(
@@ -1167,7 +1167,7 @@ pub fn verify_chiodos_dsse_envelope(
     let org_b_keyid = Keyid::from_public_key(org_b_public_key);
     if org_a_public_key == org_b_public_key || org_a_keyid == org_b_keyid {
         return Err(BilateralCoSigningError::CanonicalJson(
-            "strict Chiodos requires independent Org A and Org B signer keys".to_string(),
+            "strict Chio requires independent Org A and Org B signer keys".to_string(),
         ));
     }
     require_unique_signature_keyids(&envelope.signatures)?;
@@ -1347,10 +1347,9 @@ fn validate_treaty_binding_ref(treaty: &TreatyBindingRef) -> Result<(), Bilatera
                 .to_string(),
         ));
     }
-    if treaty.lease_refs.is_empty() || treaty.governance_refs.is_empty() {
+    if treaty.lease_refs.is_empty() {
         return Err(BilateralCoSigningError::CanonicalJson(
-            "predicate.schema_invalid: treaty_binding_ref lease_refs and governance_refs must be non-empty"
-                .to_string(),
+            "predicate.schema_invalid: treaty_binding_ref lease_refs must be non-empty".to_string(),
         ));
     }
     if treaty
@@ -1386,17 +1385,23 @@ fn validate_treaty_operational_refs(
                 .to_string(),
         ));
     }
-    let governance_receipt_ref = governance_receipt_ref.ok_or_else(|| {
-        BilateralCoSigningError::CanonicalJson(
-            "predicate.schema_invalid: treaty_binding_ref requires governance_receipt_ref"
-                .to_string(),
-        )
-    })?;
-    if treaty.governance_refs != [governance_receipt_ref.receipt_id.clone()] {
-        return Err(BilateralCoSigningError::CanonicalJson(
-            "predicate.schema_invalid: treaty_binding_ref.governance_refs must match governance_receipt_ref"
-                .to_string(),
-        ));
+    match governance_receipt_ref {
+        Some(governance_receipt_ref) => {
+            if treaty.governance_refs != [governance_receipt_ref.receipt_id.clone()] {
+                return Err(BilateralCoSigningError::CanonicalJson(
+                    "predicate.schema_invalid: treaty_binding_ref.governance_refs must match governance_receipt_ref"
+                        .to_string(),
+                ));
+            }
+        }
+        None => {
+            if !treaty.governance_refs.is_empty() {
+                return Err(BilateralCoSigningError::CanonicalJson(
+                    "predicate.schema_invalid: treaty_binding_ref.governance_refs must be empty when governance_receipt_ref is absent"
+                        .to_string(),
+                ));
+            }
+        }
     }
     if treaty.signer_kernel_ids
         != [
@@ -1432,16 +1437,16 @@ fn validate_treaty_receipt_refs(
     Ok(())
 }
 
-fn validate_chiodos_predicate(pred: &BilateralPredicate) -> Result<(), BilateralCoSigningError> {
+fn validate_chio_predicate(pred: &BilateralPredicate) -> Result<(), BilateralCoSigningError> {
     if pred.schema.is_some() {
         return Err(BilateralCoSigningError::CanonicalJson(
-            "predicate.schema_invalid: schema must be absent from strict Chiodos predicates"
+            "predicate.schema_invalid: schema must be absent from strict Chio predicates"
                 .to_string(),
         ));
     }
     if pred.receipt_canonical_json.is_some() {
         return Err(BilateralCoSigningError::CanonicalJson(
-            "predicate.schema_invalid: receipt_canonical_json must be absent from strict Chiodos predicates"
+            "predicate.schema_invalid: receipt_canonical_json must be absent from strict Chio predicates"
                 .to_string(),
         ));
     }
@@ -1750,11 +1755,11 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_signer_binds_treaty_runtime_refs() {
+    fn strict_chio_signer_binds_treaty_runtime_refs() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
-        let envelope = sign_chiodos_dsse_envelope(
+        let envelope = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -1814,10 +1819,10 @@ mod tests {
                 }),
             },
         )
-        .expect("strict Chiodos treaty DSSE signs");
+        .expect("strict Chio treaty DSSE signs");
         let statement =
-            verify_chiodos_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
-                .expect("strict Chiodos treaty DSSE verifies");
+            verify_chio_bilateral_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+                .expect("strict Chio treaty DSSE verifies");
         let treaty = statement
             .predicate
             .treaty_binding_ref
@@ -1830,11 +1835,47 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_signer_rejects_treaty_request_hash_mismatch() {
+    fn strict_chio_signer_accepts_treaty_binding_without_governance_ref() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
-        let err = sign_chiodos_dsse_envelope(
+        let mut extensions = strict_treaty_extensions(&receipt);
+        extensions.governance_receipt_ref = None;
+        extensions
+            .treaty_binding_ref
+            .as_mut()
+            .expect("strict treaty extension carries binding")
+            .governance_refs = Vec::new();
+
+        let envelope = sign_chio_bilateral_dsse_envelope(
+            &receipt,
+            &kp_a,
+            &kp_b,
+            "kernel.org-a",
+            "kernel.org-b",
+            "file_read",
+            1_734_000_000_000,
+            extensions,
+        )
+        .expect("lease-bound treaty DSSE signs without governance receipt material");
+        let statement =
+            verify_chio_bilateral_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+                .expect("lease-bound treaty DSSE verifies");
+        let treaty = statement
+            .predicate
+            .treaty_binding_ref
+            .expect("strict treaty DSSE must carry treaty binding");
+        assert_eq!(treaty.lease_refs, vec!["lease-bilateral".to_string()]);
+        assert!(treaty.governance_refs.is_empty());
+        assert!(statement.predicate.governance_receipt_ref.is_none());
+    }
+
+    #[test]
+    fn strict_chio_signer_rejects_treaty_request_hash_mismatch() {
+        let kp_a = Keypair::generate();
+        let kp_b = Keypair::generate();
+        let receipt = sample_receipt(&kp_b);
+        let err = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -1894,12 +1935,12 @@ mod tests {
                 }),
             },
         )
-        .expect_err("strict Chiodos signer must reject mismatched treaty request hash");
+        .expect_err("strict Chio signer must reject mismatched treaty request hash");
         assert!(err.to_string().contains("request_sha256"));
     }
 
     #[test]
-    fn strict_chiodos_signer_rejects_treaty_outcome_hash_mismatch() {
+    fn strict_chio_signer_rejects_treaty_outcome_hash_mismatch() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -1910,7 +1951,7 @@ mod tests {
             .unwrap()
             .outcome_sha256 = "7".repeat(64);
 
-        let err = sign_chiodos_dsse_envelope(
+        let err = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -1920,12 +1961,12 @@ mod tests {
             1_734_000_000_000,
             extensions,
         )
-        .expect_err("strict Chiodos signer must reject mismatched treaty outcome hash");
+        .expect_err("strict Chio signer must reject mismatched treaty outcome hash");
         assert!(err.to_string().contains("outcome_sha256"));
     }
 
     #[test]
-    fn strict_chiodos_signer_rejects_treaty_remote_receipt_hash_mismatch() {
+    fn strict_chio_signer_rejects_treaty_remote_receipt_hash_mismatch() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -1936,7 +1977,7 @@ mod tests {
             .unwrap()
             .remote_receipt_sha256 = "9".repeat(64);
 
-        let err = sign_chiodos_dsse_envelope(
+        let err = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -1946,16 +1987,16 @@ mod tests {
             1_734_000_000_000,
             extensions,
         )
-        .expect_err("strict Chiodos signer must reject mismatched treaty receipt hash");
+        .expect_err("strict Chio signer must reject mismatched treaty receipt hash");
         assert!(err.to_string().contains("remote_receipt_sha256"));
     }
 
     #[test]
-    fn strict_chiodos_signer_rejects_treaty_runtime_ref_mismatch() {
+    fn strict_chio_signer_rejects_treaty_runtime_ref_mismatch() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
-        let err = sign_chiodos_dsse_envelope(
+        let err = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -2015,15 +2056,15 @@ mod tests {
                 }),
             },
         )
-        .expect_err("strict Chiodos signer must reject mismatched treaty refs");
+        .expect_err("strict Chio signer must reject mismatched treaty refs");
         assert!(err.to_string().contains("lease_refs"));
     }
 
     #[test]
-    fn strict_chiodos_signer_rejects_identical_signer_keys() {
+    fn strict_chio_signer_rejects_identical_signer_keys() {
         let kp = Keypair::generate();
         let receipt = sample_receipt(&kp);
-        let err = sign_chiodos_dsse_envelope(
+        let err = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp,
             &kp,
@@ -2060,16 +2101,16 @@ mod tests {
                 treaty_binding_ref: None,
             },
         )
-        .expect_err("strict Chiodos DSSE needs two independent signer keys");
+        .expect_err("strict Chio DSSE needs two independent signer keys");
         assert!(err.to_string().contains("independent"));
     }
 
     #[test]
-    fn strict_chiodos_verifier_rejects_duplicate_signature_keyids() {
+    fn strict_chio_verifier_rejects_duplicate_signature_keyids() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
-        let mut envelope = sign_chiodos_dsse_envelope(
+        let mut envelope = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -2109,8 +2150,9 @@ mod tests {
         .unwrap();
         envelope.signatures[1].keyid = envelope.signatures[0].keyid.clone();
 
-        let err = verify_chiodos_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
-            .expect_err("strict Chiodos rejects duplicate signature key IDs");
+        let err =
+            verify_chio_bilateral_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+                .expect_err("strict Chio rejects duplicate signature key IDs");
         assert!(err.to_string().contains("duplicate signature keyid"));
     }
 

@@ -223,12 +223,17 @@ where
         };
         if report.accepted {
             let mut metadata = report.receipt_metadata;
+            let runtime_metadata_key = if metadata.get("chio_runtime").is_some() {
+                "chio_runtime"
+            } else {
+                "chiodos_runtime"
+            };
             if let Some(continuation_id) = treaty_continuation_id_to_consume.as_deref() {
-                metadata["chiodos_runtime"]["reserved_treaty_continuation_id"] =
+                metadata[runtime_metadata_key]["reserved_treaty_continuation_id"] =
                     serde_json::json!(continuation_id);
             }
             if let Some(treaty_dsse) = federation_treaty_dsse {
-                metadata["chiodos_runtime"]["federation_treaty_dsse"] = treaty_dsse;
+                metadata[runtime_metadata_key]["federation_treaty_dsse"] = treaty_dsse;
             }
             Ok(KernelRuntimeAdmissionDecision::allow(Some(metadata)))
         } else {
@@ -246,7 +251,8 @@ where
 
     fn release_reserved(&self, metadata: &serde_json::Value) -> Result<(), KernelError> {
         let Some(runtime) = metadata
-            .get("chiodos_runtime")
+            .get("chio_runtime")
+            .or_else(|| metadata.get("chiodos_runtime"))
             .and_then(serde_json::Value::as_object)
         else {
             return Ok(());

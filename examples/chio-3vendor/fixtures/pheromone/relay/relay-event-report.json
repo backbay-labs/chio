@@ -1,0 +1,10 @@
+{
+  "schema": "chio.pheromone.relay-event-report.v1",
+  "accepted": false,
+  "code": "relay_nonce_replay",
+  "detail": "request nonce was already observed",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000000500,
+  "eventKind": "request_rejected",
+  "stableFailureCode": "relay_nonce_replay"
+}

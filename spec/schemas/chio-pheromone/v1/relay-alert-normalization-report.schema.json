@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-normalization-report.schema.json",
-  "title": "Chiodos Pheromone Relay Alert Normalization Report",
+  "title": "Chio Pheromone Relay Alert Normalization Report",
   "type": "object",
   "additionalProperties": false,
   "required": [

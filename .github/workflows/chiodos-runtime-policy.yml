@@ -1,51 +1,25 @@
-name: Chiodos Runtime Policy
+name: Legacy Chiodos Runtime Policy
 
 on:
-  pull_request:
-    paths:
-      - "crates/chio-chiodos-runtime/**"
-      - "crates/chio-chiodos-runtime-harness/**"
-      - "crates/chio-chiodos-loopback/**"
-      - "crates/chio-cli/**"
-      - "crates/chio-kernel/**"
-      - "scripts/check-chiodos-runtime-policy.sh"
-      - "scripts/check-chiodos-runtime-spine.sh"
-      - "spec/schemas/chiodos/**"
-      - "spec/schemas/registry.json"
-      - "spec/schemas/MANIFEST.sha256"
-      - ".github/workflows/chiodos-runtime-policy.yml"
-  push:
-    branches: [main]
-    paths:
-      - "crates/chio-chiodos-runtime/**"
-      - "crates/chio-chiodos-runtime-harness/**"
-      - "crates/chio-chiodos-loopback/**"
-      - "crates/chio-cli/**"
-      - "crates/chio-kernel/**"
-      - "scripts/check-chiodos-runtime-policy.sh"
-      - "scripts/check-chiodos-runtime-spine.sh"
-      - "spec/schemas/chiodos/**"
-      - "spec/schemas/registry.json"
-      - "spec/schemas/MANIFEST.sha256"
-      - ".github/workflows/chiodos-runtime-policy.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: chiodos-runtime-policy-${{ github.ref }}
+  group: legacy-chiodos-runtime-policy-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  runtime-policy:
+  legacy-runtime-policy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Run Chiodos runtime policy gate
-        run: bash scripts/check-chiodos-runtime-policy.sh
+      - name: Run Chio runtime policy gate
+        run: bash scripts/check-chio-runtime-policy.sh

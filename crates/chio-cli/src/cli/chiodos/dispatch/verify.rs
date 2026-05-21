@@ -2,8 +2,16 @@ use crate::CliError;
 use std::fs;
 use std::path::Path;
 
-
 pub(crate) fn cmd_chiodos_verify(
+    package: &Path,
+    trust_bundle: &Path,
+    context: &Path,
+    report: &Path,
+) -> Result<(), CliError> {
+    cmd_chio_attest_legacy_chiodos_v1_verify(package, trust_bundle, context, report)
+}
+
+pub(crate) fn cmd_chio_attest_legacy_chiodos_v1_verify(
     package: &Path,
     trust_bundle: &Path,
     context: &Path,
@@ -11,49 +19,51 @@ pub(crate) fn cmd_chiodos_verify(
 ) -> Result<(), CliError> {
     let package_bytes = fs::read(package).map_err(|error| {
         CliError::cli_io_error(format!(
-            "failed to read Chiodos proof package {}: {error}",
+            "failed to read Chio legacy Chiodos v1 proof package {}: {error}",
             package.display()
         ))
     })?;
     let package = chio_chiodos::proof_package_from_json(
         std::str::from_utf8(&package_bytes).map_err(|error| {
             CliError::cli_other_error(format!(
-                "Chiodos proof package {} is not UTF-8 JSON: {error}",
+                "Chio legacy Chiodos v1 proof package {} is not UTF-8 JSON: {error}",
                 package.display()
             ))
         })?,
     )
-    .map_err(|error| CliError::cli_other_error(format!("Chiodos package parse: {error}")))?;
+    .map_err(|error| CliError::cli_other_error(format!("Chio legacy package parse: {error}")))?;
     let trust_bundle_bytes = fs::read(trust_bundle).map_err(|error| {
         CliError::cli_io_error(format!(
-            "failed to read Chiodos verifier trust bundle {}: {error}",
+            "failed to read Chio legacy Chiodos v1 verifier trust bundle {}: {error}",
             trust_bundle.display()
         ))
     })?;
     let trust_bundle = chio_chiodos::verifier_trust_bundle_from_json(
         std::str::from_utf8(&trust_bundle_bytes).map_err(|error| {
             CliError::cli_other_error(format!(
-                "Chiodos verifier trust bundle {} is not UTF-8 JSON: {error}",
+                "Chio legacy Chiodos v1 verifier trust bundle {} is not UTF-8 JSON: {error}",
                 trust_bundle.display()
             ))
         })?,
     )
-    .map_err(|error| CliError::cli_other_error(format!("Chiodos trust bundle parse: {error}")))?;
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chio legacy trust bundle parse: {error}"))
+    })?;
     let context_bytes = fs::read(context).map_err(|error| {
         CliError::cli_io_error(format!(
-            "failed to read Chiodos verification context {}: {error}",
+            "failed to read Chio legacy Chiodos v1 verification context {}: {error}",
             context.display()
         ))
     })?;
     let context = chio_chiodos::verification_context_from_json(
         std::str::from_utf8(&context_bytes).map_err(|error| {
             CliError::cli_other_error(format!(
-                "Chiodos verification context {} is not UTF-8 JSON: {error}",
+                "Chio legacy Chiodos v1 verification context {} is not UTF-8 JSON: {error}",
                 context.display()
             ))
         })?,
     )
-    .map_err(|error| CliError::cli_other_error(format!("Chiodos context parse: {error}")))?;
+    .map_err(|error| CliError::cli_other_error(format!("Chio legacy context parse: {error}")))?;
     let verifier_report = chio_chiodos::verify_package_report(&package, &trust_bundle, &context);
     if let Some(parent) = report.parent() {
         if !parent.as_os_str().is_empty() {
@@ -66,10 +76,10 @@ pub(crate) fn cmd_chiodos_verify(
         }
     }
     let report_json = chio_chiodos::report_json(&verifier_report)
-        .map_err(|error| CliError::cli_other_error(format!("Chiodos report JSON: {error}")))?;
+        .map_err(|error| CliError::cli_other_error(format!("Chio legacy report JSON: {error}")))?;
     fs::write(report, report_json).map_err(|error| {
         CliError::cli_io_error(format!(
-            "failed to write Chiodos verifier report {}: {error}",
+            "failed to write Chio legacy Chiodos v1 verifier report {}: {error}",
             report.display()
         ))
     })?;
@@ -81,8 +91,7 @@ pub(crate) fn cmd_chiodos_verify(
             |failure| format!("{}: {}", failure.code, failure.detail),
         );
         Err(CliError::cli_other_error(format!(
-            "Chiodos verify rejected package: {failure}"
+            "Chio legacy Chiodos v1 verify rejected package: {failure}"
         )))
     }
 }
-

@@ -40,7 +40,7 @@ pub(crate) fn materialize_final_runtime_proof_parity_report(
     let parity_accepted = mismatches.is_empty() && parity_verifier_report.accepted;
 
     Ok(chio_chiodos_runtime::RuntimeProofParityReport {
-        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PROOF_PARITY_REPORT_SCHEMA.to_string(),
+        schema: chio_chiodos_runtime::CHIO_RUNTIME_PROOF_PARITY_REPORT_SCHEMA.to_string(),
         run_id: run_id.to_string(),
         accepted: parity_accepted,
         failure_code: if parity_accepted {

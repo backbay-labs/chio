@@ -5,12 +5,12 @@ use std::path::Path;
 use chio_chiodos_runtime::{
     load_runtime_orchestration_evidence, runtime_orchestration_evidence_sink_healthy,
     runtime_orchestration_profile_sha256, validate_runtime_orchestration_evidence_binding,
-    RuntimeEvidenceManifest, RuntimeEvidenceManifestEntry, RuntimeOrchestrationProfile,
-    RuntimeProofRegenerationReport, RuntimeProofSourceRecord, RuntimeRunContract,
-    RuntimeStepEvidence, RuntimeWorkflowRunReport, CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA,
-    CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA, CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA,
-    CHIODOS_RUNTIME_RUN_CONTRACT_SCHEMA, CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA,
-    CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA,
+    validate_runtime_orchestration_profile, validate_runtime_run_contract, RuntimeEvidenceManifest,
+    RuntimeEvidenceManifestEntry, RuntimeOrchestrationProfile, RuntimeProofRegenerationReport,
+    RuntimeProofSourceRecord, RuntimeRunContract, RuntimeStepEvidence, RuntimeWorkflowRunReport,
+    CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA, CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA,
+    CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA, CHIODOS_RUNTIME_RUN_CONTRACT_SCHEMA,
+    CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA, CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA,
 };
 use chio_core_types::crypto::{canonical_json_bytes, sha256_hex};
 use serde::Serialize;
@@ -24,6 +24,41 @@ struct EvidenceFixture {
     profile: RuntimeOrchestrationProfile,
     contract: RuntimeRunContract,
     evidence_dir: TempDir,
+}
+
+#[test]
+fn runtime_orchestration_input_documents_accept_chio_native_schemas() -> Result<(), Box<dyn Error>>
+{
+    let profile = RuntimeOrchestrationProfile {
+        schema: "chio.runtime.orchestration-profile.v1".to_string(),
+        profile_id: "runtime-orchestration-profile".to_string(),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+        verifier_id: "did:chio:buyer-verifier".to_string(),
+        mode: "enforce".to_string(),
+        issued_at_unix_ms: ISSUED_AT,
+        expires_at_unix_ms: EXPIRES_AT,
+        max_concurrent_runs: 2,
+        fail_closed_on: vec!["runtime_orchestration_profile_stale".to_string()],
+    };
+    validate_runtime_orchestration_profile(&profile)?;
+    let profile_sha256 = runtime_orchestration_profile_sha256(&profile)?;
+    let contract = RuntimeRunContract {
+        schema: "chio.runtime.run-contract.v1".to_string(),
+        run_id: "run-runtime-orchestration".to_string(),
+        profile_sha256,
+        workflow_id: "workflow-runtime-orchestration".to_string(),
+        expected_step_count: 1,
+        admission_ids: vec!["admission-A".to_string()],
+        store_id: "sqlite-runtime-store".to_string(),
+        evidence_sink_id: "local-evidence-sink".to_string(),
+        proof_regeneration_required: true,
+    };
+    validate_runtime_run_contract(&contract)?;
+
+    let mut legacy_profile = profile;
+    legacy_profile.schema = CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA.to_string();
+    validate_runtime_orchestration_profile(&legacy_profile)?;
+    Ok(())
 }
 
 #[test]

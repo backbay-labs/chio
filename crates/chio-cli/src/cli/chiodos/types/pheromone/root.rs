@@ -1,12 +1,9 @@
+use super::ChioPheromoneRelayCommands;
 use clap::Subcommand;
 use std::path::PathBuf;
-use super::{
-    ChiodosPheromoneRelayCommands,
-};
-
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosPheromoneCommands {
+pub(crate) enum ChioPheromoneCommands {
     /// Verify and store a local pheromone gossip batch.
     Receive {
         /// Pheromone gossip batch JSON.
@@ -17,15 +14,15 @@ pub(crate) enum ChiodosPheromoneCommands {
         #[arg(long, value_name = "PATH")]
         transit_policy: PathBuf,
 
-        /// Verified Chiodos proof package JSON.
+        /// Verified Chio proof package JSON.
         #[arg(long, value_name = "PATH")]
         proof_package: PathBuf,
 
-        /// Verifier-owned Chiodos trust bundle JSON.
+        /// Verifier-owned Chio trust bundle JSON.
         #[arg(long, value_name = "PATH")]
         trust_bundle: PathBuf,
 
-        /// Chiodos verification context JSON.
+        /// Chio verification context JSON.
         #[arg(long, value_name = "PATH")]
         context: PathBuf,
 
@@ -76,6 +73,6 @@ pub(crate) enum ChiodosPheromoneCommands {
     /// Run or inspect live pheromone relay state.
     Relay {
         #[command(subcommand)]
-        command: ChiodosPheromoneRelayCommands,
+        command: ChioPheromoneRelayCommands,
     },
 }

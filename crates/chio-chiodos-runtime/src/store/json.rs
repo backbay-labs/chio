@@ -22,7 +22,7 @@ struct JsonRuntimeAdmissionStoreState {
 impl Default for JsonRuntimeAdmissionStoreState {
     fn default() -> Self {
         Self {
-            schema: CHIODOS_RUNTIME_ADMISSION_STORE_SCHEMA.to_string(),
+            schema: CHIO_RUNTIME_ADMISSION_STORE_SCHEMA.to_string(),
             bundles: Vec::new(),
             consumed_lease_ids: Vec::new(),
             consumed_treaty_continuation_ids: Vec::new(),
@@ -48,7 +48,7 @@ impl JsonRuntimeAdmissionStore {
                         path.display()
                     ))
                 })?;
-            if state.schema != CHIODOS_RUNTIME_ADMISSION_STORE_SCHEMA {
+            if !is_runtime_admission_store_schema(&state.schema) {
                 return Err(ChiodosRuntimeError::Rejected {
                     code: "unsupported_runtime_store_schema",
                     detail: format!(
@@ -58,6 +58,8 @@ impl JsonRuntimeAdmissionStore {
                     ),
                 });
             }
+            let mut state = state;
+            state.schema = CHIO_RUNTIME_ADMISSION_STORE_SCHEMA.to_string();
             state
         } else {
             JsonRuntimeAdmissionStoreState::default()
@@ -170,6 +172,13 @@ impl JsonRuntimeAdmissionStore {
             ))
         })
     }
+}
+
+fn is_runtime_admission_store_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_ADMISSION_STORE_SCHEMA | CHIODOS_RUNTIME_ADMISSION_STORE_SCHEMA
+    )
 }
 
 impl RuntimeAdmissionStore for JsonRuntimeAdmissionStore {

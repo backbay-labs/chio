@@ -1,6 +1,8 @@
 use crate::hash::canonical_sha256;
 use crate::schema::{
     CHIODOS_BUYER_ATTESTATION_PACKET_SCHEMA, CHIODOS_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA,
+    CHIO_ATTEST_BUYER_ATTESTATION_PACKET_SCHEMA,
+    CHIO_ATTEST_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA,
 };
 use crate::treaty::{
     validate_bilateral_invocation, validate_cross_kernel_continuation,
@@ -129,7 +131,7 @@ pub(crate) fn verify_buyer_attestation_packet_with_resolved_dsse(
     checks.push("chiodos_buyer.lineage_verified".to_string());
     checks.push("chiodos_buyer.bilateral_dsse_hash_resolved".to_string());
     Ok(BuyerAttestationVerificationReport {
-        schema: CHIODOS_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA.to_string(),
+        schema: CHIO_ATTEST_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA.to_string(),
         packet_id: packet.packet_id.clone(),
         verification_state: "hash_resolved".to_string(),
         accepted: true,
@@ -156,7 +158,7 @@ fn verified_evidence_missing_or_mismatch(
 fn validate_buyer_attestation_packet(
     packet: &BuyerAttestationPacket,
 ) -> Result<(), ChiodosRuntimeError> {
-    if packet.schema != CHIODOS_BUYER_ATTESTATION_PACKET_SCHEMA {
+    if !is_supported_buyer_attestation_packet_schema(&packet.schema) {
         return rejected(
             "unsupported_buyer_attestation_packet_schema",
             "buyer attestation packet declared an unsupported schema",
@@ -207,10 +209,17 @@ fn validate_buyer_attestation_packet(
     )
 }
 
+fn is_supported_buyer_attestation_packet_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_ATTEST_BUYER_ATTESTATION_PACKET_SCHEMA | CHIODOS_BUYER_ATTESTATION_PACKET_SCHEMA
+    )
+}
+
 pub(crate) fn validate_buyer_attestation_verification_report(
     report: &BuyerAttestationVerificationReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA {
+    if !is_supported_buyer_attestation_verification_report_schema(&report.schema) {
         return rejected(
             "unsupported_buyer_attestation_verification_report_schema",
             "buyer attestation verification report declared an unsupported schema",
@@ -235,13 +244,21 @@ pub(crate) fn validate_buyer_attestation_verification_report(
     Ok(())
 }
 
+fn is_supported_buyer_attestation_verification_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_ATTEST_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA
+            | CHIODOS_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA
+    )
+}
+
 fn buyer_packet_unresolved_report(
     packet: &BuyerAttestationPacket,
     failure_code: &'static str,
     checks: Vec<String>,
 ) -> BuyerAttestationVerificationReport {
     BuyerAttestationVerificationReport {
-        schema: CHIODOS_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA.to_string(),
+        schema: CHIO_ATTEST_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA.to_string(),
         packet_id: packet.packet_id.clone(),
         verification_state: "unresolved".to_string(),
         accepted: false,
@@ -256,7 +273,7 @@ fn buyer_packet_rejection_report(
     checks: Vec<String>,
 ) -> BuyerAttestationVerificationReport {
     BuyerAttestationVerificationReport {
-        schema: CHIODOS_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA.to_string(),
+        schema: CHIO_ATTEST_BUYER_ATTESTATION_VERIFICATION_REPORT_SCHEMA.to_string(),
         packet_id: packet.packet_id.clone(),
         verification_state: "rejected".to_string(),
         accepted: false,

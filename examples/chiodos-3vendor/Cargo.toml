@@ -15,6 +15,10 @@ name = "chiodos_three_vendor_example"
 name = "generate-chiodos-proof-package"
 path = "src/main.rs"
 
+[[bin]]
+name = "generate-chio-three-vendor-fixtures"
+path = "src/bin/generate_chio_three_vendor_fixtures.rs"
+
 [dependencies]
 chio-chiodos-loopback = { path = "../../crates/chio-chiodos-loopback" }
 chio-chiodos = { version = "0.1.0", path = "../../crates/chio-chiodos" }

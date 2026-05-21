@@ -1,4 +1,4 @@
-//! Local Chiodos pheromone receiver runtime.
+//! Local Chio pheromone receiver runtime.
 
 #![forbid(unsafe_code)]
 
@@ -8,19 +8,25 @@ use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 
 use chio_chiodos::{
-    package_sha256, verification_context_sha256, verify_package, ChiodosPackageError,
-    ChiodosProofPackage, ChiodosVerificationContext, ChiodosVerifierTrustBundle,
+    package_sha256, proof_package_from_json, verification_context_from_json,
+    verification_context_sha256, verifier_trust_bundle_from_json, verify_package,
 };
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::sha256_hex;
+use chio_core_types::receipt::SignedExportEnvelope;
 use chio_federation::{
-    verify_pheromone_gossip_batch, PheromoneGossipBatch, PheromoneGossipBatchVerificationContext,
-    PheromoneGossipError, PheromoneTransitPolicy,
+    verify_pheromone_gossip_batch_envelope, verify_pheromone_gossip_frame_for_batch,
+    PheromoneGossipBatch, PheromoneGossipBatchVerificationContext, PheromoneGossipError,
+    PheromoneTransitPolicy,
 };
 use chio_pheromone::{
-    agent_passport_key_hash, InMemoryPheromoneSubstrate, PassportAdmission, PheromoneConcentration,
-    PheromoneDeposit, PheromoneError, PheromoneSubstrate, PheromoneValidationContext,
-    PheromoneWorkflowContext, SubjectClassPolicy, PHEROMONE_CONCENTRATION_SCHEMA,
+    agent_passport_key_hash, newcomer_discount_for_deposit, reject_overlapping_scarcity_windows,
+    scarcity_admissions_for_deposit, scarcity_admissions_for_deposit_treaty,
+    validate_deposit_for_admission, validate_scarcity_policy_material, PassportAdmission,
+    PheromoneConcentration, PheromoneDeposit, PheromoneError, PheromoneObservationCostVerifierRoot,
+    PheromoneRuntimeTrustFloorState, PheromoneScarcityAdmission, PheromoneScarcityPolicy,
+    PheromoneValidationContext, PheromoneWorkflowContext, SubjectClassPolicy,
+    PHEROMONE_CONCENTRATION_SCHEMA,
 };
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -28,6 +34,10 @@ use serde::{Deserialize, Serialize};
 pub const PHEROMONE_RECEIVE_REPORT_SCHEMA: &str = "chio.pheromone.receive-report.v1";
 pub const PHEROMONE_QUERY_REPORT_SCHEMA: &str = "chio.pheromone.query-report.v1";
 pub const PHEROMONE_PEER_WEIGHTS_SCHEMA: &str = "chio.pheromone.peer-weights.v1";
+const PHEROMONE_TRANSIT_POLICY_SCHEMA_JSON: &str =
+    include_str!("../../../spec/schemas/chio-pheromone/v1/transit-policy.schema.json");
+const PHEROMONE_PEER_WEIGHTS_SCHEMA_JSON: &str =
+    include_str!("../../../spec/schemas/chio-pheromone/v1/peer-weights.schema.json");
 
 #[derive(Debug, thiserror::Error)]
 pub enum PheromoneRuntimeError {
@@ -37,12 +47,14 @@ pub enum PheromoneRuntimeError {
     Pheromone(#[from] PheromoneError),
     #[error("workflow_context_mismatch: {0}")]
     WorkflowContextMismatch(String),
-    #[error("chiodos_verification: {0}")]
-    Chiodos(#[from] ChiodosPackageError),
+    #[error("chio_workflow_verification: {0}")]
+    WorkflowVerification(String),
     #[error("sqlite: {0}")]
     Sqlite(String),
     #[error("json: {0}")]
     Json(String),
+    #[error("schema_invalid: {0}")]
+    SchemaInvalid(String),
     #[error("canonical_json: {0}")]
     CanonicalJson(String),
     #[error("invalid_field: {0}")]
@@ -58,9 +70,10 @@ impl PheromoneRuntimeError {
             Self::Federation(error) => error.code(),
             Self::Pheromone(error) => error.code(),
             Self::WorkflowContextMismatch(_) => "workflow_context_mismatch",
-            Self::Chiodos(_) => "chiodos_verification",
+            Self::WorkflowVerification(_) => "chio_workflow_verification",
             Self::Sqlite(_) => "sqlite",
             Self::Json(_) => "json",
+            Self::SchemaInvalid(_) => "schema_invalid",
             Self::CanonicalJson(_) => "canonical_json",
             Self::InvalidField(_) => "invalid_field",
             Self::StorePoisoned => "store_poisoned",
@@ -92,6 +105,61 @@ impl From<std::io::Error> for PheromoneRuntimeError {
     }
 }
 
+fn chio_workflow_verification_error(error: impl std::fmt::Display) -> PheromoneRuntimeError {
+    PheromoneRuntimeError::WorkflowVerification(error.to_string())
+}
+
+#[derive(Debug, Clone)]
+pub struct ChioWorkflowProofPackage {
+    inner: chio_chiodos::ChiodosProofPackage,
+}
+
+impl ChioWorkflowProofPackage {
+    pub fn from_json(json: &str) -> Result<Self, PheromoneRuntimeError> {
+        proof_package_from_json(json)
+            .map(|inner| Self { inner })
+            .map_err(chio_workflow_verification_error)
+    }
+
+    fn as_historical(&self) -> &chio_chiodos::ChiodosProofPackage {
+        &self.inner
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ChioWorkflowVerifierTrustBundle {
+    inner: chio_chiodos::ChiodosVerifierTrustBundle,
+}
+
+impl ChioWorkflowVerifierTrustBundle {
+    pub fn from_json(json: &str) -> Result<Self, PheromoneRuntimeError> {
+        verifier_trust_bundle_from_json(json)
+            .map(|inner| Self { inner })
+            .map_err(chio_workflow_verification_error)
+    }
+
+    fn as_historical(&self) -> &chio_chiodos::ChiodosVerifierTrustBundle {
+        &self.inner
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChioWorkflowVerificationContext {
+    inner: chio_chiodos::ChiodosVerificationContext,
+}
+
+impl ChioWorkflowVerificationContext {
+    pub fn from_json(json: &str) -> Result<Self, PheromoneRuntimeError> {
+        verification_context_from_json(json)
+            .map(|inner| Self { inner })
+            .map_err(chio_workflow_verification_error)
+    }
+
+    fn as_historical(&self) -> &chio_chiodos::ChiodosVerificationContext {
+        &self.inner
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PheromoneFrameReport {
@@ -103,11 +171,22 @@ pub struct PheromoneFrameReport {
     pub deposit_nonce: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PheromoneBatchOutcome {
+    Accepted,
+    Partial,
+    Rejected,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PheromoneReceiveReport {
     pub schema: String,
     pub accepted: bool,
+    pub batch_outcome: PheromoneBatchOutcome,
+    pub accepted_frame_count: u64,
+    pub rejected_frame_count: u64,
     pub batch_sha256: String,
     pub recipient_kernel_id: String,
     pub authenticated_sender_kernel_id: String,
@@ -131,40 +210,93 @@ pub struct PheromoneReceiverConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PheromoneAdmissionPolicyDocument {
     pub recipient_kernel_id: String,
     pub authenticated_sender_kernel_id: String,
     pub replay_window_ms: u64,
     pub active_peers_in_treaty: u64,
+    pub active_reputation_epoch: u64,
     pub known_reputation_epochs: Vec<u64>,
     pub passports: Vec<PassportAdmission>,
     pub kernel_public_keys: Vec<chio_core_types::PublicKey>,
     pub subject_classes: Vec<SubjectClassPolicy>,
     pub max_deposits_per_pair: u64,
+    pub scarcity_policies: Vec<PheromoneScarcityPolicy>,
+    pub runtime_policy_issuer_public_keys: Vec<chio_core_types::PublicKey>,
+    pub observation_cost_verifier_roots: Vec<PheromoneObservationCostVerifierRoot>,
+    pub runtime_trust_floor_state: PheromoneRuntimeTrustFloorState,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PeerWeightEntry {
     pub kernel_id: String,
     pub weight: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PeerWeightsDocument {
     pub schema: String,
     pub reputation_epoch: u64,
     pub weights: Vec<PeerWeightEntry>,
 }
 
+pub fn runtime_policy_document_sha256(
+    value: &serde_json::Value,
+) -> Result<String, PheromoneRuntimeError> {
+    let mut hash_material = value.clone();
+    remove_runtime_policy_self_references(&mut hash_material);
+    canonical_sha256(&hash_material)
+}
+
+fn remove_runtime_policy_self_references(value: &mut serde_json::Value) {
+    let Some(admission) = value.get_mut("admission") else {
+        return;
+    };
+    if let Some(policies) = admission
+        .get_mut("scarcityPolicies")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for policy in policies {
+            if let Some(object) = policy.as_object_mut() {
+                object.remove("runtimePolicySha256");
+                object.remove("policySha256");
+            }
+        }
+    }
+    if let Some(roots) = admission
+        .get_mut("observationCostVerifierRoots")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for root in roots {
+            if let Some(object) = root.as_object_mut() {
+                object.remove("runtimePolicySha256");
+                object.remove("issuerSignature");
+            }
+        }
+    }
+}
+
 pub fn runtime_policy_from_json(
     json: &str,
     now_unix_ms: u64,
 ) -> Result<(PheromoneTransitPolicy, PheromoneReceiverConfig), PheromoneRuntimeError> {
-    let mut value: serde_json::Value = serde_json::from_str(json)?;
-    let admission_value = value
+    let value: serde_json::Value = serde_json::from_str(json)?;
+    validate_runtime_policy_schema(&value)?;
+    let envelope: SignedExportEnvelope<serde_json::Value> = serde_json::from_value(value)?;
+    if !envelope
+        .verify_signature()
+        .map_err(|error| PheromoneRuntimeError::CanonicalJson(error.to_string()))?
+    {
+        return Err(PheromoneRuntimeError::InvalidField(
+            "runtime policy envelope signature is invalid".to_string(),
+        ));
+    }
+    let mut body_value = envelope.body;
+    let runtime_policy_sha256 = runtime_policy_document_sha256(&body_value)?;
+    let admission_value = body_value
         .as_object_mut()
         .and_then(|object| object.remove("admission"))
         .ok_or_else(|| {
@@ -172,18 +304,44 @@ pub fn runtime_policy_from_json(
                 "transit policy requires admission material for runtime receive".to_string(),
             )
         })?;
-    let transit_policy: PheromoneTransitPolicy = serde_json::from_value(value)?;
+    let transit_policy: PheromoneTransitPolicy = serde_json::from_value(body_value)?;
     let admission: PheromoneAdmissionPolicyDocument = serde_json::from_value(admission_value)?;
+    if !admission
+        .runtime_policy_issuer_public_keys
+        .iter()
+        .any(|public_key| public_key == &envelope.signer_key)
+    {
+        return Err(PheromoneRuntimeError::InvalidField(
+            "runtime policy signer is not authorized by admission issuer roots".to_string(),
+        ));
+    }
+    if admission.scarcity_policies.is_empty() {
+        return Err(PheromoneRuntimeError::Pheromone(
+            PheromoneError::ScarcityPolicyMissing(
+                "runtime policy has no live scarcity policies".to_string(),
+            ),
+        ));
+    }
+    reject_overlapping_scarcity_windows(&admission.scarcity_policies)?;
     let validation_context = PheromoneValidationContext {
         now_unix_ms,
         replay_window_ms: admission.replay_window_ms,
         active_peers_in_treaty: admission.active_peers_in_treaty,
+        active_reputation_epoch: admission.active_reputation_epoch,
         known_reputation_epochs: admission.known_reputation_epochs,
         passports: admission.passports,
         kernel_public_keys: admission.kernel_public_keys,
         subject_classes: admission.subject_classes,
         max_deposits_per_pair: admission.max_deposits_per_pair,
+        scarcity_policies: admission.scarcity_policies,
+        runtime_policy_sha256: Some(runtime_policy_sha256),
+        runtime_policy_issuer_public_keys: admission.runtime_policy_issuer_public_keys,
+        observation_cost_verifier_roots: admission.observation_cost_verifier_roots,
+        runtime_trust_floor_state: admission.runtime_trust_floor_state,
     };
+    for policy in &validation_context.scarcity_policies {
+        validate_scarcity_policy_material(policy, &validation_context)?;
+    }
     Ok((
         transit_policy,
         PheromoneReceiverConfig {
@@ -194,10 +352,44 @@ pub fn runtime_policy_from_json(
     ))
 }
 
+fn validate_runtime_policy_schema(value: &serde_json::Value) -> Result<(), PheromoneRuntimeError> {
+    validate_json_schema(
+        value,
+        PHEROMONE_TRANSIT_POLICY_SCHEMA_JSON,
+        "transit policy",
+    )
+}
+
+fn validate_json_schema(
+    value: &serde_json::Value,
+    schema_json: &str,
+    label: &str,
+) -> Result<(), PheromoneRuntimeError> {
+    let schema: serde_json::Value = serde_json::from_str(schema_json).map_err(|error| {
+        PheromoneRuntimeError::SchemaInvalid(format!(
+            "embedded {label} schema is invalid JSON: {error}"
+        ))
+    })?;
+    let validator = jsonschema::options()
+        .build(&schema)
+        .map_err(|error| PheromoneRuntimeError::SchemaInvalid(error.to_string()))?;
+    let errors = validator
+        .iter_errors(value)
+        .map(|error| error.to_string())
+        .collect::<Vec<_>>();
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(PheromoneRuntimeError::SchemaInvalid(errors.join(" | ")))
+    }
+}
+
 pub fn peer_weights_from_json(
     json: &str,
 ) -> Result<StaticPeerWeightProvider, PheromoneRuntimeError> {
-    let document: PeerWeightsDocument = serde_json::from_str(json)?;
+    let value: serde_json::Value = serde_json::from_str(json)?;
+    validate_json_schema(&value, PHEROMONE_PEER_WEIGHTS_SCHEMA_JSON, "peer weights")?;
+    let document: PeerWeightsDocument = serde_json::from_value(value)?;
     if document.schema != PHEROMONE_PEER_WEIGHTS_SCHEMA {
         return Err(PheromoneRuntimeError::InvalidField(format!(
             "peer weights schema {} is unsupported",
@@ -259,11 +451,96 @@ impl PeerWeightProvider for StaticPeerWeightProvider {
 }
 
 pub trait PheromoneRuntimeStore {
+    fn receive_batch(
+        &self,
+        batch: &PheromoneGossipBatch,
+        policy: &PheromoneTransitPolicy,
+        config: &PheromoneReceiverConfig,
+        resolver: &dyn WorkflowContextResolver,
+    ) -> Result<PheromoneReceiveReport, PheromoneRuntimeError> {
+        let batch_sha256 = canonical_sha256(batch)?;
+        let mut frames = Vec::new();
+        let verification_context = PheromoneGossipBatchVerificationContext {
+            now_unix_ms: config.validation_context.now_unix_ms,
+            recipient_kernel_id: config.recipient_kernel_id.clone(),
+            authenticated_sender_kernel_id: config.authenticated_sender_kernel_id.clone(),
+        };
+        if let Err(error) = verify_pheromone_gossip_batch_envelope(batch, &verification_context) {
+            frames.push(PheromoneFrameReport {
+                frame_index: 0,
+                accepted: false,
+                code: error.code().to_string(),
+                detail: error.to_string(),
+                deposit_nonce: None,
+            });
+            let report = build_receive_report(config, batch_sha256, frames);
+            self.record_receive_report(&report)?;
+            return Ok(report);
+        }
+
+        for (index, frame) in batch.frames.iter().enumerate() {
+            let result = verify_pheromone_gossip_frame_for_batch(
+                frame,
+                batch,
+                policy,
+                &verification_context,
+            )
+            .map_err(PheromoneRuntimeError::from)
+            .and_then(|()| {
+                frame
+                    .deposit
+                    .body
+                    .workflow_context
+                    .as_ref()
+                    .map_or(Ok(()), |context| resolver.resolve(context))
+            })
+            .and_then(|()| {
+                self.admit_deposit_for_treaty(
+                    frame.deposit.clone(),
+                    &config.validation_context,
+                    &frame.treaty_id,
+                )
+            });
+            match result {
+                Ok(()) => frames.push(PheromoneFrameReport {
+                    frame_index: index,
+                    accepted: true,
+                    code: "accepted".to_string(),
+                    detail: "accepted".to_string(),
+                    deposit_nonce: Some(frame.deposit.body.nonce.clone()),
+                }),
+                Err(error) => frames.push(PheromoneFrameReport {
+                    frame_index: index,
+                    accepted: false,
+                    code: frame_failure_code(&error).to_string(),
+                    detail: error.to_string(),
+                    deposit_nonce: Some(frame.deposit.body.nonce.clone()),
+                }),
+            }
+        }
+        let report = build_receive_report(config, batch_sha256, frames);
+        self.record_receive_report(&report)?;
+        Ok(report)
+    }
+
     fn admit_deposit(
         &self,
         deposit: PheromoneDeposit,
         context: &PheromoneValidationContext,
     ) -> Result<(), PheromoneRuntimeError>;
+
+    fn admit_deposit_for_treaty(
+        &self,
+        deposit: PheromoneDeposit,
+        context: &PheromoneValidationContext,
+        treaty_id: &str,
+    ) -> Result<(), PheromoneRuntimeError> {
+        let _ = (deposit, context, treaty_id);
+        Err(PheromoneRuntimeError::InvalidField(
+            "scoped treaty admission is required for live receive; unscoped store default fails closed"
+                .to_string(),
+        ))
+    }
 
     fn query_deposits(
         &self,
@@ -320,57 +597,8 @@ where
         batch: &PheromoneGossipBatch,
         policy: &PheromoneTransitPolicy,
     ) -> Result<PheromoneReceiveReport, PheromoneRuntimeError> {
-        let batch_sha256 = canonical_sha256(batch)?;
-        let mut frames = Vec::new();
-        let verification_context = PheromoneGossipBatchVerificationContext {
-            now_unix_ms: self.config.validation_context.now_unix_ms,
-            recipient_kernel_id: self.config.recipient_kernel_id.clone(),
-            authenticated_sender_kernel_id: self.config.authenticated_sender_kernel_id.clone(),
-        };
-        if let Err(error) = verify_pheromone_gossip_batch(batch, policy, &verification_context) {
-            frames.push(PheromoneFrameReport {
-                frame_index: 0,
-                accepted: false,
-                code: error.code().to_string(),
-                detail: error.to_string(),
-                deposit_nonce: None,
-            });
-            let report = self.report(batch_sha256, frames);
-            self.store.record_receive_report(&report)?;
-            return Ok(report);
-        }
-
-        for (index, frame) in batch.frames.iter().enumerate() {
-            let result = frame
-                .deposit
-                .body
-                .workflow_context
-                .as_ref()
-                .map_or(Ok(()), |context| self.resolver.resolve(context))
-                .and_then(|()| {
-                    self.store
-                        .admit_deposit(frame.deposit.clone(), &self.config.validation_context)
-                });
-            match result {
-                Ok(()) => frames.push(PheromoneFrameReport {
-                    frame_index: index,
-                    accepted: true,
-                    code: "accepted".to_string(),
-                    detail: "accepted".to_string(),
-                    deposit_nonce: Some(frame.deposit.body.nonce.clone()),
-                }),
-                Err(error) => frames.push(PheromoneFrameReport {
-                    frame_index: index,
-                    accepted: false,
-                    code: error.code().to_string(),
-                    detail: error.to_string(),
-                    deposit_nonce: Some(frame.deposit.body.nonce.clone()),
-                }),
-            }
-        }
-        let report = self.report(batch_sha256, frames);
-        self.store.record_receive_report(&report)?;
-        Ok(report)
+        self.store
+            .receive_batch(batch, policy, &self.config, &self.resolver)
     }
 
     pub fn query_concentration(
@@ -394,21 +622,40 @@ where
             concentration,
         })
     }
+}
 
-    fn report(
-        &self,
-        batch_sha256: String,
-        frames: Vec<PheromoneFrameReport>,
-    ) -> PheromoneReceiveReport {
-        PheromoneReceiveReport {
-            schema: PHEROMONE_RECEIVE_REPORT_SCHEMA.to_string(),
-            accepted: frames.iter().all(|frame| frame.accepted),
-            batch_sha256,
-            recipient_kernel_id: self.config.recipient_kernel_id.clone(),
-            authenticated_sender_kernel_id: self.config.authenticated_sender_kernel_id.clone(),
-            received_at_unix_ms: self.config.validation_context.now_unix_ms,
-            frames,
+fn build_receive_report(
+    config: &PheromoneReceiverConfig,
+    batch_sha256: String,
+    frames: Vec<PheromoneFrameReport>,
+) -> PheromoneReceiveReport {
+    let accepted_frame_count = frames.iter().filter(|frame| frame.accepted).count() as u64;
+    let rejected_frame_count = frames.len() as u64 - accepted_frame_count;
+    let batch_outcome = match (accepted_frame_count, rejected_frame_count) {
+        (_, 0) => PheromoneBatchOutcome::Accepted,
+        (0, _) => PheromoneBatchOutcome::Rejected,
+        _ => PheromoneBatchOutcome::Partial,
+    };
+    PheromoneReceiveReport {
+        schema: PHEROMONE_RECEIVE_REPORT_SCHEMA.to_string(),
+        accepted: batch_outcome == PheromoneBatchOutcome::Accepted,
+        batch_outcome,
+        accepted_frame_count,
+        rejected_frame_count,
+        batch_sha256,
+        recipient_kernel_id: config.recipient_kernel_id.clone(),
+        authenticated_sender_kernel_id: config.authenticated_sender_kernel_id.clone(),
+        received_at_unix_ms: config.validation_context.now_unix_ms,
+        frames,
+    }
+}
+
+fn frame_failure_code(error: &PheromoneRuntimeError) -> &'static str {
+    match error {
+        PheromoneRuntimeError::Sqlite(_) | PheromoneRuntimeError::StorePoisoned => {
+            "storage_commit_failed"
         }
+        _ => error.code(),
     }
 }
 
@@ -420,7 +667,7 @@ struct WorkflowStepEvidence {
 }
 
 #[derive(Debug, Clone)]
-pub struct VerifiedChiodosWorkflowResolver {
+pub struct VerifiedChioWorkflowResolver {
     workflow_id: String,
     workflow_receipt_id: String,
     workflow_receipt_sha256: String,
@@ -432,13 +679,16 @@ pub struct VerifiedChiodosWorkflowResolver {
     verification_context_sha256: String,
 }
 
-impl VerifiedChiodosWorkflowResolver {
+impl VerifiedChioWorkflowResolver {
     pub fn from_verified_package(
-        package: &ChiodosProofPackage,
-        trust_bundle: &ChiodosVerifierTrustBundle,
-        context: &ChiodosVerificationContext,
+        package: &ChioWorkflowProofPackage,
+        trust_bundle: &ChioWorkflowVerifierTrustBundle,
+        context: &ChioWorkflowVerificationContext,
     ) -> Result<Self, PheromoneRuntimeError> {
-        verify_package(package, trust_bundle, context)?;
+        let package = package.as_historical();
+        let trust_bundle = trust_bundle.as_historical();
+        let context = context.as_historical();
+        verify_package(package, trust_bundle, context).map_err(chio_workflow_verification_error)?;
         let workflow_receipt_sha256 = canonical_sha256(&package.workflow_receipt)?;
         let workflow_intersection_sha256 = canonical_sha256(&package.workflow_intersection)?;
         let mut steps = BTreeMap::new();
@@ -487,9 +737,10 @@ impl VerifiedChiodosWorkflowResolver {
             workflow_intersection_id: package.workflow_intersection.intersection_id.clone(),
             workflow_intersection_sha256,
             steps,
-            package_sha256: package_sha256(package)?,
+            package_sha256: package_sha256(package).map_err(chio_workflow_verification_error)?,
             trust_bundle_sha256: trust_bundle.document_sha256().to_string(),
-            verification_context_sha256: verification_context_sha256(context)?,
+            verification_context_sha256: verification_context_sha256(context)
+                .map_err(chio_workflow_verification_error)?,
         })
     }
 
@@ -509,7 +760,7 @@ impl VerifiedChiodosWorkflowResolver {
     }
 }
 
-impl WorkflowContextResolver for VerifiedChiodosWorkflowResolver {
+impl WorkflowContextResolver for VerifiedChioWorkflowResolver {
     fn resolve(&self, context: &PheromoneWorkflowContext) -> Result<(), PheromoneRuntimeError> {
         ensure_equal("workflow_id", &context.workflow_id, &self.workflow_id)?;
         ensure_equal(
@@ -631,6 +882,61 @@ impl SqlitePheromoneRuntimeStore {
                 PRIMARY KEY (kernel_id, subject_class, passport_key_hash)
             );
 
+            CREATE TABLE IF NOT EXISTS chio_pheromone_scarcity_buckets (
+                reputation_epoch INTEGER NOT NULL,
+                window_id TEXT NOT NULL,
+                treaty_id TEXT NOT NULL,
+                subject_class_namespace TEXT NOT NULL,
+                subject_class TEXT NOT NULL,
+                count INTEGER NOT NULL,
+                PRIMARY KEY (
+                    reputation_epoch,
+                    window_id,
+                    treaty_id,
+                    subject_class_namespace,
+                    subject_class
+                )
+            );
+
+            CREATE TABLE IF NOT EXISTS chio_pheromone_pair_buckets (
+                reputation_epoch INTEGER NOT NULL,
+                window_id TEXT NOT NULL,
+                treaty_id TEXT NOT NULL,
+                subject_class_namespace TEXT NOT NULL,
+                subject_class TEXT NOT NULL,
+                kernel_id TEXT NOT NULL,
+                passport_key_hash TEXT NOT NULL,
+                count INTEGER NOT NULL,
+                PRIMARY KEY (
+                    reputation_epoch,
+                    window_id,
+                    treaty_id,
+                    subject_class_namespace,
+                    subject_class,
+                    kernel_id,
+                    passport_key_hash
+                )
+            );
+
+            CREATE TABLE IF NOT EXISTS chio_pheromone_passport_caps_v2 (
+                reputation_epoch INTEGER NOT NULL,
+                window_id TEXT NOT NULL,
+                treaty_id TEXT NOT NULL,
+                subject_class_namespace TEXT NOT NULL,
+                subject_class TEXT NOT NULL,
+                kernel_id TEXT NOT NULL,
+                passport_key_hash TEXT NOT NULL,
+                PRIMARY KEY (
+                    reputation_epoch,
+                    window_id,
+                    treaty_id,
+                    subject_class_namespace,
+                    subject_class,
+                    kernel_id,
+                    passport_key_hash
+                )
+            );
+
             CREATE TABLE IF NOT EXISTS chio_pheromone_passport_admissions (
                 kernel_id TEXT NOT NULL,
                 passport_key_hash TEXT NOT NULL,
@@ -676,97 +982,121 @@ impl SqlitePheromoneRuntimeStore {
         }
         Ok(query_context)
     }
-}
 
-impl PheromoneRuntimeStore for SqlitePheromoneRuntimeStore {
-    fn admit_deposit(
+    fn admit_deposit_scoped(
         &self,
         deposit: PheromoneDeposit,
         context: &PheromoneValidationContext,
+        treaty_id: Option<&str>,
     ) -> Result<(), PheromoneRuntimeError> {
-        let validator = InMemoryPheromoneSubstrate::new();
-        validator.deposit(deposit.clone(), context)?;
-        let passport = passport_for_deposit(&deposit, context)?.clone();
         let mut conn = self.conn.lock()?;
         let tx = conn.transaction()?;
-        let now = i64_from_u64(context.now_unix_ms, "now_unix_ms")?;
-        tx.execute(
-            "DELETE FROM chio_pheromone_replay_nonces WHERE expires_at_unix_ms <= ?1",
-            params![now],
-        )?;
-        let expires_at = context.now_unix_ms.saturating_add(context.replay_window_ms);
-        let inserted = tx.execute(
-            r#"
-            INSERT INTO chio_pheromone_replay_nonces
-                (kernel_id, passport_key_hash, nonce, expires_at_unix_ms)
-            VALUES (?1, ?2, ?3, ?4)
-            ON CONFLICT(kernel_id, passport_key_hash, nonce) DO NOTHING
-            "#,
-            params![
-                deposit.body.kernel_id,
-                deposit.body.agent_passport_key_hash,
-                deposit.body.nonce,
-                i64_from_u64(expires_at, "replay_expires_at_unix_ms")?,
-            ],
-        )?;
-        if inserted == 0 {
+        admit_deposit_scoped_tx(&tx, &deposit, context, treaty_id)?;
+        tx.commit()?;
+        Ok(())
+    }
+}
+
+fn admit_deposit_scoped_tx(
+    tx: &rusqlite::Transaction<'_>,
+    deposit: &PheromoneDeposit,
+    context: &PheromoneValidationContext,
+    treaty_id: Option<&str>,
+) -> Result<(), PheromoneRuntimeError> {
+    let passport = validate_deposit_for_admission(deposit, context)?;
+    let admissions = match treaty_id {
+        Some(treaty_id) => scarcity_admissions_for_deposit_treaty(deposit, context, treaty_id)?,
+        None => scarcity_admissions_for_deposit(deposit, context)?,
+    };
+    let now = i64_from_u64(context.now_unix_ms, "now_unix_ms")?;
+    tx.execute(
+        "DELETE FROM chio_pheromone_replay_nonces WHERE expires_at_unix_ms <= ?1",
+        params![now],
+    )?;
+    let expires_at = context.now_unix_ms.saturating_add(context.replay_window_ms);
+    let inserted = tx.execute(
+        r#"
+        INSERT INTO chio_pheromone_replay_nonces
+            (kernel_id, passport_key_hash, nonce, expires_at_unix_ms)
+        VALUES (?1, ?2, ?3, ?4)
+        ON CONFLICT(kernel_id, passport_key_hash, nonce) DO NOTHING
+        "#,
+        params![
+            deposit.body.kernel_id,
+            deposit.body.agent_passport_key_hash,
+            deposit.body.nonce,
+            i64_from_u64(expires_at, "replay_expires_at_unix_ms")?,
+        ],
+    )?;
+    if inserted == 0 {
+        return Err(PheromoneRuntimeError::Pheromone(
+            PheromoneError::ReplayWindowExceeded(deposit.body.nonce.clone()),
+        ));
+    }
+
+    for admission in &admissions {
+        let bucket_count = scarcity_bucket_count(tx, admission)?;
+        if bucket_count >= admission.token_capacity {
             return Err(PheromoneRuntimeError::Pheromone(
-                PheromoneError::ReplayWindowExceeded(deposit.body.nonce.clone()),
+                PheromoneError::RateLimitExhausted(format!(
+                    "{}:{}:{}:{}",
+                    admission.reputation_epoch,
+                    admission.window_id,
+                    admission.treaty_id,
+                    admission.subject_class
+                )),
             ));
         }
-
-        for treaty_id in &deposit.body.treaty_scope {
-            let count = pair_count(&tx, &deposit, treaty_id)?;
-            if count >= context.max_deposits_per_pair {
-                return Err(PheromoneRuntimeError::Pheromone(
-                    PheromoneError::DiversityCapExceeded(
-                        deposit.body.agent_passport_key_hash.clone(),
-                    ),
-                ));
-            }
-            tx.execute(
-                r#"
-                INSERT INTO chio_pheromone_pair_counts
-                    (kernel_id, passport_key_hash, subject_class, treaty_id, count)
-                VALUES (?1, ?2, ?3, ?4, 1)
-                ON CONFLICT(kernel_id, passport_key_hash, subject_class, treaty_id)
-                DO UPDATE SET count = count + 1
-                "#,
-                params![
-                    deposit.body.kernel_id,
-                    deposit.body.agent_passport_key_hash,
-                    deposit.body.subject_class,
-                    treaty_id,
-                ],
-            )?;
+        let count = pair_bucket_count(tx, deposit, admission)?;
+        if count >= context.max_deposits_per_pair {
+            return Err(PheromoneRuntimeError::Pheromone(
+                PheromoneError::DiversityCapExceeded(deposit.body.agent_passport_key_hash.clone()),
+            ));
         }
-
-        let passport_seen = tx
-            .query_row(
-                r#"
-                SELECT 1 FROM chio_pheromone_passport_caps
-                WHERE kernel_id = ?1 AND subject_class = ?2 AND passport_key_hash = ?3
-                "#,
-                params![
-                    deposit.body.kernel_id,
-                    deposit.body.subject_class,
-                    deposit.body.agent_passport_key_hash,
-                ],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some();
-        let passport_count = tx.query_row(
+        tx.execute(
             r#"
-            SELECT COUNT(*) FROM chio_pheromone_passport_caps
-            WHERE kernel_id = ?1 AND subject_class = ?2
+            INSERT INTO chio_pheromone_scarcity_buckets
+                (reputation_epoch, window_id, treaty_id, subject_class_namespace,
+                 subject_class, count)
+            VALUES (?1, ?2, ?3, ?4, ?5, 1)
+            ON CONFLICT(reputation_epoch, window_id, treaty_id,
+                subject_class_namespace, subject_class)
+            DO UPDATE SET count = count + 1
             "#,
-            params![deposit.body.kernel_id, deposit.body.subject_class],
-            |row| row.get::<_, i64>(0),
+            params![
+                i64_from_u64(admission.reputation_epoch, "reputation_epoch")?,
+                admission.window_id,
+                admission.treaty_id,
+                admission.subject_class_namespace,
+                admission.subject_class,
+            ],
         )?;
-        let projected = u64::try_from(passport_count)
-            .map_err(|_| PheromoneRuntimeError::Sqlite("passport count is negative".to_string()))?
-            .saturating_add(u64::from(!passport_seen));
+        tx.execute(
+            r#"
+            INSERT INTO chio_pheromone_pair_buckets
+                (reputation_epoch, window_id, treaty_id, subject_class_namespace,
+                 subject_class, kernel_id, passport_key_hash, count)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1)
+            ON CONFLICT(reputation_epoch, window_id, treaty_id,
+                subject_class_namespace, subject_class, kernel_id, passport_key_hash)
+            DO UPDATE SET count = count + 1
+            "#,
+            params![
+                i64_from_u64(admission.reputation_epoch, "reputation_epoch")?,
+                admission.window_id,
+                admission.treaty_id,
+                admission.subject_class_namespace,
+                admission.subject_class,
+                deposit.body.kernel_id,
+                deposit.body.agent_passport_key_hash,
+            ],
+        )?;
+    }
+
+    for admission in &admissions {
+        let passport_seen = passport_seen(tx, deposit, admission)?;
+        let passport_count = passport_count(tx, deposit, admission)?;
+        let projected = passport_count.saturating_add(u64::from(!passport_seen));
         if projected > sqrt_passport_cap(context.active_peers_in_treaty) {
             return Err(PheromoneRuntimeError::Pheromone(
                 PheromoneError::SqrtNPassportCapExceeded(deposit.body.kernel_id.clone()),
@@ -774,55 +1104,174 @@ impl PheromoneRuntimeStore for SqlitePheromoneRuntimeStore {
         }
         tx.execute(
             r#"
-            INSERT INTO chio_pheromone_passport_caps
-                (kernel_id, subject_class, passport_key_hash)
-            VALUES (?1, ?2, ?3)
-            ON CONFLICT(kernel_id, subject_class, passport_key_hash) DO NOTHING
-            "#,
-            params![
-                deposit.body.kernel_id,
-                deposit.body.subject_class,
-                deposit.body.agent_passport_key_hash,
-            ],
-        )?;
-
-        let passport_json = serde_json::to_string(&passport)?;
-        tx.execute(
-            r#"
-            INSERT INTO chio_pheromone_passport_admissions
-                (kernel_id, passport_key_hash, json)
-            VALUES (?1, ?2, ?3)
-            ON CONFLICT(kernel_id, passport_key_hash)
-            DO UPDATE SET json = excluded.json
-            "#,
-            params![
-                passport.kernel_id,
-                agent_passport_key_hash(&passport.public_key),
-                passport_json,
-            ],
-        )?;
-
-        let json = serde_json::to_string(&deposit)?;
-        tx.execute(
-            r#"
-            INSERT INTO chio_pheromone_deposits
-                (deposit_sha256, kernel_id, passport_key_hash, subject_class,
-                 subject_class_namespace, timestamp_unix_ms, json)
+            INSERT INTO chio_pheromone_passport_caps_v2
+                (reputation_epoch, window_id, treaty_id, subject_class_namespace,
+                 subject_class, kernel_id, passport_key_hash)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-            ON CONFLICT(deposit_sha256) DO NOTHING
+            ON CONFLICT(reputation_epoch, window_id, treaty_id,
+                subject_class_namespace, subject_class, kernel_id, passport_key_hash)
+            DO NOTHING
             "#,
             params![
-                canonical_sha256(&deposit)?,
+                i64_from_u64(admission.reputation_epoch, "reputation_epoch")?,
+                admission.window_id,
+                admission.treaty_id,
+                admission.subject_class_namespace,
+                admission.subject_class,
                 deposit.body.kernel_id,
                 deposit.body.agent_passport_key_hash,
-                deposit.body.subject_class,
-                deposit.body.subject_class_namespace,
-                i64_from_u64(deposit.body.timestamp_unix_ms, "timestamp_unix_ms")?,
-                json,
             ],
         )?;
+    }
+
+    let passport_json = serde_json::to_string(&passport)?;
+    tx.execute(
+        r#"
+        INSERT INTO chio_pheromone_passport_admissions
+            (kernel_id, passport_key_hash, json)
+        VALUES (?1, ?2, ?3)
+        ON CONFLICT(kernel_id, passport_key_hash)
+        DO UPDATE SET json = excluded.json
+        "#,
+        params![
+            passport.kernel_id,
+            agent_passport_key_hash(&passport.public_key),
+            passport_json,
+        ],
+    )?;
+
+    let json = serde_json::to_string(deposit)?;
+    tx.execute(
+        r#"
+        INSERT INTO chio_pheromone_deposits
+            (deposit_sha256, kernel_id, passport_key_hash, subject_class,
+             subject_class_namespace, timestamp_unix_ms, json)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        ON CONFLICT(deposit_sha256) DO NOTHING
+        "#,
+        params![
+            canonical_sha256(deposit)?,
+            deposit.body.kernel_id,
+            deposit.body.agent_passport_key_hash,
+            deposit.body.subject_class,
+            deposit.body.subject_class_namespace,
+            i64_from_u64(deposit.body.timestamp_unix_ms, "timestamp_unix_ms")?,
+            json,
+        ],
+    )?;
+    Ok(())
+}
+
+impl PheromoneRuntimeStore for SqlitePheromoneRuntimeStore {
+    fn receive_batch(
+        &self,
+        batch: &PheromoneGossipBatch,
+        policy: &PheromoneTransitPolicy,
+        config: &PheromoneReceiverConfig,
+        resolver: &dyn WorkflowContextResolver,
+    ) -> Result<PheromoneReceiveReport, PheromoneRuntimeError> {
+        let batch_sha256 = canonical_sha256(batch)?;
+        let mut frames = Vec::new();
+        let verification_context = PheromoneGossipBatchVerificationContext {
+            now_unix_ms: config.validation_context.now_unix_ms,
+            recipient_kernel_id: config.recipient_kernel_id.clone(),
+            authenticated_sender_kernel_id: config.authenticated_sender_kernel_id.clone(),
+        };
+        let mut conn = self.conn.lock()?;
+        let tx = conn.transaction()?;
+        if let Err(error) = verify_pheromone_gossip_batch_envelope(batch, &verification_context) {
+            frames.push(PheromoneFrameReport {
+                frame_index: 0,
+                accepted: false,
+                code: error.code().to_string(),
+                detail: error.to_string(),
+                deposit_nonce: None,
+            });
+            let report = build_receive_report(config, batch_sha256, frames);
+            record_receive_report_tx(&tx, &report)?;
+            tx.commit()?;
+            return Ok(report);
+        }
+
+        for (index, frame) in batch.frames.iter().enumerate() {
+            let preflight = verify_pheromone_gossip_frame_for_batch(
+                frame,
+                batch,
+                policy,
+                &verification_context,
+            )
+            .map_err(PheromoneRuntimeError::from)
+            .and_then(|()| {
+                frame
+                    .deposit
+                    .body
+                    .workflow_context
+                    .as_ref()
+                    .map_or(Ok(()), |context| resolver.resolve(context))
+            });
+            let result = match preflight {
+                Ok(()) => {
+                    let savepoint = format!("frame_{index}");
+                    tx.execute_batch(&format!("SAVEPOINT {savepoint}"))?;
+                    let admission = admit_deposit_scoped_tx(
+                        &tx,
+                        &frame.deposit,
+                        &config.validation_context,
+                        Some(&frame.treaty_id),
+                    );
+                    match admission {
+                        Ok(()) => {
+                            tx.execute_batch(&format!("RELEASE SAVEPOINT {savepoint}"))?;
+                            Ok(())
+                        }
+                        Err(error) => {
+                            tx.execute_batch(&format!(
+                                "ROLLBACK TO SAVEPOINT {savepoint}; RELEASE SAVEPOINT {savepoint}"
+                            ))?;
+                            Err(error)
+                        }
+                    }
+                }
+                Err(error) => Err(error),
+            };
+            match result {
+                Ok(()) => frames.push(PheromoneFrameReport {
+                    frame_index: index,
+                    accepted: true,
+                    code: "accepted".to_string(),
+                    detail: "accepted".to_string(),
+                    deposit_nonce: Some(frame.deposit.body.nonce.clone()),
+                }),
+                Err(error) => frames.push(PheromoneFrameReport {
+                    frame_index: index,
+                    accepted: false,
+                    code: frame_failure_code(&error).to_string(),
+                    detail: error.to_string(),
+                    deposit_nonce: Some(frame.deposit.body.nonce.clone()),
+                }),
+            }
+        }
+        let report = build_receive_report(config, batch_sha256, frames);
+        record_receive_report_tx(&tx, &report)?;
         tx.commit()?;
-        Ok(())
+        Ok(report)
+    }
+
+    fn admit_deposit(
+        &self,
+        deposit: PheromoneDeposit,
+        context: &PheromoneValidationContext,
+    ) -> Result<(), PheromoneRuntimeError> {
+        self.admit_deposit_scoped(deposit, context, None)
+    }
+
+    fn admit_deposit_for_treaty(
+        &self,
+        deposit: PheromoneDeposit,
+        context: &PheromoneValidationContext,
+        treaty_id: &str,
+    ) -> Result<(), PheromoneRuntimeError> {
+        self.admit_deposit_scoped(deposit, context, Some(treaty_id))
     }
 
     fn query_deposits(
@@ -888,7 +1337,13 @@ impl PheromoneRuntimeStore for SqlitePheromoneRuntimeStore {
                 }
             }
             let weight = peer_weight.weight(&deposit.body.kernel_id, reputation_epoch)?;
-            let discount = newcomer_discount(deposit, &query_context, reputation_epoch);
+            let discount = newcomer_discount_for_deposit(
+                deposit,
+                &query_context,
+                reputation_epoch,
+                subject_class_namespace,
+                subject_class,
+            )?;
             total_strength += strength * weight * discount;
             unweighted_total_strength += strength;
             if deposit.body.confidence > peak_confidence {
@@ -921,19 +1376,7 @@ impl PheromoneRuntimeStore for SqlitePheromoneRuntimeStore {
         report: &PheromoneReceiveReport,
     ) -> Result<(), PheromoneRuntimeError> {
         let conn = self.conn.lock()?;
-        let json = serde_json::to_string(report)?;
-        conn.execute(
-            r#"
-            INSERT OR REPLACE INTO chio_pheromone_receive_reports
-                (report_sha256, received_at_unix_ms, json)
-            VALUES (?1, ?2, ?3)
-            "#,
-            params![
-                canonical_sha256(report)?,
-                i64_from_u64(report.received_at_unix_ms, "received_at_unix_ms")?,
-                json,
-            ],
-        )?;
+        record_receive_report_connection(&conn, report)?;
         Ok(())
     }
 
@@ -951,30 +1394,113 @@ impl PheromoneRuntimeStore for SqlitePheromoneRuntimeStore {
     }
 }
 
-fn pair_count(
+fn scarcity_bucket_count(
     tx: &rusqlite::Transaction<'_>,
-    deposit: &PheromoneDeposit,
-    treaty_id: &str,
+    admission: &PheromoneScarcityAdmission,
 ) -> Result<u64, PheromoneRuntimeError> {
     let count = tx
         .query_row(
             r#"
-            SELECT count FROM chio_pheromone_pair_counts
-            WHERE kernel_id = ?1 AND passport_key_hash = ?2
-              AND subject_class = ?3 AND treaty_id = ?4
+            SELECT count FROM chio_pheromone_scarcity_buckets
+            WHERE reputation_epoch = ?1 AND window_id = ?2 AND treaty_id = ?3
+              AND subject_class_namespace = ?4 AND subject_class = ?5
             "#,
             params![
-                deposit.body.kernel_id,
-                deposit.body.agent_passport_key_hash,
-                deposit.body.subject_class,
-                treaty_id,
+                i64_from_u64(admission.reputation_epoch, "reputation_epoch")?,
+                admission.window_id,
+                admission.treaty_id,
+                admission.subject_class_namespace,
+                admission.subject_class,
             ],
             |row| row.get::<_, i64>(0),
         )
         .optional()?
         .unwrap_or(0);
     u64::try_from(count)
-        .map_err(|_| PheromoneRuntimeError::Sqlite("pair count is negative".to_string()))
+        .map_err(|_| PheromoneRuntimeError::Sqlite("scarcity count is negative".to_string()))
+}
+
+fn pair_bucket_count(
+    tx: &rusqlite::Transaction<'_>,
+    deposit: &PheromoneDeposit,
+    admission: &PheromoneScarcityAdmission,
+) -> Result<u64, PheromoneRuntimeError> {
+    let count = tx
+        .query_row(
+            r#"
+            SELECT count FROM chio_pheromone_pair_buckets
+            WHERE reputation_epoch = ?1 AND window_id = ?2 AND treaty_id = ?3
+              AND subject_class_namespace = ?4 AND subject_class = ?5
+              AND kernel_id = ?6 AND passport_key_hash = ?7
+            "#,
+            params![
+                i64_from_u64(admission.reputation_epoch, "reputation_epoch")?,
+                admission.window_id,
+                admission.treaty_id,
+                admission.subject_class_namespace,
+                admission.subject_class,
+                deposit.body.kernel_id,
+                deposit.body.agent_passport_key_hash,
+            ],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?
+        .unwrap_or(0);
+    u64::try_from(count)
+        .map_err(|_| PheromoneRuntimeError::Sqlite("pair bucket count is negative".to_string()))
+}
+
+fn passport_seen(
+    tx: &rusqlite::Transaction<'_>,
+    deposit: &PheromoneDeposit,
+    admission: &PheromoneScarcityAdmission,
+) -> Result<bool, PheromoneRuntimeError> {
+    Ok(tx
+        .query_row(
+            r#"
+            SELECT 1 FROM chio_pheromone_passport_caps_v2
+            WHERE reputation_epoch = ?1 AND window_id = ?2 AND treaty_id = ?3
+              AND subject_class_namespace = ?4 AND subject_class = ?5
+              AND kernel_id = ?6 AND passport_key_hash = ?7
+            "#,
+            params![
+                i64_from_u64(admission.reputation_epoch, "reputation_epoch")?,
+                admission.window_id,
+                admission.treaty_id,
+                admission.subject_class_namespace,
+                admission.subject_class,
+                deposit.body.kernel_id,
+                deposit.body.agent_passport_key_hash,
+            ],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
+}
+
+fn passport_count(
+    tx: &rusqlite::Transaction<'_>,
+    deposit: &PheromoneDeposit,
+    admission: &PheromoneScarcityAdmission,
+) -> Result<u64, PheromoneRuntimeError> {
+    let count = tx.query_row(
+        r#"
+        SELECT COUNT(*) FROM chio_pheromone_passport_caps_v2
+        WHERE reputation_epoch = ?1 AND window_id = ?2 AND treaty_id = ?3
+          AND subject_class_namespace = ?4 AND subject_class = ?5 AND kernel_id = ?6
+        "#,
+        params![
+            i64_from_u64(admission.reputation_epoch, "reputation_epoch")?,
+            admission.window_id,
+            admission.treaty_id,
+            admission.subject_class_namespace,
+            admission.subject_class,
+            deposit.body.kernel_id,
+        ],
+        |row| row.get::<_, i64>(0),
+    )?;
+    u64::try_from(count)
+        .map_err(|_| PheromoneRuntimeError::Sqlite("passport count is negative".to_string()))
 }
 
 fn i64_from_u64(value: u64, field: &str) -> Result<i64, PheromoneRuntimeError> {
@@ -983,23 +1509,44 @@ fn i64_from_u64(value: u64, field: &str) -> Result<i64, PheromoneRuntimeError> {
     })
 }
 
-fn passport_for_deposit<'a>(
-    deposit: &PheromoneDeposit,
-    context: &'a PheromoneValidationContext,
-) -> Result<&'a PassportAdmission, PheromoneRuntimeError> {
-    context
-        .passports
-        .iter()
-        .find(|passport| {
-            passport.kernel_id == deposit.body.kernel_id
-                && agent_passport_key_hash(&passport.public_key)
-                    == deposit.body.agent_passport_key_hash
-        })
-        .ok_or_else(|| {
-            PheromoneRuntimeError::Pheromone(PheromoneError::UnknownOriginAgent(
-                deposit.body.kernel_id.clone(),
-            ))
-        })
+fn record_receive_report_tx(
+    tx: &rusqlite::Transaction<'_>,
+    report: &PheromoneReceiveReport,
+) -> Result<(), PheromoneRuntimeError> {
+    let json = serde_json::to_string(report)?;
+    tx.execute(
+        r#"
+        INSERT OR REPLACE INTO chio_pheromone_receive_reports
+            (report_sha256, received_at_unix_ms, json)
+        VALUES (?1, ?2, ?3)
+        "#,
+        params![
+            canonical_sha256(report)?,
+            i64_from_u64(report.received_at_unix_ms, "received_at_unix_ms")?,
+            json,
+        ],
+    )?;
+    Ok(())
+}
+
+fn record_receive_report_connection(
+    conn: &Connection,
+    report: &PheromoneReceiveReport,
+) -> Result<(), PheromoneRuntimeError> {
+    let json = serde_json::to_string(report)?;
+    conn.execute(
+        r#"
+        INSERT OR REPLACE INTO chio_pheromone_receive_reports
+            (report_sha256, received_at_unix_ms, json)
+        VALUES (?1, ?2, ?3)
+        "#,
+        params![
+            canonical_sha256(report)?,
+            i64_from_u64(report.received_at_unix_ms, "received_at_unix_ms")?,
+            json,
+        ],
+    )?;
+    Ok(())
 }
 
 fn passport_identity(passport: &PassportAdmission) -> (String, String) {
@@ -1020,7 +1567,7 @@ fn ensure_equal(field: &str, actual: &str, expected: &str) -> Result<(), Pheromo
         Ok(())
     } else {
         Err(PheromoneRuntimeError::WorkflowContextMismatch(format!(
-            "{field} {actual} does not match verified Chiodos evidence {expected}"
+            "{field} {actual} does not match verified Chio workflow evidence {expected}"
         )))
     }
 }
@@ -1031,27 +1578,6 @@ fn strength_at(deposit: &PheromoneDeposit, now_unix_ms: u64) -> f64 {
     }
     let elapsed_secs = now_unix_ms.saturating_sub(deposit.body.timestamp_unix_ms) as f64 / 1000.0;
     deposit.body.confidence * 2_f64.powf(-(elapsed_secs / deposit.body.decay_half_life_secs))
-}
-
-fn newcomer_discount(
-    deposit: &PheromoneDeposit,
-    context: &PheromoneValidationContext,
-    reputation_epoch: u64,
-) -> f64 {
-    let first_seen = context
-        .passports
-        .iter()
-        .find(|passport| {
-            passport.kernel_id == deposit.body.kernel_id
-                && agent_passport_key_hash(&passport.public_key)
-                    == deposit.body.agent_passport_key_hash
-        })
-        .map(|passport| passport.first_seen_epoch)
-        .unwrap_or(reputation_epoch);
-    let age = reputation_epoch
-        .saturating_sub(first_seen)
-        .saturating_add(1);
-    (age as f64 / 8.0).min(1.0)
 }
 
 fn sqrt_passport_cap(active_peers: u64) -> u64 {

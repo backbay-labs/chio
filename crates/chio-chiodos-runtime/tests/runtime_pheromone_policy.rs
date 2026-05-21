@@ -134,6 +134,60 @@ fn peer_weights() -> RuntimePeerWeights {
     }
 }
 
+#[test]
+fn chio_native_runtime_policy_material_emits_chio_decision(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let mut bundle = bundle();
+    bundle.schema = "chio.runtime.admission-bundle.v1".to_string();
+    bundle.destructive = false;
+    bundle.lease_id = None;
+    bundle.governance_receipt_id = None;
+    store.insert_bundle(bundle)?;
+    let mut profile = profile();
+    profile.schema = "chio.runtime.admission-profile.v1".to_string();
+
+    let verifier = Keypair::generate();
+    let mut trust = trust_body(1, None);
+    trust.schema = "chio.runtime.verifier-trust-bundle.v1".to_string();
+    let signed_trust = SignedExportEnvelope::sign(trust, &verifier)?;
+    let mut weights = peer_weights();
+    weights.schema = "chio.runtime.peer-weights.v1".to_string();
+    let mut policy = policy(runtime_peer_weights_sha256(&weights)?);
+    policy.schema = "chio.runtime.pheromone-policy.v1".to_string();
+    let signed_policy = SignedExportEnvelope::sign(policy, &verifier)?;
+    let signed_weights = SignedExportEnvelope::sign(weights, &verifier)?;
+    let high_risk_query_report = signed_query_report(advisory(0.91), &verifier)?;
+
+    let rejected = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile,
+        store: &store,
+        admission_id: "adm-live-1",
+        request: &binding(),
+        action_class_id: None,
+        runtime_trust_input: Some(&signed_trust),
+        trusted_verifier_keys: &trusted_keys(&verifier),
+        pheromone_query_report: Some(&high_risk_query_report),
+        runtime_pheromone_policy: Some(&signed_policy),
+        runtime_peer_weights: Some(&signed_weights),
+        now_unix_ms: 1_800_000_001_000,
+    })?;
+
+    assert!(!rejected.accepted);
+    assert_eq!(rejected.schema, "chio.runtime.admission-report.v1");
+    assert_eq!(
+        rejected.failure_code.as_deref(),
+        Some("runtime_pheromone_policy_deny")
+    );
+    let decision = rejected
+        .pheromone_policy_decision
+        .ok_or_else(|| io::Error::other("policy decision missing"))?;
+    assert_eq!(decision.schema, "chio.runtime.pheromone-policy-decision.v1");
+    assert!(rejected.receipt_metadata.get("chio_runtime").is_some());
+    assert!(rejected.receipt_metadata.get("chiodos_runtime").is_none());
+    Ok(())
+}
+
 fn query_report_body(advisory: RuntimePheromoneAdvisory) -> serde_json::Value {
     serde_json::json!({
         "schema": "chio.pheromone.query-report.v1",

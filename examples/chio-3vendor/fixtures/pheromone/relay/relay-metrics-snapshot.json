@@ -1,0 +1,45 @@
+{
+  "schema": "chio.pheromone.relay-metrics-snapshot.v1",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000000500,
+  "samples": [
+    {
+      "name": "chio_pheromone_relay_queue_depth",
+      "value": 0,
+      "labels": {
+        "status": "pending"
+      }
+    },
+    {
+      "name": "chio_pheromone_relay_queue_depth",
+      "value": 1,
+      "labels": {
+        "status": "retry"
+      }
+    },
+    {
+      "name": "chio_pheromone_relay_oldest_pending_age_seconds",
+      "value": 60,
+      "labels": {}
+    },
+    {
+      "name": "chio_pheromone_relay_stale_leases",
+      "value": 1,
+      "labels": {}
+    },
+    {
+      "name": "chio_pheromone_relay_dead_letters_total",
+      "value": 1,
+      "labels": {
+        "reason": "observed"
+      }
+    },
+    {
+      "name": "chio_pheromone_relay_rejections_total",
+      "value": 2,
+      "labels": {
+        "reason": "relay_nonce_replay"
+      }
+    }
+  ]
+}

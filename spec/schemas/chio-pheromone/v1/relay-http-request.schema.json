@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-http-request.schema.json",
-  "title": "Chiodos Pheromone Relay HTTP Request",
+  "title": "Chio Pheromone Relay HTTP Request",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -22,7 +22,7 @@
     "recipientKernelId": { "type": "string", "minLength": 1 },
     "method": { "const": "POST" },
     "path": {
-      "enum": ["/v1/chiodos/pheromone/batches", "/v1/chiodos/pheromone/catchup"]
+      "enum": ["/v1/chio/pheromone/batches", "/v1/chio/pheromone/catchup"]
     },
     "bodySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "nonce": { "type": "string", "minLength": 1 },

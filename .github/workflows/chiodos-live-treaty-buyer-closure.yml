@@ -1,60 +1,25 @@
-name: Chiodos Live Treaty Buyer Closure
+name: Legacy Chiodos Live Treaty Buyer Closure
 
 on:
-  pull_request:
-    paths:
-      - "crates/chio-chiodos-runtime/**"
-      - "crates/chio-chiodos-runtime-harness/**"
-      - "crates/chio-chiodos-loopback/**"
-      - "crates/chio-chiodos/**"
-      - "crates/chio-cli/**"
-      - "crates/chio-federation/**"
-      - "crates/chio-kernel/**"
-      - "examples/chiodos-3vendor/**"
-      - "scripts/check-chiodos-live-treaty-buyer-closure.sh"
-      - "scripts/check-chiodos-runtime-spine.sh"
-      - "scripts/check-chiodos-treaty-buyer-hero-loop.sh"
-      - "spec/schemas/chiodos/**"
-      - "spec/schemas/registry.json"
-      - "spec/schemas/MANIFEST.sha256"
-      - ".github/workflows/chiodos-live-treaty-buyer-closure.yml"
-  push:
-    branches: ["main"]
-    paths:
-      - "crates/chio-chiodos-runtime/**"
-      - "crates/chio-chiodos-runtime-harness/**"
-      - "crates/chio-chiodos-loopback/**"
-      - "crates/chio-chiodos/**"
-      - "crates/chio-cli/**"
-      - "crates/chio-federation/**"
-      - "crates/chio-kernel/**"
-      - "examples/chiodos-3vendor/**"
-      - "scripts/check-chiodos-live-treaty-buyer-closure.sh"
-      - "scripts/check-chiodos-runtime-spine.sh"
-      - "scripts/check-chiodos-treaty-buyer-hero-loop.sh"
-      - "spec/schemas/chiodos/**"
-      - "spec/schemas/registry.json"
-      - "spec/schemas/MANIFEST.sha256"
-      - ".github/workflows/chiodos-live-treaty-buyer-closure.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: chiodos-live-treaty-buyer-closure-${{ github.ref }}
+  group: legacy-chiodos-live-treaty-buyer-closure-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  live-treaty-buyer-closure:
+  legacy-live-treaty-buyer-closure:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Run live treaty buyer closure gate
-        run: bash scripts/check-chiodos-live-treaty-buyer-closure.sh
+      - name: Run Chio live treaty buyer closure gate
+        run: bash scripts/check-chio-live-treaty-buyer-closure.sh

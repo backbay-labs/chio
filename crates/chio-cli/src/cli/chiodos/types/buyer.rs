@@ -1,7 +1,6 @@
 use clap::Subcommand;
 use std::path::PathBuf;
 
-
 #[derive(Subcommand)]
 pub(crate) enum ChiodosBuyerCommands {
     /// Build a buyer review package from a local runtime output directory.
@@ -49,4 +48,3 @@ pub(crate) enum ChiodosBuyerCommands {
         out: PathBuf,
     },
 }
-

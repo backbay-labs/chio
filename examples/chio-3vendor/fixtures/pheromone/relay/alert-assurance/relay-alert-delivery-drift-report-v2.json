@@ -1,0 +1,20 @@
+{
+  "schema": "chio.pheromone.relay-alert-delivery-drift-report.v2",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000090000,
+  "sinceUnixMs": 1765999900000,
+  "untilUnixMs": 1766000090000,
+  "handoffReportCount": 1,
+  "deliveryReportCount": 1,
+  "driftCount": 0,
+  "drifts": [],
+  "checks": [
+    {
+      "code": "source_bound_delivery_intersection",
+      "accepted": true,
+      "detail": "handoff and delivery reports intersect by source handoff hash"
+    }
+  ]
+}

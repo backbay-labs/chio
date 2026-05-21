@@ -1,0 +1,13 @@
+{
+  "schema": "chio.runtime.trusted-verifiers.v1",
+  "verifierKeys": [
+    {
+      "verifierId": "did:chio:buyer-verifier",
+      "keyId": "verifier-key-1",
+      "publicKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "validFromUnixMs": 1800000000000,
+      "validUntilUnixMs": 1800003600000,
+      "status": "active"
+    }
+  ]
+}

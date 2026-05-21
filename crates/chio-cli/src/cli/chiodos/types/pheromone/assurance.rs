@@ -1,9 +1,8 @@
 use clap::Subcommand;
 use std::path::PathBuf;
 
-
 #[derive(Subcommand)]
-pub(crate) enum ChiodosPheromoneRelayAlertAssuranceCommands {
+pub(crate) enum ChioPheromoneRelayAlertAssuranceCommands {
     /// Bind alert evidence into one operator-safe assurance package.
     Package {
         /// Relay alert report JSON.
@@ -147,7 +146,7 @@ pub(crate) enum ChiodosPheromoneRelayAlertAssuranceCommands {
     /// Plan retention for signed local alert assurance export bundles.
     Retention {
         #[command(subcommand)]
-        command: ChiodosPheromoneRelayAlertAssuranceRetentionCommands,
+        command: ChioPheromoneRelayAlertAssuranceRetentionCommands,
     },
 
     /// Run offline recovery drills against an export bundle.
@@ -176,18 +175,18 @@ pub(crate) enum ChiodosPheromoneRelayAlertAssuranceCommands {
     /// Plan verifier-owned archive lifecycle over signed export bundles.
     Archive {
         #[command(subcommand)]
-        command: ChiodosPheromoneRelayAlertAssuranceArchiveCommands,
+        command: ChioPheromoneRelayAlertAssuranceArchiveCommands,
     },
 
     /// Review signed export bundles for operator-managed closeout.
     Closeout {
         #[command(subcommand)]
-        command: ChiodosPheromoneRelayAlertAssuranceCloseoutCommands,
+        command: ChioPheromoneRelayAlertAssuranceCloseoutCommands,
     },
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosPheromoneRelayAlertAssuranceRetentionCommands {
+pub(crate) enum ChioPheromoneRelayAlertAssuranceRetentionCommands {
     /// Plan retention over local export bundle directories without deleting evidence.
     Plan {
         /// Directory containing export bundle directories.
@@ -209,7 +208,7 @@ pub(crate) enum ChiodosPheromoneRelayAlertAssuranceRetentionCommands {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosPheromoneRelayAlertAssuranceArchiveCommands {
+pub(crate) enum ChioPheromoneRelayAlertAssuranceArchiveCommands {
     /// Plan archive lifecycle over local export bundle directories without moving evidence.
     Plan {
         /// Directory containing export bundle directories.
@@ -239,7 +238,7 @@ pub(crate) enum ChiodosPheromoneRelayAlertAssuranceArchiveCommands {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosPheromoneRelayAlertAssuranceCloseoutCommands {
+pub(crate) enum ChioPheromoneRelayAlertAssuranceCloseoutCommands {
     /// Review local export bundle directories for operator-managed closeout.
     Review {
         /// Directory containing export bundle directories.

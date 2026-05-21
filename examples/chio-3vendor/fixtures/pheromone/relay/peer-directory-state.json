@@ -1,0 +1,61 @@
+{
+  "schema": "chio.pheromone.peer-directory-state.v1",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000000500,
+  "versionFloor": 2,
+  "active": {
+    "bundle": {
+      "schema": "chio.pheromone.peer-directory-bundle.v1",
+      "body": {
+        "schema": "chio.pheromone.peer-directory-bundle.v1",
+        "issuer": "did:chio:relay-ops",
+        "keyId": "relay-ops-2026",
+        "directorySha256": "eaf656fae8c7fa7e09482ce3161fd1d10938e259b98fabb526cf8641c3a4cade",
+        "version": 2,
+        "previousVersionSha256": "8c9f6e2abc34ce301d317e734ab6638b3af490d0d01b102e806fd81a883d3120",
+        "issuedAtUnixMs": 1765999999500,
+        "expiresAtUnixMs": 1766000060500
+      },
+      "directory": {
+        "schema": "chio.pheromone.peer-directory.v1",
+        "localKernelId": "did:chio:dataco",
+        "issuedAtUnixMs": 1765999999500,
+        "expiresAtUnixMs": 1766000060500,
+        "peers": [
+          {
+            "kernelId": "did:chio:auditor-kernel",
+            "publicKey": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a",
+            "endpoint": "https://relay-auditor.example.test",
+            "treatySubscriptions": [
+              "treaty:auditor-dataco:support-ops"
+            ],
+            "relayRole": "receiver",
+            "allowedSubjectClassNamespaces": [
+              "dev.chio.support"
+            ],
+            "acceptedLadderRefs": [
+              {
+                "ladderManifestId": "ladder:auditor:review:v1",
+                "ladderManifestSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "expiresAtUnixMs": 1766000060500
+              }
+            ],
+            "maxBatchFrames": 8,
+            "maxCatchupFrames": 16,
+            "maxCatchupBytes": 64000
+          }
+        ]
+      },
+      "signature": "c47da11dc94683417856b156d912f7b8b94dfda164a636b55d1eee3fb79a44dcfd3331ceae137c6812f03385fac1f1db57be421703cc38897915a84e03637205"
+    },
+    "bundleSha256": "ba11b3973fd724f84ab400a7798023dab3f9b3c1aedabd55f7f302bbeaa5a5dd",
+    "directorySha256": "eaf656fae8c7fa7e09482ce3161fd1d10938e259b98fabb526cf8641c3a4cade",
+    "version": 2,
+    "promotedAtUnixMs": 1766000000500,
+    "removedPeerIds": [
+      "did:chio:buyer-kernel"
+    ]
+  },
+  "candidate": null,
+  "rejected": []
+}

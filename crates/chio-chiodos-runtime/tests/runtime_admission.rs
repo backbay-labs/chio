@@ -24,7 +24,7 @@ use chio_core_types::receipt::{
 };
 use chio_core_types::SignedExportEnvelope;
 use chio_federation::{
-    sign_chiodos_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
+    sign_chio_bilateral_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
     GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary, PolicyVerdict, TreatyBindingRef,
 };
 use chio_kernel::{RuntimeAdmissionContext, RuntimeAdmissionHook, ToolCallRequest};
@@ -100,6 +100,40 @@ fn bundle() -> RuntimeAdmissionBundle {
         trust_bundle_sha256: "b".repeat(64),
         verification_context_sha256: "c".repeat(64),
     }
+}
+
+#[test]
+fn chio_native_runtime_admission_schema_emits_chio_report() -> Result<(), Box<dyn std::error::Error>>
+{
+    let mut profile = profile();
+    profile.schema = "chio.runtime.admission-profile.v1".to_string();
+    let mut bundle = bundle();
+    bundle.schema = "chio.runtime.admission-bundle.v1".to_string();
+    bundle.destructive = false;
+    bundle.lease_id = None;
+    bundle.governance_receipt_id = None;
+
+    let store = InMemoryRuntimeAdmissionStore::new();
+    store.insert_bundle(bundle.clone())?;
+    let report = evaluate_runtime_admission(RuntimeAdmissionInput {
+        profile: &profile,
+        store: &store,
+        admission_id: &bundle.admission_id,
+        request: &bundle.binding,
+        action_class_id: None,
+        runtime_trust_input: None,
+        trusted_verifier_keys: &[],
+        pheromone_query_report: None,
+        runtime_pheromone_policy: None,
+        runtime_peer_weights: None,
+        now_unix_ms: 1_800_000_000_001,
+    })?;
+
+    assert!(report.accepted);
+    assert_eq!(report.schema, "chio.runtime.admission-report.v1");
+    assert!(report.receipt_metadata.get("chio_runtime").is_some());
+    assert!(report.receipt_metadata.get("chiodos_runtime").is_none());
+    Ok(())
 }
 
 fn trusted_keys(verifier: &Keypair) -> Vec<RuntimeTrustedVerifierKey> {
@@ -241,6 +275,19 @@ fn allowing_policy_hook<S>(
     let (signed_trust, trusted, advisory, signed_policy, signed_weights) =
         signed_policy_inputs(0.10)?;
     Ok(ChiodosRuntimeAdmissionHook::new(profile(), store)
+        .with_runtime_trust_input(signed_trust, trusted)
+        .with_pheromone_query_report(advisory)
+        .with_runtime_pheromone_policy(signed_policy, signed_weights))
+}
+
+fn allowing_chio_policy_hook<S>(
+    store: S,
+) -> Result<ChiodosRuntimeAdmissionHook<S>, Box<dyn std::error::Error>> {
+    let mut profile = profile();
+    profile.schema = "chio.runtime.admission-profile.v1".to_string();
+    let (signed_trust, trusted, advisory, signed_policy, signed_weights) =
+        signed_policy_inputs(0.10)?;
+    Ok(ChiodosRuntimeAdmissionHook::new(profile, store)
         .with_runtime_trust_input(signed_trust, trusted)
         .with_pheromone_query_report(advisory)
         .with_runtime_pheromone_policy(signed_policy, signed_weights))
@@ -915,6 +962,71 @@ fn treaty_runtime_hook_releases_reserved_state_after_kernel_abort(
 }
 
 #[test]
+fn chio_runtime_hook_releases_chio_native_reserved_state_after_kernel_abort(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let mut admission_bundle = bundle();
+    admission_bundle.schema = "chio.runtime.admission-bundle.v1".to_string();
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    admission_bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    admission_bundle.binding.origin_kernel_id = None;
+    let bundle_hash = runtime_admission_bundle_sha256(&admission_bundle)?;
+    store.insert_bundle(admission_bundle)?;
+    let cap = capability("cap-live-1")?;
+    let request = ToolCallRequest {
+        request_id: "req-live-destructive".to_string(),
+        capability: cap.clone(),
+        tool_name: "close_account".to_string(),
+        server_id: "vendor-ledger".to_string(),
+        agent_id: cap.subject.to_hex(),
+        arguments: args,
+        dpop_proof: None,
+        governed_intent: Some(GovernedTransactionIntent {
+            id: "intent-live-1".to_string(),
+            server_id: "vendor-ledger".to_string(),
+            tool_name: "close_account".to_string(),
+            purpose: "close governed vendor account".to_string(),
+            max_amount: None,
+            commerce: None,
+            metered_billing: None,
+            runtime_attestation: None,
+            call_chain: None,
+            autonomy: None,
+            context: Some(serde_json::json!({
+                "chioAdmission": {
+                    "admissionId": "adm-live-1",
+                    "bundleSha256": bundle_hash
+                }
+            })),
+        }),
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    let hook = allowing_chio_policy_hook(store)?;
+    let context = RuntimeAdmissionContext {
+        request: &request,
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    };
+
+    let first = hook.evaluate(&context)?;
+    assert!(first.allowed, "{first:#?}");
+    let metadata = first
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert!(metadata.get("chio_runtime").is_some());
+    assert!(metadata.get("chiodos_runtime").is_none());
+    hook.release_reserved(&metadata)?;
+    let second = hook.evaluate(&context)?;
+
+    assert!(second.allowed, "{second:#?}");
+    Ok(())
+}
+
+#[test]
 fn kernel_hook_uses_configured_runtime_policy_to_deny() -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();
     let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
@@ -1130,7 +1242,7 @@ fn treaty_runtime_fixture() -> Result<TreatyRuntimeFixture, Box<dyn std::error::
         bilateral_invocation_binding_sha256
     );
     let bilateral_invocation_sha256 = bilateral_invocation_binding_sha256;
-    let bilateral_dsse = sign_chiodos_dsse_envelope(
+    let bilateral_dsse = sign_chio_bilateral_dsse_envelope(
         &receipt,
         &signer_a,
         &signer_b,

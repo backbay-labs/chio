@@ -189,7 +189,7 @@ pub fn validate_governance_ladder_manifest(
     Ok(())
 }
 pub fn validate_treaty_scope(scope: &TreatyScope) -> Result<(), ChiodosRuntimeError> {
-    if scope.schema != CHIODOS_TREATY_SCOPE_SCHEMA {
+    if !is_supported_treaty_scope_schema(&scope.schema) {
         return rejected(
             "unsupported_treaty_scope_schema",
             "treaty scope declared an unsupported schema",
@@ -259,6 +259,12 @@ pub fn validate_treaty_scope(scope: &TreatyScope) -> Result<(), ChiodosRuntimeEr
     ensure_sha256_hash(
         &scope.trust_bundle_sha256,
         "treaty_scope_invalid_trust_bundle_hash",
+    )
+}
+fn is_supported_treaty_scope_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_FEDERATION_TREATY_SCOPE_SCHEMA | CHIODOS_TREATY_SCOPE_SCHEMA
     )
 }
 pub fn compute_ladder_intersection(
@@ -400,7 +406,7 @@ pub fn compute_ladder_intersection(
         .min()
         .unwrap_or(treaty_scope.expires_at_unix_ms);
     Ok(LadderIntersection {
-        schema: CHIODOS_LADDER_INTERSECTION_SCHEMA.to_string(),
+        schema: CHIO_FEDERATION_LADDER_INTERSECTION_SCHEMA.to_string(),
         intersection_id: format!("{}:{}", treaty_scope.treaty_id, now_unix_ms),
         treaty_id: treaty_scope.treaty_id.clone(),
         participant_kernel_ids: treaty_scope.participant_kernel_ids.clone(),
@@ -413,7 +419,7 @@ pub fn compute_ladder_intersection(
 pub fn validate_ladder_intersection(
     intersection: &LadderIntersection,
 ) -> Result<(), ChiodosRuntimeError> {
-    if intersection.schema != CHIODOS_LADDER_INTERSECTION_SCHEMA {
+    if !is_supported_ladder_intersection_schema(&intersection.schema) {
         return rejected(
             "unsupported_ladder_intersection_schema",
             "ladder intersection declared an unsupported schema",
@@ -463,6 +469,12 @@ pub fn validate_ladder_intersection(
         }
     }
     Ok(())
+}
+fn is_supported_ladder_intersection_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_FEDERATION_LADDER_INTERSECTION_SCHEMA | CHIODOS_LADDER_INTERSECTION_SCHEMA
+    )
 }
 pub fn evaluate_cross_boundary_admission(
     input: CrossBoundaryAdmissionInput<'_>,
@@ -562,7 +574,7 @@ pub fn evaluate_cross_boundary_admission(
         .any(|required| !present.contains(required.as_str()));
     if missing_required {
         return Ok(CrossBoundaryAdmissionReport {
-            schema: CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA.to_string(),
+            schema: CHIO_FEDERATION_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA.to_string(),
             treaty_id: input.treaty_scope.treaty_id.clone(),
             action_class_id: input.action_class_id.to_string(),
             accepted: false,
@@ -586,7 +598,7 @@ pub fn evaluate_cross_boundary_admission(
     });
     if missing_verified {
         return Ok(CrossBoundaryAdmissionReport {
-            schema: CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA.to_string(),
+            schema: CHIO_FEDERATION_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA.to_string(),
             treaty_id: input.treaty_scope.treaty_id.clone(),
             action_class_id: input.action_class_id.to_string(),
             accepted: false,
@@ -606,7 +618,7 @@ pub fn evaluate_cross_boundary_admission(
     checks.push("chiodos_treaty.required_evidence_present".to_string());
     checks.push("chiodos_treaty.required_evidence_verified".to_string());
     Ok(CrossBoundaryAdmissionReport {
-        schema: CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA.to_string(),
+        schema: CHIO_FEDERATION_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA.to_string(),
         treaty_id: input.treaty_scope.treaty_id.clone(),
         action_class_id: input.action_class_id.to_string(),
         accepted: true,
@@ -644,7 +656,7 @@ fn required_evidence_for_action(action: &LadderIntersectionActionClass) -> Vec<S
 pub fn validate_cross_boundary_admission_report(
     report: &CrossBoundaryAdmissionReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA {
+    if !is_supported_cross_boundary_admission_report_schema(&report.schema) {
         return rejected(
             "unsupported_cross_boundary_admission_report_schema",
             "cross-boundary admission report declared an unsupported schema",
@@ -720,6 +732,13 @@ pub fn validate_cross_boundary_admission_report(
     }
     Ok(())
 }
+fn is_supported_cross_boundary_admission_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_FEDERATION_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA
+            | CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA
+    )
+}
 fn ladder_mode_rank(mode: &str) -> Result<u8, ChiodosRuntimeError> {
     match mode {
         "observation" => Ok(0),
@@ -779,7 +798,7 @@ fn cross_boundary_rejection_report(
     checks: Vec<String>,
 ) -> CrossBoundaryAdmissionReport {
     CrossBoundaryAdmissionReport {
-        schema: CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA.to_string(),
+        schema: CHIO_FEDERATION_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA.to_string(),
         treaty_id: input.treaty_scope.treaty_id.clone(),
         action_class_id: input.action_class_id.to_string(),
         accepted: false,
@@ -799,7 +818,10 @@ fn cross_boundary_rejection_report(
 pub(crate) fn validate_receipt_lineage_statement(
     statement: &ReceiptLineageStatement,
 ) -> Result<(), ChiodosRuntimeError> {
-    if statement.schema != CHIODOS_RECEIPT_LINEAGE_STATEMENT_SCHEMA {
+    if !matches!(
+        statement.schema.as_str(),
+        CHIO_FEDERATION_RECEIPT_LINEAGE_STATEMENT_SCHEMA | CHIODOS_RECEIPT_LINEAGE_STATEMENT_SCHEMA
+    ) {
         return rejected(
             "unsupported_receipt_lineage_statement_schema",
             "receipt lineage statement declared an unsupported schema",
@@ -843,7 +865,10 @@ pub(crate) fn validate_receipt_lineage_statement(
 pub(crate) fn validate_cross_kernel_continuation(
     continuation: &CrossKernelContinuation,
 ) -> Result<(), ChiodosRuntimeError> {
-    if continuation.schema != CHIODOS_CROSS_KERNEL_CONTINUATION_SCHEMA {
+    if !matches!(
+        continuation.schema.as_str(),
+        CHIO_FEDERATION_CROSS_KERNEL_CONTINUATION_SCHEMA | CHIODOS_CROSS_KERNEL_CONTINUATION_SCHEMA
+    ) {
         return rejected(
             "unsupported_cross_kernel_continuation_schema",
             "cross-kernel continuation declared an unsupported schema",
@@ -884,7 +909,10 @@ pub(crate) fn validate_cross_kernel_continuation(
 pub(crate) fn validate_bilateral_invocation(
     invocation: &BilateralInvocation,
 ) -> Result<(), ChiodosRuntimeError> {
-    if invocation.schema != CHIODOS_BILATERAL_INVOCATION_SCHEMA {
+    if !matches!(
+        invocation.schema.as_str(),
+        CHIO_FEDERATION_BILATERAL_INVOCATION_SCHEMA | CHIODOS_BILATERAL_INVOCATION_SCHEMA
+    ) {
         return rejected(
             "unsupported_bilateral_invocation_schema",
             "bilateral invocation declared an unsupported schema",
@@ -950,7 +978,10 @@ pub(crate) fn validate_bilateral_invocation(
 pub(crate) fn validate_receipt_lineage_bundle(
     bundle: &ReceiptLineageBundle,
 ) -> Result<(), ChiodosRuntimeError> {
-    if bundle.schema != CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA {
+    if !matches!(
+        bundle.schema.as_str(),
+        CHIO_FEDERATION_RECEIPT_LINEAGE_BUNDLE_SCHEMA | CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA
+    ) {
         return rejected(
             "unsupported_receipt_lineage_bundle_schema",
             "receipt lineage bundle declared an unsupported schema",

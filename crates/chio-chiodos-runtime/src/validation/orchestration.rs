@@ -6,6 +6,9 @@ use crate::schema::{
     CHIODOS_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA,
     CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA,
     CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA, CHIODOS_RUNTIME_RUN_CONTRACT_SCHEMA,
+    CHIO_RUNTIME_ORCHESTRATION_PLAN_SCHEMA, CHIO_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA,
+    CHIO_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA, CHIO_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA,
+    CHIO_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA, CHIO_RUNTIME_RUN_CONTRACT_SCHEMA,
 };
 use crate::types::{
     RuntimeOrchestrationPlan, RuntimeOrchestrationPlannedStep, RuntimeOrchestrationProfile,
@@ -20,7 +23,7 @@ use crate::validation::common::{
 pub fn validate_runtime_orchestration_profile(
     profile: &RuntimeOrchestrationProfile,
 ) -> Result<(), ChiodosRuntimeError> {
-    if profile.schema != CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA {
+    if !is_runtime_orchestration_profile_schema(&profile.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_orchestration_profile_schema",
             detail: format!(
@@ -87,7 +90,7 @@ pub fn validate_runtime_orchestration_profile_fresh(
 pub fn validate_runtime_run_contract(
     contract: &RuntimeRunContract,
 ) -> Result<(), ChiodosRuntimeError> {
-    if contract.schema != CHIODOS_RUNTIME_RUN_CONTRACT_SCHEMA {
+    if !is_runtime_run_contract_schema(&contract.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_run_contract_schema",
             detail: format!(
@@ -135,7 +138,7 @@ pub fn validate_runtime_run_contract(
 pub fn validate_runtime_orchestration_plan(
     plan: &RuntimeOrchestrationPlan,
 ) -> Result<(), ChiodosRuntimeError> {
-    if plan.schema != CHIODOS_RUNTIME_ORCHESTRATION_PLAN_SCHEMA {
+    if !is_runtime_orchestration_plan_schema(&plan.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_orchestration_plan_schema",
             detail: format!(
@@ -171,7 +174,7 @@ pub fn validate_runtime_orchestration_plan(
 pub fn validate_runtime_orchestration_run_report(
     report: &RuntimeOrchestrationRunReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA {
+    if !is_runtime_orchestration_run_report_schema(&report.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_orchestration_run_report_schema",
             detail: format!(
@@ -251,7 +254,7 @@ pub fn validate_runtime_orchestration_run_report(
 pub fn validate_runtime_orchestration_resume_plan(
     plan: &RuntimeOrchestrationResumePlan,
 ) -> Result<(), ChiodosRuntimeError> {
-    if plan.schema != CHIODOS_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA {
+    if !is_runtime_orchestration_resume_plan_schema(&plan.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_orchestration_resume_plan_schema",
             detail: format!(
@@ -279,7 +282,7 @@ pub fn validate_runtime_orchestration_resume_plan(
 pub fn validate_runtime_orchestration_status_report(
     report: &RuntimeOrchestrationStatusReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA {
+    if !is_runtime_orchestration_status_report_schema(&report.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_orchestration_status_report_schema",
             detail: format!(
@@ -316,6 +319,51 @@ pub fn validate_runtime_orchestration_status_report(
         });
     }
     Ok(())
+}
+
+fn is_runtime_orchestration_plan_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_ORCHESTRATION_PLAN_SCHEMA | CHIODOS_RUNTIME_ORCHESTRATION_PLAN_SCHEMA
+    )
+}
+
+fn is_runtime_orchestration_profile_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA | CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA
+    )
+}
+
+fn is_runtime_run_contract_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_RUN_CONTRACT_SCHEMA | CHIODOS_RUNTIME_RUN_CONTRACT_SCHEMA
+    )
+}
+
+fn is_runtime_orchestration_run_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA
+            | CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA
+    )
+}
+
+fn is_runtime_orchestration_resume_plan_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA
+            | CHIODOS_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA
+    )
+}
+
+fn is_runtime_orchestration_status_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA
+            | CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA
+    )
 }
 
 fn validate_planned_steps(

@@ -20,12 +20,22 @@ fn accepted_admission_report() -> CrossBoundaryAdmissionReport {
         consistency_model: "totally_ordered".to_string(),
         co_sign: "bilateral_required".to_string(),
         required_evidence: vec!["governance_receipt".to_string()],
-        present_evidence: vec!["governance_receipt".to_string()],
-        verified_evidence: vec![CrossBoundaryEvidenceRef {
-            evidence_class: "governance_receipt".to_string(),
-            artifact_sha256: "d".repeat(64),
-            verified: true,
-        }],
+        present_evidence: vec![
+            "governance_receipt".to_string(),
+            "bilateral_invocation".to_string(),
+        ],
+        verified_evidence: vec![
+            CrossBoundaryEvidenceRef {
+                evidence_class: "governance_receipt".to_string(),
+                artifact_sha256: "d".repeat(64),
+                verified: true,
+            },
+            CrossBoundaryEvidenceRef {
+                evidence_class: "bilateral_invocation".to_string(),
+                artifact_sha256: "e".repeat(64),
+                verified: true,
+            },
+        ],
         treaty_scope_sha256: "a".repeat(64),
         ladder_intersection_sha256: "b".repeat(64),
         expected_ladder_intersection_sha256: Some("b".repeat(64)),
@@ -134,6 +144,73 @@ fn treaty_cross_boundary_admission_requires_intersection_and_evidence(
     assert!(accepted.accepted);
     assert_eq!(accepted.mode, "receipt_backed");
     assert_eq!(accepted.consistency_model, "totally_ordered");
+    Ok(())
+}
+
+#[test]
+fn chio_federation_treaty_schema_is_accepted_and_emitted() -> Result<(), Box<dyn std::error::Error>>
+{
+    let buyer = treaty_manifest(
+        "kernel.buyer",
+        treaty_action_class(
+            "receipt_backed",
+            true,
+            "totally_ordered",
+            vec!["governance_receipt"],
+        ),
+    );
+    let vendor = treaty_manifest(
+        "kernel.vendor-b",
+        treaty_action_class(
+            "receipt_backed",
+            true,
+            "totally_ordered",
+            vec!["governance_receipt"],
+        ),
+    );
+    let mut treaty = treaty_scope();
+    treaty.schema = "chio.federation.treaty-scope.v1".to_string();
+    treaty.ladder_manifest_sha256s = vec![
+        chio_chiodos_runtime::governance_ladder_manifest_sha256(&buyer)?,
+        chio_chiodos_runtime::governance_ladder_manifest_sha256(&vendor)?,
+    ];
+
+    let intersection = compute_ladder_intersection(&treaty, &[buyer, vendor], 1_800_000_010_000)?;
+    assert_eq!(
+        intersection.schema,
+        "chio.federation.ladder-intersection.v1"
+    );
+    let expected_intersection_sha256 =
+        chio_chiodos_runtime::ladder_intersection_sha256(&intersection)?;
+    let admission = evaluate_cross_boundary_admission(CrossBoundaryAdmissionInput {
+        treaty_scope: &treaty,
+        ladder_intersection: &intersection,
+        expected_ladder_intersection_sha256: Some(expected_intersection_sha256),
+        action_class_id: "workflow.destructive.vendor_call",
+        present_evidence: vec![
+            "governance_receipt".to_string(),
+            "bilateral_invocation".to_string(),
+        ],
+        verified_evidence: vec![
+            CrossBoundaryEvidenceRef {
+                evidence_class: "governance_receipt".to_string(),
+                artifact_sha256: "d".repeat(64),
+                verified: true,
+            },
+            CrossBoundaryEvidenceRef {
+                evidence_class: "bilateral_invocation".to_string(),
+                artifact_sha256: "e".repeat(64),
+                verified: true,
+            },
+        ],
+        now_unix_ms: 1_800_000_010_000,
+    })?;
+    assert!(admission.accepted);
+    assert_eq!(
+        admission.schema,
+        "chio.federation.cross-boundary-admission-report.v1"
+    );
+    validate_cross_boundary_admission_report(&admission)?;
     Ok(())
 }
 

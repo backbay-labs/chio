@@ -1,4 +1,4 @@
-//! Live Chiodos pheromone relay service and durable relay state.
+//! Live Chio pheromone relay service and durable relay state.
 
 #![forbid(unsafe_code)]
 
@@ -15,6 +15,9 @@ mod schema;
 mod service;
 mod store;
 mod validation;
+
+pub const PHEROMONE_RELAY_ALERT_DEDUPE_PREFIX: &str = "chio-relay";
+pub const PHEROMONE_RELAY_SERVICE_LABEL: &str = "chio-pheromone-relay";
 
 pub(crate) use alerts::{
     contains_secret_marker, delivery_receiver_map, handoff_route_map, is_bounded_code,
@@ -138,9 +141,9 @@ pub use schema::{
     PHEROMONE_RELAY_HTTP_REQUEST_SCHEMA, PHEROMONE_RELAY_METRICS_PATH,
     PHEROMONE_RELAY_METRICS_SNAPSHOT_SCHEMA, PHEROMONE_RELAY_NEGATIVE_CORPUS_SCHEMA,
     PHEROMONE_RELAY_OBSERVABILITY_PATH, PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA,
-    PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA, PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA,
-    PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA, PHEROMONE_RELAY_TICK_REPORT_SCHEMA,
-    PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
+    PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA, PHEROMONE_RELAY_PATH_PREFIX,
+    PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA, PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA,
+    PHEROMONE_RELAY_TICK_REPORT_SCHEMA, PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
 };
 pub use service::{
     deliver_due_batches, lint_relay_supervisor_profile, relay_supervisor_profile_from_json,

@@ -1,16 +1,15 @@
 use clap::Subcommand;
 use std::path::PathBuf;
 
-
 #[derive(Subcommand)]
-pub(crate) enum ChiodosAuthorityCommands {
+pub(crate) enum ChioAuthorityCommands {
     /// Issue capability leases, lease-scope bindings, and governance receipts.
     Issue {
         /// Public authority profile JSON.
         #[arg(long, value_name = "PATH")]
         profile: PathBuf,
 
-        /// Chiodos issuance request JSON.
+        /// Chio issuance request JSON.
         #[arg(long, value_name = "PATH")]
         request: PathBuf,
 
@@ -45,12 +44,12 @@ pub(crate) enum ChiodosAuthorityCommands {
     /// Assemble verifier-owned trust inputs.
     TrustBundle {
         #[command(subcommand)]
-        command: ChiodosTrustBundleCommands,
+        command: ChioTrustBundleCommands,
     },
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosTrustBundleCommands {
+pub(crate) enum ChioTrustBundleCommands {
     /// Assemble a strict verifier trust bundle.
     Assemble {
         /// Public authority profile JSON.

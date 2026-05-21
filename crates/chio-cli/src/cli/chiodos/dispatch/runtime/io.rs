@@ -7,31 +7,29 @@ use super::super::read_utf8_json_file;
 
 pub(crate) fn load_runtime_orchestration_profile(
     path: &Path,
-) -> Result<chio_chiodos_runtime::RuntimeOrchestrationProfile, CliError> {
-    let profile = chio_chiodos_runtime::runtime_orchestration_profile_from_json(
-        &read_utf8_json_file(path, "Chiodos runtime orchestration profile")?,
+) -> Result<chio_runtime::RuntimeOrchestrationProfile, CliError> {
+    let profile = chio_runtime::runtime_orchestration_profile_from_json(
+        &read_utf8_json_file(path, "Chio runtime orchestration profile")?,
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos runtime orchestration profile: {error}"))
+        CliError::cli_other_error(format!("Chio runtime orchestration profile: {error}"))
     })?;
-    chio_chiodos_runtime::validate_runtime_orchestration_profile(&profile).map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos runtime orchestration profile: {error}"))
+    chio_runtime::validate_runtime_orchestration_profile(&profile).map_err(|error| {
+        CliError::cli_other_error(format!("Chio runtime orchestration profile: {error}"))
     })?;
     Ok(profile)
 }
 
 pub(crate) fn load_runtime_run_contract(
     path: &Path,
-) -> Result<chio_chiodos_runtime::RuntimeRunContract, CliError> {
-    let contract = chio_chiodos_runtime::runtime_run_contract_from_json(&read_utf8_json_file(
+) -> Result<chio_runtime::RuntimeRunContract, CliError> {
+    let contract = chio_runtime::runtime_run_contract_from_json(&read_utf8_json_file(
         path,
-        "Chiodos runtime run contract",
+        "Chio runtime run contract",
     )?)
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos runtime run contract: {error}"))
-    })?;
-    chio_chiodos_runtime::validate_runtime_run_contract(&contract).map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos runtime run contract: {error}"))
+    .map_err(|error| CliError::cli_other_error(format!("Chio runtime run contract: {error}")))?;
+    chio_runtime::validate_runtime_run_contract(&contract).map_err(|error| {
+        CliError::cli_other_error(format!("Chio runtime run contract: {error}"))
     })?;
     Ok(contract)
 }
@@ -39,7 +37,7 @@ pub(crate) fn load_runtime_run_contract(
 pub(crate) fn ensure_runtime_evidence_dir(evidence_dir: &Path) -> Result<(), CliError> {
     fs::create_dir_all(evidence_dir).map_err(|error| {
         CliError::cli_io_error(format!(
-            "failed to create Chiodos runtime evidence directory {}: {error}",
+            "failed to create Chio runtime evidence directory {}: {error}",
             evidence_dir.display()
         ))
     })
@@ -49,13 +47,13 @@ pub(crate) fn sorted_child_dirs(path: &Path) -> Result<Vec<PathBuf>, CliError> {
     let mut dirs = Vec::new();
     for entry in fs::read_dir(path).map_err(|error| {
         CliError::cli_io_error(format!(
-            "failed to read Chiodos runtime runs directory {}: {error}",
+            "failed to read Chio runtime runs directory {}: {error}",
             path.display()
         ))
     })? {
         let entry = entry.map_err(|error| {
             CliError::cli_io_error(format!(
-                "failed to read Chiodos runtime runs directory entry: {error}"
+                "failed to read Chio runtime runs directory entry: {error}"
             ))
         })?;
         if entry.path().is_dir() {
@@ -78,7 +76,7 @@ pub(crate) fn validate_runtime_relative_path(relative_path: &str) -> Result<(), 
             .any(|part| part.is_empty() || part == "." || part == "..")
     {
         return Err(CliError::cli_other_error(format!(
-            "Chiodos runtime artifact path {relative_path:?} is not safe relative evidence"
+            "Chio runtime artifact path {relative_path:?} is not safe relative evidence"
         )));
     }
     Ok(())

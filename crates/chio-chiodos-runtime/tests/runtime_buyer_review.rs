@@ -13,14 +13,15 @@ use chio_chiodos_runtime::{
     CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA, CHIODOS_RECEIPT_LINEAGE_STATEMENT_SCHEMA,
     CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA, CHIODOS_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA,
     CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA, CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA,
-    CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA,
+    CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA, CHIO_FEDERATION_RECEIPT_LINEAGE_BUNDLE_SCHEMA,
+    CHIO_FEDERATION_RECEIPT_LINEAGE_STATEMENT_SCHEMA,
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{
     ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
 };
 use chio_federation::{
-    sign_chiodos_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
+    sign_chio_bilateral_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
     GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary, PolicyVerdict, TreatyBindingRef,
 };
 use std::io;
@@ -524,7 +525,7 @@ fn strict_dsse_fixture_with_keypairs(
         None,
     )?;
     let receipt = strict_dsse_fixture_receipt(&packet.capability_id, &signer_b, receipt_action)?;
-    let envelope = sign_chiodos_dsse_envelope(
+    let envelope = sign_chio_bilateral_dsse_envelope(
         &receipt,
         &signer_a,
         &signer_b,
@@ -1213,7 +1214,7 @@ fn buyer_review_package_hydrates_required_artifacts_by_role(
         .and_then(serde_json::Value::as_u64)
         .ok_or_else(|| io::Error::other("verification context missing issue time"))?
         .saturating_add(10_000);
-    let bilateral_dsse = sign_chiodos_dsse_envelope(
+    let bilateral_dsse = sign_chio_bilateral_dsse_envelope(
         &receipt_typed,
         &buyer_key,
         &vendor_key,
@@ -1951,8 +1952,9 @@ fn buyer_review_package_rejects_same_key_strict_dsse_trust_material(
 fn receipt_lineage_bundle_rejects_asserted_required_edge() -> Result<(), Box<dyn std::error::Error>>
 {
     let (_, mut lineage, _, _, _) = buyer_fixture()?;
+    lineage.schema = CHIO_FEDERATION_RECEIPT_LINEAGE_STATEMENT_SCHEMA.to_string();
     let accepted = verify_receipt_lineage_bundle(&ReceiptLineageBundle {
-        schema: CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
+        schema: CHIO_FEDERATION_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
         bundle_id: "lineage-bundle-1".to_string(),
         root_receipt_sha256: lineage.parent_receipt_sha256.clone(),
         leaf_receipt_sha256: lineage.child_receipt_sha256.clone(),

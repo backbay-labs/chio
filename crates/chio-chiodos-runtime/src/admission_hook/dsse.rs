@@ -16,7 +16,7 @@ pub(super) fn verify_treaty_dsse_evidence(
             "bilateral DSSE evidence could not be decoded",
         );
     };
-    if statement.predicate_type != chio_federation::PREDICATE_TYPE_CHIODOS_BILATERAL {
+    if statement.predicate_type != chio_federation::PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION {
         return rejected(
             "chiodos_treaty_unverified_required_evidence",
             "bilateral DSSE evidence is not a strict Chiodos predicate",
@@ -97,7 +97,7 @@ pub(super) fn verify_treaty_dsse_evidence(
             "bilateral DSSE signer public keys are not independent",
         );
     }
-    chio_federation::verify_chiodos_dsse_envelope(
+    chio_federation::verify_chio_bilateral_dsse_envelope(
         envelope,
         signer_a_public_key,
         signer_b_public_key,

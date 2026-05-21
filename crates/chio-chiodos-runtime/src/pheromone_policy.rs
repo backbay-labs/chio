@@ -93,10 +93,10 @@ pub(crate) fn evaluate_runtime_pheromone_policy(
 
     let policy_body = &policy.body;
     let weights_body = &peer_weights.body;
-    if policy_body.schema != CHIODOS_RUNTIME_PHEROMONE_POLICY_SCHEMA {
+    if !is_runtime_pheromone_policy_schema(&policy_body.schema) {
         return Err("unsupported_runtime_pheromone_policy_schema");
     }
-    if weights_body.schema != CHIODOS_RUNTIME_PEER_WEIGHTS_SCHEMA {
+    if !is_runtime_peer_weights_schema(&weights_body.schema) {
         return Err("unsupported_runtime_peer_weights_schema");
     }
     if policy_body.mode != "observe" && policy_body.mode != "enforce" {
@@ -146,7 +146,7 @@ pub(crate) fn evaluate_runtime_pheromone_policy(
     let policy_hash =
         runtime_pheromone_policy_sha256(policy_body).map_err(|_| "runtime_policy_hash_failed")?;
     let mut decision = RuntimePheromonePolicyDecision {
-        schema: CHIODOS_RUNTIME_PHEROMONE_POLICY_DECISION_SCHEMA.to_string(),
+        schema: runtime_pheromone_policy_decision_schema(&policy_body.schema).to_string(),
         enforced: policy_body.mode == "enforce",
         decision: "allow".to_string(),
         policy_id: policy_body.policy_id.clone(),
@@ -194,6 +194,28 @@ pub(crate) fn evaluate_runtime_pheromone_policy(
         break;
     }
     Ok((Some(decision), Some(advisory)))
+}
+
+fn is_runtime_pheromone_policy_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_PHEROMONE_POLICY_SCHEMA | CHIODOS_RUNTIME_PHEROMONE_POLICY_SCHEMA
+    )
+}
+
+fn is_runtime_peer_weights_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_PEER_WEIGHTS_SCHEMA | CHIODOS_RUNTIME_PEER_WEIGHTS_SCHEMA
+    )
+}
+
+fn runtime_pheromone_policy_decision_schema(policy_schema: &str) -> &'static str {
+    if policy_schema == CHIO_RUNTIME_PHEROMONE_POLICY_SCHEMA {
+        CHIO_RUNTIME_PHEROMONE_POLICY_DECISION_SCHEMA
+    } else {
+        CHIODOS_RUNTIME_PHEROMONE_POLICY_DECISION_SCHEMA
+    }
 }
 
 fn resolve_runtime_policy_action_class_id<'a>(

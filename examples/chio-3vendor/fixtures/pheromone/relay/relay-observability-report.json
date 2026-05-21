@@ -1,0 +1,33 @@
+{
+  "schema": "chio.pheromone.relay-observability-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000000500,
+  "directory": {
+    "activeVersion": 2,
+    "activeBundleSha256": "ba11b3973fd724f84ab400a7798023dab3f9b3c1aedabd55f7f302bbeaa5a5dd",
+    "directorySha256": "eaf656fae8c7fa7e09482ce3161fd1d10938e259b98fabb526cf8641c3a4cade",
+    "issuer": "did:chio:relay-ops",
+    "expiresAtUnixMs": 1766003600500,
+    "removedPeerCount": 0,
+    "removedPeerIds": [],
+    "rejectedCandidateCount": 0,
+    "lastRejectionCode": null,
+    "profile": "production"
+  },
+  "queue": {
+    "pending": 0,
+    "retry": 0,
+    "leased": 0,
+    "delivered": 3,
+    "deadLetter": 0,
+    "oldestPendingAgeMs": null,
+    "staleLeaseCount": 0,
+    "inboxCount": 3,
+    "cursorCount": 2,
+    "catchupEventCount": 1
+  },
+  "recentFailures": [],
+  "recommendations": []
+}

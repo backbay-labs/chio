@@ -138,7 +138,7 @@ fn treaty_binding_runtime_metadata(
 }
 
 #[test]
-fn federated_request_produces_dual_signed_receipt_verifiable_by_both_orgs() {
+fn federated_request_without_runtime_treaty_material_fails_closed() {
     // Org A holds the origin kernel; Org B hosts the tool.
     let origin_kp = Keypair::generate(); // Org A (origin) kernel key
     let origin_kernel_id = "kernel.org-a";
@@ -196,30 +196,31 @@ fn federated_request_produces_dual_signed_receipt_verifiable_by_both_orgs() {
     );
     request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
 
-    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
-    assert_eq!(response.verdict, Verdict::Allow);
+    let result = kernel.evaluate_tool_call_blocking(&request);
+    let (verdict, reason, receipt_id) = match result {
+        Ok(response) => (
+            response.verdict,
+            response.reason.unwrap_or_default(),
+            Some(response.receipt.id),
+        ),
+        Err(error) => (Verdict::Deny, error.to_string(), None),
+    };
 
-    // The post-sign hook fired and a DualSignedReceipt was stashed.
-    let dual = kernel
-        .dual_signed_receipt(&response.receipt.id)
-        .expect("dual-signed receipt must exist for federated request");
-    assert_eq!(dual.org_a_kernel_id, origin_kernel_id);
-    assert_eq!(dual.org_b_kernel_id, tool_host_kernel_id);
-    assert_eq!(dual.body.id, response.receipt.id);
-
-    // Either org can independently verify the receipt chain.
-    dual.verify(&origin_kp.public_key(), &tool_host_public_key)
-        .expect("dual-signed receipt must verify against both pinned peer keys");
-
-    let envelope = kernel
-        .federation_dsse_envelope(&response.receipt.id)
-        .expect("DSSE envelope must exist for federated request");
-    chio_federation::verify_dsse_envelope(
-        &envelope,
-        &origin_kp.public_key(),
-        &tool_host_public_key,
-    )
-    .expect("DSSE envelope must verify against both pinned peer keys");
+    assert_eq!(
+        verdict,
+        Verdict::Deny,
+        "federated requests must not emit DSSE without runtime treaty material"
+    );
+    assert!(
+        reason.contains("runtime treaty"),
+        "denial must identify missing runtime treaty material, got: {reason}"
+    );
+    if let Some(receipt_id) = receipt_id {
+        assert!(
+            kernel.federation_dsse_envelope(&receipt_id).is_none(),
+            "denied missing-treaty requests must not persist federation DSSE"
+        );
+    }
 }
 
 #[test]
@@ -282,7 +283,7 @@ fn federated_request_with_runtime_treaty_material_produces_buyer_verifiable_stri
     let (statement, _) = envelope.decode_statement().expect("statement decodes");
     assert_eq!(
         statement.predicate_type,
-        chio_federation::PREDICATE_TYPE_CHIODOS_BILATERAL
+        chio_federation::PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION
     );
     let mut expected_treaty = statement
         .predicate
@@ -326,7 +327,7 @@ fn federated_request_with_runtime_treaty_material_produces_buyer_verifiable_stri
         expected_consistency_anchor: anchor,
         signer_public_keys: &signer_public_keys,
     };
-    chio_federation::verify_treaty_bound_chiodos_bilateral_invocation(&envelope, &review)
+    chio_federation::verify_treaty_bound_chio_bilateral_invocation(&envelope, &review)
         .expect("kernel-produced strict DSSE verifies under buyer review");
 }
 
@@ -442,6 +443,8 @@ fn federated_request_with_mismatched_runtime_treaty_material_fails_closed() {
         ("signers", "signer"),
         ("lease", "lease"),
         ("governance", "governance"),
+        ("consistency", "consistency"),
+        ("missing_consistency", "consistency"),
     ] {
         let origin_kp = Keypair::generate();
         let origin_kernel_id = "kernel.org-a";
@@ -488,6 +491,16 @@ fn federated_request_with_mismatched_runtime_treaty_material_fails_closed() {
             "governance" => {
                 metadata["chiodos_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
                     ["governance_refs"] = serde_json::json!(["governance-other"]);
+            }
+            "consistency" => {
+                metadata["chiodos_runtime"]["federation_treaty_dsse"]["consistency_model"] =
+                    serde_json::json!("causal");
+            }
+            "missing_consistency" => {
+                metadata["chiodos_runtime"]["federation_treaty_dsse"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("consistency_model");
             }
             _ => unreachable!("unknown mismatch case"),
         }

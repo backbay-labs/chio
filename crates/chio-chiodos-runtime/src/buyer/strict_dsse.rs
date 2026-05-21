@@ -30,7 +30,7 @@ pub(super) fn verify_buyer_review_strict_dsse(
     let Ok((statement, _)) = envelope.decode_statement() else {
         return Err("chiodos_buyer_review_non_strict_dsse");
     };
-    if statement.predicate_type != chio_federation::PREDICATE_TYPE_CHIODOS_BILATERAL {
+    if statement.predicate_type != chio_federation::PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION {
         return Err("chiodos_buyer_review_non_strict_dsse");
     }
     if statement.predicate.timestamp_unix_ms != context.generated_at_unix_ms {
@@ -95,7 +95,7 @@ pub(super) fn verify_buyer_review_strict_dsse(
         expected_consistency_anchor: &context.runtime_step.consistency_anchor,
         signer_public_keys: context.signer_public_keys,
     };
-    chio_federation::verify_treaty_bound_chiodos_bilateral_invocation(envelope, &review)
+    chio_federation::verify_treaty_bound_chio_bilateral_invocation(envelope, &review)
         .map(|_| ())
         .map_err(|error| buyer_review_strict_dsse_error_code(&error))
 }

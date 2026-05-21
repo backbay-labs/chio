@@ -7,6 +7,11 @@ use crate::schema::{
     CHIODOS_RUNTIME_PROVIDER_BINDINGS_SCHEMA, CHIODOS_RUNTIME_PROVIDER_HEALTH_REPORT_SCHEMA,
     CHIODOS_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA, CHIODOS_RUNTIME_RUN_LEASE_SCHEMA,
     CHIODOS_RUNTIME_SCHEDULER_TICK_REPORT_SCHEMA, CHIODOS_RUNTIME_SUPERVISOR_PROFILE_SCHEMA,
+    CHIO_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA, CHIO_RUNTIME_ARTIFACT_RETENTION_PROFILE_SCHEMA,
+    CHIO_RUNTIME_OPS_STATUS_REPORT_SCHEMA, CHIO_RUNTIME_PROVIDER_BINDINGS_SCHEMA,
+    CHIO_RUNTIME_PROVIDER_HEALTH_REPORT_SCHEMA, CHIO_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA,
+    CHIO_RUNTIME_RUN_LEASE_SCHEMA, CHIO_RUNTIME_SCHEDULER_TICK_REPORT_SCHEMA,
+    CHIO_RUNTIME_SUPERVISOR_PROFILE_SCHEMA,
 };
 use crate::types::{
     RuntimeArtifactRetentionPlan, RuntimeArtifactRetentionProfile, RuntimeOpsStatusReport,
@@ -20,7 +25,7 @@ use crate::validation::common::{
 pub fn validate_runtime_supervisor_profile(
     profile: &RuntimeSupervisorProfile,
 ) -> Result<(), ChiodosRuntimeError> {
-    if profile.schema != CHIODOS_RUNTIME_SUPERVISOR_PROFILE_SCHEMA {
+    if !is_runtime_supervisor_profile_schema(&profile.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_supervisor_profile_schema",
             detail: format!(
@@ -56,7 +61,7 @@ pub fn validate_runtime_supervisor_profile(
 }
 
 pub fn validate_runtime_run_lease(lease: &RuntimeRunLease) -> Result<(), ChiodosRuntimeError> {
-    if lease.schema != CHIODOS_RUNTIME_RUN_LEASE_SCHEMA {
+    if !is_runtime_run_lease_schema(&lease.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_run_lease_schema",
             detail: format!(
@@ -83,7 +88,7 @@ pub fn validate_runtime_run_lease(lease: &RuntimeRunLease) -> Result<(), Chiodos
 pub fn validate_runtime_scheduler_tick_report(
     report: &RuntimeSchedulerTickReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_RUNTIME_SCHEDULER_TICK_REPORT_SCHEMA {
+    if !is_runtime_scheduler_tick_report_schema(&report.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_scheduler_tick_report_schema",
             detail: format!(
@@ -106,7 +111,7 @@ pub fn validate_runtime_scheduler_tick_report(
 pub fn validate_runtime_recovery_drill_report(
     report: &RuntimeRecoveryDrillReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA {
+    if !is_runtime_recovery_drill_report_schema(&report.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_recovery_drill_report_schema",
             detail: format!(
@@ -134,7 +139,7 @@ pub fn validate_runtime_recovery_drill_report(
 pub fn validate_runtime_artifact_retention_profile(
     profile: &RuntimeArtifactRetentionProfile,
 ) -> Result<(), ChiodosRuntimeError> {
-    if profile.schema != CHIODOS_RUNTIME_ARTIFACT_RETENTION_PROFILE_SCHEMA {
+    if !is_runtime_artifact_retention_profile_schema(&profile.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_retention_profile_schema",
             detail: format!(
@@ -163,7 +168,7 @@ pub fn validate_runtime_artifact_retention_profile(
 pub fn validate_runtime_artifact_retention_plan(
     plan: &RuntimeArtifactRetentionPlan,
 ) -> Result<(), ChiodosRuntimeError> {
-    if plan.schema != CHIODOS_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA {
+    if !is_runtime_artifact_retention_plan_schema(&plan.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_retention_plan_schema",
             detail: format!(
@@ -193,7 +198,7 @@ pub fn validate_runtime_artifact_retention_plan(
 pub fn validate_runtime_provider_bindings(
     document: &RuntimeProviderBindingsDocument,
 ) -> Result<(), ChiodosRuntimeError> {
-    if document.schema != CHIODOS_RUNTIME_PROVIDER_BINDINGS_SCHEMA {
+    if !is_runtime_provider_bindings_schema(&document.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_provider_bindings_schema",
             detail: format!(
@@ -221,7 +226,7 @@ pub fn validate_runtime_provider_bindings(
 pub fn validate_runtime_provider_health_report(
     report: &RuntimeProviderHealthReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_RUNTIME_PROVIDER_HEALTH_REPORT_SCHEMA {
+    if !is_runtime_provider_health_report_schema(&report.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_provider_health_report_schema",
             detail: format!(
@@ -249,7 +254,7 @@ pub fn validate_runtime_provider_health_report(
 pub fn validate_runtime_ops_status_report(
     report: &RuntimeOpsStatusReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_RUNTIME_OPS_STATUS_REPORT_SCHEMA {
+    if !is_runtime_ops_status_report_schema(&report.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_ops_status_report_schema",
             detail: format!(
@@ -278,4 +283,69 @@ pub fn validate_runtime_ops_status_report(
         });
     }
     Ok(())
+}
+
+fn is_runtime_run_lease_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_RUN_LEASE_SCHEMA | CHIODOS_RUNTIME_RUN_LEASE_SCHEMA
+    )
+}
+
+fn is_runtime_supervisor_profile_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_SUPERVISOR_PROFILE_SCHEMA | CHIODOS_RUNTIME_SUPERVISOR_PROFILE_SCHEMA
+    )
+}
+
+fn is_runtime_artifact_retention_profile_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_ARTIFACT_RETENTION_PROFILE_SCHEMA
+            | CHIODOS_RUNTIME_ARTIFACT_RETENTION_PROFILE_SCHEMA
+    )
+}
+
+fn is_runtime_provider_bindings_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_PROVIDER_BINDINGS_SCHEMA | CHIODOS_RUNTIME_PROVIDER_BINDINGS_SCHEMA
+    )
+}
+
+fn is_runtime_scheduler_tick_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_SCHEDULER_TICK_REPORT_SCHEMA | CHIODOS_RUNTIME_SCHEDULER_TICK_REPORT_SCHEMA
+    )
+}
+
+fn is_runtime_recovery_drill_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA | CHIODOS_RUNTIME_RECOVERY_DRILL_REPORT_SCHEMA
+    )
+}
+
+fn is_runtime_artifact_retention_plan_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA
+            | CHIODOS_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA
+    )
+}
+
+fn is_runtime_provider_health_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_PROVIDER_HEALTH_REPORT_SCHEMA | CHIODOS_RUNTIME_PROVIDER_HEALTH_REPORT_SCHEMA
+    )
+}
+
+fn is_runtime_ops_status_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_OPS_STATUS_REPORT_SCHEMA | CHIODOS_RUNTIME_OPS_STATUS_REPORT_SCHEMA
+    )
 }

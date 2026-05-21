@@ -1,18 +1,20 @@
+use super::{
+    ChioPheromoneRelayAlertCommands, ChioPheromoneRelayDirectoryCommands,
+    ChioPheromoneRelaySupervisorCommands,
+};
 use clap::Subcommand;
 use std::path::PathBuf;
-use super::{
-    ChiodosPheromoneRelayAlertCommands,
-    ChiodosPheromoneRelayDirectoryCommands,
-    ChiodosPheromoneRelaySupervisorCommands,
-};
-
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosPheromoneRelayCommands {
+pub(crate) enum ChioPheromoneRelayCommands {
     /// Lint a relay peer directory against an operational profile.
     Lint {
         /// Raw peer directory or signed peer-directory bundle JSON.
-        #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
+        #[arg(
+            long,
+            value_name = "PATH",
+            required_unless_present = "peer_directory_state"
+        )]
         peer_directory: Option<PathBuf>,
 
         /// Verifier-owned active peer-directory state JSON.
@@ -43,7 +45,11 @@ pub(crate) enum ChiodosPheromoneRelayCommands {
         store: PathBuf,
 
         /// Verifier-owned peer directory JSON.
-        #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
+        #[arg(
+            long,
+            value_name = "PATH",
+            required_unless_present = "peer_directory_state"
+        )]
         peer_directory: Option<PathBuf>,
 
         /// Verifier-owned active peer-directory state JSON.
@@ -62,15 +68,15 @@ pub(crate) enum ChiodosPheromoneRelayCommands {
         #[arg(long, value_name = "PATH")]
         transit_policy: PathBuf,
 
-        /// Verified Chiodos proof package JSON.
+        /// Verified Chio proof package JSON.
         #[arg(long, value_name = "PATH")]
         proof_package: PathBuf,
 
-        /// Verifier-owned Chiodos trust bundle JSON.
+        /// Verifier-owned Chio trust bundle JSON.
         #[arg(long, value_name = "PATH")]
         trust_bundle: PathBuf,
 
-        /// Chiodos verification context JSON.
+        /// Chio verification context JSON.
         #[arg(long, value_name = "PATH")]
         context: PathBuf,
 
@@ -98,7 +104,11 @@ pub(crate) enum ChiodosPheromoneRelayCommands {
         transit_policy: PathBuf,
 
         /// Verifier-owned peer directory JSON.
-        #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
+        #[arg(
+            long,
+            value_name = "PATH",
+            required_unless_present = "peer_directory_state"
+        )]
         peer_directory: Option<PathBuf>,
 
         /// Verifier-owned active peer-directory state JSON.
@@ -129,7 +139,11 @@ pub(crate) enum ChiodosPheromoneRelayCommands {
         store: PathBuf,
 
         /// Verifier-owned peer directory JSON.
-        #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
+        #[arg(
+            long,
+            value_name = "PATH",
+            required_unless_present = "peer_directory_state"
+        )]
         peer_directory: Option<PathBuf>,
 
         /// Verifier-owned active peer-directory state JSON.
@@ -273,7 +287,7 @@ pub(crate) enum ChiodosPheromoneRelayCommands {
     /// Evaluate relay alert routing from canonical observability artifacts.
     Alert {
         #[command(subcommand)]
-        command: ChiodosPheromoneRelayAlertCommands,
+        command: ChioPheromoneRelayAlertCommands,
     },
 
     /// Aggregate long-horizon relay operations trends from report artifacts.
@@ -306,17 +320,15 @@ pub(crate) enum ChiodosPheromoneRelayCommands {
     /// Inspect, promote, or reject verifier-owned relay peer-directory state.
     Directory {
         #[command(subcommand)]
-        command: ChiodosPheromoneRelayDirectoryCommands,
+        command: ChioPheromoneRelayDirectoryCommands,
     },
 
     /// Validate local relay supervisor deployment profiles.
     Supervisor {
         #[command(subcommand)]
-        command: ChiodosPheromoneRelaySupervisorCommands,
+        command: ChioPheromoneRelaySupervisorCommands,
     },
 }
-
-
 
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
 pub(crate) enum RelayProfileArg {

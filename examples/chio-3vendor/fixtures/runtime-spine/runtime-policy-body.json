@@ -1,0 +1,26 @@
+{
+  "schema": "chio.runtime.pheromone-policy.v1",
+  "policyId": "policy-runtime-risk",
+  "verifierId": "did:chio:buyer-verifier",
+  "keyId": "verifier-key-1",
+  "policyVersion": 1,
+  "mode": "enforce",
+  "issuedAtUnixMs": 1800000000000,
+  "expiresAtUnixMs": 1800003600000,
+  "allowedReputationEpochs": [7],
+  "maxQueryReportAgeMs": 60000,
+  "minDistinctOriginPairs": 1,
+  "runtimeTrustBundleSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "peerWeightsSha256": "PEER_WEIGHTS_SHA256",
+  "rules": [
+    {
+      "ruleId": "review-high-runtime-risk",
+      "subjectClass": "workflow.destructive_step",
+      "subjectClassNamespace": "chio.runtime",
+      "actionClassId": "*",
+      "direction": "deny_if_at_or_above",
+      "thresholdTotalStrength": 0.9,
+      "effect": "require_review"
+    }
+  ]
+}

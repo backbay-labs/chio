@@ -1,13 +1,11 @@
+use super::{
+    ChioPheromoneRelayAlertAssuranceCommands, ChioPheromoneRelayAlertDeliveryCommands,
+};
 use clap::Subcommand;
 use std::path::PathBuf;
-use super::{
-    ChiodosPheromoneRelayAlertAssuranceCommands,
-    ChiodosPheromoneRelayAlertDeliveryCommands,
-};
-
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosPheromoneRelayAlertCommands {
+pub(crate) enum ChioPheromoneRelayAlertCommands {
     /// Evaluate routeable relay alerts from current observability.
     Evaluate {
         /// Canonical relay observability report JSON.
@@ -88,7 +86,7 @@ pub(crate) enum ChiodosPheromoneRelayAlertCommands {
     /// Import downstream delivery, acknowledgement, or drift evidence.
     Delivery {
         #[command(subcommand)]
-        command: ChiodosPheromoneRelayAlertDeliveryCommands,
+        command: ChioPheromoneRelayAlertDeliveryCommands,
     },
 
     /// Generate route-owner review evidence.
@@ -125,6 +123,6 @@ pub(crate) enum ChiodosPheromoneRelayAlertCommands {
     /// Build relay alert assurance packages.
     Assurance {
         #[command(subcommand)]
-        command: ChiodosPheromoneRelayAlertAssuranceCommands,
+        command: ChioPheromoneRelayAlertAssuranceCommands,
     },
 }

@@ -14,27 +14,42 @@ mod signing;
 #[cfg(test)]
 use crate::CliError;
 
-pub(crate) use admission::{cmd_chiodos_runtime_admit, cmd_chiodos_runtime_pheromone_evaluate};
+pub(crate) use admission::{
+    cmd_chio_runtime_admit, cmd_chio_runtime_pheromone_evaluate, cmd_chiodos_runtime_admit,
+    cmd_chiodos_runtime_pheromone_evaluate,
+};
 pub(crate) use io::validate_runtime_relative_path;
-pub(crate) use loopback::cmd_chiodos_runtime_run_loopback;
+pub(crate) use loopback::{cmd_chio_runtime_run_loopback, cmd_chiodos_runtime_run_loopback};
 pub(crate) use ops::{
+    cmd_chio_runtime_ops_evidence_health, cmd_chio_runtime_ops_provider_health,
+    cmd_chio_runtime_ops_recovery_drill, cmd_chio_runtime_ops_retention_plan,
+    cmd_chio_runtime_ops_status, cmd_chio_runtime_ops_tick,
     cmd_chiodos_runtime_ops_evidence_health, cmd_chiodos_runtime_ops_provider_health,
     cmd_chiodos_runtime_ops_recovery_drill, cmd_chiodos_runtime_ops_retention_plan,
     cmd_chiodos_runtime_ops_status, cmd_chiodos_runtime_ops_tick,
 };
 pub(crate) use orchestration::{
+    cmd_chio_runtime_orchestrate_drift, cmd_chio_runtime_orchestrate_lint,
+    cmd_chio_runtime_orchestrate_plan, cmd_chio_runtime_orchestrate_resume,
+    cmd_chio_runtime_orchestrate_run, cmd_chio_runtime_orchestrate_status,
     cmd_chiodos_runtime_orchestrate_drift, cmd_chiodos_runtime_orchestrate_lint,
     cmd_chiodos_runtime_orchestrate_plan, cmd_chiodos_runtime_orchestrate_resume,
     cmd_chiodos_runtime_orchestrate_run, cmd_chiodos_runtime_orchestrate_status,
 };
 pub(crate) use signing::{
+    cmd_chio_runtime_peer_weights_hash, cmd_chio_runtime_sign_peer_weights,
+    cmd_chio_runtime_sign_pheromone_query_report, cmd_chio_runtime_sign_policy,
+    cmd_chio_runtime_sign_trust_input,
     cmd_chiodos_runtime_peer_weights_hash, cmd_chiodos_runtime_sign_peer_weights,
     cmd_chiodos_runtime_sign_pheromone_query_report, cmd_chiodos_runtime_sign_policy,
     cmd_chiodos_runtime_sign_trust_input,
 };
 
 #[cfg(test)]
-pub(crate) fn canonical_sha256_json<T: serde::Serialize>(value: &T, label: &str) -> Result<String, CliError> {
+pub(crate) fn canonical_sha256_json<T: serde::Serialize>(
+    value: &T,
+    label: &str,
+) -> Result<String, CliError> {
     let bytes = chio_core_types::canonical::canonical_json_bytes(value)
         .map_err(|error| CliError::cli_other_error(format!("{label}: {error}")))?;
     Ok(chio_core::sha256_hex(&bytes))
@@ -45,9 +60,8 @@ pub(crate) fn canonical_sha256_json<T: serde::Serialize>(value: &T, label: &str)
 mod chiodos_orchestration_cli_tests {
     use super::{
         canonical_sha256_json, cmd_chiodos_runtime_ops_status,
-        cmd_chiodos_runtime_orchestrate_drift,
-        cmd_chiodos_runtime_orchestrate_resume, cmd_chiodos_runtime_orchestrate_run,
-        cmd_chiodos_runtime_orchestrate_status,
+        cmd_chiodos_runtime_orchestrate_drift, cmd_chiodos_runtime_orchestrate_resume,
+        cmd_chiodos_runtime_orchestrate_run, cmd_chiodos_runtime_orchestrate_status,
     };
     use serde::de::DeserializeOwned;
     use std::error::Error;
@@ -63,9 +77,9 @@ mod chiodos_orchestration_cli_tests {
         ch.to_string().repeat(64)
     }
 
-    fn orchestration_profile() -> chio_chiodos_runtime::RuntimeOrchestrationProfile {
-        chio_chiodos_runtime::RuntimeOrchestrationProfile {
-            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA
+    fn orchestration_profile() -> chio_runtime::RuntimeOrchestrationProfile {
+        chio_runtime::RuntimeOrchestrationProfile {
+            schema: chio_runtime::CHIO_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA
                 .to_string(),
             profile_id: "profile-runtime-orchestration-cli".to_string(),
             local_kernel_id: "kernel.vendor-b".to_string(),
@@ -78,9 +92,9 @@ mod chiodos_orchestration_cli_tests {
         }
     }
 
-    fn supervisor_profile() -> chio_chiodos_runtime::RuntimeSupervisorProfile {
-        chio_chiodos_runtime::RuntimeSupervisorProfile {
-            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_SUPERVISOR_PROFILE_SCHEMA.to_string(),
+    fn supervisor_profile() -> chio_runtime::RuntimeSupervisorProfile {
+        chio_runtime::RuntimeSupervisorProfile {
+            schema: chio_runtime::CHIO_RUNTIME_SUPERVISOR_PROFILE_SCHEMA.to_string(),
             profile_id: "runtime-supervisor-cli".to_string(),
             local_kernel_id: "kernel.vendor-b".to_string(),
             issued_at_unix_ms: ISSUED_AT,
@@ -127,7 +141,7 @@ mod chiodos_orchestration_cli_tests {
 
     fn write_profile(
         dir: &Path,
-        profile: &chio_chiodos_runtime::RuntimeOrchestrationProfile,
+        profile: &chio_runtime::RuntimeOrchestrationProfile,
     ) -> Result<PathBuf, Box<dyn Error>> {
         let path = dir.join("profile.json");
         write_json(&path, profile)?;
@@ -136,7 +150,7 @@ mod chiodos_orchestration_cli_tests {
 
     fn write_supervisor_profile(
         dir: &Path,
-        profile: &chio_chiodos_runtime::RuntimeSupervisorProfile,
+        profile: &chio_runtime::RuntimeSupervisorProfile,
     ) -> Result<PathBuf, Box<dyn Error>> {
         let path = dir.join("supervisor-profile.json");
         write_json(&path, profile)?;
@@ -144,13 +158,13 @@ mod chiodos_orchestration_cli_tests {
     }
 
     fn runtime_contract(
-        profile: &chio_chiodos_runtime::RuntimeOrchestrationProfile,
+        profile: &chio_runtime::RuntimeOrchestrationProfile,
         run_id: &str,
-    ) -> Result<chio_chiodos_runtime::RuntimeRunContract, Box<dyn Error>> {
-        Ok(chio_chiodos_runtime::RuntimeRunContract {
-            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_RUN_CONTRACT_SCHEMA.to_string(),
+    ) -> Result<chio_runtime::RuntimeRunContract, Box<dyn Error>> {
+        Ok(chio_runtime::RuntimeRunContract {
+            schema: chio_runtime::CHIO_RUNTIME_RUN_CONTRACT_SCHEMA.to_string(),
             run_id: run_id.to_string(),
-            profile_sha256: chio_chiodos_runtime::runtime_orchestration_profile_sha256(profile)?,
+            profile_sha256: chio_runtime::runtime_orchestration_profile_sha256(profile)?,
             workflow_id: format!("workflow-{run_id}"),
             expected_step_count: 1,
             admission_ids: vec!["adm-runtime-cli-0".to_string()],
@@ -162,7 +176,7 @@ mod chiodos_orchestration_cli_tests {
 
     fn write_contract(
         dir: &Path,
-        contract: &chio_chiodos_runtime::RuntimeRunContract,
+        contract: &chio_runtime::RuntimeRunContract,
     ) -> Result<PathBuf, Box<dyn Error>> {
         let path = dir.join("run-contract.json");
         write_json(&path, contract)?;
@@ -197,15 +211,15 @@ mod chiodos_orchestration_cli_tests {
         });
         let verifier_report_sha256 =
             canonical_sha256_json(&verifier_report, "test verifier report hash")?;
-        let source_record = chio_chiodos_runtime::RuntimeProofSourceRecord {
+        let source_record = chio_runtime::RuntimeProofSourceRecord {
             step_index: 0,
             admission_report_sha256: fixed_hash('1'),
             tool_receipt_sha256: fixed_hash('2'),
             bilateral_dsse_sha256: fixed_hash('3'),
             workflow_step_sha256: fixed_hash('4'),
         };
-        let proof_report = chio_chiodos_runtime::RuntimeProofRegenerationReport {
-            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA
+        let proof_report = chio_runtime::RuntimeProofRegenerationReport {
+            schema: chio_runtime::CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA
                 .to_string(),
             run_id: run_id.to_string(),
             accepted: true,
@@ -217,18 +231,17 @@ mod chiodos_orchestration_cli_tests {
             source_records: vec![source_record.clone()],
             checks: vec!["runtime_source_records.bound".to_string()],
         };
-        let proof_report_sha256 =
-            canonical_sha256_json(&proof_report, "test proof report hash")?;
-        let workflow_report = chio_chiodos_runtime::RuntimeWorkflowRunReport {
-            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
+        let proof_report_sha256 = canonical_sha256_json(&proof_report, "test proof report hash")?;
+        let workflow_report = chio_runtime::RuntimeWorkflowRunReport {
+            schema: chio_runtime::CHIO_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
             run_id: run_id.to_string(),
             accepted: true,
             failure_code: None,
             generated_at_unix_ms,
             admission_report_sha256: fixed_hash('6'),
             evidence_paths: vec!["proof-package.json".to_string()],
-            step_evidence: vec![chio_chiodos_runtime::RuntimeStepEvidence {
-                schema: chio_chiodos_runtime::CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
+            step_evidence: vec![chio_runtime::RuntimeStepEvidence {
+                schema: chio_runtime::CHIO_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
                 step_index: 0,
                 admission_id: "adm-runtime-cli-0".to_string(),
                 admission_report_sha256: source_record.admission_report_sha256.clone(),
@@ -247,13 +260,13 @@ mod chiodos_orchestration_cli_tests {
         };
         let workflow_report_sha256 =
             canonical_sha256_json(&workflow_report, "test workflow report hash")?;
-        let manifest = chio_chiodos_runtime::RuntimeEvidenceManifest {
-            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        let manifest = chio_runtime::RuntimeEvidenceManifest {
+            schema: chio_runtime::CHIO_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
             run_id: run_id.to_string(),
             generated_at_unix_ms,
             workflow_run_report_sha256: workflow_report_sha256,
             proof_regeneration_report_sha256: proof_report_sha256,
-            entries: vec![chio_chiodos_runtime::RuntimeEvidenceManifestEntry {
+            entries: vec![chio_runtime::RuntimeEvidenceManifestEntry {
                 role: "proof_package".to_string(),
                 path: "proof-package.json".to_string(),
                 sha256: proof_package_file_sha256,
@@ -274,15 +287,15 @@ mod chiodos_orchestration_cli_tests {
         generated_at_unix_ms: u64,
     ) -> Result<(), Box<dyn Error>> {
         fs::create_dir_all(dir)?;
-        let source_record = chio_chiodos_runtime::RuntimeProofSourceRecord {
+        let source_record = chio_runtime::RuntimeProofSourceRecord {
             step_index: 0,
             admission_report_sha256: fixed_hash('1'),
             tool_receipt_sha256: fixed_hash('2'),
             bilateral_dsse_sha256: fixed_hash('3'),
             workflow_step_sha256: fixed_hash('4'),
         };
-        let proof_report = chio_chiodos_runtime::RuntimeProofRegenerationReport {
-            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA
+        let proof_report = chio_runtime::RuntimeProofRegenerationReport {
+            schema: chio_runtime::CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA
                 .to_string(),
             run_id: run_id.to_string(),
             accepted: false,
@@ -296,16 +309,16 @@ mod chiodos_orchestration_cli_tests {
         };
         let (proof_report_file_sha256, proof_report_sha256, proof_report_byte_count) =
             write_json_with_hashes(&dir.join("proof-regeneration-report.json"), &proof_report)?;
-        let workflow_report = chio_chiodos_runtime::RuntimeWorkflowRunReport {
-            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
+        let workflow_report = chio_runtime::RuntimeWorkflowRunReport {
+            schema: chio_runtime::CHIO_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
             run_id: run_id.to_string(),
             accepted: true,
             failure_code: None,
             generated_at_unix_ms,
             admission_report_sha256: fixed_hash('6'),
             evidence_paths: vec!["proof-regeneration-report.json".to_string()],
-            step_evidence: vec![chio_chiodos_runtime::RuntimeStepEvidence {
-                schema: chio_chiodos_runtime::CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
+            step_evidence: vec![chio_runtime::RuntimeStepEvidence {
+                schema: chio_runtime::CHIO_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
                 step_index: 0,
                 admission_id: "adm-runtime-cli-0".to_string(),
                 admission_report_sha256: source_record.admission_report_sha256,
@@ -324,20 +337,20 @@ mod chiodos_orchestration_cli_tests {
         };
         let (workflow_report_file_sha256, workflow_report_sha256, workflow_report_byte_count) =
             write_json_with_hashes(&dir.join("workflow-run-report.json"), &workflow_report)?;
-        let manifest = chio_chiodos_runtime::RuntimeEvidenceManifest {
-            schema: chio_chiodos_runtime::CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        let manifest = chio_runtime::RuntimeEvidenceManifest {
+            schema: chio_runtime::CHIO_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
             run_id: run_id.to_string(),
             generated_at_unix_ms,
             workflow_run_report_sha256: workflow_report_sha256,
             proof_regeneration_report_sha256: proof_report_sha256,
             entries: vec![
-                chio_chiodos_runtime::RuntimeEvidenceManifestEntry {
+                chio_runtime::RuntimeEvidenceManifestEntry {
                     role: "workflow_run_report".to_string(),
                     path: "workflow-run-report.json".to_string(),
                     sha256: workflow_report_file_sha256,
                     byte_count: workflow_report_byte_count,
                 },
-                chio_chiodos_runtime::RuntimeEvidenceManifestEntry {
+                chio_runtime::RuntimeEvidenceManifestEntry {
                     role: "proof_regeneration_report".to_string(),
                     path: "proof-regeneration-report.json".to_string(),
                     sha256: proof_report_file_sha256,
@@ -367,9 +380,11 @@ mod chiodos_orchestration_cli_tests {
         )
         .expect_err("stale drift profile unexpectedly passed");
 
-        assert!(error
-            .to_string()
-            .contains("runtime_orchestration_profile_stale"));
+        assert!(
+            error
+                .to_string()
+                .contains("runtime_orchestration_profile_stale")
+        );
         Ok(())
     }
 
@@ -390,7 +405,7 @@ mod chiodos_orchestration_cli_tests {
             NOW + 3,
             &report_path,
         )?;
-        let report: chio_chiodos_runtime::RuntimeProofDriftReport = read_json(&report_path)?;
+        let report: chio_runtime::RuntimeProofDriftReport = read_json(&report_path)?;
 
         assert!(!report.accepted);
         assert_eq!(report.baseline_run_id, "run-a");
@@ -421,8 +436,7 @@ mod chiodos_orchestration_cli_tests {
             NOW,
             &report_path,
         )?;
-        let report: chio_chiodos_runtime::RuntimeOrchestrationRunReport =
-            read_json(&report_path)?;
+        let report: chio_runtime::RuntimeOrchestrationRunReport = read_json(&report_path)?;
 
         assert!(!report.accepted);
         assert_eq!(
@@ -434,19 +448,15 @@ mod chiodos_orchestration_cli_tests {
     }
 
     #[test]
-    fn runtime_orchestrate_run_records_rejected_proof_without_verifier(
-    ) -> Result<(), Box<dyn Error>> {
+    fn runtime_orchestrate_run_records_rejected_proof_without_verifier()
+    -> Result<(), Box<dyn Error>> {
         let dir = TempDir::new()?;
         let profile = orchestration_profile();
         let profile_path = write_profile(dir.path(), &profile)?;
         let contract = runtime_contract(&profile, "run-rejected-proof")?;
         let contract_path = write_contract(dir.path(), &contract)?;
         let evidence_dir = dir.path().join("evidence");
-        write_rejected_runtime_evidence_without_verifier(
-            &evidence_dir,
-            "run-rejected-proof",
-            NOW,
-        )?;
+        write_rejected_runtime_evidence_without_verifier(&evidence_dir, "run-rejected-proof", NOW)?;
         let report_path = dir.path().join("run-report.json");
 
         cmd_chiodos_runtime_orchestrate_run(
@@ -457,8 +467,7 @@ mod chiodos_orchestration_cli_tests {
             NOW,
             &report_path,
         )?;
-        let report: chio_chiodos_runtime::RuntimeOrchestrationRunReport =
-            read_json(&report_path)?;
+        let report: chio_runtime::RuntimeOrchestrationRunReport = read_json(&report_path)?;
 
         assert!(!report.accepted);
         assert_eq!(
@@ -471,8 +480,8 @@ mod chiodos_orchestration_cli_tests {
     }
 
     #[test]
-    fn runtime_orchestrate_run_emits_report_for_missing_manifest_artifact(
-    ) -> Result<(), Box<dyn Error>> {
+    fn runtime_orchestrate_run_emits_report_for_missing_manifest_artifact()
+    -> Result<(), Box<dyn Error>> {
         let dir = TempDir::new()?;
         let profile = orchestration_profile();
         let profile_path = write_profile(dir.path(), &profile)?;
@@ -491,16 +500,17 @@ mod chiodos_orchestration_cli_tests {
             NOW,
             &report_path,
         )?;
-        let report: chio_chiodos_runtime::RuntimeOrchestrationRunReport =
-            read_json(&report_path)?;
+        let report: chio_runtime::RuntimeOrchestrationRunReport = read_json(&report_path)?;
 
         assert!(!report.accepted);
         assert_eq!(report.status, "terminal_failure");
         assert_eq!(report.failure_code.as_deref(), Some("runtime_admission_io"));
-        assert!(report
-            .checks
-            .iter()
-            .any(|check| check == "runtime_orchestration.evidence_load_failed"));
+        assert!(
+            report
+                .checks
+                .iter()
+                .any(|check| check == "runtime_orchestration.evidence_load_failed")
+        );
         Ok(())
     }
 
@@ -522,9 +532,11 @@ mod chiodos_orchestration_cli_tests {
         )
         .expect_err("stale evidence inside drift window unexpectedly passed");
 
-        assert!(error
-            .to_string()
-            .contains("outside the orchestration profile window"));
+        assert!(
+            error
+                .to_string()
+                .contains("outside the orchestration profile window")
+        );
         Ok(())
     }
 
@@ -541,7 +553,7 @@ mod chiodos_orchestration_cli_tests {
             NOW,
             &report_path,
         )?;
-        let report: chio_chiodos_runtime::RuntimeOrchestrationStatusReport =
+        let report: chio_runtime::RuntimeOrchestrationStatusReport =
             read_json(&report_path)?;
 
         assert!(!report.accepted);
@@ -569,7 +581,7 @@ mod chiodos_orchestration_cli_tests {
             NOW,
             &report_path,
         )?;
-        let report: chio_chiodos_runtime::RuntimeOrchestrationStatusReport =
+        let report: chio_runtime::RuntimeOrchestrationStatusReport =
             read_json(&report_path)?;
 
         assert!(!report.accepted);
@@ -592,7 +604,7 @@ mod chiodos_orchestration_cli_tests {
             NOW,
             &report_path,
         )?;
-        let report: chio_chiodos_runtime::RuntimeOrchestrationStatusReport =
+        let report: chio_runtime::RuntimeOrchestrationStatusReport =
             read_json(&report_path)?;
 
         assert!(!report.accepted);
@@ -601,12 +613,12 @@ mod chiodos_orchestration_cli_tests {
     }
 
     #[test]
-    fn runtime_orchestrate_status_checks_every_recorded_run_directory(
-    ) -> Result<(), Box<dyn Error>> {
+    fn runtime_orchestrate_status_checks_every_recorded_run_directory() -> Result<(), Box<dyn Error>>
+    {
         let dir = TempDir::new()?;
         let profile_path = write_profile(dir.path(), &orchestration_profile())?;
         let store_path = dir.path().join("runtime.sqlite3");
-        let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(&store_path)?;
+        let store = chio_runtime::SqliteRuntimeOrchestrationStore::open(&store_path)?;
         store.record_run_state("run-good", "proof_accepted", None, NOW)?;
         store.record_run_state("run-missing", "proof_accepted", None, NOW)?;
         let evidence_root = dir.path().join("evidence");
@@ -620,7 +632,7 @@ mod chiodos_orchestration_cli_tests {
             NOW,
             &report_path,
         )?;
-        let report: chio_chiodos_runtime::RuntimeOrchestrationStatusReport =
+        let report: chio_runtime::RuntimeOrchestrationStatusReport =
             read_json(&report_path)?;
 
         assert!(!report.accepted);
@@ -630,12 +642,12 @@ mod chiodos_orchestration_cli_tests {
     }
 
     #[test]
-    fn runtime_ops_status_rejects_empty_evidence_root_when_store_has_runs(
-    ) -> Result<(), Box<dyn Error>> {
+    fn runtime_ops_status_rejects_empty_evidence_root_when_store_has_runs()
+    -> Result<(), Box<dyn Error>> {
         let dir = TempDir::new()?;
         let profile_path = write_supervisor_profile(dir.path(), &supervisor_profile())?;
         let store_path = dir.path().join("runtime.sqlite3");
-        let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(&store_path)?;
+        let store = chio_runtime::SqliteRuntimeOrchestrationStore::open(&store_path)?;
         store.record_run_state("run-without-evidence", "planned", None, NOW)?;
         let evidence_root = dir.path().join("evidence");
         fs::create_dir_all(&evidence_root)?;
@@ -649,7 +661,7 @@ mod chiodos_orchestration_cli_tests {
             Some(NOW),
             &report_path,
         )?;
-        let report: chio_chiodos_runtime::RuntimeOpsStatusReport = read_json(&report_path)?;
+        let report: chio_runtime::RuntimeOpsStatusReport = read_json(&report_path)?;
 
         assert!(!report.evidence_sink_healthy, "{report:#?}");
         assert!(!report.ready, "{report:#?}");
@@ -664,8 +676,8 @@ mod chiodos_orchestration_cli_tests {
         let resume_path = dir.path().join("resume-plan.json");
         write_json(
             &resume_path,
-            &chio_chiodos_runtime::RuntimeOrchestrationResumePlan {
-                schema: chio_chiodos_runtime::CHIODOS_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA
+            &chio_runtime::RuntimeOrchestrationResumePlan {
+                schema: chio_runtime::CHIO_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA
                     .to_string(),
                 run_id: "run-forged".to_string(),
                 accepted: true,
@@ -688,9 +700,11 @@ mod chiodos_orchestration_cli_tests {
         )
         .expect_err("forged accepted blocked resume plan unexpectedly passed");
 
-        assert!(error
-            .to_string()
-            .contains("runtime_orchestration_resume_accepted_blocked"));
+        assert!(
+            error
+                .to_string()
+                .contains("runtime_orchestration_resume_accepted_blocked")
+        );
         Ok(())
     }
 
@@ -723,9 +737,11 @@ mod chiodos_orchestration_cli_tests {
         )
         .expect_err("corrupt resume plan unexpectedly passed");
 
-        assert!(error
-            .to_string()
-            .contains("unsupported_runtime_orchestration_resume_plan_schema"));
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported_runtime_orchestration_resume_plan_schema")
+        );
         Ok(())
     }
 }

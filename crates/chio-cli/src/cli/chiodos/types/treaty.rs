@@ -1,9 +1,8 @@
 use clap::Subcommand;
 use std::path::PathBuf;
 
-
 #[derive(Subcommand)]
-pub(crate) enum ChiodosTreatyCommands {
+pub(crate) enum ChioTreatyCommands {
     /// Compute a local ladder intersection from verifier-owned treaty inputs.
     Intersect {
         /// Treaty scope JSON.
@@ -81,4 +80,3 @@ pub(crate) enum ChiodosTreatyCommands {
         report: PathBuf,
     },
 }
-

@@ -1926,7 +1926,7 @@ count is capped, and blocking negative events require corroboration when the
 policy says so. Shared clearing is still operator-local evaluation truth, not a
 universal oracle or automatic runtime admission.
 
-Chiodos runtime admission may consume pheromone concentration as evidence only
+Chio runtime admission may consume pheromone concentration as evidence only
 when a verifier-owned runtime policy explicitly enables it. The runtime policy,
 peer weights, runtime trust input, and trusted verifier keys are local verifier
 inputs. Request JSON may reference stable ids and hashes, but it cannot carry
@@ -1935,22 +1935,23 @@ metadata and cannot change the verdict. Enforced policy can allow, deny, or
 escalate before tool dispatch, but it does not issue leases, create governance
 receipts, mutate trust, settle payments, or perform peer discovery.
 
-Chiodos runtime proof-parity reports bind local admission output to structured
+Chio runtime proof-parity reports bind local admission output to structured
 step evidence before claiming proof regeneration success. A runtime workflow
 run report records per-step admission report hashes, tool receipt ids and
 hashes, output hashes, bilateral DSSE hashes, workflow step hashes,
 consistency anchors, destructive flags, and lease or governance ids where
 present. Runtime proof regeneration now also emits a runtime evidence manifest,
 a proof-regeneration input artifact, package-valid signed `ChioReceipt`
-artifacts, strict Chiodos DSSE envelopes, a signed `WorkflowReceipt v2`,
+artifacts, strict treaty-bound DSSE envelopes in the legacy predicate format, a
+signed `WorkflowReceipt v2`,
 `chio.chiodos.proof-package.v1`, verifier trust and context inputs, and the
-verifier report produced by the existing Chiodos verifier. A regeneration
-report may set `accepted=true` only when that verifier accepts the regenerated
-package and the report binds proof package, verifier report, and workflow
-receipt hashes. `runtime_proof_semantic_regeneration_pending` is a rejected
-gate state, not a successful runtime proof claim.
+verifier report produced by the explicit historical verifier. A
+regeneration report may set `accepted=true` only when that verifier accepts the
+regenerated package and the report binds proof package, verifier report, and
+workflow receipt hashes. `runtime_proof_semantic_regeneration_pending` is a
+rejected gate state, not a successful runtime proof claim.
 
-Chiodos production local runtime orchestration wraps the same runtime admission
+Chio production local runtime orchestration wraps the same runtime admission
 and proof-regeneration evidence in verifier-owned local operating contracts.
 An orchestration profile and run contract bind the local kernel id, verifier id,
 expected workflow steps, admission ids, durable store id, evidence sink id, and
@@ -1965,7 +1966,7 @@ report hashes, and stable semantic fields. Drift is operator evidence only; it
 does not mutate policy, trust, leases, governance, settlement, pheromone state,
 or provider routing.
 
-Chiodos runtime operations hardening supervises local orchestration runs
+Chio runtime operations hardening supervises local orchestration runs
 without changing admission authority. A supervisor profile controls local run
 lease TTLs, stale-run windows, evidence health requirements, static provider
 binding checks, and dry-run retention posture. Scheduler tick reports claim
@@ -1978,7 +1979,7 @@ operator-owned bindings and must not discover, substitute, or widen providers.
 Retention plans are dry-run classifications only; they do not delete, move,
 compact, upload, or mutate runtime evidence.
 
-Chiodos treaty-bound provenance adds the first bounded cross-kernel admission
+Chio treaty-bound provenance adds the first bounded cross-kernel admission
 evidence lane. Governance ladder manifests declare action class mode,
 destructive posture, consistency model, co-sign requirement, and required
 evidence for one kernel. A treaty scope pins the participating kernels and the
@@ -1990,10 +1991,11 @@ only and must be denied when required treaty evidence is missing. Continuation
 and receipt-lineage statements keep `verified`, `observed`, `asserted`,
 `unverifiable`, and `rejected` evidence classes distinct. Buyer attestation
 packets may bind budget references, but they do not claim settlement. A buyer
-packet is accepted only when the packet hashes match verified lineage and the
-lineage remains verified rather than asserted.
+packet may produce a hash-only diagnostic report when the packet hashes match
+verified lineage, but that report remains unresolved and `accepted=false` until
+the full buyer-review path hydrates and verifies the treaty-bound DSSE bytes.
 
-Chiodos treaty-to-buyer review adds a local buyer-facing loop over the
+Chio treaty-to-buyer review adds a local buyer-facing loop over the
 treaty-bound evidence. A buyer review package binds the buyer packet, admission
 report, continuation, lineage bundle, bilateral invocation, workflow receipt,
 proof package, verifier report, and runtime run report by artifact role,
@@ -2004,17 +2006,17 @@ review loop is local evidence only: budget references remain non-settlement
 references, hidden predicates remain unsupported, and package-carried material
 does not become a trust root.
 
-Chiodos live treaty-to-buyer closure is the assurance gate that upgrades those
+Chio live treaty-to-buyer closure is the assurance gate that upgrades those
 local artifacts from fixture-shaped evidence to bounded runtime evidence. The
 closure requires verifier-owned treaty runtime state, pre-dispatch denial in
-the kernel, strict Chiodos DSSE with treaty binding references over real
-request, outcome, and receipt hashes, bounded lineage graph closure, and proof
-regeneration accepted by the existing Chiodos proof verifier. Hash-only
-self-attestation, copied static proof packages, compatibility-only bilateral
-predicates, and package-carried trust roots do not satisfy closure. The
-boundary remains local evidence only and does not add dynamic trust, settlement
-finality, hidden predicates, new transports, FROST, or pheromone-driven
-authority decisions.
+the kernel, strict treaty-bound DSSE in the legacy predicate format with treaty
+binding references over real request, outcome, and receipt hashes, bounded
+lineage graph closure, and proof regeneration accepted by the explicit
+historical proof verifier. Hash-only self-attestation, copied static proof
+packages, compatibility-only bilateral predicates, and package-carried trust
+roots do not satisfy closure. The boundary remains local evidence only and does
+not add dynamic trust, settlement finality, hidden predicates, new transports,
+FROST, or pheromone-driven authority decisions.
 
 `POST /v1/registry/market/fees/issue`,
 `POST /v1/registry/market/penalties/issue`, and

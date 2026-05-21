@@ -31,13 +31,16 @@ pub(super) fn admission_ref_from_request(
         return Err("missing_governed_intent");
     };
     let Some(context) = intent.context.as_ref() else {
-        return Err("missing_chiodos_admission_context");
+        return Err("missing_chio_admission_context");
     };
-    let Some(admission) = context.get("chiodosAdmission") else {
-        return Err("missing_chiodos_admission_context");
+    let Some(admission) = context
+        .get("chioAdmission")
+        .or_else(|| context.get("chiodosAdmission"))
+    else {
+        return Err("missing_chio_admission_context");
     };
     let Some(object) = admission.as_object() else {
-        return Err("invalid_chiodos_admission_context");
+        return Err("invalid_chio_admission_context");
     };
     let Some(admission_id) = object.get("admissionId").and_then(|value| value.as_str()) else {
         return Err("missing_admission_id");
@@ -62,6 +65,9 @@ pub(super) fn request_has_chiodos_runtime_context(request: &ToolCallRequest) -> 
         .and_then(|intent| intent.context.as_ref())
         .and_then(serde_json::Value::as_object)
         .is_some_and(|context| {
-            context.contains_key("chiodosAdmission") || context.contains_key("chiodosTreaty")
+            context.contains_key("chioAdmission")
+                || context.contains_key("chioTreaty")
+                || context.contains_key("chiodosAdmission")
+                || context.contains_key("chiodosTreaty")
         })
 }

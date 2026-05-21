@@ -68,6 +68,31 @@ fn trust_body(version: u64, previous_hash_sha256: Option<String>) -> RuntimeVeri
     }
 }
 
+#[test]
+fn trusted_verifiers_parser_accepts_chio_native_schema() -> Result<(), Box<dyn std::error::Error>> {
+    let verifier = Keypair::generate();
+    let document = serde_json::json!({
+        "schema": "chio.runtime.trusted-verifiers.v1",
+        "verifierKeys": [
+            {
+                "verifierId": "did:chio:buyer-verifier",
+                "keyId": "verifier-key-1",
+                "publicKey": verifier.public_key(),
+                "validFromUnixMs": 1_800_000_000_000u64,
+                "validUntilUnixMs": 1_800_003_600_000u64,
+                "status": "active"
+            }
+        ]
+    });
+
+    let parsed = runtime_trusted_verifier_keys_from_json(&serde_json::to_string(&document)?)?;
+
+    assert_eq!(parsed.schema, "chio.runtime.trusted-verifiers.v1");
+    assert_eq!(parsed.verifier_keys.len(), 1);
+    assert_eq!(parsed.verifier_keys[0].public_key, verifier.public_key());
+    Ok(())
+}
+
 #[derive(Debug, Default)]
 struct TrustFloorFailingAdmissionStore {
     inner: InMemoryRuntimeAdmissionStore,
@@ -556,7 +581,7 @@ fn layered_store_keeps_trust_floor_separate_from_admission_state(
         serde_json::from_str(&std::fs::read_to_string(&store_path)?)?;
     assert_eq!(
         admission_state["schema"],
-        serde_json::json!("chio.chiodos.runtime-admission-store.v1")
+        serde_json::json!(CHIO_RUNTIME_ADMISSION_STORE_SCHEMA)
     );
     assert_eq!(admission_state["bundles"].as_array().map(Vec::len), Some(1));
     assert_eq!(
@@ -569,7 +594,7 @@ fn layered_store_keeps_trust_floor_separate_from_admission_state(
         serde_json::from_str(&std::fs::read_to_string(&trust_floor_path)?)?;
     assert_eq!(
         trust_floor_state["schema"],
-        serde_json::json!("chio.chiodos.runtime-trust-floor-state.v1")
+        serde_json::json!("chio.runtime.trust-floor-state.v1")
     );
     assert_eq!(
         trust_floor_state["entries"].as_array().map(Vec::len),
@@ -606,6 +631,50 @@ fn layered_store_keeps_trust_floor_separate_from_admission_state(
     assert_eq!(
         rejected.failure_code.as_deref(),
         Some("runtime_trust_rollback")
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_trust_floor_store_normalizes_legacy_schema_on_write(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let trust_floor_path = dir.path().join("runtime-trust-floor.json");
+    std::fs::write(
+        &trust_floor_path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schema": "chio.chiodos.runtime-trust-floor-state.v1",
+            "entries": [{
+                "verifierId": "did:chio:buyer-verifier",
+                "keyId": "verifier-key-1",
+                "highestVersion": 1,
+                "latestBundleSha256": "b".repeat(64),
+                "latestRevocationCheckpointSha256": "d".repeat(64)
+            }]
+        }))? + "\n",
+    )?;
+
+    let store = chio_chiodos_runtime::JsonRuntimeTrustFloorStateStore::open(&trust_floor_path)?;
+    assert!(store
+        .runtime_trust_floor("did:chio:buyer-verifier", "verifier-key-1")?
+        .is_some());
+    store.record_runtime_trust_floor(chio_chiodos_runtime::RuntimeTrustFloorEntry {
+        verifier_id: "did:chio:buyer-verifier".to_string(),
+        key_id: "verifier-key-1".to_string(),
+        highest_version: 2,
+        latest_bundle_sha256: "c".repeat(64),
+        latest_revocation_checkpoint_sha256: "e".repeat(64),
+    })?;
+
+    let trust_floor_state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&trust_floor_path)?)?;
+    assert_eq!(
+        trust_floor_state["schema"],
+        serde_json::json!("chio.runtime.trust-floor-state.v1")
+    );
+    assert_eq!(
+        trust_floor_state["entries"][0]["highestVersion"],
+        serde_json::json!(2)
     );
     Ok(())
 }

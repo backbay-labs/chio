@@ -4,7 +4,9 @@ use crate::error::ChiodosRuntimeError;
 use crate::schema::{
     CHIODOS_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA, CHIODOS_RUNTIME_PROOF_PARITY_REPORT_SCHEMA,
     CHIODOS_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA,
-    CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA,
+    CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA, CHIO_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA,
+    CHIO_RUNTIME_PROOF_PARITY_REPORT_SCHEMA, CHIO_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA,
+    CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA,
 };
 use crate::types::{
     RuntimeProofDrift, RuntimeProofDriftReport, RuntimeProofParityReport,
@@ -18,7 +20,7 @@ use crate::validation::evidence::validate_relative_evidence_path;
 pub fn validate_runtime_proof_drift_report(
     report: &RuntimeProofDriftReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA {
+    if !is_runtime_proof_drift_report_schema(&report.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_proof_drift_report_schema",
             detail: format!(
@@ -88,10 +90,17 @@ pub fn validate_runtime_proof_drift_report(
     Ok(())
 }
 
+fn is_runtime_proof_drift_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA | CHIODOS_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA
+    )
+}
+
 pub fn validate_runtime_proof_regeneration_input(
     input: &RuntimeProofRegenerationInput,
 ) -> Result<(), ChiodosRuntimeError> {
-    if input.schema != CHIODOS_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA {
+    if !is_runtime_proof_regeneration_input_schema(&input.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_proof_regeneration_input_schema",
             detail: format!(
@@ -132,7 +141,7 @@ pub fn validate_runtime_proof_regeneration_input(
 pub fn validate_runtime_proof_regeneration_report(
     report: &RuntimeProofRegenerationReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA {
+    if !is_runtime_proof_regeneration_report_schema(&report.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_proof_regeneration_report_schema",
             detail: format!(
@@ -197,7 +206,7 @@ pub fn validate_runtime_proof_regeneration_report(
 pub fn validate_runtime_proof_parity_report(
     report: &RuntimeProofParityReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_RUNTIME_PROOF_PARITY_REPORT_SCHEMA {
+    if !is_runtime_proof_parity_report_schema(&report.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_proof_parity_report_schema",
             detail: format!(
@@ -257,6 +266,29 @@ pub fn validate_runtime_proof_parity_report(
         )?;
     }
     Ok(())
+}
+
+fn is_runtime_proof_regeneration_input_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA
+            | CHIODOS_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA
+    )
+}
+
+fn is_runtime_proof_regeneration_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA
+            | CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA
+    )
+}
+
+fn is_runtime_proof_parity_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_PROOF_PARITY_REPORT_SCHEMA | CHIODOS_RUNTIME_PROOF_PARITY_REPORT_SCHEMA
+    )
 }
 
 fn validate_runtime_proof_source_records(

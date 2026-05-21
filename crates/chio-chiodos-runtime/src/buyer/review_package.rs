@@ -21,7 +21,7 @@ use crate::buyer::strict_dsse::{
     BuyerReviewStrictDsseContext,
 };
 use crate::hash::canonical_sha256;
-use crate::schema::CHIODOS_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA;
+use crate::schema::CHIO_ATTEST_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA;
 use crate::types::{
     BuyerAttestationReviewPackage, BuyerAttestationReviewReport, BuyerAttestationReviewSource,
     BuyerAttestationReviewTrustContext,
@@ -436,7 +436,7 @@ fn verify_buyer_attestation_review_package_internal(
         "verifier report accepted the regenerated proof package",
     ));
     Ok(BuyerAttestationReviewReport {
-        schema: CHIODOS_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA.to_string(),
+        schema: CHIO_ATTEST_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA.to_string(),
         package_id: package.package_id.clone(),
         packet_id: package.packet_id.clone(),
         accepted: true,

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-delivery-profile.schema.json",
-  "title": "Chiodos Pheromone Relay Alert Delivery Profile",
+  "title": "Chio Pheromone Relay Alert Delivery Profile",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -1,14 +1,8 @@
+use super::{load_relay_signing_key, read_json_file, read_utf8_json_file, write_pretty_json};
 use crate::CliError;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use super::{
-    load_relay_signing_key,
-    read_json_file,
-    read_utf8_json_file,
-    write_pretty_json,
-};
-
 
 pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_package(
     alert_report: &Path,
@@ -22,61 +16,83 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_package(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
+    cmd_chio_pheromone_relay_alert_assurance_package(
+        alert_report,
+        trend_report,
+        handoff_report,
+        normalization_report,
+        delivery_report,
+        acknowledgement_report,
+        drift_report,
+        review_packet,
+        now_unix_ms,
+        report,
+    )
+}
+
+pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_package(
+    alert_report: &Path,
+    trend_report: &Path,
+    handoff_report: &Path,
+    normalization_report: &Path,
+    delivery_report: &Path,
+    acknowledgement_report: &Path,
+    drift_report: &Path,
+    review_packet: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
     let alert_report: chio_pheromone_relay::RelayAlertReport = serde_json::from_str(
-        &read_utf8_json_file(alert_report, "Chiodos relay alert report")?,
+        &read_utf8_json_file(alert_report, "Chio relay alert report")?,
     )
-    .map_err(|error| CliError::cli_other_error(format!("Chiodos relay alert report: {error}")))?;
+    .map_err(|error| CliError::cli_other_error(format!("Chio relay alert report: {error}")))?;
     let trend_report: chio_pheromone_relay::RelayTrendReport = serde_json::from_str(
-        &read_utf8_json_file(trend_report, "Chiodos relay trend report")?,
+        &read_utf8_json_file(trend_report, "Chio relay trend report")?,
     )
-    .map_err(|error| CliError::cli_other_error(format!("Chiodos relay trend report: {error}")))?;
+    .map_err(|error| CliError::cli_other_error(format!("Chio relay trend report: {error}")))?;
     let handoff_report: chio_pheromone_relay::RelayAlertHandoffReport = serde_json::from_str(
-        &read_utf8_json_file(handoff_report, "Chiodos relay alert handoff report")?,
+        &read_utf8_json_file(handoff_report, "Chio relay alert handoff report")?,
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos relay alert handoff report: {error}"))
+        CliError::cli_other_error(format!("Chio relay alert handoff report: {error}"))
     })?;
     let normalization_report: chio_pheromone_relay::RelayAlertNormalizationReport =
         serde_json::from_str(&read_utf8_json_file(
             normalization_report,
-            "Chiodos relay alert normalization report",
+            "Chio relay alert normalization report",
         )?)
         .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chiodos relay alert normalization report: {error}"
-            ))
+            CliError::cli_other_error(format!("Chio relay alert normalization report: {error}"))
         })?;
     let delivery_report: chio_pheromone_relay::RelayAlertDeliveryReport = serde_json::from_str(
-        &read_utf8_json_file(delivery_report, "Chiodos relay alert delivery report")?,
+        &read_utf8_json_file(delivery_report, "Chio relay alert delivery report")?,
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos relay alert delivery report: {error}"))
+        CliError::cli_other_error(format!("Chio relay alert delivery report: {error}"))
     })?;
     let acknowledgement_report: chio_pheromone_relay::RelayAlertAcknowledgementReport =
         serde_json::from_str(&read_utf8_json_file(
             acknowledgement_report,
-            "Chiodos relay alert acknowledgement report",
+            "Chio relay alert acknowledgement report",
         )?)
         .map_err(|error| {
             CliError::cli_other_error(format!(
-                "Chiodos relay alert acknowledgement report: {error}"
+                "Chio relay alert acknowledgement report: {error}"
             ))
         })?;
-    let drift_report: chio_pheromone_relay::RelayAlertDeliveryDriftReportV2 =
-        serde_json::from_str(&read_utf8_json_file(
-            drift_report,
-            "Chiodos relay alert delivery drift report",
-        )?)
-        .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chiodos relay alert delivery drift report: {error}"
-            ))
-        })?;
-    let review_packet: chio_pheromone_relay::RelayAlertRouteReviewPacket = serde_json::from_str(
-        &read_utf8_json_file(review_packet, "Chiodos relay alert route review packet")?,
+    let drift_report: chio_pheromone_relay::RelayAlertDeliveryDriftReportV2 = serde_json::from_str(
+        &read_utf8_json_file(drift_report, "Chio relay alert delivery drift report")?,
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos relay alert route review packet: {error}"))
+        CliError::cli_other_error(format!(
+            "Chio relay alert delivery drift report: {error}"
+        ))
+    })?;
+    let review_packet: chio_pheromone_relay::RelayAlertRouteReviewPacket = serde_json::from_str(
+        &read_utf8_json_file(review_packet, "Chio relay alert route review packet")?,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chio relay alert route review packet: {error}"))
     })?;
     let package = chio_pheromone_relay::generate_relay_alert_assurance_package(
         chio_pheromone_relay::RelayAlertAssuranceInput {
@@ -92,13 +108,9 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_package(
         },
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos relay alert assurance package: {error}"))
+        CliError::cli_other_error(format!("Chio relay alert assurance package: {error}"))
     })?;
-    write_pretty_json(
-        report,
-        &package,
-        "Chiodos relay alert assurance package",
-    )
+    write_pretty_json(report, &package, "Chio relay alert assurance package")
 }
 
 pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_export(
@@ -117,29 +129,68 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_export(
     out_dir: &Path,
     report: &Path,
 ) -> Result<(), CliError> {
+    cmd_chio_pheromone_relay_alert_assurance_export(
+        package,
+        alert_report,
+        trend_report,
+        handoff_report,
+        normalization_report,
+        delivery_report,
+        acknowledgement_report,
+        drift_report,
+        review_packet,
+        retention_profile,
+        signing_key,
+        now_unix_ms,
+        out_dir,
+        report,
+    )
+}
+
+pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_export(
+    package: &Path,
+    alert_report: &Path,
+    trend_report: &Path,
+    handoff_report: &Path,
+    normalization_report: &Path,
+    delivery_report: &Path,
+    acknowledgement_report: &Path,
+    drift_report: &Path,
+    review_packet: &Path,
+    retention_profile: &Path,
+    signing_key: &Path,
+    now_unix_ms: u64,
+    out_dir: &Path,
+    report: &Path,
+) -> Result<(), CliError> {
     let assurance_package: chio_pheromone_relay::RelayAlertAssurancePackage =
-        read_json_file(package, "Chiodos relay alert assurance package")?;
+        read_json_file(package, "Chio relay alert assurance package")?;
     let alert_report: chio_pheromone_relay::RelayAlertReport =
-        read_json_file(alert_report, "Chiodos relay alert report")?;
+        read_json_file(alert_report, "Chio relay alert report")?;
     let trend_report: chio_pheromone_relay::RelayTrendReport =
-        read_json_file(trend_report, "Chiodos relay trend report")?;
+        read_json_file(trend_report, "Chio relay trend report")?;
     let handoff_report: chio_pheromone_relay::RelayAlertHandoffReport =
-        read_json_file(handoff_report, "Chiodos relay alert handoff report")?;
-    let normalization_report: chio_pheromone_relay::RelayAlertNormalizationReport =
-        read_json_file(normalization_report, "Chiodos relay alert normalization report")?;
+        read_json_file(handoff_report, "Chio relay alert handoff report")?;
+    let normalization_report: chio_pheromone_relay::RelayAlertNormalizationReport = read_json_file(
+        normalization_report,
+        "Chio relay alert normalization report",
+    )?;
     let delivery_report: chio_pheromone_relay::RelayAlertDeliveryReport =
-        read_json_file(delivery_report, "Chiodos relay alert delivery report")?;
+        read_json_file(delivery_report, "Chio relay alert delivery report")?;
     let acknowledgement_report: chio_pheromone_relay::RelayAlertAcknowledgementReport =
         read_json_file(
             acknowledgement_report,
-            "Chiodos relay alert acknowledgement report",
+            "Chio relay alert acknowledgement report",
         )?;
     let drift_report: chio_pheromone_relay::RelayAlertDeliveryDriftReportV2 =
-        read_json_file(drift_report, "Chiodos relay alert delivery drift report")?;
+        read_json_file(drift_report, "Chio relay alert delivery drift report")?;
     let review_packet: chio_pheromone_relay::RelayAlertRouteReviewPacket =
-        read_json_file(review_packet, "Chiodos relay alert route review packet")?;
+        read_json_file(review_packet, "Chio relay alert route review packet")?;
     let retention_profile: chio_pheromone_relay::RelayAlertAssuranceRetentionProfileDocument =
-        read_json_file(retention_profile, "Chiodos relay alert assurance retention profile")?;
+        read_json_file(
+            retention_profile,
+            "Chio relay alert assurance retention profile",
+        )?;
     let (exporter_id, signing_key) = load_relay_signing_key(signing_key)?;
     let bundle = chio_pheromone_relay::sign_relay_alert_assurance_export_bundle(
         chio_pheromone_relay::RelayAlertAssuranceExportBuildInput {
@@ -162,13 +213,31 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_export(
         },
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos relay alert assurance export: {error}"))
+        CliError::cli_other_error(format!("Chio relay alert assurance export: {error}"))
     })?;
     write_relay_alert_assurance_bundle(out_dir, &bundle)?;
-    write_pretty_json(report, &bundle.report, "Chiodos relay alert assurance export report")
+    write_pretty_json(
+        report,
+        &bundle.report,
+        "Chio relay alert assurance export report",
+    )
 }
 
 pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_verify(
+    bundle_dir: &Path,
+    trusted_exporters: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
+    cmd_chio_pheromone_relay_alert_assurance_verify(
+        bundle_dir,
+        trusted_exporters,
+        now_unix_ms,
+        report,
+    )
+}
+
+pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_verify(
     bundle_dir: &Path,
     trusted_exporters: &Path,
     now_unix_ms: u64,
@@ -178,7 +247,7 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_verify(
     let trusted_exporters: chio_pheromone_relay::RelayAlertAssuranceTrustedExportersDocument =
         read_json_file(
             trusted_exporters,
-            "Chiodos relay alert assurance trusted exporters",
+            "Chio relay alert assurance trusted exporters",
         )?;
     let verify_report = chio_pheromone_relay::verify_relay_alert_assurance_export_bundle(
         &bundle,
@@ -186,12 +255,12 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_verify(
         now_unix_ms,
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos relay alert assurance verify: {error}"))
+        CliError::cli_other_error(format!("Chio relay alert assurance verify: {error}"))
     })?;
     write_pretty_json(
         report,
         &verify_report,
-        "Chiodos relay alert assurance export report",
+        "Chio relay alert assurance export report",
     )
 }
 
@@ -201,11 +270,25 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_replay(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
+    cmd_chio_pheromone_relay_alert_assurance_replay(
+        bundle_dir,
+        trusted_exporters,
+        now_unix_ms,
+        report,
+    )
+}
+
+pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_replay(
+    bundle_dir: &Path,
+    trusted_exporters: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
     let bundle = read_relay_alert_assurance_bundle(bundle_dir)?;
     let trusted_exporters: chio_pheromone_relay::RelayAlertAssuranceTrustedExportersDocument =
         read_json_file(
             trusted_exporters,
-            "Chiodos relay alert assurance trusted exporters",
+            "Chio relay alert assurance trusted exporters",
         )?;
     let replay_report = chio_pheromone_relay::generate_relay_alert_assurance_replay_report(
         chio_pheromone_relay::RelayAlertAssuranceReplayInput {
@@ -215,12 +298,12 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_replay(
         },
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos relay alert assurance replay: {error}"))
+        CliError::cli_other_error(format!("Chio relay alert assurance replay: {error}"))
     })?;
     write_pretty_json(
         report,
         &replay_report,
-        "Chiodos relay alert assurance replay report",
+        "Chio relay alert assurance replay report",
     )
 }
 
@@ -230,9 +313,26 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_retention_plan(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
+    cmd_chio_pheromone_relay_alert_assurance_retention_plan(
+        bundle_root,
+        retention_profile,
+        now_unix_ms,
+        report,
+    )
+}
+
+pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_retention_plan(
+    bundle_root: &Path,
+    retention_profile: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
     let bundles = read_relay_alert_assurance_bundle_root(bundle_root)?;
     let retention_profile: chio_pheromone_relay::RelayAlertAssuranceRetentionProfileDocument =
-        read_json_file(retention_profile, "Chiodos relay alert assurance retention profile")?;
+        read_json_file(
+            retention_profile,
+            "Chio relay alert assurance retention profile",
+        )?;
     let retention_report = chio_pheromone_relay::generate_relay_alert_assurance_retention_report(
         chio_pheromone_relay::RelayAlertAssuranceRetentionInput {
             bundles: &bundles,
@@ -242,13 +342,13 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_retention_plan(
     )
     .map_err(|error| {
         CliError::cli_other_error(format!(
-            "Chiodos relay alert assurance retention plan: {error}"
+            "Chio relay alert assurance retention plan: {error}"
         ))
     })?;
     write_pretty_json(
         report,
         &retention_report,
-        "Chiodos relay alert assurance retention report",
+        "Chio relay alert assurance retention report",
     )
 }
 
@@ -259,11 +359,27 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_recovery_drill(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
+    cmd_chio_pheromone_relay_alert_assurance_recovery_drill(
+        bundle_dir,
+        trusted_exporters,
+        case_id,
+        now_unix_ms,
+        report,
+    )
+}
+
+pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_recovery_drill(
+    bundle_dir: &Path,
+    trusted_exporters: &Path,
+    case_id: &str,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
     let bundle = read_relay_alert_assurance_bundle(bundle_dir)?;
     let trusted_exporters: chio_pheromone_relay::RelayAlertAssuranceTrustedExportersDocument =
         read_json_file(
             trusted_exporters,
-            "Chiodos relay alert assurance trusted exporters",
+            "Chio relay alert assurance trusted exporters",
         )?;
     let drill_report = chio_pheromone_relay::generate_relay_alert_assurance_recovery_drill_report(
         chio_pheromone_relay::RelayAlertAssuranceRecoveryDrillInput {
@@ -275,13 +391,13 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_recovery_drill(
     )
     .map_err(|error| {
         CliError::cli_other_error(format!(
-            "Chiodos relay alert assurance recovery drill: {error}"
+            "Chio relay alert assurance recovery drill: {error}"
         ))
     })?;
     write_pretty_json(
         report,
         &drill_report,
-        "Chiodos relay alert assurance recovery drill report",
+        "Chio relay alert assurance recovery drill report",
     )
 }
 
@@ -293,19 +409,40 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_archive_plan(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
+    cmd_chio_pheromone_relay_alert_assurance_archive_plan(
+        bundle_root,
+        trusted_exporters,
+        archive_profile,
+        retention_profile,
+        now_unix_ms,
+        report,
+    )
+}
+
+pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_archive_plan(
+    bundle_root: &Path,
+    trusted_exporters: &Path,
+    archive_profile: &Path,
+    retention_profile: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
     let bundles = read_relay_alert_assurance_archive_candidates(bundle_root)?;
     let trusted_exporters: chio_pheromone_relay::RelayAlertAssuranceTrustedExportersDocument =
         read_json_file(
             trusted_exporters,
-            "Chiodos relay alert assurance trusted exporters",
+            "Chio relay alert assurance trusted exporters",
         )?;
     let archive_profile: chio_pheromone_relay::RelayAlertAssuranceArchiveProfileDocument =
         read_json_file(
             archive_profile,
-            "Chiodos relay alert assurance archive profile",
+            "Chio relay alert assurance archive profile",
         )?;
     let retention_profile: chio_pheromone_relay::RelayAlertAssuranceRetentionProfileDocument =
-        read_json_file(retention_profile, "Chiodos relay alert assurance retention profile")?;
+        read_json_file(
+            retention_profile,
+            "Chio relay alert assurance retention profile",
+        )?;
     let archive_report = chio_pheromone_relay::generate_relay_alert_assurance_archive_report(
         chio_pheromone_relay::RelayAlertAssuranceArchiveInput {
             bundles: &bundles,
@@ -317,13 +454,13 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_archive_plan(
     )
     .map_err(|error| {
         CliError::cli_other_error(format!(
-            "Chiodos relay alert assurance archive plan: {error}"
+            "Chio relay alert assurance archive plan: {error}"
         ))
     })?;
     write_pretty_json(
         report,
         &archive_report,
-        "Chiodos relay alert assurance archive report",
+        "Chio relay alert assurance archive report",
     )
 }
 
@@ -335,19 +472,40 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_closeout_review(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
+    cmd_chio_pheromone_relay_alert_assurance_closeout_review(
+        bundle_root,
+        trusted_exporters,
+        closeout_profile,
+        retention_profile,
+        now_unix_ms,
+        report,
+    )
+}
+
+pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_closeout_review(
+    bundle_root: &Path,
+    trusted_exporters: &Path,
+    closeout_profile: &Path,
+    retention_profile: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
     let bundles = read_relay_alert_assurance_archive_candidates(bundle_root)?;
     let trusted_exporters: chio_pheromone_relay::RelayAlertAssuranceTrustedExportersDocument =
         read_json_file(
             trusted_exporters,
-            "Chiodos relay alert assurance trusted exporters",
+            "Chio relay alert assurance trusted exporters",
         )?;
     let closeout_profile: chio_pheromone_relay::RelayAlertAssuranceCloseoutProfileDocument =
         read_json_file(
             closeout_profile,
-            "Chiodos relay alert assurance closeout profile",
+            "Chio relay alert assurance closeout profile",
         )?;
     let retention_profile: chio_pheromone_relay::RelayAlertAssuranceRetentionProfileDocument =
-        read_json_file(retention_profile, "Chiodos relay alert assurance retention profile")?;
+        read_json_file(
+            retention_profile,
+            "Chio relay alert assurance retention profile",
+        )?;
     let closeout_report = chio_pheromone_relay::generate_relay_alert_assurance_closeout_report(
         chio_pheromone_relay::RelayAlertAssuranceCloseoutInput {
             bundles: &bundles,
@@ -359,17 +517,15 @@ pub(crate) fn cmd_chiodos_pheromone_relay_alert_assurance_closeout_review(
     )
     .map_err(|error| {
         CliError::cli_other_error(format!(
-            "Chiodos relay alert assurance closeout review: {error}"
+            "Chio relay alert assurance closeout review: {error}"
         ))
     })?;
     write_pretty_json(
         report,
         &closeout_report,
-        "Chiodos relay alert assurance closeout report",
+        "Chio relay alert assurance closeout report",
     )
 }
-
-
 
 pub(crate) fn write_relay_alert_assurance_bundle(
     out_dir: &Path,
@@ -379,26 +535,26 @@ pub(crate) fn write_relay_alert_assurance_bundle(
     write_pretty_json(
         &out_dir.join("manifest.json"),
         &bundle.manifest,
-        "Chiodos relay alert assurance export manifest",
+        "Chio relay alert assurance export manifest",
     )?;
     write_pretty_json(
         &out_dir.join("relay-alert-assurance-export-report.json"),
         &bundle.report,
-        "Chiodos relay alert assurance export report",
+        "Chio relay alert assurance export report",
     )?;
     for file in &bundle.files {
         let path = safe_bundle_path(out_dir, &file.path)?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|error| {
                 CliError::cli_io_error(format!(
-                    "failed to create Chiodos relay alert assurance export dir {}: {error}",
+                    "failed to create Chio relay alert assurance export dir {}: {error}",
                     parent.display()
                 ))
             })?;
         }
         fs::write(&path, &file.bytes).map_err(|error| {
             CliError::cli_io_error(format!(
-                "failed to write Chiodos relay alert assurance export file {}: {error}",
+                "failed to write Chio relay alert assurance export file {}: {error}",
                 path.display()
             ))
         })?;
@@ -411,18 +567,18 @@ pub(crate) fn read_relay_alert_assurance_bundle(
 ) -> Result<chio_pheromone_relay::RelayAlertAssuranceExportBundle, CliError> {
     let manifest: chio_pheromone_relay::RelayAlertAssuranceExportManifest = read_json_file(
         &bundle_dir.join("manifest.json"),
-        "Chiodos relay alert assurance export manifest",
+        "Chio relay alert assurance export manifest",
     )?;
     let report: chio_pheromone_relay::RelayAlertAssuranceExportReport = read_json_file(
         &bundle_dir.join("relay-alert-assurance-export-report.json"),
-        "Chiodos relay alert assurance export report",
+        "Chio relay alert assurance export report",
     )?;
     let mut files = Vec::new();
     for artifact in &manifest.body.artifacts {
         let path = safe_bundle_path(bundle_dir, &artifact.path)?;
         let bytes = fs::read(&path).map_err(|error| {
             CliError::cli_io_error(format!(
-                "failed to read Chiodos relay alert assurance export file {}: {error}",
+                "failed to read Chio relay alert assurance export file {}: {error}",
                 path.display()
             ))
         })?;
@@ -446,7 +602,7 @@ pub(crate) fn read_relay_alert_assurance_bundle_root(
     }
     let entries = fs::read_dir(bundle_root).map_err(|error| {
         CliError::cli_io_error(format!(
-            "failed to read Chiodos relay alert assurance bundle root {}: {error}",
+            "failed to read Chio relay alert assurance bundle root {}: {error}",
             bundle_root.display()
         ))
     })?;
@@ -454,7 +610,7 @@ pub(crate) fn read_relay_alert_assurance_bundle_root(
     for entry in entries {
         let entry = entry.map_err(|error| {
             CliError::cli_io_error(format!(
-                "failed to read Chiodos relay alert assurance bundle root entry {}: {error}",
+                "failed to read Chio relay alert assurance bundle root entry {}: {error}",
                 bundle_root.display()
             ))
         })?;
@@ -470,7 +626,7 @@ pub(crate) fn read_relay_alert_assurance_bundle_root(
     }
     if bundles.is_empty() {
         return Err(CliError::cli_other_error(format!(
-            "Chiodos relay alert assurance bundle root {} contains no bundles",
+            "Chio relay alert assurance bundle root {} contains no bundles",
             bundle_root.display()
         )));
     }
@@ -487,7 +643,7 @@ pub(crate) fn read_relay_alert_assurance_archive_candidates(
     }
     let entries = fs::read_dir(bundle_root).map_err(|error| {
         CliError::cli_io_error(format!(
-            "failed to read Chiodos relay alert assurance bundle root {}: {error}",
+            "failed to read Chio relay alert assurance bundle root {}: {error}",
             bundle_root.display()
         ))
     })?;
@@ -495,7 +651,7 @@ pub(crate) fn read_relay_alert_assurance_archive_candidates(
     for entry in entries {
         let entry = entry.map_err(|error| {
             CliError::cli_io_error(format!(
-                "failed to read Chiodos relay alert assurance bundle root entry {}: {error}",
+                "failed to read Chio relay alert assurance bundle root entry {}: {error}",
                 bundle_root.display()
             ))
         })?;
@@ -511,7 +667,7 @@ pub(crate) fn read_relay_alert_assurance_archive_candidates(
     }
     if candidates.is_empty() {
         return Err(CliError::cli_other_error(format!(
-            "Chiodos relay alert assurance bundle root {} contains no bundles",
+            "Chio relay alert assurance bundle root {} contains no bundles",
             bundle_root.display()
         )));
     }
@@ -551,26 +707,30 @@ pub(crate) fn ensure_clean_output_dir(out_dir: &Path) -> Result<(), CliError> {
     if out_dir.exists() {
         let mut entries = fs::read_dir(out_dir).map_err(|error| {
             CliError::cli_io_error(format!(
-                "failed to inspect Chiodos output directory {}: {error}",
+                "failed to inspect Chio output directory {}: {error}",
                 out_dir.display()
             ))
         })?;
-        if entries.next().transpose().map_err(|error| {
-            CliError::cli_io_error(format!(
-                "failed to inspect Chiodos output directory {}: {error}",
-                out_dir.display()
-            ))
-        })?.is_some()
+        if entries
+            .next()
+            .transpose()
+            .map_err(|error| {
+                CliError::cli_io_error(format!(
+                    "failed to inspect Chio output directory {}: {error}",
+                    out_dir.display()
+                ))
+            })?
+            .is_some()
         {
             return Err(CliError::cli_other_error(format!(
-                "Chiodos output directory {} must be empty",
+                "Chio output directory {} must be empty",
                 out_dir.display()
             )));
         }
     } else {
         fs::create_dir_all(out_dir).map_err(|error| {
             CliError::cli_io_error(format!(
-                "failed to create Chiodos output directory {}: {error}",
+                "failed to create Chio output directory {}: {error}",
                 out_dir.display()
             ))
         })?;
@@ -586,17 +746,35 @@ pub(crate) fn safe_bundle_path(root: &Path, relative: &str) -> Result<PathBuf, C
         || Path::new(relative).is_absolute()
     {
         return Err(CliError::cli_other_error(format!(
-            "Chiodos relay alert assurance export path {relative} is not relative"
+            "Chio relay alert assurance export path {relative} is not relative"
         )));
     }
     let mut path = root.to_path_buf();
     for segment in relative.split('/') {
         if segment.is_empty() || segment == "." || segment == ".." {
             return Err(CliError::cli_other_error(format!(
-                "Chiodos relay alert assurance export path {relative} is unsafe"
+                "Chio relay alert assurance export path {relative} is unsafe"
             )));
         }
         path.push(segment);
     }
     Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_clean_output_dir;
+
+    #[test]
+    fn output_directory_errors_use_chio_boundary_label() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(tempdir.path().join("existing.json"), "{}").expect("write fixture");
+
+        let error = ensure_clean_output_dir(tempdir.path())
+            .expect_err("non-empty output dir should fail")
+            .to_string();
+
+        assert!(error.contains("Chio output directory"));
+        assert!(!error.contains("Chiodos"));
+    }
 }

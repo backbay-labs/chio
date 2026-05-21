@@ -1,0 +1,33 @@
+{
+  "schema": "chio.pheromone.relay-health-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "detail": "relay health evaluated from durable store state",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000000500,
+  "peerDirectoryVersion": null,
+  "queueDepth": 0,
+  "oldestPendingAgeMs": null,
+  "retryCount": 0,
+  "deadLetterCount": 0,
+  "inboxCount": 0,
+  "cursorCount": 0,
+  "staleLeaseCount": 0,
+  "checks": [
+    {
+      "code": "store.connected",
+      "accepted": true,
+      "detail": "SQLite relay store is reachable"
+    },
+    {
+      "code": "outbox.pressure",
+      "accepted": true,
+      "detail": "queue_depth=0"
+    },
+    {
+      "code": "leases.fresh",
+      "accepted": true,
+      "detail": "stale_lease_count=0"
+    }
+  ]
+}

@@ -1,9 +1,7 @@
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 use super::{sqlite_error, sqlite_i64, sqlite_u64, SqliteRuntimeOrchestrationStore};
-use crate::schema::{
-    CHIODOS_RUNTIME_RUN_LEASE_SCHEMA, CHIODOS_RUNTIME_SCHEDULER_TICK_REPORT_SCHEMA,
-};
+use crate::schema::{CHIO_RUNTIME_RUN_LEASE_SCHEMA, CHIO_RUNTIME_SCHEDULER_TICK_REPORT_SCHEMA};
 use crate::types::{RuntimeRunLease, RuntimeSchedulerTickReport, RuntimeSupervisorProfile};
 use crate::validation::{
     validate_non_empty, validate_runtime_run_lease, validate_runtime_scheduler_tick_report,
@@ -57,7 +55,7 @@ impl SqliteRuntimeOrchestrationStore {
                 1
             };
         let lease = RuntimeRunLease {
-            schema: CHIODOS_RUNTIME_RUN_LEASE_SCHEMA.to_string(),
+            schema: CHIO_RUNTIME_RUN_LEASE_SCHEMA.to_string(),
             run_id: run_id.to_string(),
             lease_id: format!("{run_id}:{owner_id}:{fencing_token}"),
             owner_id: owner_id.to_string(),
@@ -177,7 +175,7 @@ impl SqliteRuntimeOrchestrationStore {
             )
             .map_err(sqlite_error)?;
         let lease = RuntimeRunLease {
-            schema: CHIODOS_RUNTIME_RUN_LEASE_SCHEMA.to_string(),
+            schema: CHIO_RUNTIME_RUN_LEASE_SCHEMA.to_string(),
             run_id: run_id.to_string(),
             lease_id,
             owner_id: owner_id.to_string(),
@@ -281,7 +279,7 @@ impl SqliteRuntimeOrchestrationStore {
                 .map_err(sqlite_error)?;
         }
         let report = RuntimeSchedulerTickReport {
-            schema: CHIODOS_RUNTIME_SCHEDULER_TICK_REPORT_SCHEMA.to_string(),
+            schema: CHIO_RUNTIME_SCHEDULER_TICK_REPORT_SCHEMA.to_string(),
             accepted,
             failure_code,
             tick_id,

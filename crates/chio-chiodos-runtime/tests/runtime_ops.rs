@@ -20,10 +20,48 @@ fn supervisor_profile() -> RuntimeSupervisorProfile {
 }
 
 #[test]
+fn runtime_ops_input_documents_accept_chio_native_schemas() -> Result<(), Box<dyn std::error::Error>>
+{
+    let mut supervisor = supervisor_profile();
+    supervisor.schema = "chio.runtime.supervisor-profile.v1".to_string();
+    validate_runtime_supervisor_profile(&supervisor)?;
+
+    let retention = RuntimeArtifactRetentionProfile {
+        schema: "chio.runtime.artifact-retention-profile.v1".to_string(),
+        profile_id: "retention-runtime-local".to_string(),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+        issued_at_unix_ms: 1_800_000_000_000,
+        expires_at_unix_ms: 1_800_003_600_000,
+        min_retain_ms: 86_400_000,
+        destructive_hold_ms: 604_800_000,
+        legal_hold: false,
+        dry_run_only: true,
+    };
+    validate_runtime_artifact_retention_profile(&retention)?;
+
+    let bindings = RuntimeProviderBindingsDocument {
+        schema: "chio.runtime.provider-bindings.v1".to_string(),
+        bindings: vec![RuntimeProviderBinding {
+            provider_id: "provider-vendor-b".to_string(),
+            local_kernel_id: "kernel.vendor-b".to_string(),
+            server_id: "vendor-ledger".to_string(),
+            tool_name: "close_account".to_string(),
+            discovery_allowed: false,
+        }],
+    };
+    validate_runtime_provider_bindings(&bindings)?;
+
+    let mut legacy_supervisor = supervisor_profile();
+    legacy_supervisor.schema = CHIODOS_RUNTIME_SUPERVISOR_PROFILE_SCHEMA.to_string();
+    validate_runtime_supervisor_profile(&legacy_supervisor)?;
+    Ok(())
+}
+
+#[test]
 fn runtime_workflow_report_requires_structured_step_evidence(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let report = RuntimeWorkflowRunReport {
-        schema: CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
+        schema: "chio.runtime.workflow-run-report.v1".to_string(),
         run_id: "runtime-loopback-7-2".to_string(),
         accepted: true,
         failure_code: None,
@@ -31,7 +69,7 @@ fn runtime_workflow_report_requires_structured_step_evidence(
         admission_report_sha256: "1".repeat(64),
         evidence_paths: vec!["runtime-admission-report-1.json".to_string()],
         step_evidence: vec![RuntimeStepEvidence {
-            schema: CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
+            schema: "chio.runtime.step-evidence.v1".to_string(),
             step_index: 0,
             admission_id: "adm-live-1".to_string(),
             admission_report_sha256: "1".repeat(64),
@@ -90,7 +128,7 @@ fn runtime_workflow_report_rejects_placeholder_success_path(
 fn proof_regeneration_report_records_bound_runtime_artifacts(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let report = RuntimeProofRegenerationReport {
-        schema: CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA.to_string(),
+        schema: "chio.runtime.proof-regeneration-report.v1".to_string(),
         run_id: "runtime-loopback-7-2".to_string(),
         accepted: true,
         failure_code: None,
@@ -109,7 +147,7 @@ fn proof_regeneration_report_records_bound_runtime_artifacts(
     };
 
     let json = serde_json::to_string(&report)?;
-    assert!(json.contains(CHIODOS_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA));
+    assert!(json.contains("chio.runtime.proof-regeneration-report.v1"));
     assert!(json.contains("sourceRecords"));
     chio_chiodos_runtime::validate_runtime_proof_regeneration_report(&report)?;
     Ok(())
@@ -125,7 +163,7 @@ fn runtime_proof_regeneration_contracts_bind_evidence() -> Result<(), Box<dyn st
         workflow_step_sha256: "4".repeat(64),
     };
     let manifest = RuntimeEvidenceManifest {
-        schema: CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        schema: "chio.runtime.evidence-manifest.v1".to_string(),
         run_id: "runtime-loopback-7-3".to_string(),
         generated_at_unix_ms: 1_800_000_001_000,
         workflow_run_report_sha256: "5".repeat(64),
@@ -138,7 +176,7 @@ fn runtime_proof_regeneration_contracts_bind_evidence() -> Result<(), Box<dyn st
         }],
     };
     let input = RuntimeProofRegenerationInput {
-        schema: CHIODOS_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA.to_string(),
+        schema: "chio.runtime.proof-regeneration-input.v1".to_string(),
         run_id: "runtime-loopback-7-3".to_string(),
         evidence_manifest_sha256: "8".repeat(64),
         workflow_run_report_sha256: "5".repeat(64),
@@ -148,7 +186,7 @@ fn runtime_proof_regeneration_contracts_bind_evidence() -> Result<(), Box<dyn st
         source_records: vec![source_record.clone()],
     };
     let parity = RuntimeProofParityReport {
-        schema: CHIODOS_RUNTIME_PROOF_PARITY_REPORT_SCHEMA.to_string(),
+        schema: "chio.runtime.proof-parity-report.v1".to_string(),
         run_id: "runtime-loopback-7-3".to_string(),
         accepted: true,
         failure_code: None,
@@ -168,9 +206,9 @@ fn runtime_proof_regeneration_contracts_bind_evidence() -> Result<(), Box<dyn st
     let manifest_json = chio_chiodos_runtime::runtime_evidence_manifest_json(&manifest)?;
     let input_json = chio_chiodos_runtime::runtime_proof_regeneration_input_json(&input)?;
     let parity_json = chio_chiodos_runtime::runtime_proof_parity_report_json(&parity)?;
-    assert!(manifest_json.contains("runtime-evidence-manifest"));
-    assert!(input_json.contains("runtime-proof-regeneration-input"));
-    assert!(parity_json.contains("runtime-proof-parity-report"));
+    assert!(manifest_json.contains("chio.runtime.evidence-manifest.v1"));
+    assert!(input_json.contains("chio.runtime.proof-regeneration-input.v1"));
+    assert!(parity_json.contains("chio.runtime.proof-parity-report.v1"));
     Ok(())
 }
 
@@ -209,7 +247,7 @@ fn runtime_orchestration_contracts_validate_status_and_run_report(
     };
     let run_contract_hash = chio_chiodos_runtime::runtime_run_contract_sha256(&run_contract)?;
     let run_report = chio_chiodos_runtime::RuntimeOrchestrationRunReport {
-        schema: CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA.to_string(),
+        schema: "chio.runtime.orchestration-run-report.v1".to_string(),
         run_id: run_contract.run_id.clone(),
         accepted: true,
         failure_code: None,
@@ -233,7 +271,7 @@ fn runtime_orchestration_contracts_validate_status_and_run_report(
         checks: vec!["runtime_orchestration.proof_regeneration_verified".to_string()],
     };
     let status = chio_chiodos_runtime::RuntimeOrchestrationStatusReport {
-        schema: CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA.to_string(),
+        schema: "chio.runtime.orchestration-status-report.v1".to_string(),
         accepted: true,
         failure_code: None,
         generated_at_unix_ms: 1_800_000_001_000,
@@ -261,6 +299,7 @@ fn runtime_orchestration_contracts_validate_status_and_run_report(
         stale_plan.failure_code.as_deref(),
         Some("runtime_orchestration_profile_stale")
     );
+    assert_eq!(stale_plan.schema, "chio.runtime.orchestration-plan.v1");
     chio_chiodos_runtime::validate_runtime_orchestration_run_report(&run_report)?;
     chio_chiodos_runtime::validate_runtime_orchestration_status_report(&status)?;
     assert!(
@@ -351,6 +390,7 @@ fn runtime_orchestration_status_rejects_stale_profile() -> Result<(), Box<dyn st
 
     let status = store.status_report(&profile, profile_sha256, 1_800_000_001_000, true)?;
 
+    assert_eq!(status.schema, "chio.runtime.orchestration-status-report.v1");
     assert!(!status.accepted);
     assert!(!status.ready);
     assert_eq!(
@@ -408,7 +448,7 @@ fn runtime_proof_drift_report_rejects_manifest_hash_change(
         &candidate_proof,
         1_800_000_002_000,
     )?;
-    assert_eq!(report.schema, CHIODOS_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA);
+    assert_eq!(report.schema, "chio.runtime.proof-drift-report.v1");
     assert!(!report.accepted);
     assert_eq!(
         report.failure_code.as_deref(),
@@ -738,6 +778,7 @@ fn runtime_ops_run_lease_blocks_competing_owner_and_allows_stale_takeover(
     store.record_run_state("runtime-run-1", "pending", None, 1_800_000_000_000)?;
 
     let first = store.acquire_run_lease("runtime-run-1", "owner-a", 1_800_000_000_000, 60_000)?;
+    assert_eq!(first.schema, "chio.runtime.run-lease.v1");
     assert_eq!(first.fencing_token, 1);
 
     let conflict = store.acquire_run_lease("runtime-run-1", "owner-b", 1_800_000_010_000, 60_000);
@@ -754,6 +795,7 @@ fn runtime_ops_run_lease_blocks_competing_owner_and_allows_stale_takeover(
 
     let takeover =
         store.acquire_run_lease("runtime-run-1", "owner-b", 1_800_000_061_000, 60_000)?;
+    assert_eq!(takeover.schema, "chio.runtime.run-lease.v1");
     assert_eq!(takeover.owner_id, "owner-b");
     assert_eq!(takeover.fencing_token, 2);
 
@@ -798,6 +840,7 @@ fn runtime_ops_run_lease_blocks_competing_owner_and_allows_stale_takeover(
         1_800_000_002_001,
         60_000,
     )?;
+    assert_eq!(recovered.schema, "chio.runtime.run-lease.v1");
     assert_eq!(recovered.owner_id, "owner-b");
     assert_eq!(recovered.fencing_token, 2);
     Ok(())
@@ -817,6 +860,7 @@ fn runtime_ops_scheduler_tick_claims_pending_runs_and_expires_stale_leases(
     let report =
         store.scheduler_tick_report(&supervisor_profile(), "operator-a", 1_800_000_002_000, 2)?;
 
+    assert_eq!(report.schema, "chio.runtime.scheduler-tick-report.v1");
     assert!(report.accepted, "{report:#?}");
     assert_eq!(report.claimed_run_ids.len(), 2);
     assert!(report
@@ -950,6 +994,7 @@ fn runtime_ops_status_rejects_stale_supervisor_profile() -> Result<(), Box<dyn s
 
     let report = store.ops_status_report(&profile, profile.expires_at_unix_ms, true, true)?;
 
+    assert_eq!(report.schema, "chio.runtime.ops-status-report.v1");
     assert!(!report.accepted, "{report:#?}");
     assert_eq!(
         report.failure_code.as_deref(),
@@ -982,6 +1027,7 @@ fn runtime_ops_status_ignores_terminal_lease_for_staleness(
 
     let report = store.ops_status_report(&supervisor_profile(), 1_800_000_400_000, true, true)?;
 
+    assert_eq!(report.schema, "chio.runtime.ops-status-report.v1");
     assert!(report.accepted, "{report:#?}");
     assert_eq!(report.active_lease_count, 1, "{report:#?}");
     assert_eq!(report.stale_lease_count, 0, "{report:#?}");
@@ -1006,6 +1052,7 @@ fn runtime_ops_recovery_drill_rejects_stale_supervisor_profile(
         profile.expires_at_unix_ms,
     )?;
 
+    assert_eq!(report.schema, "chio.runtime.recovery-drill-report.v1");
     assert!(!report.accepted, "{report:#?}");
     assert_eq!(
         report.failure_code.as_deref(),
@@ -1043,6 +1090,7 @@ fn runtime_ops_recovery_drill_blocks_terminal_failure_steps(
 
     let report = store.recovery_drill_report("runtime-run-terminal", 1_800_000_001_000)?;
 
+    assert_eq!(report.schema, "chio.runtime.recovery-drill-report.v1");
     assert!(!report.accepted, "{report:#?}");
     assert!(report.blocked, "{report:#?}");
     assert!(!report.resumable, "{report:#?}");
@@ -1193,6 +1241,7 @@ fn runtime_ops_evidence_health_detects_hash_mismatch() -> Result<(), Box<dyn std
         1_800_000_000_000,
         false,
     )?;
+    assert_eq!(report.schema, "chio.runtime.evidence-sink-health-report.v1");
     assert!(!report.accepted);
     assert_eq!(
         report.failure_code.as_deref(),
@@ -1316,6 +1365,7 @@ fn runtime_ops_provider_health_rejects_discovery_attempts() -> Result<(), Box<dy
         &bindings,
         1_800_000_000_000,
     )?;
+    assert_eq!(report.schema, "chio.runtime.provider-health-report.v1");
     assert!(!report.accepted);
     assert_eq!(
         report.failure_code.as_deref(),
@@ -1346,6 +1396,7 @@ fn runtime_ops_provider_health_rejects_stale_supervisor_profile(
         1_800_000_001_000,
     )?;
 
+    assert_eq!(report.schema, "chio.runtime.provider-health-report.v1");
     assert!(!report.accepted);
     assert_eq!(
         report.failure_code.as_deref(),
@@ -1374,10 +1425,7 @@ fn runtime_ops_retention_plan_rejects_stale_profile() -> Result<(), Box<dyn std:
         1_800_000_001_000,
     )?;
 
-    assert_eq!(
-        report.schema,
-        CHIODOS_RUNTIME_ARTIFACT_RETENTION_PLAN_SCHEMA
-    );
+    assert_eq!(report.schema, "chio.runtime.artifact-retention-plan.v1");
     assert!(!report.accepted);
     assert_eq!(
         report.failure_code.as_deref(),

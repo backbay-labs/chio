@@ -9,7 +9,7 @@ pub struct JsonRuntimeTrustFloorStateStore {
 impl JsonRuntimeTrustFloorStateStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, ChiodosRuntimeError> {
         let path = path.as_ref().to_path_buf();
-        let state = if path.exists() {
+        let mut state = if path.exists() {
             let json = fs::read_to_string(&path).map_err(|error| {
                 ChiodosRuntimeError::Io(format!(
                     "failed to read runtime trust-floor state {}: {error}",
@@ -22,23 +22,14 @@ impl JsonRuntimeTrustFloorStateStore {
                     path.display()
                 ))
             })?;
-            if state.schema != CHIODOS_RUNTIME_TRUST_FLOOR_STATE_SCHEMA {
-                return Err(ChiodosRuntimeError::Rejected {
-                    code: "unsupported_runtime_trust_floor_state_schema",
-                    detail: format!(
-                        "runtime trust-floor state {} declared unsupported schema {}",
-                        path.display(),
-                        state.schema
-                    ),
-                });
-            }
             state
         } else {
             RuntimeTrustFloorState {
-                schema: CHIODOS_RUNTIME_TRUST_FLOOR_STATE_SCHEMA.to_string(),
+                schema: CHIO_RUNTIME_TRUST_FLOOR_STATE_SCHEMA.to_string(),
                 entries: Vec::new(),
             }
         };
+        Self::normalize_schema(&mut state, Some(&path))?;
         let store = Self {
             path,
             state: Arc::new(Mutex::new(state)),
@@ -47,13 +38,36 @@ impl JsonRuntimeTrustFloorStateStore {
         Ok(store)
     }
 
+    fn normalize_schema(
+        state: &mut RuntimeTrustFloorState,
+        source_path: Option<&Path>,
+    ) -> Result<(), ChiodosRuntimeError> {
+        match state.schema.as_str() {
+            CHIO_RUNTIME_TRUST_FLOOR_STATE_SCHEMA | CHIODOS_RUNTIME_TRUST_FLOOR_STATE_SCHEMA => {
+                state.schema = CHIO_RUNTIME_TRUST_FLOOR_STATE_SCHEMA.to_string();
+                Ok(())
+            }
+            unsupported => {
+                let location = source_path
+                    .map(|path| format!(" {}", path.display()))
+                    .unwrap_or_default();
+                Err(ChiodosRuntimeError::Rejected {
+                    code: "unsupported_runtime_trust_floor_state_schema",
+                    detail: format!(
+                        "runtime trust-floor state{location} declared unsupported schema {unsupported}"
+                    ),
+                })
+            }
+        }
+    }
+
     fn validate_locked_state(&self) -> Result<(), ChiodosRuntimeError> {
         let state = self.lock_state()?;
         Self::validate_state(&state)
     }
 
     fn validate_state(state: &RuntimeTrustFloorState) -> Result<(), ChiodosRuntimeError> {
-        if state.schema != CHIODOS_RUNTIME_TRUST_FLOOR_STATE_SCHEMA {
+        if state.schema != CHIO_RUNTIME_TRUST_FLOOR_STATE_SCHEMA {
             return Err(ChiodosRuntimeError::Rejected {
                 code: "unsupported_runtime_trust_floor_state_schema",
                 detail: format!(
@@ -130,6 +144,7 @@ impl RuntimeTrustFloorStore for JsonRuntimeTrustFloorStateStore {
         entry: RuntimeTrustFloorEntry,
     ) -> Result<(), ChiodosRuntimeError> {
         let mut state = self.lock_state()?;
+        state.schema = CHIO_RUNTIME_TRUST_FLOOR_STATE_SCHEMA.to_string();
         if let Some(existing) = state.entries.iter_mut().find(|existing| {
             existing.verifier_id == entry.verifier_id && existing.key_id == entry.key_id
         }) {
@@ -147,6 +162,7 @@ impl RuntimeTrustFloorStore for JsonRuntimeTrustFloorStateStore {
         previous_hash_sha256: Option<&str>,
     ) -> Result<(), ChiodosRuntimeError> {
         let mut state = self.lock_state()?;
+        state.schema = CHIO_RUNTIME_TRUST_FLOOR_STATE_SCHEMA.to_string();
         let existing = state
             .entries
             .iter()

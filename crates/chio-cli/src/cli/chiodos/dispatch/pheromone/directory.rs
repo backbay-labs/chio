@@ -1,20 +1,21 @@
+use super::{RelayTrustedIssuersDocument, read_utf8_json_file, unix_now_ms, write_json_string};
 use crate::CliError;
 use std::path::Path;
-use super::{
-    RelayTrustedIssuersDocument,
-    read_utf8_json_file,
-    unix_now_ms,
-    write_json_string,
-};
-
 
 pub(crate) fn cmd_chiodos_pheromone_relay_directory_inspect(
     state: &Path,
     report: &Path,
 ) -> Result<(), CliError> {
-    let json = read_utf8_json_file(state, "Chiodos peer-directory state")?;
+    cmd_chio_pheromone_relay_directory_inspect(state, report)
+}
+
+pub(crate) fn cmd_chio_pheromone_relay_directory_inspect(
+    state: &Path,
+    report: &Path,
+) -> Result<(), CliError> {
+    let json = read_utf8_json_file(state, "Chio peer-directory state")?;
     let state = chio_pheromone_relay::peer_directory_state_from_json(&json).map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos peer-directory state: {error}"))
+        CliError::cli_other_error(format!("Chio peer-directory state: {error}"))
     })?;
     let inspection = chio_pheromone_relay::PeerDirectoryRotationReport {
         schema: chio_pheromone_relay::PHEROMONE_PEER_DIRECTORY_ROTATION_REPORT_SCHEMA.to_string(),
@@ -47,10 +48,28 @@ pub(crate) fn cmd_chiodos_pheromone_relay_directory_inspect(
             .map(|entry| entry.removed_peer_ids.clone())
             .unwrap_or_default(),
     };
-    write_pretty_json(report, &inspection, "Chiodos peer-directory inspection")
+    write_pretty_json(report, &inspection, "Chio peer-directory inspection")
 }
 
 pub(crate) fn cmd_chiodos_pheromone_relay_directory_promote(
+    state: &Path,
+    candidate: &Path,
+    trusted_issuers: &Path,
+    profile: chio_pheromone_relay::RelayProfile,
+    now_unix_ms: Option<u64>,
+    report: &Path,
+) -> Result<(), CliError> {
+    cmd_chio_pheromone_relay_directory_promote(
+        state,
+        candidate,
+        trusted_issuers,
+        profile,
+        now_unix_ms,
+        report,
+    )
+}
+
+pub(crate) fn cmd_chio_pheromone_relay_directory_promote(
     state: &Path,
     candidate: &Path,
     trusted_issuers: &Path,
@@ -74,17 +93,27 @@ pub(crate) fn cmd_chiodos_pheromone_relay_directory_promote(
             let report_document =
                 peer_directory_rotation_error_report(&state_document, now, &error);
             write_peer_directory_state(state, &state_document)?;
-            write_pretty_json(report, &report_document, "Chiodos peer-directory rotation")?;
+            write_pretty_json(report, &report_document, "Chio peer-directory rotation")?;
             return Err(CliError::cli_other_error(format!(
-                "Chiodos peer-directory candidate promote: {error}"
+                "Chio peer-directory candidate promote: {error}"
             )));
         }
     };
     write_peer_directory_state(state, &state_document)?;
-    write_pretty_json(report, &report_document, "Chiodos peer-directory rotation")
+    write_pretty_json(report, &report_document, "Chio peer-directory rotation")
 }
 
 pub(crate) fn cmd_chiodos_pheromone_relay_directory_reject(
+    state: &Path,
+    candidate: &Path,
+    reason: &str,
+    now_unix_ms: Option<u64>,
+    report: &Path,
+) -> Result<(), CliError> {
+    cmd_chio_pheromone_relay_directory_reject(state, candidate, reason, now_unix_ms, report)
+}
+
+pub(crate) fn cmd_chio_pheromone_relay_directory_reject(
     state: &Path,
     candidate: &Path,
     reason: &str,
@@ -101,17 +130,24 @@ pub(crate) fn cmd_chiodos_pheromone_relay_directory_reject(
         now,
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos peer-directory candidate reject: {error}"))
+        CliError::cli_other_error(format!("Chio peer-directory candidate reject: {error}"))
     })?;
     write_peer_directory_state(state, &state_document)?;
-    write_pretty_json(report, &report_document, "Chiodos peer-directory rejection")
+    write_pretty_json(report, &report_document, "Chio peer-directory rejection")
 }
 
 pub(crate) fn cmd_chiodos_pheromone_relay_supervisor_lint(
     profile: &Path,
     report: &Path,
 ) -> Result<(), CliError> {
-    let profile_json = read_utf8_json_file(profile, "Chiodos relay supervisor profile")?;
+    cmd_chio_pheromone_relay_supervisor_lint(profile, report)
+}
+
+pub(crate) fn cmd_chio_pheromone_relay_supervisor_lint(
+    profile: &Path,
+    report: &Path,
+) -> Result<(), CliError> {
+    let profile_json = read_utf8_json_file(profile, "Chio relay supervisor profile")?;
     let lint_report = match chio_pheromone_relay::relay_supervisor_profile_from_json(&profile_json)
     {
         Ok(profile_document) => {
@@ -130,7 +166,7 @@ pub(crate) fn cmd_chiodos_pheromone_relay_supervisor_lint(
             }],
         },
     };
-    write_pretty_json(report, &lint_report, "Chiodos relay supervisor lint")
+    write_pretty_json(report, &lint_report, "Chio relay supervisor lint")
 }
 
 pub(crate) fn load_relay_peer_directory_from_paths(
@@ -142,7 +178,7 @@ pub(crate) fn load_relay_peer_directory_from_paths(
     label: &str,
 ) -> Result<chio_pheromone_relay::PeerDirectory, CliError> {
     if let Some(state_path) = peer_directory_state {
-        let state_json = read_utf8_json_file(state_path, "Chiodos peer-directory state")?;
+        let state_json = read_utf8_json_file(state_path, "Chio peer-directory state")?;
         let state = chio_pheromone_relay::peer_directory_state_from_json(&state_json)
             .map_err(|error| CliError::cli_other_error(format!("{label}: {error}")))?;
         let trusted_issuers = trusted_issuers.ok_or_else(|| {
@@ -175,16 +211,16 @@ pub(crate) fn parse_relay_peer_directory_json(
     profile: chio_pheromone_relay::RelayProfile,
     trusted_issuers: Option<(Vec<chio_pheromone_relay::TrustedPeerDirectoryIssuer>, u64)>,
 ) -> Result<chio_pheromone_relay::PeerDirectory, chio_pheromone_relay::PheromoneRelayError> {
-    let value: serde_json::Value = serde_json::from_str(json).map_err(|error| {
-        chio_pheromone_relay::PheromoneRelayError::Json(error.to_string())
-    })?;
+    let value: serde_json::Value = serde_json::from_str(json)
+        .map_err(|error| chio_pheromone_relay::PheromoneRelayError::Json(error.to_string()))?;
     let schema = value
         .get("schema")
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default();
     if schema == chio_pheromone_relay::PHEROMONE_PEER_DIRECTORY_BUNDLE_SCHEMA {
         let bundle: chio_pheromone_relay::PeerDirectoryBundleDocument =
-            serde_json::from_value(value).map_err(chio_pheromone_relay::PheromoneRelayError::from)?;
+            serde_json::from_value(value)
+                .map_err(chio_pheromone_relay::PheromoneRelayError::from)?;
         let (issuers, min_version) = trusted_issuers.ok_or_else(|| {
             chio_pheromone_relay::PheromoneRelayError::UnknownPeerDirectoryIssuer(
                 "signed peer-directory bundle requires trusted issuers".to_string(),
@@ -200,9 +236,11 @@ pub(crate) fn parse_relay_peer_directory_json(
         return bundle.verify(&trust);
     }
     if profile == chio_pheromone_relay::RelayProfile::Production {
-        return Err(chio_pheromone_relay::PheromoneRelayError::PeerDirectoryUnsigned(
-            "production profile requires a signed peer-directory bundle".to_string(),
-        ));
+        return Err(
+            chio_pheromone_relay::PheromoneRelayError::PeerDirectoryUnsigned(
+                "production profile requires a signed peer-directory bundle".to_string(),
+            ),
+        );
     }
     chio_pheromone_relay::peer_directory_from_json_with_profile(
         json,
@@ -221,9 +259,9 @@ pub(crate) fn load_optional_relay_trusted_issuers(
 pub(crate) fn load_relay_trusted_issuers(
     path: &Path,
 ) -> Result<(Vec<chio_pheromone_relay::TrustedPeerDirectoryIssuer>, u64), CliError> {
-    let json = read_utf8_json_file(path, "Chiodos relay trusted issuers")?;
+    let json = read_utf8_json_file(path, "Chio relay trusted issuers")?;
     let document: RelayTrustedIssuersDocument = serde_json::from_str(&json).map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos relay trusted issuers: {error}"))
+        CliError::cli_other_error(format!("Chio relay trusted issuers: {error}"))
     })?;
     let issuers = document
         .issuers
@@ -255,9 +293,10 @@ pub(crate) fn build_peer_directory_bundle_trust(
 pub(crate) fn load_relay_peer_directory_bundle(
     path: &Path,
 ) -> Result<chio_pheromone_relay::PeerDirectoryBundleDocument, CliError> {
-    let json = read_utf8_json_file(path, "Chiodos peer-directory bundle")?;
-    serde_json::from_str(&json)
-        .map_err(|error| CliError::cli_other_error(format!("Chiodos peer-directory bundle: {error}")))
+    let json = read_utf8_json_file(path, "Chio peer-directory bundle")?;
+    serde_json::from_str(&json).map_err(|error| {
+        CliError::cli_other_error(format!("Chio peer-directory bundle: {error}"))
+    })
 }
 
 pub(crate) fn load_or_create_peer_directory_state(
@@ -266,9 +305,10 @@ pub(crate) fn load_or_create_peer_directory_state(
     now_unix_ms: u64,
 ) -> Result<chio_pheromone_relay::PeerDirectoryStateDocument, CliError> {
     if path.exists() {
-        let json = read_utf8_json_file(path, "Chiodos peer-directory state")?;
-        chio_pheromone_relay::peer_directory_state_from_json(&json)
-            .map_err(|error| CliError::cli_other_error(format!("Chiodos peer-directory state: {error}")))
+        let json = read_utf8_json_file(path, "Chio peer-directory state")?;
+        chio_pheromone_relay::peer_directory_state_from_json(&json).map_err(|error| {
+            CliError::cli_other_error(format!("Chio peer-directory state: {error}"))
+        })
     } else {
         Ok(chio_pheromone_relay::PeerDirectoryStateDocument::new(
             &candidate.directory.local_kernel_id,
@@ -281,7 +321,7 @@ pub(crate) fn write_peer_directory_state(
     path: &Path,
     state: &chio_pheromone_relay::PeerDirectoryStateDocument,
 ) -> Result<(), CliError> {
-    write_pretty_json(path, state, "Chiodos peer-directory state")
+    write_pretty_json(path, state, "Chio peer-directory state")
 }
 
 pub(crate) fn peer_directory_rotation_error_report(

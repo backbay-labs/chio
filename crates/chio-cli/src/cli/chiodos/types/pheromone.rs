@@ -1,4 +1,3 @@
-
 #[path = "pheromone/alerts.rs"]
 mod alerts;
 #[path = "pheromone/assurance.rs"]
@@ -12,28 +11,33 @@ mod relay;
 #[path = "pheromone/root.rs"]
 mod root;
 
-pub(crate) use self::alerts::{
-    ChiodosPheromoneRelayAlertCommands,
-};
+pub(crate) use self::alerts::ChioPheromoneRelayAlertCommands;
 pub(crate) use self::assurance::{
-    ChiodosPheromoneRelayAlertAssuranceCommands,
-    ChiodosPheromoneRelayAlertAssuranceRetentionCommands,
-    ChiodosPheromoneRelayAlertAssuranceArchiveCommands,
-    ChiodosPheromoneRelayAlertAssuranceCloseoutCommands,
+    ChioPheromoneRelayAlertAssuranceArchiveCommands,
+    ChioPheromoneRelayAlertAssuranceCloseoutCommands, ChioPheromoneRelayAlertAssuranceCommands,
+    ChioPheromoneRelayAlertAssuranceRetentionCommands,
 };
-pub(crate) use self::delivery::{
-    ChiodosPheromoneRelayAlertDeliveryCommands,
-};
+pub(crate) use self::delivery::ChioPheromoneRelayAlertDeliveryCommands;
 pub(crate) use self::directory::{
-    ChiodosPheromoneRelayDirectoryCommands,
-    ChiodosPheromoneRelaySupervisorCommands,
-};
-pub(crate) use self::relay::{
-    ChiodosPheromoneRelayCommands,
-    RelayProfileArg,
+    ChioPheromoneRelayDirectoryCommands, ChioPheromoneRelaySupervisorCommands,
 };
 #[cfg(test)]
 pub(crate) use self::relay::RelayMetricsFormatArg;
-pub(crate) use self::root::{
-    ChiodosPheromoneCommands,
-};
+pub(crate) use self::relay::{ChioPheromoneRelayCommands, RelayProfileArg};
+pub(crate) use self::root::ChioPheromoneCommands;
+
+pub(crate) type ChiodosPheromoneCommands = ChioPheromoneCommands;
+pub(crate) type ChiodosPheromoneRelayAlertCommands = ChioPheromoneRelayAlertCommands;
+pub(crate) type ChiodosPheromoneRelayAlertAssuranceArchiveCommands =
+    ChioPheromoneRelayAlertAssuranceArchiveCommands;
+pub(crate) type ChiodosPheromoneRelayAlertAssuranceCloseoutCommands =
+    ChioPheromoneRelayAlertAssuranceCloseoutCommands;
+pub(crate) type ChiodosPheromoneRelayAlertAssuranceCommands =
+    ChioPheromoneRelayAlertAssuranceCommands;
+pub(crate) type ChiodosPheromoneRelayAlertAssuranceRetentionCommands =
+    ChioPheromoneRelayAlertAssuranceRetentionCommands;
+pub(crate) type ChiodosPheromoneRelayAlertDeliveryCommands =
+    ChioPheromoneRelayAlertDeliveryCommands;
+pub(crate) type ChiodosPheromoneRelayDirectoryCommands = ChioPheromoneRelayDirectoryCommands;
+pub(crate) type ChiodosPheromoneRelayCommands = ChioPheromoneRelayCommands;
+pub(crate) type ChiodosPheromoneRelaySupervisorCommands = ChioPheromoneRelaySupervisorCommands;

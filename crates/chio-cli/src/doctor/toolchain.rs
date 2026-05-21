@@ -169,9 +169,7 @@ impl Probe for ToolchainProbe {
                     )
                     .with_context("cargo_version", raw_version)
                     .with_context("msrv", msrv)
-                    .with_help(
-                        "Upgrade Rust to at least the workspace MSRV before running chio.",
-                    );
+                    .with_help("Upgrade Rust to at least the workspace MSRV before running chio.");
                 }
             }
         }

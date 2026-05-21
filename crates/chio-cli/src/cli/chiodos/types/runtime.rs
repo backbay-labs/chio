@@ -1,9 +1,8 @@
 use clap::Subcommand;
 use std::path::PathBuf;
 
-
 #[derive(Subcommand)]
-pub(crate) enum ChiodosRuntimeCommands {
+pub(crate) enum ChioRuntimeCommands {
     /// Evaluate a runtime admission request against verifier-owned local state.
     Admit {
         /// Stable request binding JSON.
@@ -77,31 +76,31 @@ pub(crate) enum ChiodosRuntimeCommands {
     /// Sign verifier-owned runtime pheromone policy material.
     Policy {
         #[command(subcommand)]
-        command: ChiodosRuntimePolicyCommands,
+        command: ChioRuntimePolicyCommands,
     },
 
     /// Sign verifier-owned runtime peer weights material.
     PeerWeights {
         #[command(subcommand)]
-        command: ChiodosRuntimePeerWeightsCommands,
+        command: ChioRuntimePeerWeightsCommands,
     },
 
     /// Evaluate runtime pheromone policy without mutating admission state.
     Pheromone {
         #[command(subcommand)]
-        command: ChiodosRuntimePheromoneCommands,
+        command: ChioRuntimePheromoneCommands,
     },
 
-    /// Run production local Chiodos runtime orchestration checks.
+    /// Run production local Chio runtime orchestration checks.
     Orchestrate {
         #[command(subcommand)]
-        command: ChiodosRuntimeOrchestrateCommands,
+        command: ChioRuntimeOrchestrateCommands,
     },
 
-    /// Run local Chiodos runtime operations supervision checks.
+    /// Run local Chio runtime operations supervision checks.
     Ops {
         #[command(subcommand)]
-        command: ChiodosRuntimeOpsCommands,
+        command: ChioRuntimeOpsCommands,
     },
 
     /// Generate a local loopback runtime scenario report.
@@ -125,7 +124,7 @@ pub(crate) enum ChiodosRuntimeCommands {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosRuntimeOpsCommands {
+pub(crate) enum ChioRuntimeOpsCommands {
     /// Supervise local runtime operations and emit aggregate status.
     Supervise {
         #[arg(long = "supervisor-profile", value_name = "PATH")]
@@ -252,12 +251,12 @@ pub(crate) enum ChiodosRuntimeOpsCommands {
     /// Plan runtime artifact retention without mutating evidence.
     Retention {
         #[command(subcommand)]
-        command: ChiodosRuntimeOpsRetentionCommands,
+        command: ChioRuntimeOpsRetentionCommands,
     },
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosRuntimeOpsRetentionCommands {
+pub(crate) enum ChioRuntimeOpsRetentionCommands {
     /// Plan dry-run runtime artifact retention.
     Plan {
         #[arg(long = "retention-profile", value_name = "PATH")]
@@ -278,7 +277,7 @@ pub(crate) enum ChiodosRuntimeOpsRetentionCommands {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosRuntimeOrchestrateCommands {
+pub(crate) enum ChioRuntimeOrchestrateCommands {
     /// Validate a runtime orchestration profile.
     Lint {
         /// Runtime orchestration profile JSON.
@@ -419,7 +418,7 @@ pub(crate) enum ChiodosRuntimeOrchestrateCommands {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosRuntimePolicyCommands {
+pub(crate) enum ChioRuntimePolicyCommands {
     /// Sign a runtime pheromone policy body.
     Sign {
         /// Runtime pheromone policy body JSON.
@@ -437,7 +436,7 @@ pub(crate) enum ChiodosRuntimePolicyCommands {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosRuntimePeerWeightsCommands {
+pub(crate) enum ChioRuntimePeerWeightsCommands {
     /// Compute the canonical hash of a runtime peer weights body.
     Hash {
         /// Runtime peer weights body JSON.
@@ -466,7 +465,7 @@ pub(crate) enum ChiodosRuntimePeerWeightsCommands {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ChiodosRuntimePheromoneCommands {
+pub(crate) enum ChioRuntimePheromoneCommands {
     /// Sign a pheromone query report for runtime admission.
     SignQueryReport {
         /// Pheromone query report body JSON.
@@ -521,3 +520,10 @@ pub(crate) enum ChiodosRuntimePheromoneCommands {
         report: PathBuf,
     },
 }
+
+pub(crate) type ChiodosRuntimeOpsCommands = ChioRuntimeOpsCommands;
+pub(crate) type ChiodosRuntimeOpsRetentionCommands = ChioRuntimeOpsRetentionCommands;
+pub(crate) type ChiodosRuntimeOrchestrateCommands = ChioRuntimeOrchestrateCommands;
+pub(crate) type ChiodosRuntimePeerWeightsCommands = ChioRuntimePeerWeightsCommands;
+pub(crate) type ChiodosRuntimePheromoneCommands = ChioRuntimePheromoneCommands;
+pub(crate) type ChiodosRuntimePolicyCommands = ChioRuntimePolicyCommands;

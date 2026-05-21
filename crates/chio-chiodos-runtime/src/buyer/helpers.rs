@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::schema::{
-    CHIODOS_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA, CHIODOS_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA,
+    CHIODOS_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA,
+    CHIODOS_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA,
+    CHIO_ATTEST_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA,
+    CHIO_ATTEST_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA,
 };
 use crate::types::{
     BuyerAttestationReviewArtifactRef, BuyerAttestationReviewCheck, BuyerAttestationReviewPackage,
@@ -23,7 +26,9 @@ pub(super) fn buyer_review_verification_context_window(
 pub(super) fn validate_buyer_attestation_review_package(
     package: &BuyerAttestationReviewPackage,
 ) -> Result<(), ChiodosRuntimeError> {
-    if package.schema != CHIODOS_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA {
+    if package.schema != CHIO_ATTEST_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA
+        && package.schema != CHIODOS_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA
+    {
         return rejected(
             "unsupported_buyer_attestation_review_package_schema",
             "buyer attestation review package declared an unsupported schema",
@@ -73,7 +78,9 @@ pub(super) fn validate_buyer_attestation_review_package(
 pub(crate) fn validate_buyer_attestation_review_report(
     report: &BuyerAttestationReviewReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA {
+    if report.schema != CHIO_ATTEST_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA
+        && report.schema != CHIODOS_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA
+    {
         return rejected(
             "unsupported_buyer_attestation_review_report_schema",
             "buyer attestation review report declared an unsupported schema",
@@ -147,7 +154,7 @@ pub(super) fn buyer_review_rejection_report(
     checks: Vec<BuyerAttestationReviewCheck>,
 ) -> BuyerAttestationReviewReport {
     BuyerAttestationReviewReport {
-        schema: CHIODOS_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA.to_string(),
+        schema: CHIO_ATTEST_BUYER_ATTESTATION_REVIEW_REPORT_SCHEMA.to_string(),
         package_id: package.package_id.clone(),
         packet_id: package.packet_id.clone(),
         accepted: false,

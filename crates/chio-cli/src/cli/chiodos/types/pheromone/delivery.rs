@@ -1,9 +1,8 @@
 use clap::Subcommand;
 use std::path::PathBuf;
 
-
 #[derive(Subcommand)]
-pub(crate) enum ChiodosPheromoneRelayAlertDeliveryCommands {
+pub(crate) enum ChioPheromoneRelayAlertDeliveryCommands {
     /// Import local downstream delivery-result artifacts.
     Import {
         /// Relay alert handoff report JSON.

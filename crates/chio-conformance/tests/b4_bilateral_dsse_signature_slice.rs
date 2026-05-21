@@ -1,7 +1,7 @@
 //! DSSE signature-slice regression tests.
 //!
 //! This fixture intentionally does NOT claim
-//! `CHIODOS_BILATERAL_COSIGN_INVOCATION` predicate conformance. The
+//! strict treaty-bound bilateral invocation predicate conformance. The
 //! production emitter signs a local signature-slice predicate that carries
 //! `receipt_canonical_json` and omits strict-schema fields such as
 //! `tool_args_hash`.
@@ -159,7 +159,7 @@ fn signature_slice_verifier_accepts_freshly_signed_envelope() {
     assert_eq!(statement.subject.len(), 1);
     assert_eq!(statement.subject[0].name, receipt_subject_name(&receipt.id));
 
-    // Spec §7 step 8 partial: the fingerprint declared in the predicate
+    // Spec section 7 step 8 partial: the fingerprint declared in the predicate
     // matches the keyid the verifier derives from the public key.
     let want_a = Keyid::from_public_key(&kp_a.public_key());
     let want_b = Keyid::from_public_key(&kp_b.public_key());
@@ -207,7 +207,7 @@ fn emitted_predicate_is_explicit_signature_slice_not_chiodos_invocation_schema()
     assert_eq!(predicate_json["schema"], PREDICATE_BODY_SCHEMA);
     assert_ne!(
         statement.predicate_type, "chio.bilateral-cosign-invocation.v1",
-        "signature-slice output must not claim the strict CHIODOS predicate type"
+        "signature-slice output must not claim the strict treaty-bound predicate type"
     );
     assert!(
         predicate_json.get("receipt_canonical_json").is_some(),

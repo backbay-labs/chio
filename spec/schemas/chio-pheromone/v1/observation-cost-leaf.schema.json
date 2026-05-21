@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/observation-cost-leaf.schema.json",
+  "title": "Chio Pheromone Observation Cost Leaf",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "depositBodySha256",
+    "depositSignatureSha256",
+    "kernelId",
+    "agentPassportKeyHash",
+    "treatyId",
+    "subjectClassNamespace",
+    "subjectClass",
+    "observedAtUnixMs",
+    "eventDigestSha256",
+    "cost",
+    "scarcityPolicySha256",
+    "runtimePolicySha256"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone-observation-cost-leaf.v1" },
+    "depositBodySha256": { "$ref": "#/$defs/hex64" },
+    "depositSignatureSha256": { "$ref": "#/$defs/hex64" },
+    "kernelId": { "type": "string", "minLength": 1 },
+    "agentPassportKeyHash": { "$ref": "#/$defs/hex64" },
+    "treatyId": { "type": "string", "minLength": 1 },
+    "subjectClassNamespace": { "type": "string", "minLength": 1 },
+    "subjectClass": { "type": "string", "minLength": 1 },
+    "observedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "eventDigestSha256": { "$ref": "#/$defs/hex64" },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "amount"],
+      "properties": {
+        "unit": { "const": "chio.observation.microunit.v1" },
+        "amount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "scarcityPolicySha256": { "$ref": "#/$defs/hex64" },
+    "runtimePolicySha256": { "$ref": "#/$defs/hex64" }
+  },
+  "$defs": {
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

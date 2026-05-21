@@ -2,22 +2,32 @@ use std::path::Path;
 
 use crate::CliError;
 
-use super::io::{ensure_runtime_evidence_dir, load_runtime_orchestration_profile, load_runtime_run_contract, sorted_child_dirs};
 use super::super::{read_utf8_json_file, write_pretty_json};
+use super::io::{
+    ensure_runtime_evidence_dir, load_runtime_orchestration_profile, load_runtime_run_contract,
+    sorted_child_dirs,
+};
 
-pub(crate) fn cmd_chiodos_runtime_orchestrate_lint(profile: &Path, report: &Path) -> Result<(), CliError> {
+pub(crate) fn cmd_chiodos_runtime_orchestrate_lint(
+    profile: &Path,
+    report: &Path,
+) -> Result<(), CliError> {
+    cmd_chio_runtime_orchestrate_lint(profile, report)
+}
+
+pub(crate) fn cmd_chio_runtime_orchestrate_lint(
+    profile: &Path,
+    report: &Path,
+) -> Result<(), CliError> {
     let profile = load_runtime_orchestration_profile(profile)?;
-    let profile_sha256 =
-        chio_chiodos_runtime::runtime_orchestration_profile_sha256(&profile).map_err(
-            |error| {
-                CliError::cli_other_error(format!(
-                    "Chiodos runtime orchestration profile hash: {error}"
-                ))
-            },
-        )?;
-    let report_value = chio_chiodos_runtime::RuntimeOrchestrationStatusReport {
-        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA
-            .to_string(),
+    let profile_sha256 = chio_runtime::runtime_orchestration_profile_sha256(&profile)
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chio runtime orchestration profile hash: {error}"
+            ))
+        })?;
+    let report_value = chio_runtime::RuntimeOrchestrationStatusReport {
+        schema: chio_runtime::CHIO_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA.to_string(),
         accepted: true,
         failure_code: None,
         generated_at_unix_ms: profile.issued_at_unix_ms,
@@ -35,7 +45,7 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_lint(profile: &Path, report: &Path
     write_pretty_json(
         report,
         &report_value,
-        "Chiodos runtime orchestration lint report",
+        "Chio runtime orchestration lint report",
     )
 }
 
@@ -47,33 +57,52 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_plan(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
+    cmd_chio_runtime_orchestrate_plan(
+        profile,
+        run_contract,
+        store,
+        evidence_dir,
+        now_unix_ms,
+        report,
+    )
+}
+
+pub(crate) fn cmd_chio_runtime_orchestrate_plan(
+    profile: &Path,
+    run_contract: &Path,
+    store: &Path,
+    evidence_dir: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
     let profile = load_runtime_orchestration_profile(profile)?;
     let run_contract = load_runtime_run_contract(run_contract)?;
-    let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
-        |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
-    )?;
+    let store =
+        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
+            CliError::cli_other_error(format!("Chio runtime orchestration store: {error}"))
+        })?;
     ensure_runtime_evidence_dir(evidence_dir)?;
-    let plan = chio_chiodos_runtime::build_runtime_orchestration_plan(
+    let plan = chio_runtime::build_runtime_orchestration_plan(
         &profile,
         &run_contract,
         now_unix_ms,
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos runtime orchestration plan: {error}"))
+        CliError::cli_other_error(format!("Chio runtime orchestration plan: {error}"))
     })?;
     if plan.accepted {
         store
             .record_run_state(&plan.run_id, "planned", None, now_unix_ms)
             .map_err(|error| {
                 CliError::cli_other_error(format!(
-                    "Chiodos runtime orchestration planned run state: {error}"
+                    "Chio runtime orchestration planned run state: {error}"
                 ))
             })?;
         for step in &plan.planned_steps {
             store
                 .record_run_step_state(
                     &plan.run_id,
-                    chio_chiodos_runtime::RuntimeOrchestrationStepState {
+                    chio_runtime::RuntimeOrchestrationStepState {
                         step_index: step.step_index,
                         admission_id: step.admission_id.clone(),
                         state: step.state.clone(),
@@ -85,12 +114,12 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_plan(
                 )
                 .map_err(|error| {
                     CliError::cli_other_error(format!(
-                        "Chiodos runtime orchestration planned step state: {error}"
+                        "Chio runtime orchestration planned step state: {error}"
                     ))
                 })?;
         }
     }
-    write_pretty_json(report, &plan, "Chiodos runtime orchestration plan")
+    write_pretty_json(report, &plan, "Chio runtime orchestration plan")
 }
 
 pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
@@ -101,25 +130,42 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
+    cmd_chio_runtime_orchestrate_run(
+        profile,
+        run_contract,
+        store,
+        evidence_dir,
+        now_unix_ms,
+        report,
+    )
+}
+
+pub(crate) fn cmd_chio_runtime_orchestrate_run(
+    profile: &Path,
+    run_contract: &Path,
+    store: &Path,
+    evidence_dir: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
     let profile = load_runtime_orchestration_profile(profile)?;
     let run_contract = load_runtime_run_contract(run_contract)?;
-    let profile_sha256 =
-        chio_chiodos_runtime::runtime_orchestration_profile_sha256(&profile).map_err(
-            |error| {
-                CliError::cli_other_error(format!(
-                    "Chiodos runtime orchestration profile hash: {error}"
-                ))
-            },
-        )?;
-    let run_contract_sha256 =
-        chio_chiodos_runtime::runtime_run_contract_sha256(&run_contract).map_err(|error| {
-            CliError::cli_other_error(format!("Chiodos runtime run contract hash: {error}"))
+    let profile_sha256 = chio_runtime::runtime_orchestration_profile_sha256(&profile)
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chio runtime orchestration profile hash: {error}"
+            ))
         })?;
-    let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
-        |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
-    )?;
+    let run_contract_sha256 = chio_runtime::runtime_run_contract_sha256(&run_contract)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio runtime run contract hash: {error}"))
+        })?;
+    let store =
+        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
+            CliError::cli_other_error(format!("Chio runtime orchestration store: {error}"))
+        })?;
     ensure_runtime_evidence_dir(evidence_dir)?;
-    let evidence = match chio_chiodos_runtime::load_runtime_orchestration_evidence(evidence_dir) {
+    let evidence = match chio_runtime::load_runtime_orchestration_evidence(evidence_dir) {
         Ok(evidence) => evidence,
         Err(error) => {
             let failure_code = error.code().to_string();
@@ -132,12 +178,11 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
                 )
                 .map_err(|store_error| {
                     CliError::cli_other_error(format!(
-                        "Chiodos runtime orchestration failed run state: {store_error}"
+                        "Chio runtime orchestration failed run state: {store_error}"
                     ))
                 })?;
-            let report_value = chio_chiodos_runtime::RuntimeOrchestrationRunReport {
-                schema: chio_chiodos_runtime::CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA
-                    .to_string(),
+            let report_value = chio_runtime::RuntimeOrchestrationRunReport {
+                schema: chio_runtime::CHIO_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA.to_string(),
                 run_id: run_contract.run_id,
                 accepted: false,
                 failure_code: Some(failure_code),
@@ -155,7 +200,7 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
             return write_pretty_json(
                 report,
                 &report_value,
-                "Chiodos runtime orchestration run report",
+                "Chio runtime orchestration run report",
             );
         }
     };
@@ -167,7 +212,7 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
     } else if now_unix_ms < profile.issued_at_unix_ms || now_unix_ms >= profile.expires_at_unix_ms {
         accepted = false;
         failure_code = Some("runtime_orchestration_profile_stale".to_string());
-    } else if !chio_chiodos_runtime::runtime_orchestration_evidence_is_fresh(
+    } else if !chio_runtime::runtime_orchestration_evidence_is_fresh(
         &profile,
         &evidence,
         now_unix_ms,
@@ -175,7 +220,7 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
         accepted = false;
         failure_code = Some("runtime_orchestration_evidence_stale".to_string());
     } else if evidence.proof_regeneration_report.accepted {
-        if let Err(failure) = chio_chiodos_runtime::validate_runtime_orchestration_evidence_binding(
+        if let Err(failure) = chio_runtime::validate_runtime_orchestration_evidence_binding(
             &run_contract,
             &evidence,
         ) {
@@ -187,7 +232,9 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
                 evidence
                     .verifier_report_failure_code
                     .clone()
-                    .unwrap_or_else(|| "runtime_orchestration_verifier_report_rejected".to_string()),
+                    .unwrap_or_else(|| {
+                        "runtime_orchestration_verifier_report_rejected".to_string()
+                    }),
             );
         }
     }
@@ -197,13 +244,18 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
         "terminal_failure"
     };
     store
-        .record_run_state(&run_contract.run_id, status, failure_code.as_deref(), now_unix_ms)
+        .record_run_state(
+            &run_contract.run_id,
+            status,
+            failure_code.as_deref(),
+            now_unix_ms,
+        )
         .map_err(|error| {
-            CliError::cli_other_error(format!("Chiodos runtime orchestration run state: {error}"))
+            CliError::cli_other_error(format!("Chio runtime orchestration run state: {error}"))
         })?;
     let mut step_states = Vec::new();
     for step in evidence.workflow_run_report.step_evidence {
-        let state = chio_chiodos_runtime::RuntimeOrchestrationStepState {
+        let state = chio_runtime::RuntimeOrchestrationStepState {
             step_index: step.step_index,
             admission_id: step.admission_id,
             state: status.to_string(),
@@ -216,7 +268,7 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
             .record_run_step_state(&run_contract.run_id, state.clone())
             .map_err(|error| {
                 CliError::cli_other_error(format!(
-                    "Chiodos runtime orchestration step state: {error}"
+                    "Chio runtime orchestration step state: {error}"
                 ))
             })?;
         step_states.push(state);
@@ -226,12 +278,12 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
             .record_evidence_artifact(&run_contract.run_id, entry, now_unix_ms)
             .map_err(|error| {
                 CliError::cli_other_error(format!(
-                    "Chiodos runtime orchestration evidence artifact: {error}"
+                    "Chio runtime orchestration evidence artifact: {error}"
                 ))
             })?;
     }
-    let report_value = chio_chiodos_runtime::RuntimeOrchestrationRunReport {
-        schema: chio_chiodos_runtime::CHIODOS_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA.to_string(),
+    let report_value = chio_runtime::RuntimeOrchestrationRunReport {
+        schema: chio_runtime::CHIO_RUNTIME_ORCHESTRATION_RUN_REPORT_SCHEMA.to_string(),
         run_id: run_contract.run_id,
         accepted,
         failure_code,
@@ -252,7 +304,7 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_run(
     write_pretty_json(
         report,
         &report_value,
-        "Chiodos runtime orchestration run report",
+        "Chio runtime orchestration run report",
     )
 }
 
@@ -264,28 +316,46 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_resume(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
+    cmd_chio_runtime_orchestrate_resume(
+        profile,
+        resume_plan,
+        store,
+        evidence_dir,
+        now_unix_ms,
+        report,
+    )
+}
+
+pub(crate) fn cmd_chio_runtime_orchestrate_resume(
+    profile: &Path,
+    resume_plan: &Path,
+    store: &Path,
+    evidence_dir: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
     let profile = load_runtime_orchestration_profile(profile)?;
-    let mut resolved: chio_chiodos_runtime::RuntimeOrchestrationResumePlan =
-        serde_json::from_str(&read_utf8_json_file(
-            resume_plan,
-            "Chiodos runtime orchestration resume plan",
-        )?)
-        .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chiodos runtime orchestration resume plan parse: {error}"
-            ))
-        })?;
-    chio_chiodos_runtime::validate_runtime_orchestration_resume_plan(&resolved).map_err(
+    let mut resolved: chio_runtime::RuntimeOrchestrationResumePlan = serde_json::from_str(
+        &read_utf8_json_file(resume_plan, "Chio runtime orchestration resume plan")?,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "Chio runtime orchestration resume plan parse: {error}"
+        ))
+    })?;
+    chio_runtime::validate_runtime_orchestration_resume_plan(&resolved).map_err(
         |error| {
             CliError::cli_other_error(format!(
-                "Chiodos runtime orchestration resume plan: {error}"
+                "Chio runtime orchestration resume plan: {error}"
             ))
         },
     )?;
-    let _store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
-        |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
-    )?;
+    let _store =
+        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
+            CliError::cli_other_error(format!("Chio runtime orchestration store: {error}"))
+        })?;
     ensure_runtime_evidence_dir(evidence_dir)?;
+    resolved.schema = chio_runtime::CHIO_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA.to_string();
     resolved.generated_at_unix_ms = now_unix_ms;
     resolved
         .checks
@@ -302,17 +372,17 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_resume(
             .checks
             .push("runtime_orchestration.profile_window".to_string());
     }
-    chio_chiodos_runtime::validate_runtime_orchestration_resume_plan(&resolved).map_err(
+    chio_runtime::validate_runtime_orchestration_resume_plan(&resolved).map_err(
         |error| {
             CliError::cli_other_error(format!(
-                "Chiodos runtime orchestration resume report: {error}"
+                "Chio runtime orchestration resume report: {error}"
             ))
         },
     )?;
     write_pretty_json(
         report,
         &resolved,
-        "Chiodos runtime orchestration resume report",
+        "Chio runtime orchestration resume report",
     )
 }
 
@@ -323,68 +393,78 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_status(
     now_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
+    cmd_chio_runtime_orchestrate_status(profile, store, evidence_dir, now_unix_ms, report)
+}
+
+pub(crate) fn cmd_chio_runtime_orchestrate_status(
+    profile: &Path,
+    store: &Path,
+    evidence_dir: &Path,
+    now_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
     let profile = load_runtime_orchestration_profile(profile)?;
-    let profile_sha256 =
-        chio_chiodos_runtime::runtime_orchestration_profile_sha256(&profile).map_err(
-            |error| {
-                CliError::cli_other_error(format!(
-                    "Chiodos runtime orchestration profile hash: {error}"
-                ))
-            },
-        )?;
-    let store = chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(
-        |error| CliError::cli_other_error(format!("Chiodos runtime orchestration store: {error}")),
-    )?;
-    let evidence_sink_healthy =
-        runtime_orchestration_recorded_evidence_healthy(&profile, &store, evidence_dir, now_unix_ms)?;
-    let report_value = store
-        .status_report(
-            &profile,
-            profile_sha256,
-            now_unix_ms,
-            evidence_sink_healthy,
-        )
+    let profile_sha256 = chio_runtime::runtime_orchestration_profile_sha256(&profile)
         .map_err(|error| {
-            CliError::cli_other_error(format!("Chiodos runtime orchestration status: {error}"))
+            CliError::cli_other_error(format!(
+                "Chio runtime orchestration profile hash: {error}"
+            ))
+        })?;
+    let store =
+        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
+            CliError::cli_other_error(format!("Chio runtime orchestration store: {error}"))
+        })?;
+    let evidence_sink_healthy = runtime_orchestration_recorded_evidence_healthy(
+        &profile,
+        &store,
+        evidence_dir,
+        now_unix_ms,
+    )?;
+    let report_value = store
+        .status_report(&profile, profile_sha256, now_unix_ms, evidence_sink_healthy)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio runtime orchestration status: {error}"))
         })?;
     write_pretty_json(
         report,
         &report_value,
-        "Chiodos runtime orchestration status report",
+        "Chio runtime orchestration status report",
     )
 }
 
 fn runtime_orchestration_recorded_evidence_healthy(
-    profile: &chio_chiodos_runtime::RuntimeOrchestrationProfile,
-    store: &chio_chiodos_runtime::SqliteRuntimeOrchestrationStore,
+    profile: &chio_runtime::RuntimeOrchestrationProfile,
+    store: &chio_runtime::SqliteRuntimeOrchestrationStore,
     evidence_dir: &Path,
     now_unix_ms: u64,
 ) -> Result<bool, CliError> {
     let run_ids = store.recorded_run_ids().map_err(|error| {
-        CliError::cli_other_error(format!("Chiodos runtime orchestration recorded runs: {error}"))
+        CliError::cli_other_error(format!(
+            "Chio runtime orchestration recorded runs: {error}"
+        ))
     })?;
     if run_ids.len() <= 1 {
-        return chio_chiodos_runtime::runtime_orchestration_evidence_sink_healthy(
+        return chio_runtime::runtime_orchestration_evidence_sink_healthy(
             profile,
             evidence_dir,
             now_unix_ms,
         )
         .map_err(|error| {
             CliError::cli_other_error(format!(
-                "Chiodos runtime orchestration evidence health: {error}"
+                "Chio runtime orchestration evidence health: {error}"
             ))
         });
     }
     for run_id in run_ids {
         let run_dir = evidence_dir.join(&run_id);
-        if !chio_chiodos_runtime::runtime_orchestration_evidence_sink_healthy(
+        if !chio_runtime::runtime_orchestration_evidence_sink_healthy(
             profile,
             &run_dir,
             now_unix_ms,
         )
         .map_err(|error| {
             CliError::cli_other_error(format!(
-                "Chiodos runtime orchestration evidence health for {run_id}: {error}"
+                "Chio runtime orchestration evidence health for {run_id}: {error}"
             ))
         })? {
             return Ok(false);
@@ -400,65 +480,67 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_drift(
     until_unix_ms: u64,
     report: &Path,
 ) -> Result<(), CliError> {
+    cmd_chio_runtime_orchestrate_drift(profile, runs_dir, since_unix_ms, until_unix_ms, report)
+}
+
+pub(crate) fn cmd_chio_runtime_orchestrate_drift(
+    profile: &Path,
+    runs_dir: &Path,
+    since_unix_ms: u64,
+    until_unix_ms: u64,
+    report: &Path,
+) -> Result<(), CliError> {
     let profile = load_runtime_orchestration_profile(profile)?;
     if since_unix_ms > until_unix_ms {
         return Err(CliError::cli_other_error(
-            "Chiodos runtime drift since-unix-ms must not exceed until-unix-ms".to_string(),
+            "Chio runtime drift since-unix-ms must not exceed until-unix-ms".to_string(),
         ));
     }
-    chio_chiodos_runtime::validate_runtime_orchestration_profile_fresh(&profile, until_unix_ms)
+    chio_runtime::validate_runtime_orchestration_profile_fresh(&profile, until_unix_ms)
         .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chiodos runtime proof drift profile: {error}"
-            ))
+            CliError::cli_other_error(format!("Chio runtime proof drift profile: {error}"))
         })?;
     let mut runs_in_window = Vec::new();
     for run_dir in sorted_child_dirs(runs_dir)? {
-        let evidence =
-            chio_chiodos_runtime::load_runtime_orchestration_evidence(&run_dir).map_err(
-                |error| {
-                    CliError::cli_other_error(format!(
-                        "Chiodos runtime orchestration evidence: {error}"
-                    ))
-                },
-            )?;
+        let evidence = chio_runtime::load_runtime_orchestration_evidence(&run_dir)
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "Chio runtime orchestration evidence: {error}"
+                ))
+            })?;
         if evidence.manifest.generated_at_unix_ms >= since_unix_ms
             && evidence.manifest.generated_at_unix_ms <= until_unix_ms
         {
-            if !chio_chiodos_runtime::runtime_orchestration_evidence_is_fresh(
+            if !chio_runtime::runtime_orchestration_evidence_is_fresh(
                 &profile,
                 &evidence,
                 until_unix_ms,
             ) {
                 return Err(CliError::cli_other_error(
-                    "Chiodos runtime drift evidence is outside the orchestration profile window"
+                    "Chio runtime drift evidence is outside the orchestration profile window"
                         .to_string(),
                 ));
             }
-            chio_chiodos_runtime::validate_runtime_orchestration_evidence_integrity(&evidence)
+            chio_runtime::validate_runtime_orchestration_evidence_integrity(&evidence)
                 .map_err(|error| {
                     CliError::cli_other_error(format!(
-                        "Chiodos runtime drift evidence integrity: {error}"
+                        "Chio runtime drift evidence integrity: {error}"
                     ))
                 })?;
             runs_in_window.push((evidence.manifest.generated_at_unix_ms, run_dir, evidence));
         }
     }
-    runs_in_window.sort_by(|left, right| {
-        left.0
-            .cmp(&right.0)
-            .then_with(|| left.1.cmp(&right.1))
-    });
+    runs_in_window.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
     if runs_in_window.len() < 2 {
         return Err(CliError::cli_other_error(
-            "Chiodos runtime drift requires at least two run directories inside the requested time window"
+            "Chio runtime drift requires at least two run directories inside the requested time window"
                 .to_string(),
         ));
     }
     let (_, _, baseline) = runs_in_window.remove(0);
     let mut selected_drift = None;
     for (_, _, candidate) in runs_in_window {
-        let drift = chio_chiodos_runtime::generate_runtime_proof_drift_report(
+        let drift = chio_runtime::generate_runtime_proof_drift_report(
             &baseline.manifest,
             &candidate.manifest,
             &baseline.proof_regeneration_report,
@@ -466,7 +548,7 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_drift(
             until_unix_ms,
         )
         .map_err(|error| {
-            CliError::cli_other_error(format!("Chiodos runtime proof drift report: {error}"))
+            CliError::cli_other_error(format!("Chio runtime proof drift report: {error}"))
         })?;
         let drift_detected = !drift.accepted;
         selected_drift = Some(drift);
@@ -476,9 +558,9 @@ pub(crate) fn cmd_chiodos_runtime_orchestrate_drift(
     }
     let Some(drift) = selected_drift else {
         return Err(CliError::cli_other_error(
-            "Chiodos runtime drift requires a candidate run inside the requested time window"
+            "Chio runtime drift requires a candidate run inside the requested time window"
                 .to_string(),
         ));
     };
-    write_pretty_json(report, &drift, "Chiodos runtime proof drift report")
+    write_pretty_json(report, &drift, "Chio runtime proof drift report")
 }

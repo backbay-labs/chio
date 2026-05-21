@@ -56,7 +56,12 @@
     "leaseScopeBindings": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "lease-scope-binding.schema.json" }
+      "items": {
+        "anyOf": [
+          { "$ref": "lease-scope-binding.schema.json" },
+          { "$ref": "../../chio-federation/v1/lease-scope-binding.schema.json" }
+        ]
+      }
     },
     "governanceReceipts": {
       "type": "array",

@@ -237,12 +237,20 @@ mod tests {
     }
 
     #[test]
-    fn sse_parser_rejects_unknown_fields_when_configured() {
+    fn sse_parser_rejects_unknown_fields_when_configured() -> Result<(), Box<dyn std::error::Error>>
+    {
         let raw = b"trace-id: abc-123\ndata: {\"ok\":true}\n\n";
-        let error = parse_sse_frames(raw, SseParseOptions::rejecting_unknown("Test"))
-            .expect_err("unknown fields should fail in rejecting mode");
+        let error = match parse_sse_frames(raw, SseParseOptions::rejecting_unknown("Test")) {
+            Ok(_) => {
+                return Err(
+                    std::io::Error::other("unknown fields should fail in rejecting mode").into(),
+                );
+            }
+            Err(error) => error,
+        };
         assert!(error
             .to_string()
             .contains("Test SSE field `trace-id` is not supported"));
+        Ok(())
     }
 }

@@ -1,0 +1,72 @@
+name: Chio Proof Package
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-chiodos/**"
+      - "crates/chio-chiodos-authority/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-federation/**"
+      - "crates/chio-governance/**"
+      - "crates/chio-workflow/**"
+      - "crates/chio-selective-disclosure/**"
+      - "crates/chio-conformance/**"
+      - "examples/chio-3vendor/**"
+      - "examples/chiodos-3vendor/**"
+      - "scripts/check-chio-authority-issuance.sh"
+      - "scripts/check-chio-proof-package.sh"
+      - "spec/schemas/chio-attest/**"
+      - "spec/schemas/chio-federation/**"
+      - "spec/schemas/chiodos/**"
+      - "spec/schemas/registry.json"
+      - ".github/workflows/chio-proof-package.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/chio-chiodos/**"
+      - "crates/chio-chiodos-authority/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-federation/**"
+      - "crates/chio-governance/**"
+      - "crates/chio-workflow/**"
+      - "crates/chio-selective-disclosure/**"
+      - "crates/chio-conformance/**"
+      - "examples/chio-3vendor/**"
+      - "examples/chiodos-3vendor/**"
+      - "scripts/check-chio-authority-issuance.sh"
+      - "scripts/check-chio-proof-package.sh"
+      - "spec/schemas/chio-attest/**"
+      - "spec/schemas/chio-federation/**"
+      - "spec/schemas/chiodos/**"
+      - "spec/schemas/registry.json"
+      - ".github/workflows/chio-proof-package.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chio-proof-package-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  proof-package-gate:
+    name: proof-package-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Chio proof-package gate
+        run: bash scripts/check-chio-proof-package.sh

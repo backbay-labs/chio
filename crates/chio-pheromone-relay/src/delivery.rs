@@ -13,7 +13,7 @@ use crate::{
     PHEROMONE_RELAY_ALERT_NORMALIZATION_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_NORMALIZATION_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ROUTE_OWNER_PROFILE_SCHEMA,
-    PHEROMONE_RELAY_ALERT_ROUTE_REVIEW_PACKET_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ROUTE_REVIEW_PACKET_SCHEMA, PHEROMONE_RELAY_SERVICE_LABEL,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -1344,7 +1344,7 @@ pub(crate) fn normalize_downstream_source(
         .or_insert_with(|| receiver.opsgenie.clone());
     labels
         .entry("service".to_string())
-        .or_insert_with(|| "chiodos-pheromone-relay".to_string());
+        .or_insert_with(|| PHEROMONE_RELAY_SERVICE_LABEL.to_string());
     labels
         .entry("severity".to_string())
         .or_insert_with(|| severity.as_str().to_string());

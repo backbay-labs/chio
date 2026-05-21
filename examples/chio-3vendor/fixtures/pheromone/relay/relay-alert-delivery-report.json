@@ -1,0 +1,74 @@
+{
+  "schema": "chio.pheromone.relay-alert-delivery-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000060000,
+  "sourceHandoffReportSha256": "40c91f8742e259de9a3c507e9c6a34b7ac59341ceb5e0a24e8d5da0c501fbdd5",
+  "sourceAlertReportSha256": "ed4e8ff96b208f61c64deb1ab599ef4ca20a8e2dcca1c5f510a17387bd520287",
+  "sourceTrendReportSha256": "38904fa48c9f5bfe45a3819e7b5d82022cdf7b3c2524c59fcca3c93b2891461d",
+  "criticalFiringCount": 3,
+  "deliveredCount": 3,
+  "delayedCount": 0,
+  "failedCount": 0,
+  "unknownCount": 0,
+  "results": [
+    {
+      "resultId": "normalized:alertmanager-auth-watch:endpoint_denied",
+      "receiverId": "alertmanager-auth-watch",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:relay-auth-watch",
+      "notificationRoute": "opsgenie-auth-watch",
+      "opsgenie": "relay-security",
+      "alertCode": "endpoint_denied",
+      "dedupeKey": "chio-relay:dataco:endpoint-denied",
+      "severity": "critical",
+      "runbook": "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#replay-storm",
+      "status": "accepted",
+      "observedAtUnixMs": 1766000060000,
+      "downstreamEvidenceSha256": "e450fd112138b569a3717eb78c081aa4d57c51f23c6af1553812742d978b2913"
+    },
+    {
+      "resultId": "normalized:alertmanager-auth-watch:relay_nonce_replay",
+      "receiverId": "alertmanager-auth-watch",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:relay-auth-watch",
+      "notificationRoute": "opsgenie-auth-watch",
+      "opsgenie": "relay-security",
+      "alertCode": "relay_nonce_replay",
+      "dedupeKey": "chio-relay:dataco:relay-nonce-replay",
+      "severity": "critical",
+      "runbook": "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#replay-storm",
+      "status": "delivered",
+      "observedAtUnixMs": 1766000060000,
+      "downstreamEvidenceSha256": "d79c69a038b17a1bbe66030d84bc2f9ab9a57e24d42b28f7eeba8258bcf06afe"
+    },
+    {
+      "resultId": "normalized:alertmanager-pagerduty-primary:dead_letters_present",
+      "receiverId": "alertmanager-pagerduty-primary",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:pagerduty-primary",
+      "notificationRoute": "pagerduty-primary",
+      "opsgenie": "relay-oncall",
+      "alertCode": "dead_letters_present",
+      "dedupeKey": "chio-relay:dataco:dead-letters",
+      "severity": "critical",
+      "runbook": "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
+      "status": "delivered",
+      "observedAtUnixMs": 1766000060000,
+      "downstreamEvidenceSha256": "d156501d40895e96d2ec637d3fec1a9fc5f5dfd14c433ea0e5afdf6b185fe0bb"
+    }
+  ],
+  "checks": [
+    {
+      "code": "handoff_report",
+      "accepted": true,
+      "detail": "handoff report is fresh and hash-bound"
+    },
+    {
+      "code": "delivery_evidence",
+      "accepted": true,
+      "detail": "downstream delivery evidence covers every handoff alert"
+    }
+  ]
+}

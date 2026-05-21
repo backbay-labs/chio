@@ -1,0 +1,70 @@
+{
+  "schema": "chio.pheromone.relay-alert-delivery-negative-fixture-corpus.v1",
+  "cases": [
+    {
+      "id": "live-url",
+      "description": "delivery profile target contains a dynamic URL",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "id": "inline-token",
+      "description": "delivery profile contains credential-looking material",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "id": "unbounded-label",
+      "description": "delivery evidence carries a disallowed label name",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "id": "unknown-receiver",
+      "description": "delivery evidence references a receiver outside the profile",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "id": "route-mismatch",
+      "description": "delivery evidence route aliases differ from handoff readiness",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "id": "dedupe-missing",
+      "description": "delivery evidence omits the bounded dedupe key",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "id": "stale-handoff",
+      "description": "handoff report is older than the delivery profile allows",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "id": "source-hash-mismatch",
+      "description": "delivery evidence is not hash-bound to the current handoff report",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "id": "duplicate-result",
+      "description": "two downstream evidence artifacts reuse one result id",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "id": "missing-critical-delivery",
+      "description": "critical firing alert has no downstream delivery evidence",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "id": "severity-weakened",
+      "description": "delivery evidence weakens critical alert severity",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "id": "runbook-drift",
+      "description": "delivery evidence points at a different local runbook",
+      "expectedCode": "alert_delivery_invalid"
+    },
+    {
+      "id": "wrong-expected-code",
+      "description": "negative gate must fail if the corpus expectation is wrong",
+      "expectedCode": "negative_expectation_mismatch"
+    }
+  ]
+}

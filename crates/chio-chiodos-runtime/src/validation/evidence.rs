@@ -4,6 +4,8 @@ use crate::error::ChiodosRuntimeError;
 use crate::schema::{
     CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA, CHIODOS_RUNTIME_EVIDENCE_SINK_HEALTH_REPORT_SCHEMA,
     CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA, CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA,
+    CHIO_RUNTIME_EVIDENCE_MANIFEST_SCHEMA, CHIO_RUNTIME_EVIDENCE_SINK_HEALTH_REPORT_SCHEMA,
+    CHIO_RUNTIME_STEP_EVIDENCE_SCHEMA, CHIO_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA,
 };
 use crate::types::{
     RuntimeEvidenceManifest, RuntimeEvidenceSinkHealthReport, RuntimeStepEvidence,
@@ -17,7 +19,7 @@ use crate::validation::common::{
 pub fn validate_runtime_evidence_sink_health_report(
     report: &RuntimeEvidenceSinkHealthReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_RUNTIME_EVIDENCE_SINK_HEALTH_REPORT_SCHEMA {
+    if !is_runtime_evidence_sink_health_report_schema(&report.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_evidence_sink_health_report_schema",
             detail: format!(
@@ -52,10 +54,18 @@ pub fn validate_runtime_evidence_sink_health_report(
     Ok(())
 }
 
+fn is_runtime_evidence_sink_health_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_EVIDENCE_SINK_HEALTH_REPORT_SCHEMA
+            | CHIODOS_RUNTIME_EVIDENCE_SINK_HEALTH_REPORT_SCHEMA
+    )
+}
+
 pub fn validate_runtime_workflow_run_report(
     report: &RuntimeWorkflowRunReport,
 ) -> Result<(), ChiodosRuntimeError> {
-    if report.schema != CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA {
+    if !is_runtime_workflow_run_report_schema(&report.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_workflow_report_schema",
             detail: format!(
@@ -108,7 +118,7 @@ pub fn validate_runtime_workflow_run_report(
 pub fn validate_runtime_evidence_manifest(
     manifest: &RuntimeEvidenceManifest,
 ) -> Result<(), ChiodosRuntimeError> {
-    if manifest.schema != CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA {
+    if !is_runtime_evidence_manifest_schema(&manifest.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_evidence_manifest_schema",
             detail: format!(
@@ -183,7 +193,7 @@ pub(crate) fn validate_relative_evidence_path(
 pub(super) fn validate_runtime_step_evidence(
     step: &RuntimeStepEvidence,
 ) -> Result<(), ChiodosRuntimeError> {
-    if step.schema != CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA {
+    if !is_runtime_step_evidence_schema(&step.schema) {
         return Err(ChiodosRuntimeError::Rejected {
             code: "unsupported_runtime_step_evidence_schema",
             detail: format!(
@@ -234,4 +244,25 @@ pub(super) fn validate_runtime_step_evidence(
         });
     }
     Ok(())
+}
+
+fn is_runtime_workflow_run_report_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA | CHIODOS_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA
+    )
+}
+
+fn is_runtime_evidence_manifest_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_EVIDENCE_MANIFEST_SCHEMA | CHIODOS_RUNTIME_EVIDENCE_MANIFEST_SCHEMA
+    )
+}
+
+fn is_runtime_step_evidence_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        CHIO_RUNTIME_STEP_EVIDENCE_SCHEMA | CHIODOS_RUNTIME_STEP_EVIDENCE_SCHEMA
+    )
 }

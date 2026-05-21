@@ -239,7 +239,7 @@ fn relay_alert_delivery_acknowledgement_and_drift_reports_are_bounded() {
 fn relay_alert_delivery_negative_corpus_cases_are_executable() {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../examples/chiodos-3vendor/fixtures/pheromone/relay/",
+        "/../../examples/chio-3vendor/fixtures/pheromone/relay/",
         "relay-alert-delivery-negative-cases.json"
     );
     let corpus: NegativeCorpus = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
@@ -288,16 +288,16 @@ fn relay_alert_assurance_normalizes_downstream_evidence() {
             "schema": "downstream.alertmanager.drop.v1",
             "receiverId": "alertmanager-pagerduty-primary",
             "alertCode": "dead_letters_present",
-            "dedupeKey": "chiodos-relay:did:chio:buyer-kernel:dead_letters_present:delivery",
+            "dedupeKey": "chio-relay:did:chio:buyer-kernel:dead_letters_present:delivery",
             "status": "delivered",
             "severity": "critical",
-            "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
+            "runbook": "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
             "observedAtUnixMs": NOW + 61_000,
             "sourceHandoffReportSha256": handoff_hash,
             "labels": {
                 "notification_route": "pagerduty-primary",
                 "opsgenie": "relay-oncall",
-                "service": "chiodos-pheromone-relay",
+                "service": "chio-pheromone-relay",
                 "severity": "critical",
                 "status": "delivered",
                 "receiver": "alertmanager-pagerduty-primary"
@@ -307,16 +307,16 @@ fn relay_alert_assurance_normalizes_downstream_evidence() {
             "schema": "downstream.alertmanager.drop.v1",
             "receiverId": "alertmanager-pagerduty-primary",
             "alertCode": "endpoint_denied",
-            "dedupeKey": "chiodos-relay:did:chio:buyer-kernel:endpoint_denied:delivery",
+            "dedupeKey": "chio-relay:did:chio:buyer-kernel:endpoint_denied:delivery",
             "status": "accepted",
             "severity": "critical",
-            "runbook": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
+            "runbook": "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
             "observedAtUnixMs": NOW + 61_000,
             "sourceHandoffReportSha256": handoff_hash,
             "labels": {
                 "notification_route": "pagerduty-primary",
                 "opsgenie": "relay-oncall",
-                "service": "chiodos-pheromone-relay",
+                "service": "chio-pheromone-relay",
                 "severity": "critical",
                 "status": "accepted",
                 "receiver": "alertmanager-pagerduty-primary"
@@ -326,16 +326,16 @@ fn relay_alert_assurance_normalizes_downstream_evidence() {
             "schema": "downstream.siem.drop.v1",
             "receiver_id": "alertmanager-slack-digest",
             "alert_code": "retries_pending",
-            "dedupe_key": "chiodos-relay:did:chio:buyer-kernel:retries_pending:delivery",
+            "dedupe_key": "chio-relay:did:chio:buyer-kernel:retries_pending:delivery",
             "outcome": "delivered",
             "severity": "info",
-            "runbook_ref": "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox",
+            "runbook_ref": "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox",
             "observed_at_unix_ms": NOW + 61_000,
             "source_handoff_report_sha256": handoff_hash,
             "labels": {
                 "notification_route": "slack-ops-digest",
                 "opsgenie": "relay-oncall",
-                "service": "chiodos-pheromone-relay",
+                "service": "chio-pheromone-relay",
                 "severity": "info",
                 "status": "delivered",
                 "receiver": "alertmanager-slack-digest"
