@@ -23,12 +23,12 @@
             "support.prompt_injection"
           ],
           "allowedTreaties": [
-            "treaty:buyer-llamaworks:support-ops"
+            "treaty:buyer-dataco:support-ops"
           ],
           "issuerKernelId": "did:chio:dataco-runtime",
-          "issuerSignature": "2cf4a3dc5019456c293d624bec68d43305c7d67193c21d8fd0de81353c9f092adf0bfa6e1330b231dfd992c6e644826d764d1417360a0ef9e71558ed469ef208",
+          "issuerSignature": "81f599116ee7bf2db7a0f91a7511208af6ca2bbb77d78a95870067697b9270a245c06cce7c4cd6cb05e0b7e9989624e929766f4fe1d915ae547f4d5acbfa360d",
           "publicKey": "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565",
-          "runtimePolicySha256": "51059e024500eb632e767b8ba4e6e8a2d92b332145bbda5809856aa4eba46569",
+          "runtimePolicySha256": "b0cfe65c6f966a7e7b3abbc3490bcc9a2c2546e46df757aa15ab6473096f6955",
           "schema": "chio.pheromone-observation-cost-verifier-root.v1",
           "signatureAlgorithm": "ed25519",
           "validFromUnixMs": 1765999940000,
@@ -69,27 +69,27 @@
           "activePeersEpoch": 42,
           "newcomerHorizonEpochs": 8,
           "observationCostVerification": "required",
-          "policyId": "scarcity:buyer-llamaworks:support-ops:epoch42",
-          "policySha256": "8dd2aca34599c9ef5280979efc107c38ccc4190b9fdc325f58a733a409f94d76",
+          "policyId": "scarcity:buyer-dataco:support-ops:epoch42",
+          "policySha256": "69073f134018c3cc27f53726aa2a98a63bdfedf6bd68bfde7bb2b3777f3050d4",
           "reputationEpoch": 42,
-          "runtimePolicySha256": "51059e024500eb632e767b8ba4e6e8a2d92b332145bbda5809856aa4eba46569",
+          "runtimePolicySha256": "b0cfe65c6f966a7e7b3abbc3490bcc9a2c2546e46df757aa15ab6473096f6955",
           "schema": "chio.pheromone-scarcity-policy.v1",
           "subjectClass": "support.prompt_injection",
           "subjectClassNamespace": "dev.chio.support",
           "tokenCapacity": 8,
           "treatyScope": [
-            "treaty:buyer-llamaworks:support-ops"
+            "treaty:buyer-dataco:support-ops"
           ],
           "verifierId": "did:chio:dataco-cost-verifier",
           "windowEndUnixMs": 1766000060000,
-          "windowId": "6ad081dd82a40d27b70cac0c49bfd81d7be9ac3861da5d153587ae1c672bb470",
+          "windowId": "7b6c7d4f52afbf04cb65e1e5bba37bbd91e2a5d7678a831688201c6065725d49",
           "windowStartUnixMs": 1765999940000
         }
       ],
       "subjectClasses": [
         {
           "allowedTreaties": [
-            "treaty:buyer-llamaworks:support-ops"
+            "treaty:buyer-dataco:support-ops"
           ],
           "costCommitment": "not_required",
           "destructive": false,
@@ -132,5 +132,5 @@
     "valid_until_unix_ms": 1766000060000
   },
   "signerKey": "197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
-  "signature": "9c58149952faf0888a813e5006ae40e57127d8929883a22237ae1d0b4a82ed07b44a285cea33232aad2afbcd68c2382bc84ef8945ce6e9c694798e0a8b79580a"
+  "signature": "f14e56f9418ae661421a0d2e80aeea8d42db47dbe05d3c20f0a8c85474e6f08d423e4b58d523a745e9081aa74c50fe267e56564d8738f1e20a2d2b1b15c67400"
 }

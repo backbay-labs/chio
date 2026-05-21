@@ -120,11 +120,13 @@ if batch.get("schema") != "chio.pheromone-batch.v1":
 if len(batch.get("frames", [])) != 1:
     raise SystemExit("batch fixture must carry one relayed frame")
 frame = batch["frames"][0]
-if frame.get("treaty_id") in deposit.get("treaty_scope", []):
-    raise SystemExit("fixture must exercise downstream treaty relay, not direct gossip")
 chain = frame.get("transit_chain", {}).get("hops", [])
 if len(chain) != 2:
     raise SystemExit("fixture must carry a two-hop transit chain")
+if frame.get("treaty_id") == chain[0].get("treaty_id"):
+    raise SystemExit("fixture must exercise downstream treaty relay, not direct gossip")
+if frame.get("treaty_id") not in deposit.get("treaty_scope", []):
+    raise SystemExit("frame treaty must be admitted in deposit treaty scope for scoped economics")
 if chain[0].get("treaty_id") not in deposit.get("treaty_scope", []):
     raise SystemExit("first transit hop must use the origin treaty")
 if chain[-1].get("treaty_id") != frame.get("treaty_id"):

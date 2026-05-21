@@ -206,7 +206,10 @@ fn write_pheromone_fixtures(
             decay_half_life_secs: 3_600.0,
             evaporation_floor: Some(0.01),
             nonce: "pheromone-nonce-llamaworks-001".to_string(),
-            treaty_scope: vec!["treaty:buyer-llamaworks:support-ops".to_string()],
+            treaty_scope: vec![
+                "treaty:buyer-llamaworks:support-ops".to_string(),
+                "treaty:buyer-dataco:support-ops".to_string(),
+            ],
             cost_commitment: None,
             workflow_context: Some(workflow_context),
         },
@@ -255,7 +258,7 @@ fn write_pheromone_fixtures(
         deposit: deposit.clone(),
         origin_kernel_id: "did:chio:llamaworks".to_string(),
         gossiping_peer_kernel_id: "did:chio:buyer-kernel".to_string(),
-        treaty_id: "treaty:buyer-llamaworks:support-ops".to_string(),
+        treaty_id: "treaty:buyer-dataco:support-ops".to_string(),
         ts_unix_ms: package.generated_at_unix_ms.saturating_add(500),
         transit_chain: Some(PheromoneTransitChain {
             hops: vec![
@@ -270,7 +273,7 @@ fn write_pheromone_fixtures(
                 transit_hop(
                     "did:chio:buyer-kernel",
                     "did:chio:dataco",
-                    "treaty:buyer-llamaworks:support-ops",
+                    "treaty:buyer-dataco:support-ops",
                     "ladder:buyer:refund:v1",
                     "intersection:buyer:dataco",
                     package.generated_at_unix_ms,
@@ -293,14 +296,14 @@ fn write_pheromone_fixtures(
     };
     let mut scarcity_policy = PheromoneScarcityPolicy {
         schema: PHEROMONE_SCARCITY_POLICY_SCHEMA.to_string(),
-        policy_id: "scarcity:buyer-llamaworks:support-ops:epoch42".to_string(),
+        policy_id: "scarcity:buyer-dataco:support-ops:epoch42".to_string(),
         reputation_epoch: 42,
         window_id: String::new(),
         window_start_unix_ms: package.generated_at_unix_ms.saturating_sub(60_000),
         window_end_unix_ms: package.generated_at_unix_ms.saturating_add(60_000),
         token_capacity: 8,
         newcomer_horizon_epochs: 8,
-        treaty_scope: vec!["treaty:buyer-llamaworks:support-ops".to_string()],
+        treaty_scope: vec!["treaty:buyer-dataco:support-ops".to_string()],
         subject_class_namespace: "dev.chio.support".to_string(),
         subject_class: "support.prompt_injection".to_string(),
         observation_cost_verification: ObservationCostVerificationMode::Required,
@@ -347,7 +350,7 @@ fn write_pheromone_fixtures(
         subject_classes: vec![SubjectClassPolicy {
             subject_class: "support.prompt_injection".to_string(),
             subject_class_namespace: "dev.chio.support".to_string(),
-            allowed_treaties: vec!["treaty:buyer-llamaworks:support-ops".to_string()],
+            allowed_treaties: vec!["treaty:buyer-dataco:support-ops".to_string()],
             cost_commitment: CostCommitmentPolicy::NotRequired,
             destructive: false,
         }],
@@ -489,7 +492,7 @@ fn write_pheromone_fixtures(
         .store()
         .query_deposits(
             Some("support.prompt_injection"),
-            Some("treaty:buyer-llamaworks:support-ops"),
+            Some("treaty:buyer-dataco:support-ops"),
         )
         .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
     if queried.len() != 1 {
@@ -598,7 +601,7 @@ fn observation_cost_verifier_root(
         signature_algorithm: SigningAlgorithm::Ed25519,
         valid_from_unix_ms: generated_at_unix_ms.saturating_sub(60_000),
         valid_until_unix_ms: generated_at_unix_ms.saturating_add(60_000),
-        allowed_treaties: vec!["treaty:buyer-llamaworks:support-ops".to_string()],
+        allowed_treaties: vec!["treaty:buyer-dataco:support-ops".to_string()],
         allowed_subject_class_namespaces: vec!["dev.chio.support".to_string()],
         allowed_subject_classes: vec!["support.prompt_injection".to_string()],
         runtime_policy_sha256: runtime_policy_sha256.to_string(),

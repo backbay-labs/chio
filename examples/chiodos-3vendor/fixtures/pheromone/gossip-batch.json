@@ -1,7 +1,7 @@
 {
   "schema": "chio.pheromone-batch.v1",
   "recipient_kernel_id": "did:chio:dataco",
-  "treaty_id": "treaty:buyer-llamaworks:support-ops",
+  "treaty_id": "treaty:buyer-dataco:support-ops",
   "frames": [
     {
       "schema": "chio.pheromone-deposit-gossip.v1",
@@ -24,7 +24,8 @@
         "evaporation_floor": 0.01,
         "nonce": "pheromone-nonce-llamaworks-001",
         "treaty_scope": [
-          "treaty:buyer-llamaworks:support-ops"
+          "treaty:buyer-llamaworks:support-ops",
+          "treaty:buyer-dataco:support-ops"
         ],
         "cost_commitment": {
           "schema": "chio.pheromone-cost-commitment.v1",
@@ -33,13 +34,13 @@
             "commitmentId": "cost-commitment-llamaworks-001",
             "verifierId": "did:chio:dataco-cost-verifier",
             "verifierKeyId": "cost-root-key-1",
-            "runtimePolicySha256": "51059e024500eb632e767b8ba4e6e8a2d92b332145bbda5809856aa4eba46569",
-            "scarcityPolicySha256": "8dd2aca34599c9ef5280979efc107c38ccc4190b9fdc325f58a733a409f94d76",
-            "depositBodySha256": "13fade44c9c2fa0b8ec469c923b0cc42da11ca28651780db2a7fafe8a4ae4455",
-            "depositSignatureSha256": "537c9b65c8c90f7dcab6a3eedca3e59f618b1065510c2db84827bf67a26b78c9",
+            "runtimePolicySha256": "b0cfe65c6f966a7e7b3abbc3490bcc9a2c2546e46df757aa15ab6473096f6955",
+            "scarcityPolicySha256": "69073f134018c3cc27f53726aa2a98a63bdfedf6bd68bfde7bb2b3777f3050d4",
+            "depositBodySha256": "62712466852df7cbe9691a1a3c4bee7f226c5a59912ca14df630da7ed16c32b9",
+            "depositSignatureSha256": "4c0cdf0d134e7a0a5d20786dd63dea86d239f317fe762341d98c666eee274f5f",
             "kernelId": "did:chio:llamaworks",
             "agentPassportKeyHash": "1f5fe64ec2f8c901be3aad94a41d70c12d2f3a8f43755f902e665c96f41c87e3",
-            "treatyId": "treaty:buyer-llamaworks:support-ops",
+            "treatyId": "treaty:buyer-dataco:support-ops",
             "subjectClassNamespace": "dev.chio.support",
             "subjectClass": "support.prompt_injection",
             "observationWindowStartUnixMs": 1765999940000,
@@ -53,7 +54,7 @@
             "telemetry": {
               "schema": "chio.pheromone-observation-cost-telemetry-root.v1",
               "algorithm": "rfc6962-sha256-v1",
-              "rootHash": "0xffc9f226399b4f4c0bc270eec47e09f5d05b3573fb339fc5e91b3880ad005985",
+              "rootHash": "0x0b4f2a7d46423206681741fa9b7a3ffc8ae3fb93396a88fc7f75bd41c927539b",
               "treeSize": 1,
               "verifierId": "did:chio:dataco-cost-verifier",
               "verifierKeyId": "cost-root-key-1",
@@ -64,9 +65,9 @@
               "leaf_index": 0,
               "audit_path": []
             },
-            "leafPreimageSha256": "2f5c46f5e5cf48174070381f96b098d7681e31109d6a8ad8fdf172c21f7cc414"
+            "leafPreimageSha256": "3aa2487b9dc70e1c86fae8fbe7edf1edb62ff4c5b799774a996454ba0efbc507"
           },
-          "signature": "45d7289b3550adb9fad5e1bb3858e9ae5d4c968761e05a32a35321c2fcd96b4921266a1ae7332595d25afba1201f050b152a6e630e46dc33eaaa009d995d170a"
+          "signature": "778f429bf071ffa36f1bce66cb67801289897182a9dde375730d0cf8b43e78ec9837c7d5d66b43b3bcacadaba8d874fc7d31892a587e778124686530a1bc9900"
         },
         "workflow_context": {
           "schema": "chio.pheromone-workflow-context.v1",
@@ -80,11 +81,11 @@
           "bilateral_dsse_sha256": "b3e25054b239d741faa6f87a9d9cd618243734b254c8d022b42250e0782f3838",
           "consistency_anchor": "chiodos:consistency:wf-chiodos-refund-001:0"
         },
-        "signature": "7063aec91ce55caa40c6b9b074d533c2d38a2b83a7e630d88fc151a47534c8d8d79ff58be1e4cb30aadf316a3cd117bcb67a58700e1cb6927680af3ec204590a"
+        "signature": "15175954141192d5ddce60a5d84a0d59d1f12d13e3c423481631ddaefd7f7b396d155429500eeee4448f6ffda88b4772a5f38b98172de64253fa936bf0aef10a"
       },
       "origin_kernel_id": "did:chio:llamaworks",
       "gossiping_peer_kernel_id": "did:chio:buyer-kernel",
-      "treaty_id": "treaty:buyer-llamaworks:support-ops",
+      "treaty_id": "treaty:buyer-dataco:support-ops",
       "ts_unix_ms": 1766000000500,
       "transit_chain": {
         "hops": [
@@ -103,7 +104,7 @@
           {
             "from_kernel_id": "did:chio:buyer-kernel",
             "to_kernel_id": "did:chio:dataco",
-            "treaty_id": "treaty:buyer-llamaworks:support-ops",
+            "treaty_id": "treaty:buyer-dataco:support-ops",
             "ladder_manifest_id": "ladder:buyer:refund:v1",
             "ladder_manifest_sha256": "baa26007ba6c2515c233c8bc78e4ea338d81a51e555bd58decdbdebbfd60c4f9",
             "ladder_manifest_expires_at_unix_ms": 1766000060000,

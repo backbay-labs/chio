@@ -12,6 +12,7 @@
     "reputation_epoch": 42,
     "evaluated_at_unix_ms": 1766000000500,
     "treaty_scopes": [
+      "treaty:buyer-dataco:support-ops",
       "treaty:buyer-llamaworks:support-ops"
     ]
   }
