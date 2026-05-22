@@ -138,6 +138,11 @@ impl ChioWorkflowVerifierTrustBundle {
             .map_err(chio_workflow_verification_error)
     }
 
+    #[must_use]
+    pub fn runtime_policy_issuer_public_keys(&self) -> &[chio_core_types::PublicKey] {
+        self.inner.runtime_policy_issuer_public_keys()
+    }
+
     fn as_historical(&self) -> &chio_chiodos::ChiodosVerifierTrustBundle {
         &self.inner
     }
@@ -282,6 +287,7 @@ fn remove_runtime_policy_self_references(value: &mut serde_json::Value) {
 pub fn runtime_policy_from_json(
     json: &str,
     now_unix_ms: u64,
+    trusted_runtime_policy_issuer_keys: &[chio_core_types::PublicKey],
 ) -> Result<(PheromoneTransitPolicy, PheromoneReceiverConfig), PheromoneRuntimeError> {
     let value: serde_json::Value = serde_json::from_str(json)?;
     validate_runtime_policy_schema(&value)?;
@@ -306,6 +312,15 @@ pub fn runtime_policy_from_json(
         })?;
     let transit_policy: PheromoneTransitPolicy = serde_json::from_value(body_value)?;
     let admission: PheromoneAdmissionPolicyDocument = serde_json::from_value(admission_value)?;
+    if !trusted_runtime_policy_issuer_keys
+        .iter()
+        .any(|public_key| public_key == &envelope.signer_key)
+    {
+        return Err(PheromoneRuntimeError::InvalidField(
+            "runtime policy signer is not trusted by verifier trust bundle issuer roots"
+                .to_string(),
+        ));
+    }
     if !admission
         .runtime_policy_issuer_public_keys
         .iter()
@@ -453,74 +468,14 @@ impl PeerWeightProvider for StaticPeerWeightProvider {
 pub trait PheromoneRuntimeStore {
     fn receive_batch(
         &self,
-        batch: &PheromoneGossipBatch,
-        policy: &PheromoneTransitPolicy,
-        config: &PheromoneReceiverConfig,
-        resolver: &dyn WorkflowContextResolver,
+        _batch: &PheromoneGossipBatch,
+        _policy: &PheromoneTransitPolicy,
+        _config: &PheromoneReceiverConfig,
+        _resolver: &dyn WorkflowContextResolver,
     ) -> Result<PheromoneReceiveReport, PheromoneRuntimeError> {
-        let batch_sha256 = canonical_sha256(batch)?;
-        let mut frames = Vec::new();
-        let verification_context = PheromoneGossipBatchVerificationContext {
-            now_unix_ms: config.validation_context.now_unix_ms,
-            recipient_kernel_id: config.recipient_kernel_id.clone(),
-            authenticated_sender_kernel_id: config.authenticated_sender_kernel_id.clone(),
-        };
-        if let Err(error) = verify_pheromone_gossip_batch_envelope(batch, &verification_context) {
-            frames.push(PheromoneFrameReport {
-                frame_index: 0,
-                accepted: false,
-                code: error.code().to_string(),
-                detail: error.to_string(),
-                deposit_nonce: None,
-            });
-            let report = build_receive_report(config, batch_sha256, frames);
-            self.record_receive_report(&report)?;
-            return Ok(report);
-        }
-
-        for (index, frame) in batch.frames.iter().enumerate() {
-            let result = verify_pheromone_gossip_frame_for_batch(
-                frame,
-                batch,
-                policy,
-                &verification_context,
-            )
-            .map_err(PheromoneRuntimeError::from)
-            .and_then(|()| {
-                frame
-                    .deposit
-                    .body
-                    .workflow_context
-                    .as_ref()
-                    .map_or(Ok(()), |context| resolver.resolve(context))
-            })
-            .and_then(|()| {
-                self.admit_deposit_for_treaty(
-                    frame.deposit.clone(),
-                    &config.validation_context,
-                    &frame.treaty_id,
-                )
-            });
-            match result {
-                Ok(()) => frames.push(PheromoneFrameReport {
-                    frame_index: index,
-                    accepted: true,
-                    code: "accepted".to_string(),
-                    detail: "accepted".to_string(),
-                    deposit_nonce: Some(frame.deposit.body.nonce.clone()),
-                }),
-                Err(error) => frames.push(PheromoneFrameReport {
-                    frame_index: index,
-                    accepted: false,
-                    code: frame_failure_code(&error).to_string(),
-                    detail: error.to_string(),
-                    deposit_nonce: Some(frame.deposit.body.nonce.clone()),
-                }),
-            }
-        }
-        let report = build_receive_report(config, batch_sha256, frames);
-        self.record_receive_report(&report)?;
-        Ok(report)
+        Err(PheromoneRuntimeError::InvalidField(
+            "atomic receive/report persistence is required for live receive".to_string(),
+        ))
     }
 
     fn admit_deposit(

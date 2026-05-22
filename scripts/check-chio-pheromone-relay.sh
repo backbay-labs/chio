@@ -146,12 +146,35 @@ cargo run -p chio-cli --bin chio -- pheromone relay tick \
 
 validate_schema "$SCHEMA_DIR/relay-tick-report.schema.json" "$tmpdir/tick.json"
 
-python3 - "$ROOT/examples/chio-3vendor/fixtures/pheromone/gossip-batch.json" "$tmpdir/auditor-catchup-batch.json" "$tmpdir/auditor-action-class-bad-batch.json" "$tmpdir/auditor-empty-batch.json" "$tmpdir/auditor-transit-policy.json" <<'PY'
+python3 - "$ROOT/examples/chio-3vendor/fixtures/pheromone/gossip-batch.json" "$ROOT/examples/chio-3vendor/fixtures/pheromone/transit-policy.json" "$tmpdir/auditor-catchup-batch.json" "$tmpdir/auditor-action-class-bad-batch.json" "$tmpdir/auditor-empty-batch.json" "$tmpdir/auditor-transit-policy-body.json" <<'PY'
+import hashlib
 import json
 import pathlib
 import sys
 
-source_batch, batch_path, bad_batch_path, empty_batch_path, policy_path = map(pathlib.Path, sys.argv[1:])
+source_batch, source_policy, batch_path, bad_batch_path, empty_batch_path, policy_body_path = map(pathlib.Path, sys.argv[1:])
+
+def canonical_sha256(value):
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+def runtime_policy_hash(body):
+    material = json.loads(json.dumps(body))
+    admission = material.get("admission", {})
+    for policy in admission.get("scarcityPolicies", []):
+        policy.pop("runtimePolicySha256", None)
+        policy.pop("policySha256", None)
+    for root in admission.get("observationCostVerifierRoots", []):
+        root.pop("runtimePolicySha256", None)
+        root.pop("issuerSignature", None)
+    return canonical_sha256(material)
+
+def scarcity_policy_hash(policy):
+    material = json.loads(json.dumps(policy))
+    material.pop("policySha256", None)
+    return canonical_sha256(material)
+
 batch = json.loads(source_batch.read_text(encoding="utf-8"))
 batch["recipient_kernel_id"] = "did:chio:auditor-kernel"
 batch["treaty_id"] = "treaty:auditor-dataco:support-ops"
@@ -168,6 +191,7 @@ frame["transit_chain"]["hops"].append({
     "ladder_manifest_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "ladder_manifest_expires_at_unix_ms": 1766000060500,
     "ladder_intersection_id": "intersection:dataco:auditor",
+    "ladder_intersection_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
     "action_class_id": "whisker.pheromone_deposit",
     "emitted_at_unix_ms": 1766000000500,
 })
@@ -181,32 +205,41 @@ empty_batch = json.loads(json.dumps(batch))
 empty_batch["frames"] = []
 empty_batch_path.write_text(json.dumps(empty_batch, indent=2) + "\n", encoding="utf-8")
 
-policy_path.write_text(json.dumps({
-    "schema": "chio.pheromone-transit-policy.v1",
-    "accepted_hubs": [
-        "did:chio:buyer-kernel",
-        "did:chio:dataco",
-    ],
-    "allowed_ingress_treaties": [
-        "treaty:buyer-llamaworks:support-ops",
-    ],
-    "allowed_egress_treaties": [
-        "treaty:auditor-dataco:support-ops",
-    ],
-    "allowed_subject_class_namespaces": [
-        "dev.chio.support",
-    ],
-    "valid_from_unix_ms": 1765999940000,
-    "valid_until_unix_ms": 1766000060000,
-    "max_hops": 3,
-    "required_action_class_id": "whisker.pheromone_deposit",
-}, indent=2) + "\n", encoding="utf-8")
+policy_envelope = json.loads(source_policy.read_text(encoding="utf-8"))
+policy_body = policy_envelope["body"]
+policy_body["accepted_hubs"] = ["did:chio:buyer-kernel", "did:chio:dataco"]
+policy_body["max_hops"] = 3
+policy_body["allowed_egress_treaties"] = [
+    "treaty:buyer-llamaworks:support-ops",
+    "treaty:buyer-dataco:support-ops",
+    "treaty:buyer-payswift:support-ops",
+    "treaty:auditor-dataco:support-ops",
+]
+policy_body["pinned_ladder_refs"].append({
+    "ladder_manifest_id": "ladder:auditor:review:v1",
+    "ladder_manifest_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "ladder_manifest_expires_at_unix_ms": 1766000060500,
+    "ladder_intersection_id": "intersection:dataco:auditor",
+    "ladder_intersection_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+})
+runtime_hash = runtime_policy_hash(policy_body)
+admission = policy_body["admission"]
+for root in admission.get("observationCostVerifierRoots", []):
+    root["runtimePolicySha256"] = runtime_hash
+for policy in admission.get("scarcityPolicies", []):
+    policy["runtimePolicySha256"] = runtime_hash
+    policy["policySha256"] = scarcity_policy_hash(policy)
+policy_body_path.write_text(json.dumps(policy_body, indent=2) + "\n", encoding="utf-8")
 PY
+
+cargo run -p chiodos-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
+  --sign-transit-policy "$tmpdir/auditor-transit-policy-body.json" "$tmpdir/auditor-transit-policy.json"
 
 cargo run -p chio-cli --bin chio -- pheromone relay enqueue \
   --store "$tmpdir/relay.sqlite3" \
   --batch "$tmpdir/auditor-catchup-batch.json" \
   --transit-policy "$tmpdir/auditor-transit-policy.json" \
+  --trust-bundle "$ROOT/examples/chio-3vendor/fixtures/verifier-trust-bundle.json" \
   --peer-directory-state "$FIXTURE_DIR/peer-directory-state.json" \
   --trusted-issuers "$FIXTURE_DIR/trusted-peer-directory-issuers.json" \
   --now-unix-ms 1766000000500 \
@@ -228,6 +261,7 @@ if cargo run -p chio-cli --bin chio -- pheromone relay enqueue \
   --store "$tmpdir/relay.sqlite3" \
   --batch "$tmpdir/auditor-action-class-bad-batch.json" \
   --transit-policy "$tmpdir/auditor-transit-policy.json" \
+  --trust-bundle "$ROOT/examples/chio-3vendor/fixtures/verifier-trust-bundle.json" \
   --peer-directory-state "$FIXTURE_DIR/peer-directory-state.json" \
   --trusted-issuers "$FIXTURE_DIR/trusted-peer-directory-issuers.json" \
   --now-unix-ms 1766000000500 \
@@ -240,6 +274,7 @@ if cargo run -p chio-cli --bin chio -- pheromone relay enqueue \
   --store "$tmpdir/relay.sqlite3" \
   --batch "$tmpdir/auditor-empty-batch.json" \
   --transit-policy "$tmpdir/auditor-transit-policy.json" \
+  --trust-bundle "$ROOT/examples/chio-3vendor/fixtures/verifier-trust-bundle.json" \
   --peer-directory-state "$FIXTURE_DIR/peer-directory-state.json" \
   --trusted-issuers "$FIXTURE_DIR/trusted-peer-directory-issuers.json" \
   --now-unix-ms 1766000000500 \

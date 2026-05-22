@@ -83,8 +83,8 @@ e7c5f526919e3d94f01829aebf7ce2952abfdfdd7cc192dc4ca8cc2cdf1a23d6  spec/schemas/c
 b1327f85aeb7b4c41d8874229143fca497ffb7be74c02fec84a6b8940f2096c5  spec/schemas/chio-attest/v1/buyer-attestation-review-report.schema.json
 4ae318c2e1eca59217babf9cd94d6abaa6e4285f12a928870928a38bd3f203bf  spec/schemas/chio-attest/v1/buyer-attestation-verification-report.schema.json
 253e8cedf5e7b81549218e9a1c700863fa448d611f278abc7e0f18abc6ad293b  spec/schemas/chio-attest/v1/buyer-proof-negative-fixture-corpus.schema.json
-81dbc5b308b8eb1d80f08907721e6b7a795d033d88de5aa60692ef2d62efd4fa  spec/schemas/chio-federation/v1/authority-profile.schema.json
-7b3fd416533a404a39afd6df711035a3feb532b1b3d0f35ae1bd6290cba636d4  spec/schemas/chio-federation/v1/verifier-trust-bundle.schema.json
+90207c9cba9b69bd89c9ffb84624c9a5f14ebd8731450cb500d1a36acb04cf3b  spec/schemas/chio-federation/v1/authority-profile.schema.json
+c377ca1031dbe83e1dd2473f541290b4a62e576fbdb6db6eacc1f7ffe5d1c588  spec/schemas/chio-federation/v1/verifier-trust-bundle.schema.json
 a58414c30eaba8a931151a4c28e01f58bbe6e295dfaef8c84baeba6dbc990283  spec/schemas/chio-federation/v1/revocation-publication-request.schema.json
 fed8d519020aeee4be76b274e5e22c3fd708344b99e40d7d1df869ac67e16061  spec/schemas/chio-federation/v1/revocation-checkpoint.schema.json
 2f7f5018a2a5065e03cd8195f49bfd314de4519e2228d1ddf4f6ab2dc2f50789  spec/schemas/chio-federation/v1/peer-pins.schema.json
@@ -186,7 +186,7 @@ ff4f655a0f0c7afda5c0674f3afde1e3961f1d58292584ed39f8bb5b96e30c8b  spec/schemas/c
 2f16e07c90026be5670e4cbfb1db7098924f8be6a97815fe531f4822605d01d8  spec/schemas/chio-wire/v1/trust-control/heartbeat.schema.json
 eb69d5277d37053ab8a8e1606c94f9b208ab37d56848da1536315d8a7161d755  spec/schemas/chio-wire/v1/trust-control/lease.schema.json
 efa89b2a0d2589ab0b6840534bb67312634c267fd5fec7d1faaa11b1f02da602  spec/schemas/chio-wire/v1/trust-control/terminate.schema.json
-0867f22e4d258fb0d3ca5dba0d930cf9edacff01df5d822a60ee5e1449620aa1  spec/schemas/chiodos/v1/authority-profile.schema.json
+ae155cef88769118bb680f735592cfd9ef5d577173560300b2434f662d642c44  spec/schemas/chiodos/v1/authority-profile.schema.json
 809258f9db7c7e10b256aee0cc444b0398b90818af499566497ecaf2d36fd0ef  spec/schemas/chiodos/v1/bilateral-invocation.schema.json
 2676bba198bda2b1d0bcea11608271b280e0f2618623f9a357227323b533c1d8  spec/schemas/chiodos/v1/buyer-attestation-packet.schema.json
 798cc89474b966dec93d51975cc09d9e926da64b3e5a1da5df5e30fb65bc49d3  spec/schemas/chiodos/v1/buyer-attestation-review-package.schema.json
@@ -250,7 +250,7 @@ d51684a1fcb99fd21fd253b2bf4ff29b49edefef17248fdd6babb54476784c07  spec/schemas/c
 58d5e3eb2c5930f4d3584cb5cef3c72b95864ff7f41ccb8ed6cae7ecc3e74a2a  spec/schemas/chiodos/v1/trusted-issuer-registry.schema.json
 6d9a8e7cdfd831b32b988ddd0b98aca60b59b783e4402d2e82f3b7395cbc231e  spec/schemas/chiodos/v1/verification-context.schema.json
 4eee47efcf6809aaf06331771a7f4a75690f28aa3b94bb21d6be42da87501238  spec/schemas/chiodos/v1/verifier-report.schema.json
-af16f5a8a7632214440932b0ea7e2cfa6d1abb63773ba9f290ad66f9dc0f9a63  spec/schemas/chiodos/v1/verifier-trust-bundle.schema.json
+d9d798f8469c481149c857e679dadbcb559283183b114cb2bbe1c76a88d31d5c  spec/schemas/chiodos/v1/verifier-trust-bundle.schema.json
 ecd223d7c0019bc4d638b4c192d39060e4f28e9945d1f1f1c3921b0aef5c3961  spec/schemas/chiodos/v1/workflow-intersection.schema.json
 6744461540bffd7f85f48362a98c7e00b0b5433ae77848d8aa8c3788d152a06b  spec/schemas/model-card.v1.json
 1e1e0c4b0d6d2ef36ab21c739e08e3410d211ae1b24818c0aedea87bba9bfbaa  spec/schemas/receipt-provenance-v1.json

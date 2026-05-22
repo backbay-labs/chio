@@ -25,7 +25,8 @@ use chio_core_types::receipt::{
 use chio_core_types::SignedExportEnvelope;
 use chio_federation::{
     sign_chio_bilateral_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
-    GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary, PolicyVerdict, TreatyBindingRef,
+    DsseEnvelope, GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary, PolicyVerdict,
+    TreatyBindingRef, PAYLOAD_TYPE_IN_TOTO,
 };
 use chio_kernel::{RuntimeAdmissionContext, RuntimeAdmissionHook, ToolCallRequest};
 use std::io;
@@ -1098,6 +1099,71 @@ fn kernel_hook_uses_configured_runtime_policy_to_deny() -> Result<(), Box<dyn st
     Ok(())
 }
 
+#[test]
+fn kernel_hook_rejects_treaty_dsse_policy_verdict_disagreement(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    let mut fixture = treaty_runtime_fixture()?;
+    fixture.bilateral_dsse = deny_policy_bilateral_dsse(&fixture.bilateral_dsse)?;
+    fixture.bilateral_dsse_sha256 = chio_core_types::crypto::sha256_hex(
+        &chio_core_types::crypto::canonical_json_bytes(&fixture.bilateral_dsse)?,
+    );
+    let mut bundle = bundle();
+    bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    let bundle_hash = runtime_admission_bundle_sha256(&bundle)?;
+    store.insert_bundle(bundle)?;
+    store.insert_treaty_runtime_artifact(
+        "treaty_scope",
+        &fixture.treaty_scope.treaty_id,
+        &fixture.treaty_scope,
+    )?;
+    store.insert_treaty_runtime_artifact(
+        "ladder_intersection",
+        &fixture.ladder_intersection.intersection_id,
+        &fixture.ladder_intersection,
+    )?;
+    store.insert_treaty_runtime_artifact(
+        "cross_kernel_continuation",
+        &fixture.continuation.continuation_id,
+        &fixture.continuation,
+    )?;
+    store.insert_treaty_runtime_artifact(
+        "receipt_lineage_bundle",
+        &fixture.lineage_bundle.bundle_id,
+        &fixture.lineage_bundle,
+    )?;
+    store.insert_treaty_runtime_artifact(
+        "bilateral_invocation",
+        &fixture.bilateral_invocation.invocation_id,
+        &fixture.bilateral_invocation,
+    )?;
+    store.insert_treaty_runtime_artifact(
+        "bilateral_dsse_envelope",
+        &fixture.bilateral_dsse_id,
+        &fixture.bilateral_dsse,
+    )?;
+    let request = treaty_runtime_request(args, bundle_hash, treaty_runtime_context(&fixture))?;
+    let hook = allowing_chio_policy_hook(store)?;
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+
+    assert!(!decision.allowed);
+    let metadata = decision
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert_eq!(
+        metadata["chiodos_runtime"]["failure_code"],
+        "chiodos_treaty_unverified_required_evidence"
+    );
+    Ok(())
+}
+
 #[derive(Clone)]
 struct TreatyRuntimeFixture {
     treaty_scope: TreatyScope,
@@ -1357,6 +1423,27 @@ fn insert_treaty_runtime_fixture(
         &fixture.bilateral_dsse,
     )?;
     Ok(())
+}
+
+fn deny_policy_bilateral_dsse(
+    envelope: &DsseEnvelope,
+) -> Result<DsseEnvelope, Box<dyn std::error::Error>> {
+    let (mut statement, _) = envelope.decode_statement()?;
+    let summary = statement
+        .predicate
+        .policy_evaluation_summary
+        .as_mut()
+        .ok_or_else(|| io::Error::other("fixture DSSE missing policy summary"))?;
+    summary.server_b_verdict.verdict = "deny".to_string();
+    summary.joint_disposition = Some("deny".to_string());
+    Ok(DsseEnvelope {
+        payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
+        payload: base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            statement.canonical_bytes()?,
+        ),
+        signatures: envelope.signatures.clone(),
+    })
 }
 
 fn treaty_runtime_context(fixture: &TreatyRuntimeFixture) -> serde_json::Value {

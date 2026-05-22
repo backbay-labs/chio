@@ -32,6 +32,10 @@ fn runtime_admission_hook_boundary_is_chio_owned() {
     let hook_type =
         std::any::type_name::<ChioRuntimeAdmissionHook<InMemoryRuntimeAdmissionStore>>();
     assert!(hook_type.starts_with("chio_runtime::ChioRuntimeAdmissionHook<"));
+    assert_eq!(
+        std::any::type_name::<InMemoryRuntimeAdmissionStore>(),
+        "chio_runtime::InMemoryRuntimeAdmissionStore"
+    );
 }
 
 #[test]
@@ -112,27 +116,14 @@ fn runtime_cli_helper_reexports_are_not_historical_error_reexports() {
 #[test]
 fn runtime_admission_store_boundary_is_chio_owned() {
     let lib = include_str!("../src/lib.rs");
-    let Some(reexport_start) = lib.find("pub use chio_chiodos_runtime::{") else {
-        panic!("runtime facade must keep an explicit historical reexport block");
-    };
-    let reexport_tail = &lib[reexport_start..];
-    let Some(reexport_end) = reexport_tail.find("};") else {
-        panic!("runtime facade historical reexport block must terminate");
-    };
-    let reexport_block = &reexport_tail[..reexport_end];
-    let exported_symbols = reexport_block
-        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
-        .filter(|symbol| !symbol.is_empty())
-        .collect::<Vec<_>>();
-
     for symbol in [
-        "RuntimeAdmissionInput",
-        "RuntimeAdmissionStore",
-        "RuntimeTrustFloorStore",
+        "pub use chio_chiodos_runtime::{",
+        "T: chio_chiodos_runtime::RuntimeAdmissionStore",
+        "T: chio_chiodos_runtime::RuntimeTrustFloorStore",
     ] {
         assert!(
-            !exported_symbols.contains(&symbol),
-            "{symbol} must be Chio-owned in chio-runtime, not reexported from the historical runtime crate"
+            !lib.contains(symbol),
+            "{symbol} must not appear in the Chio runtime public boundary"
         );
     }
 
@@ -140,6 +131,11 @@ fn runtime_admission_store_boundary_is_chio_owned() {
         "pub struct ChioRuntimeAdmissionInput",
         "pub trait ChioRuntimeAdmissionStore",
         "pub trait ChioRuntimeTrustFloorStore",
+        "pub struct InMemoryRuntimeAdmissionStore",
+        "pub struct JsonRuntimeAdmissionStore",
+        "pub struct JsonRuntimeTrustFloorStateStore",
+        "pub struct LayeredRuntimeAdmissionStore",
+        "pub struct SqliteRuntimeOrchestrationStore",
     ] {
         assert!(
             lib.contains(symbol),

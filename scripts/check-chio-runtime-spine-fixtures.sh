@@ -6,6 +6,7 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
 
 FIXTURE_DIR="$ROOT/examples/chio-3vendor/fixtures/runtime-spine"
 SCHEMA_DIR="$ROOT/spec/schemas/chio-runtime/v1"
+PHEROMONE_SCHEMA_DIR="$ROOT/spec/schemas/chio-pheromone/v1"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
@@ -86,6 +87,8 @@ validate_schema "$SCHEMA_DIR/peer-weights.schema.json" \
   "$tmpdir/runtime-peer-weights-body.signed.json"
 validate_schema "$SCHEMA_DIR/pheromone-policy.schema.json" \
   "$tmpdir/runtime-policy-body.signed.json"
+validate_schema "$PHEROMONE_SCHEMA_DIR/query-report.schema.json" \
+  "$FIXTURE_DIR/pheromone-query-report.json"
 validate_schema "$SCHEMA_DIR/step-evidence.schema.json" \
   "$FIXTURE_DIR/runtime-step-evidence.json"
 validate_schema "$SCHEMA_DIR/evidence-manifest.schema.json" \

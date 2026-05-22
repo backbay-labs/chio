@@ -76,6 +76,7 @@ pub struct AuthorityProfileDocument {
     pub trusted_bbs_issuers: Vec<TrustedBbsIssuer>,
     pub lease_authorities: Vec<ChiodosTrustedLeaseAuthority>,
     pub governance_authorities: Vec<ChiodosTrustedGovernanceAuthority>,
+    pub runtime_policy_issuer_public_keys: Vec<PublicKey>,
     pub revocation_authority: ChiodosRevocationAuthority,
 }
 
@@ -178,10 +179,10 @@ impl AuthorityProfileDocument {
         if self.trusted_bbs_issuers.is_empty()
             || self.lease_authorities.is_empty()
             || self.governance_authorities.is_empty()
+            || self.runtime_policy_issuer_public_keys.is_empty()
         {
             return Err(ChiodosAuthorityError::Profile(
-                "authority profile must contain BBS issuers, lease authorities, and governance authorities"
-                    .to_string(),
+                "authority profile must contain BBS issuers, lease authorities, governance authorities, and runtime policy issuers".to_string(),
             ));
         }
         let mut issuers = BTreeSet::new();
@@ -271,6 +272,29 @@ impl AuthorityProfileDocument {
                     "duplicate governance authority {}",
                     authority.authorizing_kernel
                 )));
+            }
+        }
+
+        let mut runtime_policy_issuer_keys = BTreeSet::new();
+        let mut reserved_authority_keys = BTreeSet::new();
+        for authority in &self.lease_authorities {
+            reserved_authority_keys.insert(authority.public_key.to_hex());
+        }
+        for authority in &self.governance_authorities {
+            reserved_authority_keys.insert(authority.public_key.to_hex());
+        }
+        reserved_authority_keys.insert(self.revocation_authority.public_key.to_hex());
+        for public_key in &self.runtime_policy_issuer_public_keys {
+            let public_key_hex = public_key.to_hex();
+            if !runtime_policy_issuer_keys.insert(public_key_hex.clone()) {
+                return Err(ChiodosAuthorityError::Profile(format!(
+                    "duplicate runtime policy issuer public key {public_key_hex}"
+                )));
+            }
+            if reserved_authority_keys.contains(&public_key_hex) {
+                return Err(ChiodosAuthorityError::Profile(
+                    "runtime policy issuer key must be distinct from lease, governance, and revocation authority keys".to_string(),
+                ));
             }
         }
 
@@ -860,6 +884,7 @@ pub fn assemble_verifier_trust_bundle(
         vendors: peer_pins.vendors.clone(),
         action_classes: peer_pins.action_classes.clone(),
         workflow_intersections: vec![trusted_workflow_intersection],
+        runtime_policy_issuer_public_keys: profile.runtime_policy_issuer_public_keys.clone(),
         lease_authorities: profile.lease_authorities.clone(),
         governance_authorities: profile.governance_authorities.clone(),
         disclosure_policy: Some(disclosure_policy),
@@ -1101,6 +1126,7 @@ mod tests {
         let lease_key = key(11);
         let governance_key = key(12);
         let revocation_key = key(13);
+        let runtime_policy_issuer_key = key(42);
         AuthorityProfileDocument {
             schema: AUTHORITY_PROFILE_SCHEMA.to_string(),
             trusted_bbs_issuers: vec![TrustedBbsIssuer {
@@ -1128,6 +1154,7 @@ mod tests {
                 status: Some(ChiodosAuthorityStatus::Active),
                 allowed_case_kinds: vec![GovernanceReceiptCaseKind::DestructiveAuthorization],
             }],
+            runtime_policy_issuer_public_keys: vec![runtime_policy_issuer_key.public_key()],
             revocation_authority: crate::ChiodosRevocationAuthority {
                 authority_id: "did:chio:buyer-kernel".to_string(),
                 key_id: key_id(&revocation_key.public_key()),

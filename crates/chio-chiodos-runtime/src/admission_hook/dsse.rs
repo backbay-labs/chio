@@ -22,6 +22,18 @@ pub(super) fn verify_treaty_dsse_evidence(
             "bilateral DSSE evidence is not a strict Chiodos predicate",
         );
     }
+    let Some(policy_summary) = statement.predicate.policy_evaluation_summary.as_ref() else {
+        return rejected(
+            "chiodos_treaty_unverified_required_evidence",
+            "bilateral DSSE evidence is missing policy evaluation summary",
+        );
+    };
+    chio_federation::validate_policy_evaluation_summary(policy_summary).map_err(|_| {
+        ChiodosRuntimeError::Rejected {
+            code: "chiodos_treaty_unverified_required_evidence",
+            detail: "bilateral DSSE policy evaluation summary is invalid".to_string(),
+        }
+    })?;
     let Some(treaty) = statement.predicate.treaty_binding_ref.as_ref() else {
         return rejected(
             "chiodos_treaty_unverified_required_evidence",

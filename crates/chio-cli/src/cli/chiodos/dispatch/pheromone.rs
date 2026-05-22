@@ -87,13 +87,7 @@ pub(crate) fn load_chio_verified_workflow_resolver(
     let package_json = read_utf8_json_file(proof_package, "Chio proof package")?;
     let package = chio_pheromone_runtime::ChioWorkflowProofPackage::from_json(&package_json)
         .map_err(|error| CliError::cli_other_error(format!("Chio proof package parse: {error}")))?;
-    let trust_bundle_json = read_utf8_json_file(trust_bundle, "Chio verifier trust bundle")?;
-    let trust_bundle = chio_pheromone_runtime::ChioWorkflowVerifierTrustBundle::from_json(
-        &trust_bundle_json,
-    )
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chio verifier trust bundle parse: {error}"))
-    })?;
+    let trust_bundle = load_chio_workflow_verifier_trust_bundle(trust_bundle)?;
     let context_json = read_utf8_json_file(context, "Chio verification context")?;
     let context = chio_pheromone_runtime::ChioWorkflowVerificationContext::from_json(&context_json)
         .map_err(|error| {
@@ -105,4 +99,14 @@ pub(crate) fn load_chio_verified_workflow_resolver(
         &context,
     )
     .map_err(|error| CliError::cli_other_error(format!("Chio workflow resolver: {error}")))
+}
+
+pub(crate) fn load_chio_workflow_verifier_trust_bundle(
+    trust_bundle: &Path,
+) -> Result<chio_pheromone_runtime::ChioWorkflowVerifierTrustBundle, CliError> {
+    let trust_bundle_json = read_utf8_json_file(trust_bundle, "Chio verifier trust bundle")?;
+    chio_pheromone_runtime::ChioWorkflowVerifierTrustBundle::from_json(&trust_bundle_json)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio verifier trust bundle parse: {error}"))
+        })
 }

@@ -55,7 +55,9 @@ fn run() -> Result<(), ChiodosPackageError> {
         .unwrap_or_else(|| "generate-chio-three-vendor-fixtures".to_string());
     let package = fresh_proof_package()?;
     let context = verification_context();
-    let trust_bundle_document = verifier_trust_bundle_document_for_package(&package)?;
+    let runtime_issuer_key = Keypair::from_seed(&[42; 32]);
+    let mut trust_bundle_document = verifier_trust_bundle_document_for_package(&package)?;
+    trust_bundle_document.runtime_policy_issuer_public_keys = vec![runtime_issuer_key.public_key()];
     let trust_bundle = ChiodosVerifierTrustBundle::from_document(trust_bundle_document.clone())?;
     let report = verify_package(&package, &trust_bundle, &context)?;
     let args = env::args().collect::<Vec<_>>();
@@ -65,6 +67,15 @@ fn run() -> Result<(), ChiodosPackageError> {
         }
         [_, flag] if flag == "--report" => {
             println!("{}", report_json(&report)?);
+        }
+        [_, flag, body, out] if flag == "--sign-transit-policy" => {
+            let body_json = fs::read_to_string(body)
+                .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+            let body: serde_json::Value = serde_json::from_str(&body_json)
+                .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+            let signed = SignedExportEnvelope::sign(body, &runtime_issuer_key)
+                .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
+            write_json(PathBuf::from(out), &signed)?;
         }
         [_, flag, dir] if flag == "--out-dir" => {
             let dir = PathBuf::from(dir);
@@ -375,6 +386,7 @@ fn write_pheromone_fixtures(
         &serde_json::to_string(&signed_policy_document)
             .map_err(|error| ChiodosPackageError::Json(error.to_string()))?,
         package.generated_at_unix_ms.saturating_add(500),
+        &[runtime_issuer_key.public_key()],
     )
     .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
     let selected_policy = receiver_config
@@ -405,7 +417,8 @@ fn write_pheromone_fixtures(
         package.generated_at_unix_ms.saturating_add(500),
     )
     .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;
-    let trust_bundle_document = verifier_trust_bundle_document_for_package(package)?;
+    let mut trust_bundle_document = verifier_trust_bundle_document_for_package(package)?;
+    trust_bundle_document.runtime_policy_issuer_public_keys = vec![runtime_issuer_key.public_key()];
     let context = verification_context();
     let chio_package = ChioWorkflowProofPackage::from_json(&package_json(package)?)
         .map_err(|error| ChiodosPackageError::Json(error.to_string()))?;

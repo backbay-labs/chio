@@ -1,5 +1,6 @@
 use super::{
-    load_chio_verified_workflow_resolver, read_utf8_json_file, unix_now_ms, write_json_string,
+    load_chio_verified_workflow_resolver, load_chio_workflow_verifier_trust_bundle,
+    read_utf8_json_file, unix_now_ms, write_json_string,
 };
 use crate::CliError;
 use std::path::Path;
@@ -41,10 +42,16 @@ pub(crate) fn cmd_chio_pheromone_receive(
         .map_err(|error| CliError::cli_other_error(format!("Chio pheromone batch: {error}")))?;
     let policy_json = read_utf8_json_file(transit_policy, "Chio pheromone transit policy")?;
     let now_unix_ms = now_unix_ms.unwrap_or(batch.flushed_at_unix_ms);
+    let workflow_trust_bundle = load_chio_workflow_verifier_trust_bundle(trust_bundle)?;
     let (transit_policy, receiver_config) =
-        chio_pheromone_runtime::runtime_policy_from_json(&policy_json, now_unix_ms).map_err(
-            |error| CliError::cli_other_error(format!("Chio pheromone runtime policy: {error}")),
-        )?;
+        chio_pheromone_runtime::runtime_policy_from_json(
+            &policy_json,
+            now_unix_ms,
+            workflow_trust_bundle.runtime_policy_issuer_public_keys(),
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio pheromone runtime policy: {error}"))
+        })?;
     let resolver = load_chio_verified_workflow_resolver(proof_package, trust_bundle, context)?;
     let store = chio_pheromone_runtime::SqlitePheromoneRuntimeStore::open(store)
         .map_err(|error| CliError::cli_other_error(format!("Chio pheromone store: {error}")))?;

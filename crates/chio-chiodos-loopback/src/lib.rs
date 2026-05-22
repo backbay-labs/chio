@@ -72,6 +72,7 @@ const BBS_KEY_INFO: &[u8] = b"chiodos";
 const BUYER_SEED: [u8; 32] = [11; 32];
 const GOVERNANCE_SEED: [u8; 32] = [12; 32];
 const REVOCATION_SEED: [u8; 32] = [13; 32];
+const RUNTIME_POLICY_ISSUER_SEED: [u8; 32] = [42; 32];
 const VENDOR_A_SEED: [u8; 32] = [21; 32];
 const VENDOR_B_SEED: [u8; 32] = [22; 32];
 const VENDOR_C_SEED: [u8; 32] = [23; 32];
@@ -348,6 +349,7 @@ pub fn authority_profile_document() -> Result<AuthorityProfileDocument, ChiodosP
     let buyer_key = Keypair::from_seed(&BUYER_SEED);
     let governance_key = Keypair::from_seed(&GOVERNANCE_SEED);
     let revocation_key = Keypair::from_seed(&REVOCATION_SEED);
+    let runtime_policy_issuer_key = Keypair::from_seed(&RUNTIME_POLICY_ISSUER_SEED);
     Ok(AuthorityProfileDocument {
         schema: AUTHORITY_PROFILE_SCHEMA.to_string(),
         trusted_bbs_issuers: trusted_bbs_issuers()?,
@@ -372,6 +374,7 @@ pub fn authority_profile_document() -> Result<AuthorityProfileDocument, ChiodosP
             status: Some(ChiodosAuthorityStatus::Active),
             allowed_case_kinds: vec![GovernanceReceiptCaseKind::DestructiveAuthorization],
         }],
+        runtime_policy_issuer_public_keys: vec![runtime_policy_issuer_key.public_key()],
         revocation_authority: ChiodosRevocationAuthority {
             authority_id: BUYER_KERNEL_ID.to_string(),
             key_id: key_id(&revocation_key.public_key()),

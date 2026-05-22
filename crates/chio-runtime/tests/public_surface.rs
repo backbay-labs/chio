@@ -15,17 +15,11 @@ fn chio_runtime_facade_does_not_export_legacy_chiodos_schema_constants() {
 #[test]
 fn chio_runtime_schema_constants_are_owned_locally() {
     let lib = include_str!("../src/lib.rs");
-    let Some(reexport_start) = lib.find("pub use chio_chiodos_runtime::{") else {
-        panic!("runtime facade must keep an explicit historical reexport block");
-    };
-    let reexport_tail = &lib[reexport_start..];
-    let Some(reexport_end) = reexport_tail.find("};") else {
-        panic!("runtime facade historical reexport block must terminate");
-    };
-    let reexport_block = &reexport_tail[..reexport_end];
-    let schema_reexports = reexport_block
+    let schema_reexports = lib
         .lines()
-        .filter(|line| line.contains("CHIO_RUNTIME_") && line.contains("_SCHEMA"))
+        .filter(|line| {
+            line.contains("pub const CHIO_RUNTIME_") && line.contains("chio_chiodos_runtime::")
+        })
         .collect::<Vec<_>>();
 
     assert!(

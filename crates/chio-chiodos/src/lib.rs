@@ -304,6 +304,8 @@ pub struct ChiodosVerifierTrustBundleDocument {
     pub vendors: Vec<VendorKeyBinding>,
     pub action_classes: Vec<ChiodosTrustedActionClass>,
     pub workflow_intersections: Vec<ChiodosTrustedWorkflowIntersection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runtime_policy_issuer_public_keys: Vec<PublicKey>,
     #[serde(default)]
     pub lease_authorities: Vec<ChiodosTrustedLeaseAuthority>,
     #[serde(default)]
@@ -321,6 +323,7 @@ pub struct ChiodosVerifierTrustBundle {
     vendors: BTreeMap<String, VendorKeyBinding>,
     action_classes: BTreeMap<String, ChiodosTrustedActionClass>,
     workflow_intersections: BTreeMap<String, String>,
+    runtime_policy_issuer_public_keys: Vec<PublicKey>,
     lease_authorities: BTreeMap<String, ChiodosTrustedLeaseAuthority>,
     governance_authorities: BTreeMap<String, ChiodosTrustedGovernanceAuthority>,
     disclosure_policy: ChiodosDisclosurePolicy,
@@ -332,6 +335,11 @@ impl ChiodosVerifierTrustBundle {
     #[must_use]
     pub fn document_sha256(&self) -> &str {
         &self.document_sha256
+    }
+
+    #[must_use]
+    pub fn runtime_policy_issuer_public_keys(&self) -> &[PublicKey] {
+        &self.runtime_policy_issuer_public_keys
     }
 
     pub fn from_document(
@@ -457,6 +465,22 @@ impl ChiodosVerifierTrustBundle {
                 ));
             }
         }
+        if document.runtime_policy_issuer_public_keys.is_empty() {
+            return Err(ChiodosPackageError::TrustBundle(
+                "verifier trust bundle must contain runtime policy issuer roots".to_string(),
+            ));
+        }
+        let mut runtime_policy_issuer_public_keys = Vec::new();
+        let mut runtime_policy_issuer_fingerprints = BTreeSet::new();
+        for public_key in document.runtime_policy_issuer_public_keys {
+            let fingerprint = key_fingerprint(&public_key);
+            if !runtime_policy_issuer_fingerprints.insert(fingerprint.clone()) {
+                return Err(ChiodosPackageError::TrustBundle(format!(
+                    "duplicate runtime policy issuer root {fingerprint}"
+                )));
+            }
+            runtime_policy_issuer_public_keys.push(public_key);
+        }
 
         let mut lease_authorities = BTreeMap::new();
         for authority in document.lease_authorities {
@@ -518,6 +542,7 @@ impl ChiodosVerifierTrustBundle {
             vendors,
             action_classes,
             workflow_intersections,
+            runtime_policy_issuer_public_keys,
             lease_authorities,
             governance_authorities,
             disclosure_policy,

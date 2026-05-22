@@ -2793,6 +2793,7 @@ dependencies = [
 name = "chio-chiodos-runtime"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chio-chiodos",
  "chio-chiodos-loopback",
  "chio-core-types",
@@ -4073,6 +4074,7 @@ dependencies = [
  "chio-chiodos-runtime",
  "chio-core-types",
  "chio-kernel",
+ "serde",
  "serde_json",
 ]
 

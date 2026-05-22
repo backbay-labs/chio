@@ -39,26 +39,19 @@ fn fixture(path: &str) -> PathBuf {
 }
 
 fn load_batch() -> PheromoneGossipBatch {
-    let mut batch: PheromoneGossipBatch =
-        serde_json::from_str(&fs::read_to_string(fixture("pheromone/gossip-batch.json")).unwrap())
-            .unwrap();
-    let treaty_id = batch.frames[0].deposit.body.treaty_scope[0].clone();
-    batch.treaty_id = treaty_id.clone();
-    for frame in &mut batch.frames {
-        frame.treaty_id = treaty_id.clone();
-        if let Some(chain) = frame.transit_chain.as_mut() {
-            if let Some(last) = chain.hops.last_mut() {
-                last.treaty_id = treaty_id.clone();
-            }
-        }
-    }
-    batch
+    serde_json::from_str(&fs::read_to_string(fixture("pheromone/gossip-batch.json")).unwrap())
+        .unwrap()
 }
 
 fn load_runtime_policy() -> (PheromoneTransitPolicy, PheromoneReceiverConfig) {
+    let trust_bundle = ChioWorkflowVerifierTrustBundle::from_json(
+        &fs::read_to_string(fixture("verifier-trust-bundle.json")).unwrap(),
+    )
+    .unwrap();
     let (mut policy, config) = runtime_policy_from_json(
         &fs::read_to_string(fixture("pheromone/transit-policy.json")).unwrap(),
         1_766_000_000_500,
+        trust_bundle.runtime_policy_issuer_public_keys(),
     )
     .unwrap();
     if let Some(treaty_id) = config.validation_context.scarcity_policies[0]
@@ -98,10 +91,14 @@ fn runtime_policy_value() -> serde_json::Value {
 }
 
 fn runtime_policy_loader_error(value: &serde_json::Value) -> String {
-    runtime_policy_from_json(&serde_json::to_string(value).unwrap(), 1_700_000_000_500)
-        .unwrap_err()
-        .code()
-        .to_string()
+    runtime_policy_from_json(
+        &serde_json::to_string(value).unwrap(),
+        1_700_000_000_500,
+        &[key(42).public_key()],
+    )
+    .unwrap_err()
+    .code()
+    .to_string()
 }
 
 fn signed_runtime_policy_value(body: serde_json::Value) -> serde_json::Value {
@@ -146,6 +143,17 @@ fn runtime_policy_loader_rejects_tampered_signed_policy_envelope() {
 #[test]
 fn runtime_policy_loader_rejects_untrusted_policy_signer() {
     let envelope = SignedExportEnvelope::sign(runtime_policy_value(), &key(99)).unwrap();
+    let value = serde_json::to_value(envelope).unwrap();
+
+    assert_eq!(runtime_policy_loader_error(&value), "invalid_field");
+}
+
+#[test]
+fn runtime_policy_loader_rejects_self_authorized_policy_signer() {
+    let mut value = runtime_policy_value();
+    value["admission"]["runtimePolicyIssuerPublicKeys"] = serde_json::json!([key(99).public_key()]);
+    seal_runtime_policy_hashes(&mut value);
+    let envelope = SignedExportEnvelope::sign(value, &key(99)).unwrap();
     let value = serde_json::to_value(envelope).unwrap();
 
     assert_eq!(runtime_policy_loader_error(&value), "invalid_field");
@@ -377,6 +385,30 @@ fn direct_batch(treaty_id: &str, deposit: PheromoneDeposit) -> PheromoneGossipBa
 struct FailingCommitStore;
 
 impl PheromoneRuntimeStore for FailingCommitStore {
+    fn receive_batch(
+        &self,
+        batch: &PheromoneGossipBatch,
+        policy: &PheromoneTransitPolicy,
+        config: &PheromoneReceiverConfig,
+        resolver: &dyn chio_pheromone_runtime::WorkflowContextResolver,
+    ) -> Result<PheromoneReceiveReport, PheromoneRuntimeError> {
+        let store = SqlitePheromoneRuntimeStore::open_in_memory().unwrap();
+        let report = store.receive_batch(batch, policy, config, resolver)?;
+        let mut failed_report = report;
+        failed_report.frames.iter_mut().for_each(|frame| {
+            frame.accepted = false;
+            frame.code = "storage_commit_failed".to_string();
+            frame.detail = "simulated frame commit failure".to_string();
+        });
+        Ok(PheromoneReceiveReport {
+            accepted: false,
+            batch_outcome: PheromoneBatchOutcome::Rejected,
+            accepted_frame_count: 0,
+            rejected_frame_count: failed_report.frames.len() as u64,
+            ..failed_report
+        })
+    }
+
     fn admit_deposit(
         &self,
         _deposit: PheromoneDeposit,
@@ -522,17 +554,13 @@ fn unscoped_store_default_cannot_accept_live_receive() {
     let (policy, config) = load_runtime_policy();
     let receiver = PheromoneReceiver::new(UnscopedOnlyStore, resolver(), config);
 
-    let report = receiver.receive_batch(&load_batch(), &policy).unwrap();
+    let error = receiver.receive_batch(&load_batch(), &policy).unwrap_err();
 
-    assert!(!report.accepted);
-    assert_eq!(report.batch_outcome, PheromoneBatchOutcome::Rejected);
-    assert_eq!(report.accepted_frame_count, 0);
-    assert_eq!(report.rejected_frame_count, 1);
-    assert_eq!(report.frames[0].code, "invalid_field");
+    assert_eq!(error.code(), "invalid_field");
     assert!(
-        report.frames[0].detail.contains("scoped"),
+        error.to_string().contains("atomic"),
         "unscoped trait default must fail closed, got: {}",
-        report.frames[0].detail
+        error
     );
 }
 
@@ -604,7 +632,7 @@ fn runtime_policy_loader_reads_explicit_scarcity_policy() {
     let mut value = runtime_policy_value();
     let policy = serde_json::to_value(scarcity_policy(
         "window-loader",
-        vec!["treaty:buyer-llamaworks:support-ops".to_string()],
+        vec!["treaty:buyer-dataco:support-ops".to_string()],
         3,
     ))
     .unwrap();
@@ -614,6 +642,7 @@ fn runtime_policy_loader_reads_explicit_scarcity_policy() {
     let (_policy, config) = runtime_policy_from_json(
         &serde_json::to_string(&signed_runtime_policy_value(value)).unwrap(),
         1_700_000_000_500,
+        &[key(42).public_key()],
     )
     .unwrap();
 
@@ -625,6 +654,10 @@ fn runtime_policy_loader_reads_explicit_scarcity_policy() {
     assert_eq!(
         config.validation_context.scarcity_policies[0].policy_id,
         "policy:window-loader"
+    );
+    assert_eq!(
+        config.validation_context.scarcity_policies[0].treaty_scope,
+        vec!["treaty:buyer-dataco:support-ops".to_string()]
     );
 }
 

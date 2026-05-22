@@ -65,10 +65,11 @@ use sha2::{Digest, Sha256};
 
 use crate::bilateral::BilateralCoSigningError;
 use crate::bilateral_dsse::{
-    receipt_subject_name, verify_chio_bilateral_dsse_envelope, verify_dsse_envelope,
-    BilateralPredicate, CapabilityLeaseRef, DsseEnvelope, DsseStatement, GovernanceReceiptRef,
-    Keyid, TreatyBindingRef, PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL,
-    PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION, STATEMENT_TYPE_V1, VALID_CROSS_ORG_VISIBILITY,
+    receipt_subject_name, validate_policy_evaluation_summary, verify_chio_bilateral_dsse_envelope,
+    verify_dsse_envelope, BilateralPredicate, CapabilityLeaseRef, DsseEnvelope, DsseStatement,
+    GovernanceReceiptRef, Keyid, TreatyBindingRef, PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA,
+    PREDICATE_TYPE_BILATERAL, PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION, STATEMENT_TYPE_V1,
+    VALID_CROSS_ORG_VISIBILITY,
 };
 use crate::trust_establishment::LadderManifestRef;
 
@@ -635,6 +636,12 @@ pub fn verify_treaty_bound_chio_bilateral_invocation(
             "strict treaty DSSE ordered consistency requires consistency_anchor".to_string(),
         ));
     }
+    let summary = pred.policy_evaluation_summary.as_ref().ok_or_else(|| {
+        VerifierError::PolicyVerdictDisagreement(
+            "strict treaty DSSE missing policy_evaluation_summary".to_string(),
+        )
+    })?;
+    validate_policy_evaluation_summary(summary).map_err(map_bilateral_error)?;
 
     let signer_a_id = &review.expected_treaty_binding.signer_kernel_ids[0];
     let signer_b_id = &review.expected_treaty_binding.signer_kernel_ids[1];
@@ -1710,6 +1717,13 @@ fn map_bilateral_error(error: BilateralCoSigningError) -> VerifierError {
         BilateralCoSigningError::CanonicalJson(message) => {
             if message.starts_with("statement.malformed: subject name") {
                 VerifierError::SubjectDigestMismatch(message)
+            } else if message.starts_with("predicate.schema_invalid: server_a=")
+                || message.starts_with("predicate.schema_invalid: unsupported verdict")
+                || message.contains("policy_id must be non-empty")
+                || message.contains("policy_version must be non-empty")
+                || message.contains("joint_disposition=")
+            {
+                VerifierError::PolicyVerdictDisagreement(message)
             } else if message.starts_with("payload json:")
                 || message.starts_with("statement.malformed")
                 || message.contains("not canonical JSON")
@@ -2636,6 +2650,33 @@ mod tests {
             signer_public_keys: &signer_public_keys,
         };
         verify_treaty_bound_chio_bilateral_invocation(&envelope, &accepted).unwrap();
+
+        let mut bad_statement = statement.clone();
+        bad_statement
+            .predicate
+            .policy_evaluation_summary
+            .as_mut()
+            .unwrap()
+            .server_b_verdict
+            .verdict = "deny".to_string();
+        bad_statement
+            .predicate
+            .policy_evaluation_summary
+            .as_mut()
+            .unwrap()
+            .joint_disposition = Some("deny".to_string());
+        let bad_payload = BASE64_STANDARD.encode(bad_statement.canonical_bytes().unwrap());
+        let bad_envelope = DsseEnvelope {
+            payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
+            payload: bad_payload,
+            signatures: envelope.signatures.clone(),
+        };
+        assert_eq!(
+            verify_treaty_bound_chio_bilateral_invocation(&bad_envelope, &accepted)
+                .unwrap_err()
+                .code(),
+            "policy.verdict_disagreement"
+        );
 
         let wrong_anchor = TreatyBoundBilateralDsseReview {
             expected_treaty_binding: &expected_treaty_binding,

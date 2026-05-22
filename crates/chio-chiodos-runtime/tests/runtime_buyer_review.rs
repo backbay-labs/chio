@@ -22,7 +22,8 @@ use chio_core_types::receipt::{
 };
 use chio_federation::{
     sign_chio_bilateral_dsse_envelope, BilateralPredicateExtensions, CapabilityLeaseRef,
-    GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary, PolicyVerdict, TreatyBindingRef,
+    DsseEnvelope, GovernanceReceiptRef, HashRecord, PolicyEvaluationSummary, PolicyVerdict,
+    TreatyBindingRef, PAYLOAD_TYPE_IN_TOTO,
 };
 use std::io;
 
@@ -444,6 +445,7 @@ struct StrictDsseFixtureInput<'a> {
     governance_digest: Option<&'a str>,
     consistency_anchor: Option<&'a str>,
     receipt_action: Option<ToolCallAction>,
+    policy_evaluation_summary: Option<PolicyEvaluationSummary>,
 }
 
 struct StrictDsseFixtureKeypairs {
@@ -480,6 +482,7 @@ fn strict_dsse_fixture_with_kernel_ids(
             governance_digest: None,
             consistency_anchor: Some("anchor-live"),
             receipt_action: None,
+            policy_evaluation_summary: None,
         },
         StrictDsseFixtureKeypairs {
             signer_a: Keypair::from_seed(&[1; 32]),
@@ -504,6 +507,7 @@ fn strict_dsse_fixture_with_keypairs(
         governance_digest,
         consistency_anchor,
         receipt_action,
+        policy_evaluation_summary,
     } = input;
     let StrictDsseFixtureKeypairs { signer_a, signer_b } = keypairs;
     let (signer_a_kernel_id, signer_b_kernel_id) = signer_kernel_ids.unwrap_or((
@@ -525,6 +529,22 @@ fn strict_dsse_fixture_with_keypairs(
         None,
     )?;
     let receipt = strict_dsse_fixture_receipt(&packet.capability_id, &signer_b, receipt_action)?;
+    let policy_evaluation_summary =
+        policy_evaluation_summary.unwrap_or_else(|| PolicyEvaluationSummary {
+            server_a_verdict: PolicyVerdict {
+                verdict: "allow".to_string(),
+                policy_id: "policy-buyer".to_string(),
+                policy_version: "v1".to_string(),
+                rationale_code: None,
+            },
+            server_b_verdict: PolicyVerdict {
+                verdict: "allow".to_string(),
+                policy_id: "policy-vendor".to_string(),
+                policy_version: "v1".to_string(),
+                rationale_code: None,
+            },
+            joint_disposition: Some("allow".to_string()),
+        });
     let envelope = sign_chio_bilateral_dsse_envelope(
         &receipt,
         &signer_a,
@@ -543,21 +563,7 @@ fn strict_dsse_fixture_with_keypairs(
                     value: lease_scope_digest.to_string(),
                 }),
             }),
-            policy_evaluation_summary: Some(PolicyEvaluationSummary {
-                server_a_verdict: PolicyVerdict {
-                    verdict: "allow".to_string(),
-                    policy_id: "policy-buyer".to_string(),
-                    policy_version: "v1".to_string(),
-                    rationale_code: None,
-                },
-                server_b_verdict: PolicyVerdict {
-                    verdict: "allow".to_string(),
-                    policy_id: "policy-vendor".to_string(),
-                    policy_version: "v1".to_string(),
-                    rationale_code: None,
-                },
-                joint_disposition: Some("allow".to_string()),
-            }),
+            policy_evaluation_summary: Some(policy_evaluation_summary),
             governance_receipt_ref: Some(GovernanceReceiptRef {
                 receipt_id: governance_receipt_id.to_string(),
                 kernel_id: bilateral.signer_kernel_ids[1].clone(),
@@ -617,6 +623,27 @@ fn proof_package_governance_receipt_for_test(
         },
         "signerKey": "ab",
         "signature": "cd"
+    })
+}
+
+fn strict_dsse_with_policy_disagreement(
+    dsse: &StrictDsseFixture,
+) -> Result<DsseEnvelope, Box<dyn std::error::Error>> {
+    let (mut statement, _) = dsse.envelope.decode_statement()?;
+    let summary = statement
+        .predicate
+        .policy_evaluation_summary
+        .as_mut()
+        .ok_or_else(|| io::Error::other("fixture DSSE missing policy summary"))?;
+    summary.server_b_verdict.verdict = "deny".to_string();
+    summary.joint_disposition = Some("deny".to_string());
+    Ok(DsseEnvelope {
+        payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
+        payload: base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            statement.canonical_bytes()?,
+        ),
+        signatures: dsse.envelope.signatures.clone(),
     })
 }
 
@@ -1881,6 +1908,9 @@ fn buyer_review_package_rejects_duplicate_strict_dsse_signature_keyids(
     };
     let mut dsse = strict_dsse_fixture_with_keys(&packet, &lineage_bundle, &admission, &bilateral)?;
     dsse.envelope.signatures[1].keyid = dsse.envelope.signatures[0].keyid.clone();
+    packet.bilateral_dsse_sha256 = chio_core_types::crypto::sha256_hex(
+        &chio_core_types::canonical::canonical_json_bytes(&dsse.envelope)?,
+    );
     let proof_package = proof_package_with_peer_keys(&bilateral, &dsse);
     let bilateral_dsse_envelope = serde_json::to_value(&dsse.envelope)?;
     let (package, sources, verifier_trust_bundle) =
@@ -1944,6 +1974,45 @@ fn buyer_review_package_rejects_same_key_strict_dsse_trust_material(
     assert_eq!(
         report.failure_code.as_deref(),
         Some("chiodos_buyer_review_strict_dsse_signature_invalid")
+    );
+    Ok(())
+}
+
+#[test]
+fn buyer_review_package_rejects_strict_dsse_policy_verdict_disagreement(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (mut packet, lineage, continuation, admission, bilateral) = buyer_fixture()?;
+    let lineage_bundle = ReceiptLineageBundle {
+        schema: CHIODOS_RECEIPT_LINEAGE_BUNDLE_SCHEMA.to_string(),
+        bundle_id: "lineage-bundle-1".to_string(),
+        root_receipt_sha256: lineage.parent_receipt_sha256.clone(),
+        leaf_receipt_sha256: lineage.child_receipt_sha256.clone(),
+        statements: vec![lineage.clone()],
+    };
+    let mut dsse = strict_dsse_fixture_with_keys(&packet, &lineage_bundle, &admission, &bilateral)?;
+    dsse.envelope = strict_dsse_with_policy_disagreement(&dsse)?;
+    let proof_package = proof_package_with_peer_keys(&bilateral, &dsse);
+    let bilateral_dsse_envelope = serde_json::to_value(&dsse.envelope)?;
+    packet.bilateral_dsse_sha256 = chio_core_types::crypto::sha256_hex(
+        &chio_core_types::crypto::canonical_json_bytes(&dsse.envelope)?,
+    );
+    let (package, sources, verifier_trust_bundle) =
+        buyer_review_sources_with_strict_dsse(BuyerReviewStrictDsseSources {
+            packet: &mut packet,
+            lineage: &lineage,
+            continuation: &continuation,
+            admission: &admission,
+            bilateral: &bilateral,
+            lineage_bundle: &lineage_bundle,
+            bilateral_dsse_envelope: &bilateral_dsse_envelope,
+            proof_package: &proof_package,
+        })?;
+
+    let report = verify_review_for_test(&package, &sources, &verifier_trust_bundle)?;
+    assert!(!report.accepted);
+    assert_eq!(
+        report.failure_code.as_deref(),
+        Some("chiodos_buyer_review_strict_dsse_binding_mismatch")
     );
     Ok(())
 }

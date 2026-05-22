@@ -9,6 +9,7 @@
     "trustedBbsIssuers",
     "leaseAuthorities",
     "governanceAuthorities",
+    "runtimePolicyIssuerPublicKeys",
     "revocationAuthority"
   ],
   "properties": {
@@ -27,6 +28,12 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "verifier-trust-bundle.schema.json#/$defs/governanceAuthority" }
+    },
+    "runtimePolicyIssuerPublicKeys": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/hex" }
     },
     "revocationAuthority": { "$ref": "#/$defs/revocationAuthority" }
   },

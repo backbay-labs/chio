@@ -17,7 +17,7 @@ path = "src/main.rs"
 
 [[bin]]
 name = "generate-chio-three-vendor-fixtures"
-path = "src/bin/generate_chio_three_vendor_fixtures.rs"
+path = "src/generate_chio_three_vendor_fixtures.rs"
 
 [dependencies]
 chio-chiodos-loopback = { path = "../../crates/chio-chiodos-loopback" }

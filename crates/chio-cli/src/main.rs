@@ -621,6 +621,8 @@ mod cli_entrypoint_tests {
             "gossip-batch.json",
             "--transit-policy",
             "transit-policy.json",
+            "--trust-bundle",
+            "verifier-trust-bundle.json",
             "--peer-directory",
             "peer-directory.json",
             "--now-unix-ms",
@@ -640,6 +642,7 @@ mod cli_entrypoint_tests {
                                         store,
                                         batch,
                                         transit_policy,
+                                        trust_bundle,
                                         report,
                                         ..
                                     },
@@ -651,6 +654,10 @@ mod cli_entrypoint_tests {
                 assert_eq!(
                     transit_policy,
                     std::path::PathBuf::from("transit-policy.json")
+                );
+                assert_eq!(
+                    trust_bundle,
+                    std::path::PathBuf::from("verifier-trust-bundle.json")
                 );
                 assert_eq!(report, std::path::PathBuf::from("enqueue-report.json"));
             }
@@ -3523,8 +3530,6 @@ mod cli_entrypoint_tests {
     -> Result<(), Box<dyn Error>> {
         let tempdir = tempfile::tempdir()?;
         let proof_package = tempdir.path().join("proof-package.json");
-        let trust_bundle = tempdir.path().join("trust-bundle.json");
-        let context = tempdir.path().join("context.json");
         let store = tempdir.path().join("pheromone.sqlite");
         let report = tempdir.path().join("receive-report.json");
         std::fs::write(&proof_package, "{}")?;
@@ -3533,8 +3538,8 @@ mod cli_entrypoint_tests {
             &fixture_path("pheromone/gossip-batch.json"),
             &fixture_path("pheromone/transit-policy.json"),
             &proof_package,
-            &trust_bundle,
-            &context,
+            &fixture_path("verifier-trust-bundle.json"),
+            &fixture_path("verification-context.json"),
             &store,
             Some(1_766_000_000_500),
             &report,

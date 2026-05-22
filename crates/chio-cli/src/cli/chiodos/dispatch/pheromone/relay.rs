@@ -1,7 +1,8 @@
 use super::{
     build_peer_directory_bundle_trust, load_relay_peer_directory_from_paths,
-    load_chio_verified_workflow_resolver, load_relay_signing_key, read_json_documents_from_dir,
-    read_utf8_json_file, unix_now_ms, write_json_string, write_pretty_json,
+    load_chio_verified_workflow_resolver, load_chio_workflow_verifier_trust_bundle,
+    load_relay_signing_key, read_json_documents_from_dir, read_utf8_json_file, unix_now_ms,
+    write_json_string, write_pretty_json,
 };
 use crate::CliError;
 use std::path::Path;
@@ -210,8 +211,14 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         "Chio peer directory",
     )?;
     let policy_json = read_utf8_json_file(transit_policy, "Chio pheromone transit policy")?;
+    let workflow_trust_bundle = load_chio_workflow_verifier_trust_bundle(trust_bundle)?;
     let (transit_policy, receiver_config) =
-        chio_pheromone_runtime::runtime_policy_from_json(&policy_json, now).map_err(|error| {
+        chio_pheromone_runtime::runtime_policy_from_json(
+            &policy_json,
+            now,
+            workflow_trust_bundle.runtime_policy_issuer_public_keys(),
+        )
+        .map_err(|error| {
             CliError::cli_other_error(format!("Chio pheromone runtime policy: {error}"))
         })?;
     let resolver = load_chio_verified_workflow_resolver(proof_package, trust_bundle, context)?;
@@ -266,6 +273,7 @@ pub(crate) fn cmd_chiodos_pheromone_relay_enqueue(
     store: &Path,
     batch: &Path,
     transit_policy: &Path,
+    trust_bundle: &Path,
     peer_directory: Option<&Path>,
     peer_directory_state: Option<&Path>,
     profile: chio_pheromone_relay::RelayProfile,
@@ -277,6 +285,7 @@ pub(crate) fn cmd_chiodos_pheromone_relay_enqueue(
         store,
         batch,
         transit_policy,
+        trust_bundle,
         peer_directory,
         peer_directory_state,
         profile,
@@ -290,6 +299,7 @@ pub(crate) fn cmd_chio_pheromone_relay_enqueue(
     store: &Path,
     batch: &Path,
     transit_policy: &Path,
+    trust_bundle: &Path,
     peer_directory: Option<&Path>,
     peer_directory_state: Option<&Path>,
     profile: chio_pheromone_relay::RelayProfile,
@@ -310,8 +320,14 @@ pub(crate) fn cmd_chio_pheromone_relay_enqueue(
         .map_err(|error| CliError::cli_other_error(format!("Chio relay batch: {error}")))?;
     let transit_policy_json =
         read_utf8_json_file(transit_policy, "Chio pheromone relay transit policy")?;
-    let transit_policy: chio_federation::PheromoneTransitPolicy =
-        serde_json::from_str(&transit_policy_json).map_err(|error| {
+    let workflow_trust_bundle = load_chio_workflow_verifier_trust_bundle(trust_bundle)?;
+    let (transit_policy, _receiver_config) =
+        chio_pheromone_runtime::runtime_policy_from_json(
+            &transit_policy_json,
+            now_unix_ms,
+            workflow_trust_bundle.runtime_policy_issuer_public_keys(),
+        )
+        .map_err(|error| {
             CliError::cli_other_error(format!("Chio relay transit policy: {error}"))
         })?;
     validate_relay_enqueue_batch(&directory, &batch, &transit_policy, now_unix_ms)?;

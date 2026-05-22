@@ -11,6 +11,7 @@
     "vendors",
     "actionClasses",
     "workflowIntersections",
+    "runtimePolicyIssuerPublicKeys",
     "leaseAuthorities",
     "governanceAuthorities",
     "disclosurePolicy",
@@ -42,6 +43,12 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/workflowIntersectionTrust" }
+    },
+    "runtimePolicyIssuerPublicKeys": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/hex" }
     },
     "leaseAuthorities": {
       "type": "array",

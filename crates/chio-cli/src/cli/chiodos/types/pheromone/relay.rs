@@ -103,6 +103,10 @@ pub(crate) enum ChioPheromoneRelayCommands {
         #[arg(long = "transit-policy", value_name = "PATH")]
         transit_policy: PathBuf,
 
+        /// Verifier-owned Chio trust bundle that authorizes the signed transit policy issuer.
+        #[arg(long, value_name = "PATH")]
+        trust_bundle: PathBuf,
+
         /// Verifier-owned peer directory JSON.
         #[arg(
             long,

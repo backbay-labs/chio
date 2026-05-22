@@ -22,6 +22,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+base64 = { workspace = true }
 chio-chiodos-loopback = { path = "../chio-chiodos-loopback" }
 tempfile = { workspace = true }
 
