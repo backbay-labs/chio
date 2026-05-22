@@ -32,7 +32,7 @@ the closeout matrix evidence.
 |---|---|---|---|
 | R4-MAJOR-3 | Cross-lane dep aliases (`LB-CAP`, `LB-RV2`, `LB-AB`, `LB-AT`) not anchored to Lane B IDs | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 3". Aliases replaced with literal Lane B ticket IDs in `Depends on` rows; alias->ID map preserved in documentation table. | CLOSED |
 | R4-MAJOR-4 | release-bar.md AND-overclaims §6 conformance | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 4". Release notes cite Lane B B4 directly; new items 13/14 in "What this release DOES NOT CLAIM". | CLOSED |
-| R4-MAJOR-5a | chiodos-ladder primitive missing in code | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 5a". release work-C1.3 effort bumped M->L; primitive lives in `examples/chiodome-bilateral/src/ladder.rs`; production primitive deferred to trj6. | CLOSED |
+| R4-MAJOR-5a | chio-ladder primitive missing in code | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 5a". release work-C1.3 effort bumped M->L; primitive lives in `examples/chiodome-bilateral/src/ladder.rs`; production primitive deferred to trj6. | CLOSED |
 | R4-MAJOR-5b | Policy YAML format mismatch | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 5b". Policy YAML rewritten in HushSpec shape; amount cap moved to ladder intersection per option (a). | CLOSED |
 | R4-MAJOR-6 | BBS+ deps absent; R6 mitigation soft | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 6". Explicit deferral path: C5 ships only if W2 dep-tree validation succeeds; otherwise five-artifact bundle. | CLOSED |
 | R4-MAJOR-7 | End-to-end composition gaps (anchor inclusion proof; two-keypair signing) | `W3-lane-c-fixes.md` § "R4 MAJORs - Finding 7". New release work-C2.5 ticket (anchor inclusion proof); §7 verifier ticket release work-C2.4 depends on B1.6/B2.5/B3.5/B4.5; two-keypair signing protocol section. | CLOSED |
@@ -107,7 +107,7 @@ Wave 3 (when Lane C scaffolding starts) with eyes open:
    predicate helper) can compose end-to-end. Per
    `lane-c-demo/README.md` and the Lane B week-by-week timeline,
    B4 lands week 5-6 of Lane B execution; Lane C C2 starts week 6.
-   Lane C scaffolding (C1.1 example skeleton, C1.2 chiodos-ladder
+   Lane C scaffolding (C1.1 example skeleton, C1.2 chio-ladder
    stub, C1.4 ticketing) starts W3 in parallel with Lane B B0->B1.
 
 2. **`mcp-remote` bridge in CI**. release work-C3.2 wraps the command
@@ -117,7 +117,7 @@ Wave 3 (when Lane C scaffolding starts) with eyes open:
    container" recorded in release work-C3.2 ticket.
 
 3. **Spec line-range citations to fill in**. Several Lane C tickets
-   cite `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6/§7 line ranges
+   cite `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6/§7 line ranges
    as "lines to be filled in by audit-doc owner". W3 Lane C fix-log
    "Anything for Wave 4" item 2 acknowledged Wave 4 fills these in;
    W4 closeout matrix records all Lane C placeholders swept to

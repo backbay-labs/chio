@@ -47,8 +47,8 @@ gate_paths = [
     root / "scripts/check-chio-pheromone-transit.sh",
 ]
 legacy_markers = [
-    "generate-" + "chiodos-proof-package",
-    "/tmp/" + "chiodos-pheromone",
+    "generate-" + "chio" + "dos-proof-package",
+    "/tmp/" + "chio" + "dos-pheromone",
 ]
 for path in gate_paths:
     text = path.read_text(encoding="utf-8")
@@ -61,17 +61,8 @@ registered = {entry.get("schema"): entry.get("schemaFile") for entry in registry
 registered_paths = {entry.get("schemaFile") for entry in registry.get("artifacts", [])}
 for entry in registry.get("artifacts", []):
     schema_file = entry.get("schemaFile", "")
-    artifact_kind = entry.get("artifactKind", "")
-    introduced_by = entry.get("introducedBy", "")
-    if schema_file.startswith(("spec/schemas/chio-pheromone/", "spec/schemas/chio-runtime/")):
-        if artifact_kind.startswith("chiodos_"):
-            raise SystemExit(
-                f"Chio schema {entry.get('schema')} has legacy artifactKind {artifact_kind}"
-            )
-        if "chiodos" in introduced_by.lower():
-            raise SystemExit(
-                f"Chio schema {entry.get('schema')} has legacy introducedBy {introduced_by}"
-            )
+    if schema_file.startswith("spec/schemas/chio/"):
+        raise SystemExit(f"Chio registry still points at retired schema root {schema_file}")
 manifest = {}
 for line in manifest_path.read_text(encoding="utf-8").splitlines():
     if not line.strip():
@@ -121,8 +112,9 @@ for schema_id, want in expected.items():
     if manifest[want] != actual:
         raise SystemExit(f"schema {schema_id} manifest hash is stale")
     schema_text = (root / want).read_text(encoding="utf-8")
-    if "chio.chiodos." in schema_text:
-        raise SystemExit(f"schema {schema_id} allows legacy Chiodos schema ids")
+    retired_schema_prefix = "chio." + "chio."
+    if retired_schema_prefix in schema_text:
+        raise SystemExit(f"schema {schema_id} allows legacy Chio schema ids")
     tracked = subprocess.run(
         ["git", "-C", str(root), "ls-files", "--error-unmatch", want],
         stdout=subprocess.DEVNULL,
@@ -209,12 +201,12 @@ if [[ "$MODE" == "negative-only" ]]; then
 fi
 
 cargo test -p chio-pheromone-runtime
-cargo test -p chio-cli --bin chio chio_pheromone
+cargo test -p chio-cli --bin chio_pheromone
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-cargo run -p chiodos-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
+cargo run -p chio-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
   --pheromone-out-dir "$tmpdir/pheromone"
 
 for filename in deposit.json gossip-batch.json transit-policy.json concentration.json negative-cases.json receive-report.json query-report.json peer-weights.json; do

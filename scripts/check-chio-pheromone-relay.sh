@@ -30,8 +30,8 @@ SCHEMA_REGISTRY="$ROOT/spec/schemas/registry.json"
 FIXTURE_DIR="$ROOT/examples/chio-3vendor/fixtures/pheromone/relay"
 RUNBOOK_DOC="$ROOT/docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"
 
-if rg -n "Chiodos|CHIODOS|chiodos" "$RUNBOOK_DOC"; then
-  echo "active Chio pheromone relay runbook must not cite Chiodos-named docs or labels" >&2
+if rg -n "Chio|CHIO|chio" "$RUNBOOK_DOC"; then
+  echo "active Chio pheromone relay runbook must not cite Chio-named docs or labels" >&2
   exit 1
 fi
 
@@ -50,7 +50,7 @@ if [[ "$MODE" != "schema-only" ]]; then
       --skip service::relay_rejects_authenticated_batch_with_unpinned_transit_ladder \
       --skip service::relay_tick_delivers_leased_batches_with_real_request_signature
   fi
-  cargo test -p chio-cli --bin chio chio_pheromone
+  cargo test -p chio-cli --bin chio_pheromone
 fi
 
 python3 - "$SCHEMA_DIR" "$SCHEMA_REGISTRY" "$FIXTURE_DIR" <<'PY'
@@ -232,7 +232,7 @@ for policy in admission.get("scarcityPolicies", []):
 policy_body_path.write_text(json.dumps(policy_body, indent=2) + "\n", encoding="utf-8")
 PY
 
-cargo run -p chiodos-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
+cargo run -p chio-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
   --sign-transit-policy "$tmpdir/auditor-transit-policy-body.json" "$tmpdir/auditor-transit-policy.json"
 
 cargo run -p chio-cli --bin chio -- pheromone relay enqueue \

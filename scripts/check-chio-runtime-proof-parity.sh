@@ -37,7 +37,7 @@ fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$repo_root/target}"
-LEGACY_SCHEMA_DIR="$repo_root/spec/schemas/chiodos/v1"
+CHIO_ATTEST_SCHEMA_DIR="$repo_root/spec/schemas/chio-attest/v1"
 CHIO_FEDERATION_SCHEMA_DIR="$repo_root/spec/schemas/chio-federation/v1"
 
 run_spec_validate() {
@@ -68,28 +68,28 @@ run_cargo_test_filter() {
   fi
 }
 
-run_historical_fixture_tests() {
+run_proof_fixture_tests() {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  if ! cargo run -p chiodos-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
+  if ! cargo run -p chio-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
     --out-dir "$tmpdir/fixtures"; then
     rm -rf "$tmpdir"
     return 1
   fi
-  validate_schema "$LEGACY_SCHEMA_DIR/proof-package.schema.json" \
+  validate_schema "$CHIO_ATTEST_SCHEMA_DIR/proof-package.schema.json" \
     "$tmpdir/fixtures/buyer-auditor-proof-package.json"
-  validate_schema "$LEGACY_SCHEMA_DIR/selective-disclosure-proof.schema.json" \
+  validate_schema "$CHIO_ATTEST_SCHEMA_DIR/selective-disclosure-proof.schema.json" \
     "$tmpdir/fixtures/selective-disclosure-proof.json"
   validate_schema "$CHIO_FEDERATION_SCHEMA_DIR/verifier-trust-bundle.schema.json" \
     "$tmpdir/fixtures/verifier-trust-bundle.json"
   validate_schema "$CHIO_FEDERATION_SCHEMA_DIR/verification-context.schema.json" \
     "$tmpdir/fixtures/verification-context.json"
-  cargo run -p chio-cli --bin chio -- attest legacy chiodos-v1 verify \
+  cargo run -p chio-cli --bin chio -- attest buyer verify-proof \
     --package "$tmpdir/fixtures/buyer-auditor-proof-package.json" \
     --trust-bundle "$tmpdir/fixtures/verifier-trust-bundle.json" \
     --context "$tmpdir/fixtures/verification-context.json" \
     --report "$tmpdir/fixtures/verifier-report-rerun.json"
-  validate_schema "$LEGACY_SCHEMA_DIR/verifier-report.schema.json" \
+  validate_schema "$CHIO_ATTEST_SCHEMA_DIR/verifier-report.schema.json" \
     "$tmpdir/fixtures/verifier-report-rerun.json"
   rm -rf "$tmpdir"
 }
@@ -105,17 +105,17 @@ case "$MODE" in
     bash "$repo_root/scripts/check-chio-runtime-spine.sh"
     ;;
   "parity-only")
-    run_cargo_test_filter chio-chiodos-runtime runtime_proof_regeneration
+    run_cargo_test_filter chio-runtime-core runtime_proof_regeneration
     bash "$repo_root/scripts/check-chio-runtime-spine.sh" --schema-only
     ;;
   "fixtures-only")
-    run_historical_fixture_tests
+    run_proof_fixture_tests
     ;;
   "all")
-    run_cargo_test_filter chio-chiodos-runtime runtime_workflow_report
-    run_cargo_test_filter chio-chiodos-runtime proof_regeneration_report
-    run_cargo_test_filter chio-chiodos-runtime runtime_proof_regeneration
-    run_historical_fixture_tests
+    run_cargo_test_filter chio-runtime-core runtime_workflow_report
+    run_cargo_test_filter chio-runtime-core proof_regeneration_report
+    run_cargo_test_filter chio-runtime-core runtime_proof_regeneration
+    run_proof_fixture_tests
     run_cargo_test_filter chio-cli chio_runtime --bin chio
     bash "$repo_root/scripts/check-chio-runtime-spine.sh"
     ;;

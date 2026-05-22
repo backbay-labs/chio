@@ -29,8 +29,8 @@ SCHEMA_DIR="$ROOT/spec/schemas/chio-pheromone/v1"
 SCHEMA_REGISTRY="$ROOT/spec/schemas/registry.json"
 FIXTURE_DIR="$ROOT/examples/chio-3vendor/fixtures/pheromone/relay"
 
-if rg -n "Chiodos|CHIODOS|chiodos" "$FIXTURE_DIR"; then
-  echo "active Chio pheromone relay fixtures must not cite Chiodos-named docs or labels" >&2
+if rg -n "Chio|CHIO|chio" "$FIXTURE_DIR"; then
+  echo "active Chio pheromone relay fixtures must not cite Chio-named docs or labels" >&2
   exit 1
 fi
 
@@ -103,7 +103,7 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 cargo test -p chio-pheromone-relay directory
-cargo test -p chio-cli --bin chio chio_pheromone
+cargo test -p chio-cli --bin chio_pheromone
 
 cargo run -p chio-cli --bin chio -- pheromone relay directory inspect \
   --state "$FIXTURE_DIR/peer-directory-state.json" \

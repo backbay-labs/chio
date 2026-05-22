@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 
-use chio_chiodos::{
+use chio_attest_buyer_core::{
     package_sha256, proof_package_from_json, verification_context_from_json,
     verification_context_sha256, verifier_trust_bundle_from_json, verify_package,
 };
@@ -111,7 +111,7 @@ fn chio_workflow_verification_error(error: impl std::fmt::Display) -> PheromoneR
 
 #[derive(Debug, Clone)]
 pub struct ChioWorkflowProofPackage {
-    inner: chio_chiodos::ChiodosProofPackage,
+    inner: chio_attest_buyer_core::ChioProofPackage,
 }
 
 impl ChioWorkflowProofPackage {
@@ -121,14 +121,14 @@ impl ChioWorkflowProofPackage {
             .map_err(chio_workflow_verification_error)
     }
 
-    fn as_historical(&self) -> &chio_chiodos::ChiodosProofPackage {
+    fn as_attest_core(&self) -> &chio_attest_buyer_core::ChioProofPackage {
         &self.inner
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ChioWorkflowVerifierTrustBundle {
-    inner: chio_chiodos::ChiodosVerifierTrustBundle,
+    inner: chio_attest_buyer_core::ChioVerifierTrustBundle,
 }
 
 impl ChioWorkflowVerifierTrustBundle {
@@ -143,14 +143,14 @@ impl ChioWorkflowVerifierTrustBundle {
         self.inner.runtime_policy_issuer_public_keys()
     }
 
-    fn as_historical(&self) -> &chio_chiodos::ChiodosVerifierTrustBundle {
+    fn as_attest_core(&self) -> &chio_attest_buyer_core::ChioVerifierTrustBundle {
         &self.inner
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChioWorkflowVerificationContext {
-    inner: chio_chiodos::ChiodosVerificationContext,
+    inner: chio_attest_buyer_core::ChioVerificationContext,
 }
 
 impl ChioWorkflowVerificationContext {
@@ -160,7 +160,7 @@ impl ChioWorkflowVerificationContext {
             .map_err(chio_workflow_verification_error)
     }
 
-    fn as_historical(&self) -> &chio_chiodos::ChiodosVerificationContext {
+    fn as_attest_core(&self) -> &chio_attest_buyer_core::ChioVerificationContext {
         &self.inner
     }
 }
@@ -640,9 +640,9 @@ impl VerifiedChioWorkflowResolver {
         trust_bundle: &ChioWorkflowVerifierTrustBundle,
         context: &ChioWorkflowVerificationContext,
     ) -> Result<Self, PheromoneRuntimeError> {
-        let package = package.as_historical();
-        let trust_bundle = trust_bundle.as_historical();
-        let context = context.as_historical();
+        let package = package.as_attest_core();
+        let trust_bundle = trust_bundle.as_attest_core();
+        let context = context.as_attest_core();
         verify_package(package, trust_bundle, context).map_err(chio_workflow_verification_error)?;
         let workflow_receipt_sha256 = canonical_sha256(&package.workflow_receipt)?;
         let workflow_intersection_sha256 = canonical_sha256(&package.workflow_intersection)?;

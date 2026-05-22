@@ -4,7 +4,7 @@
 
 **Goal:** Move treaty-bound provenance validation to `scripts/check-chio-treaty-bound-provenance.sh` and a Chio-named workflow.
 
-**Architecture:** The active gate must use Chio federation schemas for treaty scope, ladders, continuations, lineage, bilateral invocation, ladder intersections, and cross-boundary admission reports; Chio attest schemas for buyer packets and packet verification reports; and public `chio federation treaty ...` commands. The Chiodos-named script and workflow may remain only as compatibility wrappers. Legacy Chiodos schema references are allowed only for the local `treaty-negative-fixture-corpus.schema.json` exception until it has a Chio replacement.
+**Architecture:** The active gate must use Chio federation schemas for treaty scope, ladders, continuations, lineage, bilateral invocation, ladder intersections, and cross-boundary admission reports; Chio attest schemas for buyer packets and packet verification reports; and public `chio federation treaty ...` commands. The Chio-named script and workflow may remain only as compatibility wrappers. Legacy Chio schema references are allowed only for the local `treaty-negative-fixture-corpus.schema.json` exception until it has a Chio replacement.
 
 **Tech Stack:** Bash gate scripts, Chio federation schemas, Chio attest schemas, Chio CLI federation treaty commands, GitHub Actions workflow YAML.
 
@@ -14,9 +14,9 @@
 
 **Files:**
 - Create: `scripts/check-chio-treaty-bound-provenance.sh`
-- Modify: `scripts/check-chiodos-treaty-bound-provenance.sh`
+- Modify: `scripts/check-chio-treaty-bound-provenance.sh`
 - Create: `.github/workflows/chio-treaty-bound-provenance.yml`
-- Modify: `.github/workflows/chiodos-treaty-bound-provenance.yml`
+- Modify: `.github/workflows/chio-treaty-bound-provenance.yml`
 
 - [x] **Step 1: Prove the Chio treaty provenance gate is missing**
 
@@ -33,13 +33,13 @@ Expected: fail because the Chio-named treaty provenance gate does not exist.
 Run:
 
 ```bash
-if rg -n 'spec/schemas/chiodos/v1|chio\\.chiodos\\.(governance-ladder|treaty-scope|cross-kernel|receipt-lineage|bilateral|buyer-attestation)|scripts/check-chiodos-treaty-bound-provenance.sh' scripts/check-chiodos-treaty-bound-provenance.sh .github/workflows/chiodos-treaty-bound-provenance.yml; then
+if rg -n 'retired-federation-schema-prefix|retired-attest-schema-prefix|scripts/check-chio-treaty-bound-provenance.sh' scripts/check-chio-treaty-bound-provenance.sh .github/workflows/chio-treaty-bound-provenance.yml; then
   echo "legacy treaty provenance gate still owns active implementation" >&2
   exit 1
 fi
 ```
 
-Expected: fail because the old script owns Chiodos treaty schemas and the old workflow is active.
+Expected: fail because the old script owns Chio treaty schemas and the old workflow is active.
 
 ### Task 2: Add Chio-Owned Treaty Provenance Gate
 
@@ -65,14 +65,14 @@ Use `spec/schemas/chio-federation/v1` for treaty/federation artifacts and `spec/
 
 - [x] **Step 3: Preserve the legacy-only negative corpus exception**
 
-Use `spec/schemas/chiodos/v1/treaty-negative-fixture-corpus.schema.json` only for the local negative corpus fixture.
+Use `spec/schemas/chio-federation/v1/treaty-negative-fixture-corpus.schema.json` only for the local negative corpus fixture.
 
 ### Task 3: Convert Old Entrypoints To Compatibility Wrappers
 
 **Files:**
-- Modify: `scripts/check-chiodos-treaty-bound-provenance.sh`
+- Modify: `scripts/check-chio-treaty-bound-provenance.sh`
 - Create: `.github/workflows/chio-treaty-bound-provenance.yml`
-- Modify: `.github/workflows/chiodos-treaty-bound-provenance.yml`
+- Modify: `.github/workflows/chio-treaty-bound-provenance.yml`
 
 - [x] **Step 1: Replace old script implementation with delegation**
 
@@ -109,7 +109,7 @@ CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-treaty-bo
 Run:
 
 ```bash
-CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chiodos-treaty-bound-provenance.sh --schema-only
+CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-treaty-bound-provenance.sh --schema-only
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-treaty-bound-provenance.sh
 ```
 
@@ -118,19 +118,19 @@ CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-treaty-bo
 Run:
 
 ```bash
-bash -n scripts/check-chio-treaty-bound-provenance.sh scripts/check-chiodos-treaty-bound-provenance.sh
+bash -n scripts/check-chio-treaty-bound-provenance.sh scripts/check-chio-treaty-bound-provenance.sh
 test -x scripts/check-chio-treaty-bound-provenance.sh
-if rg -n 'chio\\.chiodos\\.(governance-ladder|treaty-scope|cross-kernel|receipt-lineage|bilateral|buyer-attestation)|check-chiodos-treaty-bound-provenance' scripts/check-chio-treaty-bound-provenance.sh; then
-  echo "Chio treaty provenance gate still points at Chiodos implementation paths" >&2
+if rg -n 'chio\\.chio\\.(governance-ladder|treaty-scope|cross-kernel|receipt-lineage|bilateral|buyer-attestation)|check-chio-treaty-bound-provenance' scripts/check-chio-treaty-bound-provenance.sh; then
+  echo "Chio treaty provenance gate still points at Chio implementation paths" >&2
   exit 1
 fi
-if rg -n 'pull_request:|push:' .github/workflows/chiodos-treaty-bound-provenance.yml; then
+if rg -n 'pull_request:|push:' .github/workflows/chio-treaty-bound-provenance.yml; then
   echo "legacy treaty provenance workflow is still active on PR or push" >&2
   exit 1
 fi
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo fmt --all -- --check
 git diff --check
-rg -n $'\xE2\x80\x94|\xE2\x80\x93' docs/superpowers/plans/2026-05-21-chio-treaty-bound-provenance-gate-cutover.md scripts/check-chio-treaty-bound-provenance.sh scripts/check-chiodos-treaty-bound-provenance.sh .github/workflows/chio-treaty-bound-provenance.yml .github/workflows/chiodos-treaty-bound-provenance.yml
+rg -n $'\xE2\x80\x94|\xE2\x80\x93' docs/superpowers/plans/2026-05-21-chio-treaty-bound-provenance-gate-cutover.md scripts/check-chio-treaty-bound-provenance.sh scripts/check-chio-treaty-bound-provenance.sh .github/workflows/chio-treaty-bound-provenance.yml .github/workflows/chio-treaty-bound-provenance.yml
 ```
 
 Expected: all pass, except the dash scan exits 1 with no output.

@@ -3,7 +3,7 @@ name: Chio Treaty-Bound Provenance
 on:
   pull_request:
     paths:
-      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-runtime-core/**"
       - "crates/chio-cli/**"
       - "scripts/check-chio-treaty-bound-provenance.sh"
       - "spec/schemas/chio-federation/v1/*treaty*.schema.json"
@@ -12,14 +12,14 @@ on:
       - "spec/schemas/chio-federation/v1/*bilateral*.schema.json"
       - "spec/schemas/chio-federation/v1/cross-*.schema.json"
       - "spec/schemas/chio-attest/v1/*attestation*.schema.json"
-      - "spec/schemas/chiodos/v1/treaty-negative-fixture-corpus.schema.json"
+      - "spec/schemas/chio-federation/v1/treaty-negative-fixture-corpus.schema.json"
       - "spec/schemas/registry.json"
       - "spec/schemas/MANIFEST.sha256"
       - ".github/workflows/chio-treaty-bound-provenance.yml"
   push:
     branches: ["main"]
     paths:
-      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-runtime-core/**"
       - "crates/chio-cli/**"
       - "scripts/check-chio-treaty-bound-provenance.sh"
       - "spec/schemas/chio-federation/v1/*treaty*.schema.json"
@@ -28,7 +28,7 @@ on:
       - "spec/schemas/chio-federation/v1/*bilateral*.schema.json"
       - "spec/schemas/chio-federation/v1/cross-*.schema.json"
       - "spec/schemas/chio-attest/v1/*attestation*.schema.json"
-      - "spec/schemas/chiodos/v1/treaty-negative-fixture-corpus.schema.json"
+      - "spec/schemas/chio-federation/v1/treaty-negative-fixture-corpus.schema.json"
       - "spec/schemas/registry.json"
       - "spec/schemas/MANIFEST.sha256"
       - ".github/workflows/chio-treaty-bound-provenance.yml"

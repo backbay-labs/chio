@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make public `chio runtime` signing and peer-weight hash dispatch route through Chio-named runtime handlers while retaining Chiodos-named compatibility wrappers.
+**Goal:** Make public `chio runtime` signing and peer-weight hash dispatch route through Chio-named runtime handlers while retaining Chio-named compatibility wrappers.
 
 **Architecture:** This is a P1 command-ownership slice from `docs/architecture/CHIO_FINAL_ARCHITECTURE.md`. It does not change signed runtime artifact bytes, schema IDs, canonical JSON, or hash behavior. It changes implementation ownership direction for the low-risk runtime signing/hash commands first.
 
@@ -31,11 +31,11 @@ cmd_chio_runtime_sign_pheromone_query_report(
 It must also assert the extracted body does not contain the matching old signing/hash handler names:
 
 ```rust
-cmd_chiodos_runtime_sign_trust_input(
-cmd_chiodos_runtime_sign_policy(
-cmd_chiodos_runtime_peer_weights_hash(
-cmd_chiodos_runtime_sign_peer_weights(
-cmd_chiodos_runtime_sign_pheromone_query_report(
+cmd_chio_runtime_sign_trust_input(
+cmd_chio_runtime_sign_policy(
+cmd_chio_runtime_peer_weights_hash(
+cmd_chio_runtime_sign_peer_weights(
+cmd_chio_runtime_sign_pheromone_query_report(
 ```
 
 - [x] **Step 2: Verify red**
@@ -46,14 +46,14 @@ Run:
 cargo test -p chio-cli chio_runtime_signing_dispatch_uses_chio_handlers --bin chio
 ```
 
-Expected: fail because public runtime signing dispatch still calls `cmd_chiodos_runtime_*`.
+Expected: fail because public runtime signing dispatch still calls `cmd_chio_runtime_*`.
 
 ### Task 2: Invert Runtime Signing Handler Ownership
 
 **Files:**
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/runtime/signing.rs`
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/runtime.rs`
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/runtime/signing.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/runtime.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch.rs`
 - Modify: `crates/chio-cli/src/cli/dispatch.rs`
 
 - [x] **Step 1: Add Chio-named runtime signing/hash handlers**
@@ -68,9 +68,9 @@ cmd_chio_runtime_sign_peer_weights
 cmd_chio_runtime_sign_pheromone_query_report
 ```
 
-- [x] **Step 2: Delegate Chiodos compatibility wrappers**
+- [x] **Step 2: Delegate Chio compatibility wrappers**
 
-Keep the existing `cmd_chiodos_runtime_*` signing/hash function names, but have them call the corresponding Chio-named implementation.
+Keep the existing `cmd_chio_runtime_*` signing/hash function names, but have them call the corresponding Chio-named implementation.
 
 - [x] **Step 3: Route public runtime dispatch through Chio handlers**
 
@@ -87,7 +87,7 @@ Run:
 
 ```bash
 cargo test -p chio-cli chio_runtime_signing_dispatch_uses_chio_handlers --bin chio
-cargo test -p chio-cli chiodos_runtime_sign_trust_input_subcommand_parses --bin chio
+cargo test -p chio-cli chio_runtime_sign_trust_input_subcommand_parses --bin chio
 ```
 
 - [x] **Step 2: Run focused lint and hygiene**

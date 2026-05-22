@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make public `chio pheromone relay` core commands route through Chio-named relay handlers while retaining Chiodos-named compatibility wrappers.
+**Goal:** Make public `chio pheromone relay` core commands route through Chio-named relay handlers while retaining Chio-named compatibility wrappers.
 
 **Architecture:** This is a P1 command-ownership slice from `docs/architecture/CHIO_FINAL_ARCHITECTURE.md`. It covers core relay commands only: lint, serve, enqueue, tick, catchup, status, observe, metrics, and trend. Alert, delivery, assurance, directory, and supervisor relay subcommands remain separate follow-up work.
 
@@ -42,23 +42,23 @@ Run:
 cargo test -p chio-cli chio_pheromone_core_relay_dispatch_uses_chio_handlers --bin chio
 ```
 
-Expected: fail because the public core relay arms still call Chiodos-named handlers.
+Expected: fail because the public core relay arms still call Chio-named handlers.
 
 ### Task 2: Invert Core Relay Handler Ownership
 
 **Files:**
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/pheromone/relay.rs`
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/pheromone.rs`
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/pheromone/relay.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/pheromone.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch.rs`
 - Modify: `crates/chio-cli/src/cli/dispatch.rs`
 
 - [x] **Step 1: Add Chio-named core relay handlers**
 
 Move implementation ownership to `cmd_chio_pheromone_relay_*` for the nine core relay commands.
 
-- [x] **Step 2: Delegate Chiodos compatibility wrappers**
+- [x] **Step 2: Delegate Chio compatibility wrappers**
 
-Keep old `cmd_chiodos_pheromone_relay_*` core function names as delegates.
+Keep old `cmd_chio_pheromone_relay_*` core function names as delegates.
 
 - [x] **Step 3: Route public dispatch through Chio handlers**
 

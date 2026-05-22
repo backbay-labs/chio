@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Introduce `chio-attest-buyer` as the public buyer attestation boundary and invert CLI dispatch so Chio-native buyer commands own the path while hidden Chiodos compatibility delegates to them.
+**Goal:** Introduce `chio-attest-buyer` as the public buyer attestation boundary and invert CLI dispatch so Chio-native buyer commands own the path while hidden Chio compatibility delegates to them.
 
-**Architecture:** This is the first extraction slice, not the final schema cutover. `chio-attest-buyer` owns the public verification API and currently bridges to the proven historical buyer core so strict DSSE semantics are preserved. CLI code should route `chio attest buyer ...` to Chio-named handlers; the hidden `chio chiodos buyer ...` path may delegate to those handlers for compatibility.
+**Architecture:** This is the first extraction slice, not the final schema cutover. `chio-attest-buyer` owns the public verification API and currently bridges to the proven historical buyer core so strict DSSE semantics are preserved. CLI code should route `chio attest buyer ...` to Chio-named handlers; the hidden `chio attest buyer ...` path may delegate to those handlers for compatibility.
 
-**Tech Stack:** Rust workspace crate, `chio-cli`, `chio-chiodos-runtime`, `serde_json`, existing buyer review fixtures and tests.
+**Tech Stack:** Rust workspace crate, `chio-cli`, `chio-runtime-core`, `serde_json`, existing buyer review fixtures and tests.
 
 ---
 
@@ -57,7 +57,7 @@ Expected: no matches.
 **Files:**
 - Modify: `crates/chio-cli/Cargo.toml`
 - Modify: `crates/chio-cli/src/cli/dispatch.rs`
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/buyer.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/buyer.rs`
 
 - [x] **Step 1: Add `chio-attest-buyer` to CLI dependencies**
 
@@ -67,9 +67,9 @@ Expected: no matches.
 
 Add `cmd_chio_attest_buyer_package`, `cmd_chio_attest_buyer_verify`, `cmd_chio_attest_buyer_explain`, and `cmd_chio_attest_buyer_verify_packet` as the native handler names.
 
-- [x] **Step 3: Delegate hidden Chiodos buyer handlers to Chio handlers**
+- [x] **Step 3: Delegate hidden Chio buyer handlers to Chio handlers**
 
-Keep the hidden compatibility functions, but make them call the Chio-native functions rather than the public Chio command path calling `cmd_chiodos_*`.
+Keep the hidden compatibility functions, but make them call the Chio-native functions rather than the public Chio command path calling `cmd_chio_*`.
 
 ### Task 4: Verify
 

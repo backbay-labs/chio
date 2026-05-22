@@ -1,9 +1,0 @@
-{
-  "schema": "chio.pheromone.relay-tick-report.v1",
-  "accepted": true,
-  "delivered": 0,
-  "retried": 0,
-  "deadLettered": 0,
-  "duplicateIdempotent": 0,
-  "failures": []
-}

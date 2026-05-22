@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:test-driven-development and superpowers:verification-before-completion. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move active Chio runtime ops and orchestration negative-corpus validation off mutable `chio.chiodos.*` schemas and onto Chio-runtime schema IDs.
+**Goal:** Move active Chio runtime ops and orchestration negative-corpus validation off mutable `Chio-native schema IDs` schemas and onto Chio-runtime schema IDs.
 
-**Architecture:** New emitted artifacts must use Chio-native schema IDs where permitted. `chio.chiodos.*` runtime schemas remain readable only for deprecated historical compatibility. Runtime proof verifier reports may continue to use explicit historical verifier schema IDs when they represent byte-preserving legacy proof verification.
+**Architecture:** New emitted artifacts must use Chio-native schema IDs where permitted. `Chio-native schema IDs` runtime schemas remain readable only for deprecated historical compatibility. Runtime proof verifier reports may continue to use explicit historical verifier schema IDs when they represent byte-preserving legacy proof verification.
 
 **Tech Stack:** JSON Schema, `spec/schemas/registry.json`, `spec/schemas/MANIFEST.sha256`, Bash gate scripts, `chio-spec-validate`, Chio CLI runtime gates.
 
@@ -22,7 +22,7 @@
 Run:
 
 ```bash
-if rg -n 'chio\.chiodos\.runtime-(ops-negative-fixture-corpus|failure-code-registry|orchestration-negative-fixture-corpus)' scripts/check-chio-runtime-ops-hardening.sh scripts/check-chio-runtime-orchestration.sh; then
+if rg -n 'chio\.chio\.runtime-(ops-negative-fixture-corpus|failure-code-registry|orchestration-negative-fixture-corpus)' scripts/check-chio-runtime-ops-hardening.sh scripts/check-chio-runtime-orchestration.sh; then
   echo "active Chio runtime gates still emit legacy mutable runtime schemas" >&2
   exit 1
 fi
@@ -65,9 +65,9 @@ chio.runtime.orchestration-negative-fixture-corpus.v1
 
 Add active registry entries with `chio_runtime_*` artifact kinds and Chio-runtime schema files.
 
-- [x] **Step 3: Keep legacy schemas read-compatible**
+- [x] **Step 3: Retire replaced schema paths**
 
-Do not delete the existing `spec/schemas/chiodos/v1` entries. They remain historical readers.
+Use the Chio runtime schema directories as the only active registry paths.
 
 ### Task 3: Cut Active Runtime Gates To Chio Schemas
 
@@ -85,7 +85,7 @@ Do not delete the existing `spec/schemas/chiodos/v1` entries. They remain histor
 
 - [x] **Step 3: Preserve historical proof verifier schema**
 
-Do not rename `chio.chiodos.verifier-report.v2` inside generated verifier-report fixtures in this pass. That is historical verifier evidence, not a mutable active Chio runtime corpus.
+Do not rename `chio.attest.verifier-report.v2` inside generated verifier-report fixtures in this pass. That is historical verifier evidence, not a mutable active Chio runtime corpus.
 
 ### Task 4: Verify
 
@@ -111,7 +111,7 @@ Run:
 ```bash
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-schema-registry.sh
 bash -n scripts/check-chio-runtime-ops-hardening.sh scripts/check-chio-runtime-orchestration.sh
-if rg -n 'chio\.chiodos\.runtime-(ops-negative-fixture-corpus|failure-code-registry|orchestration-negative-fixture-corpus)|legacy_schema_dir=.*/chiodos|legacy_schema_dir/.*/runtime-(ops-negative-fixture-corpus|failure-code-registry|orchestration-negative-fixture-corpus)' scripts/check-chio-runtime-ops-hardening.sh scripts/check-chio-runtime-orchestration.sh; then
+if rg -n 'chio\.chio\.runtime-(ops-negative-fixture-corpus|failure-code-registry|orchestration-negative-fixture-corpus)|legacy_schema_dir=.*/chio|legacy_schema_dir/.*/runtime-(ops-negative-fixture-corpus|failure-code-registry|orchestration-negative-fixture-corpus)' scripts/check-chio-runtime-ops-hardening.sh scripts/check-chio-runtime-orchestration.sh; then
   echo "active Chio runtime gates still depend on legacy mutable runtime schemas" >&2
   exit 1
 fi

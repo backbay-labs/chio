@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stop the active Chio treaty buyer gate from delegating to `check-chiodos-treaty-buyer-hero-loop.sh`.
+**Goal:** Stop the active Chio treaty buyer gate from delegating to `check-chio-treaty-buyer-hero-loop.sh`.
 
-**Architecture:** Active Chio gates must own Chio fixture validation, direct Chio CLI runtime execution, and buyer packet verification. Historical signed proof packages may still contain Chiodos workflow identifiers when those bytes are part of old signed evidence. That compatibility path must be explicit through `chio attest legacy chiodos-v1 verify`, not hidden behind a Chiodos gate script.
+**Architecture:** Active Chio gates must own Chio fixture validation, direct Chio CLI runtime execution, and buyer packet verification. Historical signed proof packages may still contain Chio workflow identifiers when those bytes are part of old signed evidence. That compatibility path must be explicit through `chio attest buyer verify-proof`, not hidden behind a Chio gate script.
 
-**Tech Stack:** Bash gate script, `chio-cli`, `chio-spec-validate`, Chio runtime fixture schemas, Chio attest buyer schemas, legacy Chiodos proof-package schema.
+**Tech Stack:** Bash gate script, `chio-cli`, `chio-spec-validate`, Chio runtime fixture schemas, Chio attest buyer schemas, legacy Chio proof-package schema.
 
 ---
 
@@ -20,13 +20,13 @@
 Run:
 
 ```bash
-if rg -n 'check-chiodos' scripts/check-chio-treaty-buyer-hero-loop.sh; then
-  echo "active Chio treaty buyer gate delegates to Chiodos script" >&2
+if rg -n 'check-chio' scripts/check-chio-treaty-buyer-hero-loop.sh; then
+  echo "active Chio treaty buyer gate delegates to Chio script" >&2
   exit 1
 fi
 ```
 
-Expected: fail because the active Chio script calls `check-chiodos-treaty-buyer-hero-loop.sh`.
+Expected: fail because the active Chio script calls `check-chio-treaty-buyer-hero-loop.sh`.
 
 ### Task 2: Make The Chio Gate Own Runtime Artifacts
 
@@ -45,7 +45,7 @@ Copy the Chio runtime-spine scenario to a temporary directory, add executable st
 cargo run -p chio-cli --bin chio -- runtime run-loopback ...
 ```
 
-Temporary executable arguments may preserve `wf-chiodos-refund-001` while the current loopback proof-parity assembler still compares against historical proof-package bytes. Do not write those temporary compatibility values back into Chio fixtures.
+Temporary executable arguments may preserve `wf-chio-refund-001` while the current loopback proof-parity assembler still compares against historical proof-package bytes. Do not write those temporary compatibility values back into Chio fixtures.
 
 ### Task 3: Make Packet And Explain Modes Direct
 
@@ -54,14 +54,14 @@ Temporary executable arguments may preserve `wf-chiodos-refund-001` while the cu
 
 - [x] **Step 1: Validate produced artifacts**
 
-Validate direct loopback outputs against Chio runtime schemas, Chio attest buyer schemas, Chio federation lineage schemas, and the legacy Chiodos proof-package schema.
+Validate direct loopback outputs against Chio runtime schemas, Chio attest buyer schemas, Chio federation lineage schemas, and the legacy Chio proof-package schema.
 
 - [x] **Step 2: Run explicit CLI checks**
 
 Use direct CLI commands for:
 
 ```bash
-chio attest legacy chiodos-v1 verify
+chio attest buyer verify-proof
 chio attest buyer packet
 chio attest buyer verify
 chio attest buyer explain
@@ -76,7 +76,7 @@ The legacy verifier is allowed because it is the explicit historical proof-packa
 
 - [x] **Step 1: Run the strict buyer review regressions directly**
 
-Run the strict DSSE and live material buyer review tests directly from the Chio gate instead of delegating to the Chiodos script.
+Run the strict DSSE and live material buyer review tests directly from the Chio gate instead of delegating to the Chio script.
 
 ### Task 5: Verify
 
@@ -99,8 +99,8 @@ CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-treaty-bu
 Run:
 
 ```bash
-if rg -n 'check-chiodos' scripts/check-chio-treaty-buyer-hero-loop.sh; then
-  echo "active Chio treaty buyer gate delegates to Chiodos script" >&2
+if rg -n 'check-chio' scripts/check-chio-treaty-buyer-hero-loop.sh; then
+  echo "active Chio treaty buyer gate delegates to Chio script" >&2
   exit 1
 fi
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo fmt --all -- --check

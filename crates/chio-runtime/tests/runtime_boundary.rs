@@ -42,7 +42,7 @@ fn runtime_admission_hook_boundary_is_chio_owned() {
 fn runtime_boundary_does_not_wildcard_reexport_historical_core() {
     let lib = include_str!("../src/lib.rs");
 
-    assert!(!lib.contains("pub use chio_chiodos_runtime::*"));
+    assert!(!lib.contains("pub use chio_runtime_core::*"));
 }
 
 #[test]
@@ -117,9 +117,9 @@ fn runtime_cli_helper_reexports_are_not_historical_error_reexports() {
 fn runtime_admission_store_boundary_is_chio_owned() {
     let lib = include_str!("../src/lib.rs");
     for symbol in [
-        "pub use chio_chiodos_runtime::{",
-        "T: chio_chiodos_runtime::RuntimeAdmissionStore",
-        "T: chio_chiodos_runtime::RuntimeTrustFloorStore",
+        "pub use chio_runtime_core::{",
+        "T: chio_runtime_core::RuntimeAdmissionStore",
+        "T: chio_runtime_core::RuntimeTrustFloorStore",
     ] {
         assert!(
             !lib.contains(symbol),
@@ -144,7 +144,7 @@ fn runtime_admission_store_boundary_is_chio_owned() {
     }
 
     assert!(
-        !lib.contains("S: chio_chiodos_runtime::RuntimeAdmissionStore"),
+        !lib.contains("S: chio_runtime_core::RuntimeAdmissionStore"),
         "ChioRuntimeAdmissionHook must be bounded by the Chio-owned store trait"
     );
 }

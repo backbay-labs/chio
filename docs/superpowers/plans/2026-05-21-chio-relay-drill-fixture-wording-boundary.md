@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Keep active Chio relay lifecycle fixtures free of Chiodos-named
+**Goal:** Keep active Chio relay lifecycle fixtures free of Chio-named
 operator wording.
 
 **Architecture:** Relay drill fixtures are Chio operator evidence, not signed
@@ -23,7 +23,7 @@ artifacts, but active relay fixture details should describe Chio paths.
 - [ ] **Step 1: Add failing gate**
 
 Add a drift check to `scripts/check-chio-pheromone-directory-lifecycle.sh` that
-rejects `Chiodos`, `CHIODOS`, or `chiodos` in the active Chio relay fixture
+rejects `Chio`, `CHIO`, or `chio` in the active Chio relay fixture
 directory.
 
 - [ ] **Step 2: Run red**

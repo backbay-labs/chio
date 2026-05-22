@@ -1,7 +1,7 @@
 # Bilateral Cosigned Invocation Flow - DSSE Adapter
 
 This document maps the spec wire format
-(`spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`) onto the federation
+(`spec/CHIO_BILATERAL_COSIGN_INVOCATION.md`) onto the federation
 types and specifies how Lane C consumes Lane B's B4 DSSE-conformant
 signing primitive.
 

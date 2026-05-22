@@ -460,7 +460,7 @@ case "$MODE" in
     run_schema_flow
     run_provenance_binding_flow
     run_negative_flow
-    cargo test -p chio-chiodos-runtime treaty_ --test runtime_admission
-    cargo test -p chio-chiodos-runtime buyer_attestation --test runtime_buyer_review
+    cargo test -p chio-runtime-core treaty_ --test runtime_admission
+    cargo test -p chio-runtime-core buyer_attestation --test runtime_buyer_review
     ;;
 esac

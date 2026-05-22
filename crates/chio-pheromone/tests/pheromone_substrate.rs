@@ -29,7 +29,7 @@ fn key(seed: u8) -> Keypair {
 fn workflow_context() -> PheromoneWorkflowContext {
     PheromoneWorkflowContext {
         schema: PHEROMONE_WORKFLOW_CONTEXT_SCHEMA.to_string(),
-        workflow_id: "wf-chiodos-refund-001".to_string(),
+        workflow_id: "wf-chio-refund-001".to_string(),
         workflow_receipt_id: "wf-receipt-001".to_string(),
         workflow_receipt_sha256: "a".repeat(64),
         workflow_intersection_id: "workflow-intersection:buyer-refund:001".to_string(),
@@ -37,7 +37,7 @@ fn workflow_context() -> PheromoneWorkflowContext {
         step_index: 0,
         tool_receipt_id: "tool-receipt-001".to_string(),
         bilateral_dsse_sha256: "c".repeat(64),
-        consistency_anchor: "chiodos:consistency:wf-chiodos-refund-001:0".to_string(),
+        consistency_anchor: "chio:consistency:wf-chio-refund-001:0".to_string(),
     }
 }
 

@@ -12,8 +12,8 @@ publish = false
 name = "chio_attest_buyer"
 
 [dependencies]
-chio-chiodos = { path = "../chio-chiodos" }
-chio-chiodos-runtime = { path = "../chio-chiodos-runtime" }
+chio-attest-buyer-core = { path = "../chio-attest-buyer-core" }
+chio-runtime-core = { path = "../chio-runtime-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

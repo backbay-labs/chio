@@ -4,7 +4,7 @@
 
 **Goal:** Move the runtime policy gate to a Chio-named script and workflow with Chio-native runtime schema fixtures.
 
-**Architecture:** The active gate must be `scripts/check-chio-runtime-policy.sh`. It validates Chio runtime peer weights, pheromone policy, policy decisions, and trust-floor state against `spec/schemas/chio-runtime/v1`, runs focused runtime policy and trust-floor tests, and chains through the Chio runtime-spine gate. The old Chiodos script and workflow remain only as manual compatibility entrypoints.
+**Architecture:** The active gate must be `scripts/check-chio-runtime-policy.sh`. It validates Chio runtime peer weights, pheromone policy, policy decisions, and trust-floor state against `spec/schemas/chio-runtime/v1`, runs focused runtime policy and trust-floor tests, and chains through the Chio runtime-spine gate. The old Chio script and workflow remain only as manual compatibility entrypoints.
 
 **Tech Stack:** Bash gate scripts, GitHub Actions workflow YAML, Chio runtime JSON schemas, Cargo test filters.
 
@@ -14,9 +14,9 @@
 
 **Files:**
 - Create: `scripts/check-chio-runtime-policy.sh`
-- Modify: `scripts/check-chiodos-runtime-policy.sh`
+- Modify: `scripts/check-chio-runtime-policy.sh`
 - Create: `.github/workflows/chio-runtime-policy.yml`
-- Modify: `.github/workflows/chiodos-runtime-policy.yml`
+- Modify: `.github/workflows/chio-runtime-policy.yml`
 
 - [x] **Step 1: Prove the Chio runtime policy gate is missing**
 
@@ -33,13 +33,13 @@ Expected: fail because the active Chio-named runtime policy gate does not exist.
 Run:
 
 ```bash
-if rg -n 'chio\.chiodos\.runtime|spec/schemas/chiodos|check-chiodos-runtime-policy|check-chiodos-runtime-spine|chiodos_runtime' scripts/check-chiodos-runtime-policy.sh .github/workflows/chiodos-runtime-policy.yml; then
-  echo "legacy runtime policy gate still owns Chiodos implementation" >&2
+if rg -n 'chio\.chio\.runtime|spec/schemas/chio|check-chio-runtime-policy|check-chio-runtime-spine|chio_runtime' scripts/check-chio-runtime-policy.sh .github/workflows/chio-runtime-policy.yml; then
+  echo "legacy runtime policy gate still owns Chio implementation" >&2
   exit 1
 fi
 ```
 
-Expected: fail because the old script and active workflow still point at Chiodos runtime schemas, Chiodos schema IDs, and Chiodos gate names.
+Expected: fail because the old script and active workflow still point at Chio runtime schemas, Chio schema IDs, and Chio gate names.
 
 ### Task 2: Add Chio-Owned Runtime Policy Gate
 
@@ -68,7 +68,7 @@ chio.runtime.pheromone-policy-decision.v1
 chio.runtime.trust-floor-state.v1
 ```
 
-The policy rule namespace must be `chio.runtime`, not `chiodos.runtime`.
+The policy rule namespace must be `chio.runtime`, not `chio.runtime`.
 
 - [x] **Step 3: Add zero-match-safe focused test runner**
 
@@ -79,9 +79,9 @@ Use a local `run_cargo_test_filter` helper that fails if cargo returns no nonzer
 Run:
 
 ```bash
-cargo test -p chio-chiodos-runtime chio_native_runtime_policy_material_emits_chio_decision --test runtime_pheromone_policy
-cargo test -p chio-chiodos-runtime runtime_trust_floor --test runtime_trust
-cargo test -p chio-cli --bin chio chio_runtime
+cargo test -p chio-runtime-core chio_native_runtime_policy_material_emits_chio_decision --test runtime_pheromone_policy
+cargo test -p chio-runtime-core runtime_trust_floor --test runtime_trust
+cargo test -p chio-cli --bin chio_runtime
 ```
 
 - [x] **Step 5: Chain through the Chio runtime-spine gate**
@@ -95,7 +95,7 @@ bash "$repo_root/scripts/check-chio-runtime-spine.sh"
 ### Task 3: Convert The Old Script To A Wrapper
 
 **Files:**
-- Modify: `scripts/check-chiodos-runtime-policy.sh`
+- Modify: `scripts/check-chio-runtime-policy.sh`
 
 - [x] **Step 1: Replace old implementation with delegation**
 
@@ -113,7 +113,7 @@ exec bash "$repo_root/scripts/check-chio-runtime-policy.sh" "$@"
 
 **Files:**
 - Create: `.github/workflows/chio-runtime-policy.yml`
-- Modify: `.github/workflows/chiodos-runtime-policy.yml`
+- Modify: `.github/workflows/chio-runtime-policy.yml`
 
 - [x] **Step 1: Add active Chio workflow**
 
@@ -146,7 +146,7 @@ CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-runtime-p
 Run:
 
 ```bash
-CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chiodos-runtime-policy.sh --schema-only
+CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-runtime-policy.sh --schema-only
 ```
 
 - [x] **Step 3: Run default workflow-equivalent gate**
@@ -163,17 +163,17 @@ Run:
 
 ```bash
 test -x scripts/check-chio-runtime-policy.sh
-if rg -n 'chio\.chiodos\.runtime|spec/schemas/chiodos|check-chiodos-runtime-policy|check-chiodos-runtime-spine|chiodos_runtime' scripts/check-chio-runtime-policy.sh; then
-  echo "Chio runtime policy gate still points at Chiodos runtime implementation paths" >&2
+if rg -n 'chio\.chio\.runtime|spec/schemas/chio|check-chio-runtime-policy|check-chio-runtime-spine|chio_runtime' scripts/check-chio-runtime-policy.sh; then
+  echo "Chio runtime policy gate still points at Chio runtime implementation paths" >&2
   exit 1
 fi
-if rg -n 'pull_request:|push:' .github/workflows/chiodos-runtime-policy.yml; then
+if rg -n 'pull_request:|push:' .github/workflows/chio-runtime-policy.yml; then
   echo "legacy runtime policy workflow is still active on PR or push" >&2
   exit 1
 fi
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo fmt --all -- --check
 git diff --check
-rg -n $'\xE2\x80\x94|\xE2\x80\x93' docs/superpowers/plans/2026-05-21-chio-runtime-policy-gate-cutover.md scripts/check-chio-runtime-policy.sh scripts/check-chiodos-runtime-policy.sh .github/workflows/chio-runtime-policy.yml .github/workflows/chiodos-runtime-policy.yml
+rg -n $'\xE2\x80\x94|\xE2\x80\x93' docs/superpowers/plans/2026-05-21-chio-runtime-policy-gate-cutover.md scripts/check-chio-runtime-policy.sh scripts/check-chio-runtime-policy.sh .github/workflows/chio-runtime-policy.yml .github/workflows/chio-runtime-policy.yml
 ```
 
 Expected: all pass, except the dash scan exits 1 with no output.

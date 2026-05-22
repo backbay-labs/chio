@@ -6,17 +6,11 @@ use serde::{Deserialize, Serialize};
 
 pub const CHIO_FEDERATION_GOVERNANCE_LADDER_MANIFEST_SCHEMA: &str =
     "chio.federation.governance-ladder-manifest.v1";
-const CHIODOS_GOVERNANCE_LADDER_MANIFEST_SCHEMA: &str =
-    "chio.chiodos.governance-ladder-manifest.v1";
 pub const CHIO_FEDERATION_TREATY_SCOPE_SCHEMA: &str = "chio.federation.treaty-scope.v1";
-const CHIODOS_TREATY_SCOPE_SCHEMA: &str = "chio.chiodos.treaty-scope.v1";
 pub const CHIO_FEDERATION_LADDER_INTERSECTION_SCHEMA: &str =
     "chio.federation.ladder-intersection.v1";
-const CHIODOS_LADDER_INTERSECTION_SCHEMA: &str = "chio.chiodos.ladder-intersection.v1";
 pub const CHIO_FEDERATION_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA: &str =
     "chio.federation.cross-boundary-admission-report.v1";
-const CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA: &str =
-    "chio.chiodos.cross-boundary-admission-report.v1";
 
 #[derive(Debug, thiserror::Error)]
 pub enum FederationTreatyError {
@@ -513,7 +507,6 @@ pub fn validate_governance_ladder_manifest(
     if !matches!(
         manifest.schema.as_str(),
         CHIO_FEDERATION_GOVERNANCE_LADDER_MANIFEST_SCHEMA
-            | CHIODOS_GOVERNANCE_LADDER_MANIFEST_SCHEMA
     ) {
         return rejected(
             "unsupported_governance_ladder_manifest_schema",
@@ -607,10 +600,7 @@ pub fn validate_governance_ladder_manifest(
 }
 
 pub fn validate_treaty_scope(scope: &TreatyScope) -> Result<(), FederationTreatyError> {
-    if !matches!(
-        scope.schema.as_str(),
-        CHIO_FEDERATION_TREATY_SCOPE_SCHEMA | CHIODOS_TREATY_SCOPE_SCHEMA
-    ) {
+    if !matches!(scope.schema.as_str(), CHIO_FEDERATION_TREATY_SCOPE_SCHEMA) {
         return rejected(
             "unsupported_treaty_scope_schema",
             "treaty scope declared an unsupported schema",
@@ -688,7 +678,7 @@ pub fn validate_ladder_intersection(
 ) -> Result<(), FederationTreatyError> {
     if !matches!(
         intersection.schema.as_str(),
-        CHIO_FEDERATION_LADDER_INTERSECTION_SCHEMA | CHIODOS_LADDER_INTERSECTION_SCHEMA
+        CHIO_FEDERATION_LADDER_INTERSECTION_SCHEMA
     ) {
         return rejected(
             "unsupported_ladder_intersection_schema",
@@ -747,7 +737,6 @@ pub fn validate_cross_boundary_admission_report(
     if !matches!(
         report.schema.as_str(),
         CHIO_FEDERATION_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA
-            | CHIODOS_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA
     ) {
         return rejected(
             "unsupported_cross_boundary_admission_report_schema",

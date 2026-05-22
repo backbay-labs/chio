@@ -29,7 +29,7 @@ cargo test -p chio-runtime runtime_error_boundary_is_chio_owned
 ```
 
 Expected before implementation: FAIL because `ChioRuntimeError` is still a type
-alias for `chio_chiodos_runtime::error::ChiodosRuntimeError`.
+alias for `chio_runtime_core::error::ChioRuntimeError`.
 
 ### Task 2: Implement Opaque Runtime Error Type
 
@@ -38,11 +38,11 @@ alias for `chio_chiodos_runtime::error::ChiodosRuntimeError`.
 
 - [x] **Step 1: Remove the historical error reexport**
 
-Stop reexporting `ChiodosRuntimeError` through `chio-runtime`.
+Stop reexporting `ChioRuntimeError` through `chio-runtime`.
 
 - [x] **Step 2: Replace the alias**
 
-Replace `pub type ChioRuntimeError = chio_chiodos_runtime::ChiodosRuntimeError`
+Replace `pub type ChioRuntimeError = chio_runtime_core::ChioRuntimeError`
 with a Chio-owned `ChioRuntimeError` wrapper that preserves a `code()` accessor
 and standard error behavior for future facade wrappers.
 
@@ -68,7 +68,7 @@ Run:
 
 ```bash
 cargo test -p chio-runtime
-cargo test -p chio-cli --bin chio chiodos_runtime
+cargo test -p chio-cli --bin chio_runtime
 ```
 
 - [x] **Step 2: Run focused lints and hygiene**
@@ -81,7 +81,7 @@ cargo clippy -p chio-cli --bin chio -- -D warnings
 cargo fmt --all -- --check
 git diff --check
 rg -n $'\xE2\x80\x94|\xE2\x80\x93' crates/chio-runtime/src/lib.rs crates/chio-runtime/tests/runtime_boundary.rs docs/architecture/CHIO_FINAL_ARCHITECTURE.md docs/superpowers/plans/2026-05-19-chio-runtime-error-boundary.md
-rg -n "ChiodosRuntimeError,|pub type ChioRuntimeError|ChioRuntimeError = chio_chiodos_runtime" crates/chio-runtime/src/lib.rs
+rg -n "ChioRuntimeError,|pub type ChioRuntimeError|ChioRuntimeError = chio_runtime_core" crates/chio-runtime/src/lib.rs
 ```
 
 Expected: all commands exit 0 except the dash scan and source leak scan exit 1

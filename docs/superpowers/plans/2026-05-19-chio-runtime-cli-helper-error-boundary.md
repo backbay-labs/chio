@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** Ensure CLI-facing `chio-runtime` helper functions return `ChioRuntimeError` instead of exposing `chio_chiodos_runtime::ChiodosRuntimeError`.
+**Goal:** Ensure CLI-facing `chio-runtime` helper functions return `ChioRuntimeError` instead of exposing `chio_runtime_core::ChioRuntimeError`.
 
 **Architecture:** Keep the historical runtime implementation as the private execution backend for this slice, but stop direct public reexports for fallible helper functions used by `chio-cli` runtime dispatch. Add thin facade wrappers with identical function names and Chio-owned errors so downstream callers can use Chio namespace APIs without binding to historical error types.
 
-**Tech Stack:** Rust workspace crates `chio-runtime`, `chio-cli`, and `chio-chiodos-runtime`; standard Rust unit tests; Cargo test, clippy, fmt, and diff hygiene checks.
+**Tech Stack:** Rust workspace crates `chio-runtime`, `chio-cli`, and `chio-runtime-core`; standard Rust unit tests; Cargo test, clippy, fmt, and diff hygiene checks.
 
 ---
 
@@ -46,7 +46,7 @@ fn runtime_cli_helper_parsers_return_chio_errors() {
 #[test]
 fn runtime_cli_hash_helpers_return_chio_errors() {
     let weights = chio_runtime::RuntimePeerWeights {
-        schema: chio_runtime::CHIODOS_RUNTIME_PEER_WEIGHTS_SCHEMA.to_string(),
+        schema: chio_runtime::CHIO_RUNTIME_PEER_WEIGHTS_SCHEMA.to_string(),
         issuer_id: "issuer-1".to_string(),
         issued_at_unix_ms: 1,
         expires_at_unix_ms: 2,
@@ -97,7 +97,7 @@ fn runtime_cli_helper_reexports_are_not_historical_error_reexports() {
 
 Run: `cargo test -p chio-runtime runtime_cli_helper -- --nocapture`
 
-Expected: FAIL because the error type is still `chio_chiodos_runtime::error::ChiodosRuntimeError` and the helpers are still listed in the direct `pub use chio_chiodos_runtime::{ ... }` block.
+Expected: FAIL because the error type is still `chio_runtime_core::error::ChioRuntimeError` and the helpers are still listed in the direct `pub use chio_runtime_core::{ ... }` block.
 
 ### Task 2: Runtime Facade Wrappers
 
@@ -106,7 +106,7 @@ Expected: FAIL because the error type is still `chio_chiodos_runtime::error::Chi
 
 - [x] **Step 1: Remove selected helpers from the historical reexport block**
 
-Remove these names from `pub use chio_chiodos_runtime::{ ... }`:
+Remove these names from `pub use chio_runtime_core::{ ... }`:
 
 ```rust
 build_runtime_orchestration_plan
@@ -204,7 +204,7 @@ For each removed function, add a wrapper with the same parameters and return typ
 pub fn runtime_admission_profile_from_json(
     json: &str,
 ) -> Result<RuntimeAdmissionProfile, ChioRuntimeError> {
-    chio_chiodos_runtime::runtime_admission_profile_from_json(json)
+    chio_runtime_core::runtime_admission_profile_from_json(json)
         .map_err(ChioRuntimeError::from_historical)
 }
 ```
@@ -240,7 +240,7 @@ Expected: no matches, exit 1.
 
 **Files:**
 - Test: `crates/chio-runtime/tests/runtime_boundary.rs`
-- Test through caller: `crates/chio-cli/src/cli/chiodos/dispatch/runtime/*.rs`
+- Test through caller: `crates/chio-cli/src/cli/chio/dispatch/runtime/*.rs`
 
 - [x] **Step 1: Run targeted runtime tests**
 
@@ -250,7 +250,7 @@ Expected: PASS.
 
 - [x] **Step 2: Run targeted CLI runtime tests**
 
-Run: `cargo test -p chio-cli --bin chio chiodos_runtime`
+Run: `cargo test -p chio-cli --bin chio_runtime`
 
 Expected: PASS.
 
@@ -280,4 +280,4 @@ Expected: PASS.
 
 Run: `rg -n "runtime_admission_profile_from_json|runtime_orchestration_profile_from_json|runtime_peer_weights_sha256" crates/chio-runtime/src/lib.rs`
 
-Expected: Each helper appears in wrapper definitions, not as an item in the `pub use chio_chiodos_runtime::{ ... }` list.
+Expected: Each helper appears in wrapper definitions, not as an item in the `pub use chio_runtime_core::{ ... }` list.

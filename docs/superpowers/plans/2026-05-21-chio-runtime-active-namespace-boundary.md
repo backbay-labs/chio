@@ -6,7 +6,7 @@
 Chio runtime dispatch tests.
 
 **Architecture:** Active Chio runtime policy examples should use Chio-native
-subject namespaces. Historical `chiodos.runtime` values belong only in
+subject namespaces. Historical `chio.runtime` values belong only in
 compatibility schemas, signed legacy fixtures, or historical runtime crate
 tests.
 
@@ -18,17 +18,17 @@ tests.
 
 **Files:**
 - Modify: `crates/chio-cli/src/main.rs`
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/runtime/admission.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/runtime/admission.rs`
 - Modify: `docs/architecture/CHIO_FINAL_ARCHITECTURE.md`
 
 - [x] **Step 1: Add failing active-surface guard**
 
 Add a focused CLI test that scans the active runtime admission dispatch module
-and rejects the historical `chiodos.runtime` subject namespace.
+and rejects the historical `chio.runtime` subject namespace.
 
 - [x] **Step 2: Run red**
 
-Run: `cargo test -p chio-cli --bin chio chio_runtime_active_subject_namespaces_are_chio_native`
+Run: `cargo test -p chio-cli --bin chio_runtime_active_subject_namespaces_are_chio_native`
 
 Expected: failure showing the active runtime admission dispatch still contains
 the historical namespace.

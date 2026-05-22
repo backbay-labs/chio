@@ -9,15 +9,15 @@ fn chio_pheromone_runtime_exposes_chio_named_workflow_resolver() {
 
     let lib = include_str!("../src/lib.rs");
     assert!(
-        !lib.contains("pub struct VerifiedChiodosWorkflowResolver"),
+        lib.contains("pub struct VerifiedChioWorkflowResolver"),
         "public runtime resolver type must be Chio named"
     );
     assert!(
-        !lib.contains("chiodos_verification"),
-        "public runtime errors must not expose Chiodos verification codes"
+        !lib.contains("chio_verification"),
+        "public runtime errors must not expose Chio verification codes"
     );
     assert!(
-        !lib.contains("verified Chiodos evidence"),
+        !lib.contains("verified Chio evidence"),
         "public workflow context mismatch errors must describe Chio evidence"
     );
 }
@@ -27,7 +27,7 @@ fn chio_pheromone_runtime_workflow_verification_error_is_chio_owned() {
     let lib = include_str!("../src/lib.rs");
     let public_alias_leaks = lib
         .lines()
-        .filter(|line| line.trim_start().starts_with("pub type ") && line.contains("Chiodos"))
+        .filter(|line| line.trim_start().starts_with("pub type ") && line.contains("Chio"))
         .collect::<Vec<_>>();
     assert!(
         public_alias_leaks.is_empty(),
@@ -36,7 +36,7 @@ fn chio_pheromone_runtime_workflow_verification_error_is_chio_owned() {
 
     let public_signature_leaks = public_signature_chunks(lib)
         .into_iter()
-        .filter(|chunk| chunk.contains("Chiodos"))
+        .filter(|chunk| chunk.contains("chio_attest_buyer_core::"))
         .collect::<Vec<_>>();
     assert!(
         public_signature_leaks.is_empty(),
@@ -48,7 +48,7 @@ fn chio_pheromone_runtime_workflow_verification_error_is_chio_owned() {
         .find(|line| line.contains("WorkflowVerification("))
         .unwrap_or("");
     assert!(
-        !workflow_verification_variant.contains("Chiodos")
+        !workflow_verification_variant.contains("chio_attest_buyer_core::")
             && !workflow_verification_variant.contains("#[from]"),
         "workflow verification errors must use a Chio-owned payload: {workflow_verification_variant}"
     );

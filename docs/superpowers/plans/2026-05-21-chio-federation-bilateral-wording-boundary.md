@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:test-driven-development and superpowers:verification-before-completion. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Remove Chiodos wording from the production public Chio federation bilateral and pheromone gossip surfaces.
+**Goal:** Remove Chio wording from the production public Chio federation bilateral and pheromone gossip surfaces.
 
-**Architecture:** `chio-federation` already exports Chio-named bilateral DSSE functions and verifier config types. Production documentation comments, private helper names, and user-facing error strings in those Chio modules should match that public boundary. Historical Chiodos wording may remain in compatibility tests and deprecated signed-artifact fixtures, but not in live production text.
+**Architecture:** `chio-federation` already exports Chio-named bilateral DSSE functions and verifier config types. Production documentation comments, private helper names, and user-facing error strings in those Chio modules should match that public boundary. Historical Chio wording may remain in compatibility tests and deprecated signed-artifact fixtures, but not in live production text.
 
 **Tech Stack:** Rust integration tests, `chio-federation`, source-level public API guard tests, cargo test filters.
 
@@ -15,11 +15,11 @@
 **Files:**
 - Modify: `crates/chio-federation/tests/public_surface.rs`
 
-- [x] **Step 1: Assert production bilateral modules do not expose Chiodos wording**
+- [x] **Step 1: Assert production bilateral modules do not expose Chio wording**
 
 Add a test that scans the production portions of `bilateral.rs`,
 `bilateral_dsse.rs`, `bilateral_verifier.rs`, and `pheromone_gossip.rs` and
-fails on `Chiodos`, `CHIODOS`, or `chiodos`.
+fails on `Chio`, `CHIO`, or `chio`.
 
 - [x] **Step 2: Run the focused test and verify red**
 
@@ -29,7 +29,7 @@ Run:
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo test -p chio-federation --test public_surface chio_federation_bilateral_production_text_is_chio_named -- --nocapture
 ```
 
-Expected: fail before implementation with production comments and error strings that still say Chiodos.
+Expected: fail before implementation with production comments and error strings that still say Chio.
 
 ### Task 2: Rename Production Wording To Chio
 
@@ -42,12 +42,12 @@ Expected: fail before implementation with production comments and error strings 
 - [x] **Step 1: Replace public documentation and error strings**
 
 Change production documentation comments and verifier error strings from strict
-Chiodos wording to strict Chio wording.
+Chio wording to strict Chio wording.
 
 - [x] **Step 2: Rename private helper symbols**
 
-Rename private helper symbols such as `validate_chiodos_predicate` so production
-source no longer exposes Chiodos wording in the live Chio modules.
+Rename private helper symbols such as `validate_chio_predicate` so production
+source no longer exposes Chio wording in the live Chio modules.
 
 - [x] **Step 3: Preserve signed wire constants**
 

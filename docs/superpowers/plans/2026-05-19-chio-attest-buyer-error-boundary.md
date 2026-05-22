@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stop `chio-attest-buyer` from exposing `ChiodosRuntimeError` through its public buyer proof API.
+**Goal:** Stop `chio-attest-buyer` from exposing `ChioRuntimeError` through its public buyer proof API.
 
 **Architecture:** `chio-attest-buyer` still delegates to the hardened historical buyer core while the crate split continues, but callers should see a Chio-owned error type and Chio-owned fallible helper functions. Historical runtime errors are implementation detail behind the boundary.
 
@@ -30,7 +30,7 @@ cargo test -p chio-attest-buyer buyer_error_boundary_is_chio_owned
 ```
 
 Expected before implementation: FAIL because `BuyerAttestationError` is still a
-type alias for `chio_chiodos_runtime::error::ChiodosRuntimeError`.
+type alias for `chio_runtime_core::error::ChioRuntimeError`.
 
 ### Task 2: Implement Opaque Chio Error Boundary
 
@@ -39,7 +39,7 @@ type alias for `chio_chiodos_runtime::error::ChiodosRuntimeError`.
 
 - [x] **Step 1: Replace the alias**
 
-Replace `pub type BuyerAttestationError = ChiodosRuntimeError` with an opaque
+Replace `pub type BuyerAttestationError = ChioRuntimeError` with an opaque
 public `BuyerAttestationError` struct that keeps the historical error private
 and exposes a stable `code()` accessor.
 
@@ -73,7 +73,7 @@ Run:
 
 ```bash
 cargo test -p chio-attest-buyer
-cargo test -p chio-cli --bin chio chio_attest_buyer
+cargo test -p chio-cli --bin chio_attest_buyer
 ```
 
 - [x] **Step 2: Run focused lints and hygiene**
@@ -86,7 +86,7 @@ cargo clippy -p chio-cli --bin chio -- -D warnings
 cargo fmt --all -- --check
 git diff --check
 rg -n $'\xE2\x80\x94|\xE2\x80\x93' crates/chio-attest-buyer/src/lib.rs crates/chio-attest-buyer/tests/buyer_review.rs docs/architecture/CHIO_FINAL_ARCHITECTURE.md docs/superpowers/plans/2026-05-19-chio-attest-buyer-error-boundary.md
-rg -n "pub type BuyerAttestationError|ChiodosRuntimeError,|verify_buyer_attestation_packet,|buyer_attestation_packet_from_json," crates/chio-attest-buyer/src/lib.rs
+rg -n "pub type BuyerAttestationError|ChioRuntimeError,|verify_buyer_attestation_packet,|buyer_attestation_packet_from_json," crates/chio-attest-buyer/src/lib.rs
 ```
 
 Expected: all commands exit 0 except the dash scan and source leak scan exit 1

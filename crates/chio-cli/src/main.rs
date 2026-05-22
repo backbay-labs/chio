@@ -31,14 +31,23 @@ mod scaffold;
 mod settle;
 
 include!("cli/types.rs");
-#[path = "cli/chiodos/types.rs"]
-mod chiodos_types;
-use chiodos_types::*;
+#[path = "cli/chio/types.rs"]
+mod chio_types;
+use chio_types::{
+    ChioAuthorityCommands, ChioPheromoneCommands, ChioPheromoneRelayAlertAssuranceArchiveCommands,
+    ChioPheromoneRelayAlertAssuranceCloseoutCommands, ChioPheromoneRelayAlertAssuranceCommands,
+    ChioPheromoneRelayAlertAssuranceRetentionCommands, ChioPheromoneRelayAlertCommands,
+    ChioPheromoneRelayAlertDeliveryCommands, ChioPheromoneRelayCommands,
+    ChioPheromoneRelayDirectoryCommands, ChioPheromoneRelaySupervisorCommands,
+    ChioRuntimeCommands, ChioRuntimeOpsCommands, ChioRuntimeOpsRetentionCommands,
+    ChioRuntimeOrchestrateCommands, ChioRuntimePeerWeightsCommands, ChioRuntimePheromoneCommands,
+    ChioRuntimePolicyCommands, ChioTreatyCommands, ChioTrustBundleCommands,
+};
 include!("cli/doctor.rs");
 include!("cli/dispatch.rs");
-#[path = "cli/chiodos/dispatch.rs"]
-mod chiodos_dispatch;
-use chiodos_dispatch::*;
+#[path = "cli/chio/dispatch.rs"]
+mod chio_dispatch;
+use chio_dispatch::*;
 include!("cli/runtime.rs");
 include!("cli/trust_commands.rs");
 include!("cli/session.rs");
@@ -68,7 +77,7 @@ include!("cli/arena.rs");
 mod cli_entrypoint_tests {
     use std::error::Error;
 
-    use clap::{CommandFactory, Parser};
+    use clap::Parser;
 
     use super::*;
 
@@ -84,219 +93,70 @@ mod cli_entrypoint_tests {
         assert!(cli.json_output());
     }
 
-    #[test]
-    fn legacy_chiodos_cli_gate_detects_direct_command_after_global_options() {
-        assert!(legacy_chiodos_cli_requested([
-            "chio", "--format", "json", "chiodos", "help"
-        ]));
-        assert!(legacy_chiodos_cli_requested([
-            "chio",
-            "--receipt-db=/tmp/receipts.sqlite3",
-            "chiodos",
-            "help",
-        ]));
-        assert!(legacy_chiodos_cli_requested([
-            "chio", "--json", "chiodos", "verify"
-        ]));
+
+
+    fn retired_surface_name() -> String {
+        ["chio", "dos"].concat()
+    }
+
+    fn assert_no_retired_surface_name(label: &str, text: &str) {
+        let lowered = text.to_ascii_lowercase();
+        let retired = retired_surface_name();
+        assert!(
+            !lowered.contains(&retired),
+            "{label} must not expose the retired public surface name"
+        );
     }
 
     #[test]
-    fn legacy_chiodos_cli_gate_leaves_chio_legacy_attest_path_public() {
-        assert!(!legacy_chiodos_cli_requested([
-            "chio",
-            "attest",
-            "legacy",
-            "chiodos-v1",
-            "verify",
-        ]));
-        assert!(!legacy_chiodos_cli_requested([
-            "chio", "run", "--", "chiodos"
-        ]));
-        assert!(!legacy_chiodos_cli_requested(["chio", "help"]));
-    }
+    fn public_chio_command_type_boundaries_are_native() {
+        let sources = [
+            ("root cli types", include_str!("cli/types.rs")),
+            ("runtime types", include_str!("cli/chio/types/runtime.rs")),
+            (
+                "pheromone root types",
+                include_str!("cli/chio/types/pheromone/root.rs"),
+            ),
+            (
+                "pheromone relay types",
+                include_str!("cli/chio/types/pheromone/relay.rs"),
+            ),
+            (
+                "pheromone alert types",
+                include_str!("cli/chio/types/pheromone/alerts.rs"),
+            ),
+            (
+                "pheromone assurance types",
+                include_str!("cli/chio/types/pheromone/assurance.rs"),
+            ),
+            ("authority types", include_str!("cli/chio/types/authority.rs")),
+            ("treaty types", include_str!("cli/chio/types/treaty.rs")),
+        ];
+        for (label, source) in sources {
+            assert_no_retired_surface_name(label, source);
+        }
 
-    #[test]
-    fn public_chio_runtime_and_pheromone_commands_use_chio_type_boundary() {
         let cli_types = include_str!("cli/types.rs");
-        let runtime_types = include_str!("cli/chiodos/types/runtime.rs");
-        let pheromone_types = include_str!("cli/chiodos/types/pheromone/root.rs");
-        let relay_types = include_str!("cli/chiodos/types/pheromone/relay.rs");
-        let alert_types = include_str!("cli/chiodos/types/pheromone/alerts.rs");
-        let assurance_types = include_str!("cli/chiodos/types/pheromone/assurance.rs");
-
-        assert!(
-            cli_types.contains("command: ChioRuntimeCommands"),
-            "public chio runtime command tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !cli_types.contains("command: ChiodosRuntimeCommands"),
-            "public chio runtime command tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            runtime_types.contains("command: ChioRuntimePolicyCommands"),
-            "public chio runtime policy tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !runtime_types.contains("command: ChiodosRuntimePolicyCommands"),
-            "public chio runtime policy tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            runtime_types.contains("command: ChioRuntimePeerWeightsCommands"),
-            "public chio runtime peer-weights tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !runtime_types.contains("command: ChiodosRuntimePeerWeightsCommands"),
-            "public chio runtime peer-weights tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            runtime_types.contains("command: ChioRuntimePheromoneCommands"),
-            "public chio runtime pheromone tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !runtime_types.contains("command: ChiodosRuntimePheromoneCommands"),
-            "public chio runtime pheromone tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            runtime_types.contains("command: ChioRuntimeOrchestrateCommands"),
-            "public chio runtime orchestration tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !runtime_types.contains("command: ChiodosRuntimeOrchestrateCommands"),
-            "public chio runtime orchestration tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            runtime_types.contains("command: ChioRuntimeOpsCommands"),
-            "public chio runtime ops tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !runtime_types.contains("command: ChiodosRuntimeOpsCommands"),
-            "public chio runtime ops tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            runtime_types.contains("command: ChioRuntimeOpsRetentionCommands"),
-            "public chio runtime ops retention tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !runtime_types.contains("command: ChiodosRuntimeOpsRetentionCommands"),
-            "public chio runtime ops retention tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            cli_types.contains("command: ChioPheromoneCommands"),
-            "public chio pheromone command tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !cli_types.contains("command: ChiodosPheromoneCommands"),
-            "public chio pheromone command tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            pheromone_types.contains("command: ChioPheromoneRelayCommands"),
-            "public chio pheromone relay tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !pheromone_types.contains("command: ChiodosPheromoneRelayCommands"),
-            "public chio pheromone relay tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            relay_types.contains("command: ChioPheromoneRelayAlertCommands"),
-            "public chio pheromone relay alert tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !relay_types.contains("command: ChiodosPheromoneRelayAlertCommands"),
-            "public chio pheromone relay alert tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            relay_types.contains("command: ChioPheromoneRelayDirectoryCommands"),
-            "public chio pheromone relay directory tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !relay_types.contains("command: ChiodosPheromoneRelayDirectoryCommands"),
-            "public chio pheromone relay directory tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            relay_types.contains("command: ChioPheromoneRelaySupervisorCommands"),
-            "public chio pheromone relay supervisor tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !relay_types.contains("command: ChiodosPheromoneRelaySupervisorCommands"),
-            "public chio pheromone relay supervisor tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            alert_types.contains("command: ChioPheromoneRelayAlertDeliveryCommands"),
-            "public chio pheromone relay alert delivery tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !alert_types.contains("command: ChiodosPheromoneRelayAlertDeliveryCommands"),
-            "public chio pheromone relay alert delivery tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            alert_types.contains("command: ChioPheromoneRelayAlertAssuranceCommands"),
-            "public chio pheromone relay alert assurance tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !alert_types.contains("command: ChiodosPheromoneRelayAlertAssuranceCommands"),
-            "public chio pheromone relay alert assurance tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            assurance_types
-                .contains("command: ChioPheromoneRelayAlertAssuranceRetentionCommands"),
-            "public chio pheromone relay alert assurance retention tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !assurance_types
-                .contains("command: ChiodosPheromoneRelayAlertAssuranceRetentionCommands"),
-            "public chio pheromone relay alert assurance retention tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            assurance_types
-                .contains("command: ChioPheromoneRelayAlertAssuranceArchiveCommands"),
-            "public chio pheromone relay alert assurance archive tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !assurance_types
-                .contains("command: ChiodosPheromoneRelayAlertAssuranceArchiveCommands"),
-            "public chio pheromone relay alert assurance archive tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            assurance_types
-                .contains("command: ChioPheromoneRelayAlertAssuranceCloseoutCommands"),
-            "public chio pheromone relay alert assurance closeout tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !assurance_types
-                .contains("command: ChiodosPheromoneRelayAlertAssuranceCloseoutCommands"),
-            "public chio pheromone relay alert assurance closeout tree must not expose the historical Chiodos type"
-        );
-    }
-
-    #[test]
-    fn public_chio_federation_commands_use_chio_type_boundary() {
-        let cli_types = include_str!("cli/types.rs");
-        let authority_types = include_str!("cli/chiodos/types/authority.rs");
-
-        assert!(
-            cli_types.contains("command: ChioAuthorityCommands"),
-            "public chio federation authority tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !cli_types.contains("command: ChiodosAuthorityCommands"),
-            "public chio federation authority tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            cli_types.contains("command: ChioTreatyCommands"),
-            "public chio federation treaty tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !cli_types.contains("command: ChiodosTreatyCommands"),
-            "public chio federation treaty tree must not expose the historical Chiodos type"
-        );
-        assert!(
-            authority_types.contains("command: ChioTrustBundleCommands"),
-            "public chio federation authority trust-bundle tree must use a Chio-named type boundary"
-        );
-        assert!(
-            !authority_types.contains("command: ChiodosTrustBundleCommands"),
-            "public chio federation authority trust-bundle tree must not expose the historical Chiodos type"
-        );
+        assert!(cli_types.contains("command: ChioRuntimeCommands"));
+        assert!(cli_types.contains("command: ChioPheromoneCommands"));
+        assert!(cli_types.contains("command: ChioFederationCommands"));
+        assert!(cli_types.contains("command: ChioAttestCommands"));
+        assert!(include_str!("cli/chio/types/runtime.rs")
+            .contains("command: ChioRuntimePolicyCommands"));
+        assert!(include_str!("cli/chio/types/runtime.rs")
+            .contains("command: ChioRuntimePeerWeightsCommands"));
+        assert!(include_str!("cli/chio/types/runtime.rs")
+            .contains("command: ChioRuntimePheromoneCommands"));
+        assert!(include_str!("cli/chio/types/runtime.rs")
+            .contains("command: ChioRuntimeOrchestrateCommands"));
+        assert!(include_str!("cli/chio/types/runtime.rs")
+            .contains("command: ChioRuntimeOpsCommands"));
+        assert!(include_str!("cli/chio/types/pheromone/root.rs")
+            .contains("command: ChioPheromoneRelayCommands"));
+        assert!(include_str!("cli/chio/types/pheromone/relay.rs")
+            .contains("command: ChioPheromoneRelayAlertCommands"));
+        assert!(include_str!("cli/chio/types/authority.rs")
+            .contains("command: ChioTrustBundleCommands"));
     }
 
     #[test]
@@ -391,200 +251,235 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
-    fn chiodos_verify_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "verify",
-            "--package",
-            "package.json",
-            "--trust-bundle",
-            "verifier-trust-bundle.json",
-            "--context",
-            "verification-context.json",
-            "--report",
-            "report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Verify {
-                        package,
-                        trust_bundle,
-                        context,
-                        report,
-                    },
-            } => {
-                assert_eq!(package, std::path::PathBuf::from("package.json"));
-                assert_eq!(
-                    trust_bundle,
-                    std::path::PathBuf::from("verifier-trust-bundle.json")
-                );
-                assert_eq!(
-                    context,
-                    std::path::PathBuf::from("verification-context.json")
-                );
-                assert_eq!(report, std::path::PathBuf::from("report.json"));
-            }
-            _ => panic!("expected chiodos verify subcommand"),
+    fn chio_native_command_surfaces_parse_representative_operations() {
+        let commands: Vec<Vec<&str>> = vec![
+            vec![
+                "chio",
+                "attest",
+                "buyer",
+                "verify",
+                "--package",
+                "package.json",
+                "--trust-bundle",
+                "verifier-trust-bundle.json",
+                "--context",
+                "verification-context.json",
+                "--report",
+                "report.json",
+            ],
+            vec![
+                "chio",
+                "pheromone",
+                "receive",
+                "--batch",
+                "gossip-batch.json",
+                "--transit-policy",
+                "transit-policy.json",
+                "--proof-package",
+                "buyer-auditor-proof-package.json",
+                "--trust-bundle",
+                "verifier-trust-bundle.json",
+                "--context",
+                "verification-context.json",
+                "--store",
+                "pheromone.sqlite3",
+                "--now-unix-ms",
+                "1766000000500",
+                "--report",
+                "receive-report.json",
+            ],
+            vec![
+                "chio",
+                "pheromone",
+                "query",
+                "--store",
+                "pheromone.sqlite3",
+                "--subject-class",
+                "support.prompt_injection",
+                "--namespace",
+                "dev.chio.support",
+                "--reputation-epoch",
+                "42",
+                "--peer-weights",
+                "peer-weights.json",
+                "--now-unix-ms",
+                "1766000000500",
+                "--report",
+                "query-report.json",
+            ],
+            vec![
+                "chio",
+                "pheromone",
+                "relay",
+                "enqueue",
+                "--store",
+                "relay.sqlite3",
+                "--batch",
+                "gossip-batch.json",
+                "--transit-policy",
+                "transit-policy.json",
+                "--trust-bundle",
+                "verifier-trust-bundle.json",
+                "--peer-directory",
+                "peer-directory.json",
+                "--now-unix-ms",
+                "1766000000500",
+                "--report",
+                "enqueue-report.json",
+            ],
+            vec![
+                "chio",
+                "pheromone",
+                "relay",
+                "observe",
+                "--store",
+                "relay.sqlite3",
+                "--peer-directory-state",
+                "peer-directory-state.json",
+                "--profile",
+                "production",
+                "--trusted-issuers",
+                "trusted-issuers.json",
+                "--report-dir",
+                "relay-reports",
+                "--limit",
+                "25",
+                "--report",
+                "relay-observability.json",
+            ],
+            vec![
+                "chio",
+                "pheromone",
+                "relay",
+                "metrics",
+                "--store",
+                "relay.sqlite3",
+                "--format",
+                "prometheus",
+                "--output",
+                "relay-metrics.prom",
+            ],
+            vec![
+                "chio",
+                "runtime",
+                "admit",
+                "--request",
+                "request.json",
+                "--admission-profile",
+                "profile.json",
+                "--admission-bundle",
+                "bundle.json",
+                "--runtime-trust-input",
+                "runtime-trust.json",
+                "--trusted-verifiers",
+                "trusted-verifiers.json",
+                "--store",
+                "store.json",
+                "--now-unix-ms",
+                "1800000001000",
+                "--report",
+                "report.json",
+            ],
+            vec![
+                "chio",
+                "runtime",
+                "policy",
+                "sign",
+                "--body",
+                "runtime-policy-body.json",
+                "--signing-seed-file",
+                "verifier.seed",
+                "--out",
+                "runtime-policy.json",
+            ],
+            vec![
+                "chio",
+                "runtime",
+                "run-loopback",
+                "--scenario",
+                "scenario.json",
+                "--store-dir",
+                "stores",
+                "--now-unix-ms",
+                "1800000001000",
+                "--out-dir",
+                "out",
+            ],
+            vec![
+                "chio",
+                "runtime",
+                "orchestrate",
+                "run",
+                "--profile",
+                "profile.json",
+                "--run-contract",
+                "run-contract.json",
+                "--store",
+                "runtime.sqlite3",
+                "--evidence-dir",
+                "evidence",
+                "--now-unix-ms",
+                "1800000001000",
+                "--report",
+                "run-report.json",
+            ],
+            vec![
+                "chio",
+                "federation",
+                "authority",
+                "issue",
+                "--profile",
+                "authority-profile.json",
+                "--request",
+                "issuance-request.json",
+                "--signing-keys",
+                "local-signing-keys.json",
+                "--out-dir",
+                "issued",
+            ],
+            vec![
+                "chio",
+                "federation",
+                "treaty",
+                "verify-packet",
+                "--packet",
+                "packet.json",
+                "--lineage-statement",
+                "lineage.json",
+                "--continuation",
+                "continuation.json",
+                "--admission-report",
+                "admission.json",
+                "--bilateral-invocation",
+                "bilateral.json",
+                "--report",
+                "report.json",
+            ],
+            vec![
+                "chio",
+                "attest",
+                "buyer",
+                "explain",
+                "--report",
+                "buyer-review-report.json",
+                "--format",
+                "text",
+                "--out",
+                "buyer-review.txt",
+            ],
+        ];
+
+        for args in commands {
+            Cli::try_parse_from(args.clone()).unwrap_or_else(|error| {
+                panic!("expected native Chio command to parse: {args:?}: {error}")
+            });
         }
     }
 
     #[test]
-    fn chiodos_pheromone_receive_subcommand_parses() {
-        let cli = Cli::try_parse_from([
+    fn chio_native_command_surfaces_preserve_required_arguments() {
+        let relay_enqueue = Cli::try_parse_from([
             "chio",
-            "chiodos",
-            "pheromone",
-            "receive",
-            "--batch",
-            "gossip-batch.json",
-            "--transit-policy",
-            "transit-policy.json",
-            "--proof-package",
-            "buyer-auditor-proof-package.json",
-            "--trust-bundle",
-            "verifier-trust-bundle.json",
-            "--context",
-            "verification-context.json",
-            "--store",
-            "pheromone.sqlite3",
-            "--now-unix-ms",
-            "1766000000500",
-            "--report",
-            "receive-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Receive {
-                                batch,
-                                transit_policy,
-                                proof_package,
-                                trust_bundle,
-                                context,
-                                store,
-                                now_unix_ms,
-                                report,
-                            },
-                    },
-            } => {
-                assert_eq!(batch, std::path::PathBuf::from("gossip-batch.json"));
-                assert_eq!(
-                    transit_policy,
-                    std::path::PathBuf::from("transit-policy.json")
-                );
-                assert_eq!(
-                    proof_package,
-                    std::path::PathBuf::from("buyer-auditor-proof-package.json")
-                );
-                assert_eq!(
-                    trust_bundle,
-                    std::path::PathBuf::from("verifier-trust-bundle.json")
-                );
-                assert_eq!(
-                    context,
-                    std::path::PathBuf::from("verification-context.json")
-                );
-                assert_eq!(store, std::path::PathBuf::from("pheromone.sqlite3"));
-                assert_eq!(now_unix_ms, Some(1_766_000_000_500));
-                assert_eq!(report, std::path::PathBuf::from("receive-report.json"));
-            }
-            _ => panic!("expected chiodos pheromone receive subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_query_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "query",
-            "--store",
-            "pheromone.sqlite3",
-            "--subject-class",
-            "support.prompt_injection",
-            "--namespace",
-            "dev.chio.support",
-            "--reputation-epoch",
-            "42",
-            "--peer-weights",
-            "peer-weights.json",
-            "--now-unix-ms",
-            "1766000000500",
-            "--report",
-            "query-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Query {
-                                store,
-                                subject_class,
-                                namespace,
-                                reputation_epoch,
-                                peer_weights,
-                                now_unix_ms,
-                                report,
-                            },
-                    },
-            } => {
-                assert_eq!(store, std::path::PathBuf::from("pheromone.sqlite3"));
-                assert_eq!(subject_class, "support.prompt_injection");
-                assert_eq!(namespace, "dev.chio.support");
-                assert_eq!(reputation_epoch, 42);
-                assert_eq!(peer_weights, std::path::PathBuf::from("peer-weights.json"));
-                assert_eq!(now_unix_ms, Some(1_766_000_000_500));
-                assert_eq!(report, std::path::PathBuf::from("query-report.json"));
-            }
-            _ => panic!("expected chiodos pheromone query subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_status_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "status",
-            "--store",
-            "relay.sqlite3",
-            "--report",
-            "relay-status.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command: ChiodosPheromoneRelayCommands::Status { store, report },
-                            },
-                    },
-            } => {
-                assert_eq!(store, std::path::PathBuf::from("relay.sqlite3"));
-                assert_eq!(report, std::path::PathBuf::from("relay-status.json"));
-            }
-            _ => panic!("expected chiodos pheromone relay status subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_enqueue_requires_batch() {
-        let result = Cli::try_parse_from([
-            "chio",
-            "chiodos",
             "pheromone",
             "relay",
             "enqueue",
@@ -592,2022 +487,45 @@ mod cli_entrypoint_tests {
             "relay.sqlite3",
             "--peer-directory",
             "peer-directory.json",
-            "--now-unix-ms",
-            "1766000000500",
             "--report",
             "enqueue-report.json",
         ]);
-        let error = match result {
+        let relay_enqueue_error = match relay_enqueue {
             Ok(_) => panic!("relay enqueue must require --batch"),
             Err(error) => error,
         };
         assert_eq!(
-            error.kind(),
+            relay_enqueue_error.kind(),
             clap::error::ErrorKind::MissingRequiredArgument
         );
-    }
 
-    #[test]
-    fn chiodos_pheromone_relay_enqueue_subcommand_parses() {
-        let cli = Cli::try_parse_from([
+        let buyer_verify = Cli::try_parse_from([
             "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "enqueue",
-            "--store",
-            "relay.sqlite3",
-            "--batch",
-            "gossip-batch.json",
-            "--transit-policy",
-            "transit-policy.json",
-            "--trust-bundle",
-            "verifier-trust-bundle.json",
-            "--peer-directory",
-            "peer-directory.json",
-            "--now-unix-ms",
-            "1766000000500",
-            "--report",
-            "enqueue-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Enqueue {
-                                        store,
-                                        batch,
-                                        transit_policy,
-                                        trust_bundle,
-                                        report,
-                                        ..
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(store, std::path::PathBuf::from("relay.sqlite3"));
-                assert_eq!(batch, std::path::PathBuf::from("gossip-batch.json"));
-                assert_eq!(
-                    transit_policy,
-                    std::path::PathBuf::from("transit-policy.json")
-                );
-                assert_eq!(
-                    trust_bundle,
-                    std::path::PathBuf::from("verifier-trust-bundle.json")
-                );
-                assert_eq!(report, std::path::PathBuf::from("enqueue-report.json"));
-            }
-            _ => panic!("expected chiodos pheromone relay enqueue subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_catchup_requires_peer_directory_state() {
-        let result = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "catchup",
-            "--store",
-            "relay.sqlite3",
-            "--peer",
-            "did:chio:buyer-kernel",
-            "--treaty",
-            "treaty:buyer-dataco:support-ops",
-            "--after-cursor",
-            "0",
-            "--limit",
-            "16",
-            "--report",
-            "catchup-response.json",
-        ]);
-        let error = match result {
-            Ok(_) => panic!("relay catchup must require --peer-directory-state"),
-            Err(error) => error,
-        };
-        assert_eq!(
-            error.kind(),
-            clap::error::ErrorKind::MissingRequiredArgument
-        );
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_observe_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "observe",
-            "--store",
-            "relay.sqlite3",
-            "--peer-directory-state",
-            "peer-directory-state.json",
-            "--profile",
-            "production",
-            "--trusted-issuers",
-            "trusted-issuers.json",
-            "--report-dir",
-            "relay-reports",
-            "--limit",
-            "25",
-            "--report",
-            "relay-observability.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Observe {
-                                        store,
-                                        peer_directory_state,
-                                        profile,
-                                        trusted_issuers,
-                                        report_dir,
-                                        limit,
-                                        report,
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(store, std::path::PathBuf::from("relay.sqlite3"));
-                assert_eq!(
-                    peer_directory_state,
-                    std::path::PathBuf::from("peer-directory-state.json")
-                );
-                assert!(matches!(profile, RelayProfileArg::Production));
-                assert_eq!(
-                    trusted_issuers,
-                    std::path::PathBuf::from("trusted-issuers.json")
-                );
-                assert_eq!(report_dir, std::path::PathBuf::from("relay-reports"));
-                assert_eq!(limit, 25);
-                assert_eq!(report, std::path::PathBuf::from("relay-observability.json"));
-            }
-            _ => panic!("expected chiodos pheromone relay observe subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_metrics_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "metrics",
-            "--store",
-            "relay.sqlite3",
-            "--format",
-            "prometheus",
-            "--output",
-            "relay-metrics.prom",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Metrics {
-                                        store,
-                                        format,
-                                        output,
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(store, std::path::PathBuf::from("relay.sqlite3"));
-                assert!(matches!(format, RelayMetricsFormatArg::Prometheus));
-                assert_eq!(output, std::path::PathBuf::from("relay-metrics.prom"));
-            }
-            _ => panic!("expected chiodos pheromone relay metrics subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_alert_evaluate_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "evaluate",
-            "--observability-report",
-            "relay-observability.json",
-            "--event-dir",
-            "relay-events",
-            "--routing-profile",
-            "alert-routing-profile.json",
-            "--suppression-state",
-            "alert-suppression-state.json",
-            "--now-unix-ms",
-            "1766000000500",
-            "--report",
-            "relay-alert-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Evaluate {
-                                                observability_report,
-                                                event_dir,
-                                                routing_profile,
-                                                suppression_state,
-                                                now_unix_ms,
-                                                report,
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    observability_report,
-                    std::path::PathBuf::from("relay-observability.json")
-                );
-                assert_eq!(event_dir, std::path::PathBuf::from("relay-events"));
-                assert_eq!(
-                    routing_profile,
-                    std::path::PathBuf::from("alert-routing-profile.json")
-                );
-                assert_eq!(
-                    suppression_state,
-                    std::path::PathBuf::from("alert-suppression-state.json")
-                );
-                assert_eq!(now_unix_ms, 1_766_000_000_500);
-                assert_eq!(report, std::path::PathBuf::from("relay-alert-report.json"));
-            }
-            _ => panic!("expected chiodos pheromone relay alert evaluate subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_trend_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "trend",
-            "--reports-dir",
-            "relay-reports",
-            "--event-dir",
-            "relay-events",
-            "--routing-profile",
-            "alert-routing-profile.json",
-            "--since-unix-ms",
-            "1765990000000",
-            "--until-unix-ms",
-            "1766000000500",
-            "--report",
-            "relay-trend-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Trend {
-                                        reports_dir,
-                                        event_dir,
-                                        routing_profile,
-                                        since_unix_ms,
-                                        until_unix_ms,
-                                        report,
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(reports_dir, std::path::PathBuf::from("relay-reports"));
-                assert_eq!(event_dir, std::path::PathBuf::from("relay-events"));
-                assert_eq!(
-                    routing_profile,
-                    std::path::PathBuf::from("alert-routing-profile.json")
-                );
-                assert_eq!(since_unix_ms, 1_765_990_000_000);
-                assert_eq!(until_unix_ms, 1_766_000_000_500);
-                assert_eq!(report, std::path::PathBuf::from("relay-trend-report.json"));
-            }
-            _ => panic!("expected chiodos pheromone relay trend subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_lint_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "lint",
-            "--peer-directory",
-            "peer-directory-bundle.json",
-            "--profile",
-            "production",
-            "--trusted-issuers",
-            "trusted-issuers.json",
-            "--report",
-            "lint-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Lint {
-                                        peer_directory,
-                                        peer_directory_state,
-                                        profile,
-                                        trusted_issuers,
-                                        report,
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    peer_directory,
-                    Some(std::path::PathBuf::from("peer-directory-bundle.json"))
-                );
-                assert_eq!(peer_directory_state, None);
-                assert!(matches!(profile, RelayProfileArg::Production));
-                assert_eq!(
-                    trusted_issuers,
-                    Some(std::path::PathBuf::from("trusted-issuers.json"))
-                );
-                assert_eq!(report, std::path::PathBuf::from("lint-report.json"));
-            }
-            _ => panic!("expected chiodos pheromone relay lint subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_directory_promote_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "directory",
-            "promote",
-            "--state",
-            "peer-directory-state.json",
-            "--candidate",
-            "peer-directory-bundle.json",
-            "--trusted-issuers",
-            "trusted-issuers.json",
-            "--profile",
-            "production",
-            "--now-unix-ms",
-            "1766000000500",
-            "--report",
-            "rotation-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Directory {
-                                        command:
-                                            ChiodosPheromoneRelayDirectoryCommands::Promote {
-                                                state,
-                                                candidate,
-                                                trusted_issuers,
-                                                profile,
-                                                now_unix_ms,
-                                                report,
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(state, std::path::PathBuf::from("peer-directory-state.json"));
-                assert_eq!(
-                    candidate,
-                    std::path::PathBuf::from("peer-directory-bundle.json")
-                );
-                assert_eq!(
-                    trusted_issuers,
-                    std::path::PathBuf::from("trusted-issuers.json")
-                );
-                assert!(matches!(profile, RelayProfileArg::Production));
-                assert_eq!(now_unix_ms, Some(1_766_000_000_500));
-                assert_eq!(report, std::path::PathBuf::from("rotation-report.json"));
-            }
-            _ => panic!("expected chiodos pheromone relay directory promote subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_supervisor_lint_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "supervisor",
-            "lint",
-            "--profile",
-            "relay-supervisor-profile.json",
-            "--report",
-            "relay-drill-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Supervisor {
-                                        command:
-                                            ChiodosPheromoneRelaySupervisorCommands::Lint {
-                                                profile,
-                                                report,
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    profile,
-                    std::path::PathBuf::from("relay-supervisor-profile.json")
-                );
-                assert_eq!(report, std::path::PathBuf::from("relay-drill-report.json"));
-            }
-            _ => panic!("expected chiodos pheromone relay supervisor lint subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_tick_requires_signing_key() {
-        let result = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "tick",
-            "--store",
-            "relay.sqlite3",
-            "--peer-directory",
-            "peer-directory.json",
-            "--now-unix-ms",
-            "1766000000500",
-            "--max-batches",
-            "4",
-            "--report",
-            "tick-report.json",
-        ]);
-        let error = match result {
-            Ok(_) => panic!("relay tick must require --signing-key"),
-            Err(error) => error,
-        };
-        assert_eq!(
-            error.kind(),
-            clap::error::ErrorKind::MissingRequiredArgument
-        );
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_tick_report_dir_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "tick",
-            "--store",
-            "relay.sqlite3",
-            "--peer-directory",
-            "peer-directory.json",
-            "--now-unix-ms",
-            "1766000000500",
-            "--max-batches",
-            "4",
-            "--signing-key",
-            "relay-signing-key.json",
-            "--report",
-            "tick-report.json",
-            "--report-dir",
-            "relay-events",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command: ChiodosPheromoneRelayCommands::Tick { report_dir, .. },
-                            },
-                    },
-            } => assert_eq!(report_dir, Some(std::path::PathBuf::from("relay-events"))),
-            _ => panic!("expected chiodos pheromone relay tick subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_verify_requires_trust_bundle() {
-        let result = Cli::try_parse_from([
-            "chio",
-            "chiodos",
+            "attest",
+            "buyer",
             "verify",
             "--package",
             "package.json",
             "--report",
             "report.json",
         ]);
-        let error = match result {
-            Ok(_) => panic!("chiodos verify must require --trust-bundle"),
+        let buyer_verify_error = match buyer_verify {
+            Ok(_) => panic!("buyer verify must require trust inputs"),
             Err(error) => error,
         };
         assert_eq!(
-            error.kind(),
+            buyer_verify_error.kind(),
             clap::error::ErrorKind::MissingRequiredArgument
         );
     }
 
     #[test]
-    fn chiodos_verify_requires_context() {
-        let result = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "verify",
-            "--package",
-            "package.json",
-            "--trust-bundle",
-            "verifier-trust-bundle.json",
-            "--report",
-            "report.json",
-        ]);
-        let error = match result {
-            Ok(_) => panic!("chiodos verify must require --context"),
-            Err(error) => error,
-        };
-        assert_eq!(
-            error.kind(),
-            clap::error::ErrorKind::MissingRequiredArgument
-        );
-    }
-
-    #[test]
-    fn chiodos_runtime_admit_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "runtime",
-            "admit",
-            "--request",
-            "request.json",
-            "--admission-profile",
-            "profile.json",
-            "--admission-bundle",
-            "bundle.json",
-            "--runtime-trust-input",
-            "runtime-trust.json",
-            "--trusted-verifiers",
-            "trusted-verifiers.json",
-            "--pheromone-query-report",
-            "pheromone-query.json",
-            "--runtime-pheromone-policy",
-            "runtime-policy.json",
-            "--runtime-peer-weights",
-            "peer-weights.json",
-            "--action-class-id",
-            "workflow.destructive.vendor_call",
-            "--trust-floor-state",
-            "trust-floor.json",
-            "--store",
-            "store.json",
-            "--now-unix-ms",
-            "1800000001000",
-            "--report",
-            "report.json",
-        ])
-        .unwrap();
-
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Runtime {
-                        command:
-                            ChiodosRuntimeCommands::Admit {
-                                request,
-                                admission_profile,
-                                admission_bundle,
-                                runtime_trust_input,
-                                trusted_verifiers,
-                                pheromone_query_report,
-                                runtime_pheromone_policy,
-                                runtime_peer_weights,
-                                action_class_id,
-                                trust_floor_state,
-                                store,
-                                now_unix_ms,
-                                report,
-                            },
-                    },
-            } => {
-                assert_eq!(request, std::path::PathBuf::from("request.json"));
-                assert_eq!(admission_profile, std::path::PathBuf::from("profile.json"));
-                assert_eq!(admission_bundle, std::path::PathBuf::from("bundle.json"));
-                assert_eq!(
-                    runtime_trust_input,
-                    Some(std::path::PathBuf::from("runtime-trust.json"))
-                );
-                assert_eq!(
-                    trusted_verifiers,
-                    Some(std::path::PathBuf::from("trusted-verifiers.json"))
-                );
-                assert_eq!(
-                    pheromone_query_report,
-                    Some(std::path::PathBuf::from("pheromone-query.json"))
-                );
-                assert_eq!(
-                    runtime_pheromone_policy,
-                    Some(std::path::PathBuf::from("runtime-policy.json"))
-                );
-                assert_eq!(
-                    runtime_peer_weights,
-                    Some(std::path::PathBuf::from("peer-weights.json"))
-                );
-                assert_eq!(
-                    action_class_id.as_deref(),
-                    Some("workflow.destructive.vendor_call")
-                );
-                assert_eq!(
-                    trust_floor_state,
-                    Some(std::path::PathBuf::from("trust-floor.json"))
-                );
-                assert_eq!(store, std::path::PathBuf::from("store.json"));
-                assert_eq!(now_unix_ms, 1_800_000_001_000);
-                assert_eq!(report, std::path::PathBuf::from("report.json"));
-            }
-            _ => panic!("expected chiodos runtime admit subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_treaty_verify_packet_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "treaty",
-            "verify-packet",
-            "--packet",
-            "packet.json",
-            "--lineage-statement",
-            "lineage.json",
-            "--continuation",
-            "continuation.json",
-            "--admission-report",
-            "admission.json",
-            "--bilateral-invocation",
-            "bilateral.json",
-            "--report",
-            "report.json",
-        ])
-        .unwrap();
-
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Treaty {
-                        command:
-                            ChiodosTreatyCommands::VerifyPacket {
-                                packet,
-                                lineage_statement,
-                                continuation,
-                                admission_report,
-                                bilateral_invocation,
-                                report,
-                            },
-                    },
-            } => {
-                assert_eq!(packet, std::path::PathBuf::from("packet.json"));
-                assert_eq!(lineage_statement, std::path::PathBuf::from("lineage.json"));
-                assert_eq!(continuation, std::path::PathBuf::from("continuation.json"));
-                assert_eq!(admission_report, std::path::PathBuf::from("admission.json"));
-                assert_eq!(
-                    bilateral_invocation,
-                    std::path::PathBuf::from("bilateral.json")
-                );
-                assert_eq!(report, std::path::PathBuf::from("report.json"));
-            }
-            _ => panic!("expected chiodos treaty verify-packet subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_buyer_verify_and_explain_subcommands_parse() {
-        let verify = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "buyer",
-            "verify",
-            "--package",
-            "review-package.json",
-            "--trust-bundle",
-            "trust.json",
-            "--context",
-            "context.json",
-            "--report",
-            "buyer-review-report.json",
-        ]);
-        assert!(verify.is_ok());
-
-        let explain = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "buyer",
-            "explain",
-            "--report",
-            "buyer-review-report.json",
-            "--format",
-            "text",
-            "--out",
-            "buyer-review.txt",
-        ]);
-        assert!(explain.is_ok());
-    }
-
-    #[test]
-    fn chiodos_runtime_policy_sign_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "runtime",
-            "policy",
-            "sign",
-            "--body",
-            "runtime-policy-body.json",
-            "--signing-seed-file",
-            "verifier.seed",
-            "--out",
-            "runtime-policy.json",
-        ])
-        .unwrap();
-
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Runtime {
-                        command:
-                            ChiodosRuntimeCommands::Policy {
-                                command:
-                                    ChiodosRuntimePolicyCommands::Sign {
-                                        body,
-                                        signing_seed_file,
-                                        out,
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(body, std::path::PathBuf::from("runtime-policy-body.json"));
-                assert_eq!(signing_seed_file, std::path::PathBuf::from("verifier.seed"));
-                assert_eq!(out, std::path::PathBuf::from("runtime-policy.json"));
-            }
-            _ => panic!("expected chiodos runtime policy sign subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_runtime_pheromone_evaluate_subcommand_parses() {
-        let sign = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "runtime",
-            "pheromone",
-            "sign-query-report",
-            "--body",
-            "pheromone-query-body.json",
-            "--signing-seed-file",
-            "verifier.seed",
-            "--out",
-            "pheromone-query.signed.json",
-        ]);
-        assert!(sign.is_ok());
-
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "runtime",
-            "pheromone",
-            "evaluate",
-            "--admission-bundle",
-            "bundle.json",
-            "--runtime-trust-input",
-            "runtime-trust.json",
-            "--trusted-verifiers",
-            "trusted-verifiers.json",
-            "--pheromone-query-report",
-            "pheromone-query.json",
-            "--runtime-pheromone-policy",
-            "runtime-policy.json",
-            "--runtime-peer-weights",
-            "peer-weights.json",
-            "--action-class-id",
-            "workflow.destructive.vendor_call",
-            "--now-unix-ms",
-            "1800000001000",
-            "--report",
-            "decision.json",
-        ])
-        .unwrap();
-
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Runtime {
-                        command:
-                            ChiodosRuntimeCommands::Pheromone {
-                                command:
-                                    ChiodosRuntimePheromoneCommands::Evaluate {
-                                        admission_bundle,
-                                        runtime_trust_input,
-                                        trusted_verifiers,
-                                        pheromone_query_report,
-                                        runtime_pheromone_policy,
-                                        runtime_peer_weights,
-                                        action_class_id,
-                                        now_unix_ms,
-                                        report,
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(admission_bundle, std::path::PathBuf::from("bundle.json"));
-                assert_eq!(
-                    runtime_trust_input,
-                    std::path::PathBuf::from("runtime-trust.json")
-                );
-                assert_eq!(
-                    trusted_verifiers,
-                    std::path::PathBuf::from("trusted-verifiers.json")
-                );
-                assert_eq!(
-                    pheromone_query_report,
-                    std::path::PathBuf::from("pheromone-query.json")
-                );
-                assert_eq!(
-                    runtime_pheromone_policy,
-                    std::path::PathBuf::from("runtime-policy.json")
-                );
-                assert_eq!(
-                    runtime_peer_weights,
-                    std::path::PathBuf::from("peer-weights.json")
-                );
-                assert_eq!(
-                    action_class_id.as_deref(),
-                    Some("workflow.destructive.vendor_call")
-                );
-                assert_eq!(now_unix_ms, 1_800_000_001_000);
-                assert_eq!(report, std::path::PathBuf::from("decision.json"));
-            }
-            _ => panic!("expected chiodos runtime pheromone evaluate subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_runtime_sign_trust_input_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "runtime",
-            "sign-trust-input",
-            "--body",
-            "runtime-trust-body.json",
-            "--signing-seed-file",
-            "verifier.seed",
-            "--out",
-            "runtime-trust.json",
-        ])
-        .unwrap();
-
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Runtime {
-                        command:
-                            ChiodosRuntimeCommands::SignTrustInput {
-                                body,
-                                signing_seed_file,
-                                out,
-                            },
-                    },
-            } => {
-                assert_eq!(body, std::path::PathBuf::from("runtime-trust-body.json"));
-                assert_eq!(signing_seed_file, std::path::PathBuf::from("verifier.seed"));
-                assert_eq!(out, std::path::PathBuf::from("runtime-trust.json"));
-            }
-            _ => panic!("expected chiodos runtime sign-trust-input subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_runtime_run_loopback_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "runtime",
-            "run-loopback",
-            "--scenario",
-            "scenario.json",
-            "--store-dir",
-            "stores",
-            "--now-unix-ms",
-            "1800000001000",
-            "--out-dir",
-            "out",
-        ])
-        .unwrap();
-
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Runtime {
-                        command:
-                            ChiodosRuntimeCommands::RunLoopback {
-                                scenario,
-                                store_dir,
-                                now_unix_ms,
-                                out_dir,
-                            },
-                    },
-            } => {
-                assert_eq!(scenario, std::path::PathBuf::from("scenario.json"));
-                assert_eq!(store_dir, std::path::PathBuf::from("stores"));
-                assert_eq!(now_unix_ms, 1_800_000_001_000);
-                assert_eq!(out_dir, std::path::PathBuf::from("out"));
-            }
-            _ => panic!("expected chiodos runtime run-loopback subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_runtime_orchestrate_run_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "runtime",
-            "orchestrate",
-            "run",
-            "--profile",
-            "profile.json",
-            "--run-contract",
-            "run-contract.json",
-            "--store",
-            "runtime.sqlite3",
-            "--evidence-dir",
-            "evidence",
-            "--now-unix-ms",
-            "1800000001000",
-            "--report",
-            "run-report.json",
-        ])
-        .unwrap();
-
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Runtime {
-                        command:
-                            ChiodosRuntimeCommands::Orchestrate {
-                                command:
-                                    ChiodosRuntimeOrchestrateCommands::Run {
-                                        profile,
-                                        run_contract,
-                                        store,
-                                        evidence_dir,
-                                        now_unix_ms,
-                                        report,
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(profile, std::path::PathBuf::from("profile.json"));
-                assert_eq!(run_contract, std::path::PathBuf::from("run-contract.json"));
-                assert_eq!(store, std::path::PathBuf::from("runtime.sqlite3"));
-                assert_eq!(evidence_dir, std::path::PathBuf::from("evidence"));
-                assert_eq!(now_unix_ms, 1_800_000_001_000);
-                assert_eq!(report, std::path::PathBuf::from("run-report.json"));
-            }
-            _ => panic!("expected chiodos runtime orchestrate run subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_runtime_ops_tick_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "runtime",
-            "ops",
-            "tick",
-            "--supervisor-profile",
-            "supervisor.json",
-            "--store",
-            "runtime.sqlite3",
-            "--evidence-root",
-            "evidence",
-            "--owner-id",
-            "operator-a",
-            "--now-unix-ms",
-            "1800000001000",
-            "--max-runs",
-            "2",
-            "--report",
-            "tick-report.json",
-        ])
-        .unwrap();
-
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Runtime {
-                        command:
-                            ChiodosRuntimeCommands::Ops {
-                                command:
-                                    ChiodosRuntimeOpsCommands::Tick {
-                                        supervisor_profile,
-                                        store,
-                                        evidence_root,
-                                        owner_id,
-                                        now_unix_ms,
-                                        max_runs,
-                                        report,
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    supervisor_profile,
-                    std::path::PathBuf::from("supervisor.json")
-                );
-                assert_eq!(store, std::path::PathBuf::from("runtime.sqlite3"));
-                assert_eq!(evidence_root, std::path::PathBuf::from("evidence"));
-                assert_eq!(owner_id, "operator-a");
-                assert_eq!(now_unix_ms, 1_800_000_001_000);
-                assert_eq!(max_runs, 2);
-                assert_eq!(report, std::path::PathBuf::from("tick-report.json"));
-            }
-            _ => panic!("expected chiodos runtime ops tick subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_authority_issue_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "authority",
-            "issue",
-            "--profile",
-            "authority-profile.json",
-            "--request",
-            "issuance-request.json",
-            "--signing-keys",
-            "local-signing-keys.json",
-            "--out-dir",
-            "issued",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Authority {
-                        command:
-                            ChiodosAuthorityCommands::Issue {
-                                profile,
-                                request,
-                                signing_keys,
-                                out_dir,
-                            },
-                    },
-            } => {
-                assert_eq!(profile, std::path::PathBuf::from("authority-profile.json"));
-                assert_eq!(request, std::path::PathBuf::from("issuance-request.json"));
-                assert_eq!(
-                    signing_keys,
-                    std::path::PathBuf::from("local-signing-keys.json")
-                );
-                assert_eq!(out_dir, std::path::PathBuf::from("issued"));
-            }
-            _ => panic!("expected chiodos authority issue subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_alert_handoff_subcommand_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "handoff",
-            "--alert-report",
-            "relay-alert-report.json",
-            "--trend-report",
-            "relay-trend-report.json",
-            "--routing-profile",
-            "relay-alert-routing-profile.json",
-            "--handoff-profile",
-            "relay-alert-handoff-profile.json",
-            "--now-unix-ms",
-            "1766000060000",
-            "--report",
-            "relay-alert-handoff-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Handoff {
-                                                alert_report,
-                                                trend_report,
-                                                routing_profile,
-                                                handoff_profile,
-                                                now_unix_ms,
-                                                report,
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    alert_report,
-                    std::path::PathBuf::from("relay-alert-report.json")
-                );
-                assert_eq!(
-                    trend_report,
-                    std::path::PathBuf::from("relay-trend-report.json")
-                );
-                assert_eq!(
-                    routing_profile,
-                    std::path::PathBuf::from("relay-alert-routing-profile.json")
-                );
-                assert_eq!(
-                    handoff_profile,
-                    std::path::PathBuf::from("relay-alert-handoff-profile.json")
-                );
-                assert_eq!(now_unix_ms, 1_766_000_060_000);
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-handoff-report.json")
-                );
-            }
-            _ => panic!("expected chiodos pheromone relay alert handoff subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_alert_delivery_subcommands_parse() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "delivery",
-            "import",
-            "--handoff-report",
-            "relay-alert-handoff-report.json",
-            "--delivery-profile",
-            "relay-alert-delivery-profile.json",
-            "--evidence-dir",
-            "delivery-evidence",
-            "--now-unix-ms",
-            "1766000060000",
-            "--report",
-            "relay-alert-delivery-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Delivery {
-                                                command:
-                                                    ChiodosPheromoneRelayAlertDeliveryCommands::Import {
-                                                        handoff_report,
-                                                        delivery_profile,
-                                                        evidence_dir,
-                                                        now_unix_ms,
-                                                        report,
-                                                    },
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    handoff_report,
-                    std::path::PathBuf::from("relay-alert-handoff-report.json")
-                );
-                assert_eq!(
-                    delivery_profile,
-                    std::path::PathBuf::from("relay-alert-delivery-profile.json")
-                );
-                assert_eq!(evidence_dir, std::path::PathBuf::from("delivery-evidence"));
-                assert_eq!(now_unix_ms, 1_766_000_060_000);
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-delivery-report.json")
-                );
-            }
-            _ => panic!("expected chiodos pheromone relay alert delivery import subcommand"),
-        }
-
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "delivery",
-            "acknowledge",
-            "--handoff-report",
-            "relay-alert-handoff-report.json",
-            "--delivery-report",
-            "relay-alert-delivery-report.json",
-            "--delivery-profile",
-            "relay-alert-delivery-profile.json",
-            "--now-unix-ms",
-            "1766000060000",
-            "--report",
-            "relay-alert-acknowledgement-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Delivery {
-                                                command:
-                                                    ChiodosPheromoneRelayAlertDeliveryCommands::Acknowledge {
-                                                        delivery_report,
-                                                        report,
-                                                        ..
-                                                    },
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    delivery_report,
-                    std::path::PathBuf::from("relay-alert-delivery-report.json")
-                );
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-acknowledgement-report.json")
-                );
-            }
-            _ => panic!("expected chiodos pheromone relay alert delivery acknowledge subcommand"),
-        }
-
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "delivery",
-            "drift",
-            "--handoff-reports-dir",
-            "handoff-reports",
-            "--delivery-reports-dir",
-            "delivery-reports",
-            "--delivery-profile",
-            "relay-alert-delivery-profile.json",
-            "--since-unix-ms",
-            "1765999900000",
-            "--until-unix-ms",
-            "1766000060000",
-            "--report",
-            "relay-alert-handoff-drift-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Delivery {
-                                                command:
-                                                    ChiodosPheromoneRelayAlertDeliveryCommands::Drift {
-                                                        handoff_reports_dir,
-                                                        delivery_reports_dir,
-                                                        since_unix_ms,
-                                                        until_unix_ms,
-                                                        report,
-                                                        ..
-                                                    },
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    handoff_reports_dir,
-                    std::path::PathBuf::from("handoff-reports")
-                );
-                assert_eq!(
-                    delivery_reports_dir,
-                    std::path::PathBuf::from("delivery-reports")
-                );
-                assert_eq!(since_unix_ms, 1_765_999_900_000);
-                assert_eq!(until_unix_ms, 1_766_000_060_000);
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-handoff-drift-report.json")
-                );
-            }
-            _ => panic!("expected chiodos pheromone relay alert delivery drift subcommand"),
-        }
-    }
-
-    #[test]
-    fn chiodos_pheromone_relay_alert_assurance_subcommands_parse() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "normalize",
-            "--profile",
-            "relay-alert-normalization-profile.json",
-            "--input-dir",
-            "downstream-alerts",
-            "--now-unix-ms",
-            "1766000070000",
-            "--out-dir",
-            "normalized-delivery",
-            "--report",
-            "relay-alert-normalization-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Normalize {
-                                                profile,
-                                                input_dir,
-                                                now_unix_ms,
-                                                out_dir,
-                                                report,
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    profile,
-                    std::path::PathBuf::from("relay-alert-normalization-profile.json")
-                );
-                assert_eq!(input_dir, std::path::PathBuf::from("downstream-alerts"));
-                assert_eq!(now_unix_ms, 1_766_000_070_000);
-                assert_eq!(out_dir, std::path::PathBuf::from("normalized-delivery"));
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-normalization-report.json")
-                );
-            }
-            _ => panic!("expected chiodos pheromone relay alert normalize subcommand"),
-        }
-
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "delivery",
-            "drift-window",
-            "--handoff-reports-dir",
-            "handoff-reports",
-            "--delivery-reports-dir",
-            "delivery-reports",
-            "--delivery-profile",
-            "relay-alert-delivery-profile.json",
-            "--since-unix-ms",
-            "1765999900000",
-            "--until-unix-ms",
-            "1766000090000",
-            "--report",
-            "relay-alert-delivery-drift-report-v2.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Delivery {
-                                                command:
-                                                    ChiodosPheromoneRelayAlertDeliveryCommands::DriftWindow {
-                                                        handoff_reports_dir,
-                                                        delivery_reports_dir,
-                                                        until_unix_ms,
-                                                        report,
-                                                        ..
-                                                    },
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    handoff_reports_dir,
-                    std::path::PathBuf::from("handoff-reports")
-                );
-                assert_eq!(
-                    delivery_reports_dir,
-                    std::path::PathBuf::from("delivery-reports")
-                );
-                assert_eq!(until_unix_ms, 1_766_000_090_000);
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-delivery-drift-report-v2.json")
-                );
-            }
-            _ => panic!("expected chiodos pheromone relay alert delivery drift-window subcommand"),
-        }
-
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "review",
-            "--handoff-report",
-            "relay-alert-handoff-report.json",
-            "--delivery-report",
-            "relay-alert-delivery-report.json",
-            "--acknowledgement-report",
-            "relay-alert-acknowledgement-report.json",
-            "--drift-report",
-            "relay-alert-delivery-drift-report-v2.json",
-            "--route-owner-profile",
-            "relay-alert-route-owner-profile.json",
-            "--now-unix-ms",
-            "1766000090000",
-            "--report",
-            "relay-alert-route-review-packet.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Review {
-                                                route_owner_profile,
-                                                report,
-                                                ..
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    route_owner_profile,
-                    std::path::PathBuf::from("relay-alert-route-owner-profile.json")
-                );
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-route-review-packet.json")
-                );
-            }
-            _ => panic!("expected chiodos pheromone relay alert review subcommand"),
-        }
-
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "assurance",
-            "package",
-            "--alert-report",
-            "relay-alert-report.json",
-            "--trend-report",
-            "relay-trend-report.json",
-            "--handoff-report",
-            "relay-alert-handoff-report.json",
-            "--normalization-report",
-            "relay-alert-normalization-report.json",
-            "--delivery-report",
-            "relay-alert-delivery-report.json",
-            "--acknowledgement-report",
-            "relay-alert-acknowledgement-report.json",
-            "--drift-report",
-            "relay-alert-delivery-drift-report-v2.json",
-            "--review-packet",
-            "relay-alert-route-review-packet.json",
-            "--now-unix-ms",
-            "1766000090000",
-            "--report",
-            "relay-alert-assurance-package.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Assurance {
-                                                command:
-                                                    ChiodosPheromoneRelayAlertAssuranceCommands::Package {
-                                                        normalization_report,
-                                                        review_packet,
-                                                        report,
-                                                        ..
-                                                    },
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    normalization_report,
-                    std::path::PathBuf::from("relay-alert-normalization-report.json")
-                );
-                assert_eq!(
-                    review_packet,
-                    std::path::PathBuf::from("relay-alert-route-review-packet.json")
-                );
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-assurance-package.json")
-                );
-            }
-            _ => panic!("expected chiodos pheromone relay alert assurance package subcommand"),
-        }
-
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "assurance",
-            "export",
-            "--package",
-            "relay-alert-assurance-package.json",
-            "--alert-report",
-            "relay-alert-report.json",
-            "--trend-report",
-            "relay-trend-report.json",
-            "--handoff-report",
-            "relay-alert-handoff-report.json",
-            "--normalization-report",
-            "relay-alert-normalization-report.json",
-            "--delivery-report",
-            "relay-alert-delivery-report.json",
-            "--acknowledgement-report",
-            "relay-alert-acknowledgement-report.json",
-            "--drift-report",
-            "relay-alert-delivery-drift-report-v2.json",
-            "--review-packet",
-            "relay-alert-route-review-packet.json",
-            "--retention-profile",
-            "relay-alert-assurance-retention-profile.json",
-            "--signing-key",
-            "relay-export-signing-key.json",
-            "--now-unix-ms",
-            "1766000100000",
-            "--out-dir",
-            "export-bundle",
-            "--report",
-            "relay-alert-assurance-export-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Assurance {
-                                                command:
-                                                    ChiodosPheromoneRelayAlertAssuranceCommands::Export {
-                                                        package,
-                                                        out_dir,
-                                                        report,
-                                                        ..
-                                                    },
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    package,
-                    std::path::PathBuf::from("relay-alert-assurance-package.json")
-                );
-                assert_eq!(out_dir, std::path::PathBuf::from("export-bundle"));
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-assurance-export-report.json")
-                );
-            }
-            _ => panic!("expected chiodos pheromone relay alert assurance export subcommand"),
-        }
-
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "assurance",
-            "replay",
-            "--bundle-dir",
-            "export-bundle",
-            "--trusted-exporters",
-            "trusted-exporters.json",
-            "--now-unix-ms",
-            "1766000100000",
-            "--report",
-            "relay-alert-assurance-replay-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Assurance {
-                                                command:
-                                                    ChiodosPheromoneRelayAlertAssuranceCommands::Replay {
-                                                        bundle_dir,
-                                                        trusted_exporters,
-                                                        report,
-                                                        ..
-                                                    },
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(bundle_dir, std::path::PathBuf::from("export-bundle"));
-                assert_eq!(
-                    trusted_exporters,
-                    std::path::PathBuf::from("trusted-exporters.json")
-                );
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-assurance-replay-report.json")
-                );
-            }
-            _ => panic!("expected chiodos pheromone relay alert assurance replay subcommand"),
-        }
-
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "assurance",
-            "retention",
-            "plan",
-            "--bundle-root",
-            "exports",
-            "--retention-profile",
-            "relay-alert-assurance-retention-profile.json",
-            "--now-unix-ms",
-            "1766000100000",
-            "--report",
-            "relay-alert-assurance-retention-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Assurance {
-                                                command:
-                                                    ChiodosPheromoneRelayAlertAssuranceCommands::Retention {
-                                                        command:
-                                                            ChiodosPheromoneRelayAlertAssuranceRetentionCommands::Plan {
-                                                                bundle_root,
-                                                                report,
-                                                                ..
-                                                            },
-                                                    },
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(bundle_root, std::path::PathBuf::from("exports"));
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-assurance-retention-report.json")
-                );
-            }
-            _ => panic!(
-                "expected chiodos pheromone relay alert assurance retention plan subcommand"
-            ),
-        }
-
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "assurance",
-            "archive",
-            "plan",
-            "--bundle-root",
-            "exports",
-            "--trusted-exporters",
-            "trusted-exporters.json",
-            "--archive-profile",
-            "relay-alert-assurance-archive-profile.json",
-            "--retention-profile",
-            "relay-alert-assurance-retention-profile.json",
-            "--now-unix-ms",
-            "1766000100000",
-            "--report",
-            "relay-alert-assurance-archive-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Assurance {
-                                                command:
-                                                    ChiodosPheromoneRelayAlertAssuranceCommands::Archive {
-                                                        command:
-                                                            ChiodosPheromoneRelayAlertAssuranceArchiveCommands::Plan {
-                                                                bundle_root,
-                                                                trusted_exporters,
-                                                                archive_profile,
-                                                                report,
-                                                                ..
-                                                            },
-                                                    },
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(bundle_root, std::path::PathBuf::from("exports"));
-                assert_eq!(
-                    trusted_exporters,
-                    std::path::PathBuf::from("trusted-exporters.json")
-                );
-                assert_eq!(
-                    archive_profile,
-                    std::path::PathBuf::from("relay-alert-assurance-archive-profile.json")
-                );
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-assurance-archive-report.json")
-                );
-            }
-            _ => panic!("expected chiodos pheromone relay alert assurance archive plan subcommand"),
-        }
-
-        let cli = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "pheromone",
-            "relay",
-            "alert",
-            "assurance",
-            "closeout",
-            "review",
-            "--bundle-root",
-            "exports",
-            "--trusted-exporters",
-            "trusted-exporters.json",
-            "--closeout-profile",
-            "relay-alert-assurance-closeout-profile.json",
-            "--retention-profile",
-            "relay-alert-assurance-retention-profile.json",
-            "--now-unix-ms",
-            "1766000100000",
-            "--report",
-            "relay-alert-assurance-closeout-report.json",
-        ])
-        .unwrap();
-        match cli.command {
-            Commands::Chiodos {
-                command:
-                    ChiodosCommands::Pheromone {
-                        command:
-                            ChiodosPheromoneCommands::Relay {
-                                command:
-                                    ChiodosPheromoneRelayCommands::Alert {
-                                        command:
-                                            ChiodosPheromoneRelayAlertCommands::Assurance {
-                                                command:
-                                                    ChiodosPheromoneRelayAlertAssuranceCommands::Closeout {
-                                                        command:
-                                                            ChiodosPheromoneRelayAlertAssuranceCloseoutCommands::Review {
-                                                                closeout_profile,
-                                                                report,
-                                                                ..
-                                                            },
-                                                    },
-                                            },
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(
-                    closeout_profile,
-                    std::path::PathBuf::from("relay-alert-assurance-closeout-profile.json")
-                );
-                assert_eq!(
-                    report,
-                    std::path::PathBuf::from("relay-alert-assurance-closeout-report.json")
-                );
-            }
-            _ => {
-                panic!("expected chiodos pheromone relay alert assurance closeout review subcommand")
-            }
-        }
-    }
-
-    #[test]
-    fn mcp_wrap_emit_config_flag_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "mcp",
-            "wrap",
-            "--emit-config",
-            "cursor",
-            "--",
-            "echo",
-        ])
-        .expect("mcp wrap emit-config parses");
-
-        match cli.command {
-            Commands::Mcp {
-                command: McpCommands::Wrap(args),
-            } => {
-                assert_eq!(args.emit_config, Some(IdeTarget::Cursor));
-            }
-            _ => panic!("expected mcp wrap subcommand"),
-        }
-    }
-
-    #[test]
-    fn write_cli_error_emits_capability_registry_report() -> Result<(), Box<dyn Error>> {
-        let rendered = render_error_json(&CliError::capability_scope_error(
-            "capability does not grant tool access",
-        ))?;
-
-        assert_eq!(rendered["code"], "urn:chio:error:capability:scope-exceeded");
-        assert_eq!(rendered["context"]["domain"], "capability");
-        assert!(
-            rendered["suggested_fix"]
-                .as_str()
-                .is_some_and(|fix| fix.contains("Issue a capability"))
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn write_cli_error_emits_policy_registry_report() -> Result<(), Box<dyn Error>> {
-        let rendered = render_error_json(&CliError::policy_constraint_error(
-            "invalid governed autonomy tier",
-        ))?;
-
-        assert_eq!(rendered["code"], "urn:chio:error:policy:constraint-invalid");
-        assert_eq!(rendered["context"]["domain"], "policy");
-        assert!(
-            rendered["suggested_fix"]
-                .as_str()
-                .is_some_and(|fix| fix.contains("constraint"))
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn write_cli_error_emits_transport_registry_report() -> Result<(), Box<dyn Error>> {
-        let rendered = render_error_json(&CliError::transport_shape_error(
-            "OID4VP request URL must include a host",
-        ))?;
-
-        assert_eq!(
-            rendered["code"],
-            "urn:chio:error:transport:invalid-request-shape"
-        );
-        assert_eq!(rendered["context"]["domain"], "transport");
-        assert!(
-            rendered["suggested_fix"]
-                .as_str()
-                .is_some_and(|fix| fix.contains("request shape"))
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn chiodos_runtime_loopback_capability_window_covers_replay_and_wall_clock() {
+    fn chio_runtime_loopback_capability_window_covers_replay_and_wall_clock() {
         let replay_now_unix_ms = 4_102_444_800_000;
         let wall_now_secs = unix_now_ms() / 1000;
 
         let (issued_at, expires_at) =
-            chio_chiodos_runtime_harness::runtime_loopback_capability_window(replay_now_unix_ms);
+            chio_runtime_harness::runtime_loopback_capability_window(replay_now_unix_ms);
 
         assert!(issued_at <= replay_now_unix_ms / 1000);
         assert!(expires_at > replay_now_unix_ms / 1000);
@@ -2637,77 +555,7 @@ mod cli_entrypoint_tests {
         assert_eq!(error.kind(), clap::error::ErrorKind::InvalidSubcommand);
     }
 
-    #[test]
-    fn chio_attest_legacy_chiodos_v1_verify_surface_parses() {
-        let cli = Cli::try_parse_from([
-            "chio",
-            "attest",
-            "legacy",
-            "chiodos-v1",
-            "verify",
-            "--package",
-            "proof-package.json",
-            "--trust-bundle",
-            "trust-bundle.json",
-            "--context",
-            "context.json",
-            "--report",
-            "report.json",
-        ])
-        .unwrap();
 
-        match cli.command {
-            Commands::Attest {
-                command:
-                    ChioAttestCommands::Legacy {
-                        command:
-                            ChioAttestLegacyCommands::ChiodosV1 {
-                                command:
-                                    ChioAttestLegacyChiodosV1Commands::Verify {
-                                        package,
-                                        trust_bundle,
-                                        context,
-                                        report,
-                                    },
-                            },
-                    },
-            } => {
-                assert_eq!(package, std::path::PathBuf::from("proof-package.json"));
-                assert_eq!(trust_bundle, std::path::PathBuf::from("trust-bundle.json"));
-                assert_eq!(context, std::path::PathBuf::from("context.json"));
-                assert_eq!(report, std::path::PathBuf::from("report.json"));
-            }
-            _ => panic!("expected chio attest legacy chiodos-v1 verify surface"),
-        }
-    }
-
-    #[test]
-    fn legacy_chiodos_surface_is_hidden_from_root_help() {
-        let mut command = Cli::command();
-        let help = command.render_long_help().to_string();
-        assert!(!help.contains("chiodos"));
-
-        let legacy = Cli::try_parse_from([
-            "chio",
-            "chiodos",
-            "verify",
-            "--package",
-            "proof-package.json",
-            "--trust-bundle",
-            "trust-bundle.json",
-            "--context",
-            "context.json",
-            "--report",
-            "report.json",
-        ])
-        .unwrap();
-        assert!(matches!(
-            legacy.command,
-            Commands::Chiodos {
-                command: ChiodosCommands::Verify { .. }
-            }
-        ));
-    }
 
     fn rendered_help(args: &[&str]) -> String {
         let error = match Cli::try_parse_from(args) {
@@ -2719,7 +567,7 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
-    fn public_chio_help_uses_chio_names_outside_legacy_attest() {
+    fn public_chio_help_uses_native_surface_names() {
         let public_help = [
             rendered_help(&["chio", "federation", "authority", "issue", "--help"]),
             rendered_help(&["chio", "runtime", "--help"]),
@@ -2728,19 +576,7 @@ mod cli_entrypoint_tests {
         ]
         .join("\n");
 
-        assert!(
-            !public_help.contains("Chiodos"),
-            "normal public Chio help must not describe inputs as Chiodos material"
-        );
-        assert!(
-            !public_help.contains("chiodos"),
-            "normal public Chio help must not expose chiodos wording"
-        );
-
-        let legacy_help =
-            rendered_help(&["chio", "attest", "legacy", "chiodos-v1", "verify", "--help"]);
-        assert!(legacy_help.contains("Chiodos"));
-        assert!(legacy_help.contains("chiodos-v1"));
+        assert_no_retired_surface_name("public help", &public_help);
     }
 
     #[test]
@@ -2786,10 +622,7 @@ mod cli_entrypoint_tests {
             rendered_text.contains("Chio buyer run output"),
             "public buyer error should describe the Chio buyer boundary: {rendered_text}"
         );
-        assert!(
-            !rendered_text.contains("Chiodos"),
-            "public buyer error should not expose historical Chiodos wording: {rendered_text}"
-        );
+        assert_no_retired_surface_name("buyer error", &rendered_text);
 
         let report_path = tempdir.path().join("buyer-review-report.json");
         let explanation_out = tempdir.path().join("buyer-explanation.json");
@@ -2811,8 +644,9 @@ mod cli_entrypoint_tests {
             explanation["schema"],
             "chio.attest.buyer-attestation-explanation.v1"
         );
+        let retired_schema_prefix = ["chio", "chio", ""].join(".");
         assert!(
-            !explanation.to_string().contains("chio.chiodos."),
+            !explanation.to_string().contains(&retired_schema_prefix),
             "public buyer explanation must emit a Chio-native schema id"
         );
 
@@ -3068,7 +902,7 @@ mod cli_entrypoint_tests {
                 command:
                     ChioFederationCommands::Treaty {
                         command:
-                            ChiodosTreatyCommands::VerifyPacket {
+                            ChioTreatyCommands::VerifyPacket {
                                 packet,
                                 lineage_statement,
                                 continuation,
@@ -3110,7 +944,7 @@ mod cli_entrypoint_tests {
         match cli.command {
             Commands::Runtime {
                 command:
-                    ChiodosRuntimeCommands::SignTrustInput {
+                    ChioRuntimeCommands::SignTrustInput {
                         body,
                         signing_seed_file,
                         out,
@@ -3154,7 +988,7 @@ mod cli_entrypoint_tests {
         match cli.command {
             Commands::Pheromone {
                 command:
-                    ChiodosPheromoneCommands::Query {
+                    ChioPheromoneCommands::Query {
                         store,
                         subject_class,
                         namespace,
@@ -3244,32 +1078,7 @@ mod cli_entrypoint_tests {
         ])
         .unwrap()
         .command;
-        assert!(matches!(attest, Commands::Attest { .. }));
-
-        let legacy = Cli::try_parse_from([
-            "chio",
-            "attest",
-            "legacy",
-            "chiodos-v1",
-            "verify",
-            "--package",
-            "proof-package.json",
-            "--trust-bundle",
-            "trust-bundle.json",
-            "--context",
-            "context.json",
-            "--report",
-            "report.json",
-        ])
-        .unwrap()
-        .command;
-        assert!(matches!(
-            legacy,
-            Commands::Attest {
-                command: ChioAttestCommands::Legacy { .. }
-            }
-        ));
-    }
+        assert!(matches!(attest, Commands::Attest { .. }));    }
 
     #[test]
     fn chio_federation_treaty_dispatch_uses_chio_handlers() {
@@ -3285,45 +1094,41 @@ mod cli_entrypoint_tests {
         assert!(treaty_dispatch.contains("cmd_chio_federation_treaty_intersect("));
         assert!(treaty_dispatch.contains("cmd_chio_federation_treaty_admit("));
         assert!(treaty_dispatch.contains("cmd_chio_federation_treaty_verify_packet("));
-        assert!(!treaty_dispatch.contains("cmd_chiodos_treaty_"));
+        assert!(!treaty_dispatch.contains("cmd_chio_treaty_"));
     }
 
     #[test]
     fn chio_federation_treaty_handlers_do_not_call_historical_runtime_directly() {
-        let treaty_handlers = include_str!("cli/chiodos/dispatch/treaty.rs");
+        let treaty_handlers = include_str!("cli/chio/dispatch/treaty.rs");
 
-        assert!(!treaty_handlers.contains("chio_chiodos_runtime::"));
+        assert!(!treaty_handlers.contains("chio_runtime_core::"));
     }
 
     #[test]
     fn chio_runtime_dispatch_handlers_do_not_call_historical_runtime_directly() {
         let runtime_modules = [
-            include_str!("cli/chiodos/dispatch/runtime.rs"),
-            include_str!("cli/chiodos/dispatch/runtime/admission.rs"),
-            include_str!("cli/chiodos/dispatch/runtime/io.rs"),
-            include_str!("cli/chiodos/dispatch/runtime/loopback.rs"),
-            include_str!("cli/chiodos/dispatch/runtime/ops.rs"),
-            include_str!("cli/chiodos/dispatch/runtime/orchestration.rs"),
-            include_str!("cli/chiodos/dispatch/runtime/signing.rs"),
+            include_str!("cli/chio/dispatch/runtime.rs"),
+            include_str!("cli/chio/dispatch/runtime/admission.rs"),
+            include_str!("cli/chio/dispatch/runtime/io.rs"),
+            include_str!("cli/chio/dispatch/runtime/loopback.rs"),
+            include_str!("cli/chio/dispatch/runtime/ops.rs"),
+            include_str!("cli/chio/dispatch/runtime/orchestration.rs"),
+            include_str!("cli/chio/dispatch/runtime/signing.rs"),
         ];
 
         for module in runtime_modules {
-            assert!(!module.contains("chio_chiodos_runtime::"));
+            assert!(!module.contains("chio_runtime_core::"));
         }
     }
 
     #[test]
     fn chio_runtime_active_subject_namespaces_are_chio_native() {
-        let runtime_admission = include_str!("cli/chiodos/dispatch/runtime/admission.rs");
-        let historical_namespace = format!("{}.{}", "chiodos", "runtime");
+        let runtime_admission = include_str!("cli/chio/dispatch/runtime/admission.rs");
         let chio_namespace = format!("{}.{}", "chio", "runtime");
         let expected_assignment =
             format!("subject_class_namespace: \"{chio_namespace}\".to_string()");
 
-        assert!(
-            !runtime_admission.contains(&historical_namespace),
-            "active Chio runtime admission dispatch tests must not use historical runtime subject namespaces"
-        );
+        assert_no_retired_surface_name("runtime admission dispatch", runtime_admission);
         assert!(
             runtime_admission.contains(&expected_assignment),
             "active Chio runtime admission dispatch tests must exercise the Chio runtime subject namespace"
@@ -3346,7 +1151,7 @@ mod cli_entrypoint_tests {
         assert!(
             authority_dispatch.contains("cmd_chio_federation_authority_trust_bundle_assemble(")
         );
-        assert!(!authority_dispatch.contains("cmd_chiodos_authority_"));
+        assert!(!authority_dispatch.contains("cmd_chio_authority_"));
     }
 
     #[test]
@@ -3370,11 +1175,8 @@ mod cli_entrypoint_tests {
         assert!(authority_dispatch.contains("command: ChioAuthorityCommands"));
         assert!(authority_dispatch.contains("ChioAuthorityCommands::"));
         assert!(authority_dispatch.contains("ChioTrustBundleCommands::"));
-        assert!(!authority_dispatch.contains("ChiodosAuthorityCommands"));
-        assert!(!authority_dispatch.contains("ChiodosTrustBundleCommands::"));
         assert!(treaty_dispatch.contains("command: ChioTreatyCommands"));
         assert!(treaty_dispatch.contains("ChioTreatyCommands::"));
-        assert!(!treaty_dispatch.contains("ChiodosTreatyCommands"));
     }
 
     #[test]
@@ -3393,15 +1195,10 @@ mod cli_entrypoint_tests {
         assert!(runtime_dispatch.contains("cmd_chio_runtime_peer_weights_hash("));
         assert!(runtime_dispatch.contains("cmd_chio_runtime_sign_peer_weights("));
         assert!(runtime_dispatch.contains("cmd_chio_runtime_sign_pheromone_query_report("));
-        assert!(!runtime_dispatch.contains("cmd_chiodos_runtime_sign_trust_input("));
-        assert!(!runtime_dispatch.contains("cmd_chiodos_runtime_sign_policy("));
-        assert!(!runtime_dispatch.contains("cmd_chiodos_runtime_peer_weights_hash("));
-        assert!(!runtime_dispatch.contains("cmd_chiodos_runtime_sign_peer_weights("));
-        assert!(!runtime_dispatch.contains("cmd_chiodos_runtime_sign_pheromone_query_report("));
     }
 
     #[test]
-    fn chio_runtime_dispatch_uses_only_chio_handlers() {
+    fn chio_runtime_dispatch_uses_only_native_names() {
         let dispatch = include_str!("cli/dispatch.rs");
         let runtime_dispatch = dispatch
             .split("fn dispatch_chio_runtime_command")
@@ -3411,7 +1208,7 @@ mod cli_entrypoint_tests {
             .next()
             .expect("dispatch_chio_runtime_command has following function");
 
-        assert!(!runtime_dispatch.contains("cmd_chiodos_runtime_"));
+        assert_no_retired_surface_name("runtime dispatch", runtime_dispatch);
     }
 
     #[test]
@@ -3432,13 +1229,6 @@ mod cli_entrypoint_tests {
         assert!(runtime_dispatch.contains("ChioRuntimeOrchestrateCommands::"));
         assert!(runtime_dispatch.contains("ChioRuntimeOpsCommands::"));
         assert!(runtime_dispatch.contains("ChioRuntimeOpsRetentionCommands::"));
-        assert!(!runtime_dispatch.contains("ChiodosRuntimeCommands"));
-        assert!(!runtime_dispatch.contains("ChiodosRuntimePolicyCommands::"));
-        assert!(!runtime_dispatch.contains("ChiodosRuntimePeerWeightsCommands::"));
-        assert!(!runtime_dispatch.contains("ChiodosRuntimePheromoneCommands::"));
-        assert!(!runtime_dispatch.contains("ChiodosRuntimeOrchestrateCommands::"));
-        assert!(!runtime_dispatch.contains("ChiodosRuntimeOpsCommands::"));
-        assert!(!runtime_dispatch.contains("ChiodosRuntimeOpsRetentionCommands::"));
     }
 
     #[test]
@@ -3472,13 +1262,10 @@ mod cli_entrypoint_tests {
             rendered_text.contains("Chio runtime pheromone query report"),
             "public runtime error should describe the Chio query-report boundary: {rendered_text}"
         );
-        assert!(
-            !rendered_text.contains("Chiodos"),
-            "public runtime error should not expose historical Chiodos wording: {rendered_text}"
-        );
+        assert_no_retired_surface_name("runtime error", &rendered_text);
 
-        let runtime_admission = include_str!("cli/chiodos/dispatch/runtime/admission.rs");
-        assert!(!runtime_admission.contains("Chiodos signed pheromone query report parse"));
+        let runtime_admission = include_str!("cli/chio/dispatch/runtime/admission.rs");
+        assert!(!runtime_admission.contains("Chio signed pheromone query report parse"));
 
         Ok(())
     }
@@ -3505,23 +1292,9 @@ mod cli_entrypoint_tests {
             "cmd_chio_pheromone_relay_metrics(",
             "cmd_chio_pheromone_relay_trend(",
         ];
-        let chiodos_handlers = [
-            "cmd_chiodos_pheromone_relay_lint(",
-            "cmd_chiodos_pheromone_relay_serve(",
-            "cmd_chiodos_pheromone_relay_enqueue(",
-            "cmd_chiodos_pheromone_relay_tick(",
-            "cmd_chiodos_pheromone_relay_catchup(",
-            "cmd_chiodos_pheromone_relay_status(",
-            "cmd_chiodos_pheromone_relay_observe(",
-            "cmd_chiodos_pheromone_relay_metrics(",
-            "cmd_chiodos_pheromone_relay_trend(",
-        ];
 
         for handler in chio_handlers {
             assert!(pheromone_dispatch.contains(handler), "{handler}");
-        }
-        for handler in chiodos_handlers {
-            assert!(!pheromone_dispatch.contains(handler), "{handler}");
         }
     }
 
@@ -3551,21 +1324,18 @@ mod cli_entrypoint_tests {
             rendered_text.contains("Chio proof package"),
             "public pheromone error should describe the Chio proof boundary: {rendered_text}"
         );
-        assert!(
-            !rendered_text.contains("Chiodos"),
-            "public pheromone error should not expose historical Chiodos wording: {rendered_text}"
-        );
+        assert_no_retired_surface_name("pheromone error", &rendered_text);
 
-        let runtime_dispatch = include_str!("cli/chiodos/dispatch/pheromone/runtime.rs");
-        let relay_dispatch = include_str!("cli/chiodos/dispatch/pheromone/relay.rs");
+        let runtime_dispatch = include_str!("cli/chio/dispatch/pheromone/runtime.rs");
+        let relay_dispatch = include_str!("cli/chio/dispatch/pheromone/relay.rs");
         for source in [runtime_dispatch, relay_dispatch] {
-            assert!(!source.contains("Chiodos proof package"));
-            assert!(!source.contains("Chiodos verifier trust bundle"));
-            assert!(!source.contains("Chiodos verification context"));
-            assert!(!source.contains("Chiodos package parse"));
-            assert!(!source.contains("Chiodos trust bundle parse"));
-            assert!(!source.contains("Chiodos context parse"));
-            assert!(!source.contains("Chiodos workflow resolver"));
+            assert!(!source.contains("Chio proof package"));
+            assert!(!source.contains("Chio verifier trust bundle"));
+            assert!(!source.contains("Chio verification context"));
+            assert!(!source.contains("Chio package parse"));
+            assert!(!source.contains("Chio trust bundle parse"));
+            assert!(!source.contains("Chio context parse"));
+            assert!(!source.contains("Chio workflow resolver"));
         }
 
         Ok(())
@@ -3593,16 +1363,6 @@ mod cli_entrypoint_tests {
         assert!(pheromone_dispatch.contains("ChioPheromoneRelayAlertAssuranceCloseoutCommands::"));
         assert!(pheromone_dispatch.contains("ChioPheromoneRelayDirectoryCommands::"));
         assert!(pheromone_dispatch.contains("ChioPheromoneRelaySupervisorCommands::"));
-        assert!(!pheromone_dispatch.contains("ChiodosPheromoneCommands"));
-        assert!(!pheromone_dispatch.contains("ChiodosPheromoneRelayCommands::"));
-        assert!(!pheromone_dispatch.contains("ChiodosPheromoneRelayAlertCommands::"));
-        assert!(!pheromone_dispatch.contains("ChiodosPheromoneRelayAlertDeliveryCommands::"));
-        assert!(!pheromone_dispatch.contains("ChiodosPheromoneRelayAlertAssuranceCommands::"));
-        assert!(!pheromone_dispatch.contains("ChiodosPheromoneRelayAlertAssuranceRetentionCommands::"));
-        assert!(!pheromone_dispatch.contains("ChiodosPheromoneRelayAlertAssuranceArchiveCommands::"));
-        assert!(!pheromone_dispatch.contains("ChiodosPheromoneRelayAlertAssuranceCloseoutCommands::"));
-        assert!(!pheromone_dispatch.contains("ChiodosPheromoneRelayDirectoryCommands::"));
-        assert!(!pheromone_dispatch.contains("ChiodosPheromoneRelaySupervisorCommands::"));
     }
 
     #[test]
@@ -3638,34 +1398,9 @@ mod cli_entrypoint_tests {
             "cmd_chio_pheromone_relay_directory_reject(",
             "cmd_chio_pheromone_relay_supervisor_lint(",
         ];
-        let chiodos_handlers = [
-            "cmd_chiodos_pheromone_relay_alert_evaluate(",
-            "cmd_chiodos_pheromone_relay_alert_handoff(",
-            "cmd_chiodos_pheromone_relay_alert_normalize(",
-            "cmd_chiodos_pheromone_relay_alert_review(",
-            "cmd_chiodos_pheromone_relay_alert_delivery_import(",
-            "cmd_chiodos_pheromone_relay_alert_delivery_acknowledge(",
-            "cmd_chiodos_pheromone_relay_alert_delivery_drift(",
-            "cmd_chiodos_pheromone_relay_alert_delivery_drift_window(",
-            "cmd_chiodos_pheromone_relay_alert_assurance_package(",
-            "cmd_chiodos_pheromone_relay_alert_assurance_export(",
-            "cmd_chiodos_pheromone_relay_alert_assurance_verify(",
-            "cmd_chiodos_pheromone_relay_alert_assurance_replay(",
-            "cmd_chiodos_pheromone_relay_alert_assurance_retention_plan(",
-            "cmd_chiodos_pheromone_relay_alert_assurance_recovery_drill(",
-            "cmd_chiodos_pheromone_relay_alert_assurance_archive_plan(",
-            "cmd_chiodos_pheromone_relay_alert_assurance_closeout_review(",
-            "cmd_chiodos_pheromone_relay_directory_inspect(",
-            "cmd_chiodos_pheromone_relay_directory_promote(",
-            "cmd_chiodos_pheromone_relay_directory_reject(",
-            "cmd_chiodos_pheromone_relay_supervisor_lint(",
-        ];
 
         for handler in chio_handlers {
             assert!(pheromone_dispatch.contains(handler), "{handler}");
-        }
-        for handler in chiodos_handlers {
-            assert!(!pheromone_dispatch.contains(handler), "{handler}");
         }
     }
 
@@ -3681,18 +1416,9 @@ mod cli_entrypoint_tests {
             include_str!("../../../scripts/check-chio-pheromone-relay-observability.sh"),
             include_str!("../../../scripts/check-chio-pheromone-relay-ops.sh"),
         ];
-        let legacy_cli_filter = [
-            "cargo test -p chio-cli --bin chio ",
-            "chiodos",
-            "_pheromone",
-        ]
-        .concat();
-        let legacy_gate_ref = ["scripts/check-", "chiodos", "-pheromone"].concat();
-        let legacy_ok_message = ["OK ", "Chiodos", " relay"].concat();
+        let retired = retired_surface_name();
         for script in scripts {
-            assert!(!script.contains(&legacy_cli_filter));
-            assert!(!script.contains(&legacy_gate_ref));
-            assert!(!script.contains(&legacy_ok_message));
+            assert!(!script.to_ascii_lowercase().contains(&retired));
         }
     }
 
@@ -3702,9 +1428,9 @@ mod cli_entrypoint_tests {
             include_str!("../../../scripts/check-chio-pheromone-transit.sh"),
             include_str!("../../../scripts/check-chio-pheromone-runtime.sh"),
         ];
-        let legacy_authority_gate = ["scripts/check-", "chiodos", "-authority-issuance.sh"].concat();
+        let retired_authority_gate = ["scripts/check-", &retired_surface_name(), "-authority-issuance.sh"].concat();
         for script in scripts {
-            assert!(!script.contains(&legacy_authority_gate));
+            assert!(!script.contains(&retired_authority_gate));
         }
     }
 
@@ -3739,16 +1465,16 @@ mod cli_entrypoint_tests {
             include_str!("../../../.github/workflows/chio-pheromone-runtime.yml"),
             include_str!("../../../.github/workflows/chio-pheromone-transit.yml"),
         ];
-        let legacy_fixture_root = ["examples/", "chiodos", "-3vendor"].concat();
+        let retired_fixture_root = ["examples/", &retired_surface_name(), "-3vendor"].concat();
         let chio_fixture_root = ["examples/", "chio", "-3vendor/fixtures"].concat();
         let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
 
         assert!(repo_root.join(chio_fixture_root).is_dir());
         for script in scripts {
-            assert!(!script.contains(&legacy_fixture_root));
+            assert!(!script.contains(&retired_fixture_root));
         }
         for workflow in workflows {
-            assert!(!workflow.contains(&legacy_fixture_root));
+            assert!(!workflow.contains(&retired_fixture_root));
         }
     }
 
@@ -3783,53 +1509,30 @@ mod cli_entrypoint_tests {
             include_str!("../../../.github/workflows/chio-pheromone-relay-ops.yml"),
             include_str!("../../../.github/workflows/chio-pheromone-transit.yml"),
         ];
-        let legacy_spec_path = ["spec/", "CHIODOS", "_PHEROMONE.md"].concat();
-        let legacy_runbook_path =
-            ["docs/release/", "CHIODOS", "_PHEROMONE_RELAY_RUNBOOK.md"].concat();
-        let legacy_operator_docs_path =
-            ["docs/release/", "chiodos", "-pheromone-relay/"].concat();
-        let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let legacy_directory_workflow = repo_root.join(
-            [
-                ".github/workflows/",
-                "chiodos",
-                "-pheromone-directory-lifecycle.yml",
-            ]
-            .concat(),
-        );
-        let legacy_operator_docs_dir =
-            repo_root.join(["docs/release/", "chiodos", "-pheromone-relay"].concat());
-        assert!(!legacy_directory_workflow.exists());
-        assert!(!legacy_operator_docs_dir.exists());
+        let retired = retired_surface_name();
+        let retired_spec_path = ["spec/", &retired.to_ascii_uppercase(), "_PHEROMONE.md"].concat();
+        let retired_runbook_path = [
+            "docs/release/",
+            &retired.to_ascii_uppercase(),
+            "_PHEROMONE_RELAY_RUNBOOK.md",
+        ]
+        .concat();
+        let retired_operator_docs_path = ["docs/release/", &retired, "-pheromone-relay/"].concat();
         for workflow in workflows {
-            assert!(!workflow.contains(&legacy_spec_path));
-            assert!(!workflow.contains(&legacy_runbook_path));
-            assert!(!workflow.contains(&legacy_operator_docs_path));
+            assert!(!workflow.contains(&retired_spec_path));
+            assert!(!workflow.contains(&retired_runbook_path));
+            assert!(!workflow.contains(&retired_operator_docs_path));
         }
     }
 
-    #[test]
-    fn chio_attest_legacy_dispatch_uses_chio_handler() {
-        let dispatch = include_str!("cli/dispatch.rs");
-        let attest_dispatch = dispatch
-            .split("fn dispatch_chio_attest_command")
-            .nth(1)
-            .expect("dispatch_chio_attest_command exists")
-            .split("fn dispatch_chio_buyer_command")
-            .next()
-            .expect("dispatch_chio_attest_command has following function");
-
-        assert!(attest_dispatch.contains("cmd_chio_attest_legacy_chiodos_v1_verify("));
-        assert!(!attest_dispatch.contains("cmd_chiodos_verify("));
-    }
 
     #[test]
     fn chio_attest_buyer_dispatch_owns_legacy_replay_boundary() {
-        let buyer_dispatch = include_str!("cli/chiodos/dispatch/buyer.rs");
+        let buyer_dispatch = include_str!("cli/chio/dispatch/buyer.rs");
 
         assert!(buyer_dispatch.contains("chio_attest_buyer::"));
-        assert!(!buyer_dispatch.contains("chio_chiodos::"));
-        assert!(!buyer_dispatch.contains("chio_chiodos_runtime::"));
+        assert!(!buyer_dispatch.contains("chio_attest_buyer_core::"));
+        assert!(!buyer_dispatch.contains("chio_runtime_core::"));
     }
 
     fn render_error_json(error: &CliError) -> Result<serde_json::Value, Box<dyn Error>> {

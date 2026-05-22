@@ -8,7 +8,7 @@ packet/report boundary:
 - `chio.attest.buyer-attestation-packet.v1`
 - `chio.attest.buyer-attestation-verification-report.v1`
 
-Historical `chio.chiodos.*` buyer packet inputs remain read-compatible. The
+Historical `Chio-native schema IDs` buyer packet inputs remain read-compatible. The
 strict DSSE behavior must not change: hash-only packets remain unresolved until
 hydrated DSSE evidence is supplied by full review.
 
@@ -28,10 +28,10 @@ hydrated DSSE evidence is supplied by full review.
       fails before implementation.
 - [x] `cargo test -p chio-attest-buyer chio_buyer_packet_schema --test buyer_packet`
 - [x] `cargo test -p chio-attest-buyer`
-- [x] `cargo test -p chio-chiodos-runtime buyer_hash_only_packet --test runtime_buyer_review`
+- [x] `cargo test -p chio-runtime-core buyer_hash_only_packet --test runtime_buyer_review`
 - [x] `bash scripts/check-chio-schema-registry.sh`
 - [x] `cargo clippy -p chio-attest-buyer --all-targets -- -D warnings`
-- [x] `cargo clippy -p chio-chiodos-runtime --all-targets -- -D warnings`
+- [x] `cargo clippy -p chio-runtime-core --all-targets -- -D warnings`
 - [x] `cargo fmt --all -- --check`
 - [x] `git diff --check`
 - [x] Unicode dash scan over changed files.

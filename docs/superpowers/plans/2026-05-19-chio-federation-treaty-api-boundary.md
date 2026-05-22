@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move public Chio federation treaty command internals off direct `chio_chiodos_runtime::` calls.
+**Goal:** Move public Chio federation treaty command internals off direct `chio_runtime_core::` calls.
 
-**Architecture:** `chio-federation` owns treaty scope parsing, governance ladder intersection, and cross-boundary admission helpers for the Chio public federation surface. The hidden Chiodos wrappers remain compatibility entrypoints, but the Chio-named handlers use a Chio federation API.
+**Architecture:** `chio-federation` owns treaty scope parsing, governance ladder intersection, and cross-boundary admission helpers for the Chio public federation surface. The hidden Chio wrappers remain compatibility entrypoints, but the Chio-named handlers use a Chio federation API.
 
 **Tech Stack:** Rust workspace crates `chio-federation` and `chio-cli`, Clap/source-boundary tests, focused federation treaty tests.
 
@@ -18,19 +18,19 @@
 - [x] **Step 1: Write the failing test**
 
 Add `chio_federation_treaty_handlers_do_not_call_historical_runtime_directly`,
-which reads `cli/chiodos/dispatch/treaty.rs` and asserts it does not contain
-`chio_chiodos_runtime::`.
+which reads `cli/chio/dispatch/treaty.rs` and asserts it does not contain
+`chio_runtime_core::`.
 
 - [x] **Step 2: Run the red test**
 
 Run:
 
 ```bash
-cargo test -p chio-cli --bin chio chio_federation_treaty_handlers_do_not_call_historical_runtime_directly
+cargo test -p chio-cli --bin chio_federation_treaty_handlers_do_not_call_historical_runtime_directly
 ```
 
 Expected before implementation: FAIL because the Chio federation treaty handler
-body directly calls `chio_chiodos_runtime::`.
+body directly calls `chio_runtime_core::`.
 
 ### Task 2: Add Chio Federation Treaty API
 
@@ -59,13 +59,13 @@ Reexport the new treaty module types, constants, and helpers from
 ### Task 3: Switch CLI Treaty Handlers
 
 **Files:**
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/treaty.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/treaty.rs`
 
 - [x] **Step 1: Use `chio_federation` from Chio-named handlers**
 
-Replace direct `chio_chiodos_runtime::` calls in the treaty intersect/admit
+Replace direct `chio_runtime_core::` calls in the treaty intersect/admit
 handler bodies with `chio_federation::` functions and types. Keep hidden
-`cmd_chiodos_treaty_*` wrappers delegating to the Chio-named handlers.
+`cmd_chio_treaty_*` wrappers delegating to the Chio-named handlers.
 
 ### Task 4: Add Federation Treaty Behavior Tests
 
@@ -82,7 +82,7 @@ treaty and verifies `compute_ladder_intersection` emits
 
 Add `chio_treaty_intersection_rejects_destructive_crdt`, which verifies
 destructive `crdt_commutative` ladder material rejects with
-`chiodos_ladder_destructive_crdt_not_allowed`.
+`chio_ladder_destructive_crdt_not_allowed`.
 
 ### Task 5: Verify
 
@@ -95,9 +95,9 @@ Run:
 
 ```bash
 cargo test -p chio-federation treaty
-cargo test -p chio-cli --bin chio chio_federation_treaty_handlers_do_not_call_historical_runtime_directly
-cargo test -p chio-cli --bin chio chio_federation_treaty_dispatch_uses_chio_handlers
-cargo test -p chio-cli --bin chio chiodos_treaty_verify_packet_subcommand_parses
+cargo test -p chio-cli --bin chio_federation_treaty_handlers_do_not_call_historical_runtime_directly
+cargo test -p chio-cli --bin chio_federation_treaty_dispatch_uses_chio_handlers
+cargo test -p chio-cli --bin chio_treaty_verify_packet_subcommand_parses
 ```
 
 - [x] **Step 2: Run focused lints and hygiene**
@@ -109,8 +109,8 @@ cargo clippy -p chio-federation --all-targets -- -D warnings
 cargo clippy -p chio-cli --bin chio -- -D warnings
 cargo fmt --all -- --check
 git diff --check
-rg -n $'\xE2\x80\x94|\xE2\x80\x93' crates/chio-federation/src/lib.rs crates/chio-federation/src/treaty.rs crates/chio-federation/tests/treaty.rs crates/chio-cli/src/cli/chiodos/dispatch/treaty.rs crates/chio-cli/src/main.rs docs/architecture/CHIO_FINAL_ARCHITECTURE.md docs/superpowers/plans/2026-05-19-chio-federation-treaty-api-boundary.md
-rg -n "chio_chiodos_runtime::" crates/chio-cli/src/cli/chiodos/dispatch/treaty.rs
+rg -n $'\xE2\x80\x94|\xE2\x80\x93' crates/chio-federation/src/lib.rs crates/chio-federation/src/treaty.rs crates/chio-federation/tests/treaty.rs crates/chio-cli/src/cli/chio/dispatch/treaty.rs crates/chio-cli/src/main.rs docs/architecture/CHIO_FINAL_ARCHITECTURE.md docs/superpowers/plans/2026-05-19-chio-federation-treaty-api-boundary.md
+rg -n "chio_runtime_core::" crates/chio-cli/src/cli/chio/dispatch/treaty.rs
 ```
 
 Expected: all commands exit 0 except the dash scan and source-boundary scan

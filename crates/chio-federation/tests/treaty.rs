@@ -99,8 +99,8 @@ fn chio_cross_boundary_admission_report_uses_chio_codes_and_checks(
         report
             .checks
             .iter()
-            .all(|check| !check.contains("chiodos_treaty")),
-        "Chio federation admission checks must not expose Chiodos names: {:#?}",
+            .all(|check| !check.contains("chio_treaty")),
+        "Chio federation admission checks must not expose Chio names: {:#?}",
         report.checks
     );
     Ok(())

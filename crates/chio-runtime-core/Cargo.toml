@@ -1,0 +1,31 @@
+[package]
+name = "chio-runtime-core"
+description = "Live Chio runtime admission for kernel-mediated cross-vendor workflows"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_runtime_core"
+
+[dependencies]
+chio-attest-buyer-core = { version = "0.1.0", path = "../chio-attest-buyer-core" }
+chio-core-types = { version = "0.1.0", path = "../chio-core-types" }
+chio-federation = { version = "0.1.0", path = "../chio-federation" }
+chio-kernel = { version = "0.1.0", path = "../chio-kernel" }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+base64 = { workspace = true }
+chio-attest-loopback = { path = "../chio-attest-loopback" }
+tempfile = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

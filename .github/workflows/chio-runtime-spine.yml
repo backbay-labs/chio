@@ -4,9 +4,9 @@ on:
   pull_request:
     paths:
       - "crates/chio-attest-buyer/**"
-      - "crates/chio-chiodos-runtime/**"
-      - "crates/chio-chiodos-runtime-harness/**"
-      - "crates/chio-chiodos-loopback/**"
+      - "crates/chio-runtime-core/**"
+      - "crates/chio-runtime-harness/**"
+      - "crates/chio-attest-loopback/**"
       - "crates/chio-cli/**"
       - "crates/chio-federation/**"
       - "crates/chio-kernel/**"
@@ -18,7 +18,7 @@ on:
       - "spec/schemas/chio-attest/**"
       - "spec/schemas/chio-federation/**"
       - "spec/schemas/chio-runtime/**"
-      - "spec/schemas/chiodos/**"
+      - "spec/schemas/chio/**"
       - "spec/schemas/registry.json"
       - "spec/schemas/MANIFEST.sha256"
       - ".github/workflows/chio-runtime-spine.yml"
@@ -26,9 +26,9 @@ on:
     branches: ["main"]
     paths:
       - "crates/chio-attest-buyer/**"
-      - "crates/chio-chiodos-runtime/**"
-      - "crates/chio-chiodos-runtime-harness/**"
-      - "crates/chio-chiodos-loopback/**"
+      - "crates/chio-runtime-core/**"
+      - "crates/chio-runtime-harness/**"
+      - "crates/chio-attest-loopback/**"
       - "crates/chio-cli/**"
       - "crates/chio-federation/**"
       - "crates/chio-kernel/**"
@@ -40,7 +40,7 @@ on:
       - "spec/schemas/chio-attest/**"
       - "spec/schemas/chio-federation/**"
       - "spec/schemas/chio-runtime/**"
-      - "spec/schemas/chiodos/**"
+      - "spec/schemas/chio/**"
       - "spec/schemas/registry.json"
       - "spec/schemas/MANIFEST.sha256"
       - ".github/workflows/chio-runtime-spine.yml"

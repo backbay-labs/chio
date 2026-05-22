@@ -12,7 +12,7 @@ publish = false
 name = "chio_runtime"
 
 [dependencies]
-chio-chiodos-runtime = { path = "../chio-chiodos-runtime" }
+chio-runtime-core = { path = "../chio-runtime-core" }
 chio-core-types = { path = "../chio-core-types" }
 chio-kernel = { path = "../chio-kernel" }
 serde = { workspace = true }

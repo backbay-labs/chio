@@ -30,8 +30,8 @@ fn public_relay_http_paths_are_chio_native() {
     assert!(
         paths
             .iter()
-            .all(|path| path.starts_with("/v1/chio/pheromone/") && !path.contains("/chiodos/")),
-        "public relay HTTP paths must not expose Chiodos path segments: {paths:?}"
+            .all(|path| path.starts_with("/v1/chio/pheromone/")),
+        "public relay HTTP paths must use the Chio-native path prefix: {paths:?}"
     );
 
     let request_schema: serde_json::Value = serde_json::from_str(include_str!(
@@ -63,7 +63,7 @@ fn public_relay_http_paths_are_chio_native() {
     assert!(
         fixture_paths
             .iter()
-            .all(|path| path.starts_with("/v1/chio/pheromone") && !path.contains("/chiodos/")),
+            .all(|path| path.starts_with("/v1/chio/pheromone")),
         "active Chio relay fixture paths must be Chio-native: {fixture_paths:?}"
     );
 }

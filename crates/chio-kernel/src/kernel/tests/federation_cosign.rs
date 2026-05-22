@@ -53,7 +53,7 @@ impl RuntimeAdmissionHook for TreatyBindingRuntimeAdmissionHook {
             &chio_core::canonical::canonical_json_bytes(&context.request.arguments).unwrap(),
         );
         if self.bind_request_hash {
-            metadata["chiodos_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
+            metadata["chio_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
                 ["request_sha256"] = serde_json::json!(request_hash);
         }
         Ok(RuntimeAdmissionDecision::allow(Some(metadata)))
@@ -84,7 +84,7 @@ fn treaty_binding_runtime_metadata(
     tool_host_kernel_id: &str,
 ) -> serde_json::Value {
     serde_json::json!({
-        "chiodos_runtime": {
+        "chio_runtime": {
             "federation_treaty_dsse": {
                 "capability_lease_ref": {
                     "lease_id": "lease-kernel-strict-1",
@@ -391,7 +391,7 @@ fn federated_request_with_runtime_treaty_material_preserves_original_metadata_re
         .federation_dsse_envelope(&response.receipt.id)
         .expect("DSSE envelope must exist for federated request");
     let (statement, _) = envelope.decode_statement().expect("statement decodes");
-    let material = &metadata["chiodos_runtime"]["federation_treaty_dsse"];
+    let material = &metadata["chio_runtime"]["federation_treaty_dsse"];
     let expected_lease: chio_federation::CapabilityLeaseRef =
         serde_json::from_value(material["capability_lease_ref"].clone()).unwrap();
     let expected_policy: chio_federation::PolicyEvaluationSummary =
@@ -476,28 +476,28 @@ fn federated_request_with_mismatched_runtime_treaty_material_fails_closed() {
         let mut metadata = treaty_binding_runtime_metadata(origin_kernel_id, tool_host_kernel_id);
         match case {
             "request" => {
-                metadata["chiodos_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
+                metadata["chio_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
                     ["request_sha256"] = serde_json::json!("9".repeat(64));
             }
             "signers" => {
-                metadata["chiodos_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
+                metadata["chio_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
                     ["signer_kernel_ids"] =
                     serde_json::json!(["kernel.org-a", "kernel.unpinned"]);
             }
             "lease" => {
-                metadata["chiodos_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
+                metadata["chio_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
                     ["lease_refs"] = serde_json::json!(["lease-other"]);
             }
             "governance" => {
-                metadata["chiodos_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
+                metadata["chio_runtime"]["federation_treaty_dsse"]["treaty_binding_ref"]
                     ["governance_refs"] = serde_json::json!(["governance-other"]);
             }
             "consistency" => {
-                metadata["chiodos_runtime"]["federation_treaty_dsse"]["consistency_model"] =
+                metadata["chio_runtime"]["federation_treaty_dsse"]["consistency_model"] =
                     serde_json::json!("causal");
             }
             "missing_consistency" => {
-                metadata["chiodos_runtime"]["federation_treaty_dsse"]
+                metadata["chio_runtime"]["federation_treaty_dsse"]
                     .as_object_mut()
                     .unwrap()
                     .remove("consistency_model");

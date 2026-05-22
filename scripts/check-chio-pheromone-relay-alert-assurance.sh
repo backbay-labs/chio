@@ -53,7 +53,7 @@ schema_dir, registry_path, fixture_dir = map(pathlib.Path, sys.argv[1:])
 registry = json.loads(registry_path.read_text(encoding="utf-8"))
 registered = {entry.get("schema"): entry.get("schemaFile") for entry in registry.get("artifacts", [])}
 legacy_re = re.compile(
-    r"chiodos-relay|chiodos-pheromone-relay|CHIODOS_PHEROMONE_RELAY_RUNBOOK\.md"
+    r"chio-relay|chio-pheromone-relay|CHIO_PHEROMONE_RELAY_RUNBOOK\.md"
 )
 for path in sorted(fixture_dir.rglob("*.json")):
     text = path.read_text(encoding="utf-8")
@@ -263,7 +263,7 @@ print("OK generated relay alert assurance reports")
 PY
 
 cargo test -p chio-pheromone-relay alert_assurance --test relay
-cargo test -p chio-cli --bin chio chio_pheromone
+cargo test -p chio-cli --bin chio_pheromone
 
 NEGATIVE_DIR="$(mktemp -d)"
 TMP_DIRS+=("$NEGATIVE_DIR")

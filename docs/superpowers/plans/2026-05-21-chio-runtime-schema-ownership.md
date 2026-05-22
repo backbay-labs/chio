@@ -4,7 +4,7 @@
 
 **Goal:** Make `chio-runtime` own its public Chio runtime schema constants instead of reexporting them from the historical runtime crate.
 
-**Architecture:** The runtime facade may still delegate data types and hardened implementations to `chio-chiodos-runtime` while the crate split continues, but public Chio schema IDs must be declared at the Chio runtime boundary. Historical runtime schema IDs remain compatibility inputs inside the historical implementation, not public Chio facade exports.
+**Architecture:** The runtime facade may still delegate data types and hardened implementations to `chio-runtime-core` while the crate split continues, but public Chio schema IDs must be declared at the Chio runtime boundary. Historical runtime schema IDs remain compatibility inputs inside the historical implementation, not public Chio facade exports.
 
 **Tech Stack:** Rust integration tests, `chio-runtime`, cargo test filters, source-level public API guard tests.
 
@@ -17,7 +17,7 @@
 
 - [x] **Step 1: Assert schema constants are not reexported from the historical crate**
 
-Add a test that scans `../src/lib.rs` and fails if the `pub use chio_chiodos_runtime::{ ... }` facade block exports `CHIO_RUNTIME_*_SCHEMA`.
+Add a test that scans `../src/lib.rs` and fails if the `pub use chio_runtime_core::{ ... }` facade block exports `CHIO_RUNTIME_*_SCHEMA`.
 
 - [x] **Step 2: Run the focused test and verify red**
 
@@ -44,7 +44,7 @@ Add literal `pub const` definitions for each Chio runtime schema ID exposed by t
 
 - [x] **Step 3: Preserve implementation delegation**
 
-Do not remove `chio-chiodos-runtime` dependency or historical implementation calls in this slice.
+Do not remove `chio-runtime-core` dependency or historical implementation calls in this slice.
 
 ### Task 3: Verify
 

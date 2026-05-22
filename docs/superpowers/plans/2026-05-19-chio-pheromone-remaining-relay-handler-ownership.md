@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make public `chio pheromone relay` alert, delivery, assurance, directory, and supervisor subcommands route through Chio-named handlers while retaining hidden Chiodos compatibility wrappers.
+**Goal:** Make public `chio pheromone relay` alert, delivery, assurance, directory, and supervisor subcommands route through Chio-named handlers while retaining hidden Chio compatibility wrappers.
 
-**Architecture:** This completes the P1 relay command-ownership cutover left after the core relay slice. Public dispatch must call Chio-named handlers; old Chiodos-named functions remain only as hidden compatibility wrappers that delegate to the Chio implementations. No signed artifact bytes, schemas, relay authorization logic, or report contents should change beyond user-facing Chio labels.
+**Architecture:** This completes the P1 relay command-ownership cutover left after the core relay slice. Public dispatch must call Chio-named handlers; old Chio-named functions remain only as hidden compatibility wrappers that delegate to the Chio implementations. No signed artifact bytes, schemas, relay authorization logic, or report contents should change beyond user-facing Chio labels.
 
 **Tech Stack:** Rust, `chio-cli`, source-level CLI ownership regression, focused parser and clippy gates.
 
@@ -43,7 +43,7 @@ cmd_chio_pheromone_relay_directory_reject(
 cmd_chio_pheromone_relay_supervisor_lint(
 ```
 
-It also asserts the extracted public body does not contain the matching `cmd_chiodos_*` names.
+It also asserts the extracted public body does not contain the matching `cmd_chio_*` names.
 
 - [x] **Step 2: Verify red**
 
@@ -53,34 +53,34 @@ Run:
 cargo test -p chio-cli chio_pheromone_remaining_relay_dispatch_uses_chio_handlers --bin chio
 ```
 
-Expected: fail because the public remaining relay arms still call Chiodos-named handlers.
+Expected: fail because the public remaining relay arms still call Chio-named handlers.
 
 ### Task 2: Invert Remaining Relay Handler Ownership
 
 **Files:**
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/pheromone/alerts.rs`
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/pheromone/delivery.rs`
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/pheromone/assurance.rs`
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/pheromone/directory.rs`
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/pheromone.rs`
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/pheromone/alerts.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/pheromone/delivery.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/pheromone/assurance.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/pheromone/directory.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/pheromone.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch.rs`
 - Modify: `crates/chio-cli/src/cli/dispatch.rs`
 
 - [x] **Step 1: Add Chio-named implementation owners**
 
 For every handler listed in Task 1, move implementation ownership to `cmd_chio_*`.
 
-- [x] **Step 2: Delegate Chiodos compatibility wrappers**
+- [x] **Step 2: Delegate Chio compatibility wrappers**
 
-Keep old `cmd_chiodos_*` function names with the same signatures and have them call the matching Chio-named implementation.
+Keep old `cmd_chio_*` function names with the same signatures and have them call the matching Chio-named implementation.
 
 - [x] **Step 3: Route public dispatch through Chio handlers**
 
 Update `dispatch_chio_pheromone_command` so every remaining relay arm calls a Chio-named handler.
 
-- [x] **Step 4: Route hidden relay compatibility through Chiodos wrappers**
+- [x] **Step 4: Route hidden relay compatibility through Chio wrappers**
 
-Update `dispatch_chiodos_pheromone_relay_command` so every remaining relay arm calls the matching Chiodos wrapper.
+Update `dispatch_chio_pheromone_relay_command` so every remaining relay arm calls the matching Chio wrapper.
 
 ### Task 3: Verify
 

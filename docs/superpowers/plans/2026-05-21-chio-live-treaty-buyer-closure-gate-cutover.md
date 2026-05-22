@@ -4,7 +4,7 @@
 
 **Goal:** Move the live treaty buyer closure gate to a Chio-named script and workflow while preserving explicit historical proof verification.
 
-**Architecture:** The active gate must be `scripts/check-chio-live-treaty-buyer-closure.sh` and must call Chio-owned gates for schema, proof, buyer, and negative coverage. The old Chiodos script may remain only as a compatibility wrapper that delegates to the Chio gate and emits no artifacts of its own. The active workflow should watch Chio fixture/schema/script paths and invoke the Chio gate.
+**Architecture:** The active gate must be `scripts/check-chio-live-treaty-buyer-closure.sh` and must call Chio-owned gates for schema, proof, buyer, and negative coverage. The old Chio script may remain only as a compatibility wrapper that delegates to the Chio gate and emits no artifacts of its own. The active workflow should watch Chio fixture/schema/script paths and invoke the Chio gate.
 
 **Tech Stack:** Bash gate scripts, GitHub Actions workflow YAML, Cargo test filters, existing Chio treaty-buyer and runtime-spine gates.
 
@@ -14,9 +14,9 @@
 
 **Files:**
 - Modify: `scripts/check-chio-live-treaty-buyer-closure.sh`
-- Modify: `scripts/check-chiodos-live-treaty-buyer-closure.sh`
+- Modify: `scripts/check-chio-live-treaty-buyer-closure.sh`
 - Create: `.github/workflows/chio-live-treaty-buyer-closure.yml`
-- Modify: `.github/workflows/chiodos-live-treaty-buyer-closure.yml`
+- Modify: `.github/workflows/chio-live-treaty-buyer-closure.yml`
 
 - [x] **Step 1: Prove the Chio gate is missing**
 
@@ -33,13 +33,13 @@ Expected: fail because the active Chio-named live treaty buyer gate does not exi
 Run:
 
 ```bash
-if rg -n 'check-chiodos-(treaty-buyer-hero-loop|runtime-spine)' scripts/check-chiodos-live-treaty-buyer-closure.sh; then
-  echo "legacy live treaty buyer closure gate still owns Chiodos implementation" >&2
+if rg -n 'check-chio-(treaty-buyer-hero-loop|runtime-spine)' scripts/check-chio-live-treaty-buyer-closure.sh; then
+  echo "legacy live treaty buyer closure gate still owns Chio implementation" >&2
   exit 1
 fi
 ```
 
-Expected: fail because the old script directly calls Chiodos-era gate scripts.
+Expected: fail because the old script directly calls Chio-era gate scripts.
 
 ### Task 2: Add Chio-Owned Live Closure Gate
 
@@ -76,16 +76,16 @@ Use:
 
 ```bash
 bash "$repo_root/scripts/check-chio-treaty-buyer-hero-loop.sh" --packet-only
-cargo test -p chio-chiodos-runtime runtime_workflow_report --test runtime_admission
-cargo test -p chio-chiodos-runtime runtime_proof_regeneration --test runtime_admission
+cargo test -p chio-runtime-core runtime_workflow_report --test runtime_admission
+cargo test -p chio-runtime-core runtime_proof_regeneration --test runtime_admission
 ```
 
-The runtime tests still live in the historical runtime crate while the crate split continues, but the shell gate must not call the old Chiodos runtime-spine script.
+The runtime tests still live in the historical runtime crate while the crate split continues, but the shell gate must not call the old Chio runtime-spine script.
 
 ### Task 3: Convert The Old Script To A Wrapper
 
 **Files:**
-- Modify: `scripts/check-chiodos-live-treaty-buyer-closure.sh`
+- Modify: `scripts/check-chio-live-treaty-buyer-closure.sh`
 
 - [x] **Step 1: Replace old implementation with delegation**
 
@@ -103,7 +103,7 @@ exec bash "$repo_root/scripts/check-chio-live-treaty-buyer-closure.sh" "$@"
 
 **Files:**
 - Create: `.github/workflows/chio-live-treaty-buyer-closure.yml`
-- Modify: `.github/workflows/chiodos-live-treaty-buyer-closure.yml`
+- Modify: `.github/workflows/chio-live-treaty-buyer-closure.yml`
 
 - [x] **Step 1: Add active Chio workflow**
 
@@ -137,7 +137,7 @@ CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-live-trea
 Run:
 
 ```bash
-CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chiodos-live-treaty-buyer-closure.sh --schema-only
+CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-live-treaty-buyer-closure.sh --schema-only
 ```
 
 - [x] **Step 3: Run drift and hygiene checks**
@@ -146,17 +146,17 @@ Run:
 
 ```bash
 test -x scripts/check-chio-live-treaty-buyer-closure.sh
-if rg -n 'check-chiodos-(treaty-buyer-hero-loop|runtime-spine)' scripts/check-chiodos-live-treaty-buyer-closure.sh scripts/check-chio-live-treaty-buyer-closure.sh; then
-  echo "live treaty buyer closure gate still delegates to Chiodos gate implementation" >&2
+if rg -n 'check-chio-(treaty-buyer-hero-loop|runtime-spine)' scripts/check-chio-live-treaty-buyer-closure.sh scripts/check-chio-live-treaty-buyer-closure.sh; then
+  echo "live treaty buyer closure gate still delegates to Chio gate implementation" >&2
   exit 1
 fi
-if rg -n 'pull_request:|push:' .github/workflows/chiodos-live-treaty-buyer-closure.yml; then
+if rg -n 'pull_request:|push:' .github/workflows/chio-live-treaty-buyer-closure.yml; then
   echo "legacy live treaty buyer workflow is still active on PR or push" >&2
   exit 1
 fi
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo fmt --all -- --check
 git diff --check
-rg -n $'\xE2\x80\x94|\xE2\x80\x93' docs/superpowers/plans/2026-05-21-chio-live-treaty-buyer-closure-gate-cutover.md scripts/check-chio-live-treaty-buyer-closure.sh scripts/check-chiodos-live-treaty-buyer-closure.sh .github/workflows/chio-live-treaty-buyer-closure.yml .github/workflows/chiodos-live-treaty-buyer-closure.yml
+rg -n $'\xE2\x80\x94|\xE2\x80\x93' docs/superpowers/plans/2026-05-21-chio-live-treaty-buyer-closure-gate-cutover.md scripts/check-chio-live-treaty-buyer-closure.sh scripts/check-chio-live-treaty-buyer-closure.sh .github/workflows/chio-live-treaty-buyer-closure.yml .github/workflows/chio-live-treaty-buyer-closure.yml
 ```
 
 Expected: all pass, except the dash scan exits 1 with no output.

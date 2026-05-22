@@ -1,8 +1,0 @@
-{
-  "schema": "chio.pheromone.catchup-request.v1",
-  "requesterKernelId": "did:chio:buyer-kernel",
-  "responderKernelId": "did:chio:dataco",
-  "treatyId": "treaty:buyer-dataco:support-ops",
-  "afterCursor": "cursor:initial",
-  "limit": 8
-}

@@ -1,4 +1,4 @@
-# Chiodos 6.16 Tickets
+# Chio 6.16 Tickets
 
 - C6.16-001, Integrator: Create branch, planning docs, baseline SHA, ticket map, final gates, no-planning-metadata rule, and 6.17 shadow note.
 - C6.16-002, Export Contract: Add Rust types, schemas, registry entries, manifest body signing, trusted exporter parsing, duplicate rejection, and golden fixtures.

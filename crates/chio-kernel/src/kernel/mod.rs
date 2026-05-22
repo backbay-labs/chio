@@ -2577,7 +2577,7 @@ impl ChioKernel {
         };
         let Some(value) = metadata
             .get("chio_runtime")
-            .or_else(|| metadata.get("chiodos_runtime"))
+            .or_else(|| metadata.get("chio_runtime"))
             .and_then(|runtime| runtime.get("federation_treaty_dsse"))
         else {
             return Ok(None);
@@ -7265,8 +7265,8 @@ impl ChioKernel {
                 .is_some_and(|context| {
                     context.get("chioAdmission").is_some()
                         || context.get("chioTreaty").is_some()
-                        || context.get("chiodosAdmission").is_some()
-                        || context.get("chiodosTreaty").is_some()
+                        || context.get("chioAdmission").is_some()
+                        || context.get("chioTreaty").is_some()
                 })
             {
                 return RuntimeAdmissionDecision::deny(

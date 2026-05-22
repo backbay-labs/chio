@@ -1,8 +1,8 @@
-# Chiodos 7.5 - Runtime Operations Supervision And Recovery
+# Chio 7.5 - Runtime Operations Supervision And Recovery
 
 Baseline SHA: `51cb21735c7d237ccc20f005bbdb7f855adff3c9`
 
-This branch is intentionally stacked on the Chiodos 7.0-7.4 runtime work
+This branch is intentionally stacked on the Chio 7.0-7.4 runtime work
 because 7.4 is not yet merged into `main` in this workspace.
 
 Goal: harden local runtime orchestration for repeated operator use with run

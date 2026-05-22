@@ -4,7 +4,7 @@
 
 **Goal:** Move runtime proof parity validation to a Chio-named script and workflow while preserving explicit historical fixture tests.
 
-**Architecture:** The active gate must be `scripts/check-chio-runtime-proof-parity.sh`. It delegates runtime fixture, regeneration, parity, and negative coverage through Chio-owned runtime-spine validation and Chio runtime CLI tests. The only Chiodos-named package allowed inside the new gate is `chiodos-three-vendor-example`, because that package owns historical fixture generation. Legacy Chiodos proof schemas and `chio attest legacy chiodos-v1 verify` are allowed only for schema compatibility and verifier replay of those generated fixtures.
+**Architecture:** The active gate must be `scripts/check-chio-runtime-proof-parity.sh`. It delegates runtime fixture, regeneration, parity, and negative coverage through Chio-owned runtime-spine validation and Chio runtime CLI tests. The only Chio-named package allowed inside the new gate is `chio-three-vendor-example`, because that package owns historical fixture generation. Legacy Chio proof schemas and `chio attest buyer verify-proof` are allowed only for schema compatibility and verifier replay of those generated fixtures.
 
 **Tech Stack:** Bash gate scripts, GitHub Actions workflow YAML, Cargo test filters, Chio runtime-spine gate.
 
@@ -14,9 +14,9 @@
 
 **Files:**
 - Create: `scripts/check-chio-runtime-proof-parity.sh`
-- Modify: `scripts/check-chiodos-runtime-proof-parity.sh`
+- Modify: `scripts/check-chio-runtime-proof-parity.sh`
 - Create: `.github/workflows/chio-runtime-proof-parity.yml`
-- Modify: `.github/workflows/chiodos-runtime-proof-parity.yml`
+- Modify: `.github/workflows/chio-runtime-proof-parity.yml`
 
 - [x] **Step 1: Prove the Chio runtime proof parity gate is missing**
 
@@ -33,13 +33,13 @@ Expected: fail because the active Chio-named runtime proof parity gate does not 
 Run:
 
 ```bash
-if rg -n 'check-chiodos-runtime-(proof-parity|spine)|spec/schemas/chiodos|chiodos_runtime' scripts/check-chiodos-runtime-proof-parity.sh .github/workflows/chiodos-runtime-proof-parity.yml; then
-  echo "legacy runtime proof parity gate still owns Chiodos implementation" >&2
+if rg -n 'check-chio-runtime-(proof-parity|spine)|spec/schemas/chio|chio_runtime' scripts/check-chio-runtime-proof-parity.sh .github/workflows/chio-runtime-proof-parity.yml; then
+  echo "legacy runtime proof parity gate still owns Chio implementation" >&2
   exit 1
 fi
 ```
 
-Expected: fail because the old script and workflow still call Chiodos gate names, Chiodos runtime CLI filters, and Chiodos schema paths.
+Expected: fail because the old script and workflow still call Chio gate names, Chio runtime CLI filters, and Chio schema paths.
 
 ### Task 2: Add Chio-Owned Runtime Proof Parity Gate
 
@@ -79,10 +79,10 @@ Use a local `run_cargo_test_filter` helper that fails if cargo returns no nonzer
 Use Chio runtime ownership filters:
 
 ```bash
-cargo test -p chio-chiodos-runtime runtime_workflow_report
-cargo test -p chio-chiodos-runtime proof_regeneration_report
-cargo test -p chio-chiodos-runtime runtime_proof_regeneration
-cargo test -p chio-cli --bin chio chio_runtime
+cargo test -p chio-runtime-core runtime_workflow_report
+cargo test -p chio-runtime-core proof_regeneration_report
+cargo test -p chio-runtime-core runtime_proof_regeneration
+cargo test -p chio-cli --bin chio_runtime
 ```
 
 - [x] **Step 5: Preserve historical fixture compatibility tests**
@@ -90,18 +90,18 @@ cargo test -p chio-cli --bin chio chio_runtime
 Keep:
 
 ```bash
-cargo run -p chiodos-three-vendor-example --bin generate-chio-three-vendor-fixtures -- --out-dir "$tmpdir/fixtures"
-cargo run -p chio-spec-validate -- "$repo_root/spec/schemas/chiodos/v1/proof-package.schema.json" "$tmpdir/fixtures/buyer-auditor-proof-package.json"
+cargo run -p chio-three-vendor-example --bin generate-chio-three-vendor-fixtures -- --out-dir "$tmpdir/fixtures"
+cargo run -p chio-spec-validate -- "$repo_root/spec/schemas/chio-attest/v1/proof-package.schema.json" "$tmpdir/fixtures/buyer-auditor-proof-package.json"
 cargo run -p chio-spec-validate -- "$repo_root/spec/schemas/chio-federation/v1/verifier-trust-bundle.schema.json" "$tmpdir/fixtures/verifier-trust-bundle.json"
-cargo run -p chio-cli --bin chio -- attest legacy chiodos-v1 verify --package "$tmpdir/fixtures/buyer-auditor-proof-package.json" --trust-bundle "$tmpdir/fixtures/verifier-trust-bundle.json" --context "$tmpdir/fixtures/verification-context.json" --report "$tmpdir/fixtures/verifier-report-rerun.json"
+cargo run -p chio-cli --bin chio -- attest buyer verify-proof --package "$tmpdir/fixtures/buyer-auditor-proof-package.json" --trust-bundle "$tmpdir/fixtures/verifier-trust-bundle.json" --context "$tmpdir/fixtures/verification-context.json" --report "$tmpdir/fixtures/verifier-report-rerun.json"
 ```
 
-This is an explicit historical fixture exception, not active Chiodos command ownership.
+This is an explicit historical fixture exception, not active Chio command ownership.
 
 ### Task 3: Convert The Old Script To A Wrapper
 
 **Files:**
-- Modify: `scripts/check-chiodos-runtime-proof-parity.sh`
+- Modify: `scripts/check-chio-runtime-proof-parity.sh`
 
 - [x] **Step 1: Replace old implementation with delegation**
 
@@ -119,7 +119,7 @@ exec bash "$repo_root/scripts/check-chio-runtime-proof-parity.sh" "$@"
 
 **Files:**
 - Create: `.github/workflows/chio-runtime-proof-parity.yml`
-- Modify: `.github/workflows/chiodos-runtime-proof-parity.yml`
+- Modify: `.github/workflows/chio-runtime-proof-parity.yml`
 
 - [x] **Step 1: Add active Chio workflow**
 
@@ -153,7 +153,7 @@ CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-runtime-p
 Run:
 
 ```bash
-CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chiodos-runtime-proof-parity.sh --schema-only
+CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-runtime-proof-parity.sh --schema-only
 ```
 
 - [x] **Step 3: Run default workflow-equivalent gate**
@@ -170,17 +170,17 @@ Run:
 
 ```bash
 test -x scripts/check-chio-runtime-proof-parity.sh
-if rg -n 'check-chiodos-runtime-(proof-parity|spine)|spec/schemas/chiodos/v1/runtime|chiodos_runtime' scripts/check-chio-runtime-proof-parity.sh; then
-  echo "Chio runtime proof parity gate still points at Chiodos runtime implementation paths" >&2
+if rg -n 'check-chio-runtime-(proof-parity|spine)|spec/schemas/chio-runtime/v1|chio_runtime' scripts/check-chio-runtime-proof-parity.sh; then
+  echo "Chio runtime proof parity gate still points at Chio runtime implementation paths" >&2
   exit 1
 fi
-if rg -n 'pull_request:|push:' .github/workflows/chiodos-runtime-proof-parity.yml; then
+if rg -n 'pull_request:|push:' .github/workflows/chio-runtime-proof-parity.yml; then
   echo "legacy runtime proof parity workflow is still active on PR or push" >&2
   exit 1
 fi
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo fmt --all -- --check
 git diff --check
-rg -n $'\xE2\x80\x94|\xE2\x80\x93' docs/superpowers/plans/2026-05-21-chio-runtime-proof-parity-gate-cutover.md scripts/check-chio-runtime-proof-parity.sh scripts/check-chiodos-runtime-proof-parity.sh .github/workflows/chio-runtime-proof-parity.yml .github/workflows/chiodos-runtime-proof-parity.yml
+rg -n $'\xE2\x80\x94|\xE2\x80\x93' docs/superpowers/plans/2026-05-21-chio-runtime-proof-parity-gate-cutover.md scripts/check-chio-runtime-proof-parity.sh scripts/check-chio-runtime-proof-parity.sh .github/workflows/chio-runtime-proof-parity.yml .github/workflows/chio-runtime-proof-parity.yml
 ```
 
 Expected: all pass, except the dash scan exits 1 with no output.

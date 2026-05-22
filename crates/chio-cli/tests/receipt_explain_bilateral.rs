@@ -105,13 +105,13 @@ fn receipt_explain_bilateral_renders_dual_dsse_and_inspection_trace() {
     );
     let rendered = serde_json::to_string(&parsed).expect("report serializes");
     for stale in [
-        ["CHIODOS", "_BILATERAL_COSIGN_INVOCATION"].concat(),
-        ["strict ", "CHIODOS"].concat(),
-        ["spec/", "CHIODOS"].concat(),
+        ["CHIO", "_BILATERAL_COSIGN_INVOCATION"].concat(),
+        ["strict ", "CHIO"].concat(),
+        ["spec/", "CHIO"].concat(),
     ] {
         assert!(
             !rendered.contains(&stale),
-            "active receipt explain JSON must not expose stale Chiodos wording `{stale}`: {rendered}"
+            "active receipt explain JSON must not expose stale Chio wording `{stale}`: {rendered}"
         );
     }
 
@@ -357,13 +357,13 @@ fn receipt_explain_bilateral_human_renderer_marks_section6_boundary() {
         "human renderer must label the section-6 section: {stdout}"
     );
     for stale in [
-        ["CHIODOS", "_BILATERAL_COSIGN_INVOCATION"].concat(),
-        ["strict ", "CHIODOS"].concat(),
-        ["spec/", "CHIODOS"].concat(),
+        ["CHIO", "_BILATERAL_COSIGN_INVOCATION"].concat(),
+        ["strict ", "CHIO"].concat(),
+        ["spec/", "CHIO"].concat(),
     ] {
         assert!(
             !stdout.contains(&stale),
-            "active receipt explain human output must not expose stale Chiodos wording `{stale}`: {stdout}"
+            "active receipt explain human output must not expose stale Chio wording `{stale}`: {stdout}"
         );
     }
     // The human renderer labels the trace as "inspection trace" with an

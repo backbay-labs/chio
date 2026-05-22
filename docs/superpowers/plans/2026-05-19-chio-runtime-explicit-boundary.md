@@ -17,7 +17,7 @@
 
 - [x] **Step 1: Write the failing test**
 
-Add `runtime_boundary_does_not_wildcard_reexport_historical_core`, which reads `../src/lib.rs` and asserts it does not contain `pub use chio_chiodos_runtime::*`.
+Add `runtime_boundary_does_not_wildcard_reexport_historical_core`, which reads `../src/lib.rs` and asserts it does not contain `pub use chio_runtime_core::*`.
 
 - [x] **Step 2: Run test to verify it fails**
 
@@ -32,11 +32,11 @@ Expected before implementation: FAIL on the wildcard reexport assertion.
 
 - [x] **Step 1: Replace wildcard with explicit exports**
 
-Export runtime admission, runtime trust-floor, orchestration, operations, proof-regeneration, parser, serializer, validator, schema, and store APIs explicitly from `chio_chiodos_runtime`.
+Export runtime admission, runtime trust-floor, orchestration, operations, proof-regeneration, parser, serializer, validator, schema, and store APIs explicitly from `chio_runtime_core`.
 
 - [x] **Step 2: Keep Chio error alias**
 
-Keep `pub type ChioRuntimeError = chio_chiodos_runtime::ChiodosRuntimeError;` so callers have a Chio-named alias while the deep split continues.
+Keep `pub type ChioRuntimeError = chio_runtime_core::ChioRuntimeError;` so callers have a Chio-named alias while the deep split continues.
 
 - [x] **Step 3: Run focused runtime tests**
 
@@ -51,7 +51,7 @@ Expected after implementation: PASS.
 
 - [x] **Step 1: Run runtime CLI parser coverage**
 
-Run: `cargo test -p chio-cli --bin chio chiodos_runtime`
+Run: `cargo test -p chio-cli --bin chio_runtime`
 
 Expected after implementation: PASS, proving current CLI `chio_runtime::` references still compile through the explicit boundary.
 
@@ -71,13 +71,13 @@ Run:
 
 ```bash
 cargo test -p chio-runtime
-cargo test -p chio-cli --bin chio chiodos_runtime
+cargo test -p chio-cli --bin chio_runtime
 cargo clippy -p chio-runtime --all-targets -- -D warnings
 cargo clippy -p chio-cli --bin chio -- -D warnings
 cargo fmt --all -- --check
 git diff --check
 rg -n $'\xE2\x80\x94|\xE2\x80\x93' crates/chio-runtime/src/lib.rs crates/chio-runtime/tests/runtime_boundary.rs docs/architecture/CHIO_FINAL_ARCHITECTURE.md docs/superpowers/plans/2026-05-19-chio-runtime-explicit-boundary.md
-rg -n "pub use chio_chiodos_runtime::\\*" crates/chio-runtime/src/lib.rs
+rg -n "pub use chio_runtime_core::\\*" crates/chio-runtime/src/lib.rs
 ```
 
 Expected: all commands exit 0 except the dash scan exits 1 with no matches.

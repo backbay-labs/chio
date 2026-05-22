@@ -3,7 +3,7 @@
 ## Goal
 
 Ensure active `chio receipt explain bilateral` output uses Chio/treaty-bound
-wording and does not emit stale Chiodos spec paths or `strict CHIODOS`
+wording and does not emit stale Chio spec paths or `strict CHIO`
 phrasing.
 
 ## Scope
@@ -14,7 +14,7 @@ phrasing.
 
 ## Red Test
 
-- Extend the CLI integration test to reject stale Chiodos wording in the JSON
+- Extend the CLI integration test to reject stale Chio wording in the JSON
   explain report.
 - Extend the human-renderer test to reject the same stale wording in stdout.
 

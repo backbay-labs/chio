@@ -40,7 +40,7 @@ fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 protocol_doc="$repo_root/spec/PROTOCOL.md"
 
-if rg -n "historical Chiodos|Chiodos predicate|Chiodos proof verifier|Chiodos verifier|Chiodos proof" "$protocol_doc"; then
+if rg -n "historical Chio|Chio predicate|Chio proof verifier|Chio verifier|Chio proof" "$protocol_doc"; then
   echo "active Chio protocol prose must use legacy-neutral verifier wording outside literal schema ids" >&2
   exit 1
 fi
@@ -66,23 +66,23 @@ run_schema() {
 }
 
 run_runtime_admission_test() {
-  run_cargo_test_filter chio-chiodos-runtime "$1" --test runtime_admission
+  run_cargo_test_filter chio-runtime-core "$1" --test runtime_admission
 }
 
 run_runtime_treaty_test() {
-  run_cargo_test_filter chio-chiodos-runtime "$1" --test runtime_treaty
+  run_cargo_test_filter chio-runtime-core "$1" --test runtime_treaty
 }
 
 run_runtime_buyer_review_test() {
-  run_cargo_test_filter chio-chiodos-runtime "$1" --test runtime_buyer_review
+  run_cargo_test_filter chio-runtime-core "$1" --test runtime_buyer_review
 }
 
 run_runtime_kernel_hook_test() {
-  run_cargo_test_filter chio-chiodos-runtime "$1" --test runtime_kernel_hook
+  run_cargo_test_filter chio-runtime-core "$1" --test runtime_kernel_hook
 }
 
 run_runtime_store_test() {
-  run_cargo_test_filter chio-chiodos-runtime "$1" --test runtime_store
+  run_cargo_test_filter chio-runtime-core "$1" --test runtime_store
 }
 
 run_runtime_negative_matrix() {
@@ -107,18 +107,18 @@ run_dsse() {
 }
 
 run_lineage() {
-  run_cargo_test_filter chio-chiodos-runtime receipt_lineage_bundle --test runtime_buyer_review
+  run_cargo_test_filter chio-runtime-core receipt_lineage_bundle --test runtime_buyer_review
 }
 
 run_proof() {
   bash "$repo_root/scripts/check-chio-treaty-buyer-hero-loop.sh" --packet-only
-  run_cargo_test_filter chio-chiodos-runtime runtime_orchestration_evidence_binding_accepts_consistent_artifacts --test runtime_orchestration
-  run_cargo_test_filter chio-chiodos-runtime runtime_orchestration_evidence_load_rejects_manifest_artifact_hash_mismatch --test runtime_orchestration
+  run_cargo_test_filter chio-runtime-core runtime_orchestration_evidence_binding_accepts_consistent_artifacts --test runtime_orchestration
+  run_cargo_test_filter chio-runtime-core runtime_orchestration_evidence_load_rejects_manifest_artifact_hash_mismatch --test runtime_orchestration
 }
 
 run_buyer() {
   bash "$repo_root/scripts/check-chio-treaty-buyer-hero-loop.sh" --packet-only
-  run_cargo_test_filter chio-chiodos-runtime buyer_review --test runtime_buyer_review
+  run_cargo_test_filter chio-runtime-core buyer_review --test runtime_buyer_review
   run_cargo_test_filter chio-cli chio_attest_buyer --bin chio
 }
 

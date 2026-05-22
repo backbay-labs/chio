@@ -2,7 +2,7 @@
 
 ## Goal
 
-Prevent active Chio schema files from exposing stale Chiodos wording in
+Prevent active Chio schema files from exposing stale Chio wording in
 titles, descriptions, or other schema text.
 
 ## Scope
@@ -17,7 +17,7 @@ titles, descriptions, or other schema text.
 - Extend `scripts/check-chio-schema-registry.sh` with an active Chio schema text
   hygiene scan that includes `spec/schemas/chio-wire/`.
 - The gate should fail on the current bilateral signature-slice description
-  because it still says `CHIODOS`.
+  because it still says `CHIO`.
 
 ## Implementation
 

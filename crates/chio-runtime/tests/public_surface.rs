@@ -1,14 +1,14 @@
 #[test]
-fn chio_runtime_facade_does_not_export_legacy_chiodos_schema_constants() {
+fn chio_runtime_facade_does_not_export_legacy_chio_schema_constants() {
     let lib = include_str!("../src/lib.rs");
     let legacy_exports = lib
         .lines()
-        .filter(|line| line.contains("CHIODOS_") && line.contains("_SCHEMA"))
+        .filter(|line| line.contains("CHIO_") && line.contains("_SCHEMA"))
         .collect::<Vec<_>>();
 
     assert!(
         legacy_exports.is_empty(),
-        "chio-runtime public facade must not export legacy Chiodos schema constants: {legacy_exports:#?}"
+        "chio-runtime public facade must not export legacy Chio schema constants: {legacy_exports:#?}"
     );
 }
 
@@ -18,7 +18,7 @@ fn chio_runtime_schema_constants_are_owned_locally() {
     let schema_reexports = lib
         .lines()
         .filter(|line| {
-            line.contains("pub const CHIO_RUNTIME_") && line.contains("chio_chiodos_runtime::")
+            line.contains("pub const CHIO_RUNTIME_") && line.contains("chio_runtime_core::")
         })
         .collect::<Vec<_>>();
 

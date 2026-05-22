@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:test-driven-development and superpowers:verification-before-completion. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move the active Chio treaty-bound provenance negative corpus off `chio.chiodos.*` and onto a Chio federation schema ID.
+**Goal:** Move the active Chio treaty-bound provenance negative corpus off `Chio-native schema IDs` and onto a Chio federation schema ID.
 
-**Architecture:** Mutable active gate fixtures must use Chio-native schema IDs. Legacy `chio.chiodos.*` treaty corpus schemas remain read-compatible only for historical artifacts.
+**Architecture:** Mutable active gate fixtures must use Chio-native schema IDs. Legacy `Chio-native schema IDs` treaty corpus schemas remain read-compatible only for historical artifacts.
 
 **Tech Stack:** JSON Schema, `spec/schemas/registry.json`, `spec/schemas/MANIFEST.sha256`, Bash gate scripts, `chio-spec-validate`.
 
@@ -21,7 +21,7 @@
 Run:
 
 ```bash
-if rg -n 'chio\.chiodos\.treaty-negative-fixture-corpus|legacy_schema_dir=.*/chiodos|legacy_schema_dir/.*/treaty-negative-fixture-corpus' scripts/check-chio-treaty-bound-provenance.sh; then
+if rg -n 'chio\.chio\.treaty-negative-fixture-corpus|legacy_schema_dir=.*/chio|legacy_schema_dir/.*/treaty-negative-fixture-corpus' scripts/check-chio-treaty-bound-provenance.sh; then
   echo "active Chio treaty gate still depends on the legacy treaty negative corpus schema" >&2
   exit 1
 fi
@@ -60,7 +60,7 @@ Add an active `chio_federation_treaty_negative_fixture_corpus` registry entry an
 
 - [x] **Step 3: Preserve legacy read compatibility**
 
-Do not delete the existing `spec/schemas/chiodos/v1/treaty-negative-fixture-corpus.schema.json` entry.
+Do not delete the existing `spec/schemas/chio-federation/v1/treaty-negative-fixture-corpus.schema.json` entry.
 
 ### Task 3: Cut The Active Treaty Gate To Chio Federation
 
@@ -96,7 +96,7 @@ Run:
 ```bash
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-schema-registry.sh
 bash -n scripts/check-chio-treaty-bound-provenance.sh
-if rg -n 'chio\.chiodos\.treaty-negative-fixture-corpus|legacy_schema_dir=.*/chiodos|legacy_schema_dir/.*/treaty-negative-fixture-corpus' scripts/check-chio-treaty-bound-provenance.sh; then
+if rg -n 'chio\.chio\.treaty-negative-fixture-corpus|legacy_schema_dir=.*/chio|legacy_schema_dir/.*/treaty-negative-fixture-corpus' scripts/check-chio-treaty-bound-provenance.sh; then
   echo "active Chio treaty gate still depends on the legacy treaty negative corpus schema" >&2
   exit 1
 fi

@@ -19,7 +19,7 @@ parsers before constructing the verified resolver.
 ### Task 1: Three Vendor Workflow Resolver Boundary
 
 **Files:**
-- Modify: `examples/chiodos-3vendor/src/main.rs`
+- Modify: `examples/chio-3vendor/src/main.rs`
 - Modify: `docs/architecture/CHIO_FINAL_ARCHITECTURE.md`
 
 - [x] **Step 1: Capture failing gate**

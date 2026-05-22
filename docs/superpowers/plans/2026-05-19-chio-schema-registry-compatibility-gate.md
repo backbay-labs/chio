@@ -3,11 +3,11 @@
 ## Objective
 
 Make the schema registry enforce the final architecture boundary for legacy
-Chiodos artifacts:
+Chio artifacts:
 
-- Active Chio schemas must not use `chiodos_*` artifact kinds.
-- Entries pointing at `spec/schemas/chiodos/` are compatibility-only and must
-  be marked `deprecated-read-compatible`.
+- Active Chio schemas must not use `chio_*` artifact kinds.
+- Entries pointing at `spec/schemas/chio/` are compatibility-only and must
+  be marked `retired`.
 - This must not rewrite historical schema files, signed schema IDs, or
   compatibility verifier semantics.
 
@@ -16,8 +16,8 @@ Chiodos artifacts:
 1. Add `scripts/check-chio-schema-registry.sh` as the failing regression gate.
 2. Run it red against the current registry to prove missing compatibility
    metadata is detected.
-3. Add `status: deprecated-read-compatible` to every legacy registry entry
-   whose `schemaFile` lives under `spec/schemas/chiodos/`.
+3. Add `status: retired` to every legacy registry entry
+   whose `schemaFile` lives under `spec/schemas/chio/`.
 4. Run the new gate, existing focused schema gates, and hygiene checks.
 
 ## Verification

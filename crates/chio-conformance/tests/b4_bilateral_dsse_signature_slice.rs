@@ -176,7 +176,7 @@ fn signature_slice_verifier_accepts_freshly_signed_envelope() {
 }
 
 #[test]
-fn emitted_predicate_is_explicit_signature_slice_not_chiodos_invocation_schema() {
+fn emitted_predicate_is_explicit_signature_slice_not_chio_invocation_schema() {
     let kp_a = Keypair::generate();
     let kp_b = Keypair::generate();
     let receipt = sample_receipt(&kp_b);
@@ -215,7 +215,7 @@ fn emitted_predicate_is_explicit_signature_slice_not_chiodos_invocation_schema()
     );
     assert!(
         predicate_json.get("tool_args_hash").is_none(),
-        "missing strict-schema tool_args_hash is why this profile is not CHIODOS invocation conformance"
+        "missing strict-schema tool_args_hash is why this profile is not CHIO invocation conformance"
     );
 }
 

@@ -12,8 +12,8 @@ CONTEXT_FIXTURE="$ROOT/examples/chio-3vendor/fixtures/verification-context.json"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-cargo test -p chio-chiodos-authority
-cargo run -p chiodos-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
+cargo test -p chio-federation-authority
+cargo run -p chio-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
   --authority-input-dir "$tmpdir/input"
 
 validate_schema() {
@@ -107,7 +107,7 @@ if "workflow.aggregate_publish" not in {
 print("OK Chio federation authority issuance artifacts")
 PY
 
-cargo run -p chio-cli -- attest legacy chiodos-v1 verify \
+cargo run -p chio-cli -- attest buyer verify-proof \
   --package "$PACKAGE_FIXTURE" \
   --trust-bundle "$tmpdir/verifier-trust-bundle.json" \
   --context "$tmpdir/issued/verification-context.json" \

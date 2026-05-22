@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Keep the active Chio pheromone relay runbook free of Chiodos-named
+**Goal:** Keep the active Chio pheromone relay runbook free of Chio-named
 public-doc wording.
 
 **Architecture:** The active runbook should teach Chio operator commands only.
@@ -23,7 +23,7 @@ operator runbook.
 - [ ] **Step 1: Add failing gate**
 
 Add a grep check in `scripts/check-chio-pheromone-relay.sh` that rejects
-`Chiodos`, `CHIODOS`, or `chiodos` in
+`Chio`, `CHIO`, or `chio` in
 `docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md`.
 
 - [ ] **Step 2: Run red**

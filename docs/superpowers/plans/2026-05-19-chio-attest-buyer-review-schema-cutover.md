@@ -7,7 +7,7 @@ Move the buyer attestation full review boundary to Chio-native attest schema IDs
 - `chio.attest.buyer-attestation-review-package.v1`
 - `chio.attest.buyer-attestation-review-report.v1`
 
-Historical `chio.chiodos.*` buyer review packages remain read-compatible for
+Historical `Chio-native schema IDs` buyer review packages remain read-compatible for
 already signed artifacts, but new package/report emitters use the Chio IDs.
 
 ## Plan
@@ -27,11 +27,11 @@ already signed artifacts, but new package/report emitters use the Chio IDs.
 - [x] `cargo test -p chio-attest-buyer chio_buyer_review_package_schema --test buyer_review` fails before implementation.
 - [x] `cargo test -p chio-attest-buyer chio_buyer_review_package_schema --test buyer_review`
 - [x] `cargo test -p chio-attest-buyer`
-- [x] `cargo test -p chio-chiodos-runtime --test runtime_buyer_review`
+- [x] `cargo test -p chio-runtime-core --test runtime_buyer_review`
 - [x] `cargo test -p chio-cli chio_attest_buyer --bin chio`
 - [x] `bash scripts/check-chio-schema-registry.sh`
 - [x] `cargo clippy -p chio-attest-buyer --all-targets -- -D warnings`
-- [x] `cargo clippy -p chio-chiodos-runtime --all-targets -- -D warnings`
+- [x] `cargo clippy -p chio-runtime-core --all-targets -- -D warnings`
 - [x] `cargo clippy -p chio-cli --bin chio -- -D warnings`
 - [x] `cargo fmt --all -- --check`
 - [x] `git diff --check`

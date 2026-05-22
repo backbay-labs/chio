@@ -135,23 +135,6 @@ mod cli_env_tests {
     }
 
     #[test]
-    fn legacy_chiodos_cli_env_requires_explicit_truthy_value() {
-        let _guard = env_lock();
-        let prior = std::env::var_os(LEGACY_CHIODOS_CLI_ENV);
-
-        std::env::remove_var(LEGACY_CHIODOS_CLI_ENV);
-        assert!(!legacy_chiodos_cli_enabled());
-        std::env::set_var(LEGACY_CHIODOS_CLI_ENV, "0");
-        assert!(!legacy_chiodos_cli_enabled());
-        std::env::set_var(LEGACY_CHIODOS_CLI_ENV, "1");
-        assert!(legacy_chiodos_cli_enabled());
-        std::env::set_var(LEGACY_CHIODOS_CLI_ENV, "true");
-        assert!(legacy_chiodos_cli_enabled());
-
-        restore_env(LEGACY_CHIODOS_CLI_ENV, prior);
-    }
-
-    #[test]
     fn mcp_serve_http_reads_documented_token_env_vars() {
         let _guard = env_lock();
         let prior_auth = std::env::var_os("CHIO_AUTH_TOKEN");
@@ -260,7 +243,7 @@ mod cli_env_tests {
     #[test]
     fn explain_help_text_uses_chio_named_dsse_conformance_wording() {
         let source = include_str!("types.rs");
-        let stale_uppercase_phrase = ["strict ", "CHIODOS"].concat();
+        let stale_uppercase_phrase = ["strict ", "CHIO"].concat();
 
         assert!(
             !source.contains(&stale_uppercase_phrase),
@@ -401,13 +384,6 @@ enum Commands {
     Pheromone {
         #[command(subcommand)]
         command: ChioPheromoneCommands,
-    },
-
-    /// Compatibility surface for legacy Chiodos command paths.
-    #[command(hide = true)]
-    Chiodos {
-        #[command(subcommand)]
-        command: ChiodosCommands,
     },
 
     /// Re-evaluate a captured receipt log against the current build.
@@ -594,11 +570,6 @@ enum ChioAttestCommands {
         command: ChioRuntimeQuoteCommands,
     },
 
-    /// Explicit read-only verification for historical artifact families.
-    Legacy {
-        #[command(subcommand)]
-        command: ChioAttestLegacyCommands,
-    },
 }
 
 #[derive(Subcommand)]
@@ -629,6 +600,25 @@ enum ChioBuyerCommands {
         context: PathBuf,
 
         /// Output path for buyer attestation review report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Verify a Chio attest proof package directly.
+    VerifyProof {
+        /// Chio attest proof package JSON.
+        #[arg(long = "package", value_name = "PATH")]
+        package: PathBuf,
+
+        /// Verifier-owned trust bundle JSON.
+        #[arg(long = "trust-bundle", value_name = "PATH")]
+        trust_bundle: PathBuf,
+
+        /// Verifier context JSON.
+        #[arg(long, value_name = "PATH")]
+        context: PathBuf,
+
+        /// Output path for verifier report JSON.
         #[arg(long, value_name = "PATH")]
         report: PathBuf,
     },
@@ -737,37 +727,6 @@ enum ChioRuntimeQuoteCommands {
         /// Optional output path for a verification report. Defaults to stdout.
         #[arg(long, value_name = "PATH")]
         report: Option<PathBuf>,
-    },
-}
-
-#[derive(Subcommand)]
-enum ChioAttestLegacyCommands {
-    /// Historical Chiodos v1 signed-artifact verification.
-    ChiodosV1 {
-        #[command(subcommand)]
-        command: ChioAttestLegacyChiodosV1Commands,
-    },
-}
-
-#[derive(Subcommand)]
-enum ChioAttestLegacyChiodosV1Commands {
-    /// Verify a historical Chiodos proof package without rewriting signed bytes.
-    Verify {
-        /// Path to the proof package JSON.
-        #[arg(long, value_name = "PATH")]
-        package: PathBuf,
-
-        /// Path to the verifier-owned trust bundle JSON.
-        #[arg(long, value_name = "PATH")]
-        trust_bundle: PathBuf,
-
-        /// Path to the verifier context JSON.
-        #[arg(long, value_name = "PATH")]
-        context: PathBuf,
-
-        /// Path where verifier report JSON should be written.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
     },
 }
 

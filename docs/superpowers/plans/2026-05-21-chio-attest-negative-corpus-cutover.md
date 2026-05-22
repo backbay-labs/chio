@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move the active Chio buyer proof negative fixture corpus off the historical Chiodos schema ID without rewriting signed proof artifacts.
+**Goal:** Move the active Chio buyer proof negative fixture corpus off the historical Chio schema ID without rewriting signed proof artifacts.
 
 **Architecture:** The active `examples/chio-3vendor` negative corpus is mutable test policy material, not byte-preserving signed history. It should validate against a Chio attest schema and use Chio-native names, while historical proof packages and verifier reports remain readable only through explicit legacy verification.
 
@@ -17,7 +17,7 @@
 
 - [ ] **Step 1: Add the failing gate**
 
-Create a shell gate that scans `examples/chio-3vendor/fixtures/negative-cases.json` for `chio.chiodos`, `chiodos_`, and `chiodos:` and validates it against `spec/schemas/chio-attest/v1/buyer-proof-negative-fixture-corpus.schema.json`.
+Create a shell gate that scans `examples/chio-3vendor/fixtures/negative-cases.json` for `retired-schema-id`, `chio_`, and `chio:` and validates it against `spec/schemas/chio-attest/v1/buyer-proof-negative-fixture-corpus.schema.json`.
 
 - [ ] **Step 2: Verify red**
 
@@ -27,7 +27,7 @@ Run:
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-attest-buyer-fixtures.sh
 ```
 
-Expected: fail because the active fixture still uses `chio.chiodos.negative-fixture-corpus.v1`.
+Expected: fail because the active fixture still uses `chio.attest.buyer-proof-negative-fixture-corpus.v1`.
 
 ### Task 2: Cut Active Negative Corpus To Chio
 
@@ -43,7 +43,7 @@ Define `chio.attest.buyer-proof-negative-fixture-corpus.v1` with required `schem
 
 - [ ] **Step 2: Convert fixture**
 
-Change the fixture schema ID to `chio.attest.buyer-proof-negative-fixture-corpus.v1` and replace active Chiodos consistency/workflow strings with Chio equivalents.
+Change the fixture schema ID to `chio.attest.buyer-proof-negative-fixture-corpus.v1` and replace active Chio consistency/workflow strings with Chio equivalents.
 
 - [ ] **Step 3: Register and manifest**
 

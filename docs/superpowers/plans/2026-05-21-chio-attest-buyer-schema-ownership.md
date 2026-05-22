@@ -17,7 +17,7 @@
 
 - [x] **Step 1: Assert Chio schema constants are not runtime aliases**
 
-Add a test that scans `../src/lib.rs` and fails when a public schema constant is initialized from `chio_chiodos_runtime::`.
+Add a test that scans `../src/lib.rs` and fails when a public schema constant is initialized from `chio_runtime_core::`.
 
 - [x] **Step 2: Run the focused test and verify red**
 
@@ -27,7 +27,7 @@ Run:
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo test -p chio-attest-buyer --test public_surface chio_attest_buyer_schema_constants_are_owned_locally -- --nocapture
 ```
 
-Expected: fail before implementation with lines showing `chio_chiodos_runtime::CHIO_*_SCHEMA`.
+Expected: fail before implementation with lines showing `chio_runtime_core::CHIO_*_SCHEMA`.
 
 ### Task 2: Move Public Constants To Chio Attest Buyer
 
@@ -40,7 +40,7 @@ Define the public `CHIO_ATTEST_BUYER_*` and `CHIO_FEDERATION_*` constants as str
 
 - [x] **Step 2: Keep historical verifier delegation unchanged**
 
-Do not remove the `chio-chiodos-runtime` dependency in this slice; strict DSSE and full-review replay still delegate to the historical verifier core.
+Do not remove the `chio-runtime-core` dependency in this slice; strict DSSE and full-review replay still delegate to the historical verifier core.
 
 ### Task 3: Verify
 
@@ -64,7 +64,7 @@ Run:
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo fmt --all -- --check
 git diff --check
 git diff --cached --check
-rg -n 'pub const CHIO_[A-Z0-9_]+_SCHEMA: &str =\s*chio_chiodos_runtime::' crates/chio-attest-buyer/src/lib.rs
+rg -n 'pub const CHIO_[A-Z0-9_]+_SCHEMA: &str =\s*chio_runtime_core::' crates/chio-attest-buyer/src/lib.rs
 rg -n $'\xE2\x80\x94|\xE2\x80\x93' docs/superpowers/plans/2026-05-21-chio-attest-buyer-schema-ownership.md crates/chio-attest-buyer/src/lib.rs crates/chio-attest-buyer/tests/public_surface.rs
 ```
 

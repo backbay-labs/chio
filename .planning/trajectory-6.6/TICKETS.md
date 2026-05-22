@@ -1,4 +1,4 @@
-# Chiodos 6.6 Tickets
+# Chio 6.6 Tickets
 
 ## C6.6-001 Integrator
 
@@ -11,7 +11,7 @@ Acceptance:
 - Branch starts from `main@82d090edd254b1f11247e5a146f31f832dcafc79`.
 - Planning docs record baseline, scope, tickets, final gates, and the
   no-planning-metadata rule.
-- Chiodos 6.7 shadow planning tracks live pheromone runtime and workflow
+- Chio 6.7 shadow planning tracks live pheromone runtime and workflow
   context consumption.
 
 ## C6.6-002 Spec Contract
@@ -37,7 +37,7 @@ and fixture helpers.
 
 Acceptance:
 
-- The crate has no dependency on reputation, Chiodos verifier, settlement, or
+- The crate has no dependency on reputation, Chio verifier, settlement, or
   live federation transport.
 - Signed deposits verify against canonical JSON of the body.
 - In-memory storage rejects invalid deposits before storing them.
@@ -104,17 +104,17 @@ then wire the new gate script and CI path triggers.
 
 Acceptance:
 
-- `scripts/check-chiodos-pheromone-transit.sh` supports default,
+- `scripts/check-chio-pheromone-transit.sh` supports default,
   `--schema-only`, and `--negative-only` modes.
 - CI runs the pheromone gate for pheromone crate, federation gossip, schemas,
   fixtures, docs, and script changes.
 
 ## C6.6-010 Integrator
 
-Open the PR, address all review threads, merge to `main`, and rerun Chiodos
+Open the PR, address all review threads, merge to `main`, and rerun Chio
 gates on `main`.
 
 Acceptance:
 
 - PR review threads are queried and resolved before merge.
-- Final Chiodos pheromone, authority, and proof-package gates pass on `main`.
+- Final Chio pheromone, authority, and proof-package gates pass on `main`.

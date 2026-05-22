@@ -20,7 +20,7 @@ runtime admission dispatch.
 **Files:**
 - Modify: `crates/chio-runtime/tests/runtime_boundary.rs`
 - Modify: `crates/chio-runtime/src/lib.rs`
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/runtime/admission.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/runtime/admission.rs`
 - Modify: `docs/architecture/CHIO_FINAL_ARCHITECTURE.md`
 
 - [x] **Step 1: Add failing public-surface test**

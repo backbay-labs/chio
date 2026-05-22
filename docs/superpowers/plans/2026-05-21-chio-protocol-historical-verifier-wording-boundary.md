@@ -2,12 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Keep active Chio protocol prose free of stale Chiodos verifier
+**Goal:** Keep active Chio protocol prose free of stale Chio verifier
 wording while preserving literal deprecated schema IDs required for historical
 verification.
 
 **Architecture:** `spec/PROTOCOL.md` is an active Chio protocol document. It may
-name deprecated wire IDs such as `chio.chiodos.proof-package.v1`, but live
+name deprecated wire IDs such as `chio.attest.proof-package.v1`, but live
 assurance prose should use legacy-neutral verifier wording.
 
 **Tech Stack:** Bash gate script, Markdown protocol spec, focused `rg` drift
@@ -25,7 +25,7 @@ checks.
 - [ ] **Step 1: Add failing gate**
 
 Add a focused drift check in
-`scripts/check-chio-live-treaty-buyer-closure.sh` that rejects stale Chiodos
+`scripts/check-chio-live-treaty-buyer-closure.sh` that rejects stale Chio
 verifier wording in `spec/PROTOCOL.md` without rejecting literal schema IDs.
 
 - [ ] **Step 2: Run red**

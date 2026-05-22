@@ -8,14 +8,14 @@ Move the live federation treaty path to Chio-native schema IDs:
 - `chio.federation.ladder-intersection.v1`
 - `chio.federation.cross-boundary-admission-report.v1`
 
-Historical `chio.chiodos.*` treaty artifacts remain read-compatible. New
+Historical `Chio-native schema IDs` treaty artifacts remain read-compatible. New
 computed ladder intersections and admission reports must use the Chio IDs.
 
 ## Plan
 
 1. Add failing treaty tests for Chio-native treaty input and Chio-native
    intersection/admission output.
-2. Add Chio federation schema constants while keeping Chiodos constants for
+2. Add Chio federation schema constants while keeping Chio constants for
    compatibility.
 3. Update treaty validators to accept legacy or Chio schema IDs, and update
    emitters to write Chio IDs.
@@ -24,12 +24,12 @@ computed ladder intersections and admission reports must use the Chio IDs.
 
 ## Verification
 
-- [x] `cargo test -p chio-chiodos-runtime chio_federation_treaty_schema --test runtime_treaty`
+- [x] `cargo test -p chio-runtime-core chio_federation_treaty_schema --test runtime_treaty`
       fails before implementation.
-- [x] `cargo test -p chio-chiodos-runtime chio_federation_treaty_schema --test runtime_treaty`
-- [x] `cargo test -p chio-chiodos-runtime --test runtime_treaty`
+- [x] `cargo test -p chio-runtime-core chio_federation_treaty_schema --test runtime_treaty`
+- [x] `cargo test -p chio-runtime-core --test runtime_treaty`
 - [x] `bash scripts/check-chio-schema-registry.sh`
-- [x] `cargo clippy -p chio-chiodos-runtime --all-targets -- -D warnings`
+- [x] `cargo clippy -p chio-runtime-core --all-targets -- -D warnings`
 - [x] `cargo fmt --all -- --check`
 - [x] `git diff --check`
 - [x] Unicode dash scan over changed files.

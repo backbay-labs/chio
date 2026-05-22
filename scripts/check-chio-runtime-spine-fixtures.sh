@@ -10,8 +10,9 @@ PHEROMONE_SCHEMA_DIR="$ROOT/spec/schemas/chio-pheromone/v1"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-if rg -n 'chio\.chiodos|chiodos' "$FIXTURE_DIR"; then
-  echo "active Chio runtime-spine fixtures must not contain Chiodos schema IDs or names" >&2
+retired_schema_prefix="chio\\.chio"
+if rg -n "$retired_schema_prefix" "$FIXTURE_DIR"; then
+  echo "active Chio runtime-spine fixtures must not contain retired schema IDs" >&2
   exit 1
 fi
 

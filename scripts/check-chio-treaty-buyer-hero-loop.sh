@@ -26,7 +26,6 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHIO_RUNTIME_SCHEMA_DIR="$repo_root/spec/schemas/chio-runtime/v1"
 CHIO_ATTEST_SCHEMA_DIR="$repo_root/spec/schemas/chio-attest/v1"
 CHIO_FEDERATION_SCHEMA_DIR="$repo_root/spec/schemas/chio-federation/v1"
-LEGACY_SCHEMA_DIR="$repo_root/spec/schemas/chiodos/v1"
 RUNTIME_FIXTURE_DIR="$repo_root/examples/chio-3vendor/fixtures/runtime-spine"
 NEGATIVE_FIXTURE="$repo_root/examples/chio-3vendor/fixtures/treaty-runtime-negative-corpus.json"
 LOOPBACK_NOW_UNIX_MS="${CHIO_LOOPBACK_NOW_UNIX_MS:-1766000001000}"
@@ -67,8 +66,6 @@ with open(path, "r", encoding="utf-8") as fh:
     scenario = json.load(fh)
 
 # The source fixture stays Chio-native. These executable arguments are temp-only
-# compatibility material until proof parity no longer compares against the old
-# signed proof package's workflow argument bytes.
 steps = [
     (
         "did:chio:vendor-a",
@@ -78,7 +75,7 @@ steps = [
         {
             "caseRef": "refund-250",
             "tool": "read_refund_case",
-            "workflowId": "wf-chiodos-refund-001",
+            "workflowId": "wf-chio-refund-001",
         },
     ),
     (
@@ -89,7 +86,7 @@ steps = [
         {
             "caseRef": "refund-250",
             "tool": "verify_customer",
-            "workflowId": "wf-chiodos-refund-001",
+            "workflowId": "wf-chio-refund-001",
         },
     ),
     (
@@ -100,7 +97,7 @@ steps = [
         {
             "caseRef": "refund-250",
             "tool": "stage_refund",
-            "workflowId": "wf-chiodos-refund-001",
+            "workflowId": "wf-chio-refund-001",
         },
     ),
 ]
@@ -157,9 +154,9 @@ validate_runtime_loopback_outputs() {
     "$out_dir/workflow-run-report.json"
   validate_schema "$CHIO_ATTEST_SCHEMA_DIR/buyer-attestation-packet.schema.json" \
     "$out_dir/buyer-attestation-packet.json"
-  validate_schema "$LEGACY_SCHEMA_DIR/proof-package.schema.json" \
+  validate_schema "$CHIO_ATTEST_SCHEMA_DIR/proof-package.schema.json" \
     "$out_dir/proof-package.json"
-  validate_schema "$LEGACY_SCHEMA_DIR/verifier-report.schema.json" \
+  validate_schema "$CHIO_ATTEST_SCHEMA_DIR/verifier-report.schema.json" \
     "$out_dir/verifier-report.json"
   validate_schema "$CHIO_RUNTIME_SCHEMA_DIR/proof-regeneration-report.schema.json" \
     "$out_dir/proof-regeneration-report.json"
@@ -295,12 +292,12 @@ PY
 
 run_buyer_review() {
   local out_dir="$1"
-  run_chio attest legacy chiodos-v1 verify \
+  run_chio attest buyer verify-proof \
     --package "$out_dir/proof-package.json" \
     --trust-bundle "$out_dir/verifier-trust-bundle.json" \
     --context "$out_dir/verification-context.json" \
     --report "$out_dir/verifier-report-rerun.json"
-  validate_schema "$LEGACY_SCHEMA_DIR/verifier-report.schema.json" \
+  validate_schema "$CHIO_ATTEST_SCHEMA_DIR/verifier-report.schema.json" \
     "$out_dir/verifier-report-rerun.json"
   run_chio attest buyer packet \
     --run-output "$out_dir" \
@@ -340,10 +337,10 @@ run_runtime_loopback_with_artifacts() {
 }
 
 run_strict_dsse_negative_tests() {
-  cargo test -p chio-chiodos-runtime buyer_review_package_rejects_missing_strict_dsse_envelope --test runtime_buyer_review
-  cargo test -p chio-chiodos-runtime buyer_review_package_rejects_non_strict_dsse_envelope --test runtime_buyer_review
-  cargo test -p chio-chiodos-runtime buyer_review_package_rejects_tampered_strict_dsse_signature_when_peer_keys_available --test runtime_buyer_review
-  cargo test -p chio-federation strict_chiodos_treaty_review_binds_live_material --lib
+  cargo test -p chio-runtime-core buyer_review_package_rejects_missing_strict_dsse_envelope --test runtime_buyer_review
+  cargo test -p chio-runtime-core buyer_review_package_rejects_non_strict_dsse_envelope --test runtime_buyer_review
+  cargo test -p chio-runtime-core buyer_review_package_rejects_tampered_strict_dsse_signature_when_peer_keys_available --test runtime_buyer_review
+  cargo test -p chio-federation strict_chio_treaty_review_binds_live_material --lib
 }
 
 if [[ "$MODE" == "schema-only" ]]; then
@@ -378,13 +375,13 @@ fi
 if [[ "$MODE" == "negative-only" ]]; then
   run_runtime_loopback_with_artifacts
   run_strict_dsse_negative_tests
-  cargo test -p chio-chiodos-runtime buyer_review --test runtime_buyer_review
+  cargo test -p chio-runtime-core buyer_review --test runtime_buyer_review
   exit 0
 fi
 
 if [[ "$MODE" == "runtime-only" ]]; then
-  cargo test -p chio-chiodos-runtime buyer_review --test runtime_buyer_review
-  cargo test -p chio-chiodos-runtime receipt_lineage_bundle --test runtime_buyer_review
+  cargo test -p chio-runtime-core buyer_review --test runtime_buyer_review
+  cargo test -p chio-runtime-core receipt_lineage_bundle --test runtime_buyer_review
   exit 0
 fi
 

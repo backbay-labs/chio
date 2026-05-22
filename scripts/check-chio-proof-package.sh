@@ -25,6 +25,7 @@ fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$repo_root/target}"
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
 
 fixture_dir="$repo_root/examples/chio-3vendor/fixtures"
 proof_fixture="$fixture_dir/selective-disclosure-proof.json"
@@ -33,7 +34,7 @@ trust_bundle_fixture="$fixture_dir/verifier-trust-bundle.json"
 context_fixture="$fixture_dir/verification-context.json"
 report_fixture="$fixture_dir/verifier-report.json"
 negative_cases_fixture="$fixture_dir/negative-cases.json"
-legacy_schema_dir="$repo_root/spec/schemas/chiodos/v1"
+attest_proof_schema_dir="$repo_root/spec/schemas/chio-attest/v1"
 federation_schema_dir="$repo_root/spec/schemas/chio-federation/v1"
 attest_schema_dir="$repo_root/spec/schemas/chio-attest/v1"
 schema_registry="$repo_root/spec/schemas/registry.json"
@@ -76,7 +77,7 @@ run_cargo_test_filter() {
 
 python3 - "$proof_fixture" "$package_fixture" "$trust_bundle_fixture" \
   "$context_fixture" "$report_fixture" "$negative_cases_fixture" \
-  "$legacy_schema_dir" "$federation_schema_dir" "$attest_schema_dir" \
+  "$attest_proof_schema_dir" "$federation_schema_dir" "$attest_schema_dir" \
   "$schema_registry" <<'PY'
 import base64
 import json
@@ -90,7 +91,7 @@ import sys
     context_fixture,
     report_fixture,
     negative_cases_fixture,
-    legacy_schema_dir,
+    attest_proof_schema_dir,
     federation_schema_dir,
     attest_schema_dir,
     schema_registry,
@@ -111,7 +112,7 @@ with open(negative_cases_fixture, "r", encoding="utf-8") as handle:
 with open(schema_registry, "r", encoding="utf-8") as handle:
     registry = json.load(handle)
 
-if proof.get("schema") != "chio.selective-disclosure-proof.v1":
+if proof.get("schema") != "chio.attest.selective-disclosure-proof.v1":
     raise SystemExit("Chio BBS fixture does not use the real proof schema")
 if str(proof.get("schema", "")).endswith(".stub"):
     raise SystemExit("Chio BBS fixture must not use the legacy stub schema")
@@ -123,13 +124,13 @@ if len(proof.get("disclosed", [])) != len(proof.get("disclosed_indices", [])):
     raise SystemExit("Chio BBS fixture disclosed messages and indices disagree")
 if len(set(proof.get("disclosed_indices", []))) != len(proof.get("disclosed_indices", [])):
     raise SystemExit("Chio BBS fixture disclosed indices must be unique")
-if package.get("schema") != "chio.chiodos.proof-package.v1":
+if package.get("schema") != "chio.attest.proof-package.v1":
     raise SystemExit("Chio proof package uses the wrong legacy proof schema")
 if trust_bundle.get("schema") != "chio.federation.verifier-trust-bundle.v1":
     raise SystemExit("Chio verifier trust bundle uses the wrong schema")
 if context.get("schema") != "chio.federation.verification-context.v1":
     raise SystemExit("Chio verification context uses the wrong schema")
-if report.get("schema") != "chio.chiodos.verifier-report.v2":
+if report.get("schema") != "chio.attest.verifier-report.v2":
     raise SystemExit("Chio verifier report uses the wrong legacy report schema")
 if not report.get("accepted"):
     raise SystemExit("Chio verifier report is not accepted")
@@ -180,7 +181,7 @@ if "signerKey" not in revocation or "signature" not in revocation:
     raise SystemExit("Revocation checkpoint must be signed")
 
 workflow_intersection = package.get("workflowIntersection", {})
-if workflow_intersection.get("schema") != "chio.chiodos-workflow-intersection.v1":
+if workflow_intersection.get("schema") != "chio.attest.workflow-intersection.v1":
     raise SystemExit("Chio package must carry the legacy workflow intersection proof schema")
 if workflow_intersection.get("workflowId") != package.get("workflowId"):
     raise SystemExit("Workflow intersection workflow id must match package")
@@ -260,11 +261,11 @@ if len(negative_cases.get("cases", [])) < 14:
     raise SystemExit("Chio negative corpus must cover verifier trust, context, and package mutations")
 
 expected_schemas = {
-    pathlib.Path(legacy_schema_dir): {
-        "proof-package.schema.json": "chio.chiodos.proof-package.v1",
-        "verifier-report.schema.json": "chio.chiodos.verifier-report.v2",
-        "workflow-intersection.schema.json": "chio.chiodos-workflow-intersection.v1",
-        "selective-disclosure-proof.schema.json": "chio.selective-disclosure-proof.v1",
+    pathlib.Path(attest_proof_schema_dir): {
+        "proof-package.schema.json": "chio.attest.proof-package.v1",
+        "verifier-report.schema.json": "chio.attest.verifier-report.v2",
+        "workflow-intersection.schema.json": "chio.attest.workflow-intersection.v1",
+        "selective-disclosure-proof.schema.json": "chio.attest.selective-disclosure-proof.v1",
     },
     pathlib.Path(federation_schema_dir): {
         "capability-lease.schema.json": "chio.capability-lease.v1",
@@ -301,11 +302,11 @@ for schema_root, schemas in expected_schemas.items():
 print("OK Chio proof package metadata")
 PY
 
-validate_schema "$legacy_schema_dir/selective-disclosure-proof.schema.json" "$proof_fixture"
-validate_schema "$legacy_schema_dir/proof-package.schema.json" "$package_fixture"
+validate_schema "$attest_proof_schema_dir/selective-disclosure-proof.schema.json" "$proof_fixture"
+validate_schema "$attest_proof_schema_dir/proof-package.schema.json" "$package_fixture"
 validate_schema "$federation_schema_dir/verifier-trust-bundle.schema.json" "$trust_bundle_fixture"
 validate_schema "$federation_schema_dir/verification-context.schema.json" "$context_fixture"
-validate_schema "$legacy_schema_dir/verifier-report.schema.json" "$report_fixture"
+validate_schema "$attest_proof_schema_dir/verifier-report.schema.json" "$report_fixture"
 validate_schema "$attest_schema_dir/buyer-proof-negative-fixture-corpus.schema.json" \
   "$negative_cases_fixture"
 
@@ -315,10 +316,11 @@ fi
 
 if [[ "$MODE" == "all" ]]; then
   cargo test -p chio-selective-disclosure --features bbs --test bbs_selective_disclosure
-  cargo test -p chio-conformance --features chiodos-bbs --test chiodos_selective_disclosure
-  cargo test -p chio-chiodos
-  run_cargo_test_filter chio-cli chio_attest_legacy --bin chio
-  cargo test -p chiodos-three-vendor-example
+  cargo test -p chio-conformance --features chio-bbs --test chio_selective_disclosure
+  cargo test -p chio-attest-buyer-core
+  run_cargo_test_filter chio-cli chio_attest_buyer --bin chio
+  cargo test -p chio-three-vendor-example --lib
+  cargo check -p chio-three-vendor-example --bins
 fi
 
 tmpdir="$(mktemp -d)"
@@ -326,7 +328,7 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 if [[ "$MODE" == "all" ]]; then
   bash "$repo_root/scripts/check-chio-authority-issuance.sh"
-  run_chio attest legacy chiodos-v1 verify \
+  run_chio attest buyer verify-proof \
     --package "$package_fixture" \
     --trust-bundle "$trust_bundle_fixture" \
     --context "$context_fixture" \
@@ -406,11 +408,11 @@ for case in corpus["cases"]:
 out.joinpath("negative-index.tsv").write_text("\n".join(index_lines) + "\n", encoding="utf-8")
 PY
 
-cargo run -p chiodos-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
+cargo run -p chio-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
   --signed-negative-dir "$tmpdir"
 
 while IFS=$'\t' read -r case_id expected_code requires_signed package_path trust_bundle_path context_path report_path; do
-  if run_chio attest legacy chiodos-v1 verify \
+  if run_chio attest buyer verify-proof \
     --package "$package_path" \
     --trust-bundle "$trust_bundle_path" \
     --context "$context_path" \

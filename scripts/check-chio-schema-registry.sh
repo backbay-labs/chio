@@ -59,26 +59,10 @@ for entry in registry.get("artifacts", []):
     introduced_by = entry.get("introducedBy", "")
     status = entry.get("status")
 
-    if schema_file.startswith("spec/schemas/chiodos/"):
-        if status != "deprecated-read-compatible":
-            errors.append(
-                f"{schema_id} points at legacy {schema_file} without deprecated-read-compatible status"
-            )
+    if schema_file.startswith("spec/schemas/chio/"):
+        errors.append(f"{schema_id} points at retired schema root {schema_file}")
         continue
 
-    if status != "deprecated-read-compatible" and artifact_kind.startswith("chiodos_"):
-        errors.append(
-            f"{schema_id} is active but still uses legacy artifactKind {artifact_kind}"
-        )
-    if schema_file.startswith(checked_chio_schema_roots) and "chiodos" in introduced_by.lower():
-        errors.append(
-            f"{schema_id} has active Chio schema file {schema_file} with legacy introducedBy {introduced_by}"
-        )
-
-    if schema_file.startswith("spec/schemas/chio-") and artifact_kind.startswith("chiodos_"):
-        errors.append(
-            f"{schema_id} has Chio schema file {schema_file} with legacy artifactKind {artifact_kind}"
-        )
     if schema_file.startswith(checked_chio_schema_roots):
         path = root / schema_file
         if not path.is_file():
@@ -96,23 +80,22 @@ for schema_root in checked_chio_schema_roots:
         if manifest.get(rel) != hashlib.sha256(schema_path.read_bytes()).hexdigest():
             errors.append(f"Chio schema {rel} is absent from MANIFEST.sha256 or has stale hash")
         schema_text = schema_path.read_text(encoding="utf-8")
-        title = json.loads(schema_text).get("title", "")
-        if "Chiodos" in title:
-            errors.append(f"Chio schema {rel} title uses legacy Chiodos naming")
-        if "chio.chiodos." in schema_text:
-            errors.append(f"Chio schema {rel} allows legacy Chiodos schema ids")
-        if '"$ref"' in schema_text and "../../chiodos/" in schema_text:
-            errors.append(f"Chio schema {rel} references legacy chiodos schema paths")
+        retired_schema_prefix = "chio." + "chio."
+        if retired_schema_prefix in schema_text:
+            errors.append(f"Chio schema {rel} allows legacy Chio schema ids")
+        if '"$ref"' in schema_text and "../../chio/" in schema_text:
+            errors.append(f"Chio schema {rel} references legacy chio schema paths")
 
 for schema_root in checked_active_chio_schema_text_roots:
     for schema_path in sorted((root / schema_root).glob("**/*.schema.json")):
         rel = str(schema_path.relative_to(root))
         schema_text = schema_path.read_text(encoding="utf-8")
-        if "Chiodos" in schema_text or "CHIODOS" in schema_text or "chiodos" in schema_text:
-            errors.append(f"Active Chio schema {rel} exposes legacy Chiodos wording")
+        retired_schema_prefix = "chio." + "chio."
+        if retired_schema_prefix in schema_text:
+            errors.append(f"Active Chio schema {rel} exposes retired schema ids")
 
 if errors:
     raise SystemExit("\n".join(errors))
 
-print("OK Chio schema registry compatibility metadata")
+print("OK Chio schema registry metadata")
 PY

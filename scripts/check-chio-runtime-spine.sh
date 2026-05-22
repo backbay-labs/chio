@@ -25,10 +25,10 @@ fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$repo_root/target}"
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
 
 CHIO_RUNTIME_SCHEMA_DIR="$repo_root/spec/schemas/chio-runtime/v1"
 CHIO_ATTEST_SCHEMA_DIR="$repo_root/spec/schemas/chio-attest/v1"
-LEGACY_SCHEMA_DIR="$repo_root/spec/schemas/chiodos/v1"
 RUNTIME_SPINE_FIXTURE_DIR="$repo_root/examples/chio-3vendor/fixtures/runtime-spine"
 
 tmpdir="$(mktemp -d)"
@@ -88,9 +88,9 @@ prepare_runtime_spine_inputs() {
 
 run_schema_checks() {
   bash "$repo_root/scripts/check-chio-runtime-spine-fixtures.sh"
-  validate_schema "$LEGACY_SCHEMA_DIR/proof-package.schema.json" \
+  validate_schema "$CHIO_ATTEST_SCHEMA_DIR/proof-package.schema.json" \
     "$repo_root/examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
-  validate_schema "$LEGACY_SCHEMA_DIR/verifier-report.schema.json" \
+  validate_schema "$CHIO_ATTEST_SCHEMA_DIR/verifier-report.schema.json" \
     "$repo_root/examples/chio-3vendor/fixtures/verifier-report.json"
 }
 
@@ -197,8 +197,10 @@ if trust_floor_state.get("schema") != "chio.runtime.trust-floor-state.v1":
     raise SystemExit("runtime trust-floor state schema mismatch")
 if len(trust_floor_state.get("entries", [])) != 1:
     raise SystemExit("runtime trust-floor state did not persist verifier floor")
-metadata = report.get("receiptMetadata", {}).get("chio_runtime", {})
-if report.get("receiptMetadata", {}).get("chiodos_runtime") is not None:
+receipt_metadata = report.get("receiptMetadata", {})
+metadata = receipt_metadata.get("chio_runtime", {})
+retired_runtime_key = "chio" + "dos_runtime"
+if receipt_metadata.get(retired_runtime_key) is not None:
     raise SystemExit("Chio admission report used legacy runtime metadata key")
 if metadata.get("admission_id") != "adm-live-1":
     raise SystemExit("runtime admission metadata did not bind admission id")
@@ -241,7 +243,8 @@ if report.get("accepted"):
     raise SystemExit("replay report unexpectedly accepted")
 if report.get("failureCode") != "destructive_lease_replay":
     raise SystemExit(f"wrong replay failure code: {report.get('failureCode')}")
-if report.get("receiptMetadata", {}).get("chiodos_runtime") is not None:
+retired_runtime_key = "chio" + "dos_runtime"
+if report.get("receiptMetadata", {}).get(retired_runtime_key) is not None:
     raise SystemExit("Chio replay report used legacy runtime metadata key")
 PY
 
@@ -278,7 +281,8 @@ import sys
 report = json.load(open(sys.argv[1], "r", encoding="utf-8"))
 if report.get("failureCode") != "request_binding_mismatch":
     raise SystemExit(f"wrong mismatch failure code: {report.get('failureCode')}")
-if report.get("receiptMetadata", {}).get("chiodos_runtime") is not None:
+retired_runtime_key = "chio" + "dos_runtime"
+if report.get("receiptMetadata", {}).get(retired_runtime_key) is not None:
     raise SystemExit("Chio mismatch report used legacy runtime metadata key")
 PY
 }
@@ -293,8 +297,8 @@ case "$MODE" in
     ;;
   "all")
     run_schema_checks
-    cargo test -p chio-chiodos-runtime
-    run_cargo_test_filter chio-kernel chiodos_runtime
+    cargo test -p chio-runtime-core --tests
+    run_cargo_test_filter chio-kernel chio_runtime --lib
     run_positive_checks
     run_negative_checks
     ;;

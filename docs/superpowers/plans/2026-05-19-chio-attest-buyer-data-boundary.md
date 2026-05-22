@@ -4,9 +4,9 @@
 
 **Goal:** Move public buyer attestation data types behind the `chio-attest-buyer` crate boundary instead of reexporting historical runtime types.
 
-**Architecture:** Keep `chio-chiodos-runtime` as the private verifier backend for this slice, but define the public buyer packet, review, lineage, bilateral invocation, and evidence manifest structs directly in `chio-attest-buyer`. Convert at the facade edge when delegating to historical verification, hashing, and report JSON helpers.
+**Architecture:** Keep `chio-runtime-core` as the private verifier backend for this slice, but define the public buyer packet, review, lineage, bilateral invocation, and evidence manifest structs directly in `chio-attest-buyer`. Convert at the facade edge when delegating to historical verification, hashing, and report JSON helpers.
 
-**Tech Stack:** Rust, serde derives, `chio-attest-buyer`, `chio-chiodos-runtime`, `chio-cli` buyer and treaty dispatch tests.
+**Tech Stack:** Rust, serde derives, `chio-attest-buyer`, `chio-runtime-core`, `chio-cli` buyer and treaty dispatch tests.
 
 ---
 
@@ -43,7 +43,7 @@ fn buyer_public_data_types_are_chio_owned() {
 #[test]
 fn buyer_boundary_does_not_reexport_historical_runtime_types() {
     let lib = include_str!("../src/lib.rs");
-    assert!(!lib.contains("pub use chio_chiodos_runtime::{"));
+    assert!(!lib.contains("pub use chio_runtime_core::{"));
 }
 ```
 
@@ -51,7 +51,7 @@ fn buyer_boundary_does_not_reexport_historical_runtime_types() {
 
 Run: `cargo test -p chio-attest-buyer buyer_public_data_types -- --nocapture`
 
-Expected: FAIL because the public type names still resolve to `chio_chiodos_runtime::types::*`.
+Expected: FAIL because the public type names still resolve to `chio_runtime_core::types::*`.
 
 ### Task 2: Define Chio-Owned Buyer Data Types
 
@@ -98,7 +98,7 @@ Replace historical constant reexports with local `pub const` aliases:
 
 ```rust
 pub const CHIO_ATTEST_BUYER_ATTESTATION_PACKET_SCHEMA: &str =
-    chio_chiodos_runtime::CHIO_ATTEST_BUYER_ATTESTATION_PACKET_SCHEMA;
+    chio_runtime_core::CHIO_ATTEST_BUYER_ATTESTATION_PACKET_SCHEMA;
 ```
 
 ### Task 3: Convert at the Historical Backend Edge
@@ -111,8 +111,8 @@ pub const CHIO_ATTEST_BUYER_ATTESTATION_PACKET_SCHEMA: &str =
 Add private helpers such as:
 
 ```rust
-fn historical_packet(packet: &BuyerAttestationPacket) -> chio_chiodos_runtime::BuyerAttestationPacket {
-    chio_chiodos_runtime::BuyerAttestationPacket {
+fn historical_packet(packet: &BuyerAttestationPacket) -> chio_runtime_core::BuyerAttestationPacket {
+    chio_runtime_core::BuyerAttestationPacket {
         schema: packet.schema.clone(),
         packet_id: packet.packet_id.clone(),
         buyer_id: packet.buyer_id.clone(),
@@ -149,7 +149,7 @@ Expected: PASS.
 
 **Files:**
 - Test: `crates/chio-attest-buyer/tests/*.rs`
-- Test through callers: `crates/chio-cli/src/cli/chiodos/dispatch/buyer.rs` and `crates/chio-cli/src/cli/chiodos/dispatch/treaty.rs`
+- Test through callers: `crates/chio-cli/src/cli/chio/dispatch/buyer.rs` and `crates/chio-cli/src/cli/chio/dispatch/treaty.rs`
 
 - [x] **Step 1: Run buyer crate tests**
 
@@ -159,11 +159,11 @@ Expected: PASS.
 
 - [x] **Step 2: Run CLI buyer and treaty filters**
 
-Run: `cargo test -p chio-cli --bin chio chiodos_buyer`
+Run: `cargo test -p chio-cli --bin chio_buyer`
 
 Expected: PASS.
 
-Run: `cargo test -p chio-cli --bin chio chiodos_treaty`
+Run: `cargo test -p chio-cli --bin chio_treaty`
 
 Expected: PASS.
 

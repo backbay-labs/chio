@@ -70,7 +70,7 @@ cat >"$tmpdir/run-contract.json" <<JSON
   "schema": "chio.runtime.run-contract.v1",
   "runId": "runtime-orchestration-1",
   "profileSha256": "$profile_hash",
-  "workflowId": "wf-chiodos-refund-001",
+  "workflowId": "wf-chio-refund-001",
   "expectedStepCount": 1,
   "admissionIds": ["adm-loopback-1"],
   "storeId": "runtime-store-local",
@@ -113,7 +113,7 @@ make_evidence_dir() {
       "outputSha256": "3333333333333333333333333333333333333333333333333333333333333333",
       "bilateralDsseSha256": "4444444444444444444444444444444444444444444444444444444444444444",
       "workflowStepSha256": "5555555555555555555555555555555555555555555555555555555555555555",
-      "consistencyAnchor": "chiodos:consistency:wf-chiodos-refund-001:0",
+      "consistencyAnchor": "chio:consistency:wf-chio-refund-001:0",
       "destructive": false
     }
   ],
@@ -182,7 +182,7 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, sort_keys=False) + "\n", encoding="utf-8")
 
 verifier_report = {
-    "schema": "chio.chiodos.verifier-report.v2",
+    "schema": "chio.attest.verifier-report.v2",
     "packageSha256": canonical_hash(json.loads(proof_package_bytes.decode("utf-8"))),
     "accepted": verifier_state == "accepted",
     "checks": [
@@ -415,9 +415,9 @@ case "$MODE" in
     run_drift_flow
     ;;
   "all")
-    cargo test -p chio-chiodos-runtime runtime_orchestration
-    cargo test -p chio-chiodos-runtime runtime_proof_drift
-    cargo test -p chio-cli --bin chio chio_native_runtime_surface_parses
+    cargo test -p chio-runtime-core runtime_orchestration
+    cargo test -p chio-runtime-core runtime_proof_drift
+    cargo test -p chio-cli --bin chio_native_runtime_surface_parses
     run_schema_checks
     run_positive_flow
     run_resume_flow

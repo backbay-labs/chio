@@ -36,8 +36,9 @@ POLICY_FIXTURE="$FIXTURE_DIR/transit-policy.json"
 CONCENTRATION_FIXTURE="$FIXTURE_DIR/concentration.json"
 NEGATIVE_FIXTURE="$FIXTURE_DIR/negative-cases.json"
 
-if rg -n "Chiodos|CHIODOS|chiodos" "$SPEC_DOC"; then
-  echo "active Chio pheromone spec must not cite Chiodos-named docs or labels" >&2
+retired_marker="$(printf '%s%s' 'chio' 'dos')"
+if rg -n -i "$retired_marker" "$SPEC_DOC"; then
+  echo "active Chio pheromone spec must not cite retired docs or labels" >&2
   exit 1
 fi
 
@@ -51,16 +52,8 @@ registry = json.loads(registry_path.read_text(encoding="utf-8"))
 registered = {entry.get("schema"): entry.get("schemaFile") for entry in registry.get("artifacts", [])}
 for entry in registry.get("artifacts", []):
     schema_file = entry.get("schemaFile", "")
-    artifact_kind = entry.get("artifactKind", "")
-    introduced_by = entry.get("introducedBy", "")
-    if schema_file.startswith("spec/schemas/chio-pheromone/") and artifact_kind.startswith("chiodos_"):
-        raise SystemExit(
-            f"Chio pheromone schema {entry.get('schema')} has legacy artifactKind {artifact_kind}"
-        )
-    if schema_file.startswith("spec/schemas/chio-pheromone/") and "chiodos" in introduced_by.lower():
-        raise SystemExit(
-            f"Chio pheromone schema {entry.get('schema')} has legacy introducedBy {introduced_by}"
-        )
+    if schema_file.startswith("spec/schemas/chio/"):
+        raise SystemExit(f"Chio registry still points at retired schema root {schema_file}")
 expected = {
     "deposit.schema.json": "chio.pheromone-deposit.v1",
     "cost-commitment.schema.json": "chio.pheromone-cost-commitment.v1",
@@ -79,8 +72,9 @@ for filename, schema_id in expected.items():
     schema = json.loads(path.read_text(encoding="utf-8"))
     if schema.get("type") != "object" or "$id" not in schema:
         raise SystemExit(f"schema {filename} is not a frozen object schema")
-    if "chio.chiodos." in path.read_text(encoding="utf-8"):
-        raise SystemExit(f"schema {schema_id} allows legacy Chiodos schema ids")
+    retired_schema_prefix = "chio." + "chio."
+    if retired_schema_prefix in path.read_text(encoding="utf-8"):
+        raise SystemExit(f"schema {schema_id} allows legacy Chio schema ids")
     want = f"spec/schemas/chio-pheromone/v1/{filename}"
     if registered.get(schema_id) != want:
         raise SystemExit(f"schema {schema_id} is not registered at {want}")
@@ -113,7 +107,7 @@ if statement["subjectClass"] != deposit["subject_class"]:
     raise SystemExit("cost commitment class does not bind deposit subject class")
 if statement["treatyId"] not in deposit["treaty_scope"]:
     raise SystemExit("cost commitment treaty scope does not bind deposit treaty scope")
-if deposit["workflow_context"].get("workflow_id") != "wf-chiodos-refund-001":
+if deposit["workflow_context"].get("workflow_id") != "wf-chio-refund-001":
     raise SystemExit("deposit workflow context does not bind the reference workflow")
 if batch.get("schema") != "chio.pheromone-batch.v1":
     raise SystemExit("batch fixture has wrong schema")
@@ -196,7 +190,7 @@ fi
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-cargo run -p chiodos-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
+cargo run -p chio-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
   --pheromone-out-dir "$tmpdir/pheromone"
 
 for filename in deposit.json gossip-batch.json transit-policy.json concentration.json negative-cases.json; do

@@ -154,10 +154,10 @@ run_schema_checks() {
 }
 
 run_runtime_tests() {
-  run_cargo_test_filter chio-chiodos-runtime \
+  run_cargo_test_filter chio-runtime-core \
     chio_native_runtime_policy_material_emits_chio_decision \
     --test runtime_pheromone_policy
-  run_cargo_test_filter chio-chiodos-runtime \
+  run_cargo_test_filter chio-runtime-core \
     runtime_trust_floor \
     --test runtime_trust
   run_cargo_test_filter chio-cli \

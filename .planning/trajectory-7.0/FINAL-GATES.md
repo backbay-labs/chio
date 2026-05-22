@@ -1,4 +1,4 @@
-# Chiodos 7.0 Final Gate Checklist
+# Chio 7.0 Final Gate Checklist
 
 - [x] Runtime hook denies before tool dispatch.
 - [x] Runtime hook allows dispatch and preserves admission metadata.

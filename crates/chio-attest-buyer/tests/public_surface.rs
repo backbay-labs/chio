@@ -1,14 +1,16 @@
 #[test]
-fn chio_attest_buyer_does_not_export_legacy_chiodos_schema_constants() {
+fn chio_attest_buyer_does_not_export_retired_schema_ids() {
     let lib = include_str!("../src/lib.rs");
-    let legacy_exports = lib
+    let retired_schema_prefix = ["chio", "chio", ""].join(".");
+    let retired_schema_path = ["spec", "schemas", "chio", "v1"].join("/");
+    let retired_exports = lib
         .lines()
-        .filter(|line| line.contains("pub const CHIODOS_") && line.contains("_SCHEMA"))
+        .filter(|line| line.contains(&retired_schema_prefix) || line.contains(&retired_schema_path))
         .collect::<Vec<_>>();
 
     assert!(
-        legacy_exports.is_empty(),
-        "chio-attest-buyer public API must expose Chio-native schema constants only: {legacy_exports:#?}"
+        retired_exports.is_empty(),
+        "chio-attest-buyer public API must expose Chio-native schema constants only: {retired_exports:#?}"
     );
 }
 
@@ -17,7 +19,7 @@ fn chio_attest_buyer_schema_constants_are_owned_locally() {
     let lib = include_str!("../src/lib.rs");
     let historical_aliases = lib
         .lines()
-        .filter(|line| line.contains("chio_chiodos_runtime::CHIO_") && line.contains("_SCHEMA"))
+        .filter(|line| line.contains("chio_runtime_core::CHIO_") && line.contains("_SCHEMA"))
         .collect::<Vec<_>>();
 
     assert!(

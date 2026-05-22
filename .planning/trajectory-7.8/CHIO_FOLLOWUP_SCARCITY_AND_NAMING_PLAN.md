@@ -2,7 +2,7 @@
 
 ## Scope
 
-This plan is intentionally separate from the narrow P1 trust-boundary patch. It does not implement Pheromone Scarcity Policy v1 and does not perform Chiodos-to-Chio naming convergence.
+This plan is intentionally separate from the narrow P1 trust-boundary patch. It does not implement Pheromone Scarcity Policy v1 and does not perform Chio-to-Chio naming convergence.
 
 ## Phase 1: Pheromone Scarcity Policy v1
 
@@ -27,13 +27,13 @@ cargo test -p chio-pheromone-relay --test relay -- --nocapture
 cargo clippy -p chio-pheromone -p chio-pheromone-runtime -p chio-pheromone-relay --all-targets -- -D warnings
 ```
 
-## Phase 2: Chiodos-to-Chio Naming Convergence
+## Phase 2: Chio-to-Chio Naming Convergence
 
 Goal: move public operator surfaces to Chio-native naming while preserving signed-artifact compatibility.
 
 Deliverables:
 
-1. Keep `chio chiodos` as a compatibility alias only.
+1. Keep `chio` as a compatibility alias only.
 2. Add new public CLI surfaces:
    - `chio federation`
    - `chio attest`
@@ -48,7 +48,7 @@ Deliverables:
 Suggested validation:
 
 ```bash
-cargo test -p chio-cli chiodos -- --nocapture
+cargo test -p chio-cli chio -- --nocapture
 cargo test -p chio-cli federation -- --nocapture
 cargo test -p chio-cli runtime -- --nocapture
 cargo test -p chio-cli pheromone -- --nocapture

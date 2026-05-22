@@ -1,6 +1,6 @@
 //! Chio runtime admission and orchestration boundary.
 //!
-//! The historical implementation still lives in `chio-chiodos-runtime` while
+//! The historical implementation still lives in `chio-runtime-core` while
 //! the public crate boundary moves to Chio names. This facade intentionally
 //! exposes only the runtime admission, trust-floor, orchestration, operations,
 //! and proof-regeneration APIs needed by Chio runtime callers.
@@ -8,65 +8,63 @@
 use serde::Serialize;
 use std::{fmt, path::Path};
 
-pub type RuntimeAdmissionBundle = chio_chiodos_runtime::RuntimeAdmissionBundle;
-pub type RuntimeAdmissionCheck = chio_chiodos_runtime::RuntimeAdmissionCheck;
-pub type RuntimeAdmissionProfile = chio_chiodos_runtime::RuntimeAdmissionProfile;
-pub type RuntimeAdmissionReport = chio_chiodos_runtime::RuntimeAdmissionReport;
-pub type RuntimeArtifactRetentionAction = chio_chiodos_runtime::RuntimeArtifactRetentionAction;
-pub type RuntimeArtifactRetentionPlan = chio_chiodos_runtime::RuntimeArtifactRetentionPlan;
-pub type RuntimeArtifactRetentionProfile = chio_chiodos_runtime::RuntimeArtifactRetentionProfile;
-pub type RuntimeEvidenceManifest = chio_chiodos_runtime::RuntimeEvidenceManifest;
-pub type RuntimeEvidenceManifestEntry = chio_chiodos_runtime::RuntimeEvidenceManifestEntry;
-pub type RuntimeEvidenceSinkHealthReport = chio_chiodos_runtime::RuntimeEvidenceSinkHealthReport;
-pub type RuntimeOpsStatusReport = chio_chiodos_runtime::RuntimeOpsStatusReport;
-pub type RuntimeOrchestrationEvidence = chio_chiodos_runtime::RuntimeOrchestrationEvidence;
+pub type RuntimeAdmissionBundle = chio_runtime_core::RuntimeAdmissionBundle;
+pub type RuntimeAdmissionCheck = chio_runtime_core::RuntimeAdmissionCheck;
+pub type RuntimeAdmissionProfile = chio_runtime_core::RuntimeAdmissionProfile;
+pub type RuntimeAdmissionReport = chio_runtime_core::RuntimeAdmissionReport;
+pub type RuntimeArtifactRetentionAction = chio_runtime_core::RuntimeArtifactRetentionAction;
+pub type RuntimeArtifactRetentionPlan = chio_runtime_core::RuntimeArtifactRetentionPlan;
+pub type RuntimeArtifactRetentionProfile = chio_runtime_core::RuntimeArtifactRetentionProfile;
+pub type RuntimeEvidenceManifest = chio_runtime_core::RuntimeEvidenceManifest;
+pub type RuntimeEvidenceManifestEntry = chio_runtime_core::RuntimeEvidenceManifestEntry;
+pub type RuntimeEvidenceSinkHealthReport = chio_runtime_core::RuntimeEvidenceSinkHealthReport;
+pub type RuntimeOpsStatusReport = chio_runtime_core::RuntimeOpsStatusReport;
+pub type RuntimeOrchestrationEvidence = chio_runtime_core::RuntimeOrchestrationEvidence;
 pub type RuntimeOrchestrationEvidenceFailure =
-    chio_chiodos_runtime::RuntimeOrchestrationEvidenceFailure;
-pub type RuntimeOrchestrationPlan = chio_chiodos_runtime::RuntimeOrchestrationPlan;
-pub type RuntimeOrchestrationPlannedStep = chio_chiodos_runtime::RuntimeOrchestrationPlannedStep;
-pub type RuntimeOrchestrationProfile = chio_chiodos_runtime::RuntimeOrchestrationProfile;
-pub type RuntimeOrchestrationResumePlan = chio_chiodos_runtime::RuntimeOrchestrationResumePlan;
-pub type RuntimeOrchestrationRunReport = chio_chiodos_runtime::RuntimeOrchestrationRunReport;
-pub type RuntimeOrchestrationStatusReport = chio_chiodos_runtime::RuntimeOrchestrationStatusReport;
-pub type RuntimeOrchestrationStepState = chio_chiodos_runtime::RuntimeOrchestrationStepState;
-pub type RuntimePeerWeight = chio_chiodos_runtime::RuntimePeerWeight;
-pub type RuntimePeerWeights = chio_chiodos_runtime::RuntimePeerWeights;
-pub type RuntimePheromoneAdvisory = chio_chiodos_runtime::RuntimePheromoneAdvisory;
-pub type RuntimePheromonePolicy = chio_chiodos_runtime::RuntimePheromonePolicy;
-pub type RuntimePheromonePolicyDecision = chio_chiodos_runtime::RuntimePheromonePolicyDecision;
-pub type RuntimePheromonePolicyRule = chio_chiodos_runtime::RuntimePheromonePolicyRule;
-pub type RuntimeProofArtifactDrift = chio_chiodos_runtime::RuntimeProofArtifactDrift;
-pub type RuntimeProofDrift = chio_chiodos_runtime::RuntimeProofDrift;
-pub type RuntimeProofDriftReport = chio_chiodos_runtime::RuntimeProofDriftReport;
-pub type RuntimeProofParityMismatch = chio_chiodos_runtime::RuntimeProofParityMismatch;
-pub type RuntimeProofParityReport = chio_chiodos_runtime::RuntimeProofParityReport;
-pub type RuntimeProofRegenerationInput = chio_chiodos_runtime::RuntimeProofRegenerationInput;
-pub type RuntimeProofRegenerationReport = chio_chiodos_runtime::RuntimeProofRegenerationReport;
-pub type RuntimeProofSourceRecord = chio_chiodos_runtime::RuntimeProofSourceRecord;
-pub type RuntimeProviderBinding = chio_chiodos_runtime::RuntimeProviderBinding;
-pub type RuntimeProviderBindingsDocument = chio_chiodos_runtime::RuntimeProviderBindingsDocument;
-pub type RuntimeProviderHealthReport = chio_chiodos_runtime::RuntimeProviderHealthReport;
-pub type RuntimeRecoveryDrillReport = chio_chiodos_runtime::RuntimeRecoveryDrillReport;
-pub type RuntimeRequestBinding = chio_chiodos_runtime::RuntimeRequestBinding;
-pub type RuntimeRunContract = chio_chiodos_runtime::RuntimeRunContract;
-pub type RuntimeRunLease = chio_chiodos_runtime::RuntimeRunLease;
-pub type RuntimeSchedulerTickReport = chio_chiodos_runtime::RuntimeSchedulerTickReport;
-pub type RuntimeStepEvidence = chio_chiodos_runtime::RuntimeStepEvidence;
-pub type RuntimeSupervisorProfile = chio_chiodos_runtime::RuntimeSupervisorProfile;
-pub type RuntimeTrustFloorEntry = chio_chiodos_runtime::RuntimeTrustFloorEntry;
-pub type RuntimeTrustFloorState = chio_chiodos_runtime::RuntimeTrustFloorState;
-pub type RuntimeTrustedVerifierKey = chio_chiodos_runtime::RuntimeTrustedVerifierKey;
-pub type RuntimeTrustedVerifierKeysDocument =
-    chio_chiodos_runtime::RuntimeTrustedVerifierKeysDocument;
-pub type RuntimeVerifierTrustBundleV4 = chio_chiodos_runtime::RuntimeVerifierTrustBundleV4;
-pub type RuntimeWorkflowRunReport = chio_chiodos_runtime::RuntimeWorkflowRunReport;
-pub type SignedRuntimeAdmissionReport = chio_chiodos_runtime::SignedRuntimeAdmissionReport;
-pub type SignedRuntimePeerWeights = chio_chiodos_runtime::SignedRuntimePeerWeights;
-pub type SignedRuntimePheromonePolicy = chio_chiodos_runtime::SignedRuntimePheromonePolicy;
-pub type SignedRuntimePheromoneQueryReport =
-    chio_chiodos_runtime::SignedRuntimePheromoneQueryReport;
-pub type SignedRuntimeVerifierTrustBundle = chio_chiodos_runtime::SignedRuntimeVerifierTrustBundle;
-pub type TreatyRuntimeArtifactRecord = chio_chiodos_runtime::TreatyRuntimeArtifactRecord;
+    chio_runtime_core::RuntimeOrchestrationEvidenceFailure;
+pub type RuntimeOrchestrationPlan = chio_runtime_core::RuntimeOrchestrationPlan;
+pub type RuntimeOrchestrationPlannedStep = chio_runtime_core::RuntimeOrchestrationPlannedStep;
+pub type RuntimeOrchestrationProfile = chio_runtime_core::RuntimeOrchestrationProfile;
+pub type RuntimeOrchestrationResumePlan = chio_runtime_core::RuntimeOrchestrationResumePlan;
+pub type RuntimeOrchestrationRunReport = chio_runtime_core::RuntimeOrchestrationRunReport;
+pub type RuntimeOrchestrationStatusReport = chio_runtime_core::RuntimeOrchestrationStatusReport;
+pub type RuntimeOrchestrationStepState = chio_runtime_core::RuntimeOrchestrationStepState;
+pub type RuntimePeerWeight = chio_runtime_core::RuntimePeerWeight;
+pub type RuntimePeerWeights = chio_runtime_core::RuntimePeerWeights;
+pub type RuntimePheromoneAdvisory = chio_runtime_core::RuntimePheromoneAdvisory;
+pub type RuntimePheromonePolicy = chio_runtime_core::RuntimePheromonePolicy;
+pub type RuntimePheromonePolicyDecision = chio_runtime_core::RuntimePheromonePolicyDecision;
+pub type RuntimePheromonePolicyRule = chio_runtime_core::RuntimePheromonePolicyRule;
+pub type RuntimeProofArtifactDrift = chio_runtime_core::RuntimeProofArtifactDrift;
+pub type RuntimeProofDrift = chio_runtime_core::RuntimeProofDrift;
+pub type RuntimeProofDriftReport = chio_runtime_core::RuntimeProofDriftReport;
+pub type RuntimeProofParityMismatch = chio_runtime_core::RuntimeProofParityMismatch;
+pub type RuntimeProofParityReport = chio_runtime_core::RuntimeProofParityReport;
+pub type RuntimeProofRegenerationInput = chio_runtime_core::RuntimeProofRegenerationInput;
+pub type RuntimeProofRegenerationReport = chio_runtime_core::RuntimeProofRegenerationReport;
+pub type RuntimeProofSourceRecord = chio_runtime_core::RuntimeProofSourceRecord;
+pub type RuntimeProviderBinding = chio_runtime_core::RuntimeProviderBinding;
+pub type RuntimeProviderBindingsDocument = chio_runtime_core::RuntimeProviderBindingsDocument;
+pub type RuntimeProviderHealthReport = chio_runtime_core::RuntimeProviderHealthReport;
+pub type RuntimeRecoveryDrillReport = chio_runtime_core::RuntimeRecoveryDrillReport;
+pub type RuntimeRequestBinding = chio_runtime_core::RuntimeRequestBinding;
+pub type RuntimeRunContract = chio_runtime_core::RuntimeRunContract;
+pub type RuntimeRunLease = chio_runtime_core::RuntimeRunLease;
+pub type RuntimeSchedulerTickReport = chio_runtime_core::RuntimeSchedulerTickReport;
+pub type RuntimeStepEvidence = chio_runtime_core::RuntimeStepEvidence;
+pub type RuntimeSupervisorProfile = chio_runtime_core::RuntimeSupervisorProfile;
+pub type RuntimeTrustFloorEntry = chio_runtime_core::RuntimeTrustFloorEntry;
+pub type RuntimeTrustFloorState = chio_runtime_core::RuntimeTrustFloorState;
+pub type RuntimeTrustedVerifierKey = chio_runtime_core::RuntimeTrustedVerifierKey;
+pub type RuntimeTrustedVerifierKeysDocument = chio_runtime_core::RuntimeTrustedVerifierKeysDocument;
+pub type RuntimeVerifierTrustBundleV4 = chio_runtime_core::RuntimeVerifierTrustBundleV4;
+pub type RuntimeWorkflowRunReport = chio_runtime_core::RuntimeWorkflowRunReport;
+pub type SignedRuntimeAdmissionReport = chio_runtime_core::SignedRuntimeAdmissionReport;
+pub type SignedRuntimePeerWeights = chio_runtime_core::SignedRuntimePeerWeights;
+pub type SignedRuntimePheromonePolicy = chio_runtime_core::SignedRuntimePheromonePolicy;
+pub type SignedRuntimePheromoneQueryReport = chio_runtime_core::SignedRuntimePheromoneQueryReport;
+pub type SignedRuntimeVerifierTrustBundle = chio_runtime_core::SignedRuntimeVerifierTrustBundle;
+pub type TreatyRuntimeArtifactRecord = chio_runtime_core::TreatyRuntimeArtifactRecord;
 
 pub const CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA: &str = "chio.runtime.admission-profile.v1";
 pub const CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA: &str = "chio.runtime.admission-bundle.v1";
@@ -178,11 +176,11 @@ impl<S> ChioRuntimeAdmissionHook<S> {
 
     fn historical_hook(
         &self,
-    ) -> chio_chiodos_runtime::ChiodosRuntimeAdmissionHook<HistoricalRuntimeAdmissionStoreAdapter<'_>>
+    ) -> chio_runtime_core::ChioRuntimeAdmissionHook<HistoricalRuntimeAdmissionStoreAdapter<'_>>
     where
         S: ChioRuntimeAdmissionStore,
     {
-        let mut hook = chio_chiodos_runtime::ChiodosRuntimeAdmissionHook::new(
+        let mut hook = chio_runtime_core::ChioRuntimeAdmissionHook::new(
             self.profile.clone(),
             HistoricalRuntimeAdmissionStoreAdapter { inner: &self.store },
         );
@@ -230,7 +228,7 @@ where
     }
 }
 
-type HistoricalRuntimeError = chio_chiodos_runtime::ChiodosRuntimeError;
+type HistoricalRuntimeError = chio_runtime_core::ChioRuntimeError;
 
 /// Chio-owned runtime boundary error.
 #[derive(Debug)]
@@ -333,14 +331,14 @@ pub trait ChioRuntimeAdmissionStore: Send + Sync {
 
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryRuntimeAdmissionStore {
-    inner: chio_chiodos_runtime::InMemoryRuntimeAdmissionStore,
+    inner: chio_runtime_core::InMemoryRuntimeAdmissionStore,
 }
 
 impl InMemoryRuntimeAdmissionStore {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            inner: chio_chiodos_runtime::InMemoryRuntimeAdmissionStore::new(),
+            inner: chio_runtime_core::InMemoryRuntimeAdmissionStore::new(),
         }
     }
 
@@ -367,7 +365,7 @@ impl ChioRuntimeAdmissionStore for InMemoryRuntimeAdmissionStore {
         &self,
         admission_id: &str,
     ) -> Result<Option<RuntimeAdmissionBundle>, ChioRuntimeError> {
-        wrap_runtime(chio_chiodos_runtime::RuntimeAdmissionStore::bundle(
+        wrap_runtime(chio_runtime_core::RuntimeAdmissionStore::bundle(
             &self.inner,
             admission_id,
         ))
@@ -379,7 +377,7 @@ impl ChioRuntimeAdmissionStore for InMemoryRuntimeAdmissionStore {
         evidence_id: &str,
     ) -> Result<Option<TreatyRuntimeArtifactRecord>, ChioRuntimeError> {
         wrap_runtime(
-            chio_chiodos_runtime::RuntimeAdmissionStore::treaty_runtime_artifact(
+            chio_runtime_core::RuntimeAdmissionStore::treaty_runtime_artifact(
                 &self.inner,
                 evidence_kind,
                 evidence_id,
@@ -393,7 +391,7 @@ impl ChioRuntimeAdmissionStore for InMemoryRuntimeAdmissionStore {
         admission_id: &str,
     ) -> Result<(), ChioRuntimeError> {
         wrap_runtime(
-            chio_chiodos_runtime::RuntimeAdmissionStore::consume_destructive_lease(
+            chio_runtime_core::RuntimeAdmissionStore::consume_destructive_lease(
                 &self.inner,
                 lease_id,
                 admission_id,
@@ -407,7 +405,7 @@ impl ChioRuntimeAdmissionStore for InMemoryRuntimeAdmissionStore {
         admission_id: &str,
     ) -> Result<(), ChioRuntimeError> {
         wrap_runtime(
-            chio_chiodos_runtime::RuntimeAdmissionStore::release_destructive_lease(
+            chio_runtime_core::RuntimeAdmissionStore::release_destructive_lease(
                 &self.inner,
                 lease_id,
                 admission_id,
@@ -421,7 +419,7 @@ impl ChioRuntimeAdmissionStore for InMemoryRuntimeAdmissionStore {
         admission_id: &str,
     ) -> Result<(), ChioRuntimeError> {
         wrap_runtime(
-            chio_chiodos_runtime::RuntimeAdmissionStore::consume_treaty_continuation(
+            chio_runtime_core::RuntimeAdmissionStore::consume_treaty_continuation(
                 &self.inner,
                 continuation_id,
                 admission_id,
@@ -435,7 +433,7 @@ impl ChioRuntimeAdmissionStore for InMemoryRuntimeAdmissionStore {
         admission_id: &str,
     ) -> Result<(), ChioRuntimeError> {
         wrap_runtime(
-            chio_chiodos_runtime::RuntimeAdmissionStore::release_treaty_continuation(
+            chio_runtime_core::RuntimeAdmissionStore::release_treaty_continuation(
                 &self.inner,
                 continuation_id,
                 admission_id,
@@ -449,7 +447,7 @@ impl ChioRuntimeAdmissionStore for InMemoryRuntimeAdmissionStore {
         key_id: &str,
     ) -> Result<Option<RuntimeTrustFloorEntry>, ChioRuntimeError> {
         wrap_runtime(
-            chio_chiodos_runtime::RuntimeAdmissionStore::runtime_trust_floor(
+            chio_runtime_core::RuntimeAdmissionStore::runtime_trust_floor(
                 &self.inner,
                 verifier_id,
                 key_id,
@@ -462,7 +460,7 @@ impl ChioRuntimeAdmissionStore for InMemoryRuntimeAdmissionStore {
         entry: RuntimeTrustFloorEntry,
     ) -> Result<(), ChioRuntimeError> {
         wrap_runtime(
-            chio_chiodos_runtime::RuntimeAdmissionStore::record_runtime_trust_floor(
+            chio_runtime_core::RuntimeAdmissionStore::record_runtime_trust_floor(
                 &self.inner,
                 entry,
             ),
@@ -475,7 +473,7 @@ impl ChioRuntimeAdmissionStore for InMemoryRuntimeAdmissionStore {
         previous_hash_sha256: Option<&str>,
     ) -> Result<(), ChioRuntimeError> {
         wrap_runtime(
-            chio_chiodos_runtime::RuntimeAdmissionStore::validate_and_record_runtime_trust_floor(
+            chio_runtime_core::RuntimeAdmissionStore::validate_and_record_runtime_trust_floor(
                 &self.inner,
                 entry,
                 previous_hash_sha256,
@@ -537,12 +535,12 @@ where
 
 #[derive(Debug, Clone)]
 pub struct JsonRuntimeAdmissionStore {
-    inner: chio_chiodos_runtime::JsonRuntimeAdmissionStore,
+    inner: chio_runtime_core::JsonRuntimeAdmissionStore,
 }
 
 impl JsonRuntimeAdmissionStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, ChioRuntimeError> {
-        wrap_runtime(chio_chiodos_runtime::JsonRuntimeAdmissionStore::open(path))
+        wrap_runtime(chio_runtime_core::JsonRuntimeAdmissionStore::open(path))
             .map(|inner| Self { inner })
     }
 
@@ -552,12 +550,12 @@ impl JsonRuntimeAdmissionStore {
 }
 
 pub struct JsonRuntimeTrustFloorStateStore {
-    inner: chio_chiodos_runtime::JsonRuntimeTrustFloorStateStore,
+    inner: chio_runtime_core::JsonRuntimeTrustFloorStateStore,
 }
 
 impl JsonRuntimeTrustFloorStateStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, ChioRuntimeError> {
-        wrap_runtime(chio_chiodos_runtime::JsonRuntimeTrustFloorStateStore::open(
+        wrap_runtime(chio_runtime_core::JsonRuntimeTrustFloorStateStore::open(
             path,
         ))
         .map(|inner| Self { inner })
@@ -583,12 +581,12 @@ impl<'a> LayeredRuntimeAdmissionStore<'a> {
 }
 
 pub struct SqliteRuntimeOrchestrationStore {
-    inner: chio_chiodos_runtime::SqliteRuntimeOrchestrationStore,
+    inner: chio_runtime_core::SqliteRuntimeOrchestrationStore,
 }
 
 impl SqliteRuntimeOrchestrationStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, ChioRuntimeError> {
-        wrap_runtime(chio_chiodos_runtime::SqliteRuntimeOrchestrationStore::open(
+        wrap_runtime(chio_runtime_core::SqliteRuntimeOrchestrationStore::open(
             path,
         ))
         .map(|inner| Self { inner })
@@ -756,7 +754,7 @@ macro_rules! impl_chio_runtime_admission_store_for_inner {
                 &self,
                 admission_id: &str,
             ) -> Result<Option<RuntimeAdmissionBundle>, ChioRuntimeError> {
-                wrap_runtime(chio_chiodos_runtime::RuntimeAdmissionStore::bundle(
+                wrap_runtime(chio_runtime_core::RuntimeAdmissionStore::bundle(
                     &self.inner,
                     admission_id,
                 ))
@@ -768,7 +766,7 @@ macro_rules! impl_chio_runtime_admission_store_for_inner {
                 evidence_id: &str,
             ) -> Result<Option<TreatyRuntimeArtifactRecord>, ChioRuntimeError> {
                 wrap_runtime(
-                    chio_chiodos_runtime::RuntimeAdmissionStore::treaty_runtime_artifact(
+                    chio_runtime_core::RuntimeAdmissionStore::treaty_runtime_artifact(
                         &self.inner,
                         evidence_kind,
                         evidence_id,
@@ -782,7 +780,7 @@ macro_rules! impl_chio_runtime_admission_store_for_inner {
                 admission_id: &str,
             ) -> Result<(), ChioRuntimeError> {
                 wrap_runtime(
-                    chio_chiodos_runtime::RuntimeAdmissionStore::consume_destructive_lease(
+                    chio_runtime_core::RuntimeAdmissionStore::consume_destructive_lease(
                         &self.inner,
                         lease_id,
                         admission_id,
@@ -796,7 +794,7 @@ macro_rules! impl_chio_runtime_admission_store_for_inner {
                 admission_id: &str,
             ) -> Result<(), ChioRuntimeError> {
                 wrap_runtime(
-                    chio_chiodos_runtime::RuntimeAdmissionStore::release_destructive_lease(
+                    chio_runtime_core::RuntimeAdmissionStore::release_destructive_lease(
                         &self.inner,
                         lease_id,
                         admission_id,
@@ -810,7 +808,7 @@ macro_rules! impl_chio_runtime_admission_store_for_inner {
                 admission_id: &str,
             ) -> Result<(), ChioRuntimeError> {
                 wrap_runtime(
-                    chio_chiodos_runtime::RuntimeAdmissionStore::consume_treaty_continuation(
+                    chio_runtime_core::RuntimeAdmissionStore::consume_treaty_continuation(
                         &self.inner,
                         continuation_id,
                         admission_id,
@@ -824,7 +822,7 @@ macro_rules! impl_chio_runtime_admission_store_for_inner {
                 admission_id: &str,
             ) -> Result<(), ChioRuntimeError> {
                 wrap_runtime(
-                    chio_chiodos_runtime::RuntimeAdmissionStore::release_treaty_continuation(
+                    chio_runtime_core::RuntimeAdmissionStore::release_treaty_continuation(
                         &self.inner,
                         continuation_id,
                         admission_id,
@@ -838,7 +836,7 @@ macro_rules! impl_chio_runtime_admission_store_for_inner {
                 key_id: &str,
             ) -> Result<Option<RuntimeTrustFloorEntry>, ChioRuntimeError> {
                 wrap_runtime(
-                    chio_chiodos_runtime::RuntimeAdmissionStore::runtime_trust_floor(
+                    chio_runtime_core::RuntimeAdmissionStore::runtime_trust_floor(
                         &self.inner,
                         verifier_id,
                         key_id,
@@ -851,7 +849,7 @@ macro_rules! impl_chio_runtime_admission_store_for_inner {
                 entry: RuntimeTrustFloorEntry,
             ) -> Result<(), ChioRuntimeError> {
                 wrap_runtime(
-                    chio_chiodos_runtime::RuntimeAdmissionStore::record_runtime_trust_floor(
+                    chio_runtime_core::RuntimeAdmissionStore::record_runtime_trust_floor(
                         &self.inner,
                         entry,
                     ),
@@ -864,7 +862,7 @@ macro_rules! impl_chio_runtime_admission_store_for_inner {
                 previous_hash_sha256: Option<&str>,
             ) -> Result<(), ChioRuntimeError> {
                 wrap_runtime(
-                    chio_chiodos_runtime::RuntimeAdmissionStore::validate_and_record_runtime_trust_floor(
+                    chio_runtime_core::RuntimeAdmissionStore::validate_and_record_runtime_trust_floor(
                         &self.inner,
                         entry,
                         previous_hash_sha256,
@@ -964,7 +962,7 @@ impl ChioRuntimeTrustFloorStore for JsonRuntimeTrustFloorStateStore {
         key_id: &str,
     ) -> Result<Option<RuntimeTrustFloorEntry>, ChioRuntimeError> {
         wrap_runtime(
-            chio_chiodos_runtime::RuntimeTrustFloorStore::runtime_trust_floor(
+            chio_runtime_core::RuntimeTrustFloorStore::runtime_trust_floor(
                 &self.inner,
                 verifier_id,
                 key_id,
@@ -977,7 +975,7 @@ impl ChioRuntimeTrustFloorStore for JsonRuntimeTrustFloorStateStore {
         entry: RuntimeTrustFloorEntry,
     ) -> Result<(), ChioRuntimeError> {
         wrap_runtime(
-            chio_chiodos_runtime::RuntimeTrustFloorStore::record_runtime_trust_floor(
+            chio_runtime_core::RuntimeTrustFloorStore::record_runtime_trust_floor(
                 &self.inner,
                 entry,
             ),
@@ -990,7 +988,7 @@ impl ChioRuntimeTrustFloorStore for JsonRuntimeTrustFloorStateStore {
         previous_hash_sha256: Option<&str>,
     ) -> Result<(), ChioRuntimeError> {
         wrap_runtime(
-            chio_chiodos_runtime::RuntimeTrustFloorStore::validate_and_record_runtime_trust_floor(
+            chio_runtime_core::RuntimeTrustFloorStore::validate_and_record_runtime_trust_floor(
                 &self.inner,
                 entry,
                 previous_hash_sha256,
@@ -1017,7 +1015,7 @@ struct HistoricalRuntimeAdmissionStoreAdapter<'a> {
     inner: &'a dyn ChioRuntimeAdmissionStore,
 }
 
-impl chio_chiodos_runtime::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStoreAdapter<'_> {
+impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStoreAdapter<'_> {
     fn bundle(
         &self,
         admission_id: &str,
@@ -1105,8 +1103,8 @@ pub fn evaluate_runtime_admission(
     input: ChioRuntimeAdmissionInput<'_>,
 ) -> Result<RuntimeAdmissionReport, ChioRuntimeError> {
     let store = HistoricalRuntimeAdmissionStoreAdapter { inner: input.store };
-    wrap_runtime(chio_chiodos_runtime::evaluate_runtime_admission(
-        chio_chiodos_runtime::RuntimeAdmissionInput {
+    wrap_runtime(chio_runtime_core::evaluate_runtime_admission(
+        chio_runtime_core::RuntimeAdmissionInput {
             profile: input.profile,
             store: &store,
             admission_id: input.admission_id,
@@ -1125,49 +1123,45 @@ pub fn evaluate_runtime_admission(
 pub fn runtime_admission_profile_from_json(
     json: &str,
 ) -> Result<RuntimeAdmissionProfile, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_admission_profile_from_json(
-        json,
-    ))
+    wrap_runtime(chio_runtime_core::runtime_admission_profile_from_json(json))
 }
 
 pub fn runtime_admission_bundle_from_json(
     json: &str,
 ) -> Result<RuntimeAdmissionBundle, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_admission_bundle_from_json(
-        json,
-    ))
+    wrap_runtime(chio_runtime_core::runtime_admission_bundle_from_json(json))
 }
 
 pub fn runtime_request_binding_from_json(
     json: &str,
 ) -> Result<RuntimeRequestBinding, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_request_binding_from_json(
-        json,
-    ))
+    wrap_runtime(chio_runtime_core::runtime_request_binding_from_json(json))
 }
 
 pub fn signed_runtime_verifier_trust_bundle_from_json(
     json: &str,
 ) -> Result<SignedRuntimeVerifierTrustBundle, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::signed_runtime_verifier_trust_bundle_from_json(json))
+    wrap_runtime(chio_runtime_core::signed_runtime_verifier_trust_bundle_from_json(json))
 }
 
 pub fn runtime_trusted_verifier_keys_from_json(
     json: &str,
 ) -> Result<RuntimeTrustedVerifierKeysDocument, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_trusted_verifier_keys_from_json(json))
+    wrap_runtime(chio_runtime_core::runtime_trusted_verifier_keys_from_json(
+        json,
+    ))
 }
 
 pub fn signed_runtime_pheromone_policy_from_json(
     json: &str,
 ) -> Result<SignedRuntimePheromonePolicy, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::signed_runtime_pheromone_policy_from_json(json))
+    wrap_runtime(chio_runtime_core::signed_runtime_pheromone_policy_from_json(json))
 }
 
 pub fn signed_runtime_peer_weights_from_json(
     json: &str,
 ) -> Result<SignedRuntimePeerWeights, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::signed_runtime_peer_weights_from_json(
+    wrap_runtime(chio_runtime_core::signed_runtime_peer_weights_from_json(
         json,
     ))
 }
@@ -1175,14 +1169,14 @@ pub fn signed_runtime_peer_weights_from_json(
 pub fn runtime_admission_report_json(
     report: &RuntimeAdmissionReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_admission_report_json(report))
+    wrap_runtime(chio_runtime_core::runtime_admission_report_json(report))
 }
 
 pub fn sign_runtime_admission_report(
     report: RuntimeAdmissionReport,
     keypair: &chio_core_types::crypto::Keypair,
 ) -> Result<SignedRuntimeAdmissionReport, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::sign_runtime_admission_report(
+    wrap_runtime(chio_runtime_core::sign_runtime_admission_report(
         report, keypair,
     ))
 }
@@ -1190,13 +1184,13 @@ pub fn sign_runtime_admission_report(
 pub fn signed_runtime_admission_report_from_json(
     json: &str,
 ) -> Result<SignedRuntimeAdmissionReport, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::signed_runtime_admission_report_from_json(json))
+    wrap_runtime(chio_runtime_core::signed_runtime_admission_report_from_json(json))
 }
 
 pub fn signed_runtime_admission_report_json(
     report: &SignedRuntimeAdmissionReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::signed_runtime_admission_report_json(
+    wrap_runtime(chio_runtime_core::signed_runtime_admission_report_json(
         report,
     ))
 }
@@ -1204,53 +1198,53 @@ pub fn signed_runtime_admission_report_json(
 pub fn verify_signed_runtime_admission_report(
     report: &SignedRuntimeAdmissionReport,
 ) -> Result<bool, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::verify_signed_runtime_admission_report(report))
+    wrap_runtime(chio_runtime_core::verify_signed_runtime_admission_report(
+        report,
+    ))
 }
 
 pub fn runtime_pheromone_advisory_from_query_report_json(
     json: &str,
 ) -> Result<RuntimePheromoneAdvisory, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_pheromone_advisory_from_query_report_json(json))
+    wrap_runtime(chio_runtime_core::runtime_pheromone_advisory_from_query_report_json(json))
 }
 
 pub fn signed_runtime_pheromone_query_report_from_json(
     json: &str,
 ) -> Result<SignedRuntimePheromoneQueryReport, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::signed_runtime_pheromone_query_report_from_json(json))
+    wrap_runtime(chio_runtime_core::signed_runtime_pheromone_query_report_from_json(json))
 }
 
 pub fn signed_runtime_pheromone_query_report_json(
     report: &SignedRuntimePheromoneQueryReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::signed_runtime_pheromone_query_report_json(report))
+    wrap_runtime(chio_runtime_core::signed_runtime_pheromone_query_report_json(report))
 }
 
 pub fn runtime_workflow_run_report_json(
     report: &RuntimeWorkflowRunReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_workflow_run_report_json(
-        report,
-    ))
+    wrap_runtime(chio_runtime_core::runtime_workflow_run_report_json(report))
 }
 
 pub fn runtime_proof_regeneration_report_json(
     report: &RuntimeProofRegenerationReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_proof_regeneration_report_json(report))
+    wrap_runtime(chio_runtime_core::runtime_proof_regeneration_report_json(
+        report,
+    ))
 }
 
 pub fn runtime_evidence_manifest_json(
     manifest: &RuntimeEvidenceManifest,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_evidence_manifest_json(
-        manifest,
-    ))
+    wrap_runtime(chio_runtime_core::runtime_evidence_manifest_json(manifest))
 }
 
 pub fn runtime_proof_regeneration_input_json(
     input: &RuntimeProofRegenerationInput,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_proof_regeneration_input_json(
+    wrap_runtime(chio_runtime_core::runtime_proof_regeneration_input_json(
         input,
     ))
 }
@@ -1258,25 +1252,25 @@ pub fn runtime_proof_regeneration_input_json(
 pub fn runtime_proof_parity_report_json(
     report: &RuntimeProofParityReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_proof_parity_report_json(
-        report,
-    ))
+    wrap_runtime(chio_runtime_core::runtime_proof_parity_report_json(report))
 }
 
 pub fn runtime_orchestration_profile_from_json(
     json: &str,
 ) -> Result<RuntimeOrchestrationProfile, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_orchestration_profile_from_json(json))
+    wrap_runtime(chio_runtime_core::runtime_orchestration_profile_from_json(
+        json,
+    ))
 }
 
 pub fn runtime_run_contract_from_json(json: &str) -> Result<RuntimeRunContract, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_run_contract_from_json(json))
+    wrap_runtime(chio_runtime_core::runtime_run_contract_from_json(json))
 }
 
 pub fn runtime_supervisor_profile_from_json(
     json: &str,
 ) -> Result<RuntimeSupervisorProfile, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_supervisor_profile_from_json(
+    wrap_runtime(chio_runtime_core::runtime_supervisor_profile_from_json(
         json,
     ))
 }
@@ -1284,27 +1278,25 @@ pub fn runtime_supervisor_profile_from_json(
 pub fn runtime_artifact_retention_profile_from_json(
     json: &str,
 ) -> Result<RuntimeArtifactRetentionProfile, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_artifact_retention_profile_from_json(json))
+    wrap_runtime(chio_runtime_core::runtime_artifact_retention_profile_from_json(json))
 }
 
 pub fn runtime_provider_bindings_from_json(
     json: &str,
 ) -> Result<RuntimeProviderBindingsDocument, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_provider_bindings_from_json(
-        json,
-    ))
+    wrap_runtime(chio_runtime_core::runtime_provider_bindings_from_json(json))
 }
 
 pub fn runtime_orchestration_plan_json(
     plan: &RuntimeOrchestrationPlan,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_orchestration_plan_json(plan))
+    wrap_runtime(chio_runtime_core::runtime_orchestration_plan_json(plan))
 }
 
 pub fn runtime_orchestration_run_report_json(
     report: &RuntimeOrchestrationRunReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_orchestration_run_report_json(
+    wrap_runtime(chio_runtime_core::runtime_orchestration_run_report_json(
         report,
     ))
 }
@@ -1312,27 +1304,29 @@ pub fn runtime_orchestration_run_report_json(
 pub fn runtime_orchestration_resume_plan_json(
     plan: &RuntimeOrchestrationResumePlan,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_orchestration_resume_plan_json(plan))
+    wrap_runtime(chio_runtime_core::runtime_orchestration_resume_plan_json(
+        plan,
+    ))
 }
 
 pub fn runtime_orchestration_status_report_json(
     report: &RuntimeOrchestrationStatusReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_orchestration_status_report_json(report))
+    wrap_runtime(chio_runtime_core::runtime_orchestration_status_report_json(
+        report,
+    ))
 }
 
 pub fn runtime_proof_drift_report_json(
     report: &RuntimeProofDriftReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_proof_drift_report_json(
-        report,
-    ))
+    wrap_runtime(chio_runtime_core::runtime_proof_drift_report_json(report))
 }
 
 pub fn runtime_scheduler_tick_report_json(
     report: &RuntimeSchedulerTickReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_scheduler_tick_report_json(
+    wrap_runtime(chio_runtime_core::runtime_scheduler_tick_report_json(
         report,
     ))
 }
@@ -1340,13 +1334,15 @@ pub fn runtime_scheduler_tick_report_json(
 pub fn runtime_evidence_sink_health_report_json(
     report: &RuntimeEvidenceSinkHealthReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_evidence_sink_health_report_json(report))
+    wrap_runtime(chio_runtime_core::runtime_evidence_sink_health_report_json(
+        report,
+    ))
 }
 
 pub fn runtime_recovery_drill_report_json(
     report: &RuntimeRecoveryDrillReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_recovery_drill_report_json(
+    wrap_runtime(chio_runtime_core::runtime_recovery_drill_report_json(
         report,
     ))
 }
@@ -1354,7 +1350,7 @@ pub fn runtime_recovery_drill_report_json(
 pub fn runtime_artifact_retention_plan_json(
     report: &RuntimeArtifactRetentionPlan,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_artifact_retention_plan_json(
+    wrap_runtime(chio_runtime_core::runtime_artifact_retention_plan_json(
         report,
     ))
 }
@@ -1362,7 +1358,7 @@ pub fn runtime_artifact_retention_plan_json(
 pub fn runtime_provider_health_report_json(
     report: &RuntimeProviderHealthReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_provider_health_report_json(
+    wrap_runtime(chio_runtime_core::runtime_provider_health_report_json(
         report,
     ))
 }
@@ -1370,13 +1366,13 @@ pub fn runtime_provider_health_report_json(
 pub fn runtime_ops_status_report_json(
     report: &RuntimeOpsStatusReport,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_ops_status_report_json(report))
+    wrap_runtime(chio_runtime_core::runtime_ops_status_report_json(report))
 }
 
 pub fn runtime_orchestration_profile_sha256(
     profile: &RuntimeOrchestrationProfile,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_orchestration_profile_sha256(
+    wrap_runtime(chio_runtime_core::runtime_orchestration_profile_sha256(
         profile,
     ))
 }
@@ -1384,13 +1380,13 @@ pub fn runtime_orchestration_profile_sha256(
 pub fn runtime_run_contract_sha256(
     contract: &RuntimeRunContract,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_run_contract_sha256(contract))
+    wrap_runtime(chio_runtime_core::runtime_run_contract_sha256(contract))
 }
 
 pub fn runtime_supervisor_profile_sha256(
     profile: &RuntimeSupervisorProfile,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_supervisor_profile_sha256(
+    wrap_runtime(chio_runtime_core::runtime_supervisor_profile_sha256(
         profile,
     ))
 }
@@ -1398,7 +1394,7 @@ pub fn runtime_supervisor_profile_sha256(
 pub fn runtime_peer_weights_sha256(
     weights: &RuntimePeerWeights,
 ) -> Result<String, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::runtime_peer_weights_sha256(weights))
+    wrap_runtime(chio_runtime_core::runtime_peer_weights_sha256(weights))
 }
 
 pub fn build_runtime_orchestration_plan(
@@ -1406,7 +1402,7 @@ pub fn build_runtime_orchestration_plan(
     contract: &RuntimeRunContract,
     now_unix_ms: u64,
 ) -> Result<RuntimeOrchestrationPlan, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::build_runtime_orchestration_plan(
+    wrap_runtime(chio_runtime_core::build_runtime_orchestration_plan(
         profile,
         contract,
         now_unix_ms,
@@ -1420,7 +1416,7 @@ pub fn generate_runtime_proof_drift_report(
     candidate_proof: &RuntimeProofRegenerationReport,
     now_unix_ms: u64,
 ) -> Result<RuntimeProofDriftReport, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::generate_runtime_proof_drift_report(
+    wrap_runtime(chio_runtime_core::generate_runtime_proof_drift_report(
         baseline_manifest,
         candidate_manifest,
         baseline_proof,
@@ -1438,7 +1434,7 @@ pub fn generate_runtime_evidence_sink_health_report(
     perform_write_probe: bool,
 ) -> Result<RuntimeEvidenceSinkHealthReport, ChioRuntimeError> {
     wrap_runtime(
-        chio_chiodos_runtime::generate_runtime_evidence_sink_health_report(
+        chio_runtime_core::generate_runtime_evidence_sink_health_report(
             run_id,
             evidence_root,
             manifest,
@@ -1454,13 +1450,11 @@ pub fn generate_runtime_provider_health_report(
     bindings: &RuntimeProviderBindingsDocument,
     now_unix_ms: u64,
 ) -> Result<RuntimeProviderHealthReport, ChioRuntimeError> {
-    wrap_runtime(
-        chio_chiodos_runtime::generate_runtime_provider_health_report(
-            profile,
-            bindings,
-            now_unix_ms,
-        ),
-    )
+    wrap_runtime(chio_runtime_core::generate_runtime_provider_health_report(
+        profile,
+        bindings,
+        now_unix_ms,
+    ))
 }
 
 pub fn generate_runtime_artifact_retention_plan(
@@ -1468,19 +1462,17 @@ pub fn generate_runtime_artifact_retention_plan(
     run_ids: &[String],
     now_unix_ms: u64,
 ) -> Result<RuntimeArtifactRetentionPlan, ChioRuntimeError> {
-    wrap_runtime(
-        chio_chiodos_runtime::generate_runtime_artifact_retention_plan(
-            profile,
-            run_ids,
-            now_unix_ms,
-        ),
-    )
+    wrap_runtime(chio_runtime_core::generate_runtime_artifact_retention_plan(
+        profile,
+        run_ids,
+        now_unix_ms,
+    ))
 }
 
 pub fn load_runtime_orchestration_evidence(
     evidence_dir: &Path,
 ) -> Result<RuntimeOrchestrationEvidence, ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::load_runtime_orchestration_evidence(
+    wrap_runtime(chio_runtime_core::load_runtime_orchestration_evidence(
         evidence_dir,
     ))
 }
@@ -1491,7 +1483,7 @@ pub fn runtime_orchestration_evidence_sink_healthy(
     now_unix_ms: u64,
 ) -> Result<bool, ChioRuntimeError> {
     wrap_runtime(
-        chio_chiodos_runtime::runtime_orchestration_evidence_sink_healthy(
+        chio_runtime_core::runtime_orchestration_evidence_sink_healthy(
             profile,
             evidence_dir,
             now_unix_ms,
@@ -1505,32 +1497,32 @@ pub fn runtime_orchestration_evidence_is_fresh(
     evidence: &RuntimeOrchestrationEvidence,
     now_unix_ms: u64,
 ) -> bool {
-    chio_chiodos_runtime::runtime_orchestration_evidence_is_fresh(profile, evidence, now_unix_ms)
+    chio_runtime_core::runtime_orchestration_evidence_is_fresh(profile, evidence, now_unix_ms)
 }
 
 pub fn validate_runtime_orchestration_evidence_binding(
     run_contract: &RuntimeRunContract,
     evidence: &RuntimeOrchestrationEvidence,
 ) -> Result<(), RuntimeOrchestrationEvidenceFailure> {
-    chio_chiodos_runtime::validate_runtime_orchestration_evidence_binding(run_contract, evidence)
+    chio_runtime_core::validate_runtime_orchestration_evidence_binding(run_contract, evidence)
 }
 
 pub fn validate_runtime_orchestration_evidence_integrity(
     evidence: &RuntimeOrchestrationEvidence,
 ) -> Result<(), RuntimeOrchestrationEvidenceFailure> {
-    chio_chiodos_runtime::validate_runtime_orchestration_evidence_integrity(evidence)
+    chio_runtime_core::validate_runtime_orchestration_evidence_integrity(evidence)
 }
 
 pub fn validate_runtime_evidence_sink_health_report(
     report: &RuntimeEvidenceSinkHealthReport,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_evidence_sink_health_report(report))
+    wrap_runtime(chio_runtime_core::validate_runtime_evidence_sink_health_report(report))
 }
 
 pub fn validate_runtime_workflow_run_report(
     report: &RuntimeWorkflowRunReport,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_workflow_run_report(
+    wrap_runtime(chio_runtime_core::validate_runtime_workflow_run_report(
         report,
     ))
 }
@@ -1538,7 +1530,7 @@ pub fn validate_runtime_workflow_run_report(
 pub fn validate_runtime_evidence_manifest(
     manifest: &RuntimeEvidenceManifest,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_evidence_manifest(
+    wrap_runtime(chio_runtime_core::validate_runtime_evidence_manifest(
         manifest,
     ))
 }
@@ -1546,43 +1538,49 @@ pub fn validate_runtime_evidence_manifest(
 pub fn validate_runtime_supervisor_profile(
     profile: &RuntimeSupervisorProfile,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_supervisor_profile(
+    wrap_runtime(chio_runtime_core::validate_runtime_supervisor_profile(
         profile,
     ))
 }
 
 pub fn validate_runtime_run_lease(lease: &RuntimeRunLease) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_run_lease(lease))
+    wrap_runtime(chio_runtime_core::validate_runtime_run_lease(lease))
 }
 
 pub fn validate_runtime_scheduler_tick_report(
     report: &RuntimeSchedulerTickReport,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_scheduler_tick_report(report))
+    wrap_runtime(chio_runtime_core::validate_runtime_scheduler_tick_report(
+        report,
+    ))
 }
 
 pub fn validate_runtime_recovery_drill_report(
     report: &RuntimeRecoveryDrillReport,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_recovery_drill_report(report))
+    wrap_runtime(chio_runtime_core::validate_runtime_recovery_drill_report(
+        report,
+    ))
 }
 
 pub fn validate_runtime_artifact_retention_profile(
     profile: &RuntimeArtifactRetentionProfile,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_artifact_retention_profile(profile))
+    wrap_runtime(chio_runtime_core::validate_runtime_artifact_retention_profile(profile))
 }
 
 pub fn validate_runtime_artifact_retention_plan(
     plan: &RuntimeArtifactRetentionPlan,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_artifact_retention_plan(plan))
+    wrap_runtime(chio_runtime_core::validate_runtime_artifact_retention_plan(
+        plan,
+    ))
 }
 
 pub fn validate_runtime_provider_bindings(
     document: &RuntimeProviderBindingsDocument,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_provider_bindings(
+    wrap_runtime(chio_runtime_core::validate_runtime_provider_bindings(
         document,
     ))
 }
@@ -1590,13 +1588,15 @@ pub fn validate_runtime_provider_bindings(
 pub fn validate_runtime_provider_health_report(
     report: &RuntimeProviderHealthReport,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_provider_health_report(report))
+    wrap_runtime(chio_runtime_core::validate_runtime_provider_health_report(
+        report,
+    ))
 }
 
 pub fn validate_runtime_ops_status_report(
     report: &RuntimeOpsStatusReport,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_ops_status_report(
+    wrap_runtime(chio_runtime_core::validate_runtime_ops_status_report(
         report,
     ))
 }
@@ -1604,7 +1604,7 @@ pub fn validate_runtime_ops_status_report(
 pub fn validate_runtime_proof_drift_report(
     report: &RuntimeProofDriftReport,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_proof_drift_report(
+    wrap_runtime(chio_runtime_core::validate_runtime_proof_drift_report(
         report,
     ))
 }
@@ -1612,19 +1612,19 @@ pub fn validate_runtime_proof_drift_report(
 pub fn validate_runtime_proof_regeneration_input(
     input: &RuntimeProofRegenerationInput,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_proof_regeneration_input(input))
+    wrap_runtime(chio_runtime_core::validate_runtime_proof_regeneration_input(input))
 }
 
 pub fn validate_runtime_proof_regeneration_report(
     report: &RuntimeProofRegenerationReport,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_proof_regeneration_report(report))
+    wrap_runtime(chio_runtime_core::validate_runtime_proof_regeneration_report(report))
 }
 
 pub fn validate_runtime_proof_parity_report(
     report: &RuntimeProofParityReport,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_proof_parity_report(
+    wrap_runtime(chio_runtime_core::validate_runtime_proof_parity_report(
         report,
     ))
 }
@@ -1632,7 +1632,9 @@ pub fn validate_runtime_proof_parity_report(
 pub fn validate_runtime_orchestration_profile(
     profile: &RuntimeOrchestrationProfile,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_orchestration_profile(profile))
+    wrap_runtime(chio_runtime_core::validate_runtime_orchestration_profile(
+        profile,
+    ))
 }
 
 pub fn validate_runtime_orchestration_profile_fresh(
@@ -1640,40 +1642,36 @@ pub fn validate_runtime_orchestration_profile_fresh(
     now_unix_ms: u64,
 ) -> Result<(), ChioRuntimeError> {
     wrap_runtime(
-        chio_chiodos_runtime::validate_runtime_orchestration_profile_fresh(profile, now_unix_ms),
+        chio_runtime_core::validate_runtime_orchestration_profile_fresh(profile, now_unix_ms),
     )
 }
 
 pub fn validate_runtime_run_contract(
     contract: &RuntimeRunContract,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_run_contract(
-        contract,
-    ))
+    wrap_runtime(chio_runtime_core::validate_runtime_run_contract(contract))
 }
 
 pub fn validate_runtime_orchestration_plan(
     plan: &RuntimeOrchestrationPlan,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_orchestration_plan(
-        plan,
-    ))
+    wrap_runtime(chio_runtime_core::validate_runtime_orchestration_plan(plan))
 }
 
 pub fn validate_runtime_orchestration_run_report(
     report: &RuntimeOrchestrationRunReport,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_orchestration_run_report(report))
+    wrap_runtime(chio_runtime_core::validate_runtime_orchestration_run_report(report))
 }
 
 pub fn validate_runtime_orchestration_resume_plan(
     plan: &RuntimeOrchestrationResumePlan,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_orchestration_resume_plan(plan))
+    wrap_runtime(chio_runtime_core::validate_runtime_orchestration_resume_plan(plan))
 }
 
 pub fn validate_runtime_orchestration_status_report(
     report: &RuntimeOrchestrationStatusReport,
 ) -> Result<(), ChioRuntimeError> {
-    wrap_runtime(chio_chiodos_runtime::validate_runtime_orchestration_status_report(report))
+    wrap_runtime(chio_runtime_core::validate_runtime_orchestration_status_report(report))
 }

@@ -23,18 +23,18 @@
 
 ### P1
 
-- Chio-native CLI paths currently normalize into `ChiodosCommands`.
-- Public `chio chiodos` remains visible as a normal compatibility command.
-- Buyer ownership remains in `chio-chiodos-runtime`.
+- Chio-native CLI paths currently normalize into `ChioCommands`.
+- Public `chio` remains visible as a normal compatibility command.
+- Buyer ownership remains in `chio-runtime-core`.
 
 ### P2
 
 - Chio-native artifact IDs and registry `artifactKind` values are only partially cut over.
-- Script and fixture roots remain Chiodos-named except for compatibility cases.
+- Script and fixture roots remain Chio-named except for compatibility cases.
 
 ### P3
 
-- Final crate/module convergence has not yet split `chio-chiodos-runtime` into `chio-attest-buyer` and Chio-native runtime ownership.
+- Final crate/module convergence has not yet split `chio-runtime-core` into `chio-attest-buyer` and Chio-native runtime ownership.
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stop `chio-runtime` from publicly reexporting the historical `ChiodosRuntimeAdmissionHook` name.
+**Goal:** Stop `chio-runtime` from publicly reexporting the historical `ChioRuntimeAdmissionHook` name.
 
 **Architecture:** `chio-runtime` is the Chio-named runtime boundary. The kernel admission hook can still delegate to the hardened historical hook internally, but callers should construct and name `ChioRuntimeAdmissionHook`.
 
@@ -30,7 +30,7 @@ cargo test -p chio-runtime runtime_admission_hook_boundary_is_chio_owned
 ```
 
 Expected before implementation: FAIL because only
-`ChiodosRuntimeAdmissionHook` is publicly available.
+`ChioRuntimeAdmissionHook` is publicly available.
 
 ### Task 2: Implement Chio-Named Hook Wrapper
 
@@ -45,7 +45,7 @@ Add `chio-kernel` so `chio-runtime` can implement the public
 
 - [x] **Step 2: Replace the direct reexport**
 
-Stop reexporting `ChiodosRuntimeAdmissionHook`. Add `ChioRuntimeAdmissionHook`
+Stop reexporting `ChioRuntimeAdmissionHook`. Add `ChioRuntimeAdmissionHook`
 as a newtype wrapper with matching builder methods and a delegated
 `RuntimeAdmissionHook` implementation.
 
@@ -70,7 +70,7 @@ Run:
 
 ```bash
 cargo test -p chio-runtime
-cargo test -p chio-cli --bin chio chiodos_runtime
+cargo test -p chio-cli --bin chio_runtime
 ```
 
 - [x] **Step 2: Run focused lints and hygiene**
@@ -83,7 +83,7 @@ cargo clippy -p chio-cli --bin chio -- -D warnings
 cargo fmt --all -- --check
 git diff --check
 rg -n $'\xE2\x80\x94|\xE2\x80\x93' crates/chio-runtime/Cargo.toml crates/chio-runtime/src/lib.rs crates/chio-runtime/tests/runtime_boundary.rs docs/architecture/CHIO_FINAL_ARCHITECTURE.md docs/superpowers/plans/2026-05-19-chio-runtime-admission-hook-boundary.md
-rg -n "ChiodosRuntimeAdmissionHook,|pub type ChioRuntimeAdmissionHook|ChioRuntimeAdmissionHook = chio_chiodos_runtime" crates/chio-runtime/src/lib.rs
+rg -n "ChioRuntimeAdmissionHook,|pub type ChioRuntimeAdmissionHook|ChioRuntimeAdmissionHook = chio_runtime_core" crates/chio-runtime/src/lib.rs
 ```
 
 Expected: all commands exit 0 except the dash scan and source leak scan exit 1

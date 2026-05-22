@@ -4,7 +4,7 @@
 
 **Goal:** Stop `chio-pheromone-runtime` from exposing the historical proof package error type through its public workflow verification error boundary.
 
-**Architecture:** The Chio pheromone runtime may still call the historical proof package verifier for read-only signed artifact validation while the deeper crate split continues. That implementation detail must stay behind a Chio-owned runtime error boundary. Public receiver APIs and public error variants should speak Chio workflow verification, not Chiodos verifier internals.
+**Architecture:** The Chio pheromone runtime may still call the historical proof package verifier for read-only signed artifact validation while the deeper crate split continues. That implementation detail must stay behind a Chio-owned runtime error boundary. Public receiver APIs and public error variants should speak Chio workflow verification, not Chio verifier internals.
 
 **Tech Stack:** Rust integration tests, `chio-pheromone-runtime`, cargo test filters, source-level public API guard tests.
 
@@ -18,7 +18,7 @@
 - [x] **Step 1: Assert workflow verification errors are Chio-owned**
 
 Add a test that scans `../src/lib.rs` and fails when public error variants or
-public signatures expose historical `Chiodos*` verifier types.
+public signatures expose historical `Chio*` verifier types.
 
 - [x] **Step 2: Run the focused test and verify red**
 
@@ -29,7 +29,7 @@ CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo test -p chio-pheromone-runt
 ```
 
 Expected: fail before implementation because `WorkflowVerification` exposes
-`ChiodosPackageError`.
+`ChioPackageError`.
 
 ### Task 2: Hide Historical Verifier Errors Behind Chio Runtime
 
@@ -39,7 +39,7 @@ Expected: fail before implementation because `WorkflowVerification` exposes
 - [x] **Step 1: Replace the public historical error payload**
 
 Change `PheromoneRuntimeError::WorkflowVerification` so it stores a Chio-owned
-message rather than `ChiodosPackageError`.
+message rather than `ChioPackageError`.
 
 - [x] **Step 2: Convert verifier failures explicitly**
 
@@ -74,7 +74,7 @@ CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo clippy -p chio-pheromone-ru
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo fmt --all -- --check
 git diff --check
 git diff --cached --check
-rg -n 'WorkflowVerification\\(#\\[from\\] ChiodosPackageError\\)|pub .*ChiodosPackageError' crates/chio-pheromone-runtime/src/lib.rs
+rg -n 'WorkflowVerification\\(#\\[from\\] ChioPackageError\\)|pub .*ChioPackageError' crates/chio-pheromone-runtime/src/lib.rs
 rg -n $'\xE2\x80\x94|\xE2\x80\x93' docs/superpowers/plans/2026-05-21-chio-pheromone-runtime-workflow-error-boundary.md crates/chio-pheromone-runtime/src/lib.rs crates/chio-pheromone-runtime/tests/public_surface.rs
 ```
 
@@ -83,7 +83,7 @@ Expected: all pass, except both `rg` checks exit 1 with no output.
 ### Task 4: Wire CLI Pheromone Dispatch Through Chio Wrappers
 
 **Files:**
-- Modify: `crates/chio-cli/src/cli/chiodos/dispatch/pheromone.rs`
+- Modify: `crates/chio-cli/src/cli/chio/dispatch/pheromone.rs`
 
 - [x] **Step 1: Fix the CLI integration boundary exposed by focused tests**
 
@@ -97,8 +97,8 @@ parsers directly before invoking `VerifiedChioWorkflowResolver`.
 Run:
 
 ```bash
-CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo test -p chio-cli --test legacy_chiodos_cli -- --nocapture
-CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo test -p chio-cli --bin chio chio_attest -- --nocapture
+CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo test -p chio-cli --test legacy_chio_cli -- --nocapture
+CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo test -p chio-cli --bin chio_attest -- --nocapture
 ```
 
 Expected: both pass after the dispatch fix.

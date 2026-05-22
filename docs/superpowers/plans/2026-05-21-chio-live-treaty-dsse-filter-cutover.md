@@ -23,7 +23,7 @@ test names must not make a zero-match filter look like successful validation.
 Run: `bash scripts/check-chio-live-treaty-buyer-closure.sh`
 
 Observed: the gate fails because
-`strict_chiodos_signer_binds_treaty_runtime_refs` matches zero tests in
+`strict_chio_signer_binds_treaty_runtime_refs` matches zero tests in
 `chio-federation`.
 
 - [x] **Step 2: Update gate filter**

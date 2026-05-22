@@ -1944,7 +1944,7 @@ present. Runtime proof regeneration now also emits a runtime evidence manifest,
 a proof-regeneration input artifact, package-valid signed `ChioReceipt`
 artifacts, strict treaty-bound DSSE envelopes in the legacy predicate format, a
 signed `WorkflowReceipt v2`,
-`chio.chiodos.proof-package.v1`, verifier trust and context inputs, and the
+`chio.attest.proof-package.v1`, verifier trust and context inputs, and the
 verifier report produced by the explicit historical verifier. A
 regeneration report may set `accepted=true` only when that verifier accepts the
 regenerated package and the report binds proof package, verifier report, and
@@ -2657,7 +2657,7 @@ The profile is intentionally narrow:
 - Chio currently supports exactly one requested credential with format
   `application/dc+sd-jwt` and type
   `https://chio.dev/credentials/types/chio-passport-sd-jwt-vc/v1`
-- verifier trust bootstrap is one Chio verifier metadata document plus one
+- verifier trust bootstrap is one verifier metadata document plus one
   verifier `JWKS`
 - verifier or issuer key rotation may preserve active request and credential
   validation only when the rotated trusted keyset is still published through

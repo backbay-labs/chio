@@ -4,28 +4,28 @@ on:
   push:
     branches: [main]
     paths:
-      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-runtime-core/**"
       - "crates/chio-cli/**"
       - "crates/chio-kernel/**"
       - "crates/chio-runtime/**"
       - "crates/chio-spec-validate/**"
       - "examples/chio-3vendor/**"
       - "spec/schemas/chio-runtime/**"
-      - "spec/schemas/chiodos/**"
+      - "spec/schemas/chio/**"
       - "spec/schemas/registry.json"
       - "spec/schemas/MANIFEST.sha256"
       - "scripts/check-chio-runtime-orchestration.sh"
       - ".github/workflows/chio-runtime-orchestration.yml"
   pull_request:
     paths:
-      - "crates/chio-chiodos-runtime/**"
+      - "crates/chio-runtime-core/**"
       - "crates/chio-cli/**"
       - "crates/chio-kernel/**"
       - "crates/chio-runtime/**"
       - "crates/chio-spec-validate/**"
       - "examples/chio-3vendor/**"
       - "spec/schemas/chio-runtime/**"
-      - "spec/schemas/chiodos/**"
+      - "spec/schemas/chio/**"
       - "spec/schemas/registry.json"
       - "spec/schemas/MANIFEST.sha256"
       - "scripts/check-chio-runtime-orchestration.sh"

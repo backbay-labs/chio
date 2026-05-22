@@ -1,8 +1,8 @@
-# Chiodos 6.15 Alert Assurance Normalization
+# Chio 6.15 Alert Assurance Normalization
 
 Baseline: `main@ac4ebdc4ba3a8ce3a5fd34b68b73e43e0e9ebd03`
 
-Branch: `codex/chiodos-6-15-alert-assurance-normalization`
+Branch: `codex/chio-6-15-alert-assurance-normalization`
 
 ## Goal
 
@@ -16,7 +16,7 @@ Chio still does not send notifications, store downstream credentials, call downs
 - Source-bound long-window delivery drift report v2.
 - Route-owner profile and review packet.
 - Alert assurance package.
-- CLI commands under `chio chiodos pheromone relay alert`.
+- CLI commands under `chio pheromone relay alert`.
 - Existing dashboard extended with an alert assurance card.
 - Gate script with default, schema-only, and negative-only modes.
 
@@ -31,13 +31,13 @@ Chio still does not send notifications, store downstream credentials, call downs
 ## Final Gates
 
 - `cargo test -p chio-pheromone-relay alert_assurance`
-- `cargo test -p chio-cli --bin chio chiodos_pheromone_relay_alert_assurance`
+- `cargo test -p chio-cli --bin chio_pheromone_relay_alert_assurance`
 - `cargo test -p chio-spec-validate`
 - `cargo test -p chio-metrics-spec`
 - dashboard tests and build
-- `bash scripts/check-chiodos-pheromone-relay-alert-assurance.sh`
-- `bash scripts/check-chiodos-pheromone-relay-alert-assurance.sh --schema-only`
-- `bash scripts/check-chiodos-pheromone-relay-alert-assurance.sh --negative-only`
+- `bash scripts/check-chio-pheromone-relay-alert-assurance.sh`
+- `bash scripts/check-chio-pheromone-relay-alert-assurance.sh --schema-only`
+- `bash scripts/check-chio-pheromone-relay-alert-assurance.sh --negative-only`
 - existing delivery, handoff, alert routing, observability, directory lifecycle, relay ops, relay, runtime, transit, authority issuance, proof-package, bounded, diagnostic, and threat-mutant gates
 - `cargo fmt --all -- --check`
 - targeted clippy for touched crates with `-D warnings`

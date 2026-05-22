@@ -2,7 +2,7 @@
 
 Status: active implementation slice.
 
-Trajectory 6 is scoped as **Chiodos v0.1: cross-vendor attested workflows**.
+Trajectory 6 is scoped as **Chio v0.1: cross-vendor attested workflows**.
 Trajectory 5.2 exited with the strict bounded assurance gate green, so T6 may
 now carry runtime work that is backed by runnable acceptance gates.
 
@@ -20,6 +20,6 @@ now carry runtime work that is backed by runnable acceptance gates.
 - `chio.capability-lease.v1`
 - `chio.governance-receipt.v1`
 - WorkflowReceipt / StepRecord v2 fields
-- Chiodos verifier bundle shape
+- Chio verifier bundle shape
 
 These are draft planning names only.

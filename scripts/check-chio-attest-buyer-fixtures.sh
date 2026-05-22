@@ -7,8 +7,8 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
 SCHEMA="$ROOT/spec/schemas/chio-attest/v1/buyer-proof-negative-fixture-corpus.schema.json"
 NEGATIVE_FIXTURE="$ROOT/examples/chio-3vendor/fixtures/negative-cases.json"
 
-if rg -n 'chio\.chiodos|chiodos_|chiodos:' "$NEGATIVE_FIXTURE"; then
-  echo "active Chio attest negative corpus must not contain Chiodos schema IDs or names" >&2
+if rg -n 'chio\.chio|chio_|chio:' "$NEGATIVE_FIXTURE"; then
+  echo "active Chio attest negative corpus must not contain Chio schema IDs or names" >&2
   exit 1
 fi
 

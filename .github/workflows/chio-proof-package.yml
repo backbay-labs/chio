@@ -3,8 +3,8 @@ name: Chio Proof Package
 on:
   pull_request:
     paths:
-      - "crates/chio-chiodos/**"
-      - "crates/chio-chiodos-authority/**"
+      - "crates/chio-attest-buyer-core/**"
+      - "crates/chio-federation-authority/**"
       - "crates/chio-cli/**"
       - "crates/chio-federation/**"
       - "crates/chio-governance/**"
@@ -12,20 +12,20 @@ on:
       - "crates/chio-selective-disclosure/**"
       - "crates/chio-conformance/**"
       - "examples/chio-3vendor/**"
-      - "examples/chiodos-3vendor/**"
+      - "examples/chio-3vendor/**"
       - "scripts/check-chio-authority-issuance.sh"
       - "scripts/check-chio-proof-package.sh"
       - "spec/schemas/chio-attest/**"
       - "spec/schemas/chio-federation/**"
-      - "spec/schemas/chiodos/**"
+      - "spec/schemas/chio/**"
       - "spec/schemas/registry.json"
       - ".github/workflows/chio-proof-package.yml"
   push:
     branches:
       - main
     paths:
-      - "crates/chio-chiodos/**"
-      - "crates/chio-chiodos-authority/**"
+      - "crates/chio-attest-buyer-core/**"
+      - "crates/chio-federation-authority/**"
       - "crates/chio-cli/**"
       - "crates/chio-federation/**"
       - "crates/chio-governance/**"
@@ -33,12 +33,12 @@ on:
       - "crates/chio-selective-disclosure/**"
       - "crates/chio-conformance/**"
       - "examples/chio-3vendor/**"
-      - "examples/chiodos-3vendor/**"
+      - "examples/chio-3vendor/**"
       - "scripts/check-chio-authority-issuance.sh"
       - "scripts/check-chio-proof-package.sh"
       - "spec/schemas/chio-attest/**"
       - "spec/schemas/chio-federation/**"
-      - "spec/schemas/chiodos/**"
+      - "spec/schemas/chio/**"
       - "spec/schemas/registry.json"
       - ".github/workflows/chio-proof-package.yml"
   workflow_dispatch:

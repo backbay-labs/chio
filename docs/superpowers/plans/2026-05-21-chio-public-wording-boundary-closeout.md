@@ -2,7 +2,7 @@
 
 ## Goal
 
-Close the remaining production-facing Chiodos wording leaks found during the
+Close the remaining production-facing Chio wording leaks found during the
 Chio architecture closeout without removing explicit legacy compatibility
 surfaces.
 
@@ -16,7 +16,7 @@ surfaces.
 
 - Extend the federation public-surface guard to include root `lib.rs`
   production text. It should fail on the stale selective-disclosure comment.
-- Add a CLI source guard that rejects stale `strict CHIODOS` wording in active
+- Add a CLI source guard that rejects stale `strict CHIO` wording in active
   explain help text while allowing hidden legacy command compatibility docs.
 
 ## Implementation

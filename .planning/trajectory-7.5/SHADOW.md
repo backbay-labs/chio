@@ -1,4 +1,4 @@
-# Chiodos 7.5 Shadow
+# Chio 7.5 Shadow
 
 The 7.5 shadow target is production runtime operations hardening after local
 runtime orchestration is proven.

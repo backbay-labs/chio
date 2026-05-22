@@ -4,7 +4,7 @@
 
 **Goal:** Move runtime ops hardening validation to `scripts/check-chio-runtime-ops-hardening.sh` and a Chio-named workflow.
 
-**Architecture:** The active gate must use Chio runtime schemas and public `chio runtime ops ...` commands. The Chiodos-named script and workflow may remain only as compatibility wrappers. Legacy Chiodos schema references are allowed only for runtime ops negative-corpus and failure-code registry schemas until those schemas have Chio-runtime replacements.
+**Architecture:** The active gate must use Chio runtime schemas and public `chio runtime ops ...` commands. The Chio-named script and workflow may remain only as compatibility wrappers. Legacy Chio schema references are allowed only for runtime ops negative-corpus and failure-code registry schemas until those schemas have Chio-runtime replacements.
 
 **Tech Stack:** Bash gate scripts, Chio runtime schemas, Chio CLI runtime ops commands, Cargo test filters, GitHub Actions workflow YAML.
 
@@ -14,9 +14,9 @@
 
 **Files:**
 - Create: `scripts/check-chio-runtime-ops-hardening.sh`
-- Modify: `scripts/check-chiodos-runtime-ops-hardening.sh`
+- Modify: `scripts/check-chio-runtime-ops-hardening.sh`
 - Create: `.github/workflows/chio-runtime-ops-hardening.yml`
-- Modify: `.github/workflows/chiodos-runtime-ops-hardening.yml`
+- Modify: `.github/workflows/chio-runtime-ops-hardening.yml`
 
 - [x] **Step 1: Prove the Chio runtime ops gate is missing**
 
@@ -33,13 +33,13 @@ Expected: fail because the Chio-named runtime ops gate does not exist.
 Run:
 
 ```bash
-if rg -n 'spec/schemas/chiodos/v1|chio\\.chiodos\\.runtime-|chiodos_runtime_ops|scripts/check-chiodos-runtime-ops-hardening.sh' scripts/check-chiodos-runtime-ops-hardening.sh .github/workflows/chiodos-runtime-ops-hardening.yml; then
+if rg -n 'retired-runtime-schema-prefix|chio_runtime_ops|scripts/check-chio-runtime-ops-hardening.sh' scripts/check-chio-runtime-ops-hardening.sh .github/workflows/chio-runtime-ops-hardening.yml; then
   echo "legacy runtime ops gate still owns active implementation" >&2
   exit 1
 fi
 ```
 
-Expected: fail because the old script owns Chiodos runtime schemas and the old workflow is active.
+Expected: fail because the old script owns Chio runtime schemas and the old workflow is active.
 
 ### Task 2: Add Chio-Owned Runtime Ops Gate
 
@@ -61,9 +61,9 @@ chio.runtime.evidence-manifest.v1
 
 Use `spec/schemas/chio-runtime/v1` for supervisor, provider, retention, report, tick, recovery, evidence, and provider-health artifacts.
 
-- [x] **Step 3: Preserve legacy-only schema exceptions**
+- [x] **Step 3: Validate negative-corpus and registry schemas**
 
-Use `spec/schemas/chiodos/v1` only for:
+Use `spec/schemas/chio-runtime/v1` for:
 
 ```text
 runtime-ops-negative-fixture-corpus.schema.json
@@ -73,9 +73,9 @@ runtime-failure-code-registry.schema.json
 ### Task 3: Convert Old Entrypoints To Compatibility Wrappers
 
 **Files:**
-- Modify: `scripts/check-chiodos-runtime-ops-hardening.sh`
+- Modify: `scripts/check-chio-runtime-ops-hardening.sh`
 - Create: `.github/workflows/chio-runtime-ops-hardening.yml`
-- Modify: `.github/workflows/chiodos-runtime-ops-hardening.yml`
+- Modify: `.github/workflows/chio-runtime-ops-hardening.yml`
 
 - [x] **Step 1: Replace old script implementation with delegation**
 
@@ -113,7 +113,7 @@ CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-runtime-o
 Run:
 
 ```bash
-CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chiodos-runtime-ops-hardening.sh --schema-only
+CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-runtime-ops-hardening.sh --schema-only
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-runtime-ops-hardening.sh
 ```
 
@@ -122,19 +122,19 @@ CARGO_TARGET_DIR=/private/tmp/chio-985a-target bash scripts/check-chio-runtime-o
 Run:
 
 ```bash
-bash -n scripts/check-chio-runtime-ops-hardening.sh scripts/check-chiodos-runtime-ops-hardening.sh
+bash -n scripts/check-chio-runtime-ops-hardening.sh scripts/check-chio-runtime-ops-hardening.sh
 test -x scripts/check-chio-runtime-ops-hardening.sh
-if rg -n 'chio\\.chiodos\\.runtime-(supervisor-profile|provider-bindings|artifact-retention|evidence-manifest|scheduler|ops-status|recovery-drill)|chiodos_runtime_ops|check-chiodos-runtime-ops-hardening' scripts/check-chio-runtime-ops-hardening.sh; then
-  echo "Chio runtime ops gate still points at Chiodos runtime implementation paths" >&2
+if rg -n 'chio\\.chio\\.runtime-(supervisor-profile|provider-bindings|artifact-retention|evidence-manifest|scheduler|ops-status|recovery-drill)|chio_runtime_ops|check-chio-runtime-ops-hardening' scripts/check-chio-runtime-ops-hardening.sh; then
+  echo "Chio runtime ops gate still points at Chio runtime implementation paths" >&2
   exit 1
 fi
-if rg -n 'pull_request:|push:' .github/workflows/chiodos-runtime-ops-hardening.yml; then
+if rg -n 'pull_request:|push:' .github/workflows/chio-runtime-ops-hardening.yml; then
   echo "legacy runtime ops workflow is still active on PR or push" >&2
   exit 1
 fi
 CARGO_TARGET_DIR=/private/tmp/chio-985a-target cargo fmt --all -- --check
 git diff --check
-rg -n $'\xE2\x80\x94|\xE2\x80\x93' docs/superpowers/plans/2026-05-21-chio-runtime-ops-hardening-gate-cutover.md scripts/check-chio-runtime-ops-hardening.sh scripts/check-chiodos-runtime-ops-hardening.sh .github/workflows/chio-runtime-ops-hardening.yml .github/workflows/chiodos-runtime-ops-hardening.yml
+rg -n $'\xE2\x80\x94|\xE2\x80\x93' docs/superpowers/plans/2026-05-21-chio-runtime-ops-hardening-gate-cutover.md scripts/check-chio-runtime-ops-hardening.sh scripts/check-chio-runtime-ops-hardening.sh .github/workflows/chio-runtime-ops-hardening.yml .github/workflows/chio-runtime-ops-hardening.yml
 ```
 
 Expected: all pass, except the dash scan exits 1 with no output.
