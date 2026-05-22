@@ -1,4 +1,4 @@
-# Chiodos 7.5 Tickets
+# Chio 7.5 Tickets
 
 - C7.5-001, Integrator: Create branch, planning docs, baseline SHA, final
   gates, no-planning-metadata rule, and 7.6 shadow note.

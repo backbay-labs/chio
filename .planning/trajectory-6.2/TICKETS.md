@@ -1,4 +1,4 @@
-# Chiodos 6.2 Tickets
+# Chio 6.2 Tickets
 
 ## C6.2-001: Integrator
 
@@ -6,14 +6,14 @@ Owner: Integrator.
 
 Acceptance:
 
-- Create `codex/chiodos-6-2-verifier-owned-workflow-trust` from
+- Create `codex/chio-6-2-verifier-owned-workflow-trust` from
   `main@2c653b26abbb4677608628f2a020e92c4b25128b`.
 - Pin the baseline SHA in the lane README.
 - Keep planning metadata out of production code and public artifacts.
 
 ## C6.2-002: Trust Roots
 
-Owner: Chiodos verifier owner.
+Owner: Chio verifier owner.
 
 Acceptance:
 
@@ -29,14 +29,14 @@ Owner: Workflow owner.
 
 Acceptance:
 
-- Add `chio.chiodos-workflow-intersection.v1` to the proof package.
+- Add `chio.attest.workflow-intersection.v1` to the proof package.
 - Bind workflow id, workflow grant id, pairwise intersection refs, step class
   bindings, required vendor signers, and aggregate workflow receipt hash.
 - Missing, mismatched, or untrusted workflow intersections fail closed.
 
 ## C6.2-004: Verifier Refactor
 
-Owner: Chiodos verifier owner.
+Owner: Chio verifier owner.
 
 Acceptance:
 
@@ -74,7 +74,7 @@ Acceptance:
 
 - Freeze schemas for package, trust bundle, workflow intersection, trusted
   issuer registry, selective-disclosure proof, and verifier report.
-- Refresh stale Chiodos fixture docs to reflect closed and deferred gaps.
+- Refresh stale Chio fixture docs to reflect closed and deferred gaps.
 
 ## C6.2-008: Assurance
 
@@ -82,8 +82,8 @@ Owner: Assurance owner.
 
 Acceptance:
 
-- Extend `scripts/check-chiodos-proof-package.sh` for trust-bundle and negative
+- Extend `scripts/check-chio-proof-package.sh` for trust-bundle and negative
   fixture coverage.
-- Run targeted Cargo tests, Chiodos gate, bounded gates, threat mutants, format
+- Run targeted Cargo tests, Chio gate, bounded gates, threat mutants, format
   check, and targeted clippy.
 - Open PR, address review threads, and merge to `main`.

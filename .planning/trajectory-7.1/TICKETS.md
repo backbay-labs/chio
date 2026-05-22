@@ -1,4 +1,4 @@
-# Chiodos 7.1 Tickets
+# Chio 7.1 Tickets
 
 - **C7.1-001, Integrator:** Create active planning docs, exact baseline SHA, final gates, stacked-branch note, and 7.2 shadow.
 - **C7.1-002, Runtime Trust Floor:** Add persistent runtime trust floor state, rollback rejection, previous-hash continuity, and restart tests.

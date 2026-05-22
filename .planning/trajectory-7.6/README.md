@@ -1,10 +1,10 @@
-# Chiodos 7.6: Treaty-Bound Cross-Kernel Provenance
+# Chio 7.6: Treaty-Bound Cross-Kernel Provenance
 
 Baseline SHA: `51cb21735c7d237ccc20f005bbdb7f855adff3c9`
 
-Branch: `codex/chiodos-7-6-treaty-bound-provenance`
+Branch: `codex/chio-7-6-treaty-bound-provenance`
 
-This lane returns to the original Chiodos vision: cross-kernel work should be admitted through verifier-owned treaty semantics, then proven through receipt lineage and buyer-verifiable evidence. The first implementation slice stays local and artifact-first.
+This lane returns to the original Chio vision: cross-kernel work should be admitted through verifier-owned treaty semantics, then proven through receipt lineage and buyer-verifiable evidence. The first implementation slice stays local and artifact-first.
 
 ## Scope
 

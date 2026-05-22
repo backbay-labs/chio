@@ -8,10 +8,10 @@
 //! implied full §7 conformance. The
 //! implementation does not yet cover the full predicate schema:
 //!
-//!   - `BilateralPredicate` is intentionally not the strict CHIODOS
+//!   - `BilateralPredicate` is intentionally not the strict Chio
 //!     predicate: it is missing required fields the spec
-//!     enumerates (e.g. `tool_args_hash` per
-//!     `CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §5/§6) and accepts
+//!     enumerates (for example, `tool_args_hash` per the Chio bilateral
+//!     invocation spec) and accepts
 //!     internal non-schema fields that the spec does not define.
 //!   - The error mapping conflates parseable-but-schema-malformed
 //!     Statement JSON with `dsse.malformed` rather than the spec's
@@ -22,7 +22,7 @@
 //! This verifier is labeled as a **partial local verifier**: it
 //! implements the structural / cryptographic core
 //! plus a meaningful subset of the §7 step list against the local
-//! signature-slice profile. Strict CHIODOS predicate completion belongs
+//! signature-slice profile. Strict Chio predicate completion belongs
 //! in a separate predicate-profile implementation.
 //!
 //! Receipts that surface verifier output should NOT advertise full
@@ -65,10 +65,11 @@ use sha2::{Digest, Sha256};
 
 use crate::bilateral::BilateralCoSigningError;
 use crate::bilateral_dsse::{
-    receipt_subject_name, verify_chiodos_dsse_envelope, verify_dsse_envelope, BilateralPredicate,
-    CapabilityLeaseRef, DsseEnvelope, DsseStatement, GovernanceReceiptRef, Keyid, TreatyBindingRef,
-    PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA, PREDICATE_TYPE_BILATERAL,
-    PREDICATE_TYPE_CHIODOS_BILATERAL, STATEMENT_TYPE_V1, VALID_CROSS_ORG_VISIBILITY,
+    receipt_subject_name, validate_policy_evaluation_summary, verify_chio_bilateral_dsse_envelope,
+    verify_dsse_envelope, BilateralPredicate, CapabilityLeaseRef, DsseEnvelope, DsseStatement,
+    GovernanceReceiptRef, Keyid, TreatyBindingRef, PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA,
+    PREDICATE_TYPE_BILATERAL, PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION, STATEMENT_TYPE_V1,
+    VALID_CROSS_ORG_VISIBILITY,
 };
 use crate::trust_establishment::LadderManifestRef;
 
@@ -79,9 +80,9 @@ use crate::trust_establishment::LadderManifestRef;
 /// Fail-closed error codes returned by [`verify_bilateral_cosign_invocation`].
 /// Each exposed variant maps verbatim to a spec §7.1 code (the `Display`
 /// impl emits the code itself); kernels that surface verifier output in
-/// receipts SHOULD log the code as the canonical value. Strict CHIODOS
+/// receipts SHOULD log the code as the canonical value. Strict Chio
 /// ordered and quorum consistency claims are accepted only by strict
-/// treaty-bound Chiodos predicates that carry matching treaty refs and an
+/// treaty-bound Chio predicates that carry matching treaty refs and an
 /// explicit consistency anchor.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum VerifierError {
@@ -134,7 +135,7 @@ pub enum VerifierError {
     /// lacks a `governance_receipt_ref`.
     #[error("governance.receipt_required_missing: {0}")]
     GovernanceReceiptRequiredMissing(String),
-    /// `ladder.manifest_missing` - strict Chiodos verification requires
+    /// `ladder.manifest_missing` - strict Chio verification requires
     /// a signed ladder manifest reference for every participating peer.
     #[error("ladder.manifest_missing: {0}")]
     LadderManifestMissing(String),
@@ -479,17 +480,17 @@ pub struct VerifiedBilateralCoSignInvocation {
     pub joint_verdict: String,
 }
 
-/// Strict Chiodos verifier wrapper over the local bilateral DSSE verifier.
+/// Strict Chio verifier wrapper over the local bilateral DSSE verifier.
 ///
 /// The base verifier authenticates the DSSE envelope, receipt subject, lease,
-/// governance receipt, and policy agreement. Strict Chiodos mode adds the
+/// governance receipt, and policy agreement. Strict Chio mode adds the
 /// workflow-ladder requirement: both pinned peers must carry fresh signed
 /// ladder manifest references at the pinned epoch.
-pub struct StrictChiodosVerifierConfig<'a, 'b> {
+pub struct ChioBilateralVerifierConfig<'a, 'b> {
     pub base: &'a VerifierConfig<'b>,
 }
 
-/// Inputs for strict buyer-review verification of a treaty-bound Chiodos
+/// Inputs for strict buyer-review verification of a treaty-bound Chio
 /// bilateral DSSE envelope.
 pub struct TreatyBoundBilateralDsseReview<'a> {
     pub expected_treaty_binding: &'a TreatyBindingRef,
@@ -505,7 +506,7 @@ pub struct TreatyBoundBilateralDsseReview<'a> {
 // Partial local verifier (subset of spec §7 step list)
 // ---------------------------------------------------------------------------
 
-pub fn verify_treaty_bound_chiodos_bilateral_invocation(
+pub fn verify_treaty_bound_chio_bilateral_invocation(
     envelope: &DsseEnvelope,
     review: &TreatyBoundBilateralDsseReview<'_>,
 ) -> Result<DsseStatement, VerifierError> {
@@ -538,10 +539,10 @@ pub fn verify_treaty_bound_chiodos_bilateral_invocation(
             statement.statement_type, STATEMENT_TYPE_V1
         )));
     }
-    if statement.predicate_type != PREDICATE_TYPE_CHIODOS_BILATERAL {
+    if statement.predicate_type != PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION {
         return Err(VerifierError::PredicateTypeUnrecognised(format!(
-            "predicateType {:?} is not strict Chiodos {:?}",
-            statement.predicate_type, PREDICATE_TYPE_CHIODOS_BILATERAL
+            "predicateType {:?} is not strict Chio {:?}",
+            statement.predicate_type, PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION
         )));
     }
     if statement.subject.len() != 1 {
@@ -635,6 +636,12 @@ pub fn verify_treaty_bound_chiodos_bilateral_invocation(
             "strict treaty DSSE ordered consistency requires consistency_anchor".to_string(),
         ));
     }
+    let summary = pred.policy_evaluation_summary.as_ref().ok_or_else(|| {
+        VerifierError::PolicyVerdictDisagreement(
+            "strict treaty DSSE missing policy_evaluation_summary".to_string(),
+        )
+    })?;
+    validate_policy_evaluation_summary(summary).map_err(map_bilateral_error)?;
 
     let signer_a_id = &review.expected_treaty_binding.signer_kernel_ids[0];
     let signer_b_id = &review.expected_treaty_binding.signer_kernel_ids[1];
@@ -654,7 +661,7 @@ pub fn verify_treaty_bound_chiodos_bilateral_invocation(
                 .to_string(),
         ));
     }
-    verify_chiodos_dsse_envelope(envelope, signer_a_public_key, signer_b_public_key)
+    verify_chio_bilateral_dsse_envelope(envelope, signer_a_public_key, signer_b_public_key)
         .map_err(map_bilateral_error)?;
 
     Ok(statement)
@@ -730,11 +737,9 @@ fn validate_treaty_binding_ref_for_review(
             "{label} treaty_binding_ref.signer_kernel_ids must be distinct"
         )));
     }
-    if require_operational_refs
-        && (treaty.lease_refs.is_empty() || treaty.governance_refs.is_empty())
-    {
+    if require_operational_refs && treaty.lease_refs.is_empty() {
         return Err(VerifierError::PredicateSchemaInvalid(format!(
-            "{label} treaty_binding_ref lease_refs and governance_refs must be non-empty"
+            "{label} treaty_binding_ref lease_refs must be non-empty"
         )));
     }
     Ok(())
@@ -793,15 +798,23 @@ fn validate_predicate_operational_refs_match_treaty(
             "strict treaty DSSE lease_refs do not match capability_lease_ref".to_string(),
         ));
     }
-    let governance_ref = pred.governance_receipt_ref.as_ref().ok_or_else(|| {
-        VerifierError::PredicateSchemaInvalid(
-            "strict treaty DSSE missing governance_receipt_ref".to_string(),
-        )
-    })?;
-    if treaty.governance_refs != [governance_ref.receipt_id.clone()] {
-        return Err(VerifierError::PredicateSchemaInvalid(
-            "strict treaty DSSE governance_refs do not match governance_receipt_ref".to_string(),
-        ));
+    match pred.governance_receipt_ref.as_ref() {
+        Some(governance_ref) => {
+            if treaty.governance_refs != [governance_ref.receipt_id.clone()] {
+                return Err(VerifierError::PredicateSchemaInvalid(
+                    "strict treaty DSSE governance_refs do not match governance_receipt_ref"
+                        .to_string(),
+                ));
+            }
+        }
+        None => {
+            if !treaty.governance_refs.is_empty() {
+                return Err(VerifierError::PredicateSchemaInvalid(
+                    "strict treaty DSSE governance_refs must be empty when governance_receipt_ref is absent"
+                        .to_string(),
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -856,9 +869,9 @@ fn validate_treaty_receipt_refs_match_resolved_receipt(
     Ok(())
 }
 
-pub fn verify_chiodos_bilateral_invocation(
+pub fn verify_chio_bilateral_invocation(
     envelope: &DsseEnvelope,
-    config: &StrictChiodosVerifierConfig<'_, '_>,
+    config: &ChioBilateralVerifierConfig<'_, '_>,
 ) -> Result<VerifiedBilateralCoSignInvocation, VerifierError> {
     if envelope.payload_type != crate::bilateral_dsse::PAYLOAD_TYPE_IN_TOTO {
         return Err(VerifierError::DsseMalformed(format!(
@@ -873,10 +886,10 @@ pub fn verify_chiodos_bilateral_invocation(
     }
 
     let (statement, _) = envelope.decode_statement().map_err(map_bilateral_error)?;
-    if statement.predicate_type != PREDICATE_TYPE_CHIODOS_BILATERAL {
+    if statement.predicate_type != PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION {
         return Err(VerifierError::PredicateTypeUnrecognised(format!(
-            "signature-slice profile {:?} is not strict Chiodos {:?}",
-            statement.predicate_type, PREDICATE_TYPE_CHIODOS_BILATERAL
+            "signature-slice profile {:?} is not strict Chio {:?}",
+            statement.predicate_type, PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION
         )));
     }
     if statement.statement_type != STATEMENT_TYPE_V1 {
@@ -929,7 +942,7 @@ pub fn verify_chiodos_bilateral_invocation(
     }
 
     let statement =
-        verify_chiodos_dsse_envelope(envelope, &pinned_a.public_key, &pinned_b.public_key)
+        verify_chio_bilateral_dsse_envelope(envelope, &pinned_a.public_key, &pinned_b.public_key)
             .map_err(map_bilateral_error)?;
     let pred = &statement.predicate;
 
@@ -986,7 +999,7 @@ pub fn verify_chiodos_bilateral_invocation(
     }
     if pred.receipt_canonical_json.is_some() {
         return Err(VerifierError::PredicateSchemaInvalid(
-            "receipt_canonical_json must be absent from strict Chiodos predicates".to_string(),
+            "receipt_canonical_json must be absent from strict Chio predicates".to_string(),
         ));
     }
     let tool_args_hash = pred.tool_args_hash.as_ref().ok_or_else(|| {
@@ -1154,15 +1167,12 @@ pub fn verify_chiodos_bilateral_invocation(
             &resolved_receipt_sha256,
         )?;
         if resolved_governance_receipt.is_none() {
-            let governance_ref = pred.governance_receipt_ref.as_ref().ok_or_else(|| {
-                VerifierError::PredicateSchemaInvalid(
-                    "strict treaty DSSE missing governance_receipt_ref".to_string(),
-                )
-            })?;
-            resolved_governance_receipt = Some(resolve_governance_receipt_ref(
-                config.base.governance_receipt_store,
-                governance_ref,
-            )?);
+            if let Some(governance_ref) = pred.governance_receipt_ref.as_ref() {
+                resolved_governance_receipt = Some(resolve_governance_receipt_ref(
+                    config.base.governance_receipt_store,
+                    governance_ref,
+                )?);
+            }
         }
         if let Some(resolved_governance_receipt) = resolved_governance_receipt.as_ref() {
             if treaty.governance_refs != [resolved_governance_receipt.receipt_id.clone()] {
@@ -1607,7 +1617,7 @@ pub fn verify_bilateral_cosign_invocation(
     // `totally-ordered` and `quorum-required` before this point with
     // `predicate.schema_invalid`, so this verifier does not expose
     // unreachable `consistency.*` error codes. Strict ordered/quorum
-    // reconciliation belongs to the future CHIODOS predicate-profile
+    // reconciliation belongs to the future CHIO predicate-profile
     // implementation.
     if pred.consistency_model != crate::bilateral_dsse::DEFAULT_CONSISTENCY_MODEL {
         return Err(VerifierError::PredicateSchemaInvalid(format!(
@@ -1707,6 +1717,13 @@ fn map_bilateral_error(error: BilateralCoSigningError) -> VerifierError {
         BilateralCoSigningError::CanonicalJson(message) => {
             if message.starts_with("statement.malformed: subject name") {
                 VerifierError::SubjectDigestMismatch(message)
+            } else if message.starts_with("predicate.schema_invalid: server_a=")
+                || message.starts_with("predicate.schema_invalid: unsupported verdict")
+                || message.contains("policy_id must be non-empty")
+                || message.contains("policy_version must be non-empty")
+                || message.contains("joint_disposition=")
+            {
+                VerifierError::PolicyVerdictDisagreement(message)
             } else if message.starts_with("payload json:")
                 || message.starts_with("statement.malformed")
                 || message.contains("not canonical JSON")
@@ -1803,7 +1820,7 @@ fn is_sha256_hex(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::bilateral_dsse::{
-        pae, receipt_subject_name, sign_chiodos_dsse_envelope, sign_dsse_envelope_full,
+        pae, receipt_subject_name, sign_chio_bilateral_dsse_envelope, sign_dsse_envelope_full,
         BilateralPredicateExtensions, CapabilityLeaseRef, GovernanceReceiptRef, HashRecord,
         PolicyEvaluationSummary, PolicyVerdict, PAYLOAD_TYPE_IN_TOTO,
     };
@@ -2063,7 +2080,7 @@ mod tests {
         envelope.signatures[1].sig = BASE64_STANDARD.encode(sig_b.to_bytes());
     }
 
-    fn strict_chiodos_verifier_rejects_treaty_mutation(
+    fn strict_chio_verifier_rejects_treaty_mutation(
         mutate: impl FnOnce(&mut DsseStatement),
     ) -> VerifierError {
         let kp_a = Keypair::generate();
@@ -2086,7 +2103,7 @@ mod tests {
             canonical_json: governance_json,
         });
         insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
-        let mut envelope = sign_chiodos_dsse_envelope(
+        let mut envelope = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -2112,7 +2129,7 @@ mod tests {
         base.action_classes
             .insert("file_read".to_string(), ActionClassKind::ReceiptBacked);
 
-        verify_chiodos_bilateral_invocation(&envelope, &StrictChiodosVerifierConfig { base: &base })
+        verify_chio_bilateral_invocation(&envelope, &ChioBilateralVerifierConfig { base: &base })
             .unwrap_err()
     }
 
@@ -2140,7 +2157,7 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_verifier_requires_fresh_ladder_refs() {
+    fn strict_chio_verifier_requires_fresh_ladder_refs() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -2148,7 +2165,7 @@ mod tests {
 
         let (_slice_envelope, receipt_store, lease_registry, governance_store, oracle, mut peers) =
             fixture(&kp_a, &kp_b, &receipt, now_ms);
-        let envelope = sign_chiodos_dsse_envelope(
+        let envelope = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -2168,9 +2185,9 @@ mod tests {
             now_ms,
         );
         assert!(matches!(
-            verify_chiodos_bilateral_invocation(
+            verify_chio_bilateral_invocation(
                 &envelope,
-                &StrictChiodosVerifierConfig { base: &base }
+                &ChioBilateralVerifierConfig { base: &base }
             ),
             Err(VerifierError::LadderManifestMissing(_))
         ));
@@ -2203,16 +2220,16 @@ mod tests {
             &oracle,
             now_ms,
         );
-        let verified = verify_chiodos_bilateral_invocation(
+        let verified = verify_chio_bilateral_invocation(
             &envelope,
-            &StrictChiodosVerifierConfig { base: &base },
+            &ChioBilateralVerifierConfig { base: &base },
         )
         .unwrap();
         assert_eq!(verified.resolved_receipt.id, receipt.id);
     }
 
     #[test]
-    fn strict_chiodos_verifier_rejects_signature_slice_profile() {
+    fn strict_chio_verifier_rejects_signature_slice_profile() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -2249,9 +2266,9 @@ mod tests {
             now_ms,
         );
 
-        let err = verify_chiodos_bilateral_invocation(
+        let err = verify_chio_bilateral_invocation(
             &envelope,
-            &StrictChiodosVerifierConfig { base: &base },
+            &ChioBilateralVerifierConfig { base: &base },
         )
         .unwrap_err();
         assert_eq!(err.code(), "predicate.type_unrecognised");
@@ -2259,13 +2276,13 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_verifier_accepts_strict_predicate_profile() {
+    fn strict_chio_verifier_accepts_strict_predicate_profile() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
         let now_ms = 1_734_000_000_000;
 
-        let envelope = sign_chiodos_dsse_envelope(
+        let envelope = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -2317,9 +2334,9 @@ mod tests {
             now_ms,
         );
 
-        let verified = verify_chiodos_bilateral_invocation(
+        let verified = verify_chio_bilateral_invocation(
             &envelope,
-            &StrictChiodosVerifierConfig { base: &base },
+            &ChioBilateralVerifierConfig { base: &base },
         )
         .unwrap();
         assert_eq!(verified.resolved_receipt.id, receipt.id);
@@ -2341,7 +2358,7 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_verifier_requires_tool_args_hash() {
+    fn strict_chio_verifier_requires_tool_args_hash() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -2349,7 +2366,7 @@ mod tests {
 
         let (_slice_envelope, receipt_store, lease_registry, governance_store, oracle, mut peers) =
             fixture(&kp_a, &kp_b, &receipt, now_ms);
-        let mut envelope = sign_chiodos_dsse_envelope(
+        let mut envelope = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -2394,9 +2411,9 @@ mod tests {
             now_ms,
         );
 
-        let err = verify_chiodos_bilateral_invocation(
+        let err = verify_chio_bilateral_invocation(
             &envelope,
-            &StrictChiodosVerifierConfig { base: &base },
+            &ChioBilateralVerifierConfig { base: &base },
         )
         .unwrap_err();
         assert_eq!(err.code(), "predicate.schema_invalid");
@@ -2404,7 +2421,7 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_verifier_binds_treaty_request_hash_to_tool_args() {
+    fn strict_chio_verifier_binds_treaty_request_hash_to_tool_args() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -2425,7 +2442,7 @@ mod tests {
             canonical_json: governance_json,
         });
         insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
-        let mut envelope = sign_chiodos_dsse_envelope(
+        let mut envelope = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -2456,9 +2473,9 @@ mod tests {
         base.action_classes
             .insert("file_read".to_string(), ActionClassKind::ReceiptBacked);
 
-        let err = verify_chiodos_bilateral_invocation(
+        let err = verify_chio_bilateral_invocation(
             &envelope,
-            &StrictChiodosVerifierConfig { base: &base },
+            &ChioBilateralVerifierConfig { base: &base },
         )
         .unwrap_err();
         assert_eq!(err.code(), "predicate.schema_invalid");
@@ -2466,8 +2483,8 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_verifier_binds_treaty_outcome_hash_to_resolved_receipt() {
-        let err = strict_chiodos_verifier_rejects_treaty_mutation(|statement| {
+    fn strict_chio_verifier_binds_treaty_outcome_hash_to_resolved_receipt() {
+        let err = strict_chio_verifier_rejects_treaty_mutation(|statement| {
             statement
                 .predicate
                 .treaty_binding_ref
@@ -2480,8 +2497,8 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_verifier_binds_treaty_remote_receipt_hash_to_resolved_receipt() {
-        let err = strict_chiodos_verifier_rejects_treaty_mutation(|statement| {
+    fn strict_chio_verifier_binds_treaty_remote_receipt_hash_to_resolved_receipt() {
+        let err = strict_chio_verifier_rejects_treaty_mutation(|statement| {
             statement
                 .predicate
                 .treaty_binding_ref
@@ -2494,7 +2511,7 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_verifier_accepts_treaty_ordered_consistency() {
+    fn strict_chio_verifier_accepts_treaty_ordered_consistency() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -2515,7 +2532,7 @@ mod tests {
             canonical_json: governance_json,
         });
         insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
-        let envelope = sign_chiodos_dsse_envelope(
+        let envelope = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -2537,9 +2554,9 @@ mod tests {
         base.action_classes
             .insert("file_read".to_string(), ActionClassKind::ReceiptBacked);
 
-        let verified = verify_chiodos_bilateral_invocation(
+        let verified = verify_chio_bilateral_invocation(
             &envelope,
-            &StrictChiodosVerifierConfig { base: &base },
+            &ChioBilateralVerifierConfig { base: &base },
         )
         .unwrap();
 
@@ -2552,7 +2569,7 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_verifier_resolves_treaty_governance_refs_for_routine_class() {
+    fn strict_chio_verifier_resolves_treaty_governance_refs_for_routine_class() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -2561,7 +2578,7 @@ mod tests {
         let (_slice_envelope, receipt_store, lease_registry, governance_store, oracle, mut peers) =
             fixture(&kp_a, &kp_b, &receipt, now_ms);
         insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
-        let envelope = sign_chiodos_dsse_envelope(
+        let envelope = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -2581,9 +2598,9 @@ mod tests {
             now_ms,
         );
 
-        let err = verify_chiodos_bilateral_invocation(
+        let err = verify_chio_bilateral_invocation(
             &envelope,
-            &StrictChiodosVerifierConfig { base: &base },
+            &ChioBilateralVerifierConfig { base: &base },
         )
         .unwrap_err();
 
@@ -2592,13 +2609,13 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_treaty_review_binds_live_material() {
+    fn strict_chio_treaty_review_binds_live_material() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
         let now_ms = 1_734_000_000_000;
         let governance_digest = sha256_hex(br#"{"governance":"receipt"}"#);
-        let envelope = sign_chiodos_dsse_envelope(
+        let envelope = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -2632,7 +2649,34 @@ mod tests {
             expected_consistency_anchor: "anchor-live",
             signer_public_keys: &signer_public_keys,
         };
-        verify_treaty_bound_chiodos_bilateral_invocation(&envelope, &accepted).unwrap();
+        verify_treaty_bound_chio_bilateral_invocation(&envelope, &accepted).unwrap();
+
+        let mut bad_statement = statement.clone();
+        bad_statement
+            .predicate
+            .policy_evaluation_summary
+            .as_mut()
+            .unwrap()
+            .server_b_verdict
+            .verdict = "deny".to_string();
+        bad_statement
+            .predicate
+            .policy_evaluation_summary
+            .as_mut()
+            .unwrap()
+            .joint_disposition = Some("deny".to_string());
+        let bad_payload = BASE64_STANDARD.encode(bad_statement.canonical_bytes().unwrap());
+        let bad_envelope = DsseEnvelope {
+            payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
+            payload: bad_payload,
+            signatures: envelope.signatures.clone(),
+        };
+        assert_eq!(
+            verify_treaty_bound_chio_bilateral_invocation(&bad_envelope, &accepted)
+                .unwrap_err()
+                .code(),
+            "policy.verdict_disagreement"
+        );
 
         let wrong_anchor = TreatyBoundBilateralDsseReview {
             expected_treaty_binding: &expected_treaty_binding,
@@ -2644,7 +2688,7 @@ mod tests {
             signer_public_keys: &signer_public_keys,
         };
         assert_eq!(
-            verify_treaty_bound_chiodos_bilateral_invocation(&envelope, &wrong_anchor)
+            verify_treaty_bound_chio_bilateral_invocation(&envelope, &wrong_anchor)
                 .unwrap_err()
                 .code(),
             "predicate.schema_invalid"
@@ -2662,7 +2706,7 @@ mod tests {
             signer_public_keys: &signer_public_keys,
         };
         assert_eq!(
-            verify_treaty_bound_chiodos_bilateral_invocation(&envelope, &wrong_lease_review)
+            verify_treaty_bound_chio_bilateral_invocation(&envelope, &wrong_lease_review)
                 .unwrap_err()
                 .code(),
             "capability.lease_expired_or_unknown"
@@ -2680,7 +2724,7 @@ mod tests {
             signer_public_keys: &signer_public_keys,
         };
         assert_eq!(
-            verify_treaty_bound_chiodos_bilateral_invocation(&envelope, &wrong_governance_review)
+            verify_treaty_bound_chio_bilateral_invocation(&envelope, &wrong_governance_review)
                 .unwrap_err()
                 .code(),
             "governance.receipt_required_missing"
@@ -2697,7 +2741,7 @@ mod tests {
             signer_public_keys: &signer_public_keys,
         };
         assert_eq!(
-            verify_treaty_bound_chiodos_bilateral_invocation(&envelope, &wrong_subject_review)
+            verify_treaty_bound_chio_bilateral_invocation(&envelope, &wrong_subject_review)
                 .unwrap_err()
                 .code(),
             "subject.digest_mismatch"
@@ -2705,7 +2749,7 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_verifier_binds_treaty_signers_to_authenticated_peers() {
+    fn strict_chio_verifier_binds_treaty_signers_to_authenticated_peers() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -2726,7 +2770,7 @@ mod tests {
             canonical_json: governance_json,
         });
         insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
-        let mut envelope = sign_chiodos_dsse_envelope(
+        let mut envelope = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -2757,9 +2801,9 @@ mod tests {
         base.action_classes
             .insert("file_read".to_string(), ActionClassKind::ReceiptBacked);
 
-        let err = verify_chiodos_bilateral_invocation(
+        let err = verify_chio_bilateral_invocation(
             &envelope,
-            &StrictChiodosVerifierConfig { base: &base },
+            &ChioBilateralVerifierConfig { base: &base },
         )
         .unwrap_err();
         assert_eq!(err.code(), "predicate.schema_invalid");
@@ -2767,7 +2811,7 @@ mod tests {
     }
 
     #[test]
-    fn strict_chiodos_verifier_rejects_treaty_without_ordered_anchor() {
+    fn strict_chio_verifier_rejects_treaty_without_ordered_anchor() {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt = sample_receipt(&kp_b);
@@ -2790,7 +2834,7 @@ mod tests {
         insert_fresh_ladder_peers(&mut peers, &kp_a, &kp_b, now_ms);
         let mut ext = treaty_bound_extensions(&receipt, now_ms, governance_digest);
         ext.consistency_anchor = None;
-        let envelope = sign_chiodos_dsse_envelope(
+        let envelope = sign_chio_bilateral_dsse_envelope(
             &receipt,
             &kp_a,
             &kp_b,
@@ -2812,9 +2856,9 @@ mod tests {
         base.action_classes
             .insert("file_read".to_string(), ActionClassKind::ReceiptBacked);
 
-        let err = verify_chiodos_bilateral_invocation(
+        let err = verify_chio_bilateral_invocation(
             &envelope,
-            &StrictChiodosVerifierConfig { base: &base },
+            &ChioBilateralVerifierConfig { base: &base },
         )
         .unwrap_err();
         assert_eq!(err.code(), "predicate.schema_invalid");

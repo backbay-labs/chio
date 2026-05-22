@@ -74,7 +74,7 @@ Each lane's Evidence Gate demands the trio: **enforced call site** in production
 
 **Out of scope for release work:**
 
-- **Chiodos pheromone, chiodos selective disclosure, chiodos ladder.** `spec/CHIODOS_PHEROMONE.md`, `spec/CHIODOS_SELECTIVE_DISCLOSURE.md`, `spec/CHIODOS_LADDER.md`, `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` are research drafts. They do not yet have one wired caller; trying to realize them is premature.
+- **Chio pheromone, chio selective disclosure, chio ladder.** `spec/CHIO_PHEROMONE.md`, `spec/CHIO_SELECTIVE_DISCLOSURE.md`, `spec/CHIO_LADDER.md`, `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` are research drafts. They do not yet have one wired caller; trying to realize them is premature.
 - **OID4VP / public identity network artifacts.** PROTOCOL.md section 10.1.x is a large surface that is mostly already at the "informational unless explicitly imported" boundary. No realization gap; leave it.
 - **Underwriting / credit / facility / market discipline (PROTOCOL.md sections 9 partial).** Already shipped as bounded; no spec MUST that is unwired on the kernel hot path. Leave alone.
 - **Third-party caveats with discharge** (audits/T1.1 line 19 explicitly punts these). Stay punted.

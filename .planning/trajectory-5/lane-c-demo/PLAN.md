@@ -22,12 +22,12 @@ itself create a release claim.
   `crates/chio-federation/src/trust_establishment.rs`
   (`FEDERATION_HANDSHAKE_SCHEMA`, `FederationPeer`).
 - Action class: `refund.execute` (analogue of
-  `spec/CHIODOS_LADDER.md` section 5.2 `settle.rollback`,
+  `spec/CHIO_LADDER.md` section 5.2 `settle.rollback`,
   `mode = receipt_backed`, `consistency_model = totally-ordered`,
   `consistency_anchor = chio-anchor`, `co_sign = bilateral_required`).
   No new spec section; uses the existing financial ladder.
 - Pinned ladder intersection: domain `financial`, exactly one action
-  class, no amendment lifecycle (`spec/CHIODOS_LADDER.md` section 8
+  class, no amendment lifecycle (`spec/CHIO_LADDER.md` section 8
   is out of scope per Vision Strategist concession).
 - Two-kernel topology: in-process by default
   (`InProcessCoSigner` at `crates/chio-federation/src/bilateral.rs:216`).
@@ -53,7 +53,7 @@ itself create a release claim.
   signed `FederationKernelHandshake` from each side.
 - `examples/chiodome-bilateral/fixtures/ladder-intersection.json` -
   the co-pinned intersection per
-  `spec/CHIODOS_LADDER.md` section 6.1 `chio.chiodos-ladder-intersection.v1`.
+  `spec/CHIO_LADDER.md` section 6.1 `chio.federation.ladder-intersection.v1`.
 - Smoke run logged to `examples/chiodome-bilateral/fixtures/run.log`.
 
 ### Lane A/B dependencies
@@ -104,7 +104,7 @@ two-signature adapter" to "consume B4 and ship the §7 verifier".
     cut option B in `bilateral-cosign-flow.md`).
   - `verify_envelope(envelope, peer_pin_set, pinned_epoch)` that
     runs verification algorithm steps 1-17 from
-    `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 7.
+    `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` section 7.
   - Error type extensions for the spec section 7.1 codes (e.g.
     `PredicateSchemaInvalid`, `SubjectDigestMismatch`,
     `CapabilityLeaseExpiredOrUnknown`).
@@ -163,7 +163,7 @@ W4-W5 (after Lane B B0/B1/B2/B3/B4 close).
 - One HushSpec-shaped policy YAML at
   `examples/chiodome-bilateral/policies/refund-policy.yaml`
   (matches `examples/policies/canonical-hushspec.yaml` family).
-  The amount cap lives in the example-local chiodos-ladder
+  The amount cap lives in the example-local chio-ladder
   intersection (per review finding 5b option a, `partition_fallback.blast_radius_cap`),
   not in the policy YAML.
 - Each KB MCP tool call emits a `ChioReceipt` v2 through the kernel's
@@ -183,7 +183,7 @@ W4-W5 (after Lane B B0/B1/B2/B3/B4 close).
 - A `refund.execute` call against the proxied stack returns a v2
   receipt and a co-signed envelope.
 - Smoke script asserts the over-cap refund (`amount_minor = 100000`)
-  is rejected by the example-local chiodos-ladder intersection,
+  is rejected by the example-local chio-ladder intersection,
   producing a deny verdict in the bilateral envelope's
   `policy_evaluation_summary.server_b_verdict.verdict`. The §7
   verifier surfaces `joint_disposition = deny`.
@@ -349,7 +349,7 @@ W4.
 
 | Sub-lane | Effort | Risk |
 |---|---|---|
-| C1 architecture | M+L (4 tickets, includes new chiodos-ladder primitive) | Medium (review finding 5a: ladder primitive is new code) |
+| C1 architecture | M+L (4 tickets, includes new chio-ladder primitive) | Medium (review finding 5a: ladder primitive is new code) |
 | C2 cosign | L+L (6 tickets; consumes Lane B B4 for signing surface) | Medium (depends on B4 close; verifier work + architecture cut) |
 | C3 KB MCP | M+L (4 tickets; uses mcp-remote stdio bridge) | Low-Medium (review finding 2 resolved via bridge; HushSpec YAML simpler than fictional schema) |
 | C4 receipt explain | L+S (2 tickets; bumped per review finding 9) | Low (extends existing explain function; bilateral chain walk is the new work) |

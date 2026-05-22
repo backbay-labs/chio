@@ -1,0 +1,57 @@
+{
+  "schema": "chio.federation.treaty-runtime-negative-fixture-corpus.v1",
+  "cases": [
+    {
+      "caseId": "missing-treaty",
+      "expectedCode": "chio_attest_buyer_review_missing_treaty_dsse_binding"
+    },
+    {
+      "caseId": "stale-treaty",
+      "expectedCode": "chio_attest_buyer_packet_hash_mismatch"
+    },
+    {
+      "caseId": "forged-intersection",
+      "expectedCode": "chio_attest_buyer_packet_hash_mismatch"
+    },
+    {
+      "caseId": "compatibility-only-dsse",
+      "expectedCode": "chio_attest_buyer_review_non_strict_dsse"
+    },
+    {
+      "caseId": "missing-co-signature",
+      "expectedCode": "chio_attest_buyer_review_strict_dsse_signature_invalid"
+    },
+    {
+      "caseId": "duplicate-dsse-signature-keyid",
+      "expectedCode": "chio_attest_buyer_review_strict_dsse_signature_invalid"
+    },
+    {
+      "caseId": "receipt-mismatch",
+      "expectedCode": "chio_federation_treaty_bilateral_mismatch"
+    },
+    {
+      "caseId": "verifier-report-substitution",
+      "expectedCode": "chio_attest_buyer_review_artifact_hash_mismatch"
+    },
+    {
+      "caseId": "verifier-report-rejected",
+      "expectedCode": "chio_attest_buyer_review_verifier_report_rejected"
+    },
+    {
+      "caseId": "settlement-claim",
+      "expectedCode": "chio_attest_buyer_packet_settlement_claimed"
+    },
+    {
+      "caseId": "hidden-predicate-claim",
+      "expectedCode": "chio_attest_buyer_review_verifier_report_rejected"
+    },
+    {
+      "caseId": "request-smuggled-trust-root",
+      "expectedCode": "chio_attest_buyer_review_strict_dsse_binding_mismatch"
+    },
+    {
+      "caseId": "dynamic-trust-claim",
+      "expectedCode": "chio_attest_buyer_review_strict_dsse_binding_mismatch"
+    }
+  ]
+}

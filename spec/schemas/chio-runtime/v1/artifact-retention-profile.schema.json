@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-runtime/v1/artifact-retention-profile.schema.json",
+  "title": "Chio Runtime Artifact Retention Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "profileId",
+    "localKernelId",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs",
+    "minRetainMs",
+    "destructiveHoldMs",
+    "legalHold",
+    "dryRunOnly"
+  ],
+  "properties": {
+    "schema": { "const": "chio.runtime.artifact-retention-profile.v1" },
+    "profileId": { "type": "string", "minLength": 1 },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+    "minRetainMs": { "type": "integer", "minimum": 0 },
+    "destructiveHoldMs": { "type": "integer", "minimum": 0 },
+    "legalHold": { "type": "boolean" },
+    "dryRunOnly": { "const": true }
+  }
+}

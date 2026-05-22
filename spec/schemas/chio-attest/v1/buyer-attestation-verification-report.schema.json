@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-attest/v1/buyer-attestation-verification-report.schema.json",
+  "title": "Chio Buyer Attestation Verification Report",
+  "type": "object",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "accepted": { "const": false } },
+        "required": ["accepted"]
+      },
+      "then": { "required": ["failureCode"] }
+    }
+  ],
+  "required": ["schema", "packetId", "verificationState", "accepted", "checks"],
+  "properties": {
+    "schema": {
+      "const": "chio.attest.buyer-attestation-verification-report.v1"
+    },
+    "packetId": { "type": "string", "minLength": 1 },
+    "verificationState": { "enum": ["hash_resolved", "unresolved", "rejected"] },
+    "accepted": { "type": "boolean" },
+    "failureCode": { "type": "string", "minLength": 1 },
+    "checks": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

@@ -1,6 +1,6 @@
-# Chiodos 6.7 Shadow: Live Pheromone Runtime Consumption
+# Chio 6.7 Shadow: Live Pheromone Runtime Consumption
 
-Chiodos 6.7 is the shadow target after local pheromone transit evidence exits.
+Chio 6.7 is the shadow target after local pheromone transit evidence exits.
 
 Candidate scope:
 

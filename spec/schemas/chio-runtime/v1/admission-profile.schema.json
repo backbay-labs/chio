@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-runtime/v1/admission-profile.schema.json",
+  "title": "Chio Runtime Admission Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "profileId",
+    "localKernelId",
+    "verifierId",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs"
+  ],
+  "properties": {
+    "schema": { "const": "chio.runtime.admission-profile.v1" },
+    "profileId": { "type": "string", "minLength": 1 },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "verifierId": { "type": "string", "minLength": 1 },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+  }
+}

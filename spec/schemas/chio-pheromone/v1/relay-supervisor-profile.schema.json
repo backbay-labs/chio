@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-supervisor-profile.schema.json",
-  "title": "Chiodos Pheromone Relay Supervisor Profile",
+  "title": "Chio Pheromone Relay Supervisor Profile",
   "type": "object",
   "additionalProperties": false,
   "required": [

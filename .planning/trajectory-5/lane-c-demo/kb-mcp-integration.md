@@ -128,8 +128,8 @@ description: |
   denies KB MCP write tools as belt-and-braces. The amount cap is
   NOT enforced here (HushSpec does not have an amount cap
   primitive); it is enforced by the example-local
-  chiodos-ladder intersection logic per
-  `spec/CHIODOS_LADDER.md` §5.2 `partition_fallback.blast_radius_cap`,
+  chio-ladder intersection logic per
+  `spec/CHIO_LADDER.md` §5.2 `partition_fallback.blast_radius_cap`,
   which is what the demo exercises in the over-cap deny scenario.
 
 rules:
@@ -148,8 +148,8 @@ rules:
       - .ssh/**
 ```
 
-The cap (25000 minor units, matching `CHIODOS_LADDER §5.2`) is
-enforced by the example's chiodos-ladder pinned-intersection logic
+The cap (25000 minor units, matching `CHIO_LADDER §5.2`) is
+enforced by the example's chio-ladder pinned-intersection logic
 in `examples/chiodome-bilateral/src/ladder.rs` (per review finding 5a).
 The smoke's over-cap deny scenario fails the ladder intersection
 check before reaching the kernel; the bilateral envelope's
@@ -327,6 +327,6 @@ What the KB MCP integration does NOT claim:
   in `chio mcp serve` as their daily workflow. It is a
   proof-of-composition.
 - The amount cap for the refund scenario is NOT a HushSpec policy
-  primitive. It lives in the example-local chiodos-ladder
+  primitive. It lives in the example-local chio-ladder
   intersection logic. Verifiers reading the HushSpec YAML alone
   will not see the cap; the cap is in `ladder-intersection.json`.

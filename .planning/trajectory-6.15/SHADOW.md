@@ -1,4 +1,4 @@
-# Chiodos 6.15 Shadow
+# Chio 6.15 Shadow
 
 Candidate focus: downstream alert delivery hardening only if local delivery evidence import surfaces reveal a concrete operator gap.
 

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orchestration-plan.schema.json",
+  "title": "Chio Runtime Orchestration Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "runId",
+    "accepted",
+    "generatedAtUnixMs",
+    "profileSha256",
+    "runContractSha256",
+    "plannedSteps",
+    "checks"
+  ],
+  "allOf": [
+    {
+      "if": { "properties": { "accepted": { "const": false } }, "required": ["accepted"] },
+      "then": { "required": ["failureCode"] }
+    },
+    {
+      "if": { "properties": { "accepted": { "const": true } }, "required": ["accepted"] },
+      "then": { "not": { "required": ["failureCode"] } }
+    }
+  ],
+  "properties": {
+    "schema": { "const": "chio.runtime.orchestration-plan.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "accepted": { "type": "boolean" },
+    "failureCode": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "profileSha256": { "$ref": "#/$defs/sha256" },
+    "runContractSha256": { "$ref": "#/$defs/sha256" },
+    "plannedSteps": { "type": "array", "items": { "$ref": "#/$defs/plannedStep" } },
+    "checks": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "plannedStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stepIndex", "admissionId", "state"],
+      "properties": {
+        "stepIndex": { "type": "integer", "minimum": 0 },
+        "admissionId": { "type": "string", "minLength": 1 },
+        "state": { "type": "string", "pattern": "^[a-z0-9_]+$" }
+      }
+    }
+  }
+}

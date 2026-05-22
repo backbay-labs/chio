@@ -7,16 +7,16 @@
   reports, receipts, DSSE, and source material.
 - C7.3-003, Package-Valid Receipt Capture: Replace synthetic loopback receipt
   JSON with package-ready signed `ChioReceipt` artifacts.
-- C7.3-004, Strict DSSE Emission: Emit strict Chiodos DSSE envelopes from
+- C7.3-004, Strict DSSE Emission: Emit strict Chio DSSE envelopes from
   runtime proof material.
 - C7.3-005, Workflow Receipt Assembly: Emit signed `WorkflowReceipt v2` evidence
   with parent chain, output hashes, DSSE hashes, destructive flags, governance
   refs, and vendor signatures.
 - C7.3-006, Runtime Proof Package Builder: Assemble
-  `chio.chiodos.proof-package.v1` from runtime proof material and verifier-owned
+  `chio.attest.proof-package.v1` from runtime proof material and verifier-owned
   trust/context inputs.
 - C7.3-007, Verifier Integration: Accept regeneration only when the existing
-  Chiodos verifier accepts the regenerated package.
+  Chio verifier accepts the regenerated package.
 - C7.3-008, Proof Parity Report: Compare static and runtime-regenerated
   three-vendor packages on stable semantic fields.
 - C7.3-009, Negatives And Gates: Add executable checks for pending-marker

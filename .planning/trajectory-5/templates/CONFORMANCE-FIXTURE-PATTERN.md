@@ -387,7 +387,7 @@ preimage shares zero bytes with the §6 PAE preimage). Pattern:
 //! Trj5 B4 negative conformance: bilateral DSSE envelope is the §6-conformant
 //! artifact; legacy `DualSignedReceipt` is NOT.
 //!
-//! Spec MUST: spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md §6 lines 338-353.
+//! Spec MUST: spec/CHIO_BILATERAL_COSIGN_INVOCATION.md §6 lines 338-353.
 //! Enforced call site: crates/chio-federation/src/bilateral_dsse.rs (NEW per B4).
 //! Production call path: federation hot path -> `bilateral_dsse::sign_envelope`
 //!   -> Ed25519 over DSSE PAE bytes of canonical-JSON in-toto Statement.

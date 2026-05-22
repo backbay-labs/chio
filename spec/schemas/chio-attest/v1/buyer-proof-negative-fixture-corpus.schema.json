@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-attest/v1/buyer-proof-negative-fixture-corpus.schema.json",
+  "title": "Chio Attest Buyer Proof Negative Fixture Corpus",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "cases"],
+  "properties": {
+    "schema": { "const": "chio.attest.buyer-proof-negative-fixture-corpus.v1" },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "target", "mutation", "expectedFailureCode"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "target": { "enum": ["package", "trustBundle", "context"] },
+        "mutation": { "$ref": "#/$defs/mutation" },
+        "expectedFailureCode": { "type": "string", "minLength": 1 },
+        "requiresSignedMutation": { "type": "boolean" }
+      }
+    },
+    "mutation": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["op", "path"],
+      "properties": {
+        "op": { "enum": ["set", "removeWhere"] },
+        "path": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "anyOf": [
+              { "type": "string", "minLength": 1 },
+              { "type": "integer", "minimum": 0 }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

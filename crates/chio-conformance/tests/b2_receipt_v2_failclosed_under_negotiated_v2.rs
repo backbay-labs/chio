@@ -188,6 +188,7 @@ fn stale_v2_capable_peer(remote_kernel_id: &str) -> FederationPeer {
         established_at: 1_700_000_000,
         rotation_due: 1_700_000_001,
         capabilities: chio_core::capability::CapabilityNegotiation::t1_default(),
+        ladder_manifest_ref: None,
     }
 }
 

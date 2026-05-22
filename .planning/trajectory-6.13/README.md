@@ -1,8 +1,8 @@
-# Chiodos 6.13 Relay Alert Handoff Readiness
+# Chio 6.13 Relay Alert Handoff Readiness
 
 Baseline: `03d87368810639141432c0816cc5b2a8414b1bfe`
 
-Branch: `codex/chiodos-6-13-alert-handoff-readiness`
+Branch: `codex/chio-6-13-alert-handoff-readiness`
 
 ## Objective
 
@@ -20,13 +20,13 @@ This lane remains artifact-first. Chio writes handoff readiness evidence. Alertm
 ## Final Gates
 
 - `cargo test -p chio-pheromone-relay alert`
-- `cargo test -p chio-cli --bin chio chiodos_pheromone_relay`
+- `cargo test -p chio-cli --bin chio_pheromone_relay`
 - `cargo test -p chio-metrics-spec`
 - `cargo test -p chio-spec-validate`
 - dashboard tests and dashboard build
-- `bash scripts/check-chiodos-pheromone-relay-alert-handoff.sh`
-- `bash scripts/check-chiodos-pheromone-relay-alert-handoff.sh --schema-only`
-- `bash scripts/check-chiodos-pheromone-relay-alert-handoff.sh --negative-only`
+- `bash scripts/check-chio-pheromone-relay-alert-handoff.sh`
+- `bash scripts/check-chio-pheromone-relay-alert-handoff.sh --schema-only`
+- `bash scripts/check-chio-pheromone-relay-alert-handoff.sh --negative-only`
 - Existing alert routing, observability, directory lifecycle, relay ops, relay, runtime, transit, authority issuance, proof-package, bounded, diagnostic, and threat-mutant gates.
 
 ## Closeout Checklist

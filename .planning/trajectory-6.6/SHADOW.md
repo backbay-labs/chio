@@ -1,6 +1,6 @@
-# Chiodos 6.6 Shadow: Pheromone Transit And Workflow Context
+# Chio 6.6 Shadow: Pheromone Transit And Workflow Context
 
-Chiodos 6.6 has graduated from shadow planning into the active pheromone
+Chio 6.6 has graduated from shadow planning into the active pheromone
 transit evidence lane.
 
 Candidate scope:

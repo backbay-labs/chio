@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-trusted-exporters.schema.json",
-  "title": "Chiodos Pheromone Relay Alert Assurance Trusted Exporters",
+  "title": "Chio Pheromone Relay Alert Assurance Trusted Exporters",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "localKernelId", "minExportedAtUnixMs", "exporters"],

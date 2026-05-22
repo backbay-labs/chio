@@ -1,4 +1,4 @@
-# Chiodos 7.2 Tickets
+# Chio 7.2 Tickets
 
 - **C7.2-001, Integrator:** Create active planning docs, exact stacked
   baseline SHA, ticket map, final gates, no-planning-metadata rule, and 7.3
@@ -21,7 +21,7 @@
 - **C7.2-007, DSSE And Workflow Regeneration:** Generate strict bilateral DSSE
   and workflow receipt evidence from captured runtime records.
 - **C7.2-008, Proof Package Regeneration:** Build a real
-  `chio.chiodos.proof-package.v1` from runtime evidence and verify it with the
+  `chio.attest.proof-package.v1` from runtime evidence and verify it with the
   existing verifier.
 - **C7.2-009, Parity And Drift Guard:** Compare runtime-regenerated proof
   packages against the static three-vendor fixture on stable semantic fields.

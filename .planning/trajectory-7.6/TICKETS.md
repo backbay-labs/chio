@@ -22,7 +22,7 @@ Verify buyer packets only when the packet hash bindings match a verified lineage
 
 ## C7.6-006, CLI And Schemas
 
-Add `chio chiodos treaty intersect`, `admit`, and `verify-packet`, plus schema files, registry entries, and CLI smoke coverage.
+Add `chio federation treaty intersect`, `admit`, and `verify-packet`, plus schema files, registry entries, and CLI smoke coverage.
 
 ## C7.6-007, Negatives And Gate
 

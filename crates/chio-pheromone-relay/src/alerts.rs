@@ -1,10 +1,11 @@
 use crate::{
     canonical_sha256, is_sha256_hex, PheromoneRelayError, RelayAlertDeliveryProfileDocument,
-    RelayAlertDeliveryReceiver, RelayObservabilityReport,
+    RelayAlertDeliveryReceiver, RelayObservabilityReport, PHEROMONE_RELAY_ALERT_DEDUPE_PREFIX,
     PHEROMONE_RELAY_ALERT_HANDOFF_PROFILE_SCHEMA, PHEROMONE_RELAY_ALERT_HANDOFF_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_REPORT_SCHEMA, PHEROMONE_RELAY_ALERT_ROUTING_PROFILE_SCHEMA,
     PHEROMONE_RELAY_EVENT_REPORT_SCHEMA, PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA,
-    PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA, PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
+    PHEROMONE_RELAY_SERVICE_LABEL, PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA,
+    PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -381,8 +382,11 @@ pub fn evaluate_relay_alerts(
             notification_route: route.notification_route.clone(),
             opsgenie: route.opsgenie.clone(),
             dedupe_key: format!(
-                "chiodos-relay:{}:{}:{}",
-                input.observability.local_kernel_id, rule.alert_code, route.route_id
+                "{}:{}:{}:{}",
+                PHEROMONE_RELAY_ALERT_DEDUPE_PREFIX,
+                input.observability.local_kernel_id,
+                rule.alert_code,
+                route.route_id
             ),
             runbook: route.runbook.clone(),
             first_seen_unix_ms: input.observability.generated_at_unix_ms,
@@ -1417,7 +1421,10 @@ pub(crate) fn alert_labels(
         route.notification_route.clone(),
     );
     labels.insert("opsgenie".to_string(), route.opsgenie.clone());
-    labels.insert("service".to_string(), "chiodos-pheromone-relay".to_string());
+    labels.insert(
+        "service".to_string(),
+        PHEROMONE_RELAY_SERVICE_LABEL.to_string(),
+    );
     labels.insert("severity".to_string(), rule.severity.as_str().to_string());
     for (name, value) in &labels {
         if !matches!(

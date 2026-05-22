@@ -281,7 +281,7 @@ map or assurance matrix, and they must not be used as release readiness:
 | #607 | A | PR branch | feat(release work/A3.5): Kani CI multi-crate manifest + workflow |
 | #608 | A | PR branch | feat(release work/A2): backfill threat evidence (batch 2, 7 rows) |
 | #609 | B | PR branch | feat(release work/B3): anchor-batch async-only when require_public_witness=true |
-| #610 | B | PR branch | feat(release work/B4): DSSE-conformant bilateral signing per CHIODOS §6 |
+| #610 | B | PR branch | feat(release work/B4): DSSE-conformant bilateral signing per CHIO §6 |
 | #611 | B | PR branch | feat(release work/B2): receipt v2 fail-closed under negotiated v2 |
 | #612 | B | PR branch | feat(release work/b1): single-entry capability verifier |
 | #613 | A | PR branch | feat(release work/a3): kani harnesses for chio-anchor and chio-weights |

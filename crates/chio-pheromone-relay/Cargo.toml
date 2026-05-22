@@ -1,6 +1,6 @@
 [package]
 name = "chio-pheromone-relay"
-description = "Live Chiodos pheromone relay service and durable relay store"
+description = "Live Chio pheromone relay service and durable relay store"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

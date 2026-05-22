@@ -1,8 +1,0 @@
-{
-  "schema": "chio.chiodos.runtime-admission-profile.v1",
-  "profileId": "profile-live-spine",
-  "localKernelId": "kernel.vendor-b",
-  "verifierId": "did:chio:buyer-verifier",
-  "issuedAtUnixMs": 1800000000000,
-  "expiresAtUnixMs": 1800003600000
-}

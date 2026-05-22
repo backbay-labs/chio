@@ -89,9 +89,10 @@ pub const PHEROMONE_CATCHUP_RESPONSE_SCHEMA: &str = "chio.pheromone.catchup-resp
 pub const PHEROMONE_RELAY_NEGATIVE_CORPUS_SCHEMA: &str =
     "chio.pheromone.relay-negative-fixture-corpus.v1";
 
-pub const PHEROMONE_BATCH_RELAY_PATH: &str = "/v1/chiodos/pheromone/batches";
-pub const PHEROMONE_CATCHUP_RELAY_PATH: &str = "/v1/chiodos/pheromone/catchup";
-pub const PHEROMONE_HEALTH_PATH: &str = "/v1/chiodos/pheromone/health";
-pub const PHEROMONE_READY_PATH: &str = "/v1/chiodos/pheromone/ready";
-pub const PHEROMONE_RELAY_OBSERVABILITY_PATH: &str = "/v1/chiodos/pheromone/observability";
-pub const PHEROMONE_RELAY_METRICS_PATH: &str = "/v1/chiodos/pheromone/metrics";
+pub const PHEROMONE_RELAY_PATH_PREFIX: &str = "/v1/chio/pheromone";
+pub const PHEROMONE_BATCH_RELAY_PATH: &str = "/v1/chio/pheromone/batches";
+pub const PHEROMONE_CATCHUP_RELAY_PATH: &str = "/v1/chio/pheromone/catchup";
+pub const PHEROMONE_HEALTH_PATH: &str = "/v1/chio/pheromone/health";
+pub const PHEROMONE_READY_PATH: &str = "/v1/chio/pheromone/ready";
+pub const PHEROMONE_RELAY_OBSERVABILITY_PATH: &str = "/v1/chio/pheromone/observability";
+pub const PHEROMONE_RELAY_METRICS_PATH: &str = "/v1/chio/pheromone/metrics";

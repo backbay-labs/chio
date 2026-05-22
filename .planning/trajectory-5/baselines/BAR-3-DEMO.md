@@ -112,7 +112,7 @@ crates/chio-federation/src/bilateral.rs`:
 ## DSSE PAE signing (current, pre-release work)
 
 DSSE PAE signing is NOT IMPLEMENTED. Lane B sub-lane B4 lands it per
-`spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353.
+`spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353.
 
 | Field | Baseline value |
 |---|---|

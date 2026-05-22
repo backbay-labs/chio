@@ -1,12 +1,12 @@
-# Chiodos 6.17 Archive Lifecycle Closeout Review
+# Chio 6.17 Archive Lifecycle Closeout Review
 
 Baseline SHA: `bc2a196a299e55aa5920771fcaf84e9ee7fc7f7c`
 
-Branch: `codex/chiodos-6-17-archive-closeout-review`
+Branch: `codex/chio-6-17-archive-closeout-review`
 
 ## Scope
 
-Chiodos 6.17 makes signed relay alert assurance export bundles operationally closeable after an incident window. The lane is report-only: it verifies each bundle through trusted exporter roots, replays the assurance package, runs retention classification, summarizes recovery drill status, and emits archive and closeout reports.
+Chio 6.17 makes signed relay alert assurance export bundles operationally closeable after an incident window. The lane is report-only: it verifies each bundle through trusted exporter roots, replays the assurance package, runs retention classification, summarizes recovery drill status, and emits archive and closeout reports.
 
 The lane does not package archives, delete evidence, move files, upload files, send notifications, store downstream credentials, mutate relay policy, add dynamic trust, add new transports, or claim that a person was paged.
 
@@ -34,10 +34,10 @@ The lane does not package archives, delete evidence, move files, upload files, s
 ## Final Gates
 
 - `cargo test -p chio-pheromone-relay alert_assurance_archive --test relay`
-- `cargo test -p chio-cli --bin chio chiodos_pheromone_relay_alert_assurance`
+- `cargo test -p chio-cli --bin chio_pheromone_relay_alert_assurance`
 - `cargo test -p chio-spec-validate`
-- `bash scripts/check-chiodos-pheromone-relay-alert-assurance-archive.sh`
-- `bash scripts/check-chiodos-pheromone-relay-alert-assurance-archive.sh --schema-only`
-- `bash scripts/check-chiodos-pheromone-relay-alert-assurance-archive.sh --negative-only`
+- `bash scripts/check-chio-pheromone-relay-alert-assurance-archive.sh`
+- `bash scripts/check-chio-pheromone-relay-alert-assurance-archive.sh --schema-only`
+- `bash scripts/check-chio-pheromone-relay-alert-assurance-archive.sh --negative-only`
 - `cargo fmt --all -- --check`
 - Targeted clippy for touched crates with `-D warnings`

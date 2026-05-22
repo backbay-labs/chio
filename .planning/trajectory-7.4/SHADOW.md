@@ -1,4 +1,4 @@
-# Chiodos 7.4 Shadow
+# Chio 7.4 Shadow
 
 The 7.4 shadow target is production local runtime orchestration after semantic
 runtime proof regeneration is real.

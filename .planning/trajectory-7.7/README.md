@@ -1,10 +1,10 @@
-# Chiodos 7.7: Treaty-To-Buyer Hero Loop
+# Chio 7.7: Treaty-To-Buyer Hero Loop
 
 Baseline SHA: `51cb21735c7d237ccc20f005bbdb7f855adff3c9`
 
-Branch: `codex/chiodos-7-7-treaty-buyer-hero-loop`
+Branch: `codex/chio-7-7-treaty-buyer-hero-loop`
 
-This branch is intentionally stacked on the local Chiodos 7.6 treaty-bound
+This branch is intentionally stacked on the local Chio 7.6 treaty-bound
 provenance work because 7.6 has not been merged in this checkout. The lane
 turns treaty-bound artifacts into one buyer-verifiable local review loop.
 
