@@ -3,6 +3,7 @@ name: Chio Runtime Proof Parity
 on:
   pull_request:
     paths:
+      - "crates/chio-attest-buyer/**"
       - "crates/chio-attest-buyer-core/**"
       - "crates/chio-runtime-core/**"
       - "crates/chio-runtime-harness/**"
@@ -24,6 +25,7 @@ on:
   push:
     branches: ["main"]
     paths:
+      - "crates/chio-attest-buyer/**"
       - "crates/chio-attest-buyer-core/**"
       - "crates/chio-runtime-core/**"
       - "crates/chio-runtime-harness/**"
