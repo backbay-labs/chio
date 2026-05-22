@@ -23,24 +23,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "crates/chio-attest-buyer/**"
-      - "crates/chio-attest-buyer-core/**"
-      - "crates/chio-federation-authority/**"
-      - "crates/chio-cli/**"
-      - "crates/chio-federation/**"
-      - "crates/chio-governance/**"
-      - "crates/chio-workflow/**"
-      - "crates/chio-selective-disclosure/**"
-      - "crates/chio-conformance/**"
-      - "crates/chio-spec-validate/**"
-      - "examples/chio-3vendor/**"
-      - "scripts/check-chio-authority-issuance.sh"
-      - "scripts/check-chio-proof-package.sh"
-      - "spec/schemas/chio-attest/**"
-      - "spec/schemas/chio-federation/**"
-      - "spec/schemas/registry.json"
-      - ".github/workflows/chio-proof-package.yml"
   workflow_dispatch:
 
 permissions:

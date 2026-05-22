@@ -156,7 +156,7 @@ fn run() -> Result<(), ChioPackageError> {
         }
         _ => {
             return Err(ChioPackageError::Json(format!(
-                "usage: {argv0} [--report|--out-dir DIR|--signed-negative-dir DIR|--authority-input-dir DIR|--pheromone-out-dir DIR]"
+                "usage: {argv0} [--report|--out-dir DIR|--signed-negative-dir DIR|--authority-input-dir DIR|--pheromone-out-dir DIR|--sign-transit-policy]"
             )));
         }
     }
