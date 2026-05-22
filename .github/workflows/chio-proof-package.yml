@@ -18,7 +18,7 @@ on:
       - "scripts/check-chio-proof-package.sh"
       - "spec/schemas/chio-attest/**"
       - "spec/schemas/chio-federation/**"
-      - "spec/schemas/chio/**"
+      - "spec/schemas/**"
       - "spec/schemas/registry.json"
       - ".github/workflows/chio-proof-package.yml"
   push:
@@ -40,7 +40,7 @@ on:
       - "scripts/check-chio-proof-package.sh"
       - "spec/schemas/chio-attest/**"
       - "spec/schemas/chio-federation/**"
-      - "spec/schemas/chio/**"
+      - "spec/schemas/**"
       - "spec/schemas/registry.json"
       - ".github/workflows/chio-proof-package.yml"
   workflow_dispatch:
