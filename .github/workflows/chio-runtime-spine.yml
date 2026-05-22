@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "crates/chio-attest-buyer/**"
+      - "crates/chio-attest-buyer-core/**"
       - "crates/chio-runtime-core/**"
       - "crates/chio-runtime-harness/**"
       - "crates/chio-attest-loopback/**"
@@ -26,6 +27,7 @@ on:
     branches: ["main"]
     paths:
       - "crates/chio-attest-buyer/**"
+      - "crates/chio-attest-buyer-core/**"
       - "crates/chio-runtime-core/**"
       - "crates/chio-runtime-harness/**"
       - "crates/chio-attest-loopback/**"
