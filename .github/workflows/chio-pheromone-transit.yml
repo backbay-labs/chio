@@ -11,7 +11,6 @@ on:
       - "spec/schemas/chio-pheromone/**"
       - "spec/schemas/registry.json"
       - "scripts/check-chio-pheromone-transit.sh"
-      - "scripts/check-chio-pheromone-transit.sh"
       - ".github/workflows/chio-pheromone-transit.yml"
   push:
     branches:
@@ -24,7 +23,6 @@ on:
       - "spec/CHIO_PHEROMONE.md"
       - "spec/schemas/chio-pheromone/**"
       - "spec/schemas/registry.json"
-      - "scripts/check-chio-pheromone-transit.sh"
       - "scripts/check-chio-pheromone-transit.sh"
       - ".github/workflows/chio-pheromone-transit.yml"
 

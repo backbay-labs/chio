@@ -606,7 +606,7 @@ fn treaty_runtime_hook_requires_signed_bilateral_evidence_before_verification(
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
     assert_eq!(
         metadata["chio_runtime"]["failure_code"],
-        "chio_treaty_unverified_required_evidence"
+        "chio_treaty_missing_required_evidence"
     );
     Ok(())
 }
@@ -1192,7 +1192,7 @@ fn treaty_runtime_fixture() -> Result<TreatyRuntimeFixture, Box<dyn std::error::
             "receipt_backed",
             true,
             "totally_ordered",
-            vec!["bilateral_invocation", "receipt_lineage"],
+            vec!["bilateral_dsse", "bilateral_invocation", "receipt_lineage"],
         ),
     );
     let vendor = treaty_manifest(
@@ -1201,7 +1201,7 @@ fn treaty_runtime_fixture() -> Result<TreatyRuntimeFixture, Box<dyn std::error::
             "receipt_backed",
             true,
             "totally_ordered",
-            vec!["bilateral_invocation", "receipt_lineage"],
+            vec!["bilateral_dsse", "bilateral_invocation", "receipt_lineage"],
         ),
     );
     let signer_a = Keypair::generate();

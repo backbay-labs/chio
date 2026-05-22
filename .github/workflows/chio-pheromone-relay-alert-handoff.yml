@@ -15,8 +15,6 @@ on:
       - "spec/schemas/chio-pheromone/v1/**"
       - "spec/schemas/registry.json"
       - "scripts/check-chio-pheromone-relay-alert-handoff.sh"
-      - "scripts/check-chio-pheromone-relay-alert-handoff.sh"
-      - "scripts/check-chio-pheromone-relay-alert-routing.sh"
       - "scripts/check-chio-pheromone-relay-alert-routing.sh"
       - ".github/workflows/chio-pheromone-relay-alert-handoff.yml"
   push:
@@ -33,8 +31,6 @@ on:
       - "spec/schemas/chio-pheromone/v1/**"
       - "spec/schemas/registry.json"
       - "scripts/check-chio-pheromone-relay-alert-handoff.sh"
-      - "scripts/check-chio-pheromone-relay-alert-handoff.sh"
-      - "scripts/check-chio-pheromone-relay-alert-routing.sh"
       - "scripts/check-chio-pheromone-relay-alert-routing.sh"
       - ".github/workflows/chio-pheromone-relay-alert-handoff.yml"
 

@@ -11,7 +11,6 @@ on:
       - "spec/schemas/chio-pheromone/v1/**"
       - "spec/schemas/registry.json"
       - "scripts/check-chio-pheromone-relay-alert-assurance-export.sh"
-      - "scripts/check-chio-pheromone-relay-alert-assurance-export.sh"
       - ".github/workflows/chio-pheromone-relay-alert-assurance-export.yml"
   push:
     branches: [main]
@@ -22,7 +21,6 @@ on:
       - "examples/chio-3vendor/fixtures/pheromone/relay/**"
       - "spec/schemas/chio-pheromone/v1/**"
       - "spec/schemas/registry.json"
-      - "scripts/check-chio-pheromone-relay-alert-assurance-export.sh"
       - "scripts/check-chio-pheromone-relay-alert-assurance-export.sh"
       - ".github/workflows/chio-pheromone-relay-alert-assurance-export.yml"
 

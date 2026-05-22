@@ -202,6 +202,7 @@ pub(super) fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
                     verified: true,
                 });
             }
+            present_evidence.push("bilateral_dsse".to_string());
             verified_evidence.push(CrossBoundaryEvidenceRef {
                 evidence_class: "bilateral_dsse".to_string(),
                 artifact_sha256: envelope_sha256.clone(),

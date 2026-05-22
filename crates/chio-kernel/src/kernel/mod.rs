@@ -7263,10 +7263,12 @@ impl ChioKernel {
                 .as_ref()
                 .and_then(|intent| intent.context.as_ref())
                 .is_some_and(|context| {
+                    let retired_admission_key = ["chio", "dos", "Admission"].concat();
+                    let retired_treaty_key = ["chio", "dos", "Treaty"].concat();
                     context.get("chioAdmission").is_some()
                         || context.get("chioTreaty").is_some()
-                        || context.get("chioAdmission").is_some()
-                        || context.get("chioTreaty").is_some()
+                        || context.get(retired_admission_key.as_str()).is_some()
+                        || context.get(retired_treaty_key.as_str()).is_some()
                 })
             {
                 return RuntimeAdmissionDecision::deny(

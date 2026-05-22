@@ -10,7 +10,6 @@ on:
       - "examples/chio-3vendor/**"
       - "spec/schemas/chio-pheromone/**"
       - "scripts/check-chio-pheromone-runtime.sh"
-      - "scripts/check-chio-pheromone-runtime.sh"
       - ".github/workflows/chio-pheromone-runtime.yml"
   push:
     branches: [main]
@@ -21,7 +20,6 @@ on:
       - "crates/chio-cli/**"
       - "examples/chio-3vendor/**"
       - "spec/schemas/chio-pheromone/**"
-      - "scripts/check-chio-pheromone-runtime.sh"
       - "scripts/check-chio-pheromone-runtime.sh"
       - ".github/workflows/chio-pheromone-runtime.yml"
 
