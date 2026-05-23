@@ -1,4 +1,4 @@
-# Chiodos 6.10 Tickets
+# Chio 6.10 Tickets
 
 ## C6.10-001 Integrator
 

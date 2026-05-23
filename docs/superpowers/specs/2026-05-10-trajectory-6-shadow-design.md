@@ -7,7 +7,7 @@ work from the shadow plan while keeping the rest of T6 draft until gates exist.
 
 ## Narrative
 
-Trajectory 6 should be Chiodos v0.1: cross-vendor attested workflows. The goal
+Trajectory 6 should be Chio v0.1: cross-vendor attested workflows. The goal
 is a buyer-verifiable workflow where Vendor A invokes Vendor B or C across a
 trust boundary, both sides co-sign boundary actions, workflow receipts carry
 parent links and consistency anchors, and an auditor verifies the bundle

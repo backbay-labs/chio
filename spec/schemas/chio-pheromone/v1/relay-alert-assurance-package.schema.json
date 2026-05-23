@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-package.schema.json",
-  "title": "Chiodos Pheromone Relay Alert Assurance Package",
+  "title": "Chio Pheromone Relay Alert Assurance Package",
   "type": "object",
   "additionalProperties": false,
   "required": [

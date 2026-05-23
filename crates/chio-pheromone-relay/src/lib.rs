@@ -1,4 +1,4 @@
-//! Live Chiodos pheromone relay service and durable relay state.
+//! Live Chio pheromone relay service and durable relay state.
 
 #![forbid(unsafe_code)]
 
@@ -16,6 +16,9 @@ mod service;
 mod store;
 mod validation;
 
+pub const PHEROMONE_RELAY_ALERT_DEDUPE_PREFIX: &str = "chio-relay";
+pub const PHEROMONE_RELAY_SERVICE_LABEL: &str = "chio-pheromone-relay";
+
 pub(crate) use alerts::{
     contains_secret_marker, delivery_receiver_map, handoff_route_map, is_bounded_code,
     is_bounded_route_token, relay_alert_severity_from_str, validate_alert_profile,
@@ -32,12 +35,36 @@ pub use alerts::{
     RelayTrendInput, RelayTrendPoint, RelayTrendReport,
 };
 pub use archive::{
-    generate_relay_alert_assurance_archive_report, generate_relay_alert_assurance_closeout_report,
-    RelayAlertAssuranceArchiveBundleCandidate, RelayAlertAssuranceArchiveBundleReview,
-    RelayAlertAssuranceArchiveInput, RelayAlertAssuranceArchiveProfileDocument,
-    RelayAlertAssuranceArchiveReport, RelayAlertAssuranceCloseoutBundleReview,
+    build_relay_alert_assurance_archive_extraction_report,
+    generate_relay_alert_assurance_archive_report,
+    generate_relay_alert_assurance_archive_restore_drill_report,
+    generate_relay_alert_assurance_closeout_report,
+    generate_relay_alert_assurance_external_retention_review_report,
+    generate_relay_alert_assurance_physical_archive_drill_report,
+    generate_relay_alert_assurance_retention_handoff_report,
+    relay_alert_assurance_external_retention_profile_from_json,
+    sign_relay_alert_assurance_archive_package,
+    validate_relay_alert_assurance_archive_package_report,
+    verify_relay_alert_assurance_archive_package, RelayAlertAssuranceArchiveBundleCandidate,
+    RelayAlertAssuranceArchiveBundleReview, RelayAlertAssuranceArchiveExtractionReport,
+    RelayAlertAssuranceArchiveInput, RelayAlertAssuranceArchivePackage,
+    RelayAlertAssuranceArchivePackageBuildInput, RelayAlertAssuranceArchivePackageBundle,
+    RelayAlertAssuranceArchivePackageFile, RelayAlertAssuranceArchivePackageManifest,
+    RelayAlertAssuranceArchivePackageManifestBody, RelayAlertAssuranceArchivePackageMember,
+    RelayAlertAssuranceArchivePackageReport, RelayAlertAssuranceArchivePackageVerifyInput,
+    RelayAlertAssuranceArchiveProfileDocument, RelayAlertAssuranceArchiveReport,
+    RelayAlertAssuranceArchiveRestoreDrillInput, RelayAlertAssuranceArchiveRestoreDrillReport,
+    RelayAlertAssuranceArchiveRestorePackageReview,
+    RelayAlertAssuranceArchiveRestoreProfileDocument, RelayAlertAssuranceCloseoutBundleReview,
     RelayAlertAssuranceCloseoutInput, RelayAlertAssuranceCloseoutProfileDocument,
-    RelayAlertAssuranceCloseoutReport,
+    RelayAlertAssuranceCloseoutReport, RelayAlertAssuranceExternalRetentionPackageReview,
+    RelayAlertAssuranceExternalRetentionProfileDocument,
+    RelayAlertAssuranceExternalRetentionReviewInput,
+    RelayAlertAssuranceExternalRetentionReviewReport, RelayAlertAssurancePhysicalArchiveDrillInput,
+    RelayAlertAssurancePhysicalArchiveDrillReport, RelayAlertAssurancePhysicalArchiveEvidence,
+    RelayAlertAssuranceRetentionHandoffEvidence, RelayAlertAssuranceRetentionHandoffInput,
+    RelayAlertAssuranceRetentionHandoffProfileDocument, RelayAlertAssuranceRetentionHandoffReport,
+    RelayAlertAssuranceTrustedArchivePackager, RelayAlertAssuranceTrustedArchivePackagersDocument,
 };
 pub use assurance::{
     generate_relay_alert_assurance_package, generate_relay_alert_assurance_recovery_drill_report,
@@ -59,20 +86,19 @@ pub(crate) use assurance::{validate_export_path, validate_retention_profile};
 pub use client::PheromoneRelayClient;
 pub use delivery::{
     evaluate_relay_alert_acknowledgement, evaluate_relay_alert_delivery,
-    generate_relay_alert_delivery_drift_report_v2, generate_relay_alert_handoff_drift_report,
+    generate_relay_alert_delivery_drift_report, generate_relay_alert_handoff_drift_report,
     generate_relay_alert_route_review_packet, normalize_relay_alert_delivery_evidence,
     relay_alert_delivery_evidence_from_json, relay_alert_delivery_profile_from_json,
     relay_alert_handoff_profile_from_json, relay_alert_routing_profile_from_json,
     relay_alert_suppression_state_from_json, RelayAlertAcknowledgement,
-    RelayAlertAcknowledgementInput, RelayAlertAcknowledgementReport,
-    RelayAlertDeliveryDriftInputV2, RelayAlertDeliveryDriftReportV2, RelayAlertDeliveryDriftV2,
-    RelayAlertDeliveryEvidence, RelayAlertDeliveryInput, RelayAlertDeliveryProfileDocument,
-    RelayAlertDeliveryReceiver, RelayAlertDeliveryReport, RelayAlertDeliveryResult,
-    RelayAlertDeliveryStatus, RelayAlertHandoffDrift, RelayAlertHandoffDriftInput,
-    RelayAlertHandoffDriftReport, RelayAlertNormalizationInput,
-    RelayAlertNormalizationProfileDocument, RelayAlertNormalizationReport, RelayAlertRouteOwner,
-    RelayAlertRouteOwnerProfileDocument, RelayAlertRouteReview, RelayAlertRouteReviewInput,
-    RelayAlertRouteReviewPacket,
+    RelayAlertAcknowledgementInput, RelayAlertAcknowledgementReport, RelayAlertDeliveryDrift,
+    RelayAlertDeliveryDriftInput, RelayAlertDeliveryDriftReport, RelayAlertDeliveryEvidence,
+    RelayAlertDeliveryInput, RelayAlertDeliveryProfileDocument, RelayAlertDeliveryReceiver,
+    RelayAlertDeliveryReport, RelayAlertDeliveryResult, RelayAlertDeliveryStatus,
+    RelayAlertHandoffDrift, RelayAlertHandoffDriftInput, RelayAlertHandoffDriftReport,
+    RelayAlertNormalizationInput, RelayAlertNormalizationProfileDocument,
+    RelayAlertNormalizationReport, RelayAlertRouteOwner, RelayAlertRouteOwnerProfileDocument,
+    RelayAlertRouteReview, RelayAlertRouteReviewInput, RelayAlertRouteReviewPacket,
 };
 pub(crate) use delivery::{reject_downstream_source_secrets, validate_delivery_evidence_shape};
 pub use directory::{
@@ -106,22 +132,37 @@ pub use schema::{
     PHEROMONE_PEER_DIRECTORY_BUNDLE_SCHEMA, PHEROMONE_PEER_DIRECTORY_ROTATION_REPORT_SCHEMA,
     PHEROMONE_PEER_DIRECTORY_SCHEMA, PHEROMONE_PEER_DIRECTORY_STATE_SCHEMA, PHEROMONE_READY_PATH,
     PHEROMONE_RELAY_ALERT_ACKNOWLEDGEMENT_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_EXTRACTION_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_NEGATIVE_CORPUS_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_MANIFEST_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_DRILL_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_NEGATIVE_CORPUS_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_CLOSEOUT_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_CLOSEOUT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_EXPORT_MANIFEST_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_EXPORT_NEGATIVE_CORPUS_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_EXPORT_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_EXTERNAL_RETENTION_NEGATIVE_CORPUS_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_EXTERNAL_RETENTION_PROFILE_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_EXTERNAL_RETENTION_REVIEW_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_NEGATIVE_CORPUS_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_PACKAGE_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_PHYSICAL_ARCHIVE_DRILL_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_PHYSICAL_ARCHIVE_EVIDENCE_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_RECOVERY_DRILL_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_REPLAY_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_EVIDENCE_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_PROFILE_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_REPORT_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ASSURANCE_TRUSTED_ARCHIVE_PACKAGERS_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_TRUSTED_EXPORTERS_SCHEMA,
-    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA,
+    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_EVIDENCE_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_NEGATIVE_CORPUS_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_PROFILE_SCHEMA, PHEROMONE_RELAY_ALERT_DELIVERY_REPORT_SCHEMA,
@@ -138,9 +179,9 @@ pub use schema::{
     PHEROMONE_RELAY_HTTP_REQUEST_SCHEMA, PHEROMONE_RELAY_METRICS_PATH,
     PHEROMONE_RELAY_METRICS_SNAPSHOT_SCHEMA, PHEROMONE_RELAY_NEGATIVE_CORPUS_SCHEMA,
     PHEROMONE_RELAY_OBSERVABILITY_PATH, PHEROMONE_RELAY_OBSERVABILITY_REPORT_SCHEMA,
-    PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA, PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA,
-    PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA, PHEROMONE_RELAY_TICK_REPORT_SCHEMA,
-    PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
+    PHEROMONE_RELAY_OPERATOR_REPORT_SCHEMA, PHEROMONE_RELAY_PATH_PREFIX,
+    PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA, PHEROMONE_RELAY_SUPPRESSION_STATE_SCHEMA,
+    PHEROMONE_RELAY_TICK_REPORT_SCHEMA, PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
 };
 pub use service::{
     deliver_due_batches, lint_relay_supervisor_profile, relay_supervisor_profile_from_json,

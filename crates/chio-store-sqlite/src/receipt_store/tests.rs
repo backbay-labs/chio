@@ -381,7 +381,7 @@ fn sample_receipt_with_keypair(id: &str, timestamp: u64, keypair: &Keypair) -> C
             capability_id: "cap-1".to_string(),
             tool_server: "shell".to_string(),
             tool_name: "bash".to_string(),
-            action: valid_tool_action(serde_json::json!({})),
+            action: valid_tool_action(serde_json::json!({"receipt": id})),
             decision: Some(Decision::Allow),
             receipt_kind: Default::default(),
             boundary_class: Default::default(),
@@ -389,7 +389,7 @@ fn sample_receipt_with_keypair(id: &str, timestamp: u64, keypair: &Keypair) -> C
             tool_origin: Default::default(),
             redaction_mode: Default::default(),
             actor_chain: Vec::new(),
-            content_hash: "content-1".to_string(),
+            content_hash: format!("content-{id}"),
             policy_hash: "policy-1".to_string(),
             evidence: Vec::new(),
             metadata: None,
@@ -2643,7 +2643,7 @@ fn store_checkpoint_rejects_checkpoint_key_that_does_not_match_receipt_signer() 
         seq,
         seq,
         &canonical_receipt_bytes(&store, seq, seq),
-        &receipt_test_keypair(),
+        &Keypair::from_seed(&[0x44; 32]),
     )
     .test_unwrap();
 
@@ -2673,7 +2673,7 @@ fn create_next_receipt_checkpoint_respects_max_batch() {
     let report = <SqliteReceiptStore as ReceiptStore>::create_next_receipt_checkpoint(
         &store,
         2,
-        &Keypair::generate(),
+        &receipt_test_keypair(),
     )
     .test_unwrap();
 

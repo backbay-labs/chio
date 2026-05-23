@@ -506,6 +506,31 @@ pub struct ChioReceiptSigningBody {
     pub body: ChioReceiptIdInput,
 }
 
+pub const CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY: &str = "chio_receipt_signing_nonce";
+const CHIO_RECEIPT_ORIGINAL_METADATA_KEY: &str = "original_metadata";
+
+fn bind_receipt_signing_nonce(body: &mut ChioReceiptBody) {
+    let nonce = body.id.trim();
+    if nonce.is_empty() {
+        return;
+    }
+
+    let mut metadata = match body.metadata.take() {
+        Some(serde_json::Value::Object(map)) => map,
+        Some(value) => {
+            let mut map = serde_json::Map::new();
+            map.insert(CHIO_RECEIPT_ORIGINAL_METADATA_KEY.to_string(), value);
+            map
+        }
+        None => serde_json::Map::new(),
+    };
+    metadata.insert(
+        CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY.to_string(),
+        serde_json::Value::String(nonce.to_string()),
+    );
+    body.metadata = Some(serde_json::Value::Object(metadata));
+}
+
 impl From<&ChioReceiptBody> for ChioReceiptIdInput {
     fn from(body: &ChioReceiptBody) -> Self {
         Self {
@@ -591,6 +616,7 @@ impl ChioReceipt {
     pub fn sign(body: ChioReceiptBody, keypair: &Keypair) -> Result<Self> {
         let mut body = body;
         body.validate_signable_semantics()?;
+        bind_receipt_signing_nonce(&mut body);
         body.id = chio_receipt_id(&body)?;
         let signing_body = ChioReceiptSigningBody::from(&body);
         let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
@@ -626,6 +652,7 @@ impl ChioReceipt {
     pub fn sign_with_backend(body: ChioReceiptBody, backend: &dyn SigningBackend) -> Result<Self> {
         let mut body = body;
         body.validate_signable_semantics()?;
+        bind_receipt_signing_nonce(&mut body);
         body.id = chio_receipt_id(&body)?;
         let signing_body = ChioReceiptSigningBody::from(&body);
         let (signature, _bytes) = sign_canonical_with_backend(backend, &signing_body)?;
@@ -1851,12 +1878,22 @@ mod tests {
     fn receipt_sign_and_verify() {
         let kp = Keypair::generate();
         let body = make_receipt_body(&kp);
-        let expected_id = chio_receipt_id(&body).unwrap();
+        let mut expected_body = body.clone();
+        bind_receipt_signing_nonce(&mut expected_body);
+        let expected_id = chio_receipt_id(&expected_body).unwrap();
         let receipt = ChioReceipt::sign(body, &kp).unwrap();
         assert_eq!(receipt.id, expected_id);
         assert!(receipt.verify_signature().unwrap());
         assert!(receipt.is_allowed());
         assert!(!receipt.is_denied());
+        assert_eq!(
+            receipt
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get(CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY))
+                .and_then(serde_json::Value::as_str),
+            Some("rcpt-001")
+        );
     }
 
     #[test]
@@ -1870,6 +1907,38 @@ mod tests {
         let mut tampered = receipt.clone();
         tampered.id = "not-the-content-address".to_string();
         assert!(!tampered.verify_signature().unwrap());
+    }
+
+    #[test]
+    fn receipt_signing_nonce_preserves_repeated_invocation_identity() {
+        let kp = Keypair::generate();
+        let mut first = make_receipt_body(&kp);
+        let mut second = first.clone();
+        first.id = "request-1".to_string();
+        second.id = "request-2".to_string();
+
+        let first_receipt = ChioReceipt::sign(first, &kp).unwrap();
+        let second_receipt = ChioReceipt::sign(second, &kp).unwrap();
+
+        assert_ne!(first_receipt.id, second_receipt.id);
+        assert_eq!(
+            first_receipt
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get(CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY))
+                .and_then(serde_json::Value::as_str),
+            Some("request-1")
+        );
+        assert_eq!(
+            second_receipt
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get(CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY))
+                .and_then(serde_json::Value::as_str),
+            Some("request-2")
+        );
+        assert!(first_receipt.verify_signature().unwrap());
+        assert!(second_receipt.verify_signature().unwrap());
     }
 
     #[test]

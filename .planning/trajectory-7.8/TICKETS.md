@@ -1,4 +1,4 @@
-# Chiodos 7.8 Tickets
+# Chio 7.8 Tickets
 
 - C7.8-001 Integrator And Gap Ledger: active planning docs, baseline, gates, and
   7.9 dashboard shadow.
@@ -9,7 +9,7 @@
   evidence.
 - C7.8-004 Live Cross-Kernel Hero Runner: deterministic Buyer, Vendor A, Vendor B
   execution through `ChioKernel` with actual parent and child receipts.
-- C7.8-005 Strict Treaty DSSE: extend strict Chiodos DSSE with treaty binding
+- C7.8-005 Strict Treaty DSSE: extend strict Chio DSSE with treaty binding
   refs and reject compatibility-only buyer evidence.
 - C7.8-006 Lineage Graph Closure: verify bounded receipt-lineage bundles for no
   cycles, no missing receipts, correct audience, and verified required edges.

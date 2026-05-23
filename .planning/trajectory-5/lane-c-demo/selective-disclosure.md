@@ -10,7 +10,7 @@ closure requirement.
 ## Current Source Truth
 
 The normative selective-disclosure document is
-`spec/CHIODOS_SELECTIVE_DISCLOSURE.md`.
+`spec/CHIO_SELECTIVE_DISCLOSURE.md`.
 
 That spec currently says v0.1 selective disclosure is scoped to BBS+ secondary
 commitments, a frozen predicate language, and a

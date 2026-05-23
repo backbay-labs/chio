@@ -1,10 +1,9 @@
 pub use chio_control_plane::{
-    authority_public_key_from_seed_file, build_kernel, certify, configure_budget_store,
+    CliError, authority_public_key_from_seed_file, build_kernel, certify, configure_budget_store,
     configure_capability_authority, configure_receipt_store, configure_revocation_store,
     enterprise_federation, evidence_export, federation_policy, issuance,
     issue_default_capabilities, load_or_create_authority_keypair, passport_verifier, policy,
     reputation, require_control_token, rotate_authority_keypair, scim_lifecycle, trust_control,
-    CliError,
 };
 pub use chio_mcp_remote as remote_mcp;
 
@@ -99,7 +98,12 @@ struct Cli {
     /// Bearer token used to authenticate to the shared trust-control service.
     /// Prefer `CHIO_CONTROL_TOKEN` env over the argv form so the bearer does
     /// not leak via `ps` / `/proc/<pid>/cmdline`.
-    #[arg(long, global = true, env = "CHIO_CONTROL_TOKEN", hide_env_values = true)]
+    #[arg(
+        long,
+        global = true,
+        env = "CHIO_CONTROL_TOKEN",
+        hide_env_values = true
+    )]
     control_token: Option<String>,
 }
 
@@ -235,6 +239,17 @@ mod cli_env_tests {
 
         restore_env("CHIO_GUARD_REGISTRY_PASSWORD", prior);
     }
+
+    #[test]
+    fn explain_help_text_uses_chio_named_dsse_conformance_wording() {
+        let source = include_str!("types.rs");
+        let stale_uppercase_phrase = ["strict ", "CHIO"].concat();
+
+        assert!(
+            !source.contains(&stale_uppercase_phrase),
+            "active explain help text must not describe DSSE conformance with stale uppercase legacy wording"
+        );
+    }
 }
 
 #[derive(Subcommand)]
@@ -347,10 +362,28 @@ enum Commands {
         command: ConformanceCommands,
     },
 
-    /// Verify offline Chiodos buyer and auditor proof packages.
-    Chiodos {
+    /// Produce and verify cross-kernel federation artifacts.
+    Federation {
         #[command(subcommand)]
-        command: ChiodosCommands,
+        command: ChioFederationCommands,
+    },
+
+    /// Verify offline attestation evidence and buyer proof packages.
+    Attest {
+        #[command(subcommand)]
+        command: ChioAttestCommands,
+    },
+
+    /// Evaluate local live-runtime admission artifacts.
+    Runtime {
+        #[command(subcommand)]
+        command: ChioRuntimeCommands,
+    },
+
+    /// Receive, query, and relay pheromone artifacts.
+    Pheromone {
+        #[command(subcommand)]
+        command: ChioPheromoneCommands,
     },
 
     /// Re-evaluate a captured receipt log against the current build.
@@ -499,6 +532,201 @@ enum Commands {
         /// the banner short.
         #[arg(long, default_value_t = false)]
         print_config: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChioFederationCommands {
+    /// Produce local federation authority artifacts for offline verification.
+    Authority {
+        #[command(subcommand)]
+        command: ChioAuthorityCommands,
+    },
+
+    /// Verify treaty-bound cross-kernel provenance artifacts.
+    Treaty {
+        #[command(subcommand)]
+        command: ChioTreatyCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChioAttestCommands {
+    /// Package, verify, and explain buyer-facing attestation evidence.
+    Buyer {
+        #[command(subcommand)]
+        command: ChioBuyerCommands,
+    },
+
+    /// Verify Sigstore-backed supply-chain attestations.
+    SupplyChain {
+        #[command(subcommand)]
+        command: ChioSupplyChainCommands,
+    },
+
+    /// Verify runtime quote evidence.
+    RuntimeQuote {
+        #[command(subcommand)]
+        command: ChioRuntimeQuoteCommands,
+    },
+
+}
+
+#[derive(Subcommand)]
+enum ChioBuyerCommands {
+    /// Build a buyer review packet from a local runtime output directory.
+    Packet {
+        /// Runtime output directory containing buyer review artifacts.
+        #[arg(long = "run-output", value_name = "DIR")]
+        run_output: PathBuf,
+
+        /// Output path for buyer attestation review packet JSON.
+        #[arg(long, value_name = "PATH")]
+        out: PathBuf,
+    },
+
+    /// Verify a buyer review package against verifier-owned inputs.
+    Verify {
+        /// Buyer attestation review package JSON.
+        #[arg(long = "package", value_name = "PATH")]
+        package: PathBuf,
+
+        /// Verifier-owned trust bundle JSON.
+        #[arg(long = "trust-bundle", value_name = "PATH")]
+        trust_bundle: PathBuf,
+
+        /// Verifier context JSON.
+        #[arg(long, value_name = "PATH")]
+        context: PathBuf,
+
+        /// Output path for buyer attestation review report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Verify a Chio attest proof package directly.
+    VerifyProof {
+        /// Chio attest proof package JSON.
+        #[arg(long = "package", value_name = "PATH")]
+        package: PathBuf,
+
+        /// Verifier-owned trust bundle JSON.
+        #[arg(long = "trust-bundle", value_name = "PATH")]
+        trust_bundle: PathBuf,
+
+        /// Verifier context JSON.
+        #[arg(long, value_name = "PATH")]
+        context: PathBuf,
+
+        /// Output path for verifier report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Verify a hash-only buyer packet as unresolved unless full DSSE review hydrates it.
+    VerifyPacket {
+        /// Buyer attestation packet JSON.
+        #[arg(long, value_name = "PATH")]
+        packet: PathBuf,
+
+        /// Receipt lineage statement JSON.
+        #[arg(long = "lineage-statement", value_name = "PATH")]
+        lineage_statement: PathBuf,
+
+        /// Cross-kernel continuation JSON.
+        #[arg(long, value_name = "PATH")]
+        continuation: PathBuf,
+
+        /// Cross-boundary admission report JSON.
+        #[arg(long = "admission-report", value_name = "PATH")]
+        admission_report: PathBuf,
+
+        /// Bilateral invocation JSON.
+        #[arg(long = "bilateral-invocation", value_name = "PATH")]
+        bilateral_invocation: PathBuf,
+
+        /// Output path for buyer attestation verification report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Render a buyer review report as JSON or plain text.
+    Explain {
+        /// Buyer attestation review report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+
+        /// Explanation format.
+        #[arg(long, value_parser = ["json", "text"], default_value = "text")]
+        format: String,
+
+        /// Output path for explanation.
+        #[arg(long, value_name = "PATH")]
+        out: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChioSupplyChainCommands {
+    /// Verify a Sigstore bundle against the artifact bytes and expected identity.
+    Verify {
+        /// Artifact bytes covered by the Sigstore bundle.
+        #[arg(long, value_name = "PATH")]
+        artifact: PathBuf,
+
+        /// Sigstore bundle JSON.
+        #[arg(long, value_name = "PATH")]
+        bundle: PathBuf,
+
+        /// Fulcio certificate identity SAN regex expected on the signing cert.
+        #[arg(long = "issuer-san-regex", value_name = "REGEX")]
+        issuer_san_regex: String,
+
+        /// Fulcio certificate OIDC issuer expected on the signing cert.
+        #[arg(long = "issuer-oidc", value_name = "URL")]
+        issuer_oidc: String,
+
+        /// Optional output path for a verification report. Defaults to stdout.
+        #[arg(long, value_name = "PATH")]
+        report: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChioRuntimeQuoteCommands {
+    /// Verify runtime quote evidence through chio-attest-verify.
+    Verify {
+        /// Kernel signing public key in Chio canonical text form.
+        #[arg(long = "kernel-public-key", value_name = "KEY")]
+        kernel_public_key: String,
+
+        /// Receipt root as 64 lowercase hex characters.
+        #[arg(long = "receipt-root", value_name = "HEX")]
+        receipt_root: String,
+
+        /// Optional observed runtime quote report-data bytes for diagnostic comparison.
+        #[arg(long = "report-data", value_name = "HEX")]
+        report_data: Option<String>,
+
+        /// TEE backend that produced the quote.
+        #[arg(
+            long = "tee-kind",
+            value_name = "KIND",
+            value_parser = ["intel-tdx", "amd-sev-snp", "aws-nitro"]
+        )]
+        tee_kind: Option<String>,
+
+        /// Raw quote bytes to verify.
+        #[arg(long, value_name = "PATH")]
+        quote: Option<PathBuf>,
+
+        /// Backend collateral JSON used to verify the quote.
+        #[arg(long, value_name = "PATH")]
+        collateral: Option<PathBuf>,
+
+        /// Optional output path for a verification report. Defaults to stdout.
+        #[arg(long, value_name = "PATH")]
+        report: Option<PathBuf>,
     },
 }
 
@@ -1138,7 +1366,11 @@ enum McpCommands {
         /// Client secret used when calling the token introspection endpoint.
         /// Prefer `CHIO_MCP_AUTH_INTROSPECTION_CLIENT_SECRET` env over the argv
         /// form so the secret does not leak via `ps` / `/proc/<pid>/cmdline`.
-        #[arg(long, env = "CHIO_MCP_AUTH_INTROSPECTION_CLIENT_SECRET", hide_env_values = true)]
+        #[arg(
+            long,
+            env = "CHIO_MCP_AUTH_INTROSPECTION_CLIENT_SECRET",
+            hide_env_values = true
+        )]
         auth_introspection_client_secret: Option<String>,
 
         /// Optional provider profile used for principal mapping and default OIDC discovery behavior.
@@ -1253,10 +1485,6 @@ enum TrustCommands {
         /// secret is not visible to other users via `ps`/`/proc`.
         #[arg(long, env = "CHIO_TRUST_SERVICE_TOKEN", hide_env_values = true)]
         service_token: String,
-
-        /// Tenant-scoped read token in tenant=token form. Repeat to add tenants.
-        #[arg(long = "tenant-read-token", hide_env_values = true)]
-        tenant_read_tokens: Vec<String>,
 
         /// Public base URL this trust-control node advertises to peers and clients.
         #[arg(long)]
@@ -2701,28 +2929,6 @@ enum ReceiptCommands {
         /// Cursor for pagination (seq value to start after).
         #[arg(long)]
         cursor: Option<u64>,
-        /// Strict tenant read boundary for local receipt DB inspection.
-        /// Required for local --receipt-db reads unless --admin-all is set.
-        #[arg(long, conflicts_with = "admin_all")]
-        tenant: Option<String>,
-        /// Explicit local operator read across all tenants. Required for
-        /// local --receipt-db reads unless --tenant is set; the local CLI
-        /// will not silently default to admin-all.
-        #[arg(long, default_value_t = false)]
-        admin_all: bool,
-    },
-    /// Report receipt-store writer and checkpoint health.
-    Health,
-    /// Wait until all accepted receipt writes before the barrier are durable.
-    Flush {
-        /// Receipt writer flush-barrier timeout in milliseconds.
-        #[arg(long, default_value_t = 5000, value_parser = clap::value_parser!(u64).range(1..))]
-        timeout_ms: u64,
-    },
-    /// Inspect or create receipt-log checkpoints.
-    Checkpoint {
-        #[command(subcommand)]
-        command: ReceiptCheckpointCommands,
     },
     /// Explain why a receipt was allowed or denied.
     ///
@@ -2730,8 +2936,8 @@ enum ReceiptCommands {
     /// document (the federation signature-slice API emission with both a
     /// `dualSignedReceipt` and a `dsseEnvelope`), the renderer auto-detects
     /// the bilateral shape and prints both the legacy DualSignedReceipt
-    /// section (NON-§6-CONFORMANT per B4) and the DSSE signature-slice
-    /// section. It does not claim strict CHIODOS §6 predicate conformance.
+    /// section (NON-SECTION-6-CONFORMANT per B4) and the DSSE signature-slice
+    /// section. It does not claim strict Chio DSSE section 6 predicate conformance.
     ///
     /// Pass `--inspect-bilateral` to additionally emit a structural
     /// **inspection trace** of the envelope. The previous flag spelling
@@ -2765,51 +2971,12 @@ enum ReceiptCommands {
         /// against pinned passport keys.
         #[arg(long, alias = "explain-bilateral", default_value_t = false)]
         inspect_bilateral: bool,
-        /// Strict tenant read boundary for local receipt DB lookup.
-        /// Required for local --receipt-db reads unless --admin-all is set.
-        #[arg(long, conflicts_with = "admin_all")]
-        tenant: Option<String>,
-        /// Explicit local operator read across all tenants. Required for
-        /// local --receipt-db reads unless --tenant is set; the local CLI
-        /// will not silently default to admin-all.
-        #[arg(long, default_value_t = false)]
-        admin_all: bool,
     },
-}
-
-#[derive(Subcommand)]
-enum ReceiptCheckpointCommands {
-    /// Show committed and checkpointed receipt-log ranges.
-    Status {
-        /// Maximum pending entries to include in the next-range preview.
-        #[arg(long, default_value_t = 1000, value_parser = clap::value_parser!(u64).range(1..))]
-        max_batch: u64,
-    },
-    /// Create a checkpoint for the next contiguous committed receipt-log range.
-    Create {
-        /// Hex seed file for the checkpoint signing key.
-        #[arg(long)]
-        kernel_seed_file: PathBuf,
-        /// Maximum committed entries to include in this checkpoint.
-        #[arg(long, default_value_t = 1000, value_parser = clap::value_parser!(u64).range(1..))]
-        max_batch: u64,
-    },
-    /// Verify persisted checkpoint chain and transparency projections.
-    Verify,
 }
 
 #[derive(Subcommand)]
 enum EvidenceCommands {
     /// Export a verifiable local evidence package into a directory.
-    ///
-    /// Tenant-scoped exports include kernel-signed checkpoint bodies whose
-    /// per-batch Merkle tree covers receipts from all tenants in the same
-    /// batch. The exported manifest carries a `disclosureNotice` field that
-    /// enumerates the cross-tenant aggregate fields this discloses (batch
-    /// seq range, tree size, Merkle root, predecessor digest). The
-    /// disclosure is unavoidable without protocol-level per-tenant subtree
-    /// proofs; see docs/release/COMPLIANCE_EVIDENCE_EXPORT_PLAN.md for the
-    /// full notice.
     Export {
         /// Output directory for the evidence package. Must not already contain files.
         #[arg(long)]
@@ -2826,16 +2993,10 @@ enum EvidenceCommands {
         /// Include tool receipts with timestamp <= this Unix seconds value.
         #[arg(long)]
         until: Option<u64>,
-        /// Tenant read boundary for the export. Derived from operator auth in
-        /// service paths. Tenant-scoped exports attach a manifest-level
-        /// `disclosureNotice` documenting the cross-tenant aggregate
-        /// metadata signed checkpoints inherently reveal.
+        /// Tenant read boundary for the export. Derived from operator auth in service paths.
         #[arg(long)]
         tenant: Option<String>,
-        /// Explicitly export across all tenants as an administrative
-        /// operation. Admin-all exports do not attach a tenant disclosure
-        /// notice because the operator already requested cross-tenant
-        /// visibility.
+        /// Explicitly export across all tenants as an administrative operation.
         #[arg(long, default_value_t = false, conflicts_with = "tenant")]
         admin_all: bool,
         /// Optional policy file to attach to the export package.
@@ -2895,11 +3056,11 @@ enum EvidenceFederationPolicyCommands {
         /// Optional upper timestamp bound for the allowed export window.
         #[arg(long)]
         until: Option<u64>,
-        /// Bind this policy to one tenant-scoped receipt export.
-        #[arg(long, conflicts_with = "admin_all")]
+        /// Tenant read boundary for exports performed under this policy.
+        #[arg(long)]
         tenant: Option<String>,
-        /// Bind this policy to explicit admin-all receipt export authority.
-        #[arg(long, default_value_t = false)]
+        /// Explicitly allow administrative exports across all tenants under this policy.
+        #[arg(long, default_value_t = false, conflicts_with = "tenant")]
         admin_all: bool,
         /// Expiration time for the policy document, in Unix seconds.
         #[arg(long)]
@@ -3726,10 +3887,6 @@ enum CertCommands {
         /// Path to the certificate JSON file.
         #[arg(long)]
         certificate: PathBuf,
-
-        /// Trusted kernel public key used to verify the certificate signer.
-        #[arg(long)]
-        trusted_kernel_pubkey: PathBuf,
 
         /// Enable full-bundle verification (re-verify all receipt signatures).
         #[arg(long, default_value_t = false)]

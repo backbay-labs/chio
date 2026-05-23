@@ -512,13 +512,17 @@ mod tests {
         receipt_with_ts_and_tenant(id, capability_id, timestamp, None)
     }
 
+    fn evidence_receipt_keypair() -> Keypair {
+        Keypair::from_seed(&[0x42; 32])
+    }
+
     fn receipt_with_ts_and_tenant(
         id: &str,
         capability_id: &str,
         timestamp: u64,
         tenant_id: Option<&str>,
     ) -> ChioReceipt {
-        let keypair = Keypair::generate();
+        let keypair = evidence_receipt_keypair();
         ChioReceipt::sign(
             ChioReceiptBody {
                 id: id.to_string(),
@@ -526,8 +530,10 @@ mod tests {
                 capability_id: capability_id.to_string(),
                 tool_server: "shell".to_string(),
                 tool_name: "bash".to_string(),
-                action: ToolCallAction::from_parameters(serde_json::json!({"cmd":"echo hi"}))
-                    .expect("action"),
+                action: ToolCallAction::from_parameters(
+                    serde_json::json!({"cmd":"echo hi", "receipt": id}),
+                )
+                .expect("action"),
                 decision: Some(Decision::Allow),
                 receipt_kind: Default::default(),
                 boundary_class: Default::default(),
@@ -535,7 +541,7 @@ mod tests {
                 tool_origin: Default::default(),
                 redaction_mode: Default::default(),
                 actor_chain: Vec::new(),
-                content_hash: "content-1".to_string(),
+                content_hash: format!("content-{id}"),
                 policy_hash: "policy-1".to_string(),
                 evidence: Vec::new(),
                 metadata: None,
@@ -602,7 +608,7 @@ mod tests {
                 .into_iter()
                 .map(|(_, bytes)| bytes)
                 .collect::<Vec<_>>(),
-            &issuer,
+            &evidence_receipt_keypair(),
         )
         .unwrap();
         store.store_checkpoint(&checkpoint).unwrap();

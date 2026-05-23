@@ -1361,15 +1361,18 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_jsonrpc_subscribe_task_returns_complete_stream() {
+        let registry_path = unique_path("chio-a2a-jsonrpc-subscribe", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_subscribe_complete() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let stream = adapter
             .invoke_stream(
@@ -1401,15 +1404,18 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_http_json_subscribe_task_returns_complete_stream() {
+        let registry_path = unique_path("chio-a2a-http-subscribe", ".json");
         let Some(server) = FakeA2aServer::spawn_http_json_subscribe_complete() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover HTTP+JSON adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let stream = adapter
             .invoke_stream(
@@ -1441,15 +1447,18 @@ mod tests {
 
     #[tokio::test]
     async fn adapter_subscribe_task_closure_without_terminal_state_is_incomplete() {
+        let registry_path = unique_path("chio-a2a-jsonrpc-subscribe-incomplete", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_subscribe_incomplete() else {
             return;
         };
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover JSONRPC adapter");
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let stream = adapter
             .invoke_stream(
@@ -2386,7 +2395,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2479,7 +2488,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2545,7 +2554,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2620,7 +2629,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2688,7 +2697,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2815,7 +2824,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2882,7 +2891,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2946,7 +2955,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -2989,6 +2998,7 @@ mod tests {
 
     #[tokio::test]
     async fn kernel_e2e_a2a_subscribe_task_produces_allow_receipt() {
+        let registry_path = unique_path("chio-a2a-kernel-subscribe", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_subscribe_complete() else {
             return;
         };
@@ -2997,10 +3007,12 @@ mod tests {
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
         let server_id = adapter.server_id().to_string();
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let mut kernel = ChioKernel::new(KernelConfig {
             keypair: Keypair::generate(),
@@ -3013,7 +3025,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -3052,6 +3064,7 @@ mod tests {
 
     #[tokio::test]
     async fn kernel_e2e_a2a_incomplete_subscribe_task_produces_incomplete_receipt() {
+        let registry_path = unique_path("chio-a2a-kernel-subscribe-incomplete", ".json");
         let Some(server) = FakeA2aServer::spawn_jsonrpc_subscribe_incomplete() else {
             return;
         };
@@ -3060,10 +3073,12 @@ mod tests {
         let manifest_key = Keypair::generate();
         let adapter = A2aAdapter::discover(
             test_adapter_config(server.base_url(), manifest_key.public_key().to_hex())
+                .with_task_registry_file(&registry_path)
                 .with_timeout(Duration::from_secs(2)),
         )
         .expect("discover adapter");
         let server_id = adapter.server_id().to_string();
+        seed_a2a_task(&adapter, "research", "task-1");
 
         let mut kernel = ChioKernel::new(KernelConfig {
             keypair: Keypair::generate(),
@@ -3076,7 +3091,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -3146,7 +3161,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -3210,7 +3225,7 @@ mod tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });

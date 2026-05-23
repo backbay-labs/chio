@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/scarcity-policy.schema.json",
+  "title": "Chio Pheromone Scarcity Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "policyId",
+    "reputationEpoch",
+    "windowId",
+    "windowStartUnixMs",
+    "windowEndUnixMs",
+    "tokenCapacity",
+    "newcomerHorizonEpochs",
+    "treatyScope",
+    "subjectClassNamespace",
+    "subjectClass",
+    "observationCostVerification",
+    "verifierId",
+    "runtimePolicySha256",
+    "policySha256",
+    "activePeersEpoch"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone-scarcity-policy.v1" },
+    "policyId": { "type": "string", "minLength": 1 },
+    "reputationEpoch": { "type": "integer", "minimum": 0 },
+    "windowId": { "type": "string", "minLength": 1 },
+    "windowStartUnixMs": { "type": "integer", "minimum": 0 },
+    "windowEndUnixMs": { "type": "integer", "minimum": 0 },
+    "tokenCapacity": { "type": "integer", "minimum": 1 },
+    "newcomerHorizonEpochs": { "type": "integer", "minimum": 1 },
+    "treatyScope": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "subjectClassNamespace": { "type": "string", "minLength": 1 },
+    "subjectClass": { "type": "string", "minLength": 1 },
+    "observationCostVerification": { "enum": ["not_required", "required"] },
+    "verifierId": { "type": "string", "minLength": 1 },
+    "runtimePolicySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "policySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "activePeersEpoch": { "type": "integer", "minimum": 0 }
+  }
+}

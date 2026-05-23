@@ -6,14 +6,14 @@ use crate::{
     RelayAlertHandoffReport, RelayAlertHandoffSinkKind, RelayAlertRoutingProfileDocument,
     RelayAlertSeverity, RelayAlertSuppressionStateDocument,
     PHEROMONE_RELAY_ALERT_ACKNOWLEDGEMENT_REPORT_SCHEMA,
-    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA,
+    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_EVIDENCE_SCHEMA, PHEROMONE_RELAY_ALERT_DELIVERY_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_HANDOFF_DRIFT_REPORT_SCHEMA, PHEROMONE_RELAY_ALERT_HANDOFF_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_NORMALIZATION_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_NORMALIZATION_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ROUTE_OWNER_PROFILE_SCHEMA,
-    PHEROMONE_RELAY_ALERT_ROUTE_REVIEW_PACKET_SCHEMA,
+    PHEROMONE_RELAY_ALERT_ROUTE_REVIEW_PACKET_SCHEMA, PHEROMONE_RELAY_SERVICE_LABEL,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -222,7 +222,7 @@ pub struct RelayAlertNormalizationReport {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RelayAlertDeliveryDriftV2 {
+pub struct RelayAlertDeliveryDrift {
     pub code: String,
     pub source_handoff_report_sha256: String,
     pub matched_delivery_report_sha256: Option<String>,
@@ -233,7 +233,7 @@ pub struct RelayAlertDeliveryDriftV2 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RelayAlertDeliveryDriftReportV2 {
+pub struct RelayAlertDeliveryDriftReport {
     pub schema: String,
     pub accepted: bool,
     pub code: String,
@@ -244,7 +244,7 @@ pub struct RelayAlertDeliveryDriftReportV2 {
     pub handoff_report_count: u64,
     pub delivery_report_count: u64,
     pub drift_count: u64,
-    pub drifts: Vec<RelayAlertDeliveryDriftV2>,
+    pub drifts: Vec<RelayAlertDeliveryDrift>,
     pub checks: Vec<RelayAlertCheck>,
 }
 
@@ -325,7 +325,7 @@ pub struct RelayAlertNormalizationInput<'a> {
     pub now_unix_ms: u64,
 }
 
-pub struct RelayAlertDeliveryDriftInputV2<'a> {
+pub struct RelayAlertDeliveryDriftInput<'a> {
     pub handoff_reports: &'a [RelayAlertHandoffReport],
     pub delivery_reports: &'a [RelayAlertDeliveryReport],
     pub delivery_profile: &'a RelayAlertDeliveryProfileDocument,
@@ -337,7 +337,7 @@ pub struct RelayAlertRouteReviewInput<'a> {
     pub handoff_report: &'a RelayAlertHandoffReport,
     pub delivery_report: &'a RelayAlertDeliveryReport,
     pub acknowledgement_report: &'a RelayAlertAcknowledgementReport,
-    pub drift_report: &'a RelayAlertDeliveryDriftReportV2,
+    pub drift_report: &'a RelayAlertDeliveryDriftReport,
     pub route_owner_profile: &'a RelayAlertRouteOwnerProfileDocument,
     pub now_unix_ms: u64,
 }
@@ -846,9 +846,9 @@ pub fn normalize_relay_alert_delivery_evidence(
     })
 }
 
-pub fn generate_relay_alert_delivery_drift_report_v2(
-    input: RelayAlertDeliveryDriftInputV2<'_>,
-) -> Result<RelayAlertDeliveryDriftReportV2, PheromoneRelayError> {
+pub fn generate_relay_alert_delivery_drift_report(
+    input: RelayAlertDeliveryDriftInput<'_>,
+) -> Result<RelayAlertDeliveryDriftReport, PheromoneRelayError> {
     if input.since_unix_ms > input.until_unix_ms {
         return Err(PheromoneRelayError::AlertDeliveryInvalid(
             "drift lower bound is after upper bound".to_string(),
@@ -901,7 +901,7 @@ pub fn generate_relay_alert_delivery_drift_report_v2(
         let report_hash = canonical_sha256(report)?;
         delivery_report_count = delivery_report_count.saturating_add(1);
         if !handoffs_by_hash.contains_key(&report.source_handoff_report_sha256) {
-            drifts.push(RelayAlertDeliveryDriftV2 {
+            drifts.push(RelayAlertDeliveryDrift {
                 code: "unbound_delivery_report".to_string(),
                 source_handoff_report_sha256: report.source_handoff_report_sha256.clone(),
                 matched_delivery_report_sha256: Some(report_hash.clone()),
@@ -930,7 +930,7 @@ pub fn generate_relay_alert_delivery_drift_report_v2(
     }
 
     if ordered_handoffs.is_empty() && delivery_report_count == 0 {
-        drifts.push(RelayAlertDeliveryDriftV2 {
+        drifts.push(RelayAlertDeliveryDrift {
             code: "no_window_evidence".to_string(),
             source_handoff_report_sha256: "0".repeat(64),
             matched_delivery_report_sha256: None,
@@ -952,7 +952,7 @@ pub fn generate_relay_alert_delivery_drift_report_v2(
                 match delivery_index.get(&key) {
                     Some((result, report_hash)) => {
                         if result.severity < route.highest_severity {
-                            drifts.push(RelayAlertDeliveryDriftV2 {
+                            drifts.push(RelayAlertDeliveryDrift {
                                 code: "severity_weakening".to_string(),
                                 source_handoff_report_sha256: handoff_hash.clone(),
                                 matched_delivery_report_sha256: Some(report_hash.clone()),
@@ -965,7 +965,7 @@ pub fn generate_relay_alert_delivery_drift_report_v2(
                             || result.notification_route != route.notification_route
                             || result.opsgenie != route.opsgenie
                         {
-                            drifts.push(RelayAlertDeliveryDriftV2 {
+                            drifts.push(RelayAlertDeliveryDrift {
                                 code: "route_alias_drift".to_string(),
                                 source_handoff_report_sha256: handoff_hash.clone(),
                                 matched_delivery_report_sha256: Some(report_hash.clone()),
@@ -976,7 +976,7 @@ pub fn generate_relay_alert_delivery_drift_report_v2(
                             });
                         }
                         if result.status.requires_attention() {
-                            drifts.push(RelayAlertDeliveryDriftV2 {
+                            drifts.push(RelayAlertDeliveryDrift {
                                 code: "delivery_attention_required".to_string(),
                                 source_handoff_report_sha256: handoff_hash.clone(),
                                 matched_delivery_report_sha256: Some(report_hash.clone()),
@@ -986,7 +986,7 @@ pub fn generate_relay_alert_delivery_drift_report_v2(
                             });
                         }
                     }
-                    None => drifts.push(RelayAlertDeliveryDriftV2 {
+                    None => drifts.push(RelayAlertDeliveryDrift {
                         code: "missing_delivery_result".to_string(),
                         source_handoff_report_sha256: handoff_hash.clone(),
                         matched_delivery_report_sha256: None,
@@ -1007,8 +1007,8 @@ pub fn generate_relay_alert_delivery_drift_report_v2(
         }
     }
     let accepted = drifts.is_empty();
-    Ok(RelayAlertDeliveryDriftReportV2 {
-        schema: PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA.to_string(),
+    Ok(RelayAlertDeliveryDriftReport {
+        schema: PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_SCHEMA.to_string(),
         accepted,
         code: if accepted {
             "accepted"
@@ -1344,7 +1344,7 @@ pub(crate) fn normalize_downstream_source(
         .or_insert_with(|| receiver.opsgenie.clone());
     labels
         .entry("service".to_string())
-        .or_insert_with(|| "chiodos-pheromone-relay".to_string());
+        .or_insert_with(|| PHEROMONE_RELAY_SERVICE_LABEL.to_string());
     labels
         .entry("severity".to_string())
         .or_insert_with(|| severity.as_str().to_string());

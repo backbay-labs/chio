@@ -1,0 +1,20 @@
+{
+  "schema": "chio.pheromone.receive-report.v1",
+  "accepted": true,
+  "batchOutcome": "accepted",
+  "acceptedFrameCount": 1,
+  "rejectedFrameCount": 0,
+  "batchSha256": "7e0875c9423b55a154a55ca0eebf1be4ad1205687e153365faf69f9a649184c5",
+  "recipientKernelId": "did:chio:dataco",
+  "authenticatedSenderKernelId": "did:chio:buyer-kernel",
+  "receivedAtUnixMs": 1766000000500,
+  "frames": [
+    {
+      "frameIndex": 0,
+      "accepted": true,
+      "code": "accepted",
+      "detail": "accepted",
+      "depositNonce": "pheromone-nonce-llamaworks-001"
+    }
+  ]
+}

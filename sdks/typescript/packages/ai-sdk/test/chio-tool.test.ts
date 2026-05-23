@@ -368,6 +368,88 @@ describe("chioTool: allow path invokes underlying execute", () => {
     expect(parsed.receipt).toBeUndefined();
   });
 
+  it("reuses a preconstructed client transport for default verification", async () => {
+    const calls: string[] = [];
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      calls.push(url);
+      if (url === "http://custom-sidecar.test/chio/evaluate") {
+        return new Response(JSON.stringify(allowReceipt("r-client-verify")), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url === "http://custom-sidecar.test/chio/verify") {
+        return new Response(JSON.stringify(trustedReceiptVerifier()), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected client transport URL: ${url}`);
+    }) as typeof fetch;
+    const client = new ChioClient({
+      fetch: fetchImpl,
+      sidecarUrl: "http://custom-sidecar.test",
+    });
+    const wrapped = chioTool({
+      client,
+      parameters: z.object({ n: z.number() }),
+      execute: async ({ n }: { n: number }) => ({ doubled: n * 2 }),
+      scope: {
+        toolServer: "math",
+        toolName: "double",
+        capabilityId: "cap-1",
+        capabilityToken: CAPABILITY_TOKEN,
+      },
+    });
+
+    await expect(wrapped.execute!({ n: 21 })).resolves.toEqual({ doubled: 42 });
+    expect(calls).toEqual([
+      "http://custom-sidecar.test/chio/evaluate",
+      "http://custom-sidecar.test/chio/verify",
+    ]);
+  });
+
+  it("honors the client timeout while verifying by default", async () => {
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/chio/evaluate")) {
+        return new Response(JSON.stringify(allowReceipt("r-verify-timeout")), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/chio/verify")) {
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        });
+      }
+      throw new Error(`unexpected fetch in timeout test: ${url}`);
+    }) as typeof fetch;
+    const wrapped = chioTool({
+      clientOptions: {
+        fetch: fetchImpl,
+        sidecarUrl: "http://sidecar.test",
+        timeoutMs: 1,
+      },
+      parameters: z.object({ n: z.number() }),
+      execute: async ({ n }: { n: number }) => ({ doubled: n * 2 }),
+      scope: {
+        toolServer: "math",
+        toolName: "double",
+        capabilityId: "cap-1",
+        capabilityToken: CAPABILITY_TOKEN,
+      },
+    });
+
+    await expect(wrapped.execute!({ n: 21 })).rejects.toMatchObject({
+      verdict: "sidecar_unreachable",
+      receiptId: "r-verify-timeout",
+    });
+  });
+
   it("fails closed when /chio/verify returns partial authority", async () => {
     // The default /chio/verify path must still enforce that every
     // authority field is set. A partial response (missing

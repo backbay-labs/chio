@@ -1,4 +1,4 @@
-# Chiodos 7.2 Shadow
+# Chio 7.2 Shadow
 
 The 7.2 shadow target is production runtime orchestration after local verifier-owned runtime policy is proven.
 

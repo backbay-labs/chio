@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/query-report.schema.json",
-  "title": "Chiodos Pheromone Query Report",
+  "title": "Chio Pheromone Query Report",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "accepted", "concentration"],

@@ -2,7 +2,7 @@ use crate::{
     canonical_sha256, contains_secret_marker, is_bounded_code, is_bounded_route_token,
     is_sha256_hex, reject_downstream_source_secrets, validate_delivery_evidence_shape,
     PheromoneRelayError, RelayAlertAcknowledgementReport, RelayAlertCheck,
-    RelayAlertDeliveryDriftReportV2, RelayAlertDeliveryEvidence, RelayAlertDeliveryReport,
+    RelayAlertDeliveryDriftReport, RelayAlertDeliveryEvidence, RelayAlertDeliveryReport,
     RelayAlertHandoffReport, RelayAlertNormalizationReport, RelayAlertReport,
     RelayAlertRouteReviewPacket, RelayTrendReport,
     PHEROMONE_RELAY_ALERT_ACKNOWLEDGEMENT_REPORT_SCHEMA,
@@ -14,7 +14,7 @@ use crate::{
     PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_TRUSTED_EXPORTERS_SCHEMA,
-    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA,
+    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_EVIDENCE_SCHEMA, PHEROMONE_RELAY_ALERT_DELIVERY_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_HANDOFF_REPORT_SCHEMA, PHEROMONE_RELAY_ALERT_NORMALIZATION_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_REPORT_SCHEMA, PHEROMONE_RELAY_ALERT_ROUTE_REVIEW_PACKET_SCHEMA,
@@ -260,7 +260,7 @@ pub struct RelayAlertAssuranceInput<'a> {
     pub normalization_report: &'a RelayAlertNormalizationReport,
     pub delivery_report: &'a RelayAlertDeliveryReport,
     pub acknowledgement_report: &'a RelayAlertAcknowledgementReport,
-    pub drift_report: &'a RelayAlertDeliveryDriftReportV2,
+    pub drift_report: &'a RelayAlertDeliveryDriftReport,
     pub review_packet: &'a RelayAlertRouteReviewPacket,
     pub now_unix_ms: u64,
 }
@@ -276,7 +276,7 @@ pub struct RelayAlertAssuranceExportBuildInput<'a> {
     pub normalization_report: &'a RelayAlertNormalizationReport,
     pub delivery_report: &'a RelayAlertDeliveryReport,
     pub acknowledgement_report: &'a RelayAlertAcknowledgementReport,
-    pub drift_report: &'a RelayAlertDeliveryDriftReportV2,
+    pub drift_report: &'a RelayAlertDeliveryDriftReport,
     pub review_packet: &'a RelayAlertRouteReviewPacket,
     pub assurance_package: &'a RelayAlertAssurancePackage,
     pub normalized_delivery_evidence: &'a [RelayAlertDeliveryEvidence],
@@ -468,8 +468,8 @@ pub fn sign_relay_alert_assurance_export_bundle(
         &mut artifacts,
         &mut files,
         "drift_report",
-        PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA,
-        "reports/relay-alert-delivery-drift-report-v2.json",
+        PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_SCHEMA,
+        "reports/relay-alert-delivery-drift-report.json",
         "incident_evidence",
         input.drift_report,
     )?;
@@ -604,7 +604,7 @@ pub fn generate_relay_alert_assurance_replay_report(
         export_artifact_from_json(input.bundle, "delivery_report")?;
     let acknowledgement_report: RelayAlertAcknowledgementReport =
         export_artifact_from_json(input.bundle, "acknowledgement_report")?;
-    let drift_report: RelayAlertDeliveryDriftReportV2 =
+    let drift_report: RelayAlertDeliveryDriftReport =
         export_artifact_from_json(input.bundle, "drift_report")?;
     let review_packet: RelayAlertRouteReviewPacket =
         export_artifact_from_json(input.bundle, "route_review_packet")?;

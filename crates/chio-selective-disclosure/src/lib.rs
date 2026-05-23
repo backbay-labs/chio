@@ -5,7 +5,9 @@ use chio_core_types::receipt::{ChioReceiptBody, TrustLevel};
 use chio_workflow::receipt::{StepRecord, WorkflowReceiptBody};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeSet, HashMap};
+#[cfg(feature = "bbs")]
+use std::collections::BTreeSet;
+use std::collections::HashMap;
 
 /// Receipt-body projection version used for BBS message vectors.
 pub const PROJECTION_VERSION_RECEIPT_V1: &str = "chio.bbs-projection.receipt.v1";
@@ -14,17 +16,23 @@ pub const PROJECTION_VERSION_WORKFLOW_V1: &str = "chio.bbs-projection.workflow.v
 /// StepRecord projection version used for BBS message vectors.
 pub const PROJECTION_VERSION_STEP_V1: &str = "chio.bbs-projection.step.v1";
 /// Real selective disclosure proof package schema.
-pub const SELECTIVE_DISCLOSURE_PROOF_SCHEMA_V1: &str = "chio.selective-disclosure-proof.v1";
+pub const SELECTIVE_DISCLOSURE_PROOF_SCHEMA_V1: &str = "chio.attest.selective-disclosure-proof.v1";
 /// Internal full-signature carrier for a projected message vector.
-pub const SIGNED_PROJECTION_SCHEMA_V1: &str = "chio.selective-disclosure-signed-projection.v1";
+pub const SIGNED_PROJECTION_SCHEMA_V1: &str =
+    "chio.attest.selective-disclosure-signed-projection.v1";
 /// BBS ciphersuite used by the MSRV-compatible Affinidi implementation.
 pub const BBS_CIPHERSUITE_SHA256: &str = "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_";
 
+#[cfg(feature = "bbs")]
 const MESSAGE_DOMAIN_V1: &[u8] = b"chio.bbs.message.v1";
+#[cfg(feature = "bbs")]
 const HEADER_DOMAIN_V1: &[u8] = b"chio.bbs.header.v1";
 const NONE_SENTINEL: &[u8] = b"\0";
+#[cfg(feature = "bbs")]
 const BBS_SHA256_POINT_BYTES: usize = 48;
+#[cfg(feature = "bbs")]
 const BBS_SHA256_SCALAR_BYTES: usize = 32;
+#[cfg(feature = "bbs")]
 const BBS_SHA256_PROOF_FIXED_BYTES: usize =
     (3 * BBS_SHA256_POINT_BYTES) + (4 * BBS_SHA256_SCALAR_BYTES);
 
@@ -119,6 +127,7 @@ impl InMemoryIssuerRegistry {
         self.public_keys.insert(issuer_fingerprint, public_key_hex);
     }
 
+    #[cfg(feature = "bbs")]
     fn public_key_hex(&self, issuer_fingerprint: &str) -> Option<&str> {
         self.public_keys
             .get(issuer_fingerprint)
@@ -226,7 +235,7 @@ fn push_message(
     });
 }
 
-/// Project a receipt body using the Chiodos receipt v1 BBS table.
+/// Project a receipt body using the Chio receipt v1 BBS table.
 pub fn project_receipt_body(
     body: &ChioReceiptBody,
 ) -> Result<Projection, SelectiveDisclosureError> {
@@ -334,7 +343,7 @@ fn trust_level_bytes(trust_level: TrustLevel) -> Vec<u8> {
     trust_level.as_str().as_bytes().to_vec()
 }
 
-/// Project a workflow receipt body using the Chiodos workflow v1 BBS table.
+/// Project a workflow receipt body using the Chio workflow v1 BBS table.
 pub fn project_workflow_receipt_body(
     body: &WorkflowReceiptBody,
 ) -> Result<Projection, SelectiveDisclosureError> {
@@ -521,6 +530,7 @@ pub fn project_step_record(
     })
 }
 
+#[cfg(feature = "bbs")]
 fn ensure_supported_projection_version(version: &str) -> Result<(), SelectiveDisclosureError> {
     match version {
         PROJECTION_VERSION_RECEIPT_V1
@@ -532,6 +542,7 @@ fn ensure_supported_projection_version(version: &str) -> Result<(), SelectiveDis
     }
 }
 
+#[cfg(feature = "bbs")]
 fn validate_disclosure_set(
     disclosure: &DisclosureSet,
     message_count: usize,
@@ -548,6 +559,7 @@ fn validate_disclosure_set(
     Ok(seen)
 }
 
+#[cfg(feature = "bbs")]
 fn message_count_from_bbs_sha256_proof(
     proof_bytes: &[u8],
     disclosed_count: usize,
@@ -562,6 +574,7 @@ fn message_count_from_bbs_sha256_proof(
     Ok(disclosed_count + (undisclosed_bytes / BBS_SHA256_SCALAR_BYTES))
 }
 
+#[cfg(feature = "bbs")]
 fn disclosed_messages(
     projection: &Projection,
     disclosure: &DisclosureSet,
@@ -580,11 +593,13 @@ fn disclosed_messages(
         .collect())
 }
 
+#[cfg(feature = "bbs")]
 fn append_len_prefixed(out: &mut Vec<u8>, bytes: &[u8]) {
     out.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
     out.extend_from_slice(bytes);
 }
 
+#[cfg(feature = "bbs")]
 fn bbs_message_bytes(message: &ProjectionMessage) -> Result<Vec<u8>, SelectiveDisclosureError> {
     let raw = hex::decode(&message.bytes_hex)
         .map_err(|e| SelectiveDisclosureError::Hex(e.to_string()))?;
@@ -597,10 +612,12 @@ fn bbs_message_bytes(message: &ProjectionMessage) -> Result<Vec<u8>, SelectiveDi
     Ok(out)
 }
 
+#[cfg(feature = "bbs")]
 fn bbs_messages(projection: &Projection) -> Result<Vec<Vec<u8>>, SelectiveDisclosureError> {
     projection.messages.iter().map(bbs_message_bytes).collect()
 }
 
+#[cfg(feature = "bbs")]
 fn bbs_disclosed_messages(
     disclosed: &[DisclosedMessage],
 ) -> Result<Vec<Vec<u8>>, SelectiveDisclosureError> {
@@ -618,6 +635,7 @@ fn bbs_disclosed_messages(
         .collect()
 }
 
+#[cfg(feature = "bbs")]
 fn proof_header(
     projection_version: &str,
     subject_sha256_hex: &str,
@@ -717,6 +735,7 @@ pub fn sign_projection(
     })
 }
 
+#[cfg(feature = "bbs")]
 fn signed_matches_projection(signed: &SignedProjection, projection: &Projection) -> bool {
     signed.schema == SIGNED_PROJECTION_SCHEMA_V1
         && signed.projection_version == projection.version

@@ -1,4 +1,4 @@
-# Chiodos 6.17 Shadow
+# Chio 6.17 Shadow
 
 Candidate focus: relay alert evidence archive lifecycle and operator closeout review, only after 6.16 proves signed local export bundles, replay, and retention reports are useful.
 

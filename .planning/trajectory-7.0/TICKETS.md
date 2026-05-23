@@ -1,4 +1,4 @@
-# Chiodos 7.0 Tickets
+# Chio 7.0 Tickets
 
 ## C7.0-001 Integrator
 
@@ -20,11 +20,11 @@ Status: completed for signed v4 trust input, signer trust, freshness, revocation
 
 ## C7.0-004 Runtime Admission Crate
 
-Add `chio-chiodos-runtime` with admission profile, bundle, report, store, one-shot lease consumption, and stable failure codes.
+Add `chio-runtime-core` with admission profile, bundle, report, store, one-shot lease consumption, and stable failure codes.
 
 Status: completed for profile, bundle, report, workflow-run report, JSON store, one-shot destructive lease consumption, and stable codes.
 
-## C7.0-005 Chiodos Admission Checks
+## C7.0-005 Chio Admission Checks
 
 Enforce request binding, tool/server, args hash, capability id, workflow step, lease scope, governance containment, revocation status, origin/host kernels, and verifier-owned trust.
 
@@ -50,7 +50,7 @@ Status: completed for CLI commands, schemas, generated temp fixtures, executable
 
 ## C7.0-009 Docs And Gates
 
-Update Chiodos docs, add the runtime-spine gate script, and wire CI path triggers.
+Update Chio docs, add the runtime-spine gate script, and wire CI path triggers.
 
 Status: completed for runtime gate script and CI path triggers. Broader narrative docs remain a follow-up.
 

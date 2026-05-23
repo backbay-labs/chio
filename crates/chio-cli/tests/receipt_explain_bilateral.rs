@@ -109,17 +109,29 @@ fn receipt_explain_bilateral_renders_dual_dsse_and_inspection_trace() {
         Some("chio.cli.receipt-explain.bilateral.v1"),
         "renderer must declare its own report schema"
     );
+    let rendered = serde_json::to_string(&parsed).expect("report serializes");
+    for stale in [
+        ["CHIO", "_BILATERAL_COSIGN_INVOCATION"].concat(),
+        ["strict ", "CHIO"].concat(),
+        ["spec/", "CHIO"].concat(),
+    ] {
+        assert!(
+            !rendered.contains(&stale),
+            "active receipt explain JSON must not expose stale Chio wording `{stale}`: {rendered}"
+        );
+    }
 
     let dual = &parsed["dual_signed_receipt"];
     let disclaimer = dual["non_section6_disclaimer"]
         .as_str()
-        .expect("dual section must carry non-§6 disclaimer string");
+        .expect("dual section must carry non-section-6 disclaimer string");
     assert!(
-        disclaimer.contains("NOT §6-conformant") || disclaimer.contains("NOT \u{00a7}6"),
-        "disclaimer must call out non-§6 status: got {disclaimer}"
+        disclaimer.contains("not section-6 conformant")
+            || disclaimer.contains("NOT-SECTION-6-CONFORMANT"),
+        "disclaimer must call out non-section-6 status: got {disclaimer}"
     );
 
-    // (2) DSSE envelope section: §6 binding.
+    // (2) DSSE envelope section: section-6 binding.
     let dsse = &parsed["dsse_envelope"];
     assert_eq!(
         dsse["payload_type"].as_str(),
@@ -165,7 +177,7 @@ fn receipt_explain_bilateral_renders_dual_dsse_and_inspection_trace() {
     assert_eq!(
         steps.len(),
         17,
-        "trace iterates the §7 step structure even though only a subset is locally verifiable"
+        "trace iterates the section-7 step structure even though only a subset is locally verifiable"
     );
 
     // Signature verification steps are labelled `not-verified` (the CLI
@@ -183,7 +195,7 @@ fn receipt_explain_bilateral_renders_dual_dsse_and_inspection_trace() {
         );
     }
 
-    // The "ok" set must include the locally-checkable §7 prerequisites:
+    // The "ok" set must include the locally-checkable section-7 prerequisites:
     // payload type, payload base64, predicate type recognised, statement
     // type, subject arity, signature count, signature fields, keyid<->
     // predicate fingerprint binding, and predicate body schema.
@@ -321,7 +333,7 @@ fn legacy_explain_bilateral_flag_still_accepted_via_alias() {
 
 /// Pretty-print path: when `--json` is omitted, the human renderer must
 /// emit the boxed sections. We don't lock the exact text formatting,
-/// but we do require the §6 marker so operators see the conformance
+/// but we do require the section-6 marker so operators see the conformance
 /// boundary.
 #[test]
 fn receipt_explain_bilateral_human_renderer_marks_section6_boundary() {
@@ -348,8 +360,18 @@ fn receipt_explain_bilateral_human_renderer_marks_section6_boundary() {
     );
     assert!(
         stdout.contains("DSSE envelope"),
-        "human renderer must label the §6 section: {stdout}"
+        "human renderer must label the section-6 section: {stdout}"
     );
+    for stale in [
+        ["CHIO", "_BILATERAL_COSIGN_INVOCATION"].concat(),
+        ["strict ", "CHIO"].concat(),
+        ["spec/", "CHIO"].concat(),
+    ] {
+        assert!(
+            !stdout.contains(&stale),
+            "active receipt explain human output must not expose stale Chio wording `{stale}`: {stdout}"
+        );
+    }
     // The human renderer labels the trace as "inspection trace" with an
     // explicit warning that signatures are NOT verified. Any "verifier
     // trace" wording would mis-state what the CLI actually does.

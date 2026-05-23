@@ -1,6 +1,6 @@
-# Chiodos 6.8 Shadow: Live Pheromone Relay Orchestration
+# Chio 6.8 Shadow: Live Pheromone Relay Orchestration
 
-Chiodos 6.8 is the shadow target after local pheromone runtime consumption
+Chio 6.8 is the shadow target after local pheromone runtime consumption
 exits.
 
 Candidate scope:

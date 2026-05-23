@@ -1658,7 +1658,7 @@ async fn sidecar_attenuate_capability_handler(
         axum::Json(serde_json::json!({
             "error": "chio_attenuate_not_implemented",
             "message": "capability attenuation over HTTP is not yet wired; the kernel's `delegate` primitive requires the parent capability subject's private key, which the sidecar does not hold. Use `chio-sdk-python`'s local attenuation helpers, or call the kernel directly until this route lands.",
-            "rfc": "see crates/chio-core-types/src/capability.rs::delegate (feature `delegation_v2`)",
+            "rfc": "see crates/chio-core-types/src/capability.rs::delegate (feature `delegation`)",
         })),
     )
         .into_response()

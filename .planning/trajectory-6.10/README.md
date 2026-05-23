@@ -1,8 +1,8 @@
-# Chiodos 6.10: Static Relay Directory Lifecycle
+# Chio 6.10: Static Relay Directory Lifecycle
 
 Baseline SHA: `1cc8a37c226bd223e1d5a47af116f65f6b85d620`
 
-Branch: `codex/chiodos-6-10-static-relay-directory`
+Branch: `codex/chio-6-10-static-relay-directory`
 
 ## Scope
 
@@ -24,9 +24,9 @@ This lane hardens verifier-owned peer-directory lifecycle for the live pheromone
 
 ## Exit Gates
 
-- `bash scripts/check-chiodos-pheromone-directory-lifecycle.sh`
-- `bash scripts/check-chiodos-pheromone-directory-lifecycle.sh --schema-only`
-- `bash scripts/check-chiodos-pheromone-directory-lifecycle.sh --negative-only`
+- `bash scripts/check-chio-pheromone-directory-lifecycle.sh`
+- `bash scripts/check-chio-pheromone-directory-lifecycle.sh --schema-only`
+- `bash scripts/check-chio-pheromone-directory-lifecycle.sh --negative-only`
 - Existing relay ops, relay, runtime, transit, authority, proof-package, bounded, diagnostic, and threat-mutant gates as feasible on the merge train.
 - `cargo fmt --all -- --check`
 - Targeted clippy for touched crates.

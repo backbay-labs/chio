@@ -1,8 +1,8 @@
-# Chiodos 7.4 - Production Local Runtime Orchestration
+# Chio 7.4 - Production Local Runtime Orchestration
 
 Baseline SHA: `51cb21735c7d237ccc20f005bbdb7f855adff3c9`
 
-This branch is intentionally stacked on the Chiodos 7.0-7.3 runtime spine work
+This branch is intentionally stacked on the Chio 7.0-7.3 runtime spine work
 because 7.3 is not yet merged into `main` in this workspace.
 
 Goal: turn the one-shot semantic runtime proof-regeneration path into

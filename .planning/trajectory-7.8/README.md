@@ -1,8 +1,8 @@
-# Chiodos 7.8 Live Treaty To Buyer Closure
+# Chio 7.8 Live Treaty To Buyer Closure
 
 Baseline SHA: `51cb21735c7d237ccc20f005bbdb7f855adff3c9`
 
-Branch: `codex/chiodos-7-8-live-treaty-buyer-closure`
+Branch: `codex/chio-7-8-live-treaty-buyer-closure`
 
 This trajectory closes the unfinished 7.6 and 7.7 hero-loop work instead of
 moving to dashboarding. A ticket is not done when the only positive evidence is
@@ -15,11 +15,11 @@ The accepted target is local and bounded:
   dispatch and before federation co-signing.
 - Treaty, ladder, continuation, lineage, and buyer evidence are loaded from
   verifier-owned runtime state.
-- Strict Chiodos bilateral DSSE carries treaty binding refs over real receipt
+- Strict Chio bilateral DSSE carries treaty binding refs over real receipt
   hashes and buyer verification treats compatibility-only predicates as
   non-authoritative.
 - Buyer review packages hydrate artifacts by role, path, hash, and byte count.
-- Existing Chiodos proof verification remains the proof package oracle.
+- Existing Chio proof verification remains the proof package oracle.
 
 ## Completion Criteria
 

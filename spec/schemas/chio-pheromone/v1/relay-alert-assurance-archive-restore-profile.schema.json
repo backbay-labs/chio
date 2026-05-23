@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-archive-restore-profile.schema.json",
+  "title": "Chio Pheromone Relay Alert Assurance Archive Restore Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "localKernelId", "profileId", "maxPackageCount", "requireGenerationContinuity", "requirePhysicalReadback", "requireRetentionHandoffReady", "issuedAtUnixMs", "expiresAtUnixMs"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-assurance-archive-restore-profile.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "profileId": { "$ref": "#/$defs/token" },
+    "maxPackageCount": { "type": "integer", "minimum": 1 },
+    "requireGenerationContinuity": { "type": "boolean" },
+    "requirePhysicalReadback": { "type": "boolean" },
+    "requireRetentionHandoffReady": { "type": "boolean" },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+  },
+  "$defs": {
+    "token": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" }
+  }
+}

@@ -1,0 +1,56 @@
+
+name: Chio Pheromone Relay Alert Handoff
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-pheromone-relay/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-metrics-spec/**"
+      - "crates/chio-spec-validate/**"
+      - "examples/chio-3vendor/fixtures/pheromone/relay/**"
+      - "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"
+      - "docs/release/chio-pheromone-relay/**"
+      - "deploy/prometheus/**"
+      - "spec/schemas/chio-pheromone/v1/**"
+      - "spec/schemas/registry.json"
+      - "scripts/check-chio-pheromone-relay-alert-handoff.sh"
+      - "scripts/check-chio-pheromone-relay-alert-routing.sh"
+      - ".github/workflows/chio-pheromone-relay-alert-handoff.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/chio-pheromone-relay/**"
+      - "crates/chio-cli/**"
+      - "crates/chio-metrics-spec/**"
+      - "crates/chio-spec-validate/**"
+      - "examples/chio-3vendor/fixtures/pheromone/relay/**"
+      - "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"
+      - "docs/release/chio-pheromone-relay/**"
+      - "deploy/prometheus/**"
+      - "spec/schemas/chio-pheromone/v1/**"
+      - "spec/schemas/registry.json"
+      - "scripts/check-chio-pheromone-relay-alert-handoff.sh"
+      - "scripts/check-chio-pheromone-relay-alert-routing.sh"
+      - ".github/workflows/chio-pheromone-relay-alert-handoff.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  chio-pheromone-relay-alert-handoff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: crates/chio-cli/dashboard/package-lock.json
+      - name: Install dashboard dependencies
+        working-directory: crates/chio-cli/dashboard
+        run: npm ci
+      - name: Check Chio pheromone relay alert handoff
+        run: bash scripts/check-chio-pheromone-relay-alert-handoff.sh

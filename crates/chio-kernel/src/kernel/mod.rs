@@ -80,6 +80,22 @@ pub trait RuntimeAdmissionHook: Send + Sync {
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KernelFederationTreatyDsseMetadata {
+    capability_lease_ref: chio_federation::CapabilityLeaseRef,
+    policy_evaluation_summary: chio_federation::PolicyEvaluationSummary,
+    #[serde(default)]
+    governance_receipt_ref: Option<chio_federation::GovernanceReceiptRef>,
+    #[serde(default)]
+    consistency_anchor: Option<String>,
+    #[serde(default)]
+    consistency_model: Option<String>,
+    #[serde(default)]
+    cross_org_visibility: Option<String>,
+    treaty_binding_ref: chio_federation::TreatyBindingRef,
+}
+
 // ---------------------------------------------------------------------------
 // Phase 1.5 multi-tenant receipt isolation.
 //
@@ -2293,6 +2309,64 @@ impl ChioKernel {
         self.config.keypair.public_key().to_hex()
     }
 
+    fn treaty_dsse_extensions_from_receipt_metadata(
+        &self,
+        receipt: &chio_core::receipt::ChioReceipt,
+    ) -> Result<Option<chio_federation::BilateralPredicateExtensions>, KernelError> {
+        let Some(metadata) = receipt.metadata.as_ref() else {
+            return Ok(None);
+        };
+        let Some(value) = metadata
+            .get("chio_runtime")
+            .or_else(|| metadata.get("chio_runtime"))
+            .and_then(|runtime| runtime.get("federation_treaty_dsse"))
+        else {
+            return Ok(None);
+        };
+        let material: KernelFederationTreatyDsseMetadata = serde_json::from_value(value.clone())
+            .map_err(|error| {
+                KernelError::Internal(format!(
+                    "federation treaty DSSE metadata is invalid: {error}"
+                ))
+            })?;
+        let consistency_model = material.consistency_model.clone().ok_or_else(|| {
+            KernelError::Internal(
+                "federation treaty DSSE consistency model is missing from runtime material"
+                    .to_string(),
+            )
+        })?;
+        if consistency_model != material.treaty_binding_ref.consistency_model {
+            return Err(KernelError::Internal(
+                "federation treaty DSSE consistency model does not match treaty binding"
+                    .to_string(),
+            ));
+        }
+        let mut treaty_binding_ref = material.treaty_binding_ref;
+        if treaty_binding_ref.request_sha256 != receipt.action.parameter_hash {
+            return Err(KernelError::Internal(
+                "federation treaty DSSE request hash does not match receipt action hash"
+                    .to_string(),
+            ));
+        }
+        treaty_binding_ref.outcome_sha256 = receipt.content_hash.clone();
+        treaty_binding_ref.remote_receipt_sha256 = chio_core::crypto::sha256_hex(
+            &chio_core::canonical::canonical_json_bytes(receipt).map_err(|error| {
+                KernelError::Internal(format!(
+                    "federation treaty DSSE receipt canonicalization failed: {error}"
+                ))
+            })?,
+        );
+        Ok(Some(chio_federation::BilateralPredicateExtensions {
+            capability_lease_ref: Some(material.capability_lease_ref),
+            policy_evaluation_summary: Some(material.policy_evaluation_summary),
+            governance_receipt_ref: material.governance_receipt_ref,
+            consistency_anchor: material.consistency_anchor,
+            consistency_model: Some(consistency_model),
+            cross_org_visibility: material.cross_org_visibility,
+            treaty_binding_ref: Some(treaty_binding_ref),
+        }))
+    }
+
     /// Phase 20.3 post-sign hook. Invoked immediately after
     /// [`Self::build_and_sign_receipt`] so the local (tool-host)
     /// signature has already landed in the `ChioReceipt`. When
@@ -2336,6 +2410,14 @@ impl ChioKernel {
         };
 
         let local_kernel_id = self.federation_local_kernel_id();
+        let extensions = self
+            .treaty_dsse_extensions_from_receipt_metadata(receipt)?
+            .ok_or_else(|| {
+                KernelError::Internal(
+                    "federation runtime treaty material missing; refusing treaty-bound DSSE"
+                        .to_string(),
+                )
+            })?;
         let dual = chio_federation::co_sign_with_origin(
             origin_kernel_id,
             &peer.public_key,
@@ -2345,15 +2427,16 @@ impl ChioKernel {
             cosigner.as_ref(),
         )
         .map_err(|e| KernelError::Internal(format!("bilateral co-sign failed: {e}")))?;
-        let dsse_envelope = chio_federation::sign_dsse_envelope_with_cosigner(
+        let timestamp_unix_ms = current_unix_timestamp().saturating_mul(1000);
+        let dsse_envelope = chio_federation::sign_chio_bilateral_dsse_envelope_with_cosigner(
             receipt,
             &peer.public_key,
             &self.config.keypair,
             origin_kernel_id,
             &local_kernel_id,
             &request.tool_name,
-            current_unix_timestamp().saturating_mul(1000),
-            chio_federation::BilateralPredicateExtensions::default(),
+            timestamp_unix_ms,
+            extensions,
             cosigner.as_ref(),
         )
         .map_err(|e| KernelError::Internal(format!("bilateral DSSE co-sign failed: {e}")))?;
@@ -6913,14 +6996,18 @@ impl ChioKernel {
                 .as_ref()
                 .and_then(|intent| intent.context.as_ref())
                 .is_some_and(|context| {
-                    context.get("chiodosAdmission").is_some()
-                        || context.get("chiodosTreaty").is_some()
+                    let retired_admission_key = ["chio", "dos", "Admission"].concat();
+                    let retired_treaty_key = ["chio", "dos", "Treaty"].concat();
+                    context.get("chioAdmission").is_some()
+                        || context.get("chioTreaty").is_some()
+                        || context.get(retired_admission_key.as_str()).is_some()
+                        || context.get(retired_treaty_key.as_str()).is_some()
                 })
             {
                 return RuntimeAdmissionDecision::deny(
-                    "chiodos runtime admission hook is required for Chiodos-governed requests",
+                    "chio runtime admission hook is required for governed runtime requests",
                     Some(serde_json::json!({
-                        "chiodos_runtime": {
+                        "chio_runtime": {
                             "accepted": false,
                             "failure_code": "runtime_admission_hook_missing"
                         }

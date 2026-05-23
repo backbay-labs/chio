@@ -20,8 +20,8 @@ from dataclasses import dataclass
 from typing import Any, TypeVar, cast, overload
 
 from chio_adapter_base.redact import (
-    DEFAULT_TOOL_POSITIONAL_NAMES,
     RedactionPolicy,
+    bind_and_redact,
     redact_args,
 )
 from chio_sdk.client import ChioClient
@@ -436,60 +436,193 @@ async def _invoke_task(
     return await asyncio.to_thread(fn, *args, **kwargs)
 
 
-# Tool-arity table for forwarding wrappers that have no fixed-signature
-# parameter names. Aliased from chio-adapter-base so the chio-default
-# registry stays in one place across the adapter family; _task_parameters
-# below keeps its bespoke walker for prefect-specific edge contracts
-# (see test_redaction.py: VAR_POSITIONAL extras with fixed prefix,
-# VAR_KEYWORD spillover collision routing).
-_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES = DEFAULT_TOOL_POSITIONAL_NAMES
-
-
-def _forwarding_table_or_passthrough(
+def _legacy_envelope(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
     tool_name: str,
     policy: RedactionPolicy,
+    fn: Callable[..., Any] | None,
 ) -> dict[str, Any]:
-    """Redact a forwarding-style call via :data:`_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES`.
+    """Wrap ``bind_and_redact`` output in prefect's wire-shape envelope.
 
-    Used by the pure-forwarding wrapper branch and by the
-    non-introspectable fallback (C-extension callables and
-    ``inspect.signature``-failing builtins). Tools listed in the
-    arity table get their first N positional values bound to declared
-    names and redacted; positional extras past the table cardinality
-    stay positional and pass through unredacted (no parameter name to
-    bind them to). Tools absent from the table fall back to
-    kwargs-only redaction.
+    Two prefect-specific contracts the bare ``bind_and_redact`` output
+    does not encode:
 
-    The positional and keyword buckets are redacted INDEPENDENTLY: a
-    pathological caller passing both a positional AND a keyword for
-    the same field (``write('/tmp/x', path='/etc/passwd')``) would
-    otherwise let the kwarg overwrite the positional value before
-    redaction, leaking the kwarg-side payload. The wrapped function
-    will raise ``TypeError`` for the duplicate parameter; we do not
-    try to repair caller error.
+    1. The sidecar payload shape is a single
+       ``{"args": [...], "kwargs": {...}}`` envelope. ``bind_and_redact``
+       returns ``(redacted_args, redacted_kwargs)``; this helper packs
+       them into the envelope.
+    2. When a caller-supplied kwarg name collides with a positional-only
+       parameter that already received a value, prefect emits the
+       spillover under a synthetic ``<name>__var_kw_spillover__`` key
+       so neither bucket overwrites the other. ``bind_and_redact``
+       preserves both values under the canonical/wrapper names; this
+       helper detects the positional-only-spillover collision and
+       re-routes the kwarg value to the synthetic key (matching the
+       v0.2 wire shape; v0.4 will deprecate the synthetic key with a
+       one-release migration window).
+
+    Note on shim length: this function is ~88 lines (not the "~20
+    lines" the FINAL-PLAN initially estimated). The functional core is
+    a single ``bind_and_redact`` call plus the envelope rebuild; the
+    bulk of the body is the synthetic-key spillover-detection loop
+    (positional-only collision walk + per-name index lookup) and the
+    wire-shape rebuild that re-routes kwargs into the envelope under
+    either their original key or the synthetic spillover key. Both
+    pieces are prefect-specific behaviour the bare helper does not
+    own; v0.4 will deprecate the synthetic-key emission so this shim
+    can shrink to the envelope-pack only.
     """
-    positional_names = _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES.get(tool_name)
-    if positional_names is None or not args:
-        return {
-            "args": list(args),
-            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
-        }
-    named_positional = {
-        n: a for n, a in zip(positional_names, args, strict=False)
-    }
-    redacted_named = redact_args(tool_name, named_positional, policy=policy)
-    redacted_kwargs = redact_args(tool_name, dict(kwargs), policy=policy)
-    bound_count = min(len(args), len(positional_names))
-    new_args: list[Any] = [
-        redacted_named[positional_names[i]] for i in range(bound_count)
-    ]
-    if len(args) > bound_count:
-        # Extras past the tool-arity table have no declared name to bind
-        # against; they stay positional and pass through unredacted.
-        new_args.extend(args[bound_count:])
-    return {"args": new_args, "kwargs": redacted_kwargs}
+    redacted_args, redacted_kwargs = bind_and_redact(
+        fn,
+        args,
+        kwargs,
+        tool_name=tool_name,
+        policy=policy,
+    )
+    # Arity-overflow fail-closed redaction. The bare ``bind_and_redact``
+    # fallback table forwards positional values past the wrapper's last
+    # named slot raw (``# Extras beyond the table entry stay positional
+    # and raw.``). Pre-v0.3 prefect's ``_task_parameters`` instead
+    # dropped overflow positionals entirely so an arity-invalid call
+    # such as ``write('/tmp', 'SECRET1', 'SECRET2')`` against
+    # ``def write(path, content)`` could never leak ``SECRET2`` on the
+    # wire. Re-establish that fail-closed contract here, but preserve
+    # the audit trail by REDACTING the overflow values under each
+    # protected canonical instead of dropping them. A future receipt
+    # consumer can see "a secret was attempted at position N" without
+    # the raw bytes ever crossing the wire. (Closes PR #679 P2
+    # 3231181763.)
+    redacted_arg_list = list(redacted_args)
+    if fn is not None and len(redacted_arg_list) > 0:
+        try:
+            overflow_sig = inspect.signature(fn)
+        except (TypeError, ValueError):
+            overflow_sig = None
+        if overflow_sig is not None:
+            has_var_positional = any(
+                p.kind is inspect.Parameter.VAR_POSITIONAL
+                for p in overflow_sig.parameters.values()
+            )
+            if not has_var_positional:
+                fixed_positional_arity = sum(
+                    1
+                    for p in overflow_sig.parameters.values()
+                    if p.kind
+                    in (
+                        inspect.Parameter.POSITIONAL_ONLY,
+                        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    )
+                )
+                protected_for_tool = policy.body_fields.get(tool_name) or ()
+                if (
+                    protected_for_tool
+                    and len(redacted_arg_list) > fixed_positional_arity
+                ):
+                    # Redact each overflow position under the first
+                    # protected canonical so arity-invalid calls fail
+                    # closed. The exact field identity is unknowable
+                    # once the caller supplied too many positional
+                    # values, but a redacted audit marker is strictly
+                    # safer than forwarding the raw overflow value.
+                    for overflow_idx in range(
+                        fixed_positional_arity, len(redacted_arg_list)
+                    ):
+                        overflow_value = redacted_arg_list[overflow_idx]
+                        # Skip if ``bind_and_redact`` already turned this
+                        # overflow positional into a redaction stub (e.g.
+                        # the kwonly-protected path covers
+                        # ``def write(path, *, content)`` overflows by
+                        # redacting under the kwonly canonical). Re-running
+                        # ``redact_args`` on the stub dict would treat its
+                        # ``repr()`` as the new "value" and overwrite
+                        # ``byte_count`` with the length of the stub repr,
+                        # corrupting the audit trail. (Closes PR #680
+                        # CursorM 3231239987 / P2 3231244182.)
+                        #
+                        # Match the exact stub fingerprint
+                        # ``{"omitted": True, "byte_count": int}`` (no
+                        # other keys) rather than just ``omitted is True``
+                        # so a user dict that happens to carry an
+                        # ``omitted`` flag plus real secrets does NOT slip
+                        # through unredacted. Closes PR #679 P2
+                        # 3231314233.
+                        if (
+                            isinstance(overflow_value, dict)
+                            and len(overflow_value) == 2
+                            and overflow_value.get("omitted") is True
+                            and isinstance(
+                                overflow_value.get("byte_count"), int
+                            )
+                        ):
+                            continue
+                        canonical = protected_for_tool[0]
+                        single = redact_args(
+                            tool_name,
+                            {canonical: overflow_value},
+                            policy=policy,
+                        )
+                        redacted_arg_list[overflow_idx] = single[canonical]
+    redacted_args = tuple(redacted_arg_list)
+    # Detect the positional-only-spillover collision: the fn signature
+    # has a positional-only param whose name appears as a kwarg AND
+    # there is a VAR_KEYWORD spillover param. In that case prefect's
+    # legacy wire shape moves the kwarg's redacted value to a synthetic
+    # ``<name>__var_kw_spillover__`` key so neither bucket overwrites
+    # the other.
+    spillover_keys: set[str] = set()
+    if fn is not None:
+        try:
+            sig = inspect.signature(fn)
+        except (TypeError, ValueError):
+            sig = None
+        if sig is not None:
+            has_var_keyword = any(
+                p.kind is inspect.Parameter.VAR_KEYWORD
+                for p in sig.parameters.values()
+            )
+            if has_var_keyword:
+                positional_only_names = {
+                    p.name
+                    for p in sig.parameters.values()
+                    if p.kind is inspect.Parameter.POSITIONAL_ONLY
+                }
+                # bind_partial logic mirror: a kwarg whose name matches
+                # a positional-only param that was supplied positionally
+                # lands in the VAR_KEYWORD spillover. The rebuilt
+                # kwargs already carry both values; route the kwarg
+                # value to the synthetic key.
+                for name in positional_only_names:
+                    # The kwarg is a spillover collision when the same
+                    # name was supplied both positionally (within the
+                    # positional-only cardinality) and as a kwarg.
+                    pos_only_idx = next(
+                        (
+                            i
+                            for i, p in enumerate(sig.parameters.values())
+                            if p.name == name
+                        ),
+                        None,
+                    )
+                    if (
+                        pos_only_idx is not None
+                        and pos_only_idx < len(args)
+                        and name in kwargs
+                    ):
+                        spillover_keys.add(name)
+
+    new_kwargs: dict[str, Any] = {}
+    for k, v in redacted_kwargs.items():
+        if k in spillover_keys:
+            # TODO(chio-prefect 0.4): remove the synthetic-key
+            # re-emission per the deprecation window documented in the
+            # CHANGELOG. Callers will read the redacted spillover from
+            # ``kwargs[<original_name>]`` directly.
+            new_kwargs[f"{k}__var_kw_spillover__"] = v
+        else:
+            new_kwargs[k] = v
+
+    return {"args": list(redacted_args), "kwargs": new_kwargs}
 
 
 def _task_parameters(
@@ -501,225 +634,23 @@ def _task_parameters(
 ) -> dict[str, Any]:
     """Canonicalise call arguments for the sidecar payload.
 
-    ``redact_args`` keys on parameter names. Positional callers would
-    otherwise leave body fields in ``parameters["args"]`` unredacted, so
-    we bind positional values to declared parameter names via
-    :func:`inspect.signature` before redaction. Crucially, the wire
-    shape is preserved: positional values re-emit under
-    ``parameters["args"]`` (after redaction) and keyword values stay
-    under ``parameters["kwargs"]``. Values are NOT moved between the
-    two buckets.
+    Thin wrapper around ``chio_adapter_base.redact.bind_and_redact``
+    plus the prefect ``_legacy_envelope`` shim. The shim's two jobs:
 
-    ``inspect.Signature.bind_partial`` does NOT raise for functions
-    accepting ``**kwargs`` or ``*args``; it absorbs extras into the
-    variadic parameter (``def f(**kw)`` called with
-    ``content="SECRET"`` binds to ``{"kw": {"content": "SECRET"}}``).
-    That nests the protected field one level deeper than the redactor
-    looks. We branch on signature shape:
+    1. Pack ``(args, kwargs)`` into prefect's
+       ``{"args": [...], "kwargs": {...}}`` envelope.
+    2. Re-emit the synthetic ``__var_kw_spillover__`` keys when a
+       kwarg name collides with a positional-only parameter that was
+       already supplied positionally.
 
-    * Pure forwarding wrappers (only ``*args``/``**kwargs``, no fixed
-      named params): consult ``_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES`` to
-      map positional values onto declared field names, redact, then
-      split back into the caller's positional / keyword buckets. Tools
-      absent from the table fall back to kwargs-only redaction so
-      positional values pass through raw.
-    * Fixed-signature functions: redact named values, but keep
-      positional values positional and keyword values keyword.
-      ``VAR_POSITIONAL`` extras (positional values past the fixed
-      slots) remain in ``args`` because no parameter name binds to
-      them. ``VAR_KEYWORD`` spillover is re-redacted on the dict.
-
-    Falls back to kwargs-only redaction when ``fn`` is ``None`` or when
-    introspection raises. When ``bind_partial`` raises (duplicate
-    keyword, unexpected arg) we drop positional args so a failing call
-    cannot leak the secret we are trying to scrub.
+    The helper redaction logic itself lives in
+    ``chio_adapter_base.redact.bind_and_redact`` (v0.2.0+). All
+    pre-v0.3 prefect-local contracts (variadic-named-after-protected,
+    pure-forwarder kwarg precedence, alias-rename redaction, TypeError
+    fallback) are now expressed there; the prefect canary verifies the
+    helper API actually subsumes the bespoke shape.
     """
-    if fn is None:
-        return _forwarding_table_or_passthrough(
-            args, kwargs, tool_name, policy
-        )
-    try:
-        sig = inspect.signature(fn)
-    except (TypeError, ValueError):
-        # Non-introspectable callables (C extensions, builtins,
-        # functools.partial wrapping a C builtin, etc.) cannot expose a
-        # parameter list. Fall back to the forwarding-wrapper path so
-        # chio-default tools listed in
-        # ``_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES`` still get their
-        # positional bodies redacted via the tool-arity table. Tools
-        # absent from that table still pass positional values through
-        # raw because we have no name to bind them against; this is the
-        # documented limitation of fallback-path redaction.
-        return _forwarding_table_or_passthrough(
-            args, kwargs, tool_name, policy
-        )
-
-    params = sig.parameters
-    has_var_keyword = any(
-        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
-    )
-    has_var_positional = any(
-        p.kind == inspect.Parameter.VAR_POSITIONAL for p in params.values()
-    )
-    fixed_positional_names = [
-        p.name
-        for p in params.values()
-        if p.kind
-        in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        )
-    ]
-    has_fixed_named = any(
-        p.kind
-        in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            inspect.Parameter.KEYWORD_ONLY,
-        )
-        for p in params.values()
-    )
-
-    # Pure forwarding wrapper: ``def fn(*args, **kwargs)``-shape. No
-    # fixed parameter names; consult the tool-arity table so chio
-    # default tools still get positional bodies scrubbed.
-    if not has_fixed_named:
-        return _forwarding_table_or_passthrough(
-            args, kwargs, tool_name, policy
-        )
-
-    try:
-        bound = sig.bind_partial(*args, **kwargs).arguments
-    except TypeError:
-        # Duplicate keyword, unexpected arg, etc. The downstream fn()
-        # call will raise; do NOT forward raw positional args because
-        # they may carry the secret we are trying to redact.
-        return {
-            "args": [],
-            "kwargs": redact_args(tool_name, dict(kwargs), policy=policy),
-        }
-
-    var_keys = {
-        name
-        for name, p in params.items()
-        if p.kind
-        in (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
-    }
-    flat = {k: v for k, v in bound.items() if k not in var_keys}
-    redacted_flat = redact_args(tool_name, flat, policy=policy)
-    # Track keys that are owned by the fixed-named buckets so a same-named
-    # entry inside a VAR_KEYWORD spillover dict does NOT overwrite the
-    # positional value's redacted form. Python lets positional-only params
-    # coexist with a same-named entry in **kwargs (e.g. ``def write(path, /,
-    # **kw)`` called as ``write("/etc", path="/tmp")`` binds to
-    # ``{"path": "/etc", "kw": {"path": "/tmp"}}``); both values are real
-    # and must be redacted independently rather than collapsed.
-    spillover_redacted: dict[str, Any] = {}
-    if has_var_keyword:
-        for vk in var_keys:
-            v = bound.get(vk)
-            if isinstance(v, dict):
-                for kk, vv in redact_args(
-                    tool_name, dict(v), policy=policy
-                ).items():
-                    if kk in redacted_flat:
-                        # Spillover collision with a fixed name: keep both
-                        # redacted values, but route the spillover to the
-                        # kwargs bucket via a deterministic synthetic key
-                        # so neither is silently dropped. The wrapped fn
-                        # accepted this shape (bind_partial succeeded), so
-                        # the underlying invocation can still run; the
-                        # sidecar payload now carries both byte counts.
-                        spillover_redacted[f"{kk}__var_kw_spillover__"] = vv
-                    else:
-                        redacted_flat[kk] = vv
-
-    # Rebuild original wire shape: positional values stay positional,
-    # keyword values stay keyword. The first ``bound_positional_count``
-    # fixed names were supplied positionally, so they re-emit as args.
-    bound_positional_count = min(len(args), len(fixed_positional_names))
-    new_args = []
-    for i in range(bound_positional_count):
-        n = fixed_positional_names[i]
-        if n in redacted_flat:
-            new_args.append(redacted_flat[n])
-        else:
-            new_args.append(args[i])
-    # VAR_POSITIONAL extras: positional values past the fixed slots have
-    # no fixed parameter name, but two name sources can still bind them:
-    #
-    #  1. The variadic parameter's own declared name (e.g.
-    #     ``def write_file(*content, path)``). Python lets the user pick
-    #     a meaningful variadic name; if that name is itself one of the
-    #     body fields the policy redacts for this tool, the user's
-    #     intent is unambiguous and we redact every extra under that
-    #     name. This case is the priority because it reflects the
-    #     wrapped fn's own contract.
-    #  2. The chio default tool-arity table (e.g. ``def write_file(path,
-    #     *args)`` called as ``write_file("/tmp/x", "PROD_SECRET")``
-    #     puts the secret in args[1]; chio_file_write -> ("path",
-    #     "content") tells us to redact that slot as ``content``).
-    #
-    # Without this, the secret would be re-emitted unredacted.
-    if has_var_positional and len(args) > bound_positional_count:
-        extras = list(args[bound_positional_count:])
-        # Prefer the variadic parameter's own name when the policy
-        # would redact a field of that name for this tool. This handles
-        # ``def write_file(*content, path)`` where the user named the
-        # variadic ``content`` to signal the wire intent.
-        var_positional_name = next(
-            (
-                p.name
-                for p in params.values()
-                if p.kind is inspect.Parameter.VAR_POSITIONAL
-            ),
-            None,
-        )
-        body_fields = policy.body_fields.get(tool_name, ())
-        if (
-            var_positional_name is not None
-            and var_positional_name in body_fields
-        ):
-            for value in extras:
-                redacted_extra = redact_args(
-                    tool_name,
-                    {var_positional_name: value},
-                    policy=policy,
-                )
-                new_args.append(redacted_extra[var_positional_name])
-        else:
-            positional_table = _CHIO_DEFAULT_TOOL_POSITIONAL_NAMES.get(
-                tool_name
-            )
-            if positional_table is not None:
-                for i, value in enumerate(extras):
-                    table_index = bound_positional_count + i
-                    if table_index >= len(positional_table):
-                        # Past the table cardinality: no name to bind
-                        # against; surface the extra unchanged.
-                        new_args.append(value)
-                        continue
-                    slot_name = positional_table[table_index]
-                    if slot_name in {n for n in fixed_positional_names}:
-                        # The table name collides with a fixed parameter
-                        # name; the fixed slot already got its redacted
-                        # value above, so just surface the extra
-                        # unchanged here.
-                        new_args.append(value)
-                        continue
-                    redacted_extra = redact_args(
-                        tool_name, {slot_name: value}, policy=policy
-                    )
-                    new_args.append(redacted_extra[slot_name])
-            else:
-                new_args.extend(extras)
-    new_kwargs = {
-        k: v
-        for k, v in redacted_flat.items()
-        if k not in fixed_positional_names[:bound_positional_count]
-    }
-    new_kwargs.update(spillover_redacted)
-    return {"args": new_args, "kwargs": new_kwargs}
+    return _legacy_envelope(args, kwargs, tool_name, policy, fn)
 
 
 @overload

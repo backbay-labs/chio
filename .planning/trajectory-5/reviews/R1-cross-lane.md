@@ -21,7 +21,7 @@ Verdict: **APPROVED-WITH-FIXES**. The shape of the release work plan is correct 
 
 ### 1.1 Lane A (mostly clean)
 
-OBSERVATION. Lane A planning docs does not silently extend scope. Sub-lanes A1-A5 each map to a synthesis line and a trj4 wave item. No mention of trust-control extraction, gravity-well surgery, reqwest unification, new chiodos drafts, web3 live activation.
+OBSERVATION. Lane A planning docs does not silently extend scope. Sub-lanes A1-A5 each map to a synthesis line and a trj4 wave item. No mention of trust-control extraction, gravity-well surgery, reqwest unification, new chio drafts, web3 live activation.
 
 ### 1.2 Lane B (clean)
 
@@ -31,19 +31,19 @@ OBSERVATION. `lane-b-wiring/PLAN.md` and planning docs constrain themselves to B
 
 MAJOR. `lane-c-demo/planning docs:296-359` (sub-lane C5) introduces a new workspace member `crates/chio-zk-receipts/`, a `bbs-rs` (or equivalent) dependency, BBS+ projection types `chio.bbs-projection.workflow.v1` and `chio.bbs-projection.step.v1`, and a `chio.selective-disclosure-proof.v1` envelope. The synthesis (line 127) admits the auditor view "behind `zk` Cargo feature flag" with "no new spec ratification". Lane C5 ships:
 
-- Spec-section interpretations of `CHIODOS_SELECTIVE_DISCLOSURE.md` sections 5.2, 6.1, 6.2, 6.4, 7.3, 8, 9 with bit-for-bit reproducibility claims ("Spec section 6.4 worked example reproduces bit-for-bit on a known fixture", `planning docs:319`).
+- Spec-section interpretations of `CHIO_SELECTIVE_DISCLOSURE.md` sections 5.2, 6.1, 6.2, 6.4, 7.3, 8, 9 with bit-for-bit reproducibility claims ("Spec section 6.4 worked example reproduces bit-for-bit on a known fixture", `planning docs:319`).
 - A new ZK dependency tree.
 - A new workspace member.
 
-Whether this is a "no new normative draft" depends on whether the BBS+ ciphersuite text in `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` is fully drafted today. R6 in `architecture/RISK-REGISTER.md:228-263` already flags the cargo-dep weight risk and proposes dropping C4 if CI hits a 5-minute or MSRV-bump threshold. R6 does not flag the spec-text question.
+Whether this is a "no new normative draft" depends on whether the BBS+ ciphersuite text in `spec/CHIO_SELECTIVE_DISCLOSURE.md` is fully drafted today. R6 in `architecture/RISK-REGISTER.md:228-263` already flags the cargo-dep weight risk and proposes dropping C4 if CI hits a 5-minute or MSRV-bump threshold. R6 does not flag the spec-text question.
 
 **Proposed fix** (Wave 3):
-- `lane-c-demo/planning docs:296-359` MUST cite the exact `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` line ranges that already define the projections, ciphersuite, and envelope. If those line ranges contain `TBD` markers or are draft-shaped, C5 should note "section X.Y MUST land before release work-C5.2 closes" and the spec-stabilization work belongs in Lane C as an explicit ticket OR the section is moved to trj6.
+- `lane-c-demo/planning docs:296-359` MUST cite the exact `spec/CHIO_SELECTIVE_DISCLOSURE.md` line ranges that already define the projections, ciphersuite, and envelope. If those line ranges contain `TBD` markers or are draft-shaped, C5 should note "section X.Y MUST land before release work-C5.2 closes" and the spec-stabilization work belongs in Lane C as an explicit ticket OR the section is moved to trj6.
 - `architecture/RISK-REGISTER.md:228-263` (R6) should add an "is the spec text load-bearing for release work?" question to the escalation criteria. If the spec text is in flux, R6 fires and C4/C5 are bounded-claim only.
 
 ### 1.4 Lane C: bilateral DSSE adapter (Option A)
 
-BLOCKER. `lane-c-demo/bilateral-cosign-flow.md:77-110` documents the Option-A choice: existing `CoSigningBody`-scoped Ed25519 plus new PAE-scoped Ed25519, two signatures sharing the same passport keypair. The synthesis (line 122-123) says "Per `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6". Section 6 of that spec mandates DSSE PAE. Today `crates/chio-federation/src/bilateral.rs::DualSignedReceipt` carries an Ed25519 signature over `canonical_bytes(CoSigningBody)`. Option A keeps both signatures coexisting so existing verifiers do not break; Option B rebakes the surface.
+BLOCKER. `lane-c-demo/bilateral-cosign-flow.md:77-110` documents the Option-A choice: existing `CoSigningBody`-scoped Ed25519 plus new PAE-scoped Ed25519, two signatures sharing the same passport keypair. The synthesis (line 122-123) says "Per `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` section 6". Section 6 of that spec mandates DSSE PAE. Today `crates/chio-federation/src/bilateral.rs::DualSignedReceipt` carries an Ed25519 signature over `canonical_bytes(CoSigningBody)`. Option A keeps both signatures coexisting so existing verifiers do not break; Option B rebakes the surface.
 
 The decision is not a contract drift in itself; it is a sensible bounded-claim choice. The defect is that **the decision is invisible above the Lane C deep-dive**:
 
@@ -588,9 +588,9 @@ New row in `architecture/SPEC-TO-RUNTIME-MAP.md` section 8:
 ```diff
  | Spec citation | MUST text (short) | Production call site | Status | Trj5 ticket |
  |---|---|---|---|---|
- | `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6 (TBD-from-W1: lines) | "DualSignedReceipt MUST carry both signers' attestations" | `crates/chio-federation/src/bilateral.rs::CoSigningBody`, `DualSignedReceipt` | enforced (existing primitive) | release work-C1.E asserts the demo exercises this |
+ | `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` section 6 (TBD-from-W1: lines) | "DualSignedReceipt MUST carry both signers' attestations" | `crates/chio-federation/src/bilateral.rs::CoSigningBody`, `DualSignedReceipt` | enforced (existing primitive) | release work-C1.E asserts the demo exercises this |
  | same | "cross-org dispatch MUST not allow single-signer fast path" | TBD-from-W1 | structural-only | release work-C1.E |
-+| `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6 lines 338-343 | "DSSE envelope signed over PAE bytes of canonical Statement" | `crates/chio-federation/src/bilateral_dsse.rs` (new module per `lane-c-demo/bilateral-cosign-flow.md:202`) | not-yet-enforced; Option-A two-signature design | release work-C2.3, release work-C2.4 |
++| `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` section 6 lines 338-343 | "DSSE envelope signed over PAE bytes of canonical Statement" | `crates/chio-federation/src/bilateral_dsse.rs` (new module per `lane-c-demo/bilateral-cosign-flow.md:202`) | not-yet-enforced; Option-A two-signature design | release work-C2.3, release work-C2.4 |
 +| same | "two-signature surface: existing CoSigningBody Ed25519 + new DSSE PAE Ed25519" | both signatures share `Keypair`; existing `DualSignedReceipt::verify` unchanged | bounded by Option-A choice | release work-C2.7 |
 ```
 
@@ -622,7 +622,7 @@ New R7 in `architecture/RISK-REGISTER.md`:
 
 **Description**: Lane C ships an Option-A two-signature surface (existing
 `CoSigningBody`-scoped Ed25519 plus new DSSE PAE Ed25519). If the
-`spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` working group rejects this
+`spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` working group rejects this
 during review (e.g. they want Option B: replace the signing surface so a
 single canonical preimage exists), Lane C scope expands to include
 migrating every existing fixture and verifier.

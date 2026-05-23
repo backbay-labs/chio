@@ -247,8 +247,7 @@ pub fn cmd_reputation_compare(command: ReputationCompareCommand<'_>) -> Result<(
                 .map(load_policy)
                 .transpose()?
                 .and_then(|loaded| loaded.issuance_policy);
-            let trusted_kernel_keys =
-                load_trusted_kernel_keys_from_authority(authority_seed_file)?;
+            let trusted_kernel_keys = load_trusted_kernel_keys_from_authority(authority_seed_file)?;
             issuance::inspect_local_reputation(
                 subject_public_key,
                 Some(receipt_db_path),

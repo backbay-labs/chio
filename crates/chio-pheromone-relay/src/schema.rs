@@ -45,8 +45,8 @@ pub const PHEROMONE_RELAY_ALERT_NORMALIZATION_PROFILE_SCHEMA: &str =
     "chio.pheromone.relay-alert-normalization-profile.v1";
 pub const PHEROMONE_RELAY_ALERT_NORMALIZATION_REPORT_SCHEMA: &str =
     "chio.pheromone.relay-alert-normalization-report.v1";
-pub const PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA: &str =
-    "chio.pheromone.relay-alert-delivery-drift-report.v2";
+pub const PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_SCHEMA: &str =
+    "chio.pheromone.relay-alert-delivery-drift-report.v1";
 pub const PHEROMONE_RELAY_ALERT_ROUTE_OWNER_PROFILE_SCHEMA: &str =
     "chio.pheromone.relay-alert-route-owner-profile.v1";
 pub const PHEROMONE_RELAY_ALERT_ROUTE_REVIEW_PACKET_SCHEMA: &str =
@@ -81,6 +81,36 @@ pub const PHEROMONE_RELAY_ALERT_ASSURANCE_CLOSEOUT_REPORT_SCHEMA: &str =
     "chio.pheromone.relay-alert-assurance-closeout-report.v1";
 pub const PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_NEGATIVE_CORPUS_SCHEMA: &str =
     "chio.pheromone.relay-alert-assurance-archive-negative-fixture-corpus.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_MANIFEST_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-archive-package-manifest.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_PACKAGE_REPORT_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-archive-package-report.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_TRUSTED_ARCHIVE_PACKAGERS_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-trusted-archive-packagers.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_EXTRACTION_REPORT_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-archive-extraction-report.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_PHYSICAL_ARCHIVE_EVIDENCE_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-physical-archive-evidence.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_PHYSICAL_ARCHIVE_DRILL_REPORT_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-physical-archive-drill-report.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_PROFILE_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-retention-handoff-profile.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_EVIDENCE_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-retention-handoff-evidence.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_HANDOFF_REPORT_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-retention-handoff-report.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_EXTERNAL_RETENTION_PROFILE_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-external-retention-profile.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_EXTERNAL_RETENTION_REVIEW_REPORT_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-external-retention-review-report.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_EXTERNAL_RETENTION_NEGATIVE_CORPUS_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-external-retention-negative-fixture-corpus.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_PROFILE_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-archive-restore-profile.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_DRILL_REPORT_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-archive-restore-drill-report.v1";
+pub const PHEROMONE_RELAY_ALERT_ASSURANCE_ARCHIVE_RESTORE_NEGATIVE_CORPUS_SCHEMA: &str =
+    "chio.pheromone.relay-alert-assurance-archive-restore-negative-fixture-corpus.v1";
 pub const PHEROMONE_RELAY_SUPERVISOR_PROFILE_SCHEMA: &str =
     "chio.pheromone.relay-supervisor-profile.v1";
 pub const PHEROMONE_RELAY_DRILL_REPORT_SCHEMA: &str = "chio.pheromone.relay-drill-report.v1";
@@ -89,9 +119,10 @@ pub const PHEROMONE_CATCHUP_RESPONSE_SCHEMA: &str = "chio.pheromone.catchup-resp
 pub const PHEROMONE_RELAY_NEGATIVE_CORPUS_SCHEMA: &str =
     "chio.pheromone.relay-negative-fixture-corpus.v1";
 
-pub const PHEROMONE_BATCH_RELAY_PATH: &str = "/v1/chiodos/pheromone/batches";
-pub const PHEROMONE_CATCHUP_RELAY_PATH: &str = "/v1/chiodos/pheromone/catchup";
-pub const PHEROMONE_HEALTH_PATH: &str = "/v1/chiodos/pheromone/health";
-pub const PHEROMONE_READY_PATH: &str = "/v1/chiodos/pheromone/ready";
-pub const PHEROMONE_RELAY_OBSERVABILITY_PATH: &str = "/v1/chiodos/pheromone/observability";
-pub const PHEROMONE_RELAY_METRICS_PATH: &str = "/v1/chiodos/pheromone/metrics";
+pub const PHEROMONE_RELAY_PATH_PREFIX: &str = "/v1/chio/pheromone";
+pub const PHEROMONE_BATCH_RELAY_PATH: &str = "/v1/chio/pheromone/batches";
+pub const PHEROMONE_CATCHUP_RELAY_PATH: &str = "/v1/chio/pheromone/catchup";
+pub const PHEROMONE_HEALTH_PATH: &str = "/v1/chio/pheromone/health";
+pub const PHEROMONE_READY_PATH: &str = "/v1/chio/pheromone/ready";
+pub const PHEROMONE_RELAY_OBSERVABILITY_PATH: &str = "/v1/chio/pheromone/observability";
+pub const PHEROMONE_RELAY_METRICS_PATH: &str = "/v1/chio/pheromone/metrics";

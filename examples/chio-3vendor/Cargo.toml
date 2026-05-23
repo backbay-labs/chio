@@ -1,0 +1,39 @@
+[package]
+name = "chio-three-vendor-example"
+description = "Deterministic Chio three-vendor buyer and auditor proof package"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_three_vendor_example"
+
+[[bin]]
+name = "generate-chio-proof-package"
+path = "src/main.rs"
+
+[[bin]]
+name = "generate-chio-three-vendor-fixtures"
+path = "src/generate_chio_three_vendor_fixtures.rs"
+
+[dependencies]
+chio-attest-loopback = { path = "../../crates/chio-attest-loopback" }
+chio-attest-buyer-core = { version = "0.1.0", path = "../../crates/chio-attest-buyer-core" }
+chio-federation-authority = { version = "0.1.0", path = "../../crates/chio-federation-authority" }
+chio-core-types = { version = "0.1.0", path = "../../crates/chio-core-types" }
+chio-federation = { version = "0.1.0", path = "../../crates/chio-federation" }
+chio-governance = { version = "0.1.0", path = "../../crates/chio-governance" }
+chio-pheromone = { version = "0.1.0", path = "../../crates/chio-pheromone" }
+chio-pheromone-runtime = { version = "0.1.0", path = "../../crates/chio-pheromone-runtime" }
+chio-selective-disclosure = { version = "0.1.0", path = "../../crates/chio-selective-disclosure", features = ["bbs"] }
+chio-workflow = { version = "0.1.0", path = "../../crates/chio-workflow" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

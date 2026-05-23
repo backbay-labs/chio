@@ -2364,7 +2364,7 @@ mod attestation_and_telemetry_tests {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
-        allow_ephemeral_receipt_log: true,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         }
@@ -2378,8 +2378,47 @@ mod attestation_and_telemetry_tests {
         decision: Decision,
         evidence: Vec<GuardEvidence>,
     ) -> ChioReceipt {
-        let action = ToolCallAction::from_parameters(json!({"tool": tool_name}))
-            .expect("hash receipt parameters");
+        make_receipt_with_metadata(signer, None, id, timestamp, tool_name, decision, evidence)
+    }
+
+    fn make_receipt_for_session(
+        signer: &Keypair,
+        session_id: &str,
+        id: &str,
+        timestamp: u64,
+        tool_name: &str,
+        decision: Decision,
+        evidence: Vec<GuardEvidence>,
+    ) -> ChioReceipt {
+        make_receipt_with_metadata(
+            signer,
+            Some(json!({
+                "receipt_context": {
+                    "session_id": session_id,
+                }
+            })),
+            id,
+            timestamp,
+            tool_name,
+            decision,
+            evidence,
+        )
+    }
+
+    fn make_receipt_with_metadata(
+        signer: &Keypair,
+        metadata: Option<serde_json::Value>,
+        id: &str,
+        timestamp: u64,
+        tool_name: &str,
+        decision: Decision,
+        evidence: Vec<GuardEvidence>,
+    ) -> ChioReceipt {
+        let action = ToolCallAction::from_parameters(json!({
+            "tool": tool_name,
+            "receipt_id": id,
+        }))
+        .expect("hash receipt parameters");
         ChioReceipt::sign(
             ChioReceiptBody {
                 id: id.to_string(),
@@ -2395,10 +2434,10 @@ mod attestation_and_telemetry_tests {
                 tool_origin: chio_core::ToolOrigin::CallerExecuted,
                 redaction_mode: chio_core::RedactionMode::None,
                 actor_chain: Vec::new(),
-                content_hash: "content-hash".to_string(),
+                content_hash: format!("content-hash-{id}"),
                 policy_hash: "policy-hash".to_string(),
                 evidence,
-                metadata: None,
+                metadata,
                 trust_level: chio_core::TrustLevel::default(),
                 kernel_key: signer.public_key(),
                 tenant_id: None,
@@ -4275,8 +4314,9 @@ mod attestation_and_telemetry_tests {
             Err(ComplianceCertificateError::EmptySession(ref id)) if id == "session-empty"
         ));
 
-        let mut invalid_receipt = make_receipt(
+        let mut invalid_receipt = make_receipt_for_session(
             &signer,
+            "session-invalid",
             "receipt-invalid",
             now,
             "fs/read_text_file",
@@ -4301,8 +4341,9 @@ mod attestation_and_telemetry_tests {
 
         let gap_entries = vec![
             ComplianceReceiptEntry {
-                receipt: make_receipt(
+                receipt: make_receipt_for_session(
                     &signer,
+                    "session-gap",
                     "receipt-gap-1",
                     now,
                     "fs/read_text_file",
@@ -4316,8 +4357,9 @@ mod attestation_and_telemetry_tests {
                 seq: 0,
             },
             ComplianceReceiptEntry {
-                receipt: make_receipt(
+                receipt: make_receipt_for_session(
                     &signer,
+                    "session-gap",
                     "receipt-gap-2",
                     now + 1,
                     "fs/read_text_file",
@@ -4341,8 +4383,9 @@ mod attestation_and_telemetry_tests {
         ));
 
         let scope_entries = vec![ComplianceReceiptEntry {
-            receipt: make_receipt(
+            receipt: make_receipt_for_session(
                 &signer,
+                "session-scope",
                 "receipt-scope",
                 now,
                 "terminal/create",
@@ -4364,8 +4407,9 @@ mod attestation_and_telemetry_tests {
 
         let budget_entries = (0..5)
             .map(|idx| ComplianceReceiptEntry {
-                receipt: make_receipt(
+                receipt: make_receipt_for_session(
                     &signer,
+                    "session-budget",
                     &format!("receipt-budget-{idx}"),
                     now + idx,
                     "fs/read_text_file",
@@ -4387,8 +4431,9 @@ mod attestation_and_telemetry_tests {
         ));
 
         let guard_entries = vec![ComplianceReceiptEntry {
-            receipt: make_receipt(
+            receipt: make_receipt_for_session(
                 &signer,
+                "session-guard",
                 "receipt-guard",
                 now,
                 "fs/read_text_file",
@@ -4420,8 +4465,9 @@ mod attestation_and_telemetry_tests {
         let now = now_secs();
         let entries = vec![
             ComplianceReceiptEntry {
-                receipt: make_receipt(
+                receipt: make_receipt_for_session(
                     &signer_a,
+                    "session-mixed-keys",
                     "receipt-a",
                     now,
                     "fs/read_text_file",
@@ -4431,8 +4477,9 @@ mod attestation_and_telemetry_tests {
                 seq: 0,
             },
             ComplianceReceiptEntry {
-                receipt: make_receipt(
+                receipt: make_receipt_for_session(
                     &signer_b,
+                    "session-mixed-keys",
                     "receipt-b",
                     now + 1,
                     "fs/read_text_file",
@@ -4462,8 +4509,9 @@ mod attestation_and_telemetry_tests {
         let now = now_secs();
         let receipts = vec![
             ComplianceReceiptEntry {
-                receipt: make_receipt(
+                receipt: make_receipt_for_session(
                     &signer,
+                    "session-good",
                     "receipt-1",
                     now,
                     "fs/read_text_file",
@@ -4477,8 +4525,9 @@ mod attestation_and_telemetry_tests {
                 seq: 0,
             },
             ComplianceReceiptEntry {
-                receipt: make_receipt(
+                receipt: make_receipt_for_session(
                     &signer,
+                    "session-good",
                     "receipt-2",
                     now + 1,
                     "fs/write_text_file",
@@ -4578,8 +4627,9 @@ mod attestation_and_telemetry_tests {
         let signer = Keypair::generate();
         let now = now_secs();
         let receipts = vec![ComplianceReceiptEntry {
-            receipt: make_receipt(
+            receipt: make_receipt_for_session(
                 &signer,
+                "session-snake",
                 "receipt-snake",
                 now,
                 "fs/read_text_file",

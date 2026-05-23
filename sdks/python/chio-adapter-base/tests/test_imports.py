@@ -25,6 +25,7 @@ def test_top_level_convenience_imports() -> None:
         "RedactionPolicy",
         "__version__",
         "append_jsonl",
+        "build_alias_map",
         "canonical_dumps",
         "filter_diff_output",
         "filter_directory_entries",
@@ -73,7 +74,13 @@ def test_receipts_submodule_surface() -> None:
 def test_redact_submodule_surface() -> None:
     from chio_adapter_base import redact
 
-    for name in ("RedactArgs", "RedactionPolicy", "redact_args"):
+    for name in (
+        "RedactArgs",
+        "RedactionPolicy",
+        "bind_and_redact",
+        "build_alias_map",
+        "redact_args",
+    ):
         assert hasattr(redact, name), f"missing redact.{name!r}"
 
 

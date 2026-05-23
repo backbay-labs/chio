@@ -1,14 +1,14 @@
-# Chiodos 6.7 Local Pheromone Runtime Consumption
+# Chio 6.7 Local Pheromone Runtime Consumption
 
 Baseline SHA: `edeb4ab87f9403f770b8f63ed36ebe5a94ecf6c5`
 
-Branch: `codex/chiodos-6-7-pheromone-runtime-consumption`
+Branch: `codex/chio-6-7-pheromone-runtime-consumption`
 
 ## Scope
 
-Chiodos 6.7 turns local pheromone transit evidence into a local runtime
+Chio 6.7 turns local pheromone transit evidence into a local runtime
 consumption surface. The lane adds durable receiver state, batch verification,
-workflow-context resolution against verified Chiodos evidence, advisory
+workflow-context resolution against verified Chio evidence, advisory
 concentration queries, metrics, CLI entry points, executable negatives, and
 gates.
 
@@ -23,7 +23,7 @@ product names.
 - Strict pheromone gossip batch verification.
 - Durable SQLite pheromone receiver state.
 - Replay and diversity state that survives process restart.
-- Workflow-context resolution against verified Chiodos proof evidence.
+- Workflow-context resolution against verified Chio proof evidence.
 - Advisory concentration queries with caller-supplied peer weights.
 - CLI commands for local receive and query workflows.
 - Pheromone runtime metric registry entries.
@@ -47,21 +47,21 @@ product names.
 - `cargo test -p chio-federation pheromone`
 - `cargo test -p chio-pheromone-runtime`
 - `cargo test -p chio-store-sqlite pheromone`
-- `cargo test -p chio-chiodos`
-- `cargo test -p chio-cli chiodos`
-- `cargo test -p chiodos-three-vendor-example`
+- `cargo test -p chio-attest-buyer-core`
+- `cargo test -p chio-cli chio`
+- `cargo test -p chio-three-vendor-example`
 - `cargo test -p chio-spec-validate`
 - `cargo test -p chio-metrics-spec`
-- `bash scripts/check-chiodos-pheromone-runtime.sh`
-- `bash scripts/check-chiodos-pheromone-runtime.sh --schema-only`
-- `bash scripts/check-chiodos-pheromone-runtime.sh --negative-only`
-- `bash scripts/check-chiodos-pheromone-transit.sh`
-- `bash scripts/check-chiodos-authority-issuance.sh`
-- `bash scripts/check-chiodos-proof-package.sh`
-- `bash scripts/check-chiodos-proof-package.sh --schema-only`
-- `bash scripts/check-chiodos-proof-package.sh --negative-only`
+- `bash scripts/check-chio-pheromone-runtime.sh`
+- `bash scripts/check-chio-pheromone-runtime.sh --schema-only`
+- `bash scripts/check-chio-pheromone-runtime.sh --negative-only`
+- `bash scripts/check-chio-pheromone-transit.sh`
+- `bash scripts/check-chio-authority-issuance.sh`
+- `bash scripts/check-chio-proof-package.sh`
+- `bash scripts/check-chio-proof-package.sh --schema-only`
+- `bash scripts/check-chio-proof-package.sh --negative-only`
 - `bash scripts/check-bounded-ship-bar.sh`
 - `bash scripts/check-bounded-ship-bar.sh --diagnostic`
 - `bash scripts/check-threat-coverage-mutants.sh`
 - `cargo fmt --all -- --check`
-- `cargo clippy -p chio-pheromone -p chio-federation -p chio-pheromone-runtime -p chio-store-sqlite -p chio-cli -p chiodos-three-vendor-example --tests -- -D warnings`
+- `cargo clippy -p chio-pheromone -p chio-federation -p chio-pheromone-runtime -p chio-store-sqlite -p chio-cli -p chio-three-vendor-example --tests -- -D warnings`

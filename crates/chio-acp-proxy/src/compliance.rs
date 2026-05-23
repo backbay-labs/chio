@@ -38,11 +38,6 @@ fn warn_empty_compliance_trusted_keys_once() {
     }
 }
 
-#[cfg(test)]
-fn reset_empty_compliance_trusted_keys_warning_for_tests() {
-    EMPTY_TRUSTED_KEYS_WARNED.store(false, Ordering::Release);
-}
-
 /// Error types that abort compliance certificate generation.
 #[derive(Debug, thiserror::Error)]
 pub enum ComplianceCertificateError {

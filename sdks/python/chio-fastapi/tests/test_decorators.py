@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from chio_fastapi.decorators import chio_requires, chio_approval, chio_budget
 from chio_fastapi.dependencies import set_chio_client
 from chio_sdk.errors import ChioConnectionError, ChioDeniedError
-from chio_sdk.models import EvaluateResponse, HttpReceipt, Verdict
+from chio_sdk.models import EvaluateResponse, HttpReceipt, Verdict, VerifyReceiptResponse
 
 
 def _make_receipt(allowed: bool = True) -> HttpReceipt:
@@ -27,10 +27,16 @@ def _make_receipt(allowed: bool = True) -> HttpReceipt:
         method="POST",
         caller_identity_hash="abc",
         verdict=verdict,
+        receipt_kind="mediated_decision",
+        boundary_class="prevent",
+        observation_outcome=None,
+        tool_origin="caller_executed",
+        redaction_mode="none",
         response_status=200 if allowed else 403,
         timestamp=1700000000,
         content_hash="x",
         policy_hash="y",
+        trust_level="mediated",
         kernel_key="k",
         signature="s",
     )
@@ -39,6 +45,22 @@ def _make_receipt(allowed: bool = True) -> HttpReceipt:
 def _make_evaluation(allowed: bool = True) -> EvaluateResponse:
     receipt = _make_receipt(allowed=allowed)
     return EvaluateResponse(verdict=receipt.verdict, receipt=receipt, evidence=[])
+
+
+def _make_verification(authorized: bool = True) -> VerifyReceiptResponse:
+    return VerifyReceiptResponse(
+        signature_valid=authorized,
+        signer_trusted=authorized,
+        receipt_id_valid=authorized,
+        parameter_hash_valid=authorized,
+        receipt_kind="mediated_decision",
+        boundary_class="prevent",
+        trust_level="mediated",
+        result="allow" if authorized else "deny",
+        authorized=authorized,
+        signer_key_hex="kernel-key",
+        ok=authorized,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +90,7 @@ class TestChioRequires:
         mock_client.evaluate_http_request = AsyncMock(
             return_value=_make_evaluation(allowed=True)
         )
-        mock_client.verify_http_receipt = AsyncMock(return_value=True)
+        mock_client.verify_http_receipt = AsyncMock(return_value=_make_verification())
         set_chio_client(mock_client)
 
         @app.post("/deploy")
@@ -94,7 +116,7 @@ class TestChioRequires:
         mock_client.evaluate_http_request = AsyncMock(
             return_value=_make_evaluation(allowed=False)
         )
-        mock_client.verify_http_receipt = AsyncMock(return_value=False)
+        mock_client.verify_http_receipt = AsyncMock(return_value=_make_verification(False))
         set_chio_client(mock_client)
 
         @app.post("/deploy")
@@ -156,7 +178,7 @@ class TestChioRequires:
         mock_client.evaluate_http_request = AsyncMock(
             return_value=_make_evaluation(allowed=True)
         )
-        mock_client.verify_http_receipt = AsyncMock(return_value=True)
+        mock_client.verify_http_receipt = AsyncMock(return_value=_make_verification())
         set_chio_client(mock_client)
 
         @app.get("/read")
@@ -177,7 +199,7 @@ class TestChioRequires:
         mock_client.evaluate_http_request = AsyncMock(
             return_value=_make_evaluation(allowed=True)
         )
-        mock_client.verify_http_receipt = AsyncMock(return_value=False)
+        mock_client.verify_http_receipt = AsyncMock(return_value=_make_verification(False))
         set_chio_client(mock_client)
 
         @app.get("/read")

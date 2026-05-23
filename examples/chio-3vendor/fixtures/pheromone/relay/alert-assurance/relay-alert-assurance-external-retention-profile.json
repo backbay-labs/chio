@@ -1,0 +1,16 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-external-retention-profile.v1",
+  "localKernelId": "did:chio:buyer-kernel",
+  "allowedRetentionSystemAliases": ["retention-vault"],
+  "maxPackageCount": 8,
+  "maxEvidenceAgeMs": 120000,
+  "requireGenerationContinuity": true,
+  "requireRestoreAccepted": true,
+  "requirePhysicalReadback": true,
+  "requireRetentionHandoffReady": true,
+  "minSampledMembers": 1,
+  "minSampleCoverageBasisPoints": 1000,
+  "recommendationCodes": ["operator_external_retention_review"],
+  "issuedAtUnixMs": 1766000000000,
+  "expiresAtUnixMs": 1766000900000
+}

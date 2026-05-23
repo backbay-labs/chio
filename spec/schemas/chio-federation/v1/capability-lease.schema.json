@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-federation/v1/capability-lease.schema.json",
+  "title": "Signed Chio Capability Lease",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "leaseId",
+        "issuer",
+        "subject",
+        "scopeDigest",
+        "actionClass",
+        "issuedAtUnixMs",
+        "expiresAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.capability-lease.v1" },
+        "leaseId": { "type": "string", "minLength": 1 },
+        "issuer": { "type": "string", "minLength": 1 },
+        "subject": { "type": "string", "minLength": 1 },
+        "scopeDigest": { "$ref": "#/$defs/sha256" },
+        "actionClass": {
+          "enum": ["scoped_observation", "delegated_action", "narrow_destructive"]
+        },
+        "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/hex" },
+    "signature": { "$ref": "#/$defs/hex" }
+  },
+  "$defs": {
+    "hex": { "type": "string", "pattern": "^[0-9a-f]+$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

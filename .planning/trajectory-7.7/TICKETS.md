@@ -22,7 +22,7 @@ and verified evidence classes only.
 
 ## C7.7-005, Buyer CLI
 
-Add `chio chiodos buyer package`, `verify`, and `explain` over local files.
+Add `chio attest buyer package`, `verify`, and `explain` over local files.
 Keep treaty packet verification as the primitive.
 
 ## C7.7-006, Negatives And Gate

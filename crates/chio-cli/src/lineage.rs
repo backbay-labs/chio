@@ -16,8 +16,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use chio_lineage::anchor::AnchoredFrontier;
-use chio_lineage::diff::{diff as compute_diff, render_text, LineageDiff};
-use chio_lineage::query::{forward, reverse, QueryBounds, QueryResult};
+use chio_lineage::diff::{LineageDiff, diff as compute_diff, render_text};
+use chio_lineage::query::{QueryBounds, QueryResult, forward, reverse};
 use chio_lineage::schema::LineageGraph;
 use serde::{Deserialize, Serialize};
 
@@ -60,10 +60,8 @@ pub struct CliRootsReport {
 }
 
 fn read_graph(path: &Path) -> Result<LineageGraph, LineageCliError> {
-    let bytes = fs::read(path)
-        .map_err(|_| LineageCliError::NotFound(path.to_path_buf()))?;
-    serde_json::from_slice(&bytes)
-        .map_err(|e| LineageCliError::InvalidGraph(e.to_string()))
+    let bytes = fs::read(path).map_err(|_| LineageCliError::NotFound(path.to_path_buf()))?;
+    serde_json::from_slice(&bytes).map_err(|e| LineageCliError::InvalidGraph(e.to_string()))
 }
 
 pub fn cmd_query(
@@ -110,8 +108,7 @@ pub fn render_diff_text(report: &CliDiffReport) -> String {
 }
 
 pub fn cmd_roots(roots_dir: &Path) -> Result<CliRootsReport, LineageCliError> {
-    let entries = fs::read_dir(roots_dir)
-        .map_err(|e| LineageCliError::Io(e.to_string()))?;
+    let entries = fs::read_dir(roots_dir).map_err(|e| LineageCliError::Io(e.to_string()))?;
     let mut artifacts = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|e| LineageCliError::Io(e.to_string()))?;
@@ -135,7 +132,7 @@ pub fn cmd_roots(roots_dir: &Path) -> Result<CliRootsReport, LineageCliError> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use chio_lineage::ingest_replay_corpus::{ingest_corpus, CorpusReceiptRow};
+    use chio_lineage::ingest_replay_corpus::{CorpusReceiptRow, ingest_corpus};
 
     fn fixture_graph() -> LineageGraph {
         ingest_corpus(&[CorpusReceiptRow {

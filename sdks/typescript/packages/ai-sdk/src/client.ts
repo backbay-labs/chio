@@ -271,6 +271,69 @@ export class ChioClient {
       clearTimeout(timer);
     }
   }
+
+  /**
+   * Verify a sidecar-issued receipt through the same transport, base URL,
+   * and timeout budget used for evaluation.
+   */
+  async verifyReceipt(receipt: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const url = `${this.baseUrl}/chio/verify`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    this.debug?.("chio.verify.request", {
+      url,
+      receipt_id: typeof receipt.id === "string" ? receipt.id : undefined,
+    });
+    try {
+      const response = await this.fetchImpl(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+        },
+        body: JSON.stringify(receipt),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new ChioClientError(
+          "chio_verification_failed",
+          `sidecar verification returned ${response.status}: ${text}`,
+          response.status,
+        );
+      }
+
+      const body = await response.json() as unknown;
+      if (body == null || typeof body !== "object" || Array.isArray(body)) {
+        throw new ChioClientError(
+          "chio_invalid_verification",
+          "sidecar verification returned a non-object body",
+        );
+      }
+      this.debug?.("chio.verify.response", {
+        receipt_id: typeof receipt.id === "string" ? receipt.id : undefined,
+      });
+      return body as Record<string, unknown>;
+    } catch (error) {
+      if (error instanceof ChioClientError) {
+        throw error;
+      }
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new ChioClientError(
+          "chio_timeout",
+          `sidecar verification timed out after ${this.timeoutMs}ms`,
+        );
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ChioClientError(
+        "chio_sidecar_unreachable",
+        `failed to reach sidecar verification at ${this.baseUrl}: ${message}`,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 }
 
 function parseCapabilityToken(capabilityToken: string): Record<string, unknown> {

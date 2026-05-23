@@ -1,4 +1,4 @@
-# Chiodos 6.5 Tickets
+# Chio 6.5 Tickets
 
 ## C6.5-001 Integrator
 
@@ -11,18 +11,18 @@ Acceptance:
 - Branch starts from `main@4635d22978376da4134c2ca2874c6b02702a8e91`.
 - Planning docs record baseline, scope, tickets, final gates, and the
   no-planning-metadata rule.
-- Chiodos 6.6 shadow planning tracks pheromone transit and workflow context.
+- Chio 6.6 shadow planning tracks pheromone transit and workflow context.
 
 ## C6.5-002 Schema Registry
 
-Add current runtime authority schemas and mark historical Chiodos verifier
+Add current runtime authority schemas and mark historical Chio verifier
 schemas as deprecated read-compatible where they intentionally share a file.
 
 Acceptance:
 
 - Authority profile, issuance request, issuance bundle, revocation publication
   request, and peer pins have JSON schemas.
-- Strict gates use current Chiodos schemas.
+- Strict gates use current Chio schemas.
 - Historical trust-bundle v2 and report v1 registry entries are explicitly
   deprecated read-compatible.
 
@@ -58,7 +58,7 @@ Acceptance:
 - Issued scope digests are recomputed from the canonical binding preimage.
 - Issuance rejects inactive authority, wrong signing key, unsupported action
   class, bad tool args hash, invalid window, and duplicate lease ids.
-- Emitted leases verify through the existing Chiodos verifier.
+- Emitted leases verify through the existing Chio verifier.
 
 ## C6.5-006 Governance Issuer
 
@@ -92,18 +92,18 @@ Acceptance:
 - Assembly accepts only external peer pins, workflow intersection, disclosure
   policy, and checkpoint inputs.
 - Package-carried material cannot add trust.
-- Output validates as `chio.chiodos.verifier-trust-bundle.v3`.
+- Output validates as `chio.federation.verifier-trust-bundle.v1`.
 
 ## C6.5-009 CLI
 
-Add local Chiodos authority commands.
+Add local Chio authority commands.
 
 Acceptance:
 
-- `chio chiodos authority issue` writes an issuance bundle plus split artifact
+- `chio federation authority issue` writes an issuance bundle plus split artifact
   files.
-- `chio chiodos authority checkpoint` writes a signed revocation checkpoint.
-- `chio chiodos authority trust-bundle assemble` writes a strict verifier
+- `chio federation authority checkpoint` writes a signed revocation checkpoint.
+- `chio federation authority trust-bundle assemble` writes a strict verifier
   trust bundle.
 - Commands require explicit local signing-key input where signatures are
   produced.
@@ -115,9 +115,9 @@ Regenerate the three-vendor fixture from runtime authority APIs.
 Acceptance:
 
 - Fixture leases, lease-scope bindings, governance receipts, context, and trust
-  bundle are produced by `chio-chiodos-authority`.
+  bundle are produced by `chio-federation-authority`.
 - Manual construction remains only in focused test mutation helpers.
-- Runtime-issued fixture still verifies through `chio chiodos verify`.
+- Runtime-issued fixture still verifies through `chio attest buyer verify-proof`.
 
 ## C6.5-011 Negatives And Gates
 
@@ -125,19 +125,19 @@ Add runtime authority gates and keep the existing proof-package gate strict.
 
 Acceptance:
 
-- `scripts/check-chiodos-authority-issuance.sh` proves runtime-issued artifacts
+- `scripts/check-chio-authority-issuance.sh` proves runtime-issued artifacts
   match the committed proof package.
-- `scripts/check-chiodos-proof-package.sh` invokes the authority gate in default
+- `scripts/check-chio-proof-package.sh` invokes the authority gate in default
   mode.
 - Existing negative corpus still reaches stable verifier failure codes.
 
 ## C6.5-012 Integrator
 
 Open the PR, address all review threads, merge to `main`, and rerun the
-Chiodos gates on `main`.
+Chio gates on `main`.
 
 Acceptance:
 
 - PR review threads are queried and resolved before merge.
-- Final Chiodos authority and proof-package gates pass on `main`.
+- Final Chio authority and proof-package gates pass on `main`.
 

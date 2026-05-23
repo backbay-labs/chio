@@ -370,9 +370,9 @@ Finding #4 raised the question: B2 introduces a new MUST that did not exist in t
 
 The B1 fixture observes `BudgetRegistry::try_admit_share` mutations. The kernel's `budget_registry` field at `mod.rs:4099-4101` is held under a `Mutex` that mutates in-process state. Whether `try_admit_share` also writes to the persistent store (SQLite) is unclear from the design. If it does NOT, the B1 fixture is observing an in-process side effect, which is fine for the fail-when-reverted test but does not fully prove the production budget-admit semantics under failure recovery. Recommend B1.6 PR description clarify whether the registry is in-memory-only or persistent, and what the failure model is.
 
-### Q3 (MINOR): are the chiodos_pheromone, chiodos_ladder primitives definitely out of release work?
+### Q3 (MINOR): are the chio_pheromone, chio_ladder primitives definitely out of release work?
 
-`SPEC-TO-RUNTIME-MAP.md` section 13 says yes (research drafts). The Productization Champion (debate position 5) and Vision Strategist (debate position 6) had pushed back on this in the synthesis discussion. Recommend the audit-doc owner confirm with synthesis authors that no chiodos primitive has migrated from "research draft" to "ready to wire" since 2026-05-07, otherwise a row may be missing.
+`SPEC-TO-RUNTIME-MAP.md` section 13 says yes (research drafts). The Productization Champion (debate position 5) and Vision Strategist (debate position 6) had pushed back on this in the synthesis discussion. Recommend the audit-doc owner confirm with synthesis authors that no chio primitive has migrated from "research draft" to "ready to wire" since 2026-05-07, otherwise a row may be missing.
 
 ### Q4 (OBSERVATION): does the `chio_kernel_core::NoopBudgetRegistry` survive Lane B?
 

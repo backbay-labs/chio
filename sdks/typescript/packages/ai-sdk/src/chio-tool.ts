@@ -33,7 +33,6 @@ import {
   ChioClient,
   type ChioClientOptions,
   ChioClientError,
-  resolveSidecarUrl,
 } from "./client.js";
 import { ChioToolError } from "./errors.js";
 
@@ -279,7 +278,7 @@ export function chioTool<PARAMS, RESULT>(
     }
     if (!authorized) {
       throw new ChioToolError({
-        verdict,
+        verdict: verdict === "allow" ? "incomplete" : verdict,
         guard: receipt.decision?.guard ?? "",
         reason: receipt.decision?.reason ?? `Chio verdict: ${verdict}`,
         receiptId: receipt.id,
@@ -290,8 +289,7 @@ export function chioTool<PARAMS, RESULT>(
       ? await verifyReceipt(receipt)
       : await verifyReceiptViaSidecar(
         receipt,
-        options.client,
-        options.clientOptions,
+        client,
       );
     if (!receiptAuthorityAllows(authority)) {
       throw new ChioToolError({
@@ -343,63 +341,23 @@ export function chioTool<PARAMS, RESULT>(
  */
 async function verifyReceiptViaSidecar(
   receipt: Record<string, unknown> & { id?: string },
-  client: ChioClient | undefined,
-  clientOptions: ChioClientOptions | undefined,
+  client: ChioClient,
 ): Promise<ChioReceiptAuthority> {
-  const baseUrl = client?.sidecarUrl ?? resolveSidecarUrl(clientOptions?.sidecarUrl);
-  const fetchImpl = clientOptions?.fetch ?? globalThis.fetch;
-  if (fetchImpl == null) {
-    throw new ChioToolError({
-      verdict: "incomplete",
-      guard: "",
-      reason: "no fetch implementation available for Chio /chio/verify fallback",
-      receiptId: typeof receipt.id === "string" ? receipt.id : undefined,
-    });
-  }
-
-  let response: Response;
   try {
-    response = await fetchImpl(`${baseUrl}/chio/verify`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-      },
-      body: JSON.stringify(receipt),
-    });
+    return readAuthorityFromVerifyResponse(await client.verifyReceipt(receipt));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const reason = error instanceof ChioClientError
+      ? error.message
+      : error instanceof Error
+        ? error.message
+        : String(error);
     throw new ChioToolError({
       verdict: "sidecar_unreachable",
       guard: "",
-      reason: `Chio /chio/verify unreachable: ${message}`,
+      reason,
       receiptId: typeof receipt.id === "string" ? receipt.id : undefined,
     });
   }
-
-  if (!response.ok) {
-    throw new ChioToolError({
-      verdict: "sidecar_unreachable",
-      guard: "",
-      reason: `Chio /chio/verify returned ${response.status}`,
-      receiptId: typeof receipt.id === "string" ? receipt.id : undefined,
-    });
-  }
-
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new ChioToolError({
-      verdict: "sidecar_unreachable",
-      guard: "",
-      reason: `Chio /chio/verify returned non-JSON body: ${message}`,
-      receiptId: typeof receipt.id === "string" ? receipt.id : undefined,
-    });
-  }
-
-  return readAuthorityFromVerifyResponse(body);
 }
 
 function readAuthorityFromVerifyResponse(value: unknown): ChioReceiptAuthority {

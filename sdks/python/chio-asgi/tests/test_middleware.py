@@ -11,7 +11,7 @@ import pytest
 from chio_asgi.config import ChioASGIConfig
 from chio_asgi.middleware import ChioASGIMiddleware, _extract_capability_token
 from chio_sdk.errors import ChioConnectionError
-from chio_sdk.models import EvaluateResponse, HttpReceipt, Verdict
+from chio_sdk.models import EvaluateResponse, HttpReceipt, Verdict, VerifyReceiptResponse
 
 
 # ---------------------------------------------------------------------------
@@ -84,10 +84,16 @@ def _make_receipt(
         method="GET",
         caller_identity_hash="abc",
         verdict=verdict,
+        receipt_kind="mediated_decision",
+        boundary_class="prevent",
+        observation_outcome=None,
+        tool_origin="caller_executed",
+        redaction_mode="none",
         response_status=200 if allowed else 403,
         timestamp=1700000000,
         content_hash="x",
         policy_hash="y",
+        trust_level="mediated",
         kernel_key="k",
         signature="s",
     )
@@ -102,6 +108,22 @@ def _make_evaluation(
         verdict=receipt.verdict,
         receipt=receipt,
         evidence=[],
+    )
+
+
+def _make_verification(authorized: bool = True) -> VerifyReceiptResponse:
+    return VerifyReceiptResponse(
+        signature_valid=authorized,
+        signer_trusted=authorized,
+        receipt_id_valid=authorized,
+        parameter_hash_valid=authorized,
+        receipt_kind="mediated_decision",
+        boundary_class="prevent",
+        trust_level="mediated",
+        result="allow" if authorized else "deny",
+        authorized=authorized,
+        signer_key_hex="kernel-key",
+        ok=authorized,
     )
 
 
@@ -168,7 +190,7 @@ class TestAllowedRequest:
         ) as MockClient:
             instance = MockClient.return_value
             instance.evaluate_http_request = AsyncMock(return_value=evaluation)
-            instance.verify_http_receipt = AsyncMock(return_value=True)
+            instance.verify_http_receipt = AsyncMock(return_value=_make_verification())
 
             config = ChioASGIConfig(sidecar_url="http://mock:9090")
             mw = ChioASGIMiddleware(_echo_app, config=config)
@@ -198,7 +220,7 @@ class TestDeniedRequest:
         ) as MockClient:
             instance = MockClient.return_value
             instance.evaluate_http_request = AsyncMock(return_value=evaluation)
-            instance.verify_http_receipt = AsyncMock(return_value=True)
+            instance.verify_http_receipt = AsyncMock(return_value=_make_verification())
 
             config = ChioASGIConfig(sidecar_url="http://mock:9090")
             mw = ChioASGIMiddleware(_echo_app, config=config)
@@ -279,7 +301,7 @@ class TestReceiptCallback:
         ) as MockClient:
             instance = MockClient.return_value
             instance.evaluate_http_request = AsyncMock(return_value=evaluation)
-            instance.verify_http_receipt = AsyncMock(return_value=True)
+            instance.verify_http_receipt = AsyncMock(return_value=_make_verification())
 
             config = ChioASGIConfig(sidecar_url="http://mock:9090")
             mw = ChioASGIMiddleware(
@@ -302,7 +324,7 @@ class TestReceiptVerification:
         ) as MockClient:
             instance = MockClient.return_value
             instance.evaluate_http_request = AsyncMock(return_value=evaluation)
-            instance.verify_http_receipt = AsyncMock(return_value=False)
+            instance.verify_http_receipt = AsyncMock(return_value=_make_verification(False))
 
             config = ChioASGIConfig(sidecar_url="http://mock:9090")
             mw = ChioASGIMiddleware(_echo_app, config=config)

@@ -1,0 +1,21 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-external-retention-negative-fixture-corpus.v1",
+  "cases": [
+    { "caseId": "untrusted_packager", "expectedCode": "external_retention_blocked" },
+    { "caseId": "untrusted_exporter", "expectedCode": "external_retention_blocked" },
+    { "caseId": "source_report_mismatch", "expectedCode": "external_retention_blocked" },
+    { "caseId": "stale_profile", "expectedCode": "archive_package_invalid" },
+    { "caseId": "stale_evidence", "expectedCode": "external_retention_blocked" },
+    { "caseId": "local_kernel_mismatch", "expectedCode": "external_retention_blocked" },
+    { "caseId": "generation_gap", "expectedCode": "external_retention_blocked" },
+    { "caseId": "previous_manifest_mismatch", "expectedCode": "external_retention_blocked" },
+    { "caseId": "missing_restore_drill", "expectedCode": "external_retention_blocked" },
+    { "caseId": "rejected_restore_drill", "expectedCode": "external_retention_blocked" },
+    { "caseId": "missing_physical_readback", "expectedCode": "external_retention_blocked" },
+    { "caseId": "insufficient_sample", "expectedCode": "external_retention_blocked" },
+    { "caseId": "missing_retention_handoff", "expectedCode": "external_retention_blocked" },
+    { "caseId": "unknown_retention_alias", "expectedCode": "external_retention_blocked" },
+    { "caseId": "alias_drift", "expectedCode": "external_retention_blocked" },
+    { "caseId": "wrong_expected_code", "expectedCode": "negative_corpus_mismatch" }
+  ]
+}

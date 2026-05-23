@@ -18,7 +18,8 @@ fn main() {
         .with_writer(std::io::stderr)
         .init();
 
-    let result = match cli.command {
+    let command = cli.command;
+    let result = match command {
         Commands::Run { policy, command } => cmd_run(
             &policy,
             &command,
@@ -2006,8 +2007,8 @@ fn main() {
                     policy_id,
                     verifier_policies_file,
                     verifier_challenge_db,
-                } => passport::cmd_passport_challenge_create(
-                    passport::PassportChallengeCreateArgs {
+                } => {
+                    passport::cmd_passport_challenge_create(passport::PassportChallengeCreateArgs {
                         output: &output,
                         verifier: &verifier,
                         ttl_secs,
@@ -2020,8 +2021,8 @@ fn main() {
                         json_output,
                         control_url: control_url.as_deref(),
                         control_token: control_token.as_deref(),
-                    },
-                ),
+                    })
+                }
                 PassportChallengeCommands::Respond {
                     input,
                     challenge,
@@ -2321,8 +2322,16 @@ fn main() {
             GuardCommands::New { name } => guard::cmd_guard_new(&name),
             GuardCommands::Build => guard::cmd_guard_build(),
             GuardCommands::Inspect { path } => guard::cmd_guard_inspect(&path),
-            GuardCommands::Test { wasm, fixtures, fuel_limit } => guard::cmd_guard_test(&wasm, &fixtures, fuel_limit),
-            GuardCommands::Bench { path, iterations, fuel_limit } => guard::cmd_guard_bench(&path, iterations, fuel_limit),
+            GuardCommands::Test {
+                wasm,
+                fixtures,
+                fuel_limit,
+            } => guard::cmd_guard_test(&wasm, &fixtures, fuel_limit),
+            GuardCommands::Bench {
+                path,
+                iterations,
+                fuel_limit,
+            } => guard::cmd_guard_bench(&path, iterations, fuel_limit),
             GuardCommands::Pack => guard::cmd_guard_pack(),
             GuardCommands::Publish {
                 project,
@@ -2365,10 +2374,15 @@ fn main() {
                     commands::guard_blocklist::cmd_guard_blocklist_remove(&digest)
                 }
             },
-            GuardCommands::Install { path, target_dir } => guard::cmd_guard_install(&path, &target_dir),
-            GuardCommands::Sign { wasm, key, name, version } => {
-                guards::sign::cmd_guard_sign(&wasm, &key, &name, &version)
+            GuardCommands::Install { path, target_dir } => {
+                guard::cmd_guard_install(&path, &target_dir)
             }
+            GuardCommands::Sign {
+                wasm,
+                key,
+                name,
+                version,
+            } => guards::sign::cmd_guard_sign(&wasm, &key, &name, &version),
             GuardCommands::Verify { wasm } => guards::sign::cmd_guard_verify(&wasm),
             GuardCommands::Market { command } => match command {
                 GuardMarketCommands::List {
@@ -2433,884 +2447,12 @@ fn main() {
                 out,
                 language,
                 lockfile,
-            } => cmd_conformance_fetch_peers(
-                check,
-                &out,
-                language.as_deref(),
-                lockfile.as_deref(),
-            ),
+            } => cmd_conformance_fetch_peers(check, &out, language.as_deref(), lockfile.as_deref()),
         },
-        Commands::Chiodos { command } => match command {
-            ChiodosCommands::Verify {
-                package,
-                trust_bundle,
-                context,
-                report,
-            } => cmd_chiodos_verify(&package, &trust_bundle, &context, &report),
-            ChiodosCommands::Authority { command } => match command {
-                ChiodosAuthorityCommands::Issue {
-                    profile,
-                    request,
-                    signing_keys,
-                    out_dir,
-                } => cmd_chiodos_authority_issue(&profile, &request, &signing_keys, &out_dir),
-                ChiodosAuthorityCommands::Checkpoint {
-                    profile,
-                    revocations,
-                    signing_keys,
-                    out,
-                } => cmd_chiodos_authority_checkpoint(
-                    &profile,
-                    &revocations,
-                    &signing_keys,
-                    &out,
-                ),
-                ChiodosAuthorityCommands::TrustBundle { command } => match command {
-                    ChiodosTrustBundleCommands::Assemble {
-                        profile,
-                        peer_pins,
-                        workflow_intersection,
-                        disclosure_policy,
-                        checkpoint,
-                        out,
-                    } => cmd_chiodos_authority_trust_bundle_assemble(
-                        &profile,
-                        &peer_pins,
-                        &workflow_intersection,
-                        &disclosure_policy,
-                        &checkpoint,
-                        &out,
-                    ),
-                },
-            },
-            ChiodosCommands::Runtime { command } => match command {
-                ChiodosRuntimeCommands::Admit {
-                    request,
-                    admission_profile,
-                    admission_bundle,
-                    runtime_trust_input,
-                    trusted_verifiers,
-                    pheromone_query_report,
-                    runtime_pheromone_policy,
-                    runtime_peer_weights,
-                    action_class_id,
-                    trust_floor_state,
-                    store,
-                    now_unix_ms,
-                    report,
-                } => cmd_chiodos_runtime_admit(
-                    &request,
-                    &admission_profile,
-                    &admission_bundle,
-                    runtime_trust_input.as_deref(),
-                    trusted_verifiers.as_deref(),
-                    pheromone_query_report.as_deref(),
-                    runtime_pheromone_policy.as_deref(),
-                    runtime_peer_weights.as_deref(),
-                    action_class_id.as_deref(),
-                    trust_floor_state.as_deref(),
-                    &store,
-                    now_unix_ms,
-                    &report,
-                ),
-                ChiodosRuntimeCommands::SignTrustInput {
-                    body,
-                    signing_seed_file,
-                    out,
-                } => cmd_chiodos_runtime_sign_trust_input(&body, &signing_seed_file, &out),
-                ChiodosRuntimeCommands::Policy { command } => match command {
-                    ChiodosRuntimePolicyCommands::Sign {
-                        body,
-                        signing_seed_file,
-                        out,
-                    } => cmd_chiodos_runtime_sign_policy(&body, &signing_seed_file, &out),
-                },
-                ChiodosRuntimeCommands::PeerWeights { command } => match command {
-                    ChiodosRuntimePeerWeightsCommands::Hash { body, out } => {
-                        cmd_chiodos_runtime_peer_weights_hash(&body, &out)
-                    }
-                    ChiodosRuntimePeerWeightsCommands::Sign {
-                        body,
-                        signing_seed_file,
-                        out,
-                    } => cmd_chiodos_runtime_sign_peer_weights(&body, &signing_seed_file, &out),
-                },
-                ChiodosRuntimeCommands::Pheromone { command } => match command {
-                    ChiodosRuntimePheromoneCommands::SignQueryReport {
-                        body,
-                        signing_seed_file,
-                        out,
-                    } => cmd_chiodos_runtime_sign_pheromone_query_report(
-                        &body,
-                        &signing_seed_file,
-                        &out,
-                    ),
-                    ChiodosRuntimePheromoneCommands::Evaluate {
-                        admission_bundle,
-                        runtime_trust_input,
-                        trusted_verifiers,
-                        pheromone_query_report,
-                        runtime_pheromone_policy,
-                        runtime_peer_weights,
-                        action_class_id,
-                        now_unix_ms,
-                        report,
-                    } => cmd_chiodos_runtime_pheromone_evaluate(
-                        &admission_bundle,
-                        &runtime_trust_input,
-                        &trusted_verifiers,
-                        &pheromone_query_report,
-                        &runtime_pheromone_policy,
-                        &runtime_peer_weights,
-                        action_class_id.as_deref(),
-                        now_unix_ms,
-                        &report,
-                    ),
-                },
-                ChiodosRuntimeCommands::Orchestrate { command } => match command {
-                    ChiodosRuntimeOrchestrateCommands::Lint { profile, report } => {
-                        cmd_chiodos_runtime_orchestrate_lint(&profile, &report)
-                    }
-                    ChiodosRuntimeOrchestrateCommands::Plan {
-                        profile,
-                        run_contract,
-                        store,
-                        evidence_dir,
-                        now_unix_ms,
-                        report,
-                    } => cmd_chiodos_runtime_orchestrate_plan(
-                        &profile,
-                        &run_contract,
-                        &store,
-                        &evidence_dir,
-                        now_unix_ms,
-                        &report,
-                    ),
-                    ChiodosRuntimeOrchestrateCommands::Run {
-                        profile,
-                        run_contract,
-                        store,
-                        evidence_dir,
-                        now_unix_ms,
-                        report,
-                    } => cmd_chiodos_runtime_orchestrate_run(
-                        &profile,
-                        &run_contract,
-                        &store,
-                        &evidence_dir,
-                        now_unix_ms,
-                        &report,
-                    ),
-                    ChiodosRuntimeOrchestrateCommands::Resume {
-                        profile,
-                        resume_plan,
-                        store,
-                        evidence_dir,
-                        now_unix_ms,
-                        report,
-                    } => cmd_chiodos_runtime_orchestrate_resume(
-                        &profile,
-                        &resume_plan,
-                        &store,
-                        &evidence_dir,
-                        now_unix_ms,
-                        &report,
-                    ),
-                    ChiodosRuntimeOrchestrateCommands::Status {
-                        profile,
-                        store,
-                        evidence_dir,
-                        now_unix_ms,
-                        report,
-                    } => cmd_chiodos_runtime_orchestrate_status(
-                        &profile,
-                        &store,
-                        &evidence_dir,
-                        now_unix_ms.unwrap_or_else(unix_now_ms),
-                        &report,
-                    ),
-                    ChiodosRuntimeOrchestrateCommands::Drift {
-                        profile,
-                        runs_dir,
-                        since_unix_ms,
-                        until_unix_ms,
-                        report,
-                    } => cmd_chiodos_runtime_orchestrate_drift(
-                        &profile,
-                        &runs_dir,
-                        since_unix_ms,
-                        until_unix_ms,
-                        &report,
-                    ),
-                },
-                ChiodosRuntimeCommands::Ops { command } => match command {
-                    ChiodosRuntimeOpsCommands::Supervise {
-                        supervisor_profile,
-                        store,
-                        evidence_root,
-                        provider_bindings,
-                        now_unix_ms,
-                        report,
-                    } => cmd_chiodos_runtime_ops_status(
-                        &supervisor_profile,
-                        &store,
-                        &evidence_root,
-                        provider_bindings.as_deref(),
-                        Some(now_unix_ms),
-                        &report,
-                    ),
-                    ChiodosRuntimeOpsCommands::Tick {
-                        supervisor_profile,
-                        store,
-                        evidence_root,
-                        owner_id,
-                        now_unix_ms,
-                        max_runs,
-                        report,
-                    } => cmd_chiodos_runtime_ops_tick(
-                        &supervisor_profile,
-                        &store,
-                        &evidence_root,
-                        &owner_id,
-                        now_unix_ms,
-                        max_runs,
-                        &report,
-                    ),
-                    ChiodosRuntimeOpsCommands::Status {
-                        supervisor_profile,
-                        store,
-                        evidence_root,
-                        provider_bindings,
-                        now_unix_ms,
-                        report,
-                    } => cmd_chiodos_runtime_ops_status(
-                        &supervisor_profile,
-                        &store,
-                        &evidence_root,
-                        provider_bindings.as_deref(),
-                        now_unix_ms,
-                        &report,
-                    ),
-                    ChiodosRuntimeOpsCommands::RecoveryDrill {
-                        supervisor_profile,
-                        run_id,
-                        store,
-                        evidence_root,
-                        now_unix_ms,
-                        report,
-                    } => cmd_chiodos_runtime_ops_recovery_drill(
-                        &supervisor_profile,
-                        &run_id,
-                        &store,
-                        &evidence_root,
-                        now_unix_ms,
-                        &report,
-                    ),
-                    ChiodosRuntimeOpsCommands::EvidenceHealth {
-                        supervisor_profile,
-                        run_id,
-                        store,
-                        evidence_root,
-                        now_unix_ms,
-                        report,
-                    } => cmd_chiodos_runtime_ops_evidence_health(
-                        &supervisor_profile,
-                        &run_id,
-                        &store,
-                        &evidence_root,
-                        now_unix_ms.unwrap_or_else(unix_now_ms),
-                        &report,
-                    ),
-                    ChiodosRuntimeOpsCommands::ProviderHealth {
-                        supervisor_profile,
-                        provider_bindings,
-                        now_unix_ms,
-                        report,
-                    } => cmd_chiodos_runtime_ops_provider_health(
-                        &supervisor_profile,
-                        &provider_bindings,
-                        now_unix_ms.unwrap_or_else(unix_now_ms),
-                        &report,
-                    ),
-                    ChiodosRuntimeOpsCommands::Retention { command } => match command {
-                        ChiodosRuntimeOpsRetentionCommands::Plan {
-                            retention_profile,
-                            store,
-                            evidence_root,
-                            now_unix_ms,
-                            report,
-                        } => cmd_chiodos_runtime_ops_retention_plan(
-                            &retention_profile,
-                            &store,
-                            &evidence_root,
-                            now_unix_ms,
-                            &report,
-                        ),
-                    },
-                },
-                ChiodosRuntimeCommands::RunLoopback {
-                    scenario,
-                    store_dir,
-                    now_unix_ms,
-                    out_dir,
-                } => cmd_chiodos_runtime_run_loopback(
-                    &scenario,
-                    &store_dir,
-                    now_unix_ms,
-                    &out_dir,
-                ),
-            },
-            ChiodosCommands::Treaty { command } => match command {
-                ChiodosTreatyCommands::Intersect {
-                    treaty_scope,
-                    manifest,
-                    now_unix_ms,
-                    report,
-                } => cmd_chiodos_treaty_intersect(
-                    &treaty_scope,
-                    &manifest,
-                    now_unix_ms,
-                    &report,
-                ),
-                ChiodosTreatyCommands::Admit {
-                    treaty_scope,
-                    ladder_intersection,
-                    expected_ladder_intersection_sha256,
-                    action_class_id,
-                    evidence,
-                    now_unix_ms,
-                    report,
-                } => cmd_chiodos_treaty_admit(
-                    &treaty_scope,
-                    &ladder_intersection,
-                    &expected_ladder_intersection_sha256,
-                    &action_class_id,
-                    &evidence,
-                    now_unix_ms,
-                    &report,
-                ),
-                ChiodosTreatyCommands::VerifyPacket {
-                    packet,
-                    lineage_statement,
-                    continuation,
-                    admission_report,
-                    bilateral_invocation,
-                    report,
-                } => cmd_chiodos_treaty_verify_packet(
-                    &packet,
-                    &lineage_statement,
-                    &continuation,
-                    &admission_report,
-                    &bilateral_invocation,
-                    &report,
-                ),
-            },
-            ChiodosCommands::Buyer { command } => match command {
-                ChiodosBuyerCommands::Package { run_output, out } => {
-                    cmd_chiodos_buyer_package(&run_output, &out)
-                }
-                ChiodosBuyerCommands::Verify {
-                    package,
-                    trust_bundle,
-                    context,
-                    report,
-                } => cmd_chiodos_buyer_verify(&package, &trust_bundle, &context, &report),
-                ChiodosBuyerCommands::Explain {
-                    report,
-                    format,
-                    out,
-                } => cmd_chiodos_buyer_explain(&report, &format, &out),
-            },
-            ChiodosCommands::Pheromone { command } => match command {
-                ChiodosPheromoneCommands::Receive {
-                    batch,
-                    transit_policy,
-                    proof_package,
-                    trust_bundle,
-                    context,
-                    store,
-                    now_unix_ms,
-                    report,
-                } => cmd_chiodos_pheromone_receive(
-                    &batch,
-                    &transit_policy,
-                    &proof_package,
-                    &trust_bundle,
-                    &context,
-                    &store,
-                    now_unix_ms,
-                    &report,
-                ),
-                ChiodosPheromoneCommands::Query {
-                    store,
-                    subject_class,
-                    namespace,
-                    reputation_epoch,
-                    peer_weights,
-                    now_unix_ms,
-                    report,
-                } => cmd_chiodos_pheromone_query(
-                    &store,
-                    &subject_class,
-                    &namespace,
-                    reputation_epoch,
-                    &peer_weights,
-                    now_unix_ms,
-                    &report,
-                ),
-                ChiodosPheromoneCommands::Relay { command } => match command {
-                    ChiodosPheromoneRelayCommands::Lint {
-                        peer_directory,
-                        peer_directory_state,
-                        profile,
-                        trusted_issuers,
-                        report,
-                    } => cmd_chiodos_pheromone_relay_lint(
-                        peer_directory.as_deref(),
-                        peer_directory_state.as_deref(),
-                        profile.into(),
-                        trusted_issuers.as_deref(),
-                        &report,
-                    ),
-                    ChiodosPheromoneRelayCommands::Serve {
-                        listen,
-                        store,
-                        peer_directory,
-                        peer_directory_state,
-                        profile,
-                        trusted_issuers,
-                        transit_policy,
-                        proof_package,
-                        trust_bundle,
-                        context,
-                        report_dir,
-                        operator_token_env,
-                    } => cmd_chiodos_pheromone_relay_serve(
-                        &listen,
-                        &store,
-                        peer_directory.as_deref(),
-                        peer_directory_state.as_deref(),
-                        profile.into(),
-                        trusted_issuers.as_deref(),
-                        &transit_policy,
-                        &proof_package,
-                        &trust_bundle,
-                        &context,
-                        &report_dir,
-                        operator_token_env.as_deref(),
-                    ),
-                    ChiodosPheromoneRelayCommands::Enqueue {
-                        store,
-                        batch,
-                        transit_policy,
-                        peer_directory,
-                        peer_directory_state,
-                        profile,
-                        trusted_issuers,
-                        now_unix_ms,
-                        report,
-                    } => cmd_chiodos_pheromone_relay_enqueue(
-                        &store,
-                        &batch,
-                        &transit_policy,
-                        peer_directory.as_deref(),
-                        peer_directory_state.as_deref(),
-                        profile.into(),
-                        trusted_issuers.as_deref(),
-                        now_unix_ms,
-                        &report,
-                    ),
-                    ChiodosPheromoneRelayCommands::Tick {
-                        store,
-                        peer_directory,
-                        peer_directory_state,
-                        profile,
-                        trusted_issuers,
-                        now_unix_ms,
-                        max_batches,
-                        signing_key,
-                        report,
-                        report_dir,
-                    } => cmd_chiodos_pheromone_relay_tick(
-                        &store,
-                        peer_directory.as_deref(),
-                        peer_directory_state.as_deref(),
-                        profile.into(),
-                        trusted_issuers.as_deref(),
-                        now_unix_ms,
-                        max_batches,
-                        &signing_key,
-                        &report,
-                        report_dir.as_deref(),
-                    ),
-                    ChiodosPheromoneRelayCommands::Catchup {
-                        store,
-                        peer,
-                        peer_directory_state,
-                        profile,
-                        trusted_issuers,
-                        now_unix_ms,
-                        treaty,
-                        after_cursor,
-                        limit,
-                        report,
-                    } => cmd_chiodos_pheromone_relay_catchup(
-                        &store,
-                        &peer,
-                        peer_directory_state.as_deref(),
-                        profile.into(),
-                        trusted_issuers.as_deref(),
-                        now_unix_ms,
-                        &treaty,
-                        &after_cursor,
-                        limit,
-                        &report,
-                    ),
-                    ChiodosPheromoneRelayCommands::Status { store, report } => {
-                        cmd_chiodos_pheromone_relay_status(&store, &report)
-                    }
-                    ChiodosPheromoneRelayCommands::Observe {
-                        store,
-                        peer_directory_state,
-                        profile,
-                        trusted_issuers,
-                        report_dir,
-                        limit,
-                        report,
-                    } => cmd_chiodos_pheromone_relay_observe(
-                        &store,
-                        &peer_directory_state,
-                        profile.into(),
-                        &trusted_issuers,
-                        &report_dir,
-                        limit,
-                        &report,
-                    ),
-                    ChiodosPheromoneRelayCommands::Metrics {
-                        store,
-                        format,
-                        output,
-                    } => cmd_chiodos_pheromone_relay_metrics(&store, format.into(), &output),
-                    ChiodosPheromoneRelayCommands::Alert { command } => match command {
-                        ChiodosPheromoneRelayAlertCommands::Evaluate {
-                            observability_report,
-                            event_dir,
-                            routing_profile,
-                            suppression_state,
-                            now_unix_ms,
-                            report,
-                        } => cmd_chiodos_pheromone_relay_alert_evaluate(
-                            &observability_report,
-                            &event_dir,
-                            &routing_profile,
-                            &suppression_state,
-                            now_unix_ms,
-                            &report,
-                        ),
-                        ChiodosPheromoneRelayAlertCommands::Handoff {
-                            alert_report,
-                            trend_report,
-                            routing_profile,
-                            handoff_profile,
-                            now_unix_ms,
-                            report,
-                        } => cmd_chiodos_pheromone_relay_alert_handoff(
-                            &alert_report,
-                            &trend_report,
-                            &routing_profile,
-                            &handoff_profile,
-                            now_unix_ms,
-                                &report,
-                            ),
-                        ChiodosPheromoneRelayAlertCommands::Normalize {
-                            profile,
-                            input_dir,
-                            now_unix_ms,
-                            out_dir,
-                            report,
-                        } => cmd_chiodos_pheromone_relay_alert_normalize(
-                            &profile,
-                            &input_dir,
-                            now_unix_ms,
-                            &out_dir,
-                            &report,
-                        ),
-                        ChiodosPheromoneRelayAlertCommands::Delivery { command } => match command {
-                            ChiodosPheromoneRelayAlertDeliveryCommands::Import {
-                                handoff_report,
-                                delivery_profile,
-                                evidence_dir,
-                                now_unix_ms,
-                                report,
-                            } => cmd_chiodos_pheromone_relay_alert_delivery_import(
-                                &handoff_report,
-                                &delivery_profile,
-                                &evidence_dir,
-                                now_unix_ms,
-                                &report,
-                            ),
-                            ChiodosPheromoneRelayAlertDeliveryCommands::Acknowledge {
-                                handoff_report,
-                                delivery_report,
-                                delivery_profile,
-                                now_unix_ms,
-                                report,
-                            } => cmd_chiodos_pheromone_relay_alert_delivery_acknowledge(
-                                &handoff_report,
-                                &delivery_report,
-                                &delivery_profile,
-                                now_unix_ms,
-                                &report,
-                            ),
-                            ChiodosPheromoneRelayAlertDeliveryCommands::Drift {
-                                handoff_reports_dir,
-                                delivery_reports_dir,
-                                delivery_profile,
-                                since_unix_ms,
-                                until_unix_ms,
-                                report,
-                            } => cmd_chiodos_pheromone_relay_alert_delivery_drift(
-                                &handoff_reports_dir,
-                                &delivery_reports_dir,
-                                &delivery_profile,
-                                since_unix_ms,
-                                until_unix_ms,
-                                &report,
-                            ),
-                            ChiodosPheromoneRelayAlertDeliveryCommands::DriftWindow {
-                                handoff_reports_dir,
-                                delivery_reports_dir,
-                                delivery_profile,
-                                since_unix_ms,
-                                until_unix_ms,
-                                report,
-                            } => cmd_chiodos_pheromone_relay_alert_delivery_drift_window(
-                                &handoff_reports_dir,
-                                &delivery_reports_dir,
-                                &delivery_profile,
-                                since_unix_ms,
-                                until_unix_ms,
-                                &report,
-                            ),
-                        },
-                        ChiodosPheromoneRelayAlertCommands::Review {
-                            handoff_report,
-                            delivery_report,
-                            acknowledgement_report,
-                            drift_report,
-                            route_owner_profile,
-                            now_unix_ms,
-                            report,
-                        } => cmd_chiodos_pheromone_relay_alert_review(
-                            &handoff_report,
-                            &delivery_report,
-                            &acknowledgement_report,
-                            &drift_report,
-                            &route_owner_profile,
-                            now_unix_ms,
-                            &report,
-                        ),
-                        ChiodosPheromoneRelayAlertCommands::Assurance { command } => match command {
-                            ChiodosPheromoneRelayAlertAssuranceCommands::Package {
-                                alert_report,
-                                trend_report,
-                                handoff_report,
-                                normalization_report,
-                                delivery_report,
-                                acknowledgement_report,
-                                drift_report,
-                                review_packet,
-                                now_unix_ms,
-                                report,
-                            } => cmd_chiodos_pheromone_relay_alert_assurance_package(
-                                &alert_report,
-                                &trend_report,
-                                &handoff_report,
-                                &normalization_report,
-                                &delivery_report,
-                                &acknowledgement_report,
-                                &drift_report,
-                                &review_packet,
-                                now_unix_ms,
-                                &report,
-                            ),
-                            ChiodosPheromoneRelayAlertAssuranceCommands::Export {
-                                package,
-                                alert_report,
-                                trend_report,
-                                handoff_report,
-                                normalization_report,
-                                delivery_report,
-                                acknowledgement_report,
-                                drift_report,
-                                review_packet,
-                                retention_profile,
-                                signing_key,
-                                now_unix_ms,
-                                out_dir,
-                                report,
-                            } => cmd_chiodos_pheromone_relay_alert_assurance_export(
-                                &package,
-                                &alert_report,
-                                &trend_report,
-                                &handoff_report,
-                                &normalization_report,
-                                &delivery_report,
-                                &acknowledgement_report,
-                                &drift_report,
-                                &review_packet,
-                                &retention_profile,
-                                &signing_key,
-                                now_unix_ms,
-                                &out_dir,
-                                &report,
-                            ),
-                            ChiodosPheromoneRelayAlertAssuranceCommands::Verify {
-                                bundle_dir,
-                                trusted_exporters,
-                                now_unix_ms,
-                                report,
-                            } => cmd_chiodos_pheromone_relay_alert_assurance_verify(
-                                &bundle_dir,
-                                &trusted_exporters,
-                                now_unix_ms,
-                                &report,
-                            ),
-                            ChiodosPheromoneRelayAlertAssuranceCommands::Replay {
-                                bundle_dir,
-                                trusted_exporters,
-                                now_unix_ms,
-                                report,
-                            } => cmd_chiodos_pheromone_relay_alert_assurance_replay(
-                                &bundle_dir,
-                                &trusted_exporters,
-                                now_unix_ms,
-                                &report,
-                            ),
-                            ChiodosPheromoneRelayAlertAssuranceCommands::Retention {
-                                command,
-                            } => match command {
-                                ChiodosPheromoneRelayAlertAssuranceRetentionCommands::Plan {
-                                    bundle_root,
-                                    retention_profile,
-                                    now_unix_ms,
-                                    report,
-                                } => cmd_chiodos_pheromone_relay_alert_assurance_retention_plan(
-                                    &bundle_root,
-                                    &retention_profile,
-                                    now_unix_ms,
-                                    &report,
-                                ),
-                            },
-                            ChiodosPheromoneRelayAlertAssuranceCommands::RecoveryDrill {
-                                bundle_dir,
-                                trusted_exporters,
-                                case,
-                                now_unix_ms,
-                                report,
-                            } => cmd_chiodos_pheromone_relay_alert_assurance_recovery_drill(
-                                &bundle_dir,
-                                &trusted_exporters,
-                                &case,
-                                now_unix_ms,
-                                &report,
-                            ),
-                            ChiodosPheromoneRelayAlertAssuranceCommands::Archive {
-                                command,
-                            } => match command {
-                                ChiodosPheromoneRelayAlertAssuranceArchiveCommands::Plan {
-                                    bundle_root,
-                                    trusted_exporters,
-                                    archive_profile,
-                                    retention_profile,
-                                    now_unix_ms,
-                                    report,
-                                } => cmd_chiodos_pheromone_relay_alert_assurance_archive_plan(
-                                    &bundle_root,
-                                    &trusted_exporters,
-                                    &archive_profile,
-                                    &retention_profile,
-                                    now_unix_ms,
-                                    &report,
-                                ),
-                            },
-                            ChiodosPheromoneRelayAlertAssuranceCommands::Closeout {
-                                command,
-                            } => match command {
-                                ChiodosPheromoneRelayAlertAssuranceCloseoutCommands::Review {
-                                    bundle_root,
-                                    trusted_exporters,
-                                    closeout_profile,
-                                    retention_profile,
-                                    now_unix_ms,
-                                    report,
-                                } => cmd_chiodos_pheromone_relay_alert_assurance_closeout_review(
-                                    &bundle_root,
-                                    &trusted_exporters,
-                                    &closeout_profile,
-                                    &retention_profile,
-                                    now_unix_ms,
-                                    &report,
-                                ),
-                            },
-                        },
-                    },
-                    ChiodosPheromoneRelayCommands::Trend {
-                        reports_dir,
-                        event_dir,
-                        routing_profile,
-                        since_unix_ms,
-                        until_unix_ms,
-                        report,
-                    } => cmd_chiodos_pheromone_relay_trend(
-                        &reports_dir,
-                        &event_dir,
-                        &routing_profile,
-                        since_unix_ms,
-                        until_unix_ms,
-                        &report,
-                    ),
-                    ChiodosPheromoneRelayCommands::Directory { command } => match command {
-                        ChiodosPheromoneRelayDirectoryCommands::Inspect { state, report } => {
-                            cmd_chiodos_pheromone_relay_directory_inspect(&state, &report)
-                        }
-                        ChiodosPheromoneRelayDirectoryCommands::Promote {
-                            state,
-                            candidate,
-                            trusted_issuers,
-                            profile,
-                            now_unix_ms,
-                            report,
-                        } => cmd_chiodos_pheromone_relay_directory_promote(
-                            &state,
-                            &candidate,
-                            &trusted_issuers,
-                            profile.into(),
-                            now_unix_ms,
-                            &report,
-                        ),
-                        ChiodosPheromoneRelayDirectoryCommands::Reject {
-                            state,
-                            candidate,
-                            reason,
-                            now_unix_ms,
-                            report,
-                        } => cmd_chiodos_pheromone_relay_directory_reject(
-                            &state,
-                            &candidate,
-                            &reason,
-                            now_unix_ms,
-                            &report,
-                        ),
-                    },
-                    ChiodosPheromoneRelayCommands::Supervisor { command } => match command {
-                        ChiodosPheromoneRelaySupervisorCommands::Lint { profile, report } => {
-                            cmd_chiodos_pheromone_relay_supervisor_lint(&profile, &report)
-                        }
-                    },
-                },
-            },
-        },
+        Commands::Federation { command } => dispatch_chio_federation_command(command),
+        Commands::Attest { command } => dispatch_chio_attest_command(command),
+        Commands::Runtime { command } => dispatch_chio_runtime_command(command),
+        Commands::Pheromone { command } => dispatch_chio_pheromone_command(command),
         Commands::Replay(args) => cmd_replay(&args),
         Commands::Lineage { command } => dispatch_lineage(command, json_output),
         Commands::Settle { command } => match command {
@@ -3400,8 +2542,7 @@ fn write_cli_error(
 ) -> std::io::Result<()> {
     let report = error.report();
     if json_output {
-        serde_json::to_writer(&mut *writer, &report)
-            .map_err(std::io::Error::other)?;
+        serde_json::to_writer(&mut *writer, &report).map_err(std::io::Error::other)?;
         writeln!(writer)
     } else {
         writeln!(writer, "error [{}]: {}", report.code, report.message)?;
@@ -3613,6 +2754,1493 @@ fn emit_lineage_report<T: serde::Serialize>(report: &T, json: bool) -> Result<()
             .map_err(|e| CliError::Other(format!("lineage write: {e}")))?;
         std::io::Write::write_all(&mut std::io::stdout(), b"\n")
             .map_err(|e| CliError::Other(format!("lineage write: {e}")))?;
+    }
+    Ok(())
+}
+
+fn dispatch_chio_federation_command(command: ChioFederationCommands) -> Result<(), CliError> {
+    match command {
+        ChioFederationCommands::Authority { command } => dispatch_chio_authority_command(command),
+        ChioFederationCommands::Treaty { command } => dispatch_chio_treaty_command(command),
+    }
+}
+
+fn dispatch_chio_authority_command(command: ChioAuthorityCommands) -> Result<(), CliError> {
+    match command {
+        ChioAuthorityCommands::Issue {
+            profile,
+            request,
+            signing_keys,
+            out_dir,
+        } => cmd_chio_federation_authority_issue(&profile, &request, &signing_keys, &out_dir),
+        ChioAuthorityCommands::Checkpoint {
+            profile,
+            revocations,
+            signing_keys,
+            out,
+        } => cmd_chio_federation_authority_checkpoint(&profile, &revocations, &signing_keys, &out),
+        ChioAuthorityCommands::TrustBundle { command } => match command {
+            ChioTrustBundleCommands::Assemble {
+                profile,
+                peer_pins,
+                workflow_intersection,
+                disclosure_policy,
+                checkpoint,
+                out,
+            } => cmd_chio_federation_authority_trust_bundle_assemble(
+                &profile,
+                &peer_pins,
+                &workflow_intersection,
+                &disclosure_policy,
+                &checkpoint,
+                &out,
+            ),
+        },
+    }
+}
+
+fn dispatch_chio_treaty_command(command: ChioTreatyCommands) -> Result<(), CliError> {
+    match command {
+        ChioTreatyCommands::Intersect {
+            treaty_scope,
+            manifest,
+            now_unix_ms,
+            report,
+        } => cmd_chio_federation_treaty_intersect(&treaty_scope, &manifest, now_unix_ms, &report),
+        ChioTreatyCommands::Admit {
+            treaty_scope,
+            ladder_intersection,
+            expected_ladder_intersection_sha256,
+            action_class_id,
+            evidence,
+            now_unix_ms,
+            report,
+        } => cmd_chio_federation_treaty_admit(
+            &treaty_scope,
+            &ladder_intersection,
+            &expected_ladder_intersection_sha256,
+            &action_class_id,
+            &evidence,
+            now_unix_ms,
+            &report,
+        ),
+        ChioTreatyCommands::VerifyPacket {
+            packet,
+            lineage_statement,
+            continuation,
+            admission_report,
+            bilateral_invocation,
+            report,
+        } => cmd_chio_federation_treaty_verify_packet(
+            &packet,
+            &lineage_statement,
+            &continuation,
+            &admission_report,
+            &bilateral_invocation,
+            &report,
+        ),
+    }
+}
+
+fn dispatch_chio_attest_command(command: ChioAttestCommands) -> Result<(), CliError> {
+    match command {
+        ChioAttestCommands::Buyer { command } => dispatch_chio_buyer_command(command),
+        ChioAttestCommands::SupplyChain { command } => match command {
+            ChioSupplyChainCommands::Verify {
+                artifact,
+                bundle,
+                issuer_san_regex,
+                issuer_oidc,
+                report,
+            } => cmd_chio_attest_supply_chain_verify(
+                &artifact,
+                &bundle,
+                &issuer_san_regex,
+                &issuer_oidc,
+                report.as_deref(),
+            ),
+        },
+        ChioAttestCommands::RuntimeQuote { command } => match command {
+            ChioRuntimeQuoteCommands::Verify {
+                kernel_public_key,
+                receipt_root,
+                report_data,
+                tee_kind,
+                quote,
+                collateral,
+                report,
+            } => cmd_chio_attest_runtime_quote_verify(
+                &kernel_public_key,
+                &receipt_root,
+                report_data.as_deref(),
+                tee_kind.as_deref(),
+                quote.as_deref(),
+                collateral.as_deref(),
+                report.as_deref(),
+            ),
+        },
+    }
+}
+
+fn dispatch_chio_buyer_command(command: ChioBuyerCommands) -> Result<(), CliError> {
+    match command {
+        ChioBuyerCommands::Packet { run_output, out } => {
+            cmd_chio_attest_buyer_package(&run_output, &out)
+        }
+        ChioBuyerCommands::Verify {
+            package,
+            trust_bundle,
+            context,
+            report,
+        } => cmd_chio_attest_buyer_verify(&package, &trust_bundle, &context, &report),
+        ChioBuyerCommands::VerifyProof {
+            package,
+            trust_bundle,
+            context,
+            report,
+        } => cmd_chio_attest_buyer_verify_proof(&package, &trust_bundle, &context, &report),
+        ChioBuyerCommands::VerifyPacket {
+            packet,
+            lineage_statement,
+            continuation,
+            admission_report,
+            bilateral_invocation,
+            report,
+        } => cmd_chio_attest_buyer_verify_packet(
+            &packet,
+            &lineage_statement,
+            &continuation,
+            &admission_report,
+            &bilateral_invocation,
+            &report,
+        ),
+        ChioBuyerCommands::Explain {
+            report,
+            format,
+            out,
+        } => cmd_chio_attest_buyer_explain(&report, &format, &out),
+    }
+}
+
+fn dispatch_chio_runtime_command(command: ChioRuntimeCommands) -> Result<(), CliError> {
+    match command {
+        ChioRuntimeCommands::Admit {
+            request,
+            admission_profile,
+            admission_bundle,
+            runtime_trust_input,
+            trusted_verifiers,
+            pheromone_query_report,
+            runtime_pheromone_policy,
+            runtime_peer_weights,
+            action_class_id,
+            trust_floor_state,
+            store,
+            now_unix_ms,
+            report,
+        } => cmd_chio_runtime_admit(
+            &request,
+            &admission_profile,
+            &admission_bundle,
+            runtime_trust_input.as_deref(),
+            trusted_verifiers.as_deref(),
+            pheromone_query_report.as_deref(),
+            runtime_pheromone_policy.as_deref(),
+            runtime_peer_weights.as_deref(),
+            action_class_id.as_deref(),
+            trust_floor_state.as_deref(),
+            &store,
+            now_unix_ms,
+            &report,
+        ),
+        ChioRuntimeCommands::SignTrustInput {
+            body,
+            signing_seed_file,
+            out,
+        } => cmd_chio_runtime_sign_trust_input(&body, &signing_seed_file, &out),
+        ChioRuntimeCommands::Policy { command } => match command {
+            ChioRuntimePolicyCommands::Sign {
+                body,
+                signing_seed_file,
+                out,
+            } => cmd_chio_runtime_sign_policy(&body, &signing_seed_file, &out),
+        },
+        ChioRuntimeCommands::PeerWeights { command } => match command {
+            ChioRuntimePeerWeightsCommands::Hash { body, out } => {
+                cmd_chio_runtime_peer_weights_hash(&body, &out)
+            }
+            ChioRuntimePeerWeightsCommands::Sign {
+                body,
+                signing_seed_file,
+                out,
+            } => cmd_chio_runtime_sign_peer_weights(&body, &signing_seed_file, &out),
+        },
+        ChioRuntimeCommands::Pheromone { command } => match command {
+            ChioRuntimePheromoneCommands::SignQueryReport {
+                body,
+                signing_seed_file,
+                out,
+            } => cmd_chio_runtime_sign_pheromone_query_report(&body, &signing_seed_file, &out),
+            ChioRuntimePheromoneCommands::Evaluate {
+                admission_bundle,
+                runtime_trust_input,
+                trusted_verifiers,
+                pheromone_query_report,
+                runtime_pheromone_policy,
+                runtime_peer_weights,
+                action_class_id,
+                now_unix_ms,
+                report,
+            } => cmd_chio_runtime_pheromone_evaluate(
+                &admission_bundle,
+                &runtime_trust_input,
+                &trusted_verifiers,
+                &pheromone_query_report,
+                &runtime_pheromone_policy,
+                &runtime_peer_weights,
+                action_class_id.as_deref(),
+                now_unix_ms,
+                &report,
+            ),
+        },
+        ChioRuntimeCommands::Orchestrate { command } => match command {
+            ChioRuntimeOrchestrateCommands::Lint { profile, report } => {
+                cmd_chio_runtime_orchestrate_lint(&profile, &report)
+            }
+            ChioRuntimeOrchestrateCommands::Plan {
+                profile,
+                run_contract,
+                store,
+                evidence_dir,
+                now_unix_ms,
+                report,
+            } => cmd_chio_runtime_orchestrate_plan(
+                &profile,
+                &run_contract,
+                &store,
+                &evidence_dir,
+                now_unix_ms,
+                &report,
+            ),
+            ChioRuntimeOrchestrateCommands::Run {
+                profile,
+                run_contract,
+                store,
+                evidence_dir,
+                now_unix_ms,
+                report,
+            } => cmd_chio_runtime_orchestrate_run(
+                &profile,
+                &run_contract,
+                &store,
+                &evidence_dir,
+                now_unix_ms,
+                &report,
+            ),
+            ChioRuntimeOrchestrateCommands::Resume {
+                profile,
+                resume_plan,
+                store,
+                evidence_dir,
+                now_unix_ms,
+                report,
+            } => cmd_chio_runtime_orchestrate_resume(
+                &profile,
+                &resume_plan,
+                &store,
+                &evidence_dir,
+                now_unix_ms,
+                &report,
+            ),
+            ChioRuntimeOrchestrateCommands::Status {
+                profile,
+                store,
+                evidence_dir,
+                now_unix_ms,
+                report,
+            } => cmd_chio_runtime_orchestrate_status(
+                &profile,
+                &store,
+                &evidence_dir,
+                now_unix_ms.unwrap_or_else(unix_now_ms),
+                &report,
+            ),
+            ChioRuntimeOrchestrateCommands::Drift {
+                profile,
+                runs_dir,
+                since_unix_ms,
+                until_unix_ms,
+                report,
+            } => cmd_chio_runtime_orchestrate_drift(
+                &profile,
+                &runs_dir,
+                since_unix_ms,
+                until_unix_ms,
+                &report,
+            ),
+        },
+        ChioRuntimeCommands::Ops { command } => match command {
+            ChioRuntimeOpsCommands::Supervise {
+                supervisor_profile,
+                store,
+                evidence_root,
+                provider_bindings,
+                now_unix_ms,
+                report,
+            } => cmd_chio_runtime_ops_status(
+                &supervisor_profile,
+                &store,
+                &evidence_root,
+                provider_bindings.as_deref(),
+                Some(now_unix_ms),
+                &report,
+            ),
+            ChioRuntimeOpsCommands::Tick {
+                supervisor_profile,
+                store,
+                evidence_root,
+                owner_id,
+                now_unix_ms,
+                max_runs,
+                report,
+            } => cmd_chio_runtime_ops_tick(
+                &supervisor_profile,
+                &store,
+                &evidence_root,
+                &owner_id,
+                now_unix_ms,
+                max_runs,
+                &report,
+            ),
+            ChioRuntimeOpsCommands::Status {
+                supervisor_profile,
+                store,
+                evidence_root,
+                provider_bindings,
+                now_unix_ms,
+                report,
+            } => cmd_chio_runtime_ops_status(
+                &supervisor_profile,
+                &store,
+                &evidence_root,
+                provider_bindings.as_deref(),
+                now_unix_ms,
+                &report,
+            ),
+            ChioRuntimeOpsCommands::RecoveryDrill {
+                supervisor_profile,
+                run_id,
+                store,
+                evidence_root,
+                now_unix_ms,
+                report,
+            } => cmd_chio_runtime_ops_recovery_drill(
+                &supervisor_profile,
+                &run_id,
+                &store,
+                &evidence_root,
+                now_unix_ms,
+                &report,
+            ),
+            ChioRuntimeOpsCommands::EvidenceHealth {
+                supervisor_profile,
+                run_id,
+                store,
+                evidence_root,
+                now_unix_ms,
+                report,
+            } => cmd_chio_runtime_ops_evidence_health(
+                &supervisor_profile,
+                &run_id,
+                &store,
+                &evidence_root,
+                now_unix_ms.unwrap_or_else(unix_now_ms),
+                &report,
+            ),
+            ChioRuntimeOpsCommands::ProviderHealth {
+                supervisor_profile,
+                provider_bindings,
+                now_unix_ms,
+                report,
+            } => cmd_chio_runtime_ops_provider_health(
+                &supervisor_profile,
+                &provider_bindings,
+                now_unix_ms.unwrap_or_else(unix_now_ms),
+                &report,
+            ),
+            ChioRuntimeOpsCommands::Retention { command } => match command {
+                ChioRuntimeOpsRetentionCommands::Plan {
+                    retention_profile,
+                    store,
+                    evidence_root,
+                    now_unix_ms,
+                    report,
+                } => cmd_chio_runtime_ops_retention_plan(
+                    &retention_profile,
+                    &store,
+                    &evidence_root,
+                    now_unix_ms,
+                    &report,
+                ),
+            },
+        },
+        ChioRuntimeCommands::RunLoopback {
+            scenario,
+            store_dir,
+            now_unix_ms,
+            out_dir,
+        } => cmd_chio_runtime_run_loopback(&scenario, &store_dir, now_unix_ms, &out_dir),
+    }
+}
+
+fn dispatch_chio_pheromone_command(command: ChioPheromoneCommands) -> Result<(), CliError> {
+    match command {
+        ChioPheromoneCommands::Receive {
+            batch,
+            transit_policy,
+            proof_package,
+            trust_bundle,
+            context,
+            store,
+            now_unix_ms,
+            report,
+        } => cmd_chio_pheromone_receive(
+            &batch,
+            &transit_policy,
+            &proof_package,
+            &trust_bundle,
+            &context,
+            &store,
+            now_unix_ms,
+            &report,
+        ),
+        ChioPheromoneCommands::Query {
+            store,
+            subject_class,
+            namespace,
+            reputation_epoch,
+            peer_weights,
+            now_unix_ms,
+            report,
+        } => cmd_chio_pheromone_query(
+            &store,
+            &subject_class,
+            &namespace,
+            reputation_epoch,
+            &peer_weights,
+            now_unix_ms,
+            &report,
+        ),
+        ChioPheromoneCommands::Relay { command } => match command {
+            ChioPheromoneRelayCommands::Lint {
+                peer_directory,
+                peer_directory_state,
+                profile,
+                trusted_issuers,
+                report,
+            } => cmd_chio_pheromone_relay_lint(
+                peer_directory.as_deref(),
+                peer_directory_state.as_deref(),
+                profile.into(),
+                trusted_issuers.as_deref(),
+                &report,
+            ),
+            ChioPheromoneRelayCommands::Serve {
+                listen,
+                store,
+                peer_directory,
+                peer_directory_state,
+                profile,
+                trusted_issuers,
+                transit_policy,
+                proof_package,
+                trust_bundle,
+                context,
+                report_dir,
+                operator_token_env,
+            } => cmd_chio_pheromone_relay_serve(
+                &listen,
+                &store,
+                peer_directory.as_deref(),
+                peer_directory_state.as_deref(),
+                profile.into(),
+                trusted_issuers.as_deref(),
+                &transit_policy,
+                &proof_package,
+                &trust_bundle,
+                &context,
+                &report_dir,
+                operator_token_env.as_deref(),
+            ),
+            ChioPheromoneRelayCommands::Enqueue {
+                store,
+                batch,
+                transit_policy,
+                trust_bundle,
+                peer_directory,
+                peer_directory_state,
+                profile,
+                trusted_issuers,
+                now_unix_ms,
+                report,
+            } => cmd_chio_pheromone_relay_enqueue(
+                &store,
+                &batch,
+                &transit_policy,
+                &trust_bundle,
+                peer_directory.as_deref(),
+                peer_directory_state.as_deref(),
+                profile.into(),
+                trusted_issuers.as_deref(),
+                now_unix_ms,
+                &report,
+            ),
+            ChioPheromoneRelayCommands::Tick {
+                store,
+                peer_directory,
+                peer_directory_state,
+                profile,
+                trusted_issuers,
+                now_unix_ms,
+                max_batches,
+                signing_key,
+                report,
+                report_dir,
+            } => cmd_chio_pheromone_relay_tick(
+                &store,
+                peer_directory.as_deref(),
+                peer_directory_state.as_deref(),
+                profile.into(),
+                trusted_issuers.as_deref(),
+                now_unix_ms,
+                max_batches,
+                &signing_key,
+                &report,
+                report_dir.as_deref(),
+            ),
+            ChioPheromoneRelayCommands::Catchup {
+                store,
+                peer,
+                peer_directory_state,
+                profile,
+                trusted_issuers,
+                now_unix_ms,
+                treaty,
+                after_cursor,
+                limit,
+                report,
+            } => cmd_chio_pheromone_relay_catchup(
+                &store,
+                &peer,
+                peer_directory_state.as_deref(),
+                profile.into(),
+                trusted_issuers.as_deref(),
+                now_unix_ms,
+                &treaty,
+                &after_cursor,
+                limit,
+                &report,
+            ),
+            ChioPheromoneRelayCommands::Status { store, report } => {
+                cmd_chio_pheromone_relay_status(&store, &report)
+            }
+            ChioPheromoneRelayCommands::Observe {
+                store,
+                peer_directory_state,
+                profile,
+                trusted_issuers,
+                report_dir,
+                limit,
+                report,
+            } => cmd_chio_pheromone_relay_observe(
+                &store,
+                &peer_directory_state,
+                profile.into(),
+                &trusted_issuers,
+                &report_dir,
+                limit,
+                &report,
+            ),
+            ChioPheromoneRelayCommands::Metrics {
+                store,
+                format,
+                output,
+            } => cmd_chio_pheromone_relay_metrics(&store, format.into(), &output),
+            ChioPheromoneRelayCommands::Alert { command } => match command {
+                ChioPheromoneRelayAlertCommands::Evaluate {
+                    observability_report,
+                    event_dir,
+                    routing_profile,
+                    suppression_state,
+                    now_unix_ms,
+                    report,
+                } => cmd_chio_pheromone_relay_alert_evaluate(
+                    &observability_report,
+                    &event_dir,
+                    &routing_profile,
+                    &suppression_state,
+                    now_unix_ms,
+                    &report,
+                ),
+                ChioPheromoneRelayAlertCommands::Handoff {
+                    alert_report,
+                    trend_report,
+                    routing_profile,
+                    handoff_profile,
+                    now_unix_ms,
+                    report,
+                } => cmd_chio_pheromone_relay_alert_handoff(
+                    &alert_report,
+                    &trend_report,
+                    &routing_profile,
+                    &handoff_profile,
+                    now_unix_ms,
+                    &report,
+                ),
+                ChioPheromoneRelayAlertCommands::Normalize {
+                    profile,
+                    input_dir,
+                    now_unix_ms,
+                    out_dir,
+                    report,
+                } => cmd_chio_pheromone_relay_alert_normalize(
+                    &profile,
+                    &input_dir,
+                    now_unix_ms,
+                    &out_dir,
+                    &report,
+                ),
+                ChioPheromoneRelayAlertCommands::Delivery { command } => match command {
+                    ChioPheromoneRelayAlertDeliveryCommands::Import {
+                        handoff_report,
+                        delivery_profile,
+                        evidence_dir,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chio_pheromone_relay_alert_delivery_import(
+                        &handoff_report,
+                        &delivery_profile,
+                        &evidence_dir,
+                        now_unix_ms,
+                        &report,
+                    ),
+                    ChioPheromoneRelayAlertDeliveryCommands::Acknowledge {
+                        handoff_report,
+                        delivery_report,
+                        delivery_profile,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chio_pheromone_relay_alert_delivery_acknowledge(
+                        &handoff_report,
+                        &delivery_report,
+                        &delivery_profile,
+                        now_unix_ms,
+                        &report,
+                    ),
+                    ChioPheromoneRelayAlertDeliveryCommands::Drift {
+                        handoff_reports_dir,
+                        delivery_reports_dir,
+                        delivery_profile,
+                        since_unix_ms,
+                        until_unix_ms,
+                        report,
+                    } => cmd_chio_pheromone_relay_alert_delivery_drift(
+                        &handoff_reports_dir,
+                        &delivery_reports_dir,
+                        &delivery_profile,
+                        since_unix_ms,
+                        until_unix_ms,
+                        &report,
+                    ),
+                    ChioPheromoneRelayAlertDeliveryCommands::DriftWindow {
+                        handoff_reports_dir,
+                        delivery_reports_dir,
+                        delivery_profile,
+                        since_unix_ms,
+                        until_unix_ms,
+                        report,
+                    } => cmd_chio_pheromone_relay_alert_delivery_drift_window(
+                        &handoff_reports_dir,
+                        &delivery_reports_dir,
+                        &delivery_profile,
+                        since_unix_ms,
+                        until_unix_ms,
+                        &report,
+                    ),
+                },
+                ChioPheromoneRelayAlertCommands::Review {
+                    handoff_report,
+                    delivery_report,
+                    acknowledgement_report,
+                    drift_report,
+                    route_owner_profile,
+                    now_unix_ms,
+                    report,
+                } => cmd_chio_pheromone_relay_alert_review(
+                    &handoff_report,
+                    &delivery_report,
+                    &acknowledgement_report,
+                    &drift_report,
+                    &route_owner_profile,
+                    now_unix_ms,
+                    &report,
+                ),
+                ChioPheromoneRelayAlertCommands::Assurance { command } => match command {
+                    ChioPheromoneRelayAlertAssuranceCommands::Package {
+                        alert_report,
+                        trend_report,
+                        handoff_report,
+                        normalization_report,
+                        delivery_report,
+                        acknowledgement_report,
+                        drift_report,
+                        review_packet,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chio_pheromone_relay_alert_assurance_package(
+                        &alert_report,
+                        &trend_report,
+                        &handoff_report,
+                        &normalization_report,
+                        &delivery_report,
+                        &acknowledgement_report,
+                        &drift_report,
+                        &review_packet,
+                        now_unix_ms,
+                        &report,
+                    ),
+                    ChioPheromoneRelayAlertAssuranceCommands::Export {
+                        package,
+                        alert_report,
+                        trend_report,
+                        handoff_report,
+                        normalization_report,
+                        delivery_report,
+                        acknowledgement_report,
+                        drift_report,
+                        review_packet,
+                        retention_profile,
+                        signing_key,
+                        now_unix_ms,
+                        out_dir,
+                        report,
+                    } => cmd_chio_pheromone_relay_alert_assurance_export(
+                        &package,
+                        &alert_report,
+                        &trend_report,
+                        &handoff_report,
+                        &normalization_report,
+                        &delivery_report,
+                        &acknowledgement_report,
+                        &drift_report,
+                        &review_packet,
+                        &retention_profile,
+                        &signing_key,
+                        now_unix_ms,
+                        &out_dir,
+                        &report,
+                    ),
+                    ChioPheromoneRelayAlertAssuranceCommands::Verify {
+                        bundle_dir,
+                        trusted_exporters,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chio_pheromone_relay_alert_assurance_verify(
+                        &bundle_dir,
+                        &trusted_exporters,
+                        now_unix_ms,
+                        &report,
+                    ),
+                    ChioPheromoneRelayAlertAssuranceCommands::Replay {
+                        bundle_dir,
+                        trusted_exporters,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chio_pheromone_relay_alert_assurance_replay(
+                        &bundle_dir,
+                        &trusted_exporters,
+                        now_unix_ms,
+                        &report,
+                    ),
+                    ChioPheromoneRelayAlertAssuranceCommands::Retention { command } => {
+                        match command {
+                            ChioPheromoneRelayAlertAssuranceRetentionCommands::Plan {
+                                bundle_root,
+                                retention_profile,
+                                now_unix_ms,
+                                report,
+                            } => cmd_chio_pheromone_relay_alert_assurance_retention_plan(
+                                &bundle_root,
+                                &retention_profile,
+                                now_unix_ms,
+                                &report,
+                            ),
+                            ChioPheromoneRelayAlertAssuranceRetentionCommands::Handoff {
+                                command,
+                            } => match command {
+                                ChioPheromoneRelayAlertAssuranceRetentionHandoffCommands::Review {
+                                    evidence,
+                                    profile,
+                                    package_report,
+                                    now_unix_ms,
+                                    report,
+                                } => cmd_chio_pheromone_relay_alert_assurance_retention_handoff_review(
+                                    &evidence,
+                                    &profile,
+                                    &package_report,
+                                    now_unix_ms,
+                                    &report,
+                                ),
+                            },
+                            ChioPheromoneRelayAlertAssuranceRetentionCommands::ExternalReview {
+                                package_dir,
+                                source_report_dir,
+                                trusted_packagers,
+                                trusted_exporters,
+                                profile,
+                                since_unix_ms,
+                                until_unix_ms,
+                                now_unix_ms,
+                                report,
+                            } => cmd_chio_pheromone_relay_alert_assurance_retention_external_review(
+                                &package_dir,
+                                &source_report_dir,
+                                &trusted_packagers,
+                                &trusted_exporters,
+                                &profile,
+                                since_unix_ms,
+                                until_unix_ms,
+                                now_unix_ms,
+                                &report,
+                            ),
+                        }
+                    }
+                    ChioPheromoneRelayAlertAssuranceCommands::RecoveryDrill {
+                        bundle_dir,
+                        trusted_exporters,
+                        case,
+                        now_unix_ms,
+                        report,
+                    } => cmd_chio_pheromone_relay_alert_assurance_recovery_drill(
+                        &bundle_dir,
+                        &trusted_exporters,
+                        &case,
+                        now_unix_ms,
+                        &report,
+                    ),
+                    ChioPheromoneRelayAlertAssuranceCommands::Archive { command } => {
+                        match command {
+                            ChioPheromoneRelayAlertAssuranceArchiveCommands::Plan {
+                                bundle_root,
+                                trusted_exporters,
+                                archive_profile,
+                                retention_profile,
+                                now_unix_ms,
+                                report,
+                            } => cmd_chio_pheromone_relay_alert_assurance_archive_plan(
+                                &bundle_root,
+                                &trusted_exporters,
+                                &archive_profile,
+                                &retention_profile,
+                                now_unix_ms,
+                                &report,
+                            ),
+                            ChioPheromoneRelayAlertAssuranceArchiveCommands::Package { command } => {
+                                match command {
+                                    ChioPheromoneRelayAlertAssuranceArchivePackageCommands::Create {
+                                        bundle_root,
+                                        trusted_exporters,
+                                        archive_report,
+                                        closeout_report,
+                                        signing_key,
+                                        package_id,
+                                        packager_key_id,
+                                        package_generation,
+                                        previous_package_report,
+                                        now_unix_ms,
+                                        out,
+                                        report,
+                                    } => cmd_chio_pheromone_relay_alert_assurance_archive_package_create(
+                                        &bundle_root,
+                                        &trusted_exporters,
+                                        &archive_report,
+                                        &closeout_report,
+                                        &signing_key,
+                                        &package_id,
+                                        &packager_key_id,
+                                        package_generation,
+                                        previous_package_report.as_deref(),
+                                        now_unix_ms,
+                                        &out,
+                                        &report,
+                                    ),
+                                    ChioPheromoneRelayAlertAssuranceArchivePackageCommands::Verify {
+                                        package,
+                                        trusted_packagers,
+                                        trusted_exporters,
+                                        archive_report,
+                                        closeout_report,
+                                        now_unix_ms,
+                                        report,
+                                    } => cmd_chio_pheromone_relay_alert_assurance_archive_package_verify(
+                                        &package,
+                                        &trusted_packagers,
+                                        &trusted_exporters,
+                                        &archive_report,
+                                        &closeout_report,
+                                        now_unix_ms,
+                                        &report,
+                                    ),
+                                    ChioPheromoneRelayAlertAssuranceArchivePackageCommands::Extract {
+                                        package,
+                                        trusted_packagers,
+                                        trusted_exporters,
+                                        archive_report,
+                                        closeout_report,
+                                        out_dir,
+                                        now_unix_ms,
+                                        report,
+                                    } => cmd_chio_pheromone_relay_alert_assurance_archive_package_extract(
+                                        &package,
+                                        &trusted_packagers,
+                                        &trusted_exporters,
+                                        &archive_report,
+                                        &closeout_report,
+                                        &out_dir,
+                                        now_unix_ms,
+                                        &report,
+                                    ),
+                                }
+                            }
+                            ChioPheromoneRelayAlertAssuranceArchiveCommands::PhysicalDrill {
+                                command,
+                            } => match command {
+                                ChioPheromoneRelayAlertAssurancePhysicalDrillCommands::Review {
+                                    evidence,
+                                    package_report,
+                                    now_unix_ms,
+                                    report,
+                                } => cmd_chio_pheromone_relay_alert_assurance_physical_drill_review(
+                                    &evidence,
+                                    &package_report,
+                                    now_unix_ms,
+                                    &report,
+                                ),
+                            },
+                            ChioPheromoneRelayAlertAssuranceArchiveCommands::RestoreDrill {
+                                command,
+                            } => match command {
+                                ChioPheromoneRelayAlertAssuranceArchiveRestoreDrillCommands::Review {
+                                    package_dir,
+                                    source_report_dir,
+                                    trusted_packagers,
+                                    trusted_exporters,
+                                    restore_profile,
+                                    now_unix_ms,
+                                    report,
+                                } => cmd_chio_pheromone_relay_alert_assurance_archive_restore_drill_review(
+                                    &package_dir,
+                                    &source_report_dir,
+                                    &trusted_packagers,
+                                    &trusted_exporters,
+                                    &restore_profile,
+                                    now_unix_ms,
+                                    &report,
+                                ),
+                            },
+                        }
+                    }
+                    ChioPheromoneRelayAlertAssuranceCommands::Closeout { command } => {
+                        match command {
+                            ChioPheromoneRelayAlertAssuranceCloseoutCommands::Review {
+                                bundle_root,
+                                trusted_exporters,
+                                closeout_profile,
+                                retention_profile,
+                                now_unix_ms,
+                                report,
+                            } => cmd_chio_pheromone_relay_alert_assurance_closeout_review(
+                                &bundle_root,
+                                &trusted_exporters,
+                                &closeout_profile,
+                                &retention_profile,
+                                now_unix_ms,
+                                &report,
+                            ),
+                        }
+                    }
+                },
+            },
+            ChioPheromoneRelayCommands::Trend {
+                reports_dir,
+                event_dir,
+                routing_profile,
+                since_unix_ms,
+                until_unix_ms,
+                report,
+            } => cmd_chio_pheromone_relay_trend(
+                &reports_dir,
+                &event_dir,
+                &routing_profile,
+                since_unix_ms,
+                until_unix_ms,
+                &report,
+            ),
+            ChioPheromoneRelayCommands::Directory { command } => match command {
+                ChioPheromoneRelayDirectoryCommands::Inspect { state, report } => {
+                    cmd_chio_pheromone_relay_directory_inspect(&state, &report)
+                }
+                ChioPheromoneRelayDirectoryCommands::Promote {
+                    state,
+                    candidate,
+                    trusted_issuers,
+                    profile,
+                    now_unix_ms,
+                    report,
+                } => cmd_chio_pheromone_relay_directory_promote(
+                    &state,
+                    &candidate,
+                    &trusted_issuers,
+                    profile.into(),
+                    now_unix_ms,
+                    &report,
+                ),
+                ChioPheromoneRelayDirectoryCommands::Reject {
+                    state,
+                    candidate,
+                    reason,
+                    now_unix_ms,
+                    report,
+                } => cmd_chio_pheromone_relay_directory_reject(
+                    &state,
+                    &candidate,
+                    &reason,
+                    now_unix_ms,
+                    &report,
+                ),
+            },
+            ChioPheromoneRelayCommands::Supervisor { command } => match command {
+                ChioPheromoneRelaySupervisorCommands::Lint { profile, report } => {
+                    cmd_chio_pheromone_relay_supervisor_lint(&profile, &report)
+                }
+            },
+        },
+    }
+}
+
+fn cmd_chio_attest_supply_chain_verify(
+    artifact: &Path,
+    bundle: &Path,
+    issuer_san_regex: &str,
+    issuer_oidc: &str,
+    report: Option<&Path>,
+) -> Result<(), CliError> {
+    let artifact_bytes = fs::read(artifact)?;
+    let bundle_json = fs::read(bundle)?;
+    let expected =
+        chio_attest_verify::ExpectedIdentity::doc_hidden_inline(issuer_san_regex, issuer_oidc);
+    let verifier = chio_attest_verify::SigstoreVerifier::with_embedded_root()
+        .map_err(|error| CliError::Other(format!("supply-chain verifier init: {error}")))?;
+    let verified = chio_attest_verify::AttestVerifier::verify_bundle(
+        &verifier,
+        &artifact_bytes,
+        &bundle_json,
+        &expected,
+    )
+    .map_err(|error| CliError::Other(format!("supply-chain verify: {error}")))?;
+    let signed_at_unix_seconds = verified
+        .signed_at
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| CliError::Other(format!("supply-chain signing time: {error}")))?
+        .as_secs();
+    let report_json = serde_json::json!({
+        "schema": "chio.attest.supply-chain.verify-report.v1",
+        "accepted": true,
+        "artifact": artifact,
+        "bundle": bundle,
+        "subjectDigestSha256": hex::encode(verified.subject_digest_sha256),
+        "certificateIdentity": verified.certificate_identity,
+        "certificateOidcIssuer": verified.certificate_oidc_issuer,
+        "rekorLogIndex": verified.rekor_log_index,
+        "rekorInclusionVerified": verified.rekor_inclusion_verified,
+        "signedAtUnixSeconds": signed_at_unix_seconds
+    });
+    write_chio_attest_report(&report_json, report)
+}
+
+fn cmd_chio_attest_runtime_quote_verify(
+    kernel_public_key: &str,
+    receipt_root: &str,
+    report_data: Option<&str>,
+    tee_kind: Option<&str>,
+    quote: Option<&Path>,
+    collateral: Option<&Path>,
+    report: Option<&Path>,
+) -> Result<(), CliError> {
+    let kernel_public_key = chio_core::crypto::PublicKey::from_hex(kernel_public_key)?;
+    let receipt_root = decode_fixed_hex::<32>(receipt_root, "receipt-root")?;
+    let observed_report_data = report_data
+        .map(|value| decode_fixed_hex::<64>(value, "report-data"))
+        .transpose()?;
+    let expected_report_data =
+        chio_attest_verify::expect_report_data(&kernel_public_key, &receipt_root);
+
+    let Some(quote) = quote else {
+        let report_json = serde_json::json!({
+            "schema": "chio.attest.runtime-quote.verification-report.v1",
+            "accepted": false,
+            "verificationKind": "reportDataBindingOnly",
+            "verificationState": "unresolved",
+            "failureCode": "quote_evidence_missing",
+            "detail": "report-data binding alone is not runtime quote verification",
+            "kernelPublicKey": kernel_public_key.to_hex(),
+            "receiptRoot": hex::encode(receipt_root),
+            "expectedReportData": hex::encode(expected_report_data),
+            "observedReportData": observed_report_data.map(hex::encode)
+        });
+        write_chio_attest_report(&report_json, report)?;
+        return Err(CliError::Other(
+            "runtime-quote verification requires full quote evidence".to_string(),
+        ));
+    };
+    let tee_kind = tee_kind.ok_or_else(|| {
+        CliError::Other("runtime-quote verification requires --tee-kind".to_string())
+    })?;
+    let collateral = collateral.ok_or_else(|| {
+        CliError::Other("runtime-quote verification requires --collateral".to_string())
+    })?;
+
+    match verify_runtime_quote_with_backend(tee_kind, quote, collateral, &kernel_public_key, &receipt_root) {
+        Ok(verified) => {
+            if let Some(provided_report_data) = observed_report_data {
+                if provided_report_data != verified.report_data {
+                    let report_json = serde_json::json!({
+                        "schema": "chio.attest.runtime-quote.verification-report.v1",
+                        "accepted": false,
+                        "verificationKind": "teeQuote",
+                        "verificationState": "rejected",
+                        "failureCode": "provided_report_data_mismatch",
+                        "teeKind": verified.tee_kind,
+                        "kernelPublicKey": kernel_public_key.to_hex(),
+                        "receiptRoot": hex::encode(receipt_root),
+                        "expectedReportData": hex::encode(expected_report_data),
+                        "verifiedReportData": hex::encode(verified.report_data),
+                        "observedReportData": hex::encode(provided_report_data)
+                    });
+                    write_chio_attest_report(&report_json, report)?;
+                    return Err(CliError::Other(
+                        "runtime-quote provided report-data does not match verified quote".to_string(),
+                    ));
+                }
+            }
+            let report_json = serde_json::json!({
+                "schema": "chio.attest.runtime-quote.verification-report.v1",
+                "accepted": true,
+                "verificationKind": "teeQuote",
+                "verificationState": "verified",
+                "teeKind": verified.tee_kind,
+                "tcbStatus": verified.tcb_status,
+                "signedAtUnixSeconds": verified.signed_at_unix_seconds,
+                "kernelPublicKey": kernel_public_key.to_hex(),
+                "receiptRoot": hex::encode(receipt_root),
+                "expectedReportData": hex::encode(expected_report_data),
+                "observedReportData": hex::encode(verified.report_data)
+            });
+            write_chio_attest_report(&report_json, report)
+        }
+        Err(error) => {
+            let failure_code = if error.to_string().contains("tee-quotes feature") {
+                "tee_quote_feature_disabled"
+            } else {
+                "quote_verification_failed"
+            };
+            let report_json = serde_json::json!({
+                "schema": "chio.attest.runtime-quote.verification-report.v1",
+                "accepted": false,
+                "verificationKind": "teeQuote",
+                "verificationState": "rejected",
+                "failureCode": failure_code,
+                "detail": error.to_string(),
+                "teeKind": tee_kind,
+                "kernelPublicKey": kernel_public_key.to_hex(),
+                "receiptRoot": hex::encode(receipt_root),
+                "expectedReportData": hex::encode(expected_report_data),
+                "observedReportData": observed_report_data.map(hex::encode)
+            });
+            write_chio_attest_report(&report_json, report)?;
+            Err(error)
+        }
+    }
+}
+
+struct RuntimeQuoteBackendReport {
+    tee_kind: String,
+    report_data: [u8; 64],
+    tcb_status: String,
+    signed_at_unix_seconds: u64,
+}
+
+#[cfg(feature = "tee-quotes")]
+fn verify_runtime_quote_with_backend(
+    tee_kind: &str,
+    quote: &Path,
+    collateral: &Path,
+    kernel_public_key: &chio_core::crypto::PublicKey,
+    receipt_root: &[u8; 32],
+) -> Result<RuntimeQuoteBackendReport, CliError> {
+    use chio_attest_verify::QuoteVerifier;
+
+    let quote_bytes = fs::read(quote)?;
+    let collateral_bytes = fs::read(collateral)?;
+    let collateral: RuntimeQuoteCollateralDocument = serde_json::from_slice(&collateral_bytes)?;
+    let verification_time = collateral
+        .verification_time_unix_seconds
+        .map(unix_seconds_to_system_time)
+        .transpose()?;
+    let context = chio_attest_verify::QuoteVerificationContext::new(kernel_public_key, receipt_root);
+    let verified = match tee_kind {
+        "intel-tdx" => {
+            let verification_time =
+                verification_time.unwrap_or_else(std::time::SystemTime::now);
+            let verifier = chio_attest_verify::tdx::TdxDcapVerifier::with_verification_time(
+                chio_attest_verify::tdx::TdxCollateral::new(
+                    decode_hex_required(
+                        collateral.intel_root_ca_der_hex.as_deref(),
+                        "intelRootCaDerHex",
+                    )?,
+                    decode_hex_vec_required(
+                        collateral.pck_certificate_chain_der_hex.as_deref(),
+                        "pckCertificateChainDerHex",
+                    )?,
+                    decode_hex_vec_required(
+                        collateral.tcb_info_issuer_chain_der_hex.as_deref(),
+                        "tcbInfoIssuerChainDerHex",
+                    )?,
+                    collateral_required_u32(
+                        collateral.tcb_recovery_event_id,
+                        "tcbRecoveryEventId",
+                    )?,
+                    parse_quote_tcb_status(&collateral.tcb_status)?,
+                    unix_seconds_to_system_time(collateral.not_before_unix_seconds)?,
+                    unix_seconds_to_system_time(collateral.not_after_unix_seconds)?,
+                ),
+                collateral_required_u32(
+                    collateral.min_tcb_recovery_event_id,
+                    "minTcbRecoveryEventId",
+                )?,
+                verification_time,
+            );
+            verifier
+                .verify_quote(&quote_bytes, &context)
+                .map_err(|error| CliError::cli_other_error(format!("attest verify: {error}")))?
+        }
+        "amd-sev-snp" => {
+            let verification_time =
+                verification_time.unwrap_or_else(std::time::SystemTime::now);
+            let expected_launch_digest = decode_fixed_hex::<48>(
+                collateral_required_str(
+                    collateral.expected_launch_digest_hex.as_deref(),
+                    "expectedLaunchDigestHex",
+                )?,
+                "expectedLaunchDigestHex",
+            )?;
+            let verifier = chio_attest_verify::sev_snp::SevSnpVerifier::with_verification_time(
+                chio_attest_verify::sev_snp::SevSnpCollateral::new(
+                    decode_hex_required(
+                        collateral.amd_kds_root_der_hex.as_deref(),
+                        "amdKdsRootDerHex",
+                    )?,
+                    decode_hex_vec_required(
+                        collateral.vcek_chain_der_hex.as_deref(),
+                        "vcekChainDerHex",
+                    )?,
+                    decode_hex_vec_required(
+                        collateral.vlek_chain_der_hex.as_deref(),
+                        "vlekChainDerHex",
+                    )?,
+                    collateral_required_u32(
+                        collateral.tcb_recovery_event_id,
+                        "tcbRecoveryEventId",
+                    )?,
+                    parse_quote_tcb_status(&collateral.tcb_status)?,
+                    unix_seconds_to_system_time(collateral.not_before_unix_seconds)?,
+                    unix_seconds_to_system_time(collateral.not_after_unix_seconds)?,
+                ),
+                collateral_required_u32(
+                    collateral.min_tcb_recovery_event_id,
+                    "minTcbRecoveryEventId",
+                )?,
+                expected_launch_digest,
+                verification_time,
+            );
+            verifier
+                .verify_quote(&quote_bytes, &context)
+                .map_err(|error| CliError::cli_other_error(format!("attest verify: {error}")))?
+        }
+        "aws-nitro" => {
+            let verification_time =
+                verification_time.unwrap_or_else(std::time::SystemTime::now);
+            let expected_pcr0 = decode_fixed_hex::<48>(
+                collateral_required_str(collateral.expected_pcr0_hex.as_deref(), "expectedPcr0Hex")?,
+                "expectedPcr0Hex",
+            )?;
+            let verifier = chio_attest_verify::nitro::NitroVerifier::with_verification_time(
+                chio_attest_verify::nitro::NitroCollateral::new(
+                    decode_hex_required(
+                        collateral.aws_nitro_root_der_hex.as_deref(),
+                        "awsNitroRootDerHex",
+                    )?,
+                    decode_hex_vec_required(collateral.chain_der_hex.as_deref(), "chainDerHex")?,
+                    parse_quote_tcb_status(&collateral.tcb_status)?,
+                    unix_seconds_to_system_time(collateral.not_before_unix_seconds)?,
+                    unix_seconds_to_system_time(collateral.not_after_unix_seconds)?,
+                ),
+                expected_pcr0,
+                verification_time,
+            );
+            verifier
+                .verify_quote(&quote_bytes, &context)
+                .map_err(|error| CliError::cli_other_error(format!("attest verify: {error}")))?
+        }
+        other => {
+            return Err(CliError::Other(format!(
+                "unsupported runtime quote tee kind {other}"
+            )));
+        }
+    };
+
+    Ok(RuntimeQuoteBackendReport {
+        tee_kind: verified.tee_kind.to_string(),
+        report_data: verified.report_data,
+        tcb_status: verified.tcb_status.to_string(),
+        signed_at_unix_seconds: verified
+            .signed_at
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .map_err(|error| {
+                CliError::Other(format!("runtime quote signed_at precedes unix epoch: {error}"))
+            })?
+            .as_secs(),
+    })
+}
+
+#[cfg(not(feature = "tee-quotes"))]
+fn verify_runtime_quote_with_backend(
+    _tee_kind: &str,
+    _quote: &Path,
+    _collateral: &Path,
+    _kernel_public_key: &chio_core::crypto::PublicKey,
+    _receipt_root: &[u8; 32],
+) -> Result<RuntimeQuoteBackendReport, CliError> {
+    Err(CliError::Other(
+        "runtime-quote TEE backend verification requires the tee-quotes feature".to_string(),
+    ))
+}
+
+#[cfg(feature = "tee-quotes")]
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RuntimeQuoteCollateralDocument {
+    #[serde(rename = "schema")]
+    _schema: Option<String>,
+    tcb_status: String,
+    not_before_unix_seconds: u64,
+    not_after_unix_seconds: u64,
+    verification_time_unix_seconds: Option<u64>,
+    intel_root_ca_der_hex: Option<String>,
+    pck_certificate_chain_der_hex: Option<Vec<String>>,
+    tcb_info_issuer_chain_der_hex: Option<Vec<String>>,
+    tcb_recovery_event_id: Option<u32>,
+    min_tcb_recovery_event_id: Option<u32>,
+    amd_kds_root_der_hex: Option<String>,
+    vcek_chain_der_hex: Option<Vec<String>>,
+    vlek_chain_der_hex: Option<Vec<String>>,
+    expected_launch_digest_hex: Option<String>,
+    aws_nitro_root_der_hex: Option<String>,
+    chain_der_hex: Option<Vec<String>>,
+    expected_pcr0_hex: Option<String>,
+}
+
+#[cfg(feature = "tee-quotes")]
+fn parse_quote_tcb_status(
+    value: &str,
+) -> Result<chio_attest_verify::QuoteTcbStatus, CliError> {
+    match value {
+        "up-to-date" | "up_to_date" => Ok(chio_attest_verify::QuoteTcbStatus::UpToDate),
+        "configuration-needed" | "configuration_needed" => {
+            Ok(chio_attest_verify::QuoteTcbStatus::ConfigurationNeeded)
+        }
+        "out-of-date" | "out_of_date" => Ok(chio_attest_verify::QuoteTcbStatus::OutOfDate),
+        "revoked" => Ok(chio_attest_verify::QuoteTcbStatus::Revoked),
+        "unrecognized" => Ok(chio_attest_verify::QuoteTcbStatus::Unrecognized),
+        other => Err(CliError::Other(format!(
+            "unsupported runtime quote tcbStatus {other}"
+        ))),
+    }
+}
+
+#[cfg(feature = "tee-quotes")]
+fn unix_seconds_to_system_time(seconds: u64) -> Result<std::time::SystemTime, CliError> {
+    std::time::SystemTime::UNIX_EPOCH
+        .checked_add(std::time::Duration::from_secs(seconds))
+        .ok_or_else(|| CliError::Other("runtime quote timestamp overflow".to_string()))
+}
+
+#[cfg(feature = "tee-quotes")]
+fn collateral_required_str<'a>(value: Option<&'a str>, name: &str) -> Result<&'a str, CliError> {
+    value.ok_or_else(|| CliError::Other(format!("runtime quote collateral missing {name}")))
+}
+
+#[cfg(feature = "tee-quotes")]
+fn collateral_required_u32(value: Option<u32>, name: &str) -> Result<u32, CliError> {
+    value.ok_or_else(|| CliError::Other(format!("runtime quote collateral missing {name}")))
+}
+
+#[cfg(feature = "tee-quotes")]
+fn decode_hex_required(value: Option<&str>, name: &str) -> Result<Vec<u8>, CliError> {
+    let value = collateral_required_str(value, name)?;
+    hex::decode(value).map_err(|error| {
+        CliError::Other(format!("runtime quote collateral {name} is not hex: {error}"))
+    })
+}
+
+#[cfg(feature = "tee-quotes")]
+fn decode_hex_vec_required(values: Option<&[String]>, name: &str) -> Result<Vec<Vec<u8>>, CliError> {
+    let values =
+        values.ok_or_else(|| CliError::Other(format!("runtime quote collateral missing {name}")))?;
+    values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            hex::decode(value).map_err(|error| {
+                CliError::Other(format!(
+                    "runtime quote collateral {name}[{index}] is not hex: {error}"
+                ))
+            })
+        })
+        .collect()
+}
+
+fn decode_fixed_hex<const N: usize>(value: &str, name: &str) -> Result<[u8; N], CliError> {
+    let mut bytes = [0_u8; N];
+    hex::decode_to_slice(value, &mut bytes)
+        .map_err(|error| CliError::Other(format!("{name}: expected {N} bytes of hex: {error}")))?;
+    Ok(bytes)
+}
+
+fn write_chio_attest_report(
+    report_json: &serde_json::Value,
+    report: Option<&Path>,
+) -> Result<(), CliError> {
+    let bytes = serde_json::to_vec_pretty(report_json)?;
+    if let Some(report) = report {
+        fs::write(report, &bytes)?;
+        fs::OpenOptions::new()
+            .append(true)
+            .open(report)?
+            .write_all(b"\n")?;
+    } else {
+        std::io::stdout().write_all(&bytes)?;
+        std::io::stdout().write_all(b"\n")?;
     }
     Ok(())
 }

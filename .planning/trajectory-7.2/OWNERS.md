@@ -1,7 +1,7 @@
-# Chiodos 7.2 Owners
+# Chio 7.2 Owners
 
 - Integrator: planning docs, gate sequencing, CI, docs, and closeout.
-- Runtime: `chio-chiodos-runtime` evidence contracts, trust hardening, and
+- Runtime: `chio-runtime-core` evidence contracts, trust hardening, and
   proof source records.
 - Kernel: runtime hook execution, receipt capture, side-effect safety, and
   denial invariants.

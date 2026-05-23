@@ -571,6 +571,127 @@ export interface RelayAlertAssuranceCloseoutReport {
   checks: RelayAlertCheck[]
 }
 
+export interface RelayAlertAssuranceArchivePackageReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  packageId: string
+  packageGeneration: number
+  previousPackageManifestSha256?: string | null
+  packageManifestSha256: string
+  sourceArchiveReportSha256: string
+  sourceCloseoutReportSha256: string
+  packageMemberCount: number
+  packageTotalByteCount: number
+  bundleCount: number
+  trustedPackagerVerified: boolean
+  nestedExporterVerified: boolean
+  sourceReportsMatched: boolean
+  closeoutReadyVerified: boolean
+  totalByteCountMatched: boolean
+  extractable: boolean
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceArchiveExtractionReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  packageId: string
+  packageManifestSha256: string
+  plannedMemberCount: number
+  extractedMemberCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssurancePhysicalArchiveDrillReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  evidenceId: string
+  packageId: string
+  packageReportSha256: string
+  sampledMemberCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceRetentionHandoffReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  evidenceId: string
+  packageId: string
+  packageReportSha256: string
+  targetSystemAlias: string
+  readyForOperatorHandoff: boolean
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceExternalRetentionPackageReview {
+  packageId: string
+  packageGeneration: number
+  packageManifestSha256: string
+  packageReportSha256: string
+  targetSystemAlias?: string | null
+  sampleCoverageBasisPoints: number
+  restoreStatus: string
+  physicalReadbackStatus: string
+  retentionHandoffStatus: string
+  accepted: boolean
+  code: string
+}
+
+export interface RelayAlertAssuranceExternalRetentionReviewReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  sinceUnixMs: number
+  untilUnixMs: number
+  packageCount: number
+  readyCount: number
+  latestPackageGeneration: number
+  quarantineCount: number
+  driftCount: number
+  insufficientSampleCount: number
+  reviews: RelayAlertAssuranceExternalRetentionPackageReview[]
+  recommendations: RelayOperatorRecommendation[]
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceArchiveRestorePackageReview {
+  packageId: string
+  packageGeneration: number
+  packageManifestSha256: string
+  previousPackageManifestSha256?: string | null
+  accepted: boolean
+  code: string
+}
+
+export interface RelayAlertAssuranceArchiveRestoreDrillReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  packageCount: number
+  verifiedGenerationCount: number
+  latestPackageGeneration: number
+  quarantineCount: number
+  blockedCount: number
+  packages: RelayAlertAssuranceArchiveRestorePackageReview[]
+  checks: RelayAlertCheck[]
+}
+
 export interface PassportVerification {
   subject: string
   issuer?: string | null

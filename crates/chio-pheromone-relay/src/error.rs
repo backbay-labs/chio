@@ -50,6 +50,8 @@ pub enum PheromoneRelayError {
     AlertDeliveryInvalid(String),
     #[error("alert_assurance_invalid: {0}")]
     AlertAssuranceInvalid(String),
+    #[error("archive_package_invalid: {0}")]
+    ArchivePackageInvalid(String),
     #[error("sender_mismatch: {0}")]
     SenderMismatch(String),
     #[error("recipient_mismatch: {0}")]
@@ -100,6 +102,7 @@ impl PheromoneRelayError {
             Self::AlertHandoffInvalid(_) => "alert_handoff_invalid",
             Self::AlertDeliveryInvalid(_) => "alert_delivery_invalid",
             Self::AlertAssuranceInvalid(_) => "alert_assurance_invalid",
+            Self::ArchivePackageInvalid(_) => "archive_package_invalid",
             Self::SenderMismatch(_) => "sender_mismatch",
             Self::RecipientMismatch(_) => "recipient_mismatch",
             Self::MethodMismatch(_) => "method_mismatch",

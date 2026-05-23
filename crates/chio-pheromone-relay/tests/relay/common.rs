@@ -5,8 +5,8 @@ pub(super) use chio_core_types::canonical::canonical_json_bytes;
 pub(super) use chio_core_types::crypto::sha256_hex;
 pub(super) use chio_core_types::Keypair;
 pub(super) use chio_federation::{
-    PheromoneDepositGossip, PheromoneGossipBatch, PHEROMONE_GOSSIP_BATCH_SCHEMA,
-    PHEROMONE_GOSSIP_SCHEMA,
+    PheromoneDepositGossip, PheromoneGossipBatch, PheromoneTransitChain, PheromoneTransitHop,
+    PHEROMONE_GOSSIP_BATCH_SCHEMA, PHEROMONE_GOSSIP_SCHEMA,
 };
 pub(super) use chio_pheromone::{
     agent_passport_jwk_thumbprint, agent_passport_key_hash, sign_deposit, PheromoneDepositBody,
@@ -18,7 +18,7 @@ pub(super) use chio_pheromone_relay::{
     generate_relay_alert_assurance_archive_report, generate_relay_alert_assurance_closeout_report,
     generate_relay_alert_assurance_package, generate_relay_alert_assurance_recovery_drill_report,
     generate_relay_alert_assurance_replay_report, generate_relay_alert_assurance_retention_report,
-    generate_relay_alert_delivery_drift_report_v2, generate_relay_alert_handoff_drift_report,
+    generate_relay_alert_delivery_drift_report, generate_relay_alert_handoff_drift_report,
     generate_relay_alert_route_review_packet, generate_relay_trend_report,
     normalize_relay_alert_delivery_evidence, promote_peer_directory_candidate,
     relay_alert_delivery_evidence_from_json, relay_alert_delivery_profile_from_json,
@@ -36,7 +36,7 @@ pub(super) use chio_pheromone_relay::{
     RelayAlertAssuranceReplayInput, RelayAlertAssuranceRetentionInput,
     RelayAlertAssuranceRetentionProfileDocument, RelayAlertAssuranceRetentionRule,
     RelayAlertAssuranceTrustedExporter, RelayAlertAssuranceTrustedExportersDocument,
-    RelayAlertDeliveryDriftInputV2, RelayAlertDeliveryEvidence, RelayAlertDeliveryInput,
+    RelayAlertDeliveryDriftInput, RelayAlertDeliveryEvidence, RelayAlertDeliveryInput,
     RelayAlertDeliveryProfileDocument, RelayAlertDeliveryReceiver, RelayAlertDeliveryStatus,
     RelayAlertEvaluationInput, RelayAlertHandoffDriftInput, RelayAlertHandoffEscalation,
     RelayAlertHandoffInput, RelayAlertHandoffProfileDocument, RelayAlertHandoffReceiver,
@@ -63,7 +63,7 @@ pub(super) use chio_pheromone_relay::{
     PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_TRUSTED_EXPORTERS_SCHEMA,
-    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA,
+    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_EVIDENCE_SCHEMA, PHEROMONE_RELAY_ALERT_DELIVERY_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_HANDOFF_DRIFT_REPORT_SCHEMA,
@@ -77,7 +77,8 @@ pub(super) use chio_pheromone_relay::{
     PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
 };
 pub(super) use chio_pheromone_runtime::{
-    PheromoneFrameReport, PheromoneReceiveReport, PHEROMONE_RECEIVE_REPORT_SCHEMA,
+    PheromoneBatchOutcome, PheromoneFrameReport, PheromoneReceiveReport,
+    PHEROMONE_RECEIVE_REPORT_SCHEMA,
 };
 pub(super) use serde::{Deserialize, Serialize};
 pub(super) use serde_json::json;
@@ -253,7 +254,7 @@ pub(super) fn alert_profile() -> RelayAlertRoutingProfileDocument {
                 notification_route: "pagerduty-primary".to_string(),
                 opsgenie: "relay-oncall".to_string(),
                 target_ref: "alertmanager:pagerduty-primary".to_string(),
-                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
+                runbook: "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
                     .to_string(),
             },
             RelayAlertRoute {
@@ -262,7 +263,7 @@ pub(super) fn alert_profile() -> RelayAlertRoutingProfileDocument {
                 notification_route: "slack-ops-digest".to_string(),
                 opsgenie: "relay-oncall".to_string(),
                 target_ref: "alertmanager:slack-ops-digest".to_string(),
-                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox".to_string(),
+                runbook: "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox".to_string(),
             },
         ],
         rules: vec![
@@ -328,7 +329,7 @@ pub(super) fn handoff_profile() -> RelayAlertHandoffProfileDocument {
                 opsgenie: "relay-oncall".to_string(),
                 severity_floor: RelayAlertSeverity::Critical,
                 escalation_ref: "relay-critical-page".to_string(),
-                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
+                runbook: "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
                     .to_string(),
             },
             RelayAlertHandoffReceiver {
@@ -339,7 +340,7 @@ pub(super) fn handoff_profile() -> RelayAlertHandoffProfileDocument {
                 opsgenie: "relay-oncall".to_string(),
                 severity_floor: RelayAlertSeverity::Info,
                 escalation_ref: "relay-digest".to_string(),
-                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox".to_string(),
+                runbook: "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox".to_string(),
             },
         ],
         escalations: vec![
@@ -377,7 +378,7 @@ pub(super) fn delivery_profile() -> RelayAlertDeliveryProfileDocument {
                 opsgenie: "relay-oncall".to_string(),
                 severity_floor: RelayAlertSeverity::Critical,
                 max_delay_ms: 300_000,
-                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
+                runbook: "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
                     .to_string(),
             },
             RelayAlertDeliveryReceiver {
@@ -388,7 +389,7 @@ pub(super) fn delivery_profile() -> RelayAlertDeliveryProfileDocument {
                 opsgenie: "relay-oncall".to_string(),
                 severity_floor: RelayAlertSeverity::Info,
                 max_delay_ms: 3_600_000,
-                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox".to_string(),
+                runbook: "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox".to_string(),
             },
         ],
     }
@@ -417,14 +418,14 @@ pub(super) fn route_owner_profile() -> RelayAlertRouteOwnerProfileDocument {
                 owner_alias: "relay-primary-owner".to_string(),
                 receiver_ids: vec!["alertmanager-pagerduty-primary".to_string()],
                 notification_routes: vec!["pagerduty-primary".to_string()],
-                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
+                runbook: "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage"
                     .to_string(),
             },
             RelayAlertRouteOwner {
                 owner_alias: "relay-digest-owner".to_string(),
                 receiver_ids: vec!["alertmanager-slack-digest".to_string()],
                 notification_routes: vec!["slack-ops-digest".to_string()],
-                runbook: "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox".to_string(),
+                runbook: "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#stuck-outbox".to_string(),
             },
         ],
     }
@@ -492,7 +493,7 @@ pub(super) fn delivery_evidence(
         receiver.notification_route.clone(),
     );
     labels.insert("opsgenie".to_string(), receiver.opsgenie.clone());
-    labels.insert("service".to_string(), "chiodos-pheromone-relay".to_string());
+    labels.insert("service".to_string(), "chio-pheromone-relay".to_string());
     labels.insert("severity".to_string(), severity.as_str().to_string());
     labels.insert("status".to_string(), status.as_str().to_string());
     labels.insert("receiver".to_string(), receiver.receiver_id.clone());
@@ -507,7 +508,7 @@ pub(super) fn delivery_evidence(
         notification_route: receiver.notification_route.clone(),
         opsgenie: receiver.opsgenie.clone(),
         alert_code: alert_code.to_string(),
-        dedupe_key: format!("chiodos-relay:did:chio:buyer-kernel:{alert_code}:delivery"),
+        dedupe_key: format!("chio-relay:did:chio:buyer-kernel:{alert_code}:delivery"),
         severity,
         runbook: receiver.runbook.clone(),
         status,
@@ -678,8 +679,7 @@ pub(super) fn delivery_negative_code(case_id: &str) -> String {
             .unwrap_err()
         }
         "runbook-drift" => {
-            evidence[0].runbook =
-                "docs/release/CHIODOS_PHEROMONE_RELAY_RUNBOOK.md#other".to_string();
+            evidence[0].runbook = "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#other".to_string();
             evaluate_relay_alert_delivery(RelayAlertDeliveryInput {
                 handoff_report: &handoff_report,
                 delivery_profile: &profile,
@@ -700,7 +700,7 @@ pub(super) struct GeneratedAssuranceChain {
     pub(super) normalization_report: chio_pheromone_relay::RelayAlertNormalizationReport,
     pub(super) delivery_report: chio_pheromone_relay::RelayAlertDeliveryReport,
     pub(super) acknowledgement_report: chio_pheromone_relay::RelayAlertAcknowledgementReport,
-    pub(super) drift_report: chio_pheromone_relay::RelayAlertDeliveryDriftReportV2,
+    pub(super) drift_report: chio_pheromone_relay::RelayAlertDeliveryDriftReport,
     pub(super) review_packet: chio_pheromone_relay::RelayAlertRouteReviewPacket,
     pub(super) assurance_package: chio_pheromone_relay::RelayAlertAssurancePackage,
 }
@@ -738,15 +738,14 @@ pub(super) fn generated_assurance_chain() -> GeneratedAssuranceChain {
             now_unix_ms: NOW + 80_000,
         })
         .unwrap();
-    let drift_report =
-        generate_relay_alert_delivery_drift_report_v2(RelayAlertDeliveryDriftInputV2 {
-            handoff_reports: std::slice::from_ref(&handoff_report),
-            delivery_reports: std::slice::from_ref(&delivery_report),
-            delivery_profile: &delivery_profile,
-            since_unix_ms: NOW,
-            until_unix_ms: NOW + 90_000,
-        })
-        .unwrap();
+    let drift_report = generate_relay_alert_delivery_drift_report(RelayAlertDeliveryDriftInput {
+        handoff_reports: std::slice::from_ref(&handoff_report),
+        delivery_reports: std::slice::from_ref(&delivery_report),
+        delivery_profile: &delivery_profile,
+        since_unix_ms: NOW,
+        until_unix_ms: NOW + 90_000,
+    })
+    .unwrap();
     let review_packet = generate_relay_alert_route_review_packet(RelayAlertRouteReviewInput {
         handoff_report: &handoff_report,
         delivery_report: &delivery_report,
@@ -890,6 +889,9 @@ impl RelayBatchReceiver for AcceptingReceiver {
         Ok(PheromoneReceiveReport {
             schema: PHEROMONE_RECEIVE_REPORT_SCHEMA.to_string(),
             accepted: true,
+            batch_outcome: PheromoneBatchOutcome::Accepted,
+            accepted_frame_count: 1,
+            rejected_frame_count: 0,
             batch_sha256: chio_core_types::crypto::sha256_hex(
                 &chio_core_types::canonical::canonical_json_bytes(&batch).unwrap(),
             ),
@@ -911,6 +913,9 @@ pub(super) fn accepted_report() -> PheromoneReceiveReport {
     PheromoneReceiveReport {
         schema: PHEROMONE_RECEIVE_REPORT_SCHEMA.to_string(),
         accepted: true,
+        batch_outcome: PheromoneBatchOutcome::Accepted,
+        accepted_frame_count: 1,
+        rejected_frame_count: 0,
         batch_sha256: "b".repeat(64),
         recipient_kernel_id: "did:chio:buyer-kernel".to_string(),
         authenticated_sender_kernel_id: "did:chio:llamaworks".to_string(),
