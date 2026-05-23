@@ -14,13 +14,12 @@ The in-package guide covers:
 1. **What changed in 0.2.0** -- the five `bind_and_redact` shape
    fixes (kwonly self-canonical, index-collision re-routing,
    TypeError fallback canonical preservation, `_is_pure_forwarder`
-   exclusion of protected variadic, VAR_POSITIONAL extras with
-   kwarg-supplied slot). The wrapper-name -> canonical-name alias
-   routing remains an internal implementation detail of
-   `bind_and_redact`; there is no public `build_alias_map` helper.
-   Adapters that want custom routing should pass a
-   `positional_table` and rely on `bind_and_redact` to apply the
-   alias logic.
+   exclusion of protected variadic, VAR_POSITIONAL merge-conflicts
+   with a kwarg-supplied protected slot). `build_alias_map` is
+   public for adapters and API docs that need to inspect
+   wrapper-name -> canonical-name routing, but normal adapter code
+   should call `bind_and_redact`; custom routing belongs in
+   `positional_table`.
 2. **If your adapter calls `bind_and_redact`** -- floor-pin bump
    recipe and which signature shapes warrant a regression test.
 3. **If your adapter calls `redact_args` directly** -- the call

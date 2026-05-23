@@ -949,11 +949,11 @@ fn evidence_export_rejects_tampered_persisted_tool_receipt() {
     });
 
     let error = store
-        .build_evidence_export_bundle(&EvidenceExportQuery::default())
+        .build_evidence_export_bundle(&EvidenceExportQuery::admin_all())
         .test_unwrap_err();
     let message = error.to_string();
     assert!(message.contains("persisted tool receipt seq"));
-    assert!(message.contains("tampered-export-receipt"));
+    assert!(message.contains(&receipt.id));
     assert!(message.contains("invalid signature"));
 
     let _ = fs::remove_file(path);

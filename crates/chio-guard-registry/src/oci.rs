@@ -11,15 +11,15 @@ use oci_distribution::secrets::RegistryAuth;
 use oci_distribution::{Client, ParseError, Reference};
 
 /// OCI artifact media type for a Chio guard bundle.
-pub const GUARD_ARTIFACT_MEDIA_TYPE: &str = "application/vnd.chio.guard.v2+wasm";
+pub const GUARD_ARTIFACT_MEDIA_TYPE: &str = "application/vnd.chio.guard.v1+wasm";
 /// OCI config media type for guard runtime metadata.
-pub const GUARD_CONFIG_MEDIA_TYPE: &str = "application/vnd.chio.guard.config.v2+json";
+pub const GUARD_CONFIG_MEDIA_TYPE: &str = "application/vnd.chio.guard.config.v1+json";
 /// WIT contract layer media type.
-pub const GUARD_WIT_LAYER_MEDIA_TYPE: &str = "application/vnd.chio.guard.wit.v2";
+pub const GUARD_WIT_LAYER_MEDIA_TYPE: &str = "application/vnd.chio.guard.wit.v1";
 /// Wasm component layer media type.
-pub const GUARD_MODULE_LAYER_MEDIA_TYPE: &str = "application/vnd.chio.guard.module.v2+wasm";
+pub const GUARD_MODULE_LAYER_MEDIA_TYPE: &str = "application/vnd.chio.guard.module.v1+wasm";
 /// Chio guard manifest layer media type.
-pub const GUARD_MANIFEST_LAYER_MEDIA_TYPE: &str = "application/vnd.chio.guard.manifest.v2+json";
+pub const GUARD_MANIFEST_LAYER_MEDIA_TYPE: &str = "application/vnd.chio.guard.manifest.v1+json";
 /// Annotation role for the WIT layer.
 pub const GUARD_WIT_LAYER_ROLE: &str = "wit";
 /// Annotation role for the wasm layer.

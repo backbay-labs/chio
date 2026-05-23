@@ -117,6 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         consistency_anchor: None,
         consistency_model: None,
         cross_org_visibility: None,
+        treaty_binding_ref: None,
     };
 
     let cosigner = InProcessCoSigner::new(

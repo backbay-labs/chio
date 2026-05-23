@@ -7,9 +7,9 @@ use crate::federation_policy::{
     FederationAdmissionPolicyListResponse, FederationAdmissionPolicyRecord,
     FederationAdmissionPolicyRegistry,
 };
-use crate::policy::{load_policy, DefaultCapability};
+use crate::policy::{DefaultCapability, load_policy};
 use crate::{
-    certify, load_or_create_authority_keypair, require_control_token, trust_control, CliError,
+    CliError, certify, load_or_create_authority_keypair, require_control_token, trust_control,
 };
 
 fn require_enterprise_providers_file(path: Option<&Path>) -> Result<&Path, CliError> {
@@ -59,7 +59,9 @@ fn load_federation_policy_registry_local(
     }
 }
 
-pub(crate) fn load_admission_policy(path: &Path) -> Result<Option<chio_policy::HushSpec>, CliError> {
+pub(crate) fn load_admission_policy(
+    path: &Path,
+) -> Result<Option<chio_policy::HushSpec>, CliError> {
     let contents = fs::read_to_string(path)?;
     if chio_policy::is_hushspec_format(&contents) {
         return chio_policy::resolve_from_path(path)
@@ -124,7 +126,9 @@ pub(crate) fn cmd_trust_provider_get(
             .get(provider_id)
             .cloned()
             .ok_or_else(|| {
-                CliError::cli_other_error(format!("enterprise provider `{provider_id}` was not found"))
+                CliError::cli_other_error(format!(
+                    "enterprise provider `{provider_id}` was not found"
+                ))
             })?
     };
 
@@ -172,7 +176,9 @@ pub(crate) fn cmd_trust_provider_upsert(
             .get(&provider.provider_id)
             .cloned()
             .ok_or_else(|| {
-                CliError::cli_other_error("provider upsert did not persist the requested record".to_string())
+                CliError::cli_other_error(
+                    "provider upsert did not persist the requested record".to_string(),
+                )
             })?
     };
 

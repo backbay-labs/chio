@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-federation/v1/local-signing-keys.schema.json",
+  "title": "Chio Federation Local Signing Keys",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "leaseAuthoritySeeds",
+    "governanceAuthoritySeeds",
+    "revocationAuthoritySeedHex"
+  ],
+  "properties": {
+    "schema": { "const": "chio.federation.local-signing-keys.v1" },
+    "leaseAuthoritySeeds": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/namedSeedHex" }
+    },
+    "governanceAuthoritySeeds": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/namedSeedHex" }
+    },
+    "revocationAuthoritySeedHex": { "$ref": "#/$defs/seedHex" }
+  },
+  "$defs": {
+    "seedHex": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "namedSeedHex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "seedHex"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "seedHex": { "$ref": "#/$defs/seedHex" }
+      }
+    }
+  }
+}

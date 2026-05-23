@@ -1,4 +1,4 @@
-//! Local Chiodos pheromone gossip artifacts.
+//! Local Chio pheromone gossip artifacts.
 //!
 //! This module mirrors the revocation gossip queue style but keeps pheromone
 //! transit local and artifact-first. It does not open sockets, run timers, or
@@ -33,6 +33,8 @@ pub enum PheromoneGossipError {
     BatchRecipientMismatch(String),
     #[error("batch_treaty_mismatch: {0}")]
     BatchTreatyMismatch(String),
+    #[error("batch_empty: {0}")]
+    BatchEmpty(String),
     #[error("authenticated_sender_mismatch: {0}")]
     AuthenticatedSenderMismatch(String),
     #[error("invalid_configuration: {0}")]
@@ -53,6 +55,7 @@ impl PheromoneGossipError {
             Self::UnknownPeer(_) => "unknown_peer",
             Self::BatchRecipientMismatch(_) => "batch_recipient_mismatch",
             Self::BatchTreatyMismatch(_) => "batch_treaty_mismatch",
+            Self::BatchEmpty(_) => "batch_empty",
             Self::AuthenticatedSenderMismatch(_) => "authenticated_sender_mismatch",
             Self::InvalidConfiguration(_) => "invalid_configuration",
             Self::QueuePoisoned => "queue_poisoned",
@@ -112,8 +115,19 @@ pub struct PheromoneTransitHop {
     pub ladder_manifest_sha256: String,
     pub ladder_manifest_expires_at_unix_ms: u64,
     pub ladder_intersection_id: String,
+    pub ladder_intersection_sha256: String,
     pub action_class_id: String,
     pub emitted_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PheromoneTransitLadderPin {
+    pub ladder_manifest_id: String,
+    pub ladder_manifest_sha256: String,
+    pub ladder_manifest_expires_at_unix_ms: u64,
+    pub ladder_intersection_id: String,
+    pub ladder_intersection_sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +142,7 @@ pub struct PheromoneTransitPolicy {
     pub valid_until_unix_ms: u64,
     pub max_hops: usize,
     pub required_action_class_id: String,
+    pub pinned_ladder_refs: Vec<PheromoneTransitLadderPin>,
 }
 
 pub fn verify_pheromone_gossip_frame(
@@ -176,6 +191,17 @@ pub fn verify_pheromone_gossip_batch(
     policy: &PheromoneTransitPolicy,
     context: &PheromoneGossipBatchVerificationContext,
 ) -> Result<(), PheromoneGossipError> {
+    verify_pheromone_gossip_batch_envelope(batch, context)?;
+    for frame in &batch.frames {
+        verify_pheromone_gossip_frame_for_batch(frame, batch, policy, context)?;
+    }
+    Ok(())
+}
+
+pub fn verify_pheromone_gossip_batch_envelope(
+    batch: &PheromoneGossipBatch,
+    context: &PheromoneGossipBatchVerificationContext,
+) -> Result<(), PheromoneGossipError> {
     if batch.schema != PHEROMONE_GOSSIP_BATCH_SCHEMA {
         return Err(PheromoneGossipError::UnsupportedSchema(
             batch.schema.clone(),
@@ -187,43 +213,54 @@ pub fn verify_pheromone_gossip_batch(
             batch.recipient_kernel_id, context.recipient_kernel_id
         )));
     }
-    for frame in &batch.frames {
-        if frame.treaty_id != batch.treaty_id {
-            return Err(PheromoneGossipError::BatchTreatyMismatch(format!(
-                "frame treaty {} does not match batch treaty {}",
-                frame.treaty_id, batch.treaty_id
-            )));
-        }
-        if frame.gossiping_peer_kernel_id != context.authenticated_sender_kernel_id {
-            return Err(PheromoneGossipError::AuthenticatedSenderMismatch(format!(
-                "frame gossiping peer {} does not match authenticated sender {}",
-                frame.gossiping_peer_kernel_id, context.authenticated_sender_kernel_id
-            )));
-        }
-        match &frame.transit_chain {
-            None => {
-                if frame.origin_kernel_id != context.authenticated_sender_kernel_id {
-                    return Err(PheromoneGossipError::AuthenticatedSenderMismatch(format!(
-                        "direct frame origin {} does not match authenticated sender {}",
-                        frame.origin_kernel_id, context.authenticated_sender_kernel_id
-                    )));
-                }
-            }
-            Some(chain) => {
-                let last = chain.hops.last().ok_or_else(|| {
-                    PheromoneGossipError::TransitChainInvalid("missing last hop".to_string())
-                })?;
-                if last.to_kernel_id != context.recipient_kernel_id {
-                    return Err(PheromoneGossipError::BatchRecipientMismatch(format!(
-                        "final transit recipient {} does not match receiver {}",
-                        last.to_kernel_id, context.recipient_kernel_id
-                    )));
-                }
-            }
-        }
-        verify_pheromone_gossip_frame(frame, policy, context.now_unix_ms)?;
+    if batch.frames.is_empty() {
+        return Err(PheromoneGossipError::BatchEmpty(
+            "batch contains no pheromone gossip frames".to_string(),
+        ));
     }
     Ok(())
+}
+
+pub fn verify_pheromone_gossip_frame_for_batch(
+    frame: &PheromoneDepositGossip,
+    batch: &PheromoneGossipBatch,
+    policy: &PheromoneTransitPolicy,
+    context: &PheromoneGossipBatchVerificationContext,
+) -> Result<(), PheromoneGossipError> {
+    if frame.treaty_id != batch.treaty_id {
+        return Err(PheromoneGossipError::BatchTreatyMismatch(format!(
+            "frame treaty {} does not match batch treaty {}",
+            frame.treaty_id, batch.treaty_id
+        )));
+    }
+    if frame.gossiping_peer_kernel_id != context.authenticated_sender_kernel_id {
+        return Err(PheromoneGossipError::AuthenticatedSenderMismatch(format!(
+            "frame gossiping peer {} does not match authenticated sender {}",
+            frame.gossiping_peer_kernel_id, context.authenticated_sender_kernel_id
+        )));
+    }
+    match &frame.transit_chain {
+        None => {
+            if frame.origin_kernel_id != context.authenticated_sender_kernel_id {
+                return Err(PheromoneGossipError::AuthenticatedSenderMismatch(format!(
+                    "direct frame origin {} does not match authenticated sender {}",
+                    frame.origin_kernel_id, context.authenticated_sender_kernel_id
+                )));
+            }
+        }
+        Some(chain) => {
+            let last = chain.hops.last().ok_or_else(|| {
+                PheromoneGossipError::TransitChainInvalid("missing last hop".to_string())
+            })?;
+            if last.to_kernel_id != context.recipient_kernel_id {
+                return Err(PheromoneGossipError::BatchRecipientMismatch(format!(
+                    "final transit recipient {} does not match receiver {}",
+                    last.to_kernel_id, context.recipient_kernel_id
+                )));
+            }
+        }
+    }
+    verify_pheromone_gossip_frame(frame, policy, context.now_unix_ms)
 }
 
 fn verify_direct_frame(frame: &PheromoneDepositGossip) -> Result<(), PheromoneGossipError> {
@@ -320,6 +357,12 @@ fn verify_relay_frame(
                 "hop ladder manifest hash is malformed".to_string(),
             ));
         }
+        if !transit_hop_is_pinned(policy, hop) {
+            return Err(PheromoneGossipError::TransitPolicyViolation(format!(
+                "transit ladder {}:{} intersection {} is not pinned in receiver policy",
+                hop.ladder_manifest_id, hop.ladder_manifest_sha256, hop.ladder_intersection_id
+            )));
+        }
         if !kernels.insert(hop.from_kernel_id.clone()) {
             return Err(PheromoneGossipError::TransitChainInvalid(
                 "transit chain repeats a kernel".to_string(),
@@ -349,6 +392,17 @@ fn verify_relay_frame(
         ));
     }
     Ok(())
+}
+
+fn transit_hop_is_pinned(policy: &PheromoneTransitPolicy, hop: &PheromoneTransitHop) -> bool {
+    policy.pinned_ladder_refs.iter().any(|reference| {
+        reference.ladder_manifest_id == hop.ladder_manifest_id
+            && reference.ladder_manifest_sha256 == hop.ladder_manifest_sha256
+            && reference.ladder_manifest_expires_at_unix_ms
+                == hop.ladder_manifest_expires_at_unix_ms
+            && reference.ladder_intersection_id == hop.ladder_intersection_id
+            && reference.ladder_intersection_sha256 == hop.ladder_intersection_sha256
+    })
 }
 
 #[derive(Debug)]

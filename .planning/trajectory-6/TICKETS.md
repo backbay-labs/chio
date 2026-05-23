@@ -56,6 +56,6 @@ Acceptance:
   against an issuer-key registry.
 - The committed 3-vendor fixture uses the real proof schema and rejects the
   legacy `.stub` schema.
-- The gate `bash scripts/check-chiodos-bbs-acceptance.sh` passes.
+- The gate `bash scripts/check-chio-bbs-acceptance.sh` passes.
 - No ticket claims hidden range predicates, VC Data Integrity interop, or zkVM
   support.

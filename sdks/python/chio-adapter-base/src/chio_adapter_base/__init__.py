@@ -35,6 +35,7 @@ from chio_adapter_base.redact import (
     RedactArgs,
     RedactionPolicy,
     bind_and_redact,
+    build_alias_map,
     redact_args,
 )
 from chio_adapter_base.security import (
@@ -49,7 +50,7 @@ from chio_adapter_base.security import (
     sanitised_env,
 )
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 __all__ = [
     "DEFAULT_RECEIPT_BUFFER_MAX",
@@ -65,6 +66,7 @@ __all__ = [
     "__version__",
     "append_jsonl",
     "bind_and_redact",
+    "build_alias_map",
     "canonical_dumps",
     "filter_diff_output",
     "filter_directory_entries",

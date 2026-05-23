@@ -2,6 +2,7 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
+#[path = "fixtures/dispatch_request_fixture.rs"]
 mod dispatch_request_fixture;
 
 use dispatch_request_fixture::DispatchAllowFixture;

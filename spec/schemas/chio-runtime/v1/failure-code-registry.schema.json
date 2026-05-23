@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-runtime/v1/failure-code-registry.schema.json",
+  "title": "Chio Runtime Failure Code Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "codes"],
+  "properties": {
+    "schema": { "const": "chio.runtime.failure-code-registry.v1" },
+    "codes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/code" },
+      "uniqueItems": true
+    }
+  },
+  "$defs": { "code": { "type": "string", "pattern": "^[a-z0-9_]+$" } }
+}

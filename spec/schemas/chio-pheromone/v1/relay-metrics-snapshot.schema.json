@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-metrics-snapshot.schema.json",
-  "title": "Chiodos Pheromone Relay Metrics Snapshot",
+  "title": "Chio Pheromone Relay Metrics Snapshot",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "localKernelId", "generatedAtUnixMs", "samples"],

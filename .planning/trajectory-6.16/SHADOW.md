@@ -1,4 +1,4 @@
-# Chiodos 6.16 Shadow
+# Chio 6.16 Shadow
 
 Candidate focus: relay alert evidence export and retention, only after 6.15 proves the normalized assurance package is useful to operators.
 

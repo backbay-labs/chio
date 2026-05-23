@@ -149,7 +149,7 @@ fn unsupported_passport_schema_variants_fail_closed_before_signature_checks() {
         "",
         "chio.agent-passport",
         "chio.agent-passport.v0",
-        "chio.agent-passport.v2",
+        "chio.agent-passport.v9",
         "chio.agent-passport.v1 ",
         " chio.agent-passport.v1",
         "CHIO.AGENT-PASSPORT.V1",
@@ -184,7 +184,7 @@ fn unsupported_signed_verifier_policy_schema_variants_fail_closed() {
     for schema in [
         "",
         "chio.passport-verifier-policy",
-        "chio.passport-verifier-policy.v2",
+        "chio.passport-verifier-policy.v9",
     ] {
         let mut tampered = document.clone();
         tampered.body.schema = schema.to_string();
@@ -213,7 +213,7 @@ fn unsupported_challenge_and_response_schema_variants_fail_closed() {
     for schema in [
         "",
         "chio.agent-passport-presentation-challenge",
-        "chio.agent-passport-presentation-challenge.v2",
+        "chio.agent-passport-presentation-challenge.v9",
     ] {
         let mut tampered = challenge.clone();
         tampered.schema = schema.to_string();
@@ -231,7 +231,7 @@ fn unsupported_challenge_and_response_schema_variants_fail_closed() {
     for schema in [
         "",
         "chio.agent-passport-presentation-response",
-        "chio.agent-passport-presentation-response.v2",
+        "chio.agent-passport-presentation-response.v9",
     ] {
         let mut tampered = response.clone();
         tampered.schema = schema.to_string();

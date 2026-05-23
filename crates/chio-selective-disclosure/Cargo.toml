@@ -10,6 +10,11 @@ publish = false
 
 [lib]
 name = "chio_selective_disclosure"
+test = false
+
+[[example]]
+name = "chio_fixture"
+required-features = ["bbs"]
 
 [features]
 default = []

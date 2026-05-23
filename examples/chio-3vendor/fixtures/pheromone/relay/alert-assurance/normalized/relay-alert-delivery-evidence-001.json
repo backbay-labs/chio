@@ -1,0 +1,26 @@
+{
+  "schema": "chio.pheromone.relay-alert-delivery-evidence.v1",
+  "localKernelId": "did:chio:dataco",
+  "observedAtUnixMs": 1766000065000,
+  "resultId": "normalized:alertmanager-auth-watch:relay_nonce_replay",
+  "receiverId": "alertmanager-auth-watch",
+  "kind": "alertmanager",
+  "targetRef": "alertmanager:relay-auth-watch",
+  "notificationRoute": "opsgenie-auth-watch",
+  "opsgenie": "relay-security",
+  "alertCode": "relay_nonce_replay",
+  "dedupeKey": "chio-relay:dataco:relay-nonce-replay",
+  "severity": "critical",
+  "runbook": "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#replay-storm",
+  "status": "delivered",
+  "sourceHandoffReportSha256": "40c91f8742e259de9a3c507e9c6a34b7ac59341ceb5e0a24e8d5da0c501fbdd5",
+  "downstreamEvidenceSha256": "d79c69a038b17a1bbe66030d84bc2f9ab9a57e24d42b28f7eeba8258bcf06afe",
+  "labels": {
+    "notification_route": "opsgenie-auth-watch",
+    "opsgenie": "relay-security",
+    "receiver": "alertmanager-auth-watch",
+    "service": "chio-pheromone-relay",
+    "severity": "critical",
+    "status": "delivered"
+  }
+}

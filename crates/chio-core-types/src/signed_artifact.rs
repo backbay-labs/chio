@@ -4,15 +4,10 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use crate::capability::{
-    CHIO_CAPABILITIES_SCHEMA, CHIO_CAPABILITY_V1_SCHEMA, CHIO_CAPABILITY_V2_SCHEMA,
-};
+use crate::capability::{CHIO_CAPABILITIES_SCHEMA, CHIO_CAPABILITY_SCHEMA};
 use crate::error::{Error, Result};
 use crate::oracle::CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA;
-use crate::receipt::{
-    CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA, CHIO_RECEIPT_LINEAGE_STATEMENT_V2_SCHEMA,
-    CHIO_RECEIPT_V2_SCHEMA,
-};
+use crate::receipt::{CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA, CHIO_RECEIPT_SCHEMA};
 use crate::runtime_attestation::{
     AWS_NITRO_ATTESTATION_SCHEMA, AZURE_MAA_ATTESTATION_SCHEMA,
     ENTERPRISE_VERIFIER_ATTESTATION_SCHEMA, GOOGLE_CONFIDENTIAL_VM_ATTESTATION_SCHEMA,
@@ -27,12 +22,9 @@ pub const CHIO_BILATERAL_SIGNATURE_SLICE_V1_SCHEMA: &str = "chio.bilateral-signa
 /// Known signed artifacts accepted by the core compatibility gate.
 pub const KNOWN_SIGNED_ARTIFACT_SCHEMAS: &[&str] = &[
     CHIO_CAPABILITIES_SCHEMA,
-    CHIO_CAPABILITY_V1_SCHEMA,
-    CHIO_CAPABILITY_V2_SCHEMA,
-    "chio.receipt.v1",
-    CHIO_RECEIPT_V2_SCHEMA,
+    CHIO_CAPABILITY_SCHEMA,
+    CHIO_RECEIPT_SCHEMA,
     CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA,
-    CHIO_RECEIPT_LINEAGE_STATEMENT_V2_SCHEMA,
     CHIO_ANCHOR_BATCH_V1_SCHEMA,
     CHIO_BILATERAL_SIGNATURE_SLICE_V1_SCHEMA,
     CHIO_SESSION_ANCHOR_SCHEMA,
@@ -80,34 +72,15 @@ pub fn built_in_signed_artifact_registry() -> Vec<SignedArtifactSchemaEntry> {
             "schema-registry/v1/capability-negotiation",
         ),
         (
-            CHIO_CAPABILITY_V1_SCHEMA,
+            CHIO_CAPABILITY_SCHEMA,
             "capability_token",
-            "schema-registry/v1/capability-token-v1",
+            "schema-registry/v1/capability-token",
         ),
-        (
-            CHIO_CAPABILITY_V2_SCHEMA,
-            "capability_token",
-            "schema-registry/v1/capability-token-v2",
-        ),
-        (
-            "chio.receipt.v1",
-            "receipt",
-            "schema-registry/v1/receipt-v1",
-        ),
-        (
-            CHIO_RECEIPT_V2_SCHEMA,
-            "receipt",
-            "schema-registry/v1/receipt-v2-body-hash",
-        ),
+        (CHIO_RECEIPT_SCHEMA, "receipt", "schema-registry/v1/receipt"),
         (
             CHIO_RECEIPT_LINEAGE_STATEMENT_SCHEMA,
             "receipt_lineage",
-            "schema-registry/v1/receipt-lineage-v1",
-        ),
-        (
-            CHIO_RECEIPT_LINEAGE_STATEMENT_V2_SCHEMA,
-            "receipt_lineage",
-            "schema-registry/v1/receipt-lineage-v2",
+            "schema-registry/v1/receipt-lineage",
         ),
         (
             CHIO_ANCHOR_BATCH_V1_SCHEMA,

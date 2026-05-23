@@ -17,8 +17,6 @@ Options:
           Optional output file. When provided, the report is written to this path; otherwise the report is printed to stdout
       --json
           Backward-compatible alias for `--format json`
-      --format <FORMAT>
-          Output format for command results and terminal error reporting [default: human] [possible values: human, json]
       --receipt-db <RECEIPT_DB>
           Optional SQLite database path for durable receipt persistence
       --revocation-db <REVOCATION_DB>

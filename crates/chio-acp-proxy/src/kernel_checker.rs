@@ -204,6 +204,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                     allowed: false,
                     capability_id: None,
                     receipt_id: None,
+                    receipt_request_id: None,
                     reason: "no capability token presented".to_string(),
                 });
             }
@@ -216,6 +217,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                     allowed: false,
                     capability_id: None,
                     receipt_id: None,
+                    receipt_request_id: None,
                     reason: error.to_string(),
                 });
             }
@@ -227,6 +229,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                     allowed: false,
                     capability_id: Some(capability.id.clone()),
                     receipt_id: None,
+                    receipt_request_id: None,
                     reason: error.to_string(),
                 });
             }
@@ -256,7 +259,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                     dpop_proof: None,
                     governed_intent: None,
                     approval_token: None,
-            model_metadata: None,
+                    model_metadata: None,
                 },
             )
             .map_err(|error| CapabilityCheckError::Internal(error.to_string()))?;
@@ -264,18 +267,21 @@ impl CapabilityChecker for KernelCapabilityChecker {
         let response = orchestrated.response;
         let capability_id = Some(response.receipt.capability_id.clone());
         let receipt_id = Some(response.receipt.id.clone());
+        let receipt_request_id = Some(response.request_id.clone());
 
         match response.verdict {
             KernelVerdict::Allow => Ok(AcpVerdict {
                 allowed: true,
                 capability_id,
                 receipt_id,
+                receipt_request_id,
                 reason: "authorized through kernel-backed ACP guard pipeline".to_string(),
             }),
             KernelVerdict::Deny => Ok(AcpVerdict {
                 allowed: false,
                 capability_id,
                 receipt_id,
+                receipt_request_id,
                 reason: response
                     .reason
                     .unwrap_or_else(|| "kernel denied ACP operation".to_string()),
@@ -284,6 +290,7 @@ impl CapabilityChecker for KernelCapabilityChecker {
                 allowed: false,
                 capability_id,
                 receipt_id,
+                receipt_request_id,
                 reason: response
                     .reason
                     .unwrap_or_else(|| "ACP operation requires approval".to_string()),

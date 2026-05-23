@@ -15,7 +15,7 @@
 use chio_core::capability::CapabilityCryptoFloor;
 use chio_core::capability::{
     compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-    CapabilityTokenBody, CapabilityTokenV2Body, ChioScope, Operation, ToolGrant,
+    CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
 };
 use chio_core::crypto::Keypair;
 use chio_kernel_core::{
@@ -43,7 +43,7 @@ fn scope_with(grants: Vec<ToolGrant>) -> ChioScope {
     }
 }
 
-/// Build a v2 child capability whose `delegation_chain` claims
+/// Build a child capability whose `delegation_chain` claims
 /// descent from `parent_id` and whose `budget_share_bps` is `share`.
 fn build_child(
     issuer: &Keypair,
@@ -70,8 +70,8 @@ fn build_child(
         expires_at: 200,
         delegation_chain,
     };
-    CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body,
             caveats: vec![],
             scope_attenuations: vec![],
@@ -80,7 +80,7 @@ fn build_child(
         },
         issuer,
     )
-    .expect("v2 child signs")
+    .expect("child signs")
 }
 
 #[test]

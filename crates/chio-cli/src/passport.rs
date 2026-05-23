@@ -5,8 +5,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::{Keypair, PublicKey};
 use chio_credentials::{
-    build_agent_passport, create_passport_presentation_challenge_with_reference,
-    create_signed_passport_verifier_policy,
+    AgentPassport, AttestationWindow, ChioCredentialEvidence, CredentialError,
+    EnterpriseIdentityProvenance, OID4VP_VERIFIER_METADATA_PATH, Oid4vciCredentialOffer,
+    Oid4vciCredentialRequest, Oid4vciTokenRequest, Oid4vciTokenResponse,
+    Oid4vpPresentationVerification, Oid4vpRequestObject, Oid4vpVerifierMetadata,
+    PassportLifecycleResolution, PassportLifecycleState, PassportPresentationChallenge,
+    PassportPresentationOptions, PassportPresentationResponse, PassportStatusDistribution,
+    PassportVerifierPolicy, PassportVerifierPolicyReference, PortableJwkSet,
+    SignedPassportVerifierPolicy, build_agent_passport,
+    create_passport_presentation_challenge_with_reference, create_signed_passport_verifier_policy,
     default_oid4vci_passport_issuer_metadata_with_signing_key,
     default_oid4vci_passport_issuer_metadata_with_status_distribution,
     ensure_signed_passport_verifier_policy_active, evaluate_agent_passport,
@@ -14,22 +21,14 @@ use chio_credentials::{
     present_agent_passport, respond_to_oid4vp_request, respond_to_passport_presentation_challenge,
     verify_agent_passport, verify_passport_presentation_response_with_policy,
     verify_signed_oid4vp_request_object_with_any_key, verify_signed_passport_verifier_policy,
-    AgentPassport, AttestationWindow, ChioCredentialEvidence, CredentialError,
-    EnterpriseIdentityProvenance, Oid4vciCredentialOffer, Oid4vciCredentialRequest,
-    Oid4vciTokenRequest, Oid4vciTokenResponse, Oid4vpPresentationVerification,
-    Oid4vpRequestObject, Oid4vpVerifierMetadata, PassportLifecycleResolution,
-    PassportLifecycleState, PassportPresentationChallenge, PassportPresentationOptions,
-    PassportPresentationResponse, PassportStatusDistribution, PassportVerifierPolicy,
-    PassportVerifierPolicyReference, PortableJwkSet,
-    SignedPassportVerifierPolicy, OID4VP_VERIFIER_METADATA_PATH,
 };
-use chio_credentials::{synthesize_trust_tier, TrustTier};
+use chio_credentials::{TrustTier, synthesize_trust_tier};
 use chio_did::DidChio;
 use chio_kernel::{
-    behavioral_anomaly_score, compliance_score, ComplianceReport, ComplianceScoreConfig,
-    ComplianceScoreInputs, EmaBaselineState, EvidenceChildReceiptScope, EvidenceExportQuery,
+    ComplianceReport, ComplianceScoreConfig, ComplianceScoreInputs, EmaBaselineState,
+    EvidenceChildReceiptScope, EvidenceExportQuery, behavioral_anomaly_score, compliance_score,
 };
-use chio_reputation::{compute_local_scorecard, ReputationConfig};
+use chio_reputation::{ReputationConfig, compute_local_scorecard};
 use chio_store_sqlite::SqliteReceiptStore;
 use url::Url;
 
@@ -43,7 +42,7 @@ use crate::trust_control::{
     CreateIdentityAssertionRequest, CreateOid4vpRequest, CreatePassportChallengeRequest,
     CreatePassportChallengeResponse, VerifierPolicyListResponse, VerifyPassportChallengeRequest,
 };
-use crate::{load_or_create_authority_keypair, CliError};
+use crate::{CliError, load_or_create_authority_keypair};
 
 fn unix_now() -> u64 {
     SystemTime::now()
@@ -464,7 +463,7 @@ fn resolve_passport_lifecycle(
                         .to_string()
                         .contains("passport lifecycle administration requires") =>
             {
-                return Ok(None)
+                return Ok(None);
             }
             Err(error) => return Err(error),
         };
@@ -597,6 +596,7 @@ fn build_attestation_evidence(
         since,
         until,
         tenant: None,
+        read_boundary: Some(chio_kernel::ReceiptReadBoundary::AdminAll),
     })?;
 
     if bundle.tool_receipts.is_empty() {
@@ -1291,10 +1291,7 @@ pub(crate) fn cmd_passport_issuance_credential_redeem(
 
     if let Some(output) = output {
         ensure_parent_dir(output)?;
-        fs::write(
-            output,
-            response.credential.write_output_bytes()?,
-        )?;
+        fs::write(output, response.credential.write_output_bytes()?)?;
     }
 
     if json_output {
@@ -1681,7 +1678,7 @@ pub(crate) fn cmd_passport_challenge_respond(
                 return Err(CliError::policy_error(
                     "challenge response accepts either --challenge or --challenge-url, not both"
                         .to_string(),
-                ))
+                ));
             }
             (None, None) => return Err(CliError::policy_error(
                 "challenge response requires either --challenge <path> or --challenge-url <url>"

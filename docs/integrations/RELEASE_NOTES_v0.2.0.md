@@ -31,13 +31,13 @@ PR #679 is the source-of-truth commit that bundles:
      map (closes the alias-collision data-loss path; "C1 fix")
    - `_is_pure_forwarder` no longer captures `def upload(*payload)`
      when `payload` matches a protected field
-   - VAR_POSITIONAL extras for `def fn(path, *rest, **kw)` shapes
-2. **Wrapper-name -> canonical-name alias routing** is applied
-   internally by `bind_and_redact`; it remains an implementation
-   detail with no public `build_alias_map` helper to call.
-   Adapters that want custom routing should pass a
-   `positional_table` and rely on `bind_and_redact` to apply the
-   alias logic.
+   - VAR_POSITIONAL merge-conflicts for `def fn(path, *rest, **kw)`
+     shapes when a kwarg already supplies a protected slot
+2. **`build_alias_map` is public** in `chio_adapter_base.redact`
+   and the top-level `chio_adapter_base` namespace for adapters and
+   API docs that need to inspect wrapper-name -> canonical-name
+   routing. Normal adapters should still call `bind_and_redact`;
+   custom routing belongs in `positional_table`.
 3. **26 new regression tests (115 -> 141)** plus a 6-axis
    coverage matrix comment block at the top of
    `tests/test_bind_and_redact.py`.
@@ -56,9 +56,10 @@ PR #679 is the source-of-truth commit that bundles:
 ## Migration
 
 - Adapters that already call `bind_and_redact` and want the v0.2.0
-  shape fixes: bump the floor pin to
-  `chio-adapter-base>=0.2.0,<0.3` and re-run your existing
-  redaction tests.
+  shape fixes: after the 0.2.0 package is published, bump the
+  floor pin to `chio-adapter-base>=0.2.0,<0.3` and re-run your
+  existing redaction tests. In a monorepo workspace, the same pin is
+  valid when the resolver maps it to the in-repo package path.
 - Adapters that only call `redact_args`: the call site is
   byte-identical across 0.1.x and 0.2.0. Stay on
   `>=0.1.0,<0.2` until you touch the wrapper next.

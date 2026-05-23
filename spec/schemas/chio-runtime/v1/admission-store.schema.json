@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-runtime/v1/admission-store.schema.json",
+  "title": "Chio Runtime Admission Store",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "bundles", "consumedLeaseIds"],
+  "properties": {
+    "schema": { "const": "chio.runtime.admission-store.v1" },
+    "bundles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/admissionBundle" },
+      "uniqueItems": true
+    },
+    "consumedLeaseIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "consumedTreatyContinuationIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "trustFloors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/trustFloorEntry" },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "requestBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "capabilityId",
+        "serverId",
+        "toolName",
+        "toolArgsSha256",
+        "hostKernelId"
+      ],
+      "properties": {
+        "requestId": { "type": "string", "minLength": 1 },
+        "capabilityId": { "type": "string", "minLength": 1 },
+        "serverId": { "type": "string", "minLength": 1 },
+        "toolName": { "type": "string", "minLength": 1 },
+        "toolArgsSha256": { "$ref": "#/$defs/sha256" },
+        "originKernelId": { "type": "string", "minLength": 1 },
+        "hostKernelId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "admissionBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "admissionId",
+        "binding",
+        "workflowId",
+        "workflowGrantId",
+        "stepIndex",
+        "destructive",
+        "trustBundleSha256",
+        "verificationContextSha256"
+      ],
+      "properties": {
+        "schema": { "const": "chio.runtime.admission-bundle.v1" },
+        "admissionId": { "type": "string", "minLength": 1 },
+        "binding": { "$ref": "#/$defs/requestBinding" },
+        "workflowId": { "type": "string", "minLength": 1 },
+        "workflowGrantId": { "type": "string", "minLength": 1 },
+        "stepIndex": { "type": "integer", "minimum": 0 },
+        "destructive": { "type": "boolean" },
+        "leaseId": { "type": "string", "minLength": 1 },
+        "governanceReceiptId": { "type": "string", "minLength": 1 },
+        "trustBundleSha256": { "$ref": "#/$defs/sha256" },
+        "verificationContextSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "trustFloorEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verifierId",
+        "keyId",
+        "highestVersion",
+        "latestBundleSha256",
+        "latestRevocationCheckpointSha256"
+      ],
+      "properties": {
+        "verifierId": { "type": "string", "minLength": 1 },
+        "keyId": { "type": "string", "minLength": 1 },
+        "highestVersion": { "type": "integer", "minimum": 1 },
+        "latestBundleSha256": { "$ref": "#/$defs/sha256" },
+        "latestRevocationCheckpointSha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

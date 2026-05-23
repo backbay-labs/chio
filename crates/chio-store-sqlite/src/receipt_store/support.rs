@@ -4443,23 +4443,28 @@ impl ReceiptStore for SqliteReceiptStore {
         self.append_chio_receipt_returning_seq(receipt).map(|_| ())
     }
 
-    fn supports_chio_receipt_v2(&self) -> bool {
-        true
-    }
-
-    fn append_chio_receipt_v2(
+    fn load_chio_receipt(
         &self,
-        receipt: &chio_core::receipt::ChioReceiptV2,
-        legacy_receipt_id_alias: Option<&str>,
-    ) -> Result<u64, ReceiptStoreError> {
-        SqliteReceiptStore::append_chio_receipt_v2_internal(self, receipt, legacy_receipt_id_alias)
-    }
-
-    fn contains_chio_receipt_v2_body_hash(
-        &self,
-        body_hash: &str,
-    ) -> Result<bool, ReceiptStoreError> {
-        SqliteReceiptStore::contains_chio_receipt_v2_body_hash_internal(self, body_hash)
+        receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        let connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        verify_latest_checkpoint_integrity(&connection)?;
+        connection
+            .query_row(
+                "SELECT seq, raw_json FROM chio_tool_receipts WHERE receipt_id = ?1",
+                params![receipt_id],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            )
+            .optional()?
+            .map(|(seq, raw_json)| {
+                decode_verified_chio_receipt(
+                    &raw_json,
+                    "persisted tool receipt",
+                    Some(seq.max(0) as u64),
+                )
+            })
+            .transpose()
     }
 
     fn append_chio_receipt_canonical(
@@ -4848,6 +4853,14 @@ pub(crate) fn decision_kind(decision: &Decision) -> &'static str {
         Decision::Cancelled { .. } => "cancelled",
         Decision::Incomplete { .. } => "incomplete",
     }
+}
+
+pub(crate) fn receipt_decision_kind(receipt: &ChioReceipt) -> &'static str {
+    let semantics = receipt.semantic_fields();
+    if !semantics.is_authorized(&receipt.decision) && matches!(&receipt.decision, Decision::Allow) {
+        return semantics.receipt_kind.as_str();
+    }
+    decision_kind(&receipt.decision)
 }
 
 pub(crate) fn terminal_state_kind(state: &OperationTerminalState) -> &'static str {

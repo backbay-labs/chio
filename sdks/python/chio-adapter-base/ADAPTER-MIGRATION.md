@@ -36,16 +36,19 @@ batch (#664-#675) exposed:
 4. **`_is_pure_forwarder` no longer captures `def upload(*payload)`**
    when `payload` matches a protected field; the signature path runs
    instead so each variadic value redacts under the canonical name.
-5. **VAR_POSITIONAL extras for `def fn(path, *rest, **kw)`-shape
-   wrappers** now redact under the canonical protected slot when a
-   kwarg has already supplied that slot (closes deferred IDs
-   3229566280 and 3229515822).
+5. **VAR_POSITIONAL merge-conflicts for `def fn(path, *rest, **kw)`**
+   now redact the extra positional value that collides with a
+   kwarg-supplied protected slot (closes deferred IDs 3229566280 and
+   3229515822). Extras that have no table slot or protected
+   collision remain raw because the helper has no safe field name for
+   them.
 
-The wrapper-name -> canonical-name alias routing remains an
-internal implementation detail of `bind_and_redact`; there is no
-public `build_alias_map` helper to call. Adapters that want
-custom routing should pass a `positional_table` and rely on
-`bind_and_redact` to apply the alias logic.
+`build_alias_map` is now public in `chio_adapter_base.redact` and
+the top-level `chio_adapter_base` namespace for adapters and API
+docs that need to inspect wrapper-name -> canonical-name routing.
+Normal adapters should still call `bind_and_redact`; custom routing
+belongs in `positional_table`, with `build_alias_map` used only for
+diagnostics or adapter-local tests.
 
 The `positional_table` argument's contract is also explicitly
 documented as REPLACES-the-default semantics (see Section 5);
@@ -69,19 +72,18 @@ What you need to do:
    ]
    ```
 
-   Note: `chio-adapter-base 0.2.0` is published as part of v0.3
-   PR-1 (PR #679); chio-prefect bumps to this floor in its 0.1.2
-   release alongside the same PR. Other adapters that only call
-   `redact_args` and have no exposure to the v0.2.0
-   `bind_and_redact` edge cells can stay on
-   `chio-adapter-base>=0.1.0,<0.2` until they touch their wrappers
-   next; the `redact_args` call sites are byte-identical across
-   0.1.x and 0.2.0.
+   Use this pin once the 0.2.0 package is published or when your
+   workspace resolves `chio-adapter-base` from the in-repo path.
+   chio-prefect already bumps to this floor in its 0.1.2 release
+   as part of PR #679. Other adapters that only call `redact_args`
+   and have no exposure to the v0.2.0 `bind_and_redact` edge cells
+   can stay on `chio-adapter-base>=0.1.0,<0.2` until they touch
+   their wrappers next; the `redact_args` call sites are
+   byte-identical across 0.1.x and 0.2.0.
 
 2. **If you pass a custom `positional_table`,** read Section 5 of
-   this guide. The semantic change there is the only behaviour
-   change a caller can hit without intentionally exercising one of
-   the new edge cells.
+   this guide. The replace semantic is not new, but it is the
+   easiest contract to misunderstand during migration.
 
 3. **Re-run your existing redaction tests against the new floor.**
    They should still pass byte-identical. If a test starts failing
@@ -140,12 +142,11 @@ When NOT to migrate:
 The canonical example is chio-prefect's `_task_parameters`
 (originally at
 `sdks/python/chio-prefect/src/chio_prefect/decorators.py:486`).
-The collapse onto `bind_and_redact` plus a thin envelope shim is
-covered by PR-1 of the v0.3 release; the resulting shim is
-~20 lines and preserves the prefect-specific
+The collapse onto `bind_and_redact` plus a thin envelope shim landed
+in PR #679; the resulting shim preserves the prefect-specific
 `parameters["args"]` / `parameters["kwargs"]` envelope plus the
-`__var_kw_spillover__` synthetic-key shape so prefect's existing
-41 redaction tests pass byte-identical.
+`__var_kw_spillover__` synthetic-key shape while delegating the
+shared binding and redaction logic to `bind_and_redact`.
 
 Recipe:
 
@@ -157,8 +158,8 @@ Recipe:
    `{"args": [...], "kwargs": {...}}`).
 
 2. **Replace (a) and (b) with `bind_and_redact`.** It already
-   handles every documented signature shape, including the four
-   edge cells fixed in 0.2.0. Pass the adapter's `tool_name`,
+   handles every documented signature shape, including the edge
+   cells fixed in 0.2.0. Pass the adapter's `tool_name`,
    the `RedactionPolicy` (build a custom one if you have
    adapter-specific protected fields), and `drop_self=True` if
    the wrapper sees a method receiver in `args[0]`.
@@ -180,9 +181,8 @@ Recipe:
    old helper produced for at least one representative tool call
    per signature shape your adapter wraps.
 
-The chio-prefect collapse lands as PR-1 of the
-`chio-adapter-base` v0.3 release: see
-[PR #679](https://github.com/bb-connor/arc/pull/679) for the
+The chio-prefect collapse landed in
+[PR #679](https://github.com/bb-connor/arc/pull/679): see it for the
 helper hardening + prefect canary collapse; the post-merge
 worked example lives at
 `sdks/python/chio-prefect/src/chio_prefect/decorators.py`'s
@@ -294,11 +294,12 @@ is the same across all of them:
    policy that protects `payload` redacts each variadic value
    (does NOT pass-through as a forwarder).
 
-6. **VAR_POSITIONAL extras with kwarg-supplied slot** (new in
-   0.2.0): for `def fn(path, *rest, **kw)`, assert that when
+6. **VAR_POSITIONAL merge-conflict with kwarg-supplied slot** (new
+   in 0.2.0): for `def fn(path, *rest, **kw)`, assert that when
    `kw` already supplies a protected slot (e.g. `body=`), the
-   variadic extras still redact under the canonical protected
-   slot (closes deferred IDs 3229566280 / 3229515822).
+   colliding variadic extra redacts under the canonical protected
+   slot (closes deferred IDs 3229566280 / 3229515822). Do not
+   assert that arbitrary extras beyond known slots are redacted.
 
 7. **Custom `positional_table` replace semantic** (new in
    0.2.0): assert that a custom table NOT containing

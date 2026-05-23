@@ -2,8 +2,9 @@
 
 Shared security and receipt primitives for the Chio Python adapter family.
 
-> **Status: shipping.** The first non-pre-release publish on PyPI is
-> `0.2.0`; see `CHANGELOG.md` for the breaking notes and
+> **Status: shipping.** The first non-pre-release line is `0.2.0`;
+> publish that package before external adapters consume the
+> `>=0.2.0,<0.3` pin. See `CHANGELOG.md` for release notes and
 > `ADAPTER-MIGRATION.md` for the adapter-author migration recipe.
 
 ## Why this package exists
@@ -132,6 +133,7 @@ from chio_adapter_base.redact import (
     redact_args,
     RedactionPolicy,
     bind_and_redact,
+    build_alias_map,
     DEFAULT_TOOL_POSITIONAL_NAMES,
 )
 from chio_adapter_base.filters import (
@@ -143,7 +145,13 @@ A small set of the most common names is also re-exported from the
 top-level package for convenience:
 
 ```python
-from chio_adapter_base import sanitised_env, ReceiptBuffer, redact_args
+from chio_adapter_base import (
+    sanitised_env,
+    ReceiptBuffer,
+    redact_args,
+    bind_and_redact,
+    build_alias_map,
+)
 ```
 
 ## Migration story
@@ -154,7 +162,9 @@ plan. The current floor-pin matrix is:
 
 - Adapters that already adopted `bind_and_redact` and want the v0.2.0
   helper hardening (today: `chio-prefect 0.1.2` per PR #679) pin
-  `chio-adapter-base>=0.2.0,<0.3`.
+  `chio-adapter-base>=0.2.0,<0.3` once the 0.2.0 package is
+  published, or when their workspace resolver maps that pin to the
+  in-repo package path.
 - Adapters that only call `redact_args` and have no exposure to the
   v0.2.0 `bind_and_redact` edge cells stay on
   `chio-adapter-base>=0.1.0,<0.2` until they touch their wrappers

@@ -17,8 +17,8 @@
  *   - manifest, hashing, signing corpora (server-side concerns).
  *   - Any vector requiring fresh entropy or live time.
  *
- * Bumping to v2 requires a coordinated change in the conformance corpus
- * and this selector.
+ * The next incompatible schema revision requires a coordinated change in
+ * the conformance corpus and this selector.
  */
 
 /**

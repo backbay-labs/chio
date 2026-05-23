@@ -49,7 +49,7 @@ wasm_sha256: "abc"
         Ok(value) => value,
         Err(error) => panic!("config blob should be JSON: {error}"),
     };
-    assert_eq!(config_json["schema_version"], "chio.guard.config.v2");
+    assert_eq!(config_json["schema_version"], "chio.guard.config.v1");
     assert_eq!(config_json["wit_world"], GUARD_WIT_WORLD);
     assert_eq!(config_json["signer_public_key"], signer);
     assert_eq!(config_json["fuel_limit"], 5_000_000);

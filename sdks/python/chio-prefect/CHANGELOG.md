@@ -5,6 +5,26 @@ All notable changes to `chio-prefect` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2]
+
+- refactor: replace the local `_task_parameters` body (and its
+  `_forwarding_table_or_passthrough` helper) with a thin shim around
+  `chio_adapter_base.redact.bind_and_redact`. The new
+  `_legacy_envelope` shim does two prefect-specific jobs: wraps the
+  helper's `(redacted_args, redacted_kwargs)` return into prefect's
+  `{"args": [...], "kwargs": {...}}` sidecar payload envelope, and
+  re-emits the synthetic `<name>__var_kw_spillover__` keys for
+  positional-only-vs-kwarg spillover collisions to preserve the v0.2
+  wire shape. v0.4 will deprecate the synthetic-key emission with a
+  one-release migration window. Dependency bumped to
+  `chio-adapter-base>=0.2.0,<0.3`.
+- fix: the bind_and_redact helper hardening landed in
+  `chio-adapter-base 0.2.0` covers every prefect-side edge case the
+  v0.2 batch surfaced (variadic-named-after-protected, pure-forwarder
+  kwarg precedence, alias-rename redaction, TypeError fallback
+  alias-map preservation). All 41 existing tests pass byte-identical
+  against the new shim.
+
 ## [0.1.1]
 
 - refactor: the local `_CHIO_DEFAULT_TOOL_POSITIONAL_NAMES` literal is

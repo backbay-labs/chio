@@ -1,0 +1,16 @@
+{
+  "schema": "chio.pheromone.query-report.v1",
+  "accepted": true,
+  "concentration": {
+    "schema": "chio.pheromone-concentration.v1",
+    "subject_class": "workflow.destructive_step",
+    "subject_class_namespace": "chio.runtime",
+    "total_strength": 0.42,
+    "unweighted_total_strength": 0.42,
+    "distinct_origin_pairs": 1,
+    "peak_confidence": 0.7,
+    "reputation_epoch": 7,
+    "evaluated_at_unix_ms": 1800000001000,
+    "treaty_scopes": ["treaty.vendor-ledger"]
+  }
+}

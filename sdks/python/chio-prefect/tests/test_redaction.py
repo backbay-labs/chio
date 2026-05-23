@@ -931,3 +931,182 @@ class TestVarPositionalNamedAfterBodyField:
             "omitted": True,
             "byte_count": len(b"SECRET_2"),
         }
+
+
+class TestArityOverflowFailClosed:
+    """Regression for PR #679 P2 3231181763.
+
+    A fixed-signature wrapper (no VAR_POSITIONAL) invoked with MORE
+    positional values than the signature accepts triggers
+    ``bind_partial`` TypeError. The bare ``bind_and_redact`` fallback
+    table redacts only up to the wrapper's last named slot and forwards
+    the rest raw. Pre-v0.3 prefect's ``_task_parameters`` instead
+    dropped the overflow positionals so an arity-invalid call could
+    never silently leak. The interval-3 shim delegated to
+    ``bind_and_redact`` and lost that fail-closed behaviour. This
+    re-establishes it: overflow values are redacted under each
+    protected canonical so the receipt audit log records "a secret was
+    attempted at position N" without crossing the wire.
+    """
+
+    def test_arity_overflow_positional_redacted_via_table(self) -> None:
+        from chio_prefect.decorators import _task_parameters
+
+        def write(path: str, content: str) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/tmp", "SECRET1", "SECRET2"),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        import json
+
+        forwarded = json.dumps(params)
+        assert "SECRET" not in forwarded
+        assert params["args"][0] == "/tmp"
+        # The signature's named ``content`` slot still redacts.
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(b"SECRET1"),
+        }
+        # Overflow position 2 redacts via the protected canonical so no
+        # raw secret crosses the wire.
+        assert params["args"][2] == {
+            "omitted": True,
+            "byte_count": len(b"SECRET2"),
+        }
+        assert params["kwargs"] == {}
+
+    def test_arity_overflow_with_var_positional_passes_through(
+        self,
+    ) -> None:
+        # Sanity check: a VAR_POSITIONAL wrapper is NOT treated as
+        # arity-overflow because all extras land in *args by design.
+        # Existing pass-through semantics are preserved.
+        from typing import Any
+
+        from chio_prefect.decorators import _task_parameters
+
+        def write(*args: Any, **kwargs: Any) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/tmp/x", "PROD_SECRET=abc123", "trailing-1", "trailing-2"),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        # Trailing args remain raw (not arity overflow; they fill *args).
+        assert params["args"][2] == "trailing-1"
+        assert params["args"][3] == "trailing-2"
+
+    def test_kwonly_overflow_not_double_redacted(self) -> None:
+        """Regression: when ``bind_and_redact`` already redacts an
+        overflow positional via the kwonly-protected path (e.g.
+        ``def write(path, *, content)`` with overflow), the
+        ``_legacy_envelope`` shim must NOT re-redact the resulting stub.
+        Re-redacting feeds the stub dict's ``repr()`` to ``redact_args``
+        as the new "value", overwriting ``byte_count`` with the length
+        of the stub repr (34) instead of the original secret length (7).
+        Closes PR #680 CursorM 3231239987 / P2 3231244182.
+        """
+        from chio_prefect.decorators import _task_parameters
+
+        def write(path: str, *, content: str) -> str:
+            return ""
+
+        secret = "SECRET2"
+        policy = RedactionPolicy.chio_default()
+        params = _task_parameters(
+            ("/tmp", secret),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        # The overflow positional must record byte_count = LENGTH OF
+        # THE ORIGINAL SECRET, not len(repr(stub_dict)).
+        assert params["args"][1] == {
+            "omitted": True,
+            "byte_count": len(secret.encode("utf-8")),
+        }
+        # Guard against the regression: byte_count must not match the
+        # stub-repr length (34 chars for this stub).
+        assert params["args"][1]["byte_count"] != len(
+            repr({"omitted": True, "byte_count": len(secret)})
+        )
+
+    def test_user_dict_with_omitted_key_still_redacted(self) -> None:
+        """Regression for PR #679 P2 3231314233.
+
+        The interval-5 stub-skip guard checked only
+        ``isinstance(value, dict) and value.get("omitted") is True`` so
+        a user-supplied dict that happened to carry an ``omitted: True``
+        flag plus real secrets slipped through the overflow loop
+        unredacted. Tighten the guard to match the exact stub
+        fingerprint (``omitted is True`` AND a numeric ``byte_count`` AND
+        no other keys); user dicts with extra keys must continue to be
+        redacted via the protected canonical.
+        """
+        from chio_prefect.decorators import _task_parameters
+
+        def write(path: str) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        # User-supplied overflow positional that LOOKS like a stub (has
+        # ``omitted: True``) but carries an additional secret-bearing
+        # field. The guard MUST NOT skip this; the value must be
+        # redacted under the protected canonical.
+        user_dict = {"omitted": True, "user_field": "PROD_SECRET=abc123"}
+        params = _task_parameters(
+            ("/tmp", user_dict),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+
+        import json
+
+        forwarded = json.dumps(params)
+        assert "PROD_SECRET" not in forwarded
+        # The overflow positional must be a fresh stub whose
+        # ``byte_count`` reflects the original user dict (its repr),
+        # not a passthrough of the user dict.
+        assert isinstance(params["args"][1], dict)
+        assert params["args"][1].get("omitted") is True
+        assert "user_field" not in params["args"][1]
+
+    def test_legit_stub_still_skipped_post_tightening(self) -> None:
+        """Companion to ``test_user_dict_with_omitted_key_still_redacted``:
+        an exact stub fingerprint
+        ``{"omitted": True, "byte_count": <int>}`` must continue to be
+        skipped so the kwonly-protected double-redaction regression
+        (3231244182) stays closed.
+        """
+        from chio_prefect.decorators import _task_parameters
+
+        def write(path: str) -> str:
+            return ""
+
+        policy = RedactionPolicy.chio_default()
+        legit_stub = {"omitted": True, "byte_count": 42}
+        params = _task_parameters(
+            ("/tmp", legit_stub),
+            {},
+            "chio_file_write",
+            policy,
+            fn=write,
+        )
+        # The exact stub passes through unchanged (byte_count preserved).
+        assert params["args"][1] == {"omitted": True, "byte_count": 42}

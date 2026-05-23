@@ -1,0 +1,57 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-closeout-report.v1",
+  "accepted": false,
+  "code": "closeout_blocked",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000100000,
+  "bundleCount": 1,
+  "closeoutReadyCount": 0,
+  "closeoutBlockedCount": 1,
+  "quarantineCount": 0,
+  "legalHoldCount": 1,
+  "eligibleForDeleteCount": 0,
+  "reviews": [
+    {
+      "bundleId": "relay-alert-assurance-export",
+      "bundlePath": "export-bundle",
+      "manifestSha256": "b52e1800d070d6445d024dcb2e3d44fb7aef5415ba346dbc1b43049d4f49aa59",
+      "artifactCount": 13,
+      "state": "closeout_blocked",
+      "code": "legal_hold_blocked",
+      "detail": "bundle has legal-hold retention rows",
+      "verifiedBundle": true,
+      "replayMatched": true,
+      "retentionSafe": false,
+      "recoveryDrillAccepted": true,
+      "routeReviewPresent": true,
+      "legalHoldCount": 1,
+      "eligibleForDeleteCount": 0,
+      "missingCount": 0,
+      "quarantineCount": 0,
+      "checks": [
+        {
+          "code": "trusted_exporter",
+          "accepted": true,
+          "detail": "bundle manifest verifies against caller-supplied trusted exporters"
+        },
+        {
+          "code": "assurance_replay",
+          "accepted": true,
+          "detail": "accepted"
+        },
+        {
+          "code": "recovery_drill",
+          "accepted": true,
+          "detail": "accepted"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "code": "closeout_report_only",
+      "accepted": true,
+      "detail": "closeout review is report-only and makes no human notification claim"
+    }
+  ]
+}

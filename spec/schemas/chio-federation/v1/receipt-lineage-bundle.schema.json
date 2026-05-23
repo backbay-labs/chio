@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-federation/v1/receipt-lineage-bundle.schema.json",
+  "title": "Chio Federation Receipt Lineage Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "bundleId", "rootReceiptSha256", "leafReceiptSha256", "statements"],
+  "properties": {
+    "schema": { "const": "chio.federation.receipt-lineage-bundle.v1" },
+    "bundleId": { "type": "string", "minLength": 1 },
+    "rootReceiptSha256": { "$ref": "#/$defs/sha256" },
+    "leafReceiptSha256": { "$ref": "#/$defs/sha256" },
+    "statements": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "receipt-lineage-statement.schema.json" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

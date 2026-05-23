@@ -33,16 +33,16 @@
       "id": "claim.handshake.capability_negotiation",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-wire/v1/capability/capabilities.schema.json",
-      "summary": "Peers exchange a feature bitset and a maximum capability-token schema at handshake time. The verifier rejects inbound tokens whose schema exceeds the negotiated ceiling, blocking a v1-only Mallory from forcing a v2-aware Alice to parse v2-only fields.",
-      "introduced_in": "capability-negotiation-schema-ceiling",
+      "summary": "Peers exchange a current capability feature bitset at handshake time. The verifier rejects malformed feature names before any negotiated feature is used, so a peer cannot smuggle unknown Chio-owned wire semantics through the handshake.",
+      "introduced_in": "capability-negotiation-feature-bitset",
       "depends_on_theorems": ["theorem.handshake.negotiation_safety"],
       "proof_manifest_ref": "manifest.handshake.capability_negotiation"
     },
     {
       "id": "claim.capability.budget_split",
       "status": "enforced",
-      "schema_artifact": "spec/schemas/chio-wire/v1/capability/token.v2.schema.json",
-      "summary": "A v2 CapabilityToken's budget_share_bps is enforced not just per-token (<= 10000 bps) but as a sibling-sum across delegated children of a common parent. The verifier consults a BudgetRegistry at the verify step and rejects any child whose admission would push the running sum past the parent's own share.",
+      "schema_artifact": "spec/schemas/chio-wire/v1/capability/token.schema.json",
+      "summary": "A CapabilityToken's budget_share_bps is enforced not just per-token (<= 10000 bps) but as a sibling-sum across delegated children of a common parent. The verifier consults a BudgetRegistry at the verify step and rejects any child whose admission would push the running sum past the parent's own share.",
       "introduced_in": "capability-budget-sibling-sum",
       "depends_on_theorems": ["theorem.budget.sibling_sum_soundness"],
       "proof_manifest_ref": "manifest.capability.budget_split"
@@ -50,8 +50,8 @@
     {
       "id": "claim.capability.attenuation_proof",
       "status": "enforced",
-      "schema_artifact": "spec/schemas/chio-wire/v1/capability/token.v2.schema.json",
-      "summary": "A v2 CapabilityToken carries an on-the-wire attenuation_proof witness; verifiers check the witness hashes and subset relation fail closed AND require attenuation_proof.parent_scope_hash to be bound to the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain).",
+      "schema_artifact": "spec/schemas/chio-wire/v1/capability/token.schema.json",
+      "summary": "A CapabilityToken carries an on-the-wire attenuation_proof witness; verifiers check the witness hashes and subset relation fail closed AND require attenuation_proof.parent_scope_hash to be bound to the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain).",
       "introduced_in": "capability-attenuation-chain-binding",
       "depends_on_theorems": ["theorem.attenuation.witness_soundness"],
       "proof_manifest_ref": "manifest.capability.attenuation_proof"
@@ -74,21 +74,21 @@
       "proof_manifest_ref": "manifest.anchor.batch_continuity"
     },
     {
-      "id": "claim.receipt.body_hash_addressing",
+      "id": "claim.receipt.content_addressed_id",
       "status": "enforced",
-      "schema_artifact": "spec/schemas/chio-wire/v1/receipt/v2.schema.json",
-      "summary": "A v2 receipt is content-addressed by body_hash := H(canonical_jcs(ReceiptV2BodyHashInput)) where the input set strictly excludes body_hash, signature, and the legacy UUIDv7 receipt_id. The kernel mints `ChioReceiptV2` on the production hot path when the negotiated peer profile advertises `accepts_receipt_v2`; the legacy UUIDv7 alias is non-authoritative for replay (replay key is body_hash).",
-      "introduced_in": "receipt-v2-body-hash",
-      "promoted_in": "receipt-v2-runtime-minting",
-      "depends_on_theorems": ["theorem.receipt.body_hash_input_set_pinned"],
-      "proof_manifest_ref": "manifest.receipt.body_hash_addressing"
+      "schema_artifact": "spec/schemas/chio-wire/v1/receipt/record.schema.json",
+      "summary": "A receipt is content-addressed by id := H(canonical_jcs(ChioReceiptIdInput)) where the input set strictly excludes id, algorithm, and signature. The kernel mints `ChioReceipt` on the production hot path and replay keys on id.",
+      "introduced_in": "receipt-content-addressed-id",
+      "promoted_in": "receipt-runtime-minting",
+      "depends_on_theorems": ["theorem.receipt.id_input_set_pinned"],
+      "proof_manifest_ref": "manifest.receipt.content_addressed_id"
     }
   ],
   "proposed_claims": [
     {
       "id": "claim.receipt.dag_acyclicity",
       "status": "enforced",
-      "schema_artifact": "spec/schemas/chio-wire/v1/receipt/lineage_statement.v2.schema.json",
+      "schema_artifact": "spec/schemas/chio-wire/v1/receipt/lineage_statement.schema.json",
       "summary": "Multi-parent receipt lineage carries a signed dag_ordinal + HLC triple; verifier predicate child.dag_ordinal > max(parent.dag_ordinal) rejects cycles across independent kernel clock domains.",
       "introduced_by": "receipt-lineage-dag-proposal",
       "depends_on_theorems": ["theorem.receipt.dag_acyclicity"],

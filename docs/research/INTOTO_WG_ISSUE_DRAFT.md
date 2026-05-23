@@ -6,7 +6,7 @@
 **Date**: 2026-05-04
 
 This file is a ready-to-paste GitHub issue body packaging
-[`spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`](../../spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md)
+[`spec/CHIO_BILATERAL_COSIGN_INVOCATION.md`](../../spec/CHIO_BILATERAL_COSIGN_INVOCATION.md)
 for upstream engagement. Adjust the framing once we have a stable
 public link to the spec (today it lives in this private repo). Strip
 this preamble before posting.
@@ -125,7 +125,7 @@ right shape.
    semantics outside the predicate body?
 2. Is there appetite for a workflow-receipt predicate that composes
    N of these into a single attestation, or should that live in a
-   separate spec (e.g., chiodos-side)?
+   separate spec (e.g., chio-side)?
 3. Should the `capability_lease_ref` shape be standardised (in-toto
    defines a capability format) or left implementation-defined and
    carried by reference only?
@@ -164,5 +164,5 @@ Thank you for reading.
    contribution process documented at
    <https://github.com/in-toto/ITE/blob/master/CONTRIBUTING.md> (verify
    path before posting).
-5. Track responses in this file; update the CHIODOS_CONCEPT
+5. Track responses in this file; update the CHIO_CONCEPT
    "next moves" section to reflect WG feedback.
