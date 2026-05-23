@@ -31,6 +31,10 @@ against a real adapter so future shape additions land once, in
   repeated identical inputs, and `byte_count` of every redacted stub
   matches the UTF-8 encoded length of the original value. Adds
   `hypothesis>=6,<7` to the dev extras.
+- `build_alias_map` is exported from both `chio_adapter_base.redact`
+  and the top-level `chio_adapter_base` namespace so adapters and API
+  docs can inspect the wrapper-name to canonical-name routing used by
+  `bind_and_redact`.
 
 ### Changed
 - `bind_and_redact` keyword-only (kwonly) alias pass now treats a
@@ -45,7 +49,8 @@ against a real adapter so future shape additions land once, in
   `("path", "content")`, the helper detects that `path` lives at a
   different wrapper-index than table-index and routes the unmatched
   `body` to the next-unclaimed protected canonical (`content`)
-  instead of aliasing onto the same-index unprotected slot.
+  instead of aliasing onto the same-index unprotected slot. Matched
+  and unmatched names are redacted independently.
 - TypeError fallback path (arity mismatch / duplicate-keyword) now
   preserves the wrapper's canonical alias map so kwargs still redact
   under the wrapper's renamed names; previously the fallback used
@@ -60,32 +65,47 @@ against a real adapter so future shape additions land once, in
   semantics from the variadic / overflow paths so both buckets
   round-trip with their own redaction record. (Closes Cursor Bugbot
   Medium on PR #679.)
+- TypeError fallback preserves the default table prefix before
+  keyword-only protected aliases, so kwonly-only wrappers such as
+  `def write_file(*, body)` map invalid positional calls as
+  `path, body` rather than redacting the path-like first value and
+  leaking later body-like values.
+- TypeError fallback now treats `*name` as protected only when
+  `name` is declared in the redaction policy for the current tool.
+  A `*path` variadic no longer suppresses keyword-only body aliasing
+  merely because `path` is a non-sensitive entry in
+  `DEFAULT_TOOL_POSITIONAL_NAMES`.
 - `_is_pure_forwarder` no longer treats a `def upload(*payload)`
   shape as a forwarder when `payload` matches a protected field
   for the current tool. The signature path runs instead so each
   variadic value redacts under the canonical name.
-- VAR_POSITIONAL extras for `def fn(path, *rest, **kw)`-shape
-  wrappers now redact under the canonical protected slot when a
-  kwarg has already supplied that slot. This is the merge-conflict
-  semantics for the variadic case (closes deferred IDs 3229566280
-  and 3229515822).
+- VAR_POSITIONAL merge-conflicts for `def fn(path, *rest, **kw)`-
+  shape wrappers now redact the extra positional value that collides
+  with a kwarg-supplied protected slot. Extras without a table slot
+  or protected collision remain raw because the helper has no safe
+  field name for them. This closes deferred IDs 3229566280 and
+  3229515822.
 
-### Breaking
-- `positional_table` argument is now LOCKED as REPLACES-the-default
-  semantics (current behavior). Callers that previously relied on
-  the chio-default table being merged with their custom override
-  must merge it themselves: `positional_table={**DEFAULT_TOOL_POSITIONAL_NAMES, **my_table}`.
-  In practice no external consumer relies on extends semantics
-  (the per-tool override was always read as REPLACE in the v0.1.x
-  helper); this is documented as breaking for completeness.
+### Documentation
+- `positional_table` argument is now explicitly documented as
+  REPLACES-the-default semantics; this matches the behaviour that
+  already shipped in v0.1.1. No code-level behaviour change.
+  Callers that want the chio-default table to coexist with a custom
+  override must merge it themselves:
 
-### Note on positional_table semantic
-v0.3 plan considered EXTENDS semantic but kept v0.1.1's REPLACES to avoid
-silent migration burden. Pass the chio default explicitly if you want both:
-  positional_table = {**DEFAULT_TOOL_POSITIONAL_NAMES, "my_tool": ("a", "b")}
-The FINAL-PLAN's locked decision was reversed during PR-1 because v0.1.1
-already shipped REPLACE semantics; implementing EXTENDS would itself have
-been the breaking change. Documented here for plan-deviation traceability.
+  ```python
+  from chio_adapter_base.redact import DEFAULT_TOOL_POSITIONAL_NAMES
+
+  my_table = {
+      **DEFAULT_TOOL_POSITIONAL_NAMES,
+      "my_custom_tool": ("path", "body"),
+  }
+  bind_and_redact(fn, args, kwargs, tool_name="my_custom_tool",
+                  positional_table=my_table)
+  ```
+
+  See `ADAPTER-MIGRATION.md` section 5 for the recipe and the test
+  assertions to add when collapsing a local helper.
 
 ### Notes
 - Wire shape: `bind_and_redact` returns
@@ -95,6 +115,14 @@ been the breaking change. Documented here for plan-deviation traceability.
   wire shape; chio-prefect 0.1.2's `_legacy_envelope` shim keeps it
   emitting for v0.2 compat. v0.4 will deprecate the synthetic key
   with a one-release migration window.
+
+### Migration from 0.1.x
+See `ADAPTER-MIGRATION.md`. Most adapters that already pin
+`chio-adapter-base>=0.1.1,<0.2` and call `bind_and_redact` can bump
+to `>=0.2.0,<0.3` after the 0.2.0 package is published. Adapters
+with a local helper (the chio-prefect `_task_parameters` shape)
+should collapse to `bind_and_redact` plus a thin envelope shim;
+chio-prefect 0.1.2 (PR #679) is the canonical worked example.
 
 ## [0.1.1]
 
