@@ -3,7 +3,7 @@
 USENIX Security empirical-systems review of the reversible-action draft's
 evaluation chapter against four code gaps flagged in the README. The README's
 code claims were cross-checked against
-`/Users/connor/Medica/backbay/standalone/clawdstrike/apps/agent/src-tauri/src/api_server.rs`
+`apps/agent/src-tauri/src/api_server.rs` in the local clawdstrike checkout.
 and `Monitor.swift`; all four hold under direct inspection.
 
 ## 1. The "four reversible variants" claim
@@ -56,7 +56,7 @@ draft acknowledges this as a limitation in two places and marks the row
 "withheld; scheduler absent" in Table~\ref{tab:eval-ra}. This claim is the
 draft's most honest engagement with its own code.
 
-## 4. Three of seven executors — honest count?
+## 4. Three of seven executors - honest count?
 
 The forward executors named in §5 are file quarantine, persistence disable,
 process-tree suspend, and egress restriction, plus "destructive executors"

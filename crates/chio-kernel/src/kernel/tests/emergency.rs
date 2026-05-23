@@ -182,7 +182,7 @@ fn emergency_stop_receipt_records_deny_decision() {
         "emergency stop deny receipt must verify"
     );
     match response.receipt.decision.clone() {
-        Decision::Deny { reason, .. } => assert_eq!(reason, EMERGENCY_STOP_DENY_REASON),
+        Some(Decision::Deny { reason, .. }) => assert_eq!(reason, EMERGENCY_STOP_DENY_REASON),
         other => panic!("expected deny decision, got {other:?}"),
     }
 }

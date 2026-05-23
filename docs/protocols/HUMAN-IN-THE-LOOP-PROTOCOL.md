@@ -941,17 +941,21 @@ Receipt 2: Deny
 ### Audit Queries
 
 ```bash
+# Local `receipt list` requires --tenant <id> or --admin-all; the
+# additional --decision / --meta / human-readable --since filters below
+# are illustrative and tracked in a follow-up CLI surface item.
+
 # All approval requests in the last 24 hours
-chio receipt list --decision pending_approval --since 24h
+chio receipt list --tenant <tenant-id> --decision pending_approval --since 24h
 
 # All human-denied calls
-chio receipt list --decision human_denied
+chio receipt list --tenant <tenant-id> --decision human_denied
 
 # Average approval latency by approver
-chio receipt stats --decision approved_and_executed --group-by metadata.approver_display_name
+chio receipt stats --tenant <tenant-id> --decision approved_and_executed --group-by metadata.approver_display_name
 
 # Calls auto-approved due to timeout
-chio receipt list --decision approved_and_executed --meta auto_approved=true
+chio receipt list --tenant <tenant-id> --decision approved_and_executed --meta auto_approved=true
 ```
 
 ---

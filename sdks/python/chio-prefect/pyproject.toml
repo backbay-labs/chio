@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chio-prefect"
-version = "0.1.1"
+version = "0.1.2"
 description = "Prefect integration for the Chio protocol -- @chio_task / @chio_flow decorators, per-task capability checks, receipts as Prefect Events"
 license = "MIT"
 requires-python = ">=3.11"
@@ -24,7 +24,7 @@ classifiers = [
 
 dependencies = [
     "chio-sdk-python>=0.1.0",
-    "chio-adapter-base>=0.1.1,<0.2",
+    "chio-adapter-base>=0.2.0,<0.3",
     "prefect>=3,<4",
     "pydantic>=2.5,<3",
 ]

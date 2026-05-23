@@ -93,7 +93,11 @@ fn evaluate_round_trip() {
     console_log!("qualify_browser_evaluate_latency_ms={elapsed_ms}");
 
     let verdict: serde_json::Value = from_value(verdict_js).unwrap();
-    assert_eq!(verdict["verdict"], "allow");
+    assert_eq!(verdict["verdict"], "pending_approval");
+    assert_eq!(verdict["capability_verdict"], "allow");
+    assert_eq!(verdict["authorized"], false);
+    assert_eq!(verdict["authorization_basis"], "capability_only");
+    assert_eq!(verdict["guards_evaluated"], false);
     assert_eq!(verdict["matched_grant_index"], 0);
 }
 
@@ -109,7 +113,13 @@ fn sign_receipt_uses_webcrypto_seed() {
         tool_server: "srv-a".to_string(),
         tool_name: "echo".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({"msg": "hi"})).unwrap(),
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: "0".repeat(64),
         policy_hash: "0".repeat(64),
         evidence: vec![],

@@ -39,7 +39,13 @@ fn sample_receipt(kp_b: &Keypair) -> ChioReceipt {
                 "path": "/kb/doc.txt",
             }))
             .unwrap(),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: sha256_hex(b"{}"),
             policy_hash: "policy-b4".to_string(),
             evidence: Vec::new(),
@@ -80,6 +86,7 @@ fn full_extensions() -> BilateralPredicateExtensions {
         consistency_anchor: None,
         consistency_model: None,
         cross_org_visibility: None,
+        treaty_binding_ref: None,
     }
 }
 

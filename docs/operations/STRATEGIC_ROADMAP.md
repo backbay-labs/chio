@@ -1,5 +1,9 @@
 # Chio Strategic Roadmap
 
+> Historical internal planning note. `v2.x` labels in this document are
+> pre-release implementation milestones, not Chio-owned protocol, schema, SDK,
+> or runtime versions. Current protocol posture is v1-only.
+
 **Date:** 2026-03-27
 **Status:** milestone ladder through `v2.8` executed; launch hold pending hosted workflow observation
 **Primary framing source:** `docs/research/DEEP_RESEARCH_1.md`

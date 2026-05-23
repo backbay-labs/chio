@@ -1,4 +1,6 @@
-export interface ChioActionEvaluation {
+import { isAuthorizedEvaluation, nonAuthorizingReason, type ChioAuthorityFields } from "./authority.js";
+
+export interface ChioActionEvaluation extends ChioAuthorityFields {
   verdict: "allow" | "deny";
   reason?: string | undefined;
   receiptId?: string | undefined;
@@ -30,8 +32,12 @@ export function withChioAction<Args extends unknown[], Result>(
 ): ChioServerAction<Args, Result> {
   return async (...args: Args): Promise<Result> => {
     const evaluation = await options.evaluate(...args);
-    if (evaluation.verdict !== "allow") {
-      throw new ChioActionDeniedError(evaluation);
+    if (!isAuthorizedEvaluation(evaluation)) {
+      throw new ChioActionDeniedError({
+        ...evaluation,
+        verdict: "deny",
+        reason: nonAuthorizingReason(evaluation.reason),
+      });
     }
     return action(...args);
   };

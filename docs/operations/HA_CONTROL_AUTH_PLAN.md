@@ -4,12 +4,13 @@
 
 Move Chio from:
 
-- one shared trust-control service with optional local OAuth metadata
+- one shared trust-control service with optional OAuth metadata discovery
 
 to:
 
 - a replicated trust-control cluster with write failover and shared budget state
-- hosted MCP edges that can act as real OAuth authorization servers
+- hosted MCP edges that can advertise metadata while OAuth AS product work
+  remains blocked pending ADR
 - a deployment model that is usable across multiple MCP edge nodes without shared local files
 
 ## Current Baseline
@@ -88,7 +89,12 @@ Rules:
 
 ### 5. Hosted auth-server behavior
 
-`chio mcp serve-http` gains a hosted OAuth authorization server when configured with a local auth signing seed.
+This section is reference scaffolding only. OAuth AS product work remains
+blocked until a dedicated ADR or equivalent decision note is accepted. The
+current runtime must stay feature-gated, seed-file gated, and scope-clamped.
+
+`chio mcp serve-http` may gain a hosted OAuth authorization server when
+configured with a local auth signing seed after that decision gate.
 
 Supported flows:
 
@@ -187,7 +193,10 @@ Acceptance:
 - `chio check` and hosted MCP nodes enforce one shared budget across nodes
 - the same CLI invocation can survive a dead first control URL
 
-### D. Hosted authorization server
+### D. Deferred hosted authorization server
+
+Blocked follow-up. These deliverables are not part of the current accepted
+plan until a dedicated OAuth AS ADR or equivalent decision note is accepted.
 
 Deliverables:
 
@@ -212,7 +221,7 @@ Deliverables:
 - two-node trust-control failover tests
 - replication/catch-up tests
 - shared-budget cross-node tests
-- hosted auth-code flow tests
+- hosted auth-code flow tests after the ADR gate
 - hosted token-exchange tests
 
 Acceptance:
@@ -228,7 +237,8 @@ Recommended deployment shape:
 - one local SQLite dataset per control node
 - short peer replication interval
 - hosted MCP nodes configured with a cluster `--control-url` list
-- hosted auth enabled with a dedicated auth signing seed and public base URL
+- hosted auth enabled only after the ADR gate with a dedicated auth signing seed
+  and public base URL
 
 Recommended security stance:
 
@@ -246,4 +256,6 @@ This rewrite still does not attempt:
 - HSM-backed signing
 - dynamic user login / identity-provider federation
 
-Those remain follow-on work. The goal here is strong single-region HA plus real hosted OAuth behavior.
+Those remain follow-on work. The current goal here is strong single-region HA
+and shared-budget behavior; hosted OAuth AS behavior remains blocked pending
+ADR.

@@ -317,7 +317,7 @@ codes:
     since: "0.1.0"
     stability: unstable
     consumed_by:
-      - chio-openai-adapter
+      - deferred-openai-adapter-ticket
       - chio-provider-conformance
   - urn: "urn:chio:error:provider:anthropic"
     domain: provider

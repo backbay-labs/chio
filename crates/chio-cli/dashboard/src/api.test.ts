@@ -3,11 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchAgentCostSeries,
   fetchOperatorReport,
+  fetchRelayAlertAssuranceArchiveExtractionReport,
+  fetchRelayAlertAssuranceArchivePackageReport,
   fetchRelayAlertAssuranceArchiveReport,
+  fetchRelayAlertAssuranceArchiveRestoreDrillReport,
   fetchRelayAlertAssuranceCloseoutReport,
+  fetchRelayAlertAssuranceExternalRetentionReviewReport,
   fetchRelayAlertAssuranceExportReport,
   fetchRelayAlertAssurancePackage,
+  fetchRelayAlertAssurancePhysicalArchiveDrillReport,
   fetchRelayAlertAssuranceReplayReport,
+  fetchRelayAlertAssuranceRetentionHandoffReport,
   fetchRelayAlertAssuranceRetentionReport,
   fetchRelayAlertDeliveryReport,
   fetchRelayAlertHandoffReport,
@@ -278,7 +284,7 @@ describe('dashboard api helpers', () => {
     await fetchRelayObservabilityReport()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/v1/chiodos/pheromone/observability',
+      '/v1/chio/pheromone/observability',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer bearer-token',
@@ -323,7 +329,7 @@ describe('dashboard api helpers', () => {
     await fetchRelayAlertReport()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/v1/chiodos/pheromone/alerts',
+      '/v1/chio/pheromone/alerts',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer bearer-token',
@@ -354,7 +360,7 @@ describe('dashboard api helpers', () => {
     await fetchRelayTrendReport()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/v1/chiodos/pheromone/trends',
+      '/v1/chio/pheromone/trends',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer bearer-token',
@@ -388,7 +394,7 @@ describe('dashboard api helpers', () => {
     await fetchRelayAlertHandoffReport()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/v1/chiodos/pheromone/alert-handoff',
+      '/v1/chio/pheromone/alert-handoff',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer bearer-token',
@@ -425,7 +431,7 @@ describe('dashboard api helpers', () => {
     await fetchRelayAlertDeliveryReport()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/v1/chiodos/pheromone/alert-delivery',
+      '/v1/chio/pheromone/alert-delivery',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer bearer-token',
@@ -469,7 +475,7 @@ describe('dashboard api helpers', () => {
     await fetchRelayAlertAssurancePackage()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/v1/chiodos/pheromone/alert-assurance',
+      '/v1/chio/pheromone/alert-assurance',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer bearer-token',
@@ -492,10 +498,16 @@ describe('dashboard api helpers', () => {
     await fetchRelayAlertAssuranceRetentionReport()
     await fetchRelayAlertAssuranceArchiveReport()
     await fetchRelayAlertAssuranceCloseoutReport()
+    await fetchRelayAlertAssuranceArchivePackageReport()
+    await fetchRelayAlertAssuranceArchiveExtractionReport()
+    await fetchRelayAlertAssuranceArchiveRestoreDrillReport()
+    await fetchRelayAlertAssurancePhysicalArchiveDrillReport()
+    await fetchRelayAlertAssuranceRetentionHandoffReport()
+    await fetchRelayAlertAssuranceExternalRetentionReviewReport()
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      '/v1/chiodos/pheromone/alert-assurance/export',
+      '/v1/chio/pheromone/alert-assurance/export',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer bearer-token',
@@ -505,22 +517,52 @@ describe('dashboard api helpers', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      '/v1/chiodos/pheromone/alert-assurance/replay',
+      '/v1/chio/pheromone/alert-assurance/replay',
       expect.anything(),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      '/v1/chiodos/pheromone/alert-assurance/retention',
+      '/v1/chio/pheromone/alert-assurance/retention',
       expect.anything(),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      '/v1/chiodos/pheromone/alert-assurance/archive',
+      '/v1/chio/pheromone/alert-assurance/archive',
       expect.anything(),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       5,
-      '/v1/chiodos/pheromone/alert-assurance/closeout',
+      '/v1/chio/pheromone/alert-assurance/closeout',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      '/v1/chiodos/pheromone/alert-assurance/archive-package',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      '/v1/chiodos/pheromone/alert-assurance/archive-extraction',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      8,
+      '/v1/chiodos/pheromone/alert-assurance/archive-restore-drill',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      9,
+      '/v1/chiodos/pheromone/alert-assurance/physical-archive',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      10,
+      '/v1/chiodos/pheromone/alert-assurance/retention-handoff',
+      expect.anything(),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      11,
+      '/v1/chiodos/pheromone/alert-assurance/external-retention-review',
       expect.anything(),
     )
   })
@@ -596,7 +638,7 @@ describe('dashboard api helpers', () => {
         parameters: {},
         parameter_hash: 'hash',
       },
-      decision: 'allow',
+      decision: { verdict: 'allow' },
       metadata: {
         attribution: {
           subject_key: 'agent-subject',

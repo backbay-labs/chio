@@ -140,7 +140,9 @@ impl A2aAdapter {
         operation: &str,
     ) -> Result<(), AdapterError> {
         let Some(registry) = self.task_registry.as_ref() else {
-            return Ok(());
+            return Err(AdapterError::Lifecycle(format!(
+                "{operation} requires an A2A task registry before task `{task_id}` can be used by tool `{tool_name}`"
+            )));
         };
         registry.validate_follow_up(
             task_id,

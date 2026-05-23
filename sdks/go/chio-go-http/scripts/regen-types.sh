@@ -830,8 +830,6 @@ replace_once(
 
 \treturn err
 }
-
-// AsReceiptRecordDecision0 returns the union data inside the ReceiptRecordDecision as a ReceiptRecordDecision0
 """,
     """\tif raw, found := object["verdict"]; found {
 \t\terr = json.Unmarshal(raw, &t.Verdict)
@@ -1113,8 +1111,6 @@ func requiredJsonInt64(object map[string]json.RawMessage, key string) (int64, er
 func rawJsonIsNull(raw json.RawMessage) bool {
 \treturn string(raw) == "null"
 }
-
-// AsReceiptRecordDecision0 returns the union data inside the ReceiptRecordDecision as a ReceiptRecordDecision0
 """,
 )
 

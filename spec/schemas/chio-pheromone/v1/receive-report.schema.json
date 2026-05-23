@@ -1,12 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/receive-report.schema.json",
-  "title": "Chiodos Pheromone Receive Report",
+  "title": "Chio Pheromone Receive Report",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema",
     "accepted",
+    "batchOutcome",
+    "acceptedFrameCount",
+    "rejectedFrameCount",
     "batchSha256",
     "recipientKernelId",
     "authenticatedSenderKernelId",
@@ -16,6 +19,12 @@
   "properties": {
     "schema": { "const": "chio.pheromone.receive-report.v1" },
     "accepted": { "type": "boolean" },
+    "batchOutcome": {
+      "type": "string",
+      "enum": ["accepted", "partial", "rejected"]
+    },
+    "acceptedFrameCount": { "type": "integer", "minimum": 0 },
+    "rejectedFrameCount": { "type": "integer", "minimum": 0 },
     "batchSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "recipientKernelId": { "type": "string", "minLength": 1 },
     "authenticatedSenderKernelId": { "type": "string", "minLength": 1 },

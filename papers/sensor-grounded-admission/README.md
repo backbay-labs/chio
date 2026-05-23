@@ -18,13 +18,13 @@ The parent paper's `amendment_admissible_iff_backward_refinement` discharges to 
 
 The supporting theorem `partition_contingency_mode_iff_degraded_subset` is biconditional between a ladder mode (a finite tag) and a structural set-subset relation between attested-healthy providers and policy-required providers. The forward direction requires inducting on the provider list; the reverse requires constructing a witness provider whose absence triggers the mode flip. Neither direction is definitional.
 
-The other supporting theorems (`healthy_attestation_required_for_destructive_admission`, `degraded_sensor_admission_requires_re_attestation`) lift the structural distinction to admission classes named in the parent paper's ladder (receipt-backed and above). Each composes the headline result with a class predicate; the case analysis bites.
+The other supporting theorems (`healthy_attestation_required_for_destructive_admission`, `degraded_sensor_admission_requires_re_admission_witness`) lift the structural distinction to admission classes named in the parent paper's ladder (receipt-backed and above). Each composes the headline result with a class predicate; the case analysis bites.
 
 ### Empirical claims and their substrate
 
 The sensor-state attestation is a real field carried by every signed receipt produced by the deployed admission kernel. The attestation lists each registered sensor's installed, active, healthy, and degraded flags, plus dropped-event and deadline-miss counts at the captured timestamp. The kernel signs the attestation with the same key it signs the receipt body, and the canonical-JSON subject digest covers both. A verifier who admits a receipt without evaluating its attestation has chosen to skip a check the substrate makes available.
 
-The empirical chapter cites this deployment as the source of its measurements. No new code must land before the empirical claims hold. The headline theorem's healthy and degraded witnesses are constructed in `lean/SensorGroundedAdmission.lean`; the partition-contingency biconditional, the destructive-admission projection, and the amendment re-attestation theorem are proven in the same file.
+The empirical chapter cites this deployment as the source of its measurements. No new code must land before the empirical claims hold. The headline theorem's healthy and degraded witnesses are constructed in `lean/SensorGroundedAdmission.lean`; the partition-contingency biconditional, the destructive-admission projection, and the amendment re-admission theorem are proven in the same file.
 
 ### Submission readiness
 

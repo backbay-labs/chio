@@ -64,6 +64,8 @@ open Chio.Treaty.PredicateLang
 
 /-! ## Substrate -/
 
+abbrev ReceiptId := Chio.Treaty.ReceiptId
+
 /-- Duration of an executive action's authorized window, in seconds. -/
 abbrev Duration := Nat
 
@@ -119,7 +121,6 @@ structure ExecutiveAction where
   ttlPositive : 0 < ttl
   actionKind : ActionKind
   rollback : Option RollbackReceipt
-  deriving Inhabited
 
 /-- Expiry derived from issued-at plus TTL. -/
 def ExecutiveAction.expiresAt (act : ExecutiveAction) : Instant :=
@@ -173,7 +174,6 @@ structure TtlBoundedAmendment where
   issuedAt : Instant
   ttl : Duration
   ttlPositive : 0 < ttl
-  deriving Inhabited
 
 /--
   The constitution active at time `t` under a TTL-bounded amendment is
@@ -291,11 +291,10 @@ theorem closure_to_syntactic_admission_bridge
   candidate below names the response-side specialization.
 -/
 structure BilateralEnvelope where
-  deviceReceiptId : ReceiptId
-  operatorReceiptId : ReceiptId
+  receiptId : ReceiptId
+  treaty : BilateralTreaty
   actionKind : ActionKind
   destructiveWitness : actionKind.destructive = true
-  deriving Inhabited
 
 /--
   Candidate 5. A destructive action admits only if both the device
@@ -311,12 +310,9 @@ structure BilateralEnvelope where
   polity-predicate bridge.
 -/
 theorem destructive_action_requires_bilateral_admission
-    (env : BilateralEnvelope)
-    (devicePolity operatorPolity : Polity)
-    (h_device : polityAdmits devicePolity env.deviceReceiptId = true)
-    (h_operator : polityAdmits operatorPolity env.operatorReceiptId = true) :
-    polityAdmits devicePolity env.deviceReceiptId = true
-      ∧ polityAdmits operatorPolity env.operatorReceiptId = true := by
-  exact ⟨h_device, h_operator⟩
+    (env : BilateralEnvelope) :
+    treatyAdmits env.treaty env.receiptId = true ↔
+      treatyPredicateIntersection env.treaty env.receiptId = true := by
+  exact treaty_admission_iff_predicate_intersection env.treaty env.receiptId
 
 end Chio.ReversibleAction

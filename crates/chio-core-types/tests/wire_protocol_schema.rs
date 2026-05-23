@@ -36,8 +36,9 @@ fn to_json<T: Serialize>(value: &T) -> Value {
 }
 
 fn assert_schema_accepts(relative_path: &str, instance: &Value) {
+    let schema_path = schema_root().join(relative_path);
     let schema = load_schema(relative_path);
-    let validator = jsonschema::validator_for(&schema).expect("schema compiles");
+    let validator = validator_for_schema(&schema_path, &schema);
     if let Err(error) = validator.validate(instance) {
         let mut details = vec![error.to_string()];
         details.extend(
@@ -52,6 +53,38 @@ fn assert_schema_accepts(relative_path: &str, instance: &Value) {
             details.join(" | ")
         );
     }
+}
+
+fn assert_schema_rejects(relative_path: &str, instance: &Value) {
+    let schema_path = schema_root().join(relative_path);
+    let schema = load_schema(relative_path);
+    let validator = validator_for_schema(&schema_path, &schema);
+    assert!(
+        !validator.is_valid(instance),
+        "schema `{relative_path}` unexpectedly accepted instance:\n{}",
+        serde_json::to_string_pretty(instance).expect("instance pretty prints")
+    );
+}
+
+fn validator_for_schema(schema_path: &std::path::Path, schema: &Value) -> jsonschema::Validator {
+    let base_uri = schema_path
+        .parent()
+        .and_then(|parent| parent.canonicalize().ok())
+        .map(|parent| {
+            let mut path = parent.to_string_lossy().replace('\\', "/");
+            if !path.starts_with('/') {
+                path.insert(0, '/');
+            }
+            if !path.ends_with('/') {
+                path.push('/');
+            }
+            format!("file://{path}")
+        })
+        .expect("schema parent canonicalizes");
+    jsonschema::options()
+        .with_base_uri(base_uri)
+        .build(schema)
+        .expect("schema compiles")
 }
 
 fn make_token(kp: &Keypair) -> CapabilityToken {
@@ -143,7 +176,13 @@ fn make_receipt(kp: &Keypair, decision: Decision) -> ChioReceipt {
                 "dry_run": true
             }))
             .expect("action"),
-            decision,
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
+            decision: Some(decision),
             content_hash: "4062edaf750fb8074e7e83e0c9028c94e32468a8b6f1614774328ef045150f93"
                 .to_string(),
             policy_hash: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
@@ -420,6 +459,56 @@ fn wire_protocol_schema_cases_validate_live_serialization() {
     for (schema_path, instance) in cases {
         assert_schema_accepts(schema_path, &instance);
     }
+}
+
+#[test]
+fn tool_call_response_schema_rejects_allow_shaped_trace_receipts() {
+    let kp = Keypair::from_seed(&[31; 32]);
+    let mut instance = to_json(&KernelMessage::ToolCallResponse {
+        id: "req-wire-trace".to_string(),
+        result: ToolCallResult::Incomplete {
+            reason: "provider trace only".to_string(),
+            chunks_received: 0,
+        },
+        receipt: Box::new(make_receipt(&kp, Decision::Allow)),
+    });
+
+    {
+        let receipt = instance
+            .get_mut("receipt")
+            .and_then(Value::as_object_mut)
+            .expect("receipt object");
+        receipt.insert(
+            "receipt_kind".to_string(),
+            Value::String("trace_observation".to_string()),
+        );
+        receipt.insert(
+            "boundary_class".to_string(),
+            Value::String("detect_only".to_string()),
+        );
+        receipt.insert(
+            "trust_level".to_string(),
+            Value::String("verified".to_string()),
+        );
+        receipt.insert(
+            "observation_outcome".to_string(),
+            Value::String("observed".to_string()),
+        );
+        receipt.remove("decision");
+    }
+    assert_schema_accepts("kernel/tool_call_response.schema.json", &instance);
+
+    instance
+        .get_mut("receipt")
+        .and_then(Value::as_object_mut)
+        .expect("receipt object")
+        .insert(
+            "decision".to_string(),
+            json!({
+                "verdict": "allow"
+            }),
+        );
+    assert_schema_rejects("kernel/tool_call_response.schema.json", &instance);
 }
 
 #[cfg(feature = "pq")]

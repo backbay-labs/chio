@@ -51,6 +51,7 @@ from chio_sdk.models import (
     HttpReceipt,
     ToolCallAction,
     Verdict,
+    VerifyReceiptResponse,
 )
 
 
@@ -337,7 +338,7 @@ class MockChioClient:
         )
         return valid
 
-    async def verify_http_receipt(self, receipt: HttpReceipt) -> bool:
+    async def verify_http_receipt(self, receipt: HttpReceipt) -> VerifyReceiptResponse:
         valid = receipt.kernel_key == self._kernel_key or bool(receipt.signature)
         self.calls.append(
             RecordedCall(
@@ -345,7 +346,19 @@ class MockChioClient:
                 context={"receipt_id": receipt.id, "valid": valid},
             )
         )
-        return valid
+        return VerifyReceiptResponse(
+            signature_valid=valid,
+            signer_trusted=valid,
+            receipt_id_valid=bool(receipt.id),
+            parameter_hash_valid=bool(receipt.content_hash),
+            receipt_kind=receipt.receipt_kind,
+            boundary_class=receipt.boundary_class,
+            trust_level=receipt.trust_level,
+            result="allow" if receipt.verdict.is_allowed else "deny",
+            authorized=valid and receipt.is_allowed,
+            signer_key_hex=receipt.kernel_key,
+            ok=valid,
+        )
 
     async def verify_receipt_chain(
         self, receipts: list[ChioReceipt]
@@ -494,11 +507,16 @@ class MockChioClient:
             ),
             session_id=session_id,
             verdict=verdict_model,
+            receipt_kind="mediated_decision",
+            boundary_class="prevent",
+            tool_origin="caller_executed",
+            redaction_mode="none",
             evidence=list(mock_verdict.evidence),
             response_status=200 if mock_verdict.allow else 403,
             timestamp=ts,
             content_hash="mock-content-hash",
             policy_hash=self._policy_hash,
+            trust_level="mediated",
             capability_id=capability_id,
             kernel_key=self._kernel_key,
             signature="mock-signature",
@@ -689,9 +707,16 @@ class MockChioClient:
                 parameter_hash=param_hash,
             ),
             decision=decision,
+            receipt_kind="mediated_decision",
+            boundary_class="prevent",
+            observation_outcome=None,
+            tool_origin="caller_executed",
+            redaction_mode="none",
+            actor_chain=[],
             content_hash="mock-content-hash",
             policy_hash=self._policy_hash,
             evidence=list(verdict.evidence),
+            trust_level="mediated",
             kernel_key=self._kernel_key,
             signature="mock-signature",
         )

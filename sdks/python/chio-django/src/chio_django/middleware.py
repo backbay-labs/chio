@@ -29,8 +29,9 @@ from typing import Any, Callable
 import httpx
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from chio_sdk.models import HttpReceipt, VerifyReceiptResponse
 
-from chio_sdk.models import ChioPassthrough, AuthMethod, CallerIdentity, CapabilityToken
+from chio_sdk.models import AuthMethod, CallerIdentity, CapabilityToken
 
 
 def _sha256_hex(data: str) -> str:
@@ -112,6 +113,27 @@ class ChioDjangoMiddleware:
         )
         self._timeout: float = getattr(settings, "CHIO_TIMEOUT", 5.0)
 
+    def _verify_receipt(self, receipt_data: dict[str, Any]) -> bool:
+        try:
+            receipt = HttpReceipt.model_validate(receipt_data)
+        except Exception:
+            return False
+        try:
+            resp = httpx.post(
+                f"{self._sidecar_url}/chio/verify",
+                json=receipt.model_dump(exclude_none=True),
+                timeout=self._timeout,
+            )
+        except (httpx.ConnectError, httpx.TimeoutException):
+            return False
+        if resp.status_code != 200:
+            return False
+        try:
+            result = VerifyReceiptResponse.model_validate(resp.json())
+        except Exception:
+            return False
+        return result.authorizes(receipt)
+
     def __call__(self, request: HttpRequest) -> HttpResponse:
         method = request.method or "GET"
 
@@ -176,13 +198,6 @@ class ChioDjangoMiddleware:
                 timeout=self._timeout,
             )
         except (httpx.ConnectError, httpx.TimeoutException):
-            if self._fail_open:
-                request.chio_passthrough = ChioPassthrough(  # type: ignore[attr-defined]
-                    mode="allow_without_receipt",
-                    error="chio_sidecar_unreachable",
-                    message="Chio sidecar unavailable",
-                )
-                return self.get_response(request)
             return JsonResponse(
                 {
                     "error": {
@@ -208,7 +223,12 @@ class ChioDjangoMiddleware:
         verdict = evaluation.get("verdict", {})
         receipt_data = evaluation.get("receipt", {})
 
-        if verdict.get("verdict") == "deny":
+        try:
+            receipt = HttpReceipt.model_validate(receipt_data)
+        except Exception:
+            receipt = None
+
+        if verdict.get("verdict") != "allow" or receipt is None or not receipt.is_allowed:
             status = verdict.get("http_status", 403)
             return JsonResponse(
                 {
@@ -219,6 +239,17 @@ class ChioDjangoMiddleware:
                     }
                 },
                 status=status,
+            )
+
+        if not receipt_data or not self._verify_receipt(receipt_data):
+            return JsonResponse(
+                {
+                    "error": {
+                        "code": "CHIO_INVALID_RECEIPT",
+                        "message": "Sidecar returned an unverified receipt",
+                    }
+                },
+                status=502,
             )
 
         # Store receipt data on request for downstream views

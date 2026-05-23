@@ -440,7 +440,13 @@ fn receipt_with_ts(id: &str, capability_id: &str, timestamp: u64) -> ChioReceipt
                 "path": "/workspace/safe/readme.md"
             }))
             .expect("action"),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: format!("content-{id}"),
             policy_hash: "policy-passport".to_string(),
             evidence: Vec::new(),

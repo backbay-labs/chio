@@ -1,12 +1,12 @@
-# Chiodos 6.6 Pheromone Transit Evidence Floor
+# Chio 6.6 Pheromone Transit Evidence Floor
 
 Baseline SHA: `82d090edd254b1f11247e5a146f31f832dcafc79`
 
-Branch: `codex/chiodos-6-6-pheromone-transit`
+Branch: `codex/chio-6-6-pheromone-transit`
 
 ## Scope
 
-Chiodos 6.6 adds the first production pheromone substrate and local transit
+Chio 6.6 adds the first production pheromone substrate and local transit
 evidence surface. The lane proves that a signed pheromone deposit can bind
 workflow context, move through a bounded hub relay chain, and verify locally
 against treaty, ladder, workflow, passport, replay, diversity, and
@@ -44,20 +44,20 @@ product names.
 
 - `cargo test -p chio-pheromone`
 - `cargo test -p chio-federation pheromone`
-- `cargo test -p chio-chiodos`
-- `cargo test -p chio-chiodos-authority`
-- `cargo test -p chio-cli chiodos`
-- `cargo test -p chiodos-three-vendor-example`
+- `cargo test -p chio-attest-buyer-core`
+- `cargo test -p chio-federation-authority`
+- `cargo test -p chio-cli chio`
+- `cargo test -p chio-three-vendor-example`
 - `cargo test -p chio-spec-validate`
-- `bash scripts/check-chiodos-pheromone-transit.sh`
-- `bash scripts/check-chiodos-pheromone-transit.sh --schema-only`
-- `bash scripts/check-chiodos-pheromone-transit.sh --negative-only`
-- `bash scripts/check-chiodos-authority-issuance.sh`
-- `bash scripts/check-chiodos-proof-package.sh`
-- `bash scripts/check-chiodos-proof-package.sh --schema-only`
-- `bash scripts/check-chiodos-proof-package.sh --negative-only`
+- `bash scripts/check-chio-pheromone-transit.sh`
+- `bash scripts/check-chio-pheromone-transit.sh --schema-only`
+- `bash scripts/check-chio-pheromone-transit.sh --negative-only`
+- `bash scripts/check-chio-authority-issuance.sh`
+- `bash scripts/check-chio-proof-package.sh`
+- `bash scripts/check-chio-proof-package.sh --schema-only`
+- `bash scripts/check-chio-proof-package.sh --negative-only`
 - `bash scripts/check-bounded-ship-bar.sh`
 - `bash scripts/check-bounded-ship-bar.sh --diagnostic`
 - `bash scripts/check-threat-coverage-mutants.sh`
 - `cargo fmt --all -- --check`
-- `cargo clippy -p chio-pheromone -p chio-federation -p chio-chiodos -p chio-chiodos-authority -p chio-cli -p chiodos-three-vendor-example --tests -- -D warnings`
+- `cargo clippy -p chio-pheromone -p chio-federation -p chio-attest-buyer-core -p chio-federation-authority -p chio-cli -p chio-three-vendor-example --tests -- -D warnings`

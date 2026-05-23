@@ -3,6 +3,102 @@ use crate::receipt_store::StoredToolReceipt;
 /// Maximum number of receipts returnable in a single query page.
 pub const MAX_QUERY_LIMIT: usize = 200;
 
+/// Explicit receipt read boundary for query, export, and report surfaces.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum ReceiptReadBoundary {
+    /// Caller has explicit administrative access to all receipt rows.
+    AdminAll,
+    /// Caller is scoped to a single authenticated tenant.
+    TenantScoped { tenant: String },
+}
+
+impl ReceiptReadBoundary {
+    #[must_use]
+    pub fn tenant_scoped(tenant: impl Into<String>) -> Self {
+        Self::TenantScoped {
+            tenant: tenant.into(),
+        }
+    }
+}
+
+/// Provenance for a resolved read boundary.
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReceiptReadContextSource {
+    LocalOperator,
+    AdminService,
+    AuthenticatedTenant,
+    LegacyCompat,
+}
+
+/// Fully resolved receipt read context. Remote/control-plane callers must
+/// construct this from authenticated context before reaching store queries.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptReadContext {
+    pub boundary: ReceiptReadBoundary,
+    pub source: ReceiptReadContextSource,
+    /// Explicit local compatibility switch for legacy NULL-tenant rows. Tenant
+    /// scoped remote reads keep this false so NULL tenant rows stay hidden.
+    #[serde(default)]
+    pub legacy_null_mode: bool,
+}
+
+impl ReceiptReadContext {
+    #[must_use]
+    pub fn local_operator_admin_all() -> Self {
+        Self {
+            boundary: ReceiptReadBoundary::AdminAll,
+            source: ReceiptReadContextSource::LocalOperator,
+            legacy_null_mode: true,
+        }
+    }
+
+    #[must_use]
+    pub fn admin_service() -> Self {
+        Self {
+            boundary: ReceiptReadBoundary::AdminAll,
+            source: ReceiptReadContextSource::AdminService,
+            legacy_null_mode: false,
+        }
+    }
+
+    #[must_use]
+    pub fn authenticated_tenant(tenant: impl Into<String>) -> Self {
+        Self {
+            boundary: ReceiptReadBoundary::tenant_scoped(tenant),
+            source: ReceiptReadContextSource::AuthenticatedTenant,
+            legacy_null_mode: false,
+        }
+    }
+
+    #[must_use]
+    pub fn local_operator_tenant_compat(tenant: impl Into<String>) -> Self {
+        Self {
+            boundary: ReceiptReadBoundary::tenant_scoped(tenant),
+            source: ReceiptReadContextSource::LocalOperator,
+            legacy_null_mode: true,
+        }
+    }
+
+    #[must_use]
+    pub fn legacy_compat_admin_all() -> Self {
+        Self {
+            boundary: ReceiptReadBoundary::AdminAll,
+            source: ReceiptReadContextSource::LegacyCompat,
+            legacy_null_mode: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectiveReceiptReadScope {
+    pub tenant: Option<String>,
+    pub include_legacy_null_tenant: bool,
+    pub is_admin_all: bool,
+}
+
 /// Query parameters for filtering and paginating tool receipts.
 #[derive(Debug, Default, Clone)]
 pub struct ReceiptQuery {
@@ -32,21 +128,130 @@ pub struct ReceiptQuery {
     /// Filter by agent subject public key (hex-encoded Ed25519). Resolved through
     /// capability_lineage JOIN -- does not replay issuance logs.
     pub agent_subject: Option<String>,
-    /// Phase 1.5 multi-tenant receipt isolation: restrict results to a
-    /// tenant. When `Some(id)`, the store returns receipts whose
-    /// `tenant_id = id` OR whose `tenant_id IS NULL` (the pre-
-    /// multi-tenant "public" set) so legacy receipts remain visible
-    /// during the transition. When `None`, no filter is applied --
-    /// intended for admin / compat query paths only.
-    ///
-    /// For strict isolation that excludes the NULL fallback set, the
-    /// caller must also flip the store's strict-tenant-isolation mode
-    /// via `SqliteReceiptStore::with_strict_tenant_isolation(true)`.
-    ///
-    /// MUST be derived from the caller's authentication context at the
-    /// HTTP edge, not from a query parameter. See
-    /// `docs/protocols/STRUCTURAL-SECURITY-FIXES.md` section 6.
+    /// Optional tenant narrowing filter. This is never authority by itself:
+    /// callers must also provide a matching explicit `read_context`.
     pub tenant_filter: Option<String>,
+    /// Explicit read context resolved from authenticated authority.
+    pub read_context: Option<ReceiptReadContext>,
+}
+
+impl ReceiptQuery {
+    #[must_use]
+    pub fn with_read_context(mut self, read_context: ReceiptReadContext) -> Self {
+        self.read_context = Some(read_context);
+        self
+    }
+
+    #[must_use]
+    pub fn local_operator_admin(mut self) -> Self {
+        self.read_context = Some(ReceiptReadContext::local_operator_admin_all());
+        self
+    }
+
+    #[must_use]
+    pub fn authenticated_tenant(mut self, tenant: impl Into<String>) -> Self {
+        self.read_context = Some(ReceiptReadContext::authenticated_tenant(tenant));
+        self
+    }
+
+    pub fn effective_read_scope(&self) -> Result<EffectiveReceiptReadScope, String> {
+        if let Some(context) = &self.read_context {
+            return match &context.boundary {
+                ReceiptReadBoundary::AdminAll => {
+                    let tenant = self.tenant_filter.as_deref().map(str::trim);
+                    if tenant.is_some_and(str::is_empty) {
+                        return Err(
+                            "receipt query tenant filter requires a non-empty tenant".to_string()
+                        );
+                    }
+                    Ok(EffectiveReceiptReadScope {
+                        tenant: tenant.map(ToOwned::to_owned),
+                        include_legacy_null_tenant: tenant.is_none() && context.legacy_null_mode,
+                        is_admin_all: true,
+                    })
+                }
+                ReceiptReadBoundary::TenantScoped { tenant } => {
+                    let tenant = tenant.trim();
+                    if tenant.is_empty() {
+                        return Err(
+                            "tenant-scoped receipt query requires a non-empty tenant".to_string()
+                        );
+                    }
+                    if self
+                        .tenant_filter
+                        .as_deref()
+                        .is_some_and(|filter| filter != tenant)
+                    {
+                        return Err(
+                            "receipt query tenant filter cannot widen authenticated tenant scope"
+                                .to_string(),
+                        );
+                    }
+                    Ok(EffectiveReceiptReadScope {
+                        tenant: Some(tenant.to_string()),
+                        include_legacy_null_tenant: context.legacy_null_mode,
+                        is_admin_all: false,
+                    })
+                }
+            };
+        }
+
+        Err("receipt query requires an explicit read context".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ReceiptQuery, ReceiptReadContext};
+
+    #[test]
+    fn tenant_filter_without_read_context_is_not_authority() {
+        let query = ReceiptQuery {
+            tenant_filter: Some("tenant-a".to_string()),
+            ..ReceiptQuery::default()
+        };
+
+        let err = query
+            .effective_read_scope()
+            .expect_err("tenant_filter must not authorize a receipt read by itself");
+
+        assert_eq!(err, "receipt query requires an explicit read context");
+    }
+
+    #[test]
+    fn authenticated_tenant_context_must_match_query_filter() {
+        let query = ReceiptQuery {
+            tenant_filter: Some("tenant-b".to_string()),
+            read_context: Some(ReceiptReadContext::authenticated_tenant("tenant-a")),
+            ..ReceiptQuery::default()
+        };
+
+        let err = query
+            .effective_read_scope()
+            .expect_err("query filter must not widen authenticated tenant scope");
+
+        assert_eq!(
+            err,
+            "receipt query tenant filter cannot widen authenticated tenant scope"
+        );
+    }
+
+    #[test]
+    fn admin_context_tenant_filter_narrows_effective_scope() {
+        let query = ReceiptQuery {
+            tenant_filter: Some("tenant-a".to_string()),
+            read_context: Some(ReceiptReadContext::admin_service()),
+            ..ReceiptQuery::default()
+        };
+
+        let scope = query
+            .effective_read_scope()
+            .expect("admin tenant filter should narrow the query");
+
+        assert_eq!(scope.tenant.as_deref(), Some("tenant-a"));
+        assert!(!scope.include_legacy_null_tenant);
+        assert!(scope.is_admin_all);
+    }
 }
 
 /// Result of a receipt query, including pagination state.

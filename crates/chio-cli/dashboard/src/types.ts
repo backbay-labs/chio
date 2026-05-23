@@ -26,11 +26,12 @@ export interface ReceiptAction {
 }
 
 export type ReceiptDecision =
-  | 'allow'
   | { verdict: 'allow' }
-  | { deny: { reason: string; guard: string } }
-  | { cancelled: Record<string, unknown> }
-  | { incomplete: Record<string, unknown> }
+  | { verdict: 'deny'; reason: string; guard: string }
+  | { verdict: 'cancelled'; reason: string }
+  | { verdict: 'incomplete'; reason: string }
+
+export type ReceiptDecisionKind = DecisionKind | 'none'
 
 export interface ReceiptMetadata {
   financial?: FinancialMetadata
@@ -44,7 +45,9 @@ export interface Receipt {
   tool_server: string
   tool_name: string
   action: ReceiptAction
-  decision: ReceiptDecision
+  decision?: ReceiptDecision
+  receipt_kind?: 'mediated_decision' | 'trace_observation' | 'advisory_evaluation'
+  boundary_class?: 'prevent' | 'detect_only' | 'advisory_only'
   metadata?: ReceiptMetadata
 }
 
@@ -568,6 +571,127 @@ export interface RelayAlertAssuranceCloseoutReport {
   checks: RelayAlertCheck[]
 }
 
+export interface RelayAlertAssuranceArchivePackageReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  packageId: string
+  packageGeneration: number
+  previousPackageManifestSha256?: string | null
+  packageManifestSha256: string
+  sourceArchiveReportSha256: string
+  sourceCloseoutReportSha256: string
+  packageMemberCount: number
+  packageTotalByteCount: number
+  bundleCount: number
+  trustedPackagerVerified: boolean
+  nestedExporterVerified: boolean
+  sourceReportsMatched: boolean
+  closeoutReadyVerified: boolean
+  totalByteCountMatched: boolean
+  extractable: boolean
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceArchiveExtractionReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  packageId: string
+  packageManifestSha256: string
+  plannedMemberCount: number
+  extractedMemberCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssurancePhysicalArchiveDrillReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  evidenceId: string
+  packageId: string
+  packageReportSha256: string
+  sampledMemberCount: number
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceRetentionHandoffReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  evidenceId: string
+  packageId: string
+  packageReportSha256: string
+  targetSystemAlias: string
+  readyForOperatorHandoff: boolean
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceExternalRetentionPackageReview {
+  packageId: string
+  packageGeneration: number
+  packageManifestSha256: string
+  packageReportSha256: string
+  targetSystemAlias?: string | null
+  sampleCoverageBasisPoints: number
+  restoreStatus: string
+  physicalReadbackStatus: string
+  retentionHandoffStatus: string
+  accepted: boolean
+  code: string
+}
+
+export interface RelayAlertAssuranceExternalRetentionReviewReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  sinceUnixMs: number
+  untilUnixMs: number
+  packageCount: number
+  readyCount: number
+  latestPackageGeneration: number
+  quarantineCount: number
+  driftCount: number
+  insufficientSampleCount: number
+  reviews: RelayAlertAssuranceExternalRetentionPackageReview[]
+  recommendations: RelayOperatorRecommendation[]
+  checks: RelayAlertCheck[]
+}
+
+export interface RelayAlertAssuranceArchiveRestorePackageReview {
+  packageId: string
+  packageGeneration: number
+  packageManifestSha256: string
+  previousPackageManifestSha256?: string | null
+  accepted: boolean
+  code: string
+}
+
+export interface RelayAlertAssuranceArchiveRestoreDrillReport {
+  schema: string
+  accepted: boolean
+  code: string
+  localKernelId: string
+  generatedAtUnixMs: number
+  packageCount: number
+  verifiedGenerationCount: number
+  latestPackageGeneration: number
+  quarantineCount: number
+  blockedCount: number
+  packages: RelayAlertAssuranceArchiveRestorePackageReview[]
+  checks: RelayAlertCheck[]
+}
+
 export interface PassportVerification {
   subject: string
   issuer?: string | null
@@ -729,14 +853,8 @@ export interface ReceiptAnalyticsFilters {
 /**
  * Extract a DecisionKind label from a raw receipt decision value.
  */
-export function decisionKind(decision: ReceiptDecision): DecisionKind {
-  if (decision === 'allow') return 'allow'
-  if (typeof decision === 'object' && 'verdict' in decision && decision.verdict === 'allow') {
-    return 'allow'
-  }
-  if (typeof decision === 'object' && 'deny' in decision) return 'deny'
-  if (typeof decision === 'object' && 'cancelled' in decision) return 'cancelled'
-  return 'incomplete'
+export function decisionKind(decision?: ReceiptDecision): ReceiptDecisionKind {
+  return decision?.verdict ?? 'none'
 }
 
 /**

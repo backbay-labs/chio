@@ -77,6 +77,7 @@ fn kernel_config() -> KernelConfig {
         max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     }

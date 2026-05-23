@@ -101,6 +101,11 @@ Kafka / NATS / Pulsar Broker
 
 ### 2.2 Two Evaluation Points
 
+> Current status: event-action permissions are planning-only until
+> ADR-0012's current v1 manifest/event-action work lands. Runtime manifests
+> must reject `events:consume` and `events:produce` permissions until
+> `EventPublish` / `EventConsume` are implemented and tested.
+
 There are two distinct capability boundaries per event:
 
 1. **Event consumption** -- is this agent authorized to process this event

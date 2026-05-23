@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class FakeChioClient(
     private val behaviour: Behaviour = Behaviour.Allow,
     val fixedReceiptId: String = DEFAULT_RECEIPT_ID,
+    private val verifyResult: Boolean = true,
 ) : ChioClientLike,
     Serializable {
     sealed class Behaviour : Serializable {
@@ -75,6 +76,8 @@ class FakeChioClient(
         }
     }
 
+    override fun verifyReceipt(receipt: ChioReceipt): Boolean = verifyResult
+
     private fun canonicalHash(parameters: Map<String, Any?>): String = Hashing.sha256Hex(CanonicalJson.writeBytes(parameters))
 
     private fun buildAllow(
@@ -92,6 +95,10 @@ class FakeChioClient(
             toolName = toolName,
             action = ToolCallAction(parameters = parameters, parameterHash = hash),
             decision = Decision.allow(),
+            receiptKind = "mediated_decision",
+            boundaryClass = "prevent",
+            toolOrigin = "caller_executed",
+            redactionMode = "none",
             contentHash = hash,
             policyHash = "fake-policy",
             evidence = emptyList(),
@@ -116,6 +123,10 @@ class FakeChioClient(
             toolName = toolName,
             action = ToolCallAction(parameters = parameters, parameterHash = hash),
             decision = Decision.deny(deny.reason, deny.guard),
+            receiptKind = "mediated_decision",
+            boundaryClass = "prevent",
+            toolOrigin = "caller_executed",
+            redactionMode = "none",
             contentHash = hash,
             policyHash = "fake-policy",
             evidence = emptyList(),

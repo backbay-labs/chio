@@ -173,6 +173,11 @@ decisions based on cumulative session history. They require an
 `Chio<SessionJournal>` reference and produce deterministic verdicts given
 the same journal state.
 
+DataFlowGuard and BehavioralSequenceGuard are NOT registered into the default
+kernel pipeline; operators register them explicitly. The two guards depend on
+a `SessionJournal` that the runtime caller supplies, and the kernel's default
+guard pipeline does not assume one is present.
+
 ### 3.1 DataFlowGuard
 
 **Purpose:** Enforces cumulative data transfer limits per session, preventing
@@ -761,17 +766,24 @@ wasm_guards:
 
 ## 9. Implementation Status
 
-| Guard | Crate | Status |
-| --- | --- | --- |
-| InternalNetworkGuard | `chio-guards` | Full |
-| AgentVelocityGuard | `chio-guards` | Full |
-| DataFlowGuard | `chio-guards` | Full |
-| BehavioralSequenceGuard | `chio-guards` | Full |
-| ResponseSanitizationGuard | `chio-guards` | Full |
-| PostInvocationPipeline | `chio-guards` | Full |
-| AdvisoryPipeline | `chio-guards` | Full |
-| AnomalyAdvisoryGuard | `chio-guards` | Full |
-| DataTransferAdvisoryGuard | `chio-guards` | Full |
-| WasmGuard | `chio-wasm-guards` | Full |
-| WasmGuardRuntime | `chio-wasm-guards` | Full |
-| SessionJournal | `chio-http-session` | Full |
+The Implementation column reports whether the guard logic ships in the
+indicated crate. The Default pipeline wiring column reports whether the
+kernel's default guard pipeline registers the guard automatically or whether
+operators MUST wire it themselves. Implementation status does not by itself
+imply that the guard runs against incoming requests.
+
+| Guard | Crate | Implementation | Default pipeline wiring |
+| --- | --- | --- | --- |
+| InternalNetworkGuard | `chio-guards` | Full | Default-wired |
+| AgentVelocityGuard | `chio-guards` | Full | Default-wired |
+| DataFlowGuard | `chio-guards` | Full | Operator-wired (requires `SessionJournal`) |
+| BehavioralSequenceGuard | `chio-guards` | Full | Operator-wired (requires `SessionJournal`) |
+| ResponseSanitizationGuard | `chio-guards` | Full | Default-wired (post-invocation) |
+| PostInvocationPipeline | `chio-guards` | Full | Default-wired |
+| AdvisoryPipeline | `chio-guards` | Full | Default-wired |
+| AnomalyAdvisoryGuard | `chio-guards` | Full | Operator-wired (requires `SessionJournal`) |
+| DataTransferAdvisoryGuard | `chio-guards` | Full | Operator-wired (requires `SessionJournal`) |
+| PortableFilesystemRootsGuard | `chio-guards` | Full | Operator-wired (filesystem-scoped) |
+| WasmGuard | `chio-wasm-guards` | Full | Operator-wired |
+| WasmGuardRuntime | `chio-wasm-guards` | Full | Operator-wired |
+| SessionJournal | `chio-http-session` | Full | Operator-wired |

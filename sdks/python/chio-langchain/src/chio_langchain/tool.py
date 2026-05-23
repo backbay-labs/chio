@@ -112,11 +112,14 @@ class ChioTool(BaseTool):
 
         self.last_receipt = receipt
 
-        if receipt.is_denied:
+        if not receipt.is_allowed:
+            decision = receipt.decision
             return json.dumps({
-                "error": "denied",
-                "guard": receipt.decision.guard,
-                "reason": receipt.decision.reason or "denied",
+                "error": "denied" if receipt.is_denied else "non_authorizing",
+                "guard": decision.guard if decision is not None else None,
+                "reason": decision.reason
+                if decision is not None and decision.reason is not None
+                else "non-authorizing Chio receipt",
             })
 
         return json.dumps({

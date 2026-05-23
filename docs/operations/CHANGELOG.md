@@ -1,8 +1,12 @@
 # Chio Changelog
 
+> Historical internal milestone log. `v2.x` labels in this file are
+> pre-release implementation milestones, not Chio-owned protocol, schema, SDK,
+> or runtime versions. Current protocol posture is v1-only.
+
 ---
 
-## Unreleased (v2.3 Production Candidate Closeout)
+## Unreleased (pre-release production candidate closeout)
 
 ### Production And Standards
 
@@ -24,15 +28,16 @@
   contract across trust-control, hosted sessions, federation, evidence, and
   A2A task correlation.
 
-- **Protocol v2 alignment** (`spec`, docs): `spec/PROTOCOL.md` now describes
+- **Protocol posture alignment** (`spec`, docs): `spec/PROTOCOL.md` now describes
   the shipped repository profile instead of the older aspirational draft,
   including the real capability, receipt, trust-control, portable-trust, A2A,
   certification, and compatibility contracts.
 
 - **Standards and launch artifacts** (`docs/release`, `docs/standards`,
   `README`, SDK docs): release-candidate, audit, GA checklist, and risk
-  register docs now align to `v2.3`, while new receipts and portable-trust
-  standards profiles define the intended interoperable submission surface.
+  register docs now align to the internal closeout milestone, while new
+  receipts and portable-trust standards profiles define the intended
+  interoperable submission surface.
 
 ## v2.1.0 (2026-03-24)
 
@@ -100,9 +105,9 @@
   panels. Downstream local receipts now preserve upstream provenance through
   remote share metadata plus `localAnchorCapabilityId`.
 
-- **Current boundary**: v2.1 still does not ship automatic local multi-issuer
-  bundle authoring, cluster-wide verifier-state replication, or automatic SCIM
-  provisioning lifecycle.
+- **Historical internal v2.1 boundary**: this milestone did not ship automatic
+  local multi-issuer bundle authoring, cluster-wide verifier-state replication,
+  or automatic SCIM provisioning lifecycle.
 
 ## v2.0.0 (2026-03-23)
 

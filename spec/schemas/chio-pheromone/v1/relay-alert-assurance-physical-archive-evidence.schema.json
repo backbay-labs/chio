@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-physical-archive-evidence.schema.json",
+  "title": "Chio Pheromone Relay Alert Assurance Physical Archive Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "localKernelId", "evidenceId", "packageId", "packageReportSha256", "packageManifestSha256", "observedAtUnixMs", "sampledMemberCount", "mediaAlias", "claims"],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-assurance-physical-archive-evidence.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "evidenceId": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" },
+    "packageId": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" },
+    "packageReportSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "packageManifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "observedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "sampledMemberCount": { "type": "integer", "minimum": 1 },
+    "mediaAlias": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" },
+    "claims": { "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" } }
+  }
+}

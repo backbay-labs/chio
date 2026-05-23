@@ -34,8 +34,8 @@ under the `Chio.Treaty.SensorAttestation` namespace:
    partition-contingency biconditional)
 3. `healthy_attestation_required_for_destructive_admission`
    (Section 4, destructive-admission projection)
-4. `degraded_sensor_admission_requires_re_attestation` (Section 4,
-   amendment re-attestation)
+4. `degraded_sensor_admission_requires_re_admission_witness` (Section 4,
+   amendment re-admission)
 
 ## Verifying the build
 
@@ -66,7 +66,7 @@ Only standard Lean kernel axioms appear:
   `propext`.
 - `healthy_attestation_required_for_destructive_admission` depends
   on `propext`.
-- `degraded_sensor_admission_requires_re_attestation` depends on
+- `degraded_sensor_admission_requires_re_admission_witness` depends on
   `propext`, `Quot.sound`.
 
 No project-specific axioms are introduced.

@@ -213,7 +213,13 @@ mod tests {
             tool_server: "srv".to_string(),
             tool_name: "tool".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({})).unwrap(),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: sha256_hex(b"{}"),
             policy_hash: "policy".to_string(),
             evidence: vec![GuardEvidence {
@@ -244,13 +250,16 @@ mod tests {
     #[test]
     fn insert_then_get_round_trip() {
         let kp = Keypair::generate();
-        let account = LocalCreditAccount::new(Ed25519Backend::new(kp.clone()));
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp.clone()),
+            [kp.public_key()],
+        );
         let receipt = make_priced_receipt(&kp, "rcpt-store-1", 250);
         let envelope = account.evaluate(&receipt).unwrap().unwrap();
         let store = open_store();
         assert!(store.insert(&envelope).unwrap());
         let fetched = store
-            .get_by_receipt_id("rcpt-store-1")
+            .get_by_receipt_id(&receipt.id)
             .unwrap()
             .expect("envelope was inserted");
         assert_eq!(fetched, envelope);
@@ -259,7 +268,10 @@ mod tests {
     #[test]
     fn duplicate_insert_is_idempotent() {
         let kp = Keypair::generate();
-        let account = LocalCreditAccount::new(Ed25519Backend::new(kp.clone()));
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp.clone()),
+            [kp.public_key()],
+        );
         let receipt = make_priced_receipt(&kp, "rcpt-store-2", 100);
         let envelope = account.evaluate(&receipt).unwrap().unwrap();
         let store = open_store();
@@ -272,15 +284,21 @@ mod tests {
         let kp_a = Keypair::generate();
         let kp_b = Keypair::generate();
         let receipt_a = make_priced_receipt(&kp_a, "rcpt-store-3", 100);
-        let receipt_b = make_priced_receipt(&kp_b, "rcpt-store-3", 100);
-        let env_a = LocalCreditAccount::new(Ed25519Backend::new(kp_a))
-            .evaluate(&receipt_a)
-            .unwrap()
-            .unwrap();
-        let env_b = LocalCreditAccount::new(Ed25519Backend::new(kp_b))
-            .evaluate(&receipt_b)
-            .unwrap()
-            .unwrap();
+        let env_a = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp_a.clone()),
+            [kp_a.public_key()],
+        )
+        .evaluate(&receipt_a)
+        .unwrap()
+        .unwrap();
+        let env_b = LocalCreditAccount::new_with_trusted_kernel_keys(
+            Ed25519Backend::new(kp_b),
+            [kp_a.public_key()],
+        )
+        .evaluate(&receipt_a)
+        .unwrap()
+        .unwrap();
+        assert_eq!(env_a.body.receipt_id, env_b.body.receipt_id);
         assert_ne!(env_a.body.issuer_key, env_b.body.issuer_key);
         let store = open_store();
         assert!(store.insert(&env_a).unwrap());

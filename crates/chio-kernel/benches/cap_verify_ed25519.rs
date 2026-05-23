@@ -1,11 +1,17 @@
-//! Baseline bench: cap_verify_ed25519.
-//! Body fills in once the async-kernel pivot lands.
+//! Baseline bench: Ed25519 capability verification.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
+#[path = "fixtures/dispatch_request_fixture.rs"]
+mod dispatch_request_fixture;
+
+use dispatch_request_fixture::DispatchAllowFixture;
+
 pub fn bench(c: &mut Criterion) {
+    let fixture = DispatchAllowFixture::new();
+
     c.bench_function("cap_verify_ed25519", |b| {
-        b.iter(|| black_box(0_u64));
+        b.iter(|| black_box(fixture.capability_signature_valid()));
     });
 }
 

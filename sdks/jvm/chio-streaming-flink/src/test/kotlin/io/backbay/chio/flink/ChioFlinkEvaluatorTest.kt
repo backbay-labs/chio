@@ -81,6 +81,23 @@ class ChioFlinkEvaluatorTest {
     }
 
     @Test
+    fun unverifiedAllowReceiptGoesToDlq() {
+        val client = FakeChioClient(
+            behaviour = FakeChioClient.Behaviour.Allow,
+            verifyResult = false,
+        )
+        val evaluator =
+            ChioFlinkEvaluator(
+                configFor(client, receiptTopic = "chio-receipts"),
+            )
+        evaluator.bind(FakeRuntimeContext())
+        val outcome = evaluator.evaluate(mapOf("topic" to "t"))
+        assertEquals(false, outcome.allowed)
+        assertNotNull(outcome.dlqBytes)
+        assertNull(outcome.receiptBytes)
+    }
+
+    @Test
     fun raiseSidecarErrorPropagates() {
         val client =
             FakeChioClient(
@@ -217,6 +234,8 @@ class ChioFlinkEvaluatorTest {
                     gate.await(5, TimeUnit.SECONDS)
                     return FakeChioClient().evaluateToolCall(capabilityId, toolServer, toolName, parameters)
                 }
+
+                override fun verifyReceipt(receipt: io.backbay.chio.sdk.ChioReceipt): Boolean = true
             }
         val evaluator =
             ChioFlinkEvaluator(

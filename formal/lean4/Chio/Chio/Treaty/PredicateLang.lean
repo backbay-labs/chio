@@ -64,7 +64,7 @@ def denoteAtom (tag : AtomTag) (rid : ReceiptId) : Bool :=
   match tag with
   | .scopeContains target => rid == target
   | .receiptHashEquals h => rid == h
-  | _ => true
+  | _ => false
 
 /-- Interpret a predicate as a Boolean function of receipt id. -/
 def denote : Predicate -> ReceiptId -> Bool
@@ -384,13 +384,28 @@ structure AnchorWitness where
   deriving Repr, BEq, DecidableEq, Inhabited
 
 /--
-  Count of policy-declared lanes that actually contributed to the
-  witness. Out-of-policy contributors are silently ignored at the
-  count step (and the runtime denies the entire witness anyway).
+  Deduplicated policy-declared lanes. Duplicate declarations cannot
+  inflate quorum.
+-/
+def declaredLanes (policy : LaneQuorumPolicy) : List LaneId :=
+  policy.lanes.eraseDups
+
+/--
+  Count of deduplicated policy-declared lanes that actually contributed
+  to the witness.
 -/
 def contributingFromPolicy
     (policy : LaneQuorumPolicy) (witness : AnchorWitness) : Nat :=
-  (policy.lanes.filter (fun ℓ => witness.contributingLanes.elem ℓ)).length
+  ((declaredLanes policy).filter
+    (fun lane => witness.contributingLanes.elem lane)).length
+
+/--
+  Every contributing lane must be declared by the policy. Undeclared
+  lanes make the witness invalid instead of being ignored.
+-/
+def witnessUsesOnlyDeclaredLanes
+    (policy : LaneQuorumPolicy) (witness : AnchorWitness) : Bool :=
+  witness.contributingLanes.all (fun lane => policy.lanes.elem lane)
 
 /--
   Lane quorum satisfaction: the count of contributing declared lanes
@@ -398,7 +413,8 @@ def contributingFromPolicy
 -/
 def laneQuorumSatisfied
     (policy : LaneQuorumPolicy) (witness : AnchorWitness) : Bool :=
-  decide (policy.quorum ≤ contributingFromPolicy policy witness)
+  witnessUsesOnlyDeclaredLanes policy witness &&
+    decide (policy.quorum ≤ contributingFromPolicy policy witness)
 
 /--
   Treaty scope carrying both a predicate list and a lane quorum
@@ -437,7 +453,7 @@ theorem anchor_admission_iff_lane_quorum_satisfied
 /--
   Zero-quorum admits anything: the degenerate case where a scope
   declares quorum 0 admits any anchor witness. This is intentionally
-  permitted by the structural theorem — the scope author opted out
+  permitted by the structural theorem - the scope author opted out
   of anchor-layer enforcement. The runtime's policy-review surface
   is the place to flag a zero-quorum declaration as a denial-by-
   omission attack signal; the structural theorem says no more is
@@ -445,10 +461,23 @@ theorem anchor_admission_iff_lane_quorum_satisfied
 -/
 theorem anchor_admission_zero_quorum
     (scope : LaneScope) (witness : AnchorWitness)
-    (hZeroQuorum : scope.laneQuorumPolicy.quorum = 0) :
+    (hZeroQuorum : scope.laneQuorumPolicy.quorum = 0)
+    (hDeclared :
+      witnessUsesOnlyDeclaredLanes scope.laneQuorumPolicy witness = true) :
     anchorAdmits scope witness = true := by
   unfold anchorAdmits laneQuorumSatisfied
   rw [hZeroQuorum]
-  simp
+  simp [hDeclared]
+
+/--
+  Undeclared lane contributors fail closed before quorum counting.
+-/
+theorem anchor_admission_rejects_undeclared_lane
+    (scope : LaneScope) (witness : AnchorWitness)
+    (hUndeclared :
+      witnessUsesOnlyDeclaredLanes scope.laneQuorumPolicy witness = false) :
+    anchorAdmits scope witness = false := by
+  unfold anchorAdmits laneQuorumSatisfied
+  simp [hUndeclared]
 
 end Chio.Treaty.PredicateLang

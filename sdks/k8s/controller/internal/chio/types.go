@@ -170,19 +170,68 @@ type ReleaseRequest struct {
 	Reason string `json:"reason"`
 }
 
-// StepReceipt is a single receipt emitted by a Pod step within a governed Job.
+// AdvisoryPodAnnotationSource is the canonical source label applied to
+// receipt content harvested from a pod annotation. Pod annotations are
+// user-owned (anyone with create-pod rights can set them) so the controller
+// surfaces them strictly as advisory, never as authoritative receipt content.
+const AdvisoryPodAnnotationSource = "pod_annotation_unverified"
+
+// AdvisoryPodAnnotationMaxBytes is the upper bound the controller will copy
+// from a pod's receipt annotation into a StepReceipt. Anything beyond this
+// is truncated and the Truncated flag is set so downstream consumers can
+// detect the cap.
+const AdvisoryPodAnnotationMaxBytes = 32 * 1024
+
+// AdvisoryPodAnnotation wraps the bytes the controller harvested from a
+// pod's `chio.protocol/receipt` annotation.
 //
-// Pods attach receipts to themselves via the Chio receipt annotation. The
-// controller harvests them during reconciliation and aggregates them into a
-// JobReceipt at Job completion.
-type StepReceipt struct {
-	// PodName is the name of the Pod that emitted the receipt.
-	PodName string `json:"pod_name"`
-	// Phase mirrors the Pod phase at the time the receipt was observed.
-	Phase string `json:"phase"`
-	// Payload is the opaque receipt bytes (base64-wrapped JSON by convention).
+// Trust model: the wrapping payload, including every field below, is
+// user-owned content. Any actor with create-pod rights in the governed
+// namespace can write arbitrary bytes here, including fabricated decisions,
+// rationales, or substituted identifiers. Mediators MUST NOT treat any
+// AdvisoryPodAnnotation content as authoritative; it is surfaced only so
+// downstream tooling can correlate what the workload claimed with what the
+// controller authoritatively observed. The Source field is fixed at
+// AdvisoryPodAnnotationSource to make the trust boundary explicit on the
+// wire.
+type AdvisoryPodAnnotation struct {
+	// Source is always AdvisoryPodAnnotationSource. It exists on the wire
+	// so receipt consumers cannot miss the trust boundary.
+	Source string `json:"source"`
+	// AnnotationKey records which pod annotation produced the payload.
+	AnnotationKey string `json:"annotation_key"`
+	// Payload is the (possibly truncated) raw annotation value.
 	Payload string `json:"payload"`
-	// ObservedAt is the time the receipt was observed by the controller.
+	// Truncated is true when Payload was shortened to fit
+	// AdvisoryPodAnnotationMaxBytes.
+	Truncated bool `json:"truncated"`
+}
+
+// StepReceipt is a single receipt observation the controller produces for a
+// Pod step within a governed Job.
+//
+// Trust model: the controller mints every authoritative field on this
+// receipt (PodName, Phase, ObservedAt). The AdvisoryPodAnnotation field is
+// the only path by which workload-supplied bytes reach the aggregate
+// JobReceipt, and it is explicitly tagged as unverified. Mediators relying
+// on JobReceipt content for capability decisions, audit, or enforcement
+// MUST ignore AdvisoryPodAnnotation. It exists for human / tool review
+// only.
+type StepReceipt struct {
+	// PodName is the name of the Pod that emitted the observation.
+	// Controller-owned.
+	PodName string `json:"pod_name"`
+	// Phase mirrors the Pod phase at the time of observation.
+	// Controller-owned.
+	Phase string `json:"phase"`
+	// AdvisoryPodAnnotation carries any payload the workload wrote to its
+	// own `chio.protocol/receipt` annotation. The contents are
+	// user-controlled and MUST be treated as advisory only; see the
+	// AdvisoryPodAnnotation doc-comment. Nil when the pod did not set a
+	// receipt annotation.
+	AdvisoryPodAnnotation *AdvisoryPodAnnotation `json:"advisory_pod_annotation,omitempty"`
+	// ObservedAt is the time the controller recorded the observation.
+	// Controller-owned.
 	ObservedAt time.Time `json:"observed_at"`
 }
 

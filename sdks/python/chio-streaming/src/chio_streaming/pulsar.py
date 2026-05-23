@@ -268,7 +268,7 @@ class ChioPulsarMiddleware:
                 )
                 return await self._handle_deny(msg, receipt, request_id)
             raise
-        if receipt.is_denied:
+        if not receipt.is_allowed:
             return await self._handle_deny(msg, receipt, request_id)
         return await self._handle_allow(msg, receipt, request_id, handler)
 

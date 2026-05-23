@@ -35,10 +35,10 @@ The authoritative machine-readable contract inventory is:
 
 Partners should treat governed Chio receipt-bearing paths as authoritative.
 
-The multi-language SDKs now expose degraded passthrough explicitly as
-`allow_without_receipt`. That degraded mode is useful for compatibility and
-transition safety, but it is not authoritative partner evidence for economic
-actions.
+Legacy multi-language SDKs may expose degraded passthrough explicitly as
+`allow_without_receipt`. Current protocol-facing middleware fails closed before
+local side effects when the sidecar cannot produce and verify a receipt. Any
+legacy degraded mode is not authoritative partner evidence for economic actions.
 
 ## Review Flow
 

@@ -69,8 +69,12 @@ class DlqRouter
                     "DlqRouter.buildRecord called with a non-deny receipt; the DLQ path is reserved for denials",
                 )
             }
-            val reason = receipt.decision.reason ?: "denied by Chio kernel"
-            val guard = receipt.decision.guard ?: "unknown"
+            val decision = receipt.decision
+                ?: throw ChioValidationError(
+                    "DlqRouter.buildRecord called with a decisionless receipt; the DLQ path is reserved for denials",
+                )
+            val reason = decision.reason ?: "denied by Chio kernel"
+            val guard = decision.guard ?: "unknown"
 
             // LinkedHashMap preserves insertion order. CanonicalJson will
             // re-sort keys alphabetically on serialize; the plan doc

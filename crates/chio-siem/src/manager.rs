@@ -1,11 +1,14 @@
 //! ExporterManager: cursor-pull loop that reads receipts from SQLite and fans out to exporters.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rusqlite::params;
 use tokio::sync::watch;
+
+use chio_kernel::{ReceiptReadBoundary, ReceiptReadContext};
 
 use crate::dlq::{DeadLetterQueue, FailedEvent};
 use crate::event::SiemEvent;
@@ -44,6 +47,11 @@ pub struct SiemConfig {
     pub dlq_capacity: usize,
     /// Optional per-exporter batch rate limit. None means unlimited.
     pub rate_limit: Option<RateLimitConfig>,
+    /// Kernel public keys trusted to produce authoritative receipts.
+    pub trusted_kernel_keys: BTreeSet<String>,
+    /// Explicit read authority for local receipt polling. SIEM polling is an
+    /// operator surface and must not run with tenant-scoped authority.
+    pub read_context: ReceiptReadContext,
 }
 
 impl Default for SiemConfig {
@@ -56,6 +64,8 @@ impl Default for SiemConfig {
             base_backoff_ms: 500,
             dlq_capacity: DeadLetterQueue::DEFAULT_CAPACITY,
             rate_limit: None,
+            trusted_kernel_keys: BTreeSet::new(),
+            read_context: ReceiptReadContext::local_operator_admin_all(),
         }
     }
 }
@@ -166,6 +176,14 @@ impl ExporterManager {
     async fn poll_once(&mut self) -> Result<(), SiemError> {
         let cursor = self.cursor;
         let batch_size = self.config.batch_size;
+        if !matches!(
+            self.config.read_context.boundary,
+            ReceiptReadBoundary::AdminAll
+        ) {
+            return Err(SiemError::ConfigError(
+                "SIEM receipt polling requires explicit admin receipt read authority".to_string(),
+            ));
+        }
 
         // Lock the connection only for the synchronous DB read; release before any await.
         let rows: Vec<(u64, String)> = {
@@ -209,7 +227,10 @@ impl ExporterManager {
         for (seq, raw_json) in &rows {
             match serde_json::from_str::<chio_core::receipt::ChioReceipt>(raw_json) {
                 Ok(receipt) => {
-                    events.push(SiemEvent::from_receipt(receipt));
+                    events.push(SiemEvent::from_receipt_with_trusted_kernel_keys(
+                        receipt,
+                        Some(&self.config.trusted_kernel_keys),
+                    ));
                     if *seq > max_seq {
                         max_seq = *seq;
                     }

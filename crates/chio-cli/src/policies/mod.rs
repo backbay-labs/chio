@@ -66,10 +66,7 @@ impl McpPreset {
             .map_err(|e| CliError::cli_io_error(format!("failed to materialize preset: {e}")))?;
         file.write_all(self.yaml().as_bytes())
             .map_err(|e| CliError::cli_io_error(format!("failed to write preset yaml: {e}")))?;
-        Ok(MaterializedPreset {
-            path,
-            _dir: dir,
-        })
+        Ok(MaterializedPreset { path, _dir: dir })
     }
 }
 
@@ -145,8 +142,14 @@ mod tests {
 
     #[test]
     fn preset_name_parses() {
-        assert_eq!(McpPreset::from_name("code-agent"), Some(McpPreset::CodeAgent));
-        assert_eq!(McpPreset::from_name("code_agent"), Some(McpPreset::CodeAgent));
+        assert_eq!(
+            McpPreset::from_name("code-agent"),
+            Some(McpPreset::CodeAgent)
+        );
+        assert_eq!(
+            McpPreset::from_name("code_agent"),
+            Some(McpPreset::CodeAgent)
+        );
         assert_eq!(McpPreset::from_name("nope"), None);
     }
 

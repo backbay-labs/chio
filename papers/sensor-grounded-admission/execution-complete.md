@@ -61,7 +61,7 @@ Final adversarial REVIEW (`proposals/10-final-adversarial-review.md`) returned *
 - Conference-template conversion (2-3 days)
 - Anonymization pass (1-2 days)
 - Optional §A Lean-statement appendix (+1 page; decision based on final page budget)
-- Anthropic co-author outreach if pursued (parent-paper outreach memo at `/Users/connor/Medica/backbay/standalone/arc/papers/programmable-sovereignty/swarm-notes/anthropic-coauthor-outreach.md` recommends Bowman/Perez/Grosse/Kaplan)
+- Anthropic co-author outreach if pursued (parent-paper outreach memo at `papers/programmable-sovereignty/swarm-notes/anthropic-coauthor-outreach.md` recommends Bowman/Perez/Grosse/Kaplan)
 - Submission login + final pre-submission checklist
 
 ## Cron termination

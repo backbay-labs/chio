@@ -34,6 +34,26 @@ impl BilateralCoSigningProtocol for CountingRejectingCosigner {
     }
 }
 
+struct FailingAppendReceiptStore {
+    called: std::sync::Arc<AtomicBool>,
+}
+
+impl ReceiptStore for FailingAppendReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        self.called.store(true, Ordering::SeqCst);
+        Err(ReceiptStoreError::Conflict(
+            "receipt append failed".to_string(),
+        ))
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+}
+
 fn handshake_and_pin(
     local: &KernelTrustExchange,
     remote_kernel_id: &str,
@@ -139,17 +159,16 @@ fn federated_request_produces_dual_signed_receipt_verifiable_by_both_orgs() {
 }
 
 #[test]
-fn federation_cosigner_not_called_when_local_v2_persistence_fails() {
+fn federation_cosigner_not_called_when_local_persistence_fails() {
     let origin_kp = Keypair::generate();
     let origin_kernel_id = "kernel.org-a";
     let tool_host_kernel_id = "kernel.org-b";
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_v2_default(true);
     kernel.set_federation_local_kernel_id(tool_host_kernel_id);
 
-    let v1_called = std::sync::Arc::new(AtomicBool::new(false));
-    kernel.set_receipt_store(Box::new(V2FailsBeforeV1Store {
-        v1_called: std::sync::Arc::clone(&v1_called),
+    let receipt_append_called = std::sync::Arc::new(AtomicBool::new(false));
+    kernel.set_receipt_store(Box::new(FailingAppendReceiptStore {
+        called: std::sync::Arc::clone(&receipt_append_called),
     }));
 
     let trust = KernelTrustExchange::new(tool_host_kernel_id, kernel.config.keypair.clone())
@@ -176,21 +195,21 @@ fn federation_cosigner_not_called_when_local_v2_persistence_fails() {
         300,
     );
     let mut request = make_request_with_arguments(
-        "req-fed-v2-store-fails",
+        "req-fed-store-fails",
         &cap,
         "file_read",
         "srv-fed",
         serde_json::json!({ "path": "/data/fed.txt" }),
     );
     request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
-    let receipt = make_signed_receipt(&kernel.config.keypair, "rcpt-fed-v2-store-fails");
+    let receipt = make_signed_receipt(&kernel.config.keypair, "rcpt-fed-store-fails");
 
     let err = kernel
         .record_chio_receipt_with_federation(&request, &receipt)
-        .expect_err("local v2 persistence failure must abort before federation cosign");
+        .expect_err("local persistence failure must abort before federation cosign");
 
     assert!(
-        format!("{err}").contains("v2 receipt persistence failed"),
+        format!("{err}").contains("receipt append failed"),
         "unexpected error: {err}"
     );
     assert_eq!(
@@ -199,18 +218,17 @@ fn federation_cosigner_not_called_when_local_v2_persistence_fails() {
         "cosigner must not be called before durable local receipt state exists"
     );
     assert!(
-        !v1_called.load(Ordering::SeqCst),
-        "v1 receipt append must not happen after v2 persistence fails"
+        receipt_append_called.load(Ordering::SeqCst),
+        "receipt append must be attempted before federation cosign"
     );
 }
 
 #[test]
-fn federated_v1_without_receipt_store_denies_before_dispatch_or_cosign() {
+fn federated_request_without_receipt_store_denies_before_dispatch_or_cosign() {
     let origin_kp = Keypair::generate();
     let origin_kernel_id = "kernel.org-a";
     let tool_host_kernel_id = "kernel.org-b";
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_v2_default(true);
     kernel.set_federation_local_kernel_id(tool_host_kernel_id);
 
     let invocations = std::sync::Arc::new(AtomicU64::new(0));
@@ -279,6 +297,93 @@ fn federated_v1_without_receipt_store_denies_before_dispatch_or_cosign() {
     assert!(
         kernel.federation_dsse_envelope(&response.receipt.id).is_none(),
         "DSSE envelope must not be produced for a pre-dispatch denial"
+    );
+}
+
+#[test]
+fn non_federated_kernel_without_receipt_store_fails_closed_unless_ephemeral_enabled() {
+    // Mirrors the sibling federated `..._denies_before_dispatch_or_cosign`
+    // test for the non-federated path. With `allow_ephemeral_receipt_log`
+    // disabled and no receipt store installed, the pre-dispatch receipt
+    // persistence admission gate must fail closed: the tool server is
+    // never invoked, and the kernel emits a signed Deny pointing at the
+    // missing durable receipt store. Flipping the flag back on restores
+    // the ordinary local dispatch path.
+    let mut config = make_config();
+    config.allow_ephemeral_receipt_log = false;
+    let mut kernel = make_kernel(config);
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-local",
+        vec!["file_read"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-local", "file_read")]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-local-no-store-strict",
+        &cap,
+        "file_read",
+        "srv-local",
+        serde_json::json!({ "path": "/data/local.txt" }),
+    );
+
+    let response = kernel
+        .evaluate_tool_call_blocking(&request)
+        .expect("missing receipt persistence must produce a signed deny response");
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.unwrap_or_default();
+    assert!(
+        reason.contains("receipt persistence") && reason.contains("durable"),
+        "unexpected deny reason: {reason}"
+    );
+    assert_eq!(
+        invocations.load(Ordering::SeqCst),
+        0,
+        "tool must not run without durable receipt persistence when ephemeral logging is disabled"
+    );
+
+    // Flip the ephemeral flag back on with a fresh kernel and confirm the
+    // same request now succeeds without a receipt store, invoking the
+    // tool exactly once.
+    let mut ephemeral_config = make_config();
+    ephemeral_config.allow_ephemeral_receipt_log = true;
+    let mut ephemeral_kernel = make_kernel(ephemeral_config);
+    let ephemeral_invocations = std::sync::Arc::new(AtomicU64::new(0));
+    ephemeral_kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-local",
+        vec!["file_read"],
+        std::sync::Arc::clone(&ephemeral_invocations),
+    )));
+
+    let ephemeral_agent_kp = make_keypair();
+    let ephemeral_cap = make_capability(
+        &ephemeral_kernel,
+        &ephemeral_agent_kp,
+        make_scope(vec![make_grant("srv-local", "file_read")]),
+        300,
+    );
+    let ephemeral_request = make_request_with_arguments(
+        "req-local-no-store-ephemeral",
+        &ephemeral_cap,
+        "file_read",
+        "srv-local",
+        serde_json::json!({ "path": "/data/local.txt" }),
+    );
+    let ephemeral_response = ephemeral_kernel
+        .evaluate_tool_call_blocking(&ephemeral_request)
+        .expect("ephemeral receipt logging must permit dispatch without a receipt store");
+    assert_eq!(ephemeral_response.verdict, Verdict::Allow);
+    assert_eq!(
+        ephemeral_invocations.load(Ordering::SeqCst),
+        1,
+        "tool must be invoked exactly once when ephemeral receipt logging is permitted"
     );
 }
 

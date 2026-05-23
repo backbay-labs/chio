@@ -1,0 +1,60 @@
+name: Chio Treaty-Bound Provenance
+
+on:
+  pull_request:
+    paths:
+      - "crates/chio-attest-buyer/**"
+      - "crates/chio-attest-buyer-core/**"
+      - "crates/chio-runtime-core/**"
+      - "crates/chio-cli/**"
+      - "scripts/check-chio-treaty-bound-provenance.sh"
+      - "spec/schemas/chio-federation/v1/*treaty*.schema.json"
+      - "spec/schemas/chio-federation/v1/*ladder*.schema.json"
+      - "spec/schemas/chio-federation/v1/*lineage*.schema.json"
+      - "spec/schemas/chio-federation/v1/*bilateral*.schema.json"
+      - "spec/schemas/chio-federation/v1/cross-*.schema.json"
+      - "spec/schemas/chio-attest/v1/*attestation*.schema.json"
+      - "spec/schemas/chio-federation/v1/treaty-negative-fixture-corpus.schema.json"
+      - "spec/schemas/registry.json"
+      - "spec/schemas/MANIFEST.sha256"
+      - ".github/workflows/chio-treaty-bound-provenance.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "crates/chio-attest-buyer/**"
+      - "crates/chio-attest-buyer-core/**"
+      - "crates/chio-runtime-core/**"
+      - "crates/chio-cli/**"
+      - "scripts/check-chio-treaty-bound-provenance.sh"
+      - "spec/schemas/chio-federation/v1/*treaty*.schema.json"
+      - "spec/schemas/chio-federation/v1/*ladder*.schema.json"
+      - "spec/schemas/chio-federation/v1/*lineage*.schema.json"
+      - "spec/schemas/chio-federation/v1/*bilateral*.schema.json"
+      - "spec/schemas/chio-federation/v1/cross-*.schema.json"
+      - "spec/schemas/chio-attest/v1/*attestation*.schema.json"
+      - "spec/schemas/chio-federation/v1/treaty-negative-fixture-corpus.schema.json"
+      - "spec/schemas/registry.json"
+      - "spec/schemas/MANIFEST.sha256"
+      - ".github/workflows/chio-treaty-bound-provenance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chio-treaty-bound-provenance-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  treaty-bound-provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run Chio treaty-bound provenance gate
+        run: bash scripts/check-chio-treaty-bound-provenance.sh

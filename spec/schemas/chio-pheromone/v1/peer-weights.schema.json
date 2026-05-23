@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/peer-weights.schema.json",
-  "title": "Chiodos Pheromone Peer Weights",
+  "title": "Chio Pheromone Peer Weights",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "reputationEpoch", "weights"],

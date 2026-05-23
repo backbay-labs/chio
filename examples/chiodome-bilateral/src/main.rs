@@ -23,8 +23,8 @@ use chio_core::crypto::Keypair;
 use chio_core::hashing::Hash;
 use chio_core::merkle::{leaf_hash, MerkleTree};
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata, SettlementStatus,
-    ToolCallAction, TrustLevel,
+    ActorRef, BoundaryClass, ChioReceipt, ChioReceiptBody, Decision, FinancialReceiptMetadata,
+    ReceiptKind, RedactionMode, SettlementStatus, ToolCallAction, ToolOrigin, TrustLevel,
 };
 use chio_federation::bilateral_dsse::{sign_dsse_envelope, verify_dsse_envelope, DsseEnvelope};
 use chio_web3::{Web3CheckpointStatement, CHIO_CHECKPOINT_STATEMENT_SCHEMA};
@@ -184,7 +184,7 @@ fn main() -> Result<(), Box<dyn StdError>> {
     // 7. Final assertion: at least one receipt was emitted. The
     //    cross-org refund path emits the signed receipt below; the KB
     //    MCP path appends one receipt for each tool call.
-    if !matches!(receipt.decision, Decision::Allow) {
+    if !matches!(receipt.decision, Some(Decision::Allow)) {
         return Err("scenario expects an Allow receipt for the refund".into());
     }
     println!("[chiodome-bilateral] demo OK: 1 receipt + 1 DSSE envelope + 1 checkpoint emitted");
@@ -229,7 +229,22 @@ fn build_refund_receipt(kp_org_b: &Keypair) -> Result<ChioReceipt, Box<dyn StdEr
         tool_server: "srv-org-b-payments".to_string(),
         tool_name: "payments.refund".to_string(),
         action,
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: ReceiptKind::MediatedDecision,
+        boundary_class: BoundaryClass::Prevent,
+        observation_outcome: None,
+        tool_origin: ToolOrigin::CallerExecuted,
+        redaction_mode: RedactionMode::None,
+        actor_chain: vec![
+            ActorRef {
+                actor_id: "user:tenant-org-a/owner".to_string(),
+                actor_kind: Some("user".to_string()),
+            },
+            ActorRef {
+                actor_id: "agent:org-a/refund-bot".to_string(),
+                actor_kind: Some("agent".to_string()),
+            },
+        ],
         content_hash: sha256_hex_bytes(b"{\"refund\":\"ok\"}"),
         policy_hash: "policy-c-demo".to_string(),
         evidence: Vec::new(),

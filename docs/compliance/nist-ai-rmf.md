@@ -14,7 +14,7 @@ maintainer: Chio Protocol Team
 | Framework | NIST AI Risk Management Framework (AI RMF 1.0) |
 | Published | January 2023 (NIST AI 100-1) |
 | Scope | Govern, Map, Measure, Manage functions and their subcategories |
-| Chio Version | v2.0 Phase 15 draft |
+| Chio Profile | Current v1-only pre-release profile; draft originally tracked under internal phase 15 |
 | Document Date | 2026-04-16 |
 
 ---

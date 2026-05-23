@@ -70,7 +70,13 @@ fn sign_fixture_receipt(fixture: &ReceiptFixture) -> Result<ChioReceipt, Box<dyn
         tool_server: fixture.tool_server.clone(),
         tool_name: fixture.tool_name.clone(),
         action,
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: fixture.content_hash.clone(),
         policy_hash: fixture.policy_hash.clone(),
         evidence: vec![],
@@ -78,7 +84,7 @@ fn sign_fixture_receipt(fixture: &ReceiptFixture) -> Result<ChioReceipt, Box<dyn
             "actor_subject": fixture.actor_subject,
             "mobile_platform": fixture.platform,
         })),
-        trust_level: TrustLevel::Verified,
+        trust_level: TrustLevel::Mediated,
         tenant_id: Some(fixture.tenant_id.clone()),
         kernel_key: keypair.public_key(),
     };
@@ -239,12 +245,13 @@ fn require_const(schema: &Value, pointer_name: &str, record: &Value) -> Result<(
     Ok(())
 }
 
-fn decision_name(decision: &Decision) -> &'static str {
+fn decision_name(decision: &Option<Decision>) -> &'static str {
     match decision {
-        Decision::Allow => "allow",
-        Decision::Deny { .. } => "deny",
-        Decision::Cancelled { .. } => "cancelled",
-        Decision::Incomplete { .. } => "incomplete",
+        Some(Decision::Allow) => "allow",
+        Some(Decision::Deny { .. }) => "deny",
+        Some(Decision::Cancelled { .. }) => "cancelled",
+        Some(Decision::Incomplete { .. }) => "incomplete",
+        None => "none",
     }
 }
 

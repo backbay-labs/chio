@@ -155,7 +155,7 @@ class EventBridgeProcessingOutcome(BaseProcessingOutcome):
             "statusCode": 403,
             "receipt_id": self.receipt.id,
             "request_id": self.request_id,
-            "reason": decision.reason if decision else "denied",
+            "reason": decision.reason if decision else "non-authorizing Chio receipt",
             "guard": decision.guard if decision else "unknown",
         }
 
@@ -269,7 +269,7 @@ class ChioEventBridgeHandler:
                 )
             raise
 
-        if receipt.is_denied:
+        if not receipt.is_allowed:
             return await self._handle_deny(
                 event=event,
                 receipt=receipt,

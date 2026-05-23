@@ -28,7 +28,7 @@ inductive TrustMode where
   | guarded
   | receiptBacked
   | partitionContingency
-  | maintenance
+  | quorumRequired
   deriving Repr, BEq, DecidableEq
 
 def TrustMode.rank : TrustMode -> Nat
@@ -36,7 +36,7 @@ def TrustMode.rank : TrustMode -> Nat
   | .guarded => 1
   | .receiptBacked => 2
   | .partitionContingency => 3
-  | .maintenance => 4
+  | .quorumRequired => 4
 
 def TrustMode.atLeast (mode floor : TrustMode) : Bool :=
   floor.rank <= mode.rank
@@ -86,8 +86,14 @@ structure ConstitutionalDelta where
   new : Constitution
   proofTerm : BackwardRefines new old
 
-def amendmentAdmissible (delta : ConstitutionalDelta) : Prop :=
-  BackwardRefines delta.new delta.old
+structure AmendmentCandidate where
+  old : Constitution
+  new : Constitution
+  proofPresent : Bool
+  proofTerm : proofPresent = true -> BackwardRefines new old
+
+def amendmentAdmissible (candidate : AmendmentCandidate) : Prop :=
+  candidate.proofPresent = true
 
 inductive AmendmentVerdict where
   | enacted
@@ -107,6 +113,9 @@ def enactAmendment (_delta : ConstitutionalDelta) : AmendmentVerdict := .enacted
   an amendment without a constructable `ConstitutionalDelta` is rejected.
 -/
 def rejectAmendment : AmendmentVerdict := .rejected
+
+def evaluateAmendment (candidate : AmendmentCandidate) : AmendmentVerdict :=
+  if candidate.proofPresent then .enacted else .rejected
 
 theorem treaty_admission_iff_predicate_intersection
     (treaty : BilateralTreaty)
@@ -131,12 +140,26 @@ theorem treaty_admission_stable_under_ladder_floor
   simp [treatyAdmitsUnderMode, h_mode]
 
 theorem amendment_admissible_iff_backward_refinement
-    (delta : ConstitutionalDelta) :
-    amendmentAdmissible delta ↔ BackwardRefines delta.new delta.old := by
-  rfl
+    (candidate : AmendmentCandidate) :
+    amendmentAdmissible candidate ↔
+      candidate.proofPresent = true ∧ BackwardRefines candidate.new candidate.old := by
+  constructor
+  · intro h
+    exact ⟨h, candidate.proofTerm h⟩
+  · intro h
+    exact h.1
 
-theorem amendment_without_refinement_rejected :
-    rejectAmendment = AmendmentVerdict.rejected := by
+theorem amendment_without_refinement_rejected
+    (old new : Constitution) :
+    evaluateAmendment {
+      old := old,
+      new := new,
+      proofPresent := false,
+      proofTerm := by
+        intro h
+        cases h
+    } =
+      AmendmentVerdict.rejected := by
   rfl
 
 end Chio.Treaty

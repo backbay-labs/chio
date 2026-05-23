@@ -7,7 +7,10 @@ Entry points and maps for the Chio protocol documentation.
 - [Progressive Tutorial](start-here/PROGRESSIVE_TUTORIAL.md) - walk through Chio from scratch
 - [Native Adoption Guide](start-here/NATIVE_ADOPTION_GUIDE.md) - how to adopt Chio in a production service
 - [Vision](start-here/VISION.md) - what Chio is for and why
-- [Migration Guide (v1 to v2)](start-here/MIGRATION_GUIDE_V2.md) - upgrade path from Chio v1 to v2
+
+## Historical notes
+
+- [Historical v2 Migration Draft](start-here/MIGRATION_GUIDE_V2.md) - archived internal draft notes, not current protocol guidance
 
 ## Reference
 
@@ -50,13 +53,13 @@ Entry points and maps for the Chio protocol documentation.
 
 ## Operations
 
-- [Roadmap](operations/ROADMAP.md) - canonical execution roadmap synthesized from protocol, guard, and research docs
-- [Strategic Roadmap](operations/STRATEGIC_ROADMAP.md) - milestone ladder and launch-hold context
-- [Execution Plan](operations/EXECUTION_PLAN.md) - ordering, parallelism, and sequencing for roadmap delivery
-- [Changelog](operations/CHANGELOG.md) - release notes across Chio versions
+- [Roadmap](operations/ROADMAP.md) - historical execution roadmap, not the current v1 protocol posture
+- [Strategic Roadmap](operations/STRATEGIC_ROADMAP.md) - historical internal milestone narrative
+- [Execution Plan](operations/EXECUTION_PLAN.md) - historical execution sequencing notes
+- [Changelog](operations/CHANGELOG.md) - internal pre-release milestone notes, not public protocol version history
 - [Conformance Harness Plan](operations/CONFORMANCE_HARNESS_PLAN.md) - cross-language conformance plan for JS, Python, and spec fixtures
 - [Distributed Control Plan](operations/DISTRIBUTED_CONTROL_PLAN.md) - shipped shared-control rewrite of the trust-plane architecture
-- [HA Control Auth Plan](operations/HA_CONTROL_AUTH_PLAN.md) - HA replication, shared budget, and hosted auth-server plan
+- [HA Control Auth Plan](operations/HA_CONTROL_AUTH_PLAN.md) - HA replication and shared budget plan; hosted auth-server work remains blocked pending OAuth AS ADR
 - [Bindings Core Plan](operations/BINDINGS_CORE_PLAN.md) - strategy for TypeScript, Python, and Go SDKs without a sprawling ABI
 - [SDK Parity Execution Roadmap](operations/SDK_PARITY_EXECUTION_ROADMAP.md) - short-horizon plan to make multi-language SDK parity real
 
@@ -65,6 +68,14 @@ Entry points and maps for the Chio protocol documentation.
 - [Migrating From MCP](guides/MIGRATING-FROM-MCP.md)
 - [Economic Layer](guides/ECONOMIC-LAYER.md)
 - [Web Backend Quickstart](guides/WEB_BACKEND_QUICKSTART.md)
+
+## Integrations
+
+- [Hermes Integration](integrations/HERMES.md) - wire Chio into the Hermes Agent via MCP server (Path A) or the native `chio-hermes` plugin (Path B)
+- [chio-adapter-base Integration](integrations/CHIO-ADAPTER-BASE.md) - shared security and receipt primitives that every Chio Python adapter depends on; pre-evaluation vs post-tool-call redaction reconciliation, per-adapter pin matrix
+- [Choosing the Redaction Boundary](integrations/CHOOSING_REDACTION_BOUNDARY.md) - decision tree for picking between pre-evaluation and post-tool-call redaction (and the matching helper)
+- [Adapter Migration Guide](integrations/MIGRATION_GUIDE.md) - docs-tree mirror of the in-package adapter-author migration recipe for `chio-adapter-base 0.1.x` -> `0.2.0`
+- [chio-adapter-base 0.2.0 Release Notes](integrations/RELEASE_NOTES_v0.2.0.md) - what shipped in `bind_and_redact` shape hardening + 6-axis coverage matrix
 
 ## Conformance
 

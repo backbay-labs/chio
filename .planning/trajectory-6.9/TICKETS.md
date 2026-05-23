@@ -1,4 +1,4 @@
-# Chiodos 6.9 Tickets
+# Chio 6.9 Tickets
 
 ## C6.9-001 Integrator
 
@@ -79,5 +79,5 @@ Add TLS/deployment guidance, recovery runbooks, relay ops gate, CI path triggers
 
 Acceptance:
 
-- `scripts/check-chiodos-pheromone-relay-ops.sh` covers schema, negative, and full modes.
+- `scripts/check-chio-pheromone-relay-ops.sh` covers schema, negative, and full modes.
 - Operator docs cover stuck outbox, dead-letter triage, stale directory, replay storm, DB lock contention, catch-up overload, and safe requeue.

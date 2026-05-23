@@ -10,6 +10,30 @@ namespace Backbay.Chio.Tests;
 
 public class ChioMiddlewareCapabilityTests
 {
+    private static readonly string ReceiptId = new('a', 64);
+    private static readonly string ContentHash = new('b', 64);
+
+    private static string StructuredVerifyResponse(bool authorized)
+    {
+        var truth = authorized ? "true" : "false";
+        var result = authorized ? "allow" : "deny";
+        return $$"""
+        {
+          "signature_valid": {{truth}},
+          "signer_trusted": {{truth}},
+          "receipt_id_valid": {{truth}},
+          "parameter_hash_valid": {{truth}},
+          "receipt_kind": "mediated_decision",
+          "boundary_class": "prevent",
+          "trust_level": "mediated",
+          "result": "{{result}}",
+          "authorized": {{truth}},
+          "signer_key_hex": "{{new string('d', 64)}}",
+          "ok": {{truth}}
+        }
+        """;
+    }
+
     [Fact]
     public async Task QueryCapabilityTokenIsForwardedToSidecar()
     {
@@ -24,20 +48,25 @@ public class ChioMiddlewareCapabilityTests
             var requestContext = await listener.GetContextAsync();
             observedCapability = requestContext.Request.Headers["X-Chio-Capability"] ?? "";
 
-            var responseJson = """
+            var responseJson = $$"""
             {
               "verdict": { "verdict": "allow" },
               "receipt": {
-                "id": "receipt-query-capability",
+                "id": "{{ReceiptId}}",
                 "request_id": "req-1",
                 "route_pattern": "/pets",
                 "method": "GET",
                 "caller_identity_hash": "hash",
                 "verdict": { "verdict": "allow" },
+                "receipt_kind": "mediated_decision",
+                "boundary_class": "prevent",
+                "tool_origin": "caller_executed",
+                "redaction_mode": "none",
+                "trust_level": "mediated",
                 "evidence": [],
                 "response_status": 200,
                 "timestamp": 1700000000,
-                "content_hash": "content",
+                "content_hash": "{{ContentHash}}",
                 "policy_hash": "policy",
                 "kernel_key": "kernel",
                 "signature": "signature"
@@ -51,6 +80,13 @@ public class ChioMiddlewareCapabilityTests
             requestContext.Response.ContentType = "application/json";
             await requestContext.Response.OutputStream.WriteAsync(bytes);
             requestContext.Response.Close();
+
+            var verifyContext = await listener.GetContextAsync();
+            var verifyBytes = Encoding.UTF8.GetBytes(StructuredVerifyResponse(true));
+            verifyContext.Response.StatusCode = 200;
+            verifyContext.Response.ContentType = "application/json";
+            await verifyContext.Response.OutputStream.WriteAsync(verifyBytes);
+            verifyContext.Response.Close();
         });
 
         var middleware = new ChioProtectMiddleware(
@@ -75,18 +111,18 @@ public class ChioMiddlewareCapabilityTests
         await sidecarTask;
 
         Assert.Equal("query-token", observedCapability);
-        Assert.Equal("receipt-query-capability", context.Response.Headers["X-Chio-Receipt-Id"]);
+        Assert.Equal(ReceiptId, context.Response.Headers["X-Chio-Receipt-Id"]);
         Assert.Equal(StatusCodes.Status204NoContent, context.Response.StatusCode);
     }
 
     [Fact]
-    public async Task FailOpenPassthroughDoesNotAttachSyntheticReceiptHeader()
+    public async Task LegacyFailOpenSettingStillFailsClosed()
     {
-        ChioPassthrough? observedPassthrough = null;
+        var nextCalled = false;
         var middleware = new ChioProtectMiddleware(
             next: context =>
             {
-                observedPassthrough = context.Items[ChioContextKeys.Passthrough] as ChioPassthrough;
+                nextCalled = true;
                 context.Response.StatusCode = StatusCodes.Status204NoContent;
                 return Task.CompletedTask;
             },
@@ -105,11 +141,162 @@ public class ChioMiddlewareCapabilityTests
 
         await middleware.InvokeAsync(context);
 
-        Assert.Equal(StatusCodes.Status204NoContent, context.Response.StatusCode);
+        Assert.False(nextCalled);
+        Assert.Equal(StatusCodes.StatusBadGateway, context.Response.StatusCode);
         Assert.False(context.Response.Headers.ContainsKey("X-Chio-Receipt-Id"));
-        Assert.NotNull(observedPassthrough);
-        Assert.Equal("allow_without_receipt", observedPassthrough!.Mode);
-        Assert.Equal(ChioErrorCodes.SidecarUnreachable, observedPassthrough.Error);
+    }
+
+    [Fact]
+    public async Task SidecarClientRejectsUnverifiedAllow()
+    {
+        var port = GetFreePort();
+        using var listener = new HttpListener();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+
+        var sidecarTask = Task.Run(async () =>
+        {
+            var requestContext = await listener.GetContextAsync();
+            var responseJson = $$"""
+            {
+              "verdict": { "verdict": "allow" },
+              "receipt": {
+                "id": "{{ReceiptId}}",
+                "request_id": "req-1",
+                "route_pattern": "/pets",
+                "method": "GET",
+                "caller_identity_hash": "hash",
+                "verdict": { "verdict": "allow" },
+                "receipt_kind": "mediated_decision",
+                "boundary_class": "prevent",
+                "tool_origin": "caller_executed",
+                "redaction_mode": "none",
+                "trust_level": "mediated",
+                "evidence": [],
+                "response_status": 200,
+                "timestamp": 1700000000,
+                "content_hash": "{{ContentHash}}",
+                "policy_hash": "policy",
+                "kernel_key": "kernel",
+                "signature": "signature"
+              },
+              "evidence": []
+            }
+            """;
+            var bytes = Encoding.UTF8.GetBytes(responseJson);
+            requestContext.Response.StatusCode = 200;
+            requestContext.Response.ContentType = "application/json";
+            await requestContext.Response.OutputStream.WriteAsync(bytes);
+            requestContext.Response.Close();
+
+            var verifyContext = await listener.GetContextAsync();
+            var verifyBytes = Encoding.UTF8.GetBytes(StructuredVerifyResponse(false));
+            verifyContext.Response.StatusCode = 200;
+            verifyContext.Response.ContentType = "application/json";
+            await verifyContext.Response.OutputStream.WriteAsync(verifyBytes);
+            verifyContext.Response.Close();
+        });
+
+        using var client = new ChioSidecarClient($"http://127.0.0.1:{port}");
+        var request = new ChioHttpRequest
+        {
+            RequestId = "req-1",
+            Method = "GET",
+            RoutePattern = "/pets",
+            Path = "/pets",
+            Caller = CallerIdentity.CreateAnonymous(),
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+        };
+        var ex = await Assert.ThrowsAsync<ChioSidecarException>(
+            () => client.EvaluateAsync(request)
+        );
+        await sidecarTask;
+
+        Assert.Equal(ChioErrorCodes.InvalidReceipt, ex.Code);
+    }
+
+    [Fact]
+    public async Task SidecarClientRejectsAuthorizedFlagWithoutAuthorityTuple()
+    {
+        var port = GetFreePort();
+        using var listener = new HttpListener();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+
+        var sidecarTask = Task.Run(async () =>
+        {
+            var requestContext = await listener.GetContextAsync();
+            var responseJson = $$"""
+            {
+              "verdict": { "verdict": "allow" },
+              "receipt": {
+                "id": "{{ReceiptId}}",
+                "request_id": "req-1",
+                "route_pattern": "/pets",
+                "method": "GET",
+                "caller_identity_hash": "hash",
+                "verdict": { "verdict": "allow" },
+                "receipt_kind": "mediated_decision",
+                "boundary_class": "prevent",
+                "tool_origin": "caller_executed",
+                "redaction_mode": "none",
+                "trust_level": "mediated",
+                "evidence": [],
+                "response_status": 200,
+                "timestamp": 1700000000,
+                "content_hash": "{{ContentHash}}",
+                "policy_hash": "policy",
+                "kernel_key": "kernel",
+                "signature": "signature"
+              },
+              "evidence": []
+            }
+            """;
+            var bytes = Encoding.UTF8.GetBytes(responseJson);
+            requestContext.Response.StatusCode = 200;
+            requestContext.Response.ContentType = "application/json";
+            await requestContext.Response.OutputStream.WriteAsync(bytes);
+            requestContext.Response.Close();
+
+            var verifyContext = await listener.GetContextAsync();
+            var verifyJson = $$"""
+            {
+              "signature_valid": false,
+              "signer_trusted": true,
+              "receipt_id_valid": true,
+              "parameter_hash_valid": true,
+              "receipt_kind": "mediated_decision",
+              "boundary_class": "prevent",
+              "trust_level": "mediated",
+              "result": "allow",
+              "authorized": true,
+              "signer_key_hex": "{{new string('d', 64)}}",
+              "ok": true
+            }
+            """;
+            var verifyBytes = Encoding.UTF8.GetBytes(verifyJson);
+            verifyContext.Response.StatusCode = 200;
+            verifyContext.Response.ContentType = "application/json";
+            await verifyContext.Response.OutputStream.WriteAsync(verifyBytes);
+            verifyContext.Response.Close();
+        });
+
+        using var client = new ChioSidecarClient($"http://127.0.0.1:{port}");
+        var request = new ChioHttpRequest
+        {
+            RequestId = "req-1",
+            Method = "GET",
+            RoutePattern = "/pets",
+            Path = "/pets",
+            Caller = CallerIdentity.CreateAnonymous(),
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+        };
+        var ex = await Assert.ThrowsAsync<ChioSidecarException>(
+            () => client.EvaluateAsync(request)
+        );
+        await sidecarTask;
+
+        Assert.Equal(ChioErrorCodes.InvalidReceipt, ex.Code);
     }
 
     private static int GetFreePort()

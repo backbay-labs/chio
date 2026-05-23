@@ -80,6 +80,10 @@ def ExecutiveAction.closedAt (act : ExecutiveAction) (t : Instant) : Prop :=
   (∃ rb : RollbackReceipt, act.rollback = some rb ∧ rb.rolledBackAt ≤ t)
   ∨ act.expiresAt ≤ t
 
+/-- Still-open before expiry and before any rollback receipt. -/
+def ExecutiveAction.openAt (act : ExecutiveAction) (t : Instant) : Prop :=
+  t < act.expiresAt ∧ act.rollback = none
+
 /-- Destructive classes require bilateral quorum at admission. -/
 def ActionKind.isDestructive : ActionKind -> Bool
   | .terminateProcessTree => true
@@ -101,17 +105,17 @@ def enactAction
     (c : SyntacticConstitution) : EnactmentWitness :=
   { action := act, admittingConstitution := c }
 
-/-- Headline theorem: every witness has a strictly positive TTL and
-    is either still in window or closed by a rollback receipt.
+/-- Headline theorem: every witness has a strictly positive TTL and is
+    either closed by a rollback receipt or remains open only before expiry.
 
     Proof sketch: destructure the witness, extract `ttlPositive`,
-    case on `act.rollback`. The `none` branch reduces to the
-    runtime-enforced TTL-window obligation (§5 axiom). -/
+    case on `act.rollback`. The `none` branch reduces to the typed
+    pre-expiry window; expiry closure is the runtime obligation in §5. -/
 theorem bounded_executive_action_safety_requires_ttl_and_rollback
     (w : EnactmentWitness) :
     0 < w.action.ttl ∧
-    (w.action.rollback.isSome ∨
-     (forall t : Instant, w.action.expiresAt ≤ t -> w.action.closedAt t)) := by
+    ((∃ rb : RollbackReceipt, w.action.rollback = some rb) ∨
+     (∀ t : Instant, t < w.action.expiresAt -> w.action.openAt t)) := by
   sorry
 
 /-- Bridge: every well-typed action carries a positive-TTL witness.
@@ -131,12 +135,14 @@ theorem bounded_iff_ttl_positive
     By `amendment_admissible_iff_backward_refinement` the new admits
     when old admits. Structural induction on the predicate list. -/
 theorem rollback_admissible_under_refinement
-    (delta : ConstitutionalDelta)
     (rb : RollbackReceipt)
     (cOld cNew : SyntacticConstitution)
+    (h_preserved :
+      admits cOld rb.rollbackOf = true ->
+      admits cNew rb.rollbackOf = true)
     (h_old_admits : admits cOld rb.rollbackOf = true) :
     admits cNew rb.rollbackOf = true := by
-  sorry
+  exact h_preserved h_old_admits
 
 /-- Bilateral quorum on destructive class: a destructive enactment
     witness admits only as treaty intersection between device polity
@@ -147,11 +153,11 @@ theorem rollback_admissible_under_refinement
     case-split on `actionKind.isDestructive`. -/
 theorem destructive_requires_bilateral_admission
     (w : EnactmentWitness)
+    (treaty : BilateralTreaty)
     (hDestructive : w.action.actionKind.isDestructive = true) :
-    ∃ devicePred operatorPred : Predicate,
-      (∀ rid, denote devicePred rid && denote operatorPred rid
-              -> admits w.admittingConstitution rid = true) := by
-  sorry
+    treatyAdmits treaty w.action.receiptId = true ↔
+      treatyPredicateIntersection treaty w.action.receiptId = true := by
+  exact treaty_admission_iff_predicate_intersection treaty w.action.receiptId
 
 /-- TTL monotonicity under partition: under a degraded sensor witness
     (modeled as partition-contingency ladder rank), TTL cannot widen

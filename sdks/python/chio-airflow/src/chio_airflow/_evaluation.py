@@ -104,7 +104,7 @@ async def _evaluate(
         # apply. Deliberately NOT translated to PermissionError.
         raise
 
-    if receipt.is_denied:
+    if not receipt.is_allowed:
         decision = receipt.decision
         raise _denied_permission_error(
             task_id=task_id,
@@ -112,10 +112,14 @@ async def _evaluate(
             run_id=run_id,
             capability_id=capability_id,
             tool_server=tool_server,
-            reason=decision.reason or "denied by Chio kernel",
-            guard=decision.guard,
+            reason=decision.reason
+            if decision is not None and decision.reason is not None
+            else "non-authorizing Chio receipt",
+            guard=decision.guard if decision is not None else None,
             receipt_id=receipt.id,
-            decision=decision.model_dump(exclude_none=True),
+            decision=decision.model_dump(exclude_none=True)
+            if decision is not None
+            else None,
         )
 
     return receipt

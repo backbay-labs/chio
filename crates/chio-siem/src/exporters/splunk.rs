@@ -152,6 +152,12 @@ impl Exporter for SplunkHecExporter {
                 let mut envelope = serde_json::json!({
                     "time": ev.receipt.timestamp as f64,
                     "sourcetype": &self.config.sourcetype,
+                    "fields": {
+                        "receipt_kind": ev.receipt_kind.clone(),
+                        "boundary_class": ev.boundary_class.clone(),
+                        "result": ev.result.clone(),
+                        "authorized": ev.authorized,
+                    },
                     "event": &ev.receipt,
                 });
 

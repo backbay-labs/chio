@@ -735,7 +735,7 @@
       "status": "proven_in_part",
       "proof_path": "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",
       "mapsTo": ["P3"],
-      "notes": "a v2 capability token presented to a peer whose negotiated max_capability_schema is v1 is rejected by the verifier's schema-ceiling check before any signature, time, or floor check runs. This row now records an executable-model refinement: the headline theorem now states the iff `RustNegotiation.checkSchemaCeiling (some t) (some p) = admit <-> Schema.le t p = true` against an executable model whose branching mirrors the Rust function over `Option CapabilitySchemaVersion`, with explicit forward and reverse implications, four representative-input commutativity lemmas matching the Rust conformance tests, and three unknown-schema fail-closed lemmas. No `sorry` markers in the headline lemma. Lake build is not yet available in CI; the Rust shell is covered by crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs. Remaining obligations include mechanizing the wider hot-path verifier, including chain-binding, signature, crypto floor, and budgets."
+      "notes": "Current-schema admission: the verifier admits `chio.capability.v1` and rejects unknown Chio-owned capability schema identifiers before signature, time, floor, or budget checks run. The Lean model records the current pre-release posture: feature bits are negotiated, but alternate Chio-owned capability schema rungs are not exposed. Remaining obligations include mechanizing the wider hot-path verifier, including chain-binding, signature, crypto floor, and budgets."
     },
     {
       "id": "theorem.budget.sibling_sum_soundness",
@@ -750,15 +750,15 @@
       "notes": "Sibling-sum budget enforcement: when the BudgetRegistry admits a child, the running sum after admission is bounded by the parent's share. This rejects cross-hop amplification where two siblings jointly oversubscribe their parent's budget. Status remains assumed until the Lean toolchain is available in CI; the Rust shell is exercised by crates/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs and the cross-hop case by crates/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs. The protocol-side check is implemented in chio_kernel_core::budget_split::BudgetSplit::try_admit_child."
     },
     {
-      "id": "theorem.receipt.body_hash_input_set_pinned",
-      "leanName": "Chio.Proofs.body_hash_input_set_pinned",
+      "id": "theorem.receipt.id_input_set_pinned",
+      "leanName": "Chio.Proofs.id_input_set_pinned",
       "file": "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "assumed",
       "mapsTo": ["P4"],
-      "notes": "Receipt v2 body-hash addressing: the kernel mints `ChioReceiptV2` whose `body_hash` field equals H(canonical_jcs(ReceiptV2BodyHashInput)) on the production hot path when the negotiated peer profile advertises `accepts_receipt_v2`. The replay store keys exclusively on body_hash; the legacy UUIDv7 alias is non-authoritative. Status remains `assumed` because the Lean toolchain is not in CI; the Rust shell is exercised by crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs which dispatches a real ChioKernel evaluate call and asserts the chio_receipts_v2 row keyed on body_hash."
+      "notes": "Receipt content-addressed id: the kernel mints `ChioReceipt` whose `id` field equals H(canonical_jcs(ChioReceiptIdInput)) on the production hot path. The replay store keys exclusively on id. Status remains `assumed` because the Lean toolchain is not in CI."
     },
     {
       "id": "proof.treaty_admission_iff_predicate_intersection",
@@ -767,6 +767,7 @@
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
+      "status": "proved",
       "mapsTo": ["P7"],
       "notes": "Bounded treaty model showing bilateral treaty admission is equivalent to the intersection of treaty, left-polity, and right-polity predicates."
     },
@@ -777,8 +778,9 @@
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
+      "status": "proved",
       "mapsTo": ["P7"],
-      "notes": "Bounded treaty model showing a satisfied trust-ladder floor leaves treaty predicate intersection admission unchanged."
+      "notes": "Bounded treaty model showing a satisfied quorum-required trust-ladder floor leaves treaty predicate intersection admission unchanged."
     },
     {
       "id": "proof.amendment_admissible_iff_backward_refinement",
@@ -787,8 +789,9 @@
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
+      "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "Bounded amendment model tying constitutional amendment admissibility to an explicit backward-refinement proof term."
+      "notes": "Bounded amendment model tying enactable constitutional amendments to an explicit backward-refinement proof witness."
     },
     {
       "id": "proof.amendment_without_refinement_rejected",
@@ -797,8 +800,64 @@
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
+      "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "Bounded amendment model showing enactment is rejected when the backward-refinement proof is absent."
+      "notes": "Bounded amendment model showing a candidate with no backward-refinement proof witness is rejected."
+    },
+    {
+      "id": "proof.freestanding_accept_set_theorem",
+      "leanName": "Chio.Treaty.BilateralAccept.freestanding_accept_set_theorem",
+      "file": "formal/lean4/Chio/Chio/Treaty/BilateralAccept.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "Bounded bilateral DSSE model showing verifier acceptance is exactly issuer-key trust, kernel-key trust, and scope-predicate satisfaction."
+    },
+    {
+      "id": "proof.essential_preserved_chain",
+      "leanName": "Chio.Treaty.PredicateLang.essential_preserved_chain",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Bounded syntactic-constitution model showing essential admission preservation composes across amendment chains."
+    },
+    {
+      "id": "proof.containsPredicate_preserved_chain",
+      "leanName": "Chio.Treaty.PredicateLang.containsPredicate_preserved_chain",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Bounded syntactic-constitution model showing designated non-amendable predicate presence is trajectory-invariant under preserving amendments."
+    },
+    {
+      "id": "proof.anchor_admission_iff_lane_quorum_satisfied",
+      "leanName": "Chio.Treaty.PredicateLang.anchor_admission_iff_lane_quorum_satisfied",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "Bounded lane-quorum model showing anchor admission is exactly the deduplicated declared-lane quorum check with undeclared contributors rejected."
+    },
+    {
+      "id": "proof.anchor_admission_rejects_undeclared_lane",
+      "leanName": "Chio.Treaty.PredicateLang.anchor_admission_rejects_undeclared_lane",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "Bounded lane-quorum model showing a witness with undeclared contributing lanes fails closed before quorum counting."
     }
   ]
 }

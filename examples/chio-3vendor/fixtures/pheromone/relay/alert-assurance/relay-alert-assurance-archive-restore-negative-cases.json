@@ -1,0 +1,11 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-archive-restore-negative-fixture-corpus.v1",
+  "cases": [
+    { "caseId": "generation_gap", "expectedCode": "restore_blocked" },
+    { "caseId": "duplicate_generation", "expectedCode": "restore_blocked" },
+    { "caseId": "previous_hash_mismatch", "expectedCode": "restore_blocked" },
+    { "caseId": "missing_readback", "expectedCode": "restore_blocked" },
+    { "caseId": "retention_handoff_not_ready", "expectedCode": "restore_blocked" },
+    { "caseId": "wrong_expected_code", "expectedCode": "negative_corpus_mismatch" }
+  ]
+}

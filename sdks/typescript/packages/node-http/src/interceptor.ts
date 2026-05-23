@@ -23,7 +23,12 @@ import type {
   RoutePatternResolver,
   Verdict,
 } from "./types.js";
-import { CHIO_ERROR_CODES, isDenied } from "./types.js";
+import {
+  CHIO_ERROR_CODES,
+  isAllowed,
+  isAuthoritativeVerification,
+  isAuthorizedHttpReceipt,
+} from "./types.js";
 
 const bufferedNodeBodies = new WeakMap<IncomingMessage, Buffer>();
 
@@ -72,6 +77,14 @@ function extractPath(url: string): string {
   return qIndex === -1 ? url : url.slice(0, qIndex);
 }
 
+function verdictStatus(verdict: Verdict): number {
+  return "http_status" in verdict ? verdict.http_status : 403;
+}
+
+function verdictReason(verdict: Verdict): string {
+  return "reason" in verdict ? verdict.reason : "request was not authorized";
+}
+
 /** Default route pattern resolver -- returns the raw path as pattern. */
 const defaultRoutePatternResolver: RoutePatternResolver = (_method, path) => path;
 
@@ -94,7 +107,7 @@ export function resolveConfig(config: ChioConfig): ResolvedConfig {
     sidecarUrl: config.sidecarUrl ?? process.env["CHIO_SIDECAR_URL"] ?? "http://127.0.0.1:9090",
     identityExtractor: config.identityExtractor ?? defaultIdentityExtractor,
     routePatternResolver: config.routePatternResolver ?? defaultRoutePatternResolver,
-    onSidecarError: config.onSidecarError ?? "deny",
+    onSidecarError: "deny",
     timeoutMs: config.timeoutMs ?? 5000,
     forwardHeaders: config.forwardHeaders ?? ["content-type", "content-length"],
     client,
@@ -198,8 +211,7 @@ function filterHeaders(
  * to proceed or sends a deny response.
  *
  * Returns a structured outcome. Real signed Chio evidence is exposed via
- * `result`. Fail-open passthroughs expose `passthrough` instead of
- * fabricating a receipt-like object.
+ * `result`. Sidecar errors fail closed.
  */
 export async function interceptNodeRequest(
   req: IncomingMessage,
@@ -245,19 +257,27 @@ export async function interceptNodeRequest(
   try {
     const result = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
 
-    // Attach receipt ID to response
-    res.setHeader("X-Chio-Receipt-Id", result.receipt.id);
-
-    if (isDenied(result.verdict)) {
-      sendJsonResponse(res, result.verdict.http_status, {
+    if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(result.receipt)) {
+      sendJsonResponse(res, verdictStatus(result.verdict), {
         error: CHIO_ERROR_CODES.ACCESS_DENIED,
-        message: result.verdict.reason,
+        message: verdictReason(result.verdict),
         receipt_id: result.receipt.id,
         suggestion: "provide a valid capability token in the X-Chio-Capability header or chio_capability query parameter",
       });
       return { responseSent: true, result, passthrough: null };
     }
 
+    const verification = await resolved.client.verifyReceipt(result.receipt);
+    if (!isAuthoritativeVerification(verification, result.receipt)) {
+      sendJsonResponse(res, 502, {
+        error: CHIO_ERROR_CODES.INVALID_RECEIPT,
+        message: "sidecar returned an unverified receipt",
+        receipt_id: result.receipt.id,
+      });
+      return { responseSent: true, result, passthrough: null };
+    }
+
+    res.setHeader("X-Chio-Receipt-Id", result.receipt.id);
     return { responseSent: false, result, passthrough: null };
   } catch (error) {
     return handleSidecarError(res, resolved, error);
@@ -269,8 +289,7 @@ export async function interceptNodeRequest(
 /**
  * Intercept a Web API Request.
  * Returns a structured outcome. Real signed Chio evidence is exposed via
- * `result`. Fail-open passthroughs expose `passthrough` instead of
- * fabricating a receipt-like object.
+ * `result`. Sidecar errors fail closed.
  */
 export async function interceptWebRequest(
   request: Request,
@@ -337,15 +356,27 @@ export async function interceptWebRequest(
   try {
     const evalResult = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
 
-    if (isDenied(evalResult.verdict)) {
-      const resp = jsonResponse(evalResult.verdict.http_status, {
+    if (!isAllowed(evalResult.verdict) || !isAuthorizedHttpReceipt(evalResult.receipt)) {
+      const resp = jsonResponse(verdictStatus(evalResult.verdict), {
         error: CHIO_ERROR_CODES.ACCESS_DENIED,
-        message: evalResult.verdict.reason,
+        message: verdictReason(evalResult.verdict),
         receipt_id: evalResult.receipt.id,
         suggestion: "provide a valid capability token in the X-Chio-Capability header or chio_capability query parameter",
       });
-      resp.headers.set("X-Chio-Receipt-Id", evalResult.receipt.id);
       return { response: resp, result: evalResult, passthrough: null };
+    }
+
+    const verification = await resolved.client.verifyReceipt(evalResult.receipt);
+    if (!isAuthoritativeVerification(verification, evalResult.receipt)) {
+      return {
+        response: jsonResponse(502, {
+          error: CHIO_ERROR_CODES.INVALID_RECEIPT,
+          message: "sidecar returned an unverified receipt",
+          receipt_id: evalResult.receipt.id,
+        }),
+        result: evalResult,
+        passthrough: null,
+      };
     }
 
     // Return a marker response that the framework wrapper will replace
@@ -358,14 +389,6 @@ export async function interceptWebRequest(
       error instanceof SidecarError
         ? error.message
         : `sidecar error: ${error instanceof Error ? error.message : String(error)}`;
-
-    if (resolved.onSidecarError === "allow") {
-      return {
-        response: new Response(null, { status: 200 }),
-        result: null,
-        passthrough: buildAllowWithoutReceipt(message),
-      };
-    }
 
     return {
       response: jsonResponse(502, {
@@ -504,10 +527,8 @@ function jsonResponse(status: number, body: ChioErrorResponse): Response {
 /**
  * Handle a sidecar error during Node.js request interception.
  *
- * When onSidecarError is "allow" (fail-open), returns an explicit passthrough
- * marker so the caller can forward the request without a synthetic receipt.
- * When "deny" (fail-closed, default), sends a 502 error response and
- * returns a blocked outcome to signal that the response has already been sent.
+ * Sends a 502 error response and returns a blocked outcome to signal that the
+ * response has already been sent.
  */
 function handleSidecarError(
   res: ServerResponse,
@@ -519,25 +540,9 @@ function handleSidecarError(
       ? error.message
       : `sidecar error: ${error instanceof Error ? error.message : String(error)}`;
 
-  if (resolved.onSidecarError === "allow") {
-    return {
-      responseSent: false,
-      result: null,
-      passthrough: buildAllowWithoutReceipt(message),
-    };
-  }
-
   sendJsonResponse(res, 502, {
     error: CHIO_ERROR_CODES.SIDECAR_UNREACHABLE,
     message,
   });
   return { responseSent: true, result: null, passthrough: null };
-}
-
-function buildAllowWithoutReceipt(message: string): ChioPassthrough {
-  return {
-    mode: "allow_without_receipt",
-    error: CHIO_ERROR_CODES.SIDECAR_UNREACHABLE,
-    message,
-  };
 }

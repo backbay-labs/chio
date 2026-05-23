@@ -442,4 +442,5 @@ fn trust_service_scim_delete_users_deactivates_identity_revokes_capabilities_and
         receipts["receipts"][0]["metadata"]["scimLifecycle"]["revokedCapabilityIds"][0],
         capability_id
     );
+    assert_eq!(receipts["receipts"][0]["tenant_id"], "tenant-123");
 }

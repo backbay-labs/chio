@@ -1,0 +1,65 @@
+{
+  "schema": "chio.attest.verifier-report.v1",
+  "packageSha256": "2c5801880b04a114158ceeb4ad14f503a28d3bf711c5f7b4773af6c163f03e20",
+  "trustBundleSha256": "bfc54f5e6a038d25176980807776c8f0c1671a6fe19a3d83877654d11c08279b",
+  "contextSha256": "4758a93f2dbc16256105ce6d47a4efdd39d477733dcb2a5e80075a3e1aaddcce",
+  "revocationEpochHeight": 64,
+  "accepted": true,
+  "checks": [
+    {
+      "code": "workflow.kernel_signature",
+      "name": "workflow-kernel-signature",
+      "passed": true
+    },
+    {
+      "code": "trust.package_hints",
+      "name": "package-trust-hints",
+      "passed": true
+    },
+    {
+      "code": "workflow.intersection",
+      "name": "workflow-intersection",
+      "passed": true
+    },
+    {
+      "code": "workflow.vendor_cosignatures",
+      "name": "workflow-vendor-cosignatures",
+      "passed": true
+    },
+    {
+      "code": "workflow.step_links",
+      "name": "workflow-step-links",
+      "passed": true
+    },
+    {
+      "code": "governance.lease_scope_bindings",
+      "name": "lease-scope-bindings",
+      "passed": true
+    },
+    {
+      "code": "governance.capability_leases",
+      "name": "capability-leases",
+      "passed": true
+    },
+    {
+      "code": "governance.receipts",
+      "name": "governance-receipts",
+      "passed": true
+    },
+    {
+      "code": "federation.strict_bilateral_invocations",
+      "name": "strict-bilateral-invocations",
+      "passed": true
+    },
+    {
+      "code": "trust.bbs_issuer",
+      "name": "trusted-bbs-issuer",
+      "passed": true
+    },
+    {
+      "code": "bbs.selective_disclosure",
+      "name": "bbs-selective-disclosure",
+      "passed": true
+    }
+  ]
+}

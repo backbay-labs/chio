@@ -4,8 +4,39 @@
 // continuity, scope, budget, guard evidence, and delegation. Produces
 // a signed compliance certificate or aborts with a typed error.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use chio_core::canonical::canonical_json_bytes;
+use chio_core::chio_receipt_id;
 use chio_core::crypto::Signature;
+
+/// One-shot guard for the empty-`trusted_kernel_keys` warning.
+///
+/// `ComplianceConfig` derives `Default`, which yields an empty
+/// `trusted_kernel_keys` set. With the empty set, every receipt is
+/// rejected with `UntrustedKernelKey` and neither generation nor
+/// verification can succeed. That is the operator contract -- the
+/// trust set MUST be populated -- but a silent rejection is hostile
+/// for first-time callers. Emit a single tracing warning the first
+/// time we observe an empty set during validation so operators see a
+/// clear breadcrumb without flooding the log.
+static EMPTY_TRUSTED_KEYS_WARNED: AtomicBool = AtomicBool::new(false);
+
+fn warn_empty_compliance_trusted_keys_once() {
+    if EMPTY_TRUSTED_KEYS_WARNED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        tracing::warn!(
+            target: "chio_acp_proxy::compliance",
+            "ComplianceConfig has no trusted_kernel_keys configured; all receipts will fail \
+             integrity validation with UntrustedKernelKey, and compliance certificate \
+             generation and verification will not succeed. Populate \
+             ComplianceConfig::trusted_kernel_keys with the operator-pinned kernel keys \
+             before calling generate_compliance_certificate or verify_compliance_certificate."
+        );
+    }
+}
 
 /// Error types that abort compliance certificate generation.
 #[derive(Debug, thiserror::Error)]
@@ -19,6 +50,54 @@ pub enum ComplianceCertificateError {
     InvalidReceiptSignature {
         /// The receipt ID whose signature failed.
         receipt_id: String,
+    },
+
+    /// A receipt ID does not match the content-addressed receipt body.
+    #[error("invalid receipt id: receipt {receipt_id} does not match its canonical body")]
+    InvalidReceiptId {
+        /// The receipt ID whose content-addressed identity failed.
+        receipt_id: String,
+    },
+
+    /// A receipt action hash does not match the canonical action parameters.
+    #[error("invalid receipt action hash: receipt {receipt_id} failed parameter hash verification")]
+    InvalidActionHash {
+        /// The receipt ID whose action hash failed.
+        receipt_id: String,
+    },
+
+    /// A receipt does not belong to the certificate's named session.
+    #[error("session mismatch: receipt {receipt_id} is not bound to session {session_id}")]
+    SessionMismatch {
+        /// The receipt ID whose session binding failed.
+        receipt_id: String,
+        /// The session ID named by the certificate.
+        session_id: String,
+    },
+
+    /// A receipt does not belong to the configured tenant.
+    #[error("tenant mismatch: receipt {receipt_id} is not bound to tenant {tenant_id}")]
+    TenantMismatch {
+        /// The receipt ID whose tenant binding failed.
+        receipt_id: String,
+        /// The expected tenant ID.
+        tenant_id: String,
+    },
+
+    /// A receipt carries an allow decision without authorization semantics.
+    #[error("non-authorizing allow receipt: receipt {receipt_id} is not mediated/prevent/allow")]
+    NonAuthorizingReceipt {
+        /// The receipt ID whose semantics failed.
+        receipt_id: String,
+    },
+
+    /// A receipt was signed by a kernel key outside the verifier trust set.
+    #[error("untrusted kernel key: receipt {receipt_id} was signed by {kernel_key}")]
+    UntrustedKernelKey {
+        /// The receipt ID whose signer was not trusted.
+        receipt_id: String,
+        /// The untrusted kernel key.
+        kernel_key: String,
     },
 
     /// A gap or reordering was detected in the receipt chain.
@@ -98,6 +177,18 @@ pub struct ComplianceConfig {
     pub required_guards: Vec<String>,
     /// Authorized resource scopes (path prefixes).
     pub authorized_scopes: Vec<String>,
+    /// Expected tenant for all receipts. None disables tenant checking.
+    pub expected_tenant_id: Option<String>,
+    /// Trusted kernel keys allowed to sign receipts and certificates.
+    ///
+    /// MUST be populated by the operator with the kernel public keys
+    /// that are authorized to sign receipts in this deployment. An
+    /// empty set is a misconfiguration: every receipt will be rejected
+    /// with `UntrustedKernelKey`, blocking both generation and
+    /// verification of compliance certificates. The first observed
+    /// empty-set evaluation logs a one-shot tracing warning to make
+    /// this contract visible to operators.
+    pub trusted_kernel_keys: std::collections::BTreeSet<String>,
 }
 
 /// The body of a compliance certificate (unsigned).
@@ -186,6 +277,92 @@ pub struct CertificateVerificationResult {
 
 pub const COMPLIANCE_CERTIFICATE_SCHEMA: &str = "chio.compliance.certificate.v1";
 
+fn receipt_session_id(receipt: &ChioReceipt) -> Option<&str> {
+    let metadata = receipt.metadata.as_ref()?;
+    metadata
+        .get("acp")
+        .and_then(|acp| acp.get("sessionId"))
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            metadata
+                .get("receipt_context")
+                .and_then(|context| context.get("session_id"))
+                .and_then(serde_json::Value::as_str)
+        })
+}
+
+fn validate_compliance_receipt(
+    session_id: &str,
+    entry: &ComplianceReceiptEntry,
+    config: &ComplianceConfig,
+) -> Result<(), ComplianceCertificateError> {
+    let receipt = &entry.receipt;
+    let sig_ok = receipt
+        .verify_signature()
+        .map_err(|e| ComplianceCertificateError::Signing(format!("{e}")))?;
+    if !sig_ok {
+        return Err(ComplianceCertificateError::InvalidReceiptSignature {
+            receipt_id: receipt.id.clone(),
+        });
+    }
+    let id_ok = chio_receipt_id(&receipt.body())
+        .map(|expected| expected == receipt.id)
+        .unwrap_or(false);
+    if !id_ok {
+        return Err(ComplianceCertificateError::InvalidReceiptId {
+            receipt_id: receipt.id.clone(),
+        });
+    }
+    let action_hash_ok = receipt.action.verify_hash().map_err(|e| {
+        ComplianceCertificateError::Signing(format!("action hash verification failed: {e}"))
+    })?;
+    if !action_hash_ok {
+        return Err(ComplianceCertificateError::InvalidActionHash {
+            receipt_id: receipt.id.clone(),
+        });
+    }
+    let kernel_key_hex = receipt.kernel_key.to_hex();
+    if config.trusted_kernel_keys.is_empty() {
+        // Operator contract: the trust set must be populated. Emit a
+        // one-shot warning so the misconfiguration is visible, then
+        // fall through to the standard untrusted-key rejection (an
+        // empty trust set contains nothing, so every receipt fails the
+        // membership check that follows).
+        warn_empty_compliance_trusted_keys_once();
+    }
+    if !config.trusted_kernel_keys.contains(&kernel_key_hex) {
+        return Err(ComplianceCertificateError::UntrustedKernelKey {
+            receipt_id: receipt.id.clone(),
+            kernel_key: kernel_key_hex,
+        });
+    }
+    if receipt_session_id(receipt) != Some(session_id) {
+        return Err(ComplianceCertificateError::SessionMismatch {
+            receipt_id: receipt.id.clone(),
+            session_id: session_id.to_string(),
+        });
+    }
+    if let Some(expected_tenant_id) = config.expected_tenant_id.as_deref() {
+        if receipt.tenant_id.as_deref() != Some(expected_tenant_id) {
+            return Err(ComplianceCertificateError::TenantMismatch {
+                receipt_id: receipt.id.clone(),
+                tenant_id: expected_tenant_id.to_string(),
+            });
+        }
+    }
+    if matches!(
+        receipt.decision.as_ref(),
+        Some(chio_core::receipt::Decision::Allow)
+    )
+        && !receipt.is_allowed()
+    {
+        return Err(ComplianceCertificateError::NonAuthorizingReceipt {
+            receipt_id: receipt.id.clone(),
+        });
+    }
+    Ok(())
+}
+
 /// Generate a compliance certificate for the given session.
 ///
 /// Walks all receipts, verifies signatures, checks chain continuity,
@@ -204,17 +381,9 @@ pub fn generate_compliance_certificate(
         ));
     }
 
-    // 2. Verify all receipt signatures.
+    // 2. Verify all receipt authority signals.
     for entry in receipts {
-        let sig_ok = entry
-            .receipt
-            .verify_signature()
-            .map_err(|e| ComplianceCertificateError::Signing(format!("{e}")))?;
-        if !sig_ok {
-            return Err(ComplianceCertificateError::InvalidReceiptSignature {
-                receipt_id: entry.receipt.id.clone(),
-            });
-        }
+        validate_compliance_receipt(session_id, entry, config)?;
     }
 
     // 3. Check chain continuity.
@@ -328,11 +497,46 @@ pub fn generate_compliance_certificate(
         .map_err(|e| ComplianceCertificateError::Serialization(e.to_string()))?;
     let signature = keypair.sign(&body_bytes);
 
-    Ok(ComplianceCertificate {
+    let certificate = ComplianceCertificate {
         body,
         signer_key: keypair.public_key(),
         signature,
-    })
+    };
+
+    // Self-verify before returning. If the caller's keypair does not
+    // match the kernel key recorded on the receipts (or the trust set
+    // does not include this signer), the certificate would silently be
+    // unverifiable. Fail closed here so generation never hands back a
+    // certificate that the matching verifier would reject.
+    //
+    // Trust-set independence: if the operator's `trusted_kernel_keys`
+    // set is empty (a misconfiguration covered by the empty-set warning
+    // elsewhere in this module), the signer-trust check below would
+    // reject every otherwise-valid certificate. To keep self-verify
+    // robust against that operator misconfiguration, augment the trust
+    // set with the certificate's own signer and the receipts' kernel
+    // key for the purpose of this check only.
+    let mut self_verify_config = config.clone();
+    self_verify_config
+        .trusted_kernel_keys
+        .insert(certificate.signer_key.to_hex());
+    self_verify_config
+        .trusted_kernel_keys
+        .insert(certificate.body.kernel_key.to_hex());
+    let self_verification = verify_compliance_certificate(
+        &certificate,
+        VerificationMode::Lightweight,
+        None,
+        &self_verify_config,
+    );
+    if !self_verification.passed {
+        return Err(ComplianceCertificateError::Signing(format!(
+            "generated compliance certificate failed self-verification: {}",
+            self_verification.summary
+        )));
+    }
+
+    Ok(certificate)
 }
 
 /// Verify a compliance certificate.
@@ -340,6 +544,7 @@ pub fn verify_compliance_certificate(
     cert: &ComplianceCertificate,
     mode: VerificationMode,
     receipts: Option<&[ComplianceReceiptEntry]>,
+    config: &ComplianceConfig,
 ) -> CertificateVerificationResult {
     // 1. Verify certificate signature.
     let body_bytes = match canonical_json_bytes(&cert.body) {
@@ -357,14 +562,25 @@ pub fn verify_compliance_certificate(
     };
 
     let sig_valid = cert.signer_key.verify(&body_bytes, &cert.signature);
+    let signer_trusted = config
+        .trusted_kernel_keys
+        .contains(&cert.signer_key.to_hex());
+    let signer_matches_body = cert.signer_key == cert.body.kernel_key;
 
-    // 2. Body consistency checks.
-    let body_ok = cert.body.all_signatures_valid
+    // 2. Body consistency checks. `body_ok_excluding_signer_match` lets the
+    // failure summary distinguish a body that is broken in some way OTHER
+    // than signer-vs-body mismatch from one whose only fault is the mismatch.
+    // Without that split, every signer-mismatch failure also tripped the
+    // generic "body consistency check failed" reason, producing a redundant
+    // entry that obscured the underlying cause.
+    let body_ok_excluding_signer_match = cert.body.all_signatures_valid
+        && cert.body.schema == COMPLIANCE_CERTIFICATE_SCHEMA
         && cert.body.chain_continuous
         && cert.body.scope_compliant
         && cert.body.budget_compliant
         && cert.body.guards_compliant
         && cert.body.anomalies.is_empty();
+    let body_ok = body_ok_excluding_signer_match && signer_matches_body;
 
     if mode == VerificationMode::Lightweight || receipts.is_none() {
         return CertificateVerificationResult {
@@ -372,32 +588,34 @@ pub fn verify_compliance_certificate(
             body_consistent: body_ok,
             receipts_reverified: 0,
             receipt_failures: 0,
-            passed: sig_valid && body_ok,
-            summary: if sig_valid && body_ok {
+            passed: sig_valid && signer_trusted && body_ok,
+            summary: if sig_valid && signer_trusted && body_ok {
                 "lightweight verification passed".to_string()
             } else {
-                "lightweight verification failed".to_string()
+                verification_failure_summary(
+                    sig_valid,
+                    signer_trusted,
+                    body_ok_excluding_signer_match,
+                    signer_matches_body,
+                    0,
+                )
             },
         };
     }
 
-    // 3. Full-bundle mode: re-verify all receipt signatures.
+    // 3. Full-bundle mode: re-verify all receipt authority signals.
     let receipt_entries = receipts.unwrap_or(&[]);
     let mut reverified: u64 = 0;
     let mut failures: u64 = 0;
 
     for entry in receipt_entries {
         reverified += 1;
-        let ok = entry
-            .receipt
-            .verify_signature()
-            .unwrap_or(false);
-        if !ok {
+        if validate_compliance_receipt(&cert.body.session_id, entry, config).is_err() {
             failures += 1;
         }
     }
 
-    let passed = sig_valid && body_ok && failures == 0;
+    let passed = sig_valid && signer_trusted && body_ok && failures == 0;
     CertificateVerificationResult {
         certificate_signature_valid: sig_valid,
         body_consistent: body_ok,
@@ -407,17 +625,47 @@ pub fn verify_compliance_certificate(
         summary: if passed {
             format!("full-bundle verification passed ({reverified} receipts re-verified)")
         } else {
-            let mut reasons = Vec::new();
-            if !sig_valid {
-                reasons.push("certificate signature invalid".to_string());
-            }
-            if !body_ok {
-                reasons.push("body consistency check failed".to_string());
-            }
-            if failures > 0 {
-                reasons.push(format!("{failures} receipt signature(s) failed"));
-            }
-            format!("full-bundle verification failed: {}", reasons.join(", "))
+            verification_failure_summary(
+                sig_valid,
+                signer_trusted,
+                body_ok_excluding_signer_match,
+                signer_matches_body,
+                failures,
+            )
         },
     }
+}
+
+/// Build a human-readable reason list for a failed certificate verification.
+///
+/// `body_ok_excluding_signer_match` must reflect ONLY the body conjuncts that
+/// are independent of the signer-vs-body comparison (schema, signatures,
+/// chain continuity, scope/budget/guards, anomalies). The signer mismatch is
+/// reported via its own dedicated reason, so folding it back into a generic
+/// "body consistency check failed" entry would produce a redundant message
+/// whose root cause is already named on the previous line.
+fn verification_failure_summary(
+    sig_valid: bool,
+    signer_trusted: bool,
+    body_ok_excluding_signer_match: bool,
+    signer_matches_body: bool,
+    receipt_failures: u64,
+) -> String {
+    let mut reasons = Vec::new();
+    if !sig_valid {
+        reasons.push("certificate signature invalid".to_string());
+    }
+    if !signer_trusted {
+        reasons.push("certificate signer is not trusted".to_string());
+    }
+    if !signer_matches_body {
+        reasons.push("certificate signer does not match body kernel key".to_string());
+    }
+    if !body_ok_excluding_signer_match {
+        reasons.push("body consistency check failed".to_string());
+    }
+    if receipt_failures > 0 {
+        reasons.push(format!("{receipt_failures} receipt authority check(s) failed"));
+    }
+    format!("verification failed: {}", reasons.join(", "))
 }

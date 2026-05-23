@@ -92,7 +92,13 @@ fn signed_priced_receipt(kp: &Keypair, receipt_id: &str, amount: u64) -> ChioRec
         tool_server: "demo-server".to_string(),
         tool_name: "redact_pii".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({})).unwrap(),
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: sha256_hex(b"{}"),
         policy_hash: "policy-demo".to_string(),
         evidence: vec![GuardEvidence {
@@ -167,7 +173,10 @@ fn install_priced_guard_run_call_one_iou_one_settlement() {
     //    price, mint an IOU through LocalCreditAccount, and observe
     //    exactly one settlement.
     let kp = Keypair::generate();
-    let account = LocalCreditAccount::new(Ed25519Backend::new(kp.clone()));
+    let account = LocalCreditAccount::new_with_trusted_kernel_keys(
+        Ed25519Backend::new(kp.clone()),
+        [kp.public_key()],
+    );
     let receipt = signed_priced_receipt(&kp, "rcpt-demo-1", price.units);
 
     let envelope = account

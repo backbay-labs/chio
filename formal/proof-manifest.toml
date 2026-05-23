@@ -30,6 +30,8 @@ root_modules = [
   "formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean",
   "formal/lean4/Chio/Chio/Capability/Delegation.lean",
   "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
+  "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+  "formal/lean4/Chio/Chio/Treaty/BilateralAccept.lean",
 ]
 
 gate_commands = [

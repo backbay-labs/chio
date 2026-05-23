@@ -10,8 +10,6 @@ use serde::{Deserialize, Serialize};
 
 /// Schema identifier for workflow receipts.
 pub const WORKFLOW_RECEIPT_SCHEMA: &str = "chio.workflow-receipt.v1";
-/// Schema identifier for workflow receipts with Chiodos cross-vendor linkage.
-pub const WORKFLOW_RECEIPT_SCHEMA_V2: &str = "chio.workflow-receipt.v2";
 
 /// A signed receipt for a complete skill/workflow execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -443,7 +441,7 @@ mod tests {
 
         let body = WorkflowReceiptBody {
             id: "wf-v2".to_string(),
-            schema: WORKFLOW_RECEIPT_SCHEMA_V2.to_string(),
+            schema: WORKFLOW_RECEIPT_SCHEMA.to_string(),
             started_at: 1000,
             completed_at: 1001,
             skill_id: "refund-underwriting".to_string(),
@@ -471,7 +469,7 @@ mod tests {
         let vendor_b = Keypair::generate();
         let body = WorkflowReceiptBody {
             id: "wf-cosigned".to_string(),
-            schema: WORKFLOW_RECEIPT_SCHEMA_V2.to_string(),
+            schema: WORKFLOW_RECEIPT_SCHEMA.to_string(),
             started_at: 1000,
             completed_at: 1010,
             skill_id: "refund-underwriting".to_string(),

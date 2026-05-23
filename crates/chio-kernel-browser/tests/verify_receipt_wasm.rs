@@ -40,6 +40,58 @@ fn fixture_envelope_for(case_id: &str) -> Vec<u8> {
     serde_json::to_vec(&case["receipt"]).unwrap()
 }
 
+fn fixture_case(case_id: &str) -> serde_json::Value {
+    let corpus: serde_json::Value = serde_json::from_str(RECEIPT_BINDING_VECTORS).unwrap();
+    corpus["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| case["id"] == case_id)
+        .unwrap_or_else(|| panic!("case {case_id} not in M04 receipt corpus"))
+        .clone()
+}
+
+fn fixture_cases() -> Vec<serde_json::Value> {
+    let corpus: serde_json::Value = serde_json::from_str(RECEIPT_BINDING_VECTORS).unwrap();
+    corpus["cases"].as_array().unwrap().clone()
+}
+
+#[wasm_bindgen_test]
+fn verify_receipt_vector_corpus_matches_expected_without_pinning() {
+    for case in fixture_cases() {
+        let envelope = serde_json::to_vec(&case["receipt"]).unwrap();
+        let result_js = verify_receipt(&envelope, &JsValue::UNDEFINED)
+            .expect("verify_receipt should not error");
+        let result: serde_json::Value = from_value(result_js).unwrap();
+        let expected = &case["expected"];
+
+        for field in [
+            "ok",
+            "signature_valid",
+            "parameter_hash_valid",
+            "receipt_id_valid",
+            "decision",
+            "receipt_kind",
+            "boundary_class",
+            "result",
+            "authorized",
+            "signer_key_hex",
+            "signer_trusted",
+        ] {
+            assert_eq!(
+                result[field], expected[field],
+                "case {} field {field}",
+                case["id"]
+            );
+        }
+        assert_eq!(
+            result["receipt_id"], case["receipt"]["id"],
+            "case {} receipt_id",
+            case["id"]
+        );
+    }
+}
+
 #[wasm_bindgen_test]
 fn verify_receipt_allow_fixture_is_signature_only_without_pinning() {
     // M04 case: known-good signed allow receipt with valid parameter hash.
@@ -53,7 +105,13 @@ fn verify_receipt_allow_fixture_is_signature_only_without_pinning() {
     assert_eq!(result["parameter_hash_valid"], true);
     assert_eq!(result["signer_trusted"], false);
     assert_eq!(result["decision"], "allow");
-    assert_eq!(result["receipt_id"], "rcpt-bindings-allow");
+    let case = fixture_case("allow_receipt");
+    assert_eq!(result["receipt_id"], case["receipt"]["id"]);
+    assert_eq!(result["receipt_id_valid"], true);
+    assert_eq!(result["receipt_kind"], "mediated_decision");
+    assert_eq!(result["boundary_class"], "prevent");
+    assert_eq!(result["result"], "Authorized");
+    assert_eq!(result["authorized"], false);
     assert_eq!(
         result["signer_key_hex"],
         "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
@@ -73,6 +131,7 @@ fn verify_receipt_allow_fixture_passes_with_pinned_signer() {
     let result: serde_json::Value = from_value(result_js).unwrap();
     assert_eq!(result["ok"], true);
     assert_eq!(result["signer_trusted"], true);
+    assert_eq!(result["authorized"], true);
 }
 
 #[wasm_bindgen_test]

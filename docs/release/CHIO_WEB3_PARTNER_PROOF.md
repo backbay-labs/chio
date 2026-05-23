@@ -3,9 +3,14 @@
 ## Purpose
 
 It is the compact reviewer-facing package for the bounded web3 stack delivered
-across `v2.34` through `v2.41`: contracts, oracle runtime, anchoring,
-settlement, interop overlays, runtime hardening, hosted qualification,
-promotion, operator controls, and generated end-to-end settlement proof.
+across historical internal milestones `v2.34` through `v2.41`: contracts,
+oracle runtime, anchoring, settlement, interop overlays, runtime hardening,
+hosted qualification, promotion, operator controls, and generated end-to-end
+settlement proof.
+
+> Version posture: this is a pre-release partner proof. Internal `v2.x`
+> milestone labels are historical planning labels, not Chio-owned protocol,
+> schema, SDK, or runtime versions. Current protocol posture is v1-only.
 
 It is not the authoritative release-go record. Use
 [RELEASE_AUDIT.md](RELEASE_AUDIT.md) for the repo-local release decision,

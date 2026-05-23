@@ -60,8 +60,8 @@ class ChioReceiptParseTest {
             """.trimIndent()
         val r: ChioReceipt = mapper.readValue(json)
         assertTrue(r.isDenied())
-        assertEquals("blocked", r.decision.reason)
-        assertEquals("G", r.decision.guard)
+        assertEquals("blocked", r.decision?.reason)
+        assertEquals("G", r.decision?.guard)
         // Null map values preserved on parse.
         val meta = r.metadata!!
         assertTrue(meta.containsKey("a"))

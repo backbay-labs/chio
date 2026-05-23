@@ -913,15 +913,19 @@ pub fn validate_checkpoint_predecessor(
         )));
     }
 
-    if let Some(previous_checkpoint_sha256) = checkpoint.body.previous_checkpoint_sha256.as_deref()
-    {
-        let expected_previous_checkpoint_sha256 = checkpoint_body_sha256(&predecessor.body)?;
-        if previous_checkpoint_sha256 != expected_previous_checkpoint_sha256 {
-            return Err(CheckpointError::Continuity(format!(
-                "checkpoint {} does not match predecessor digest {}",
-                checkpoint.body.checkpoint_seq, expected_previous_checkpoint_sha256
-            )));
-        }
+    let Some(previous_checkpoint_sha256) = checkpoint.body.previous_checkpoint_sha256.as_deref()
+    else {
+        return Err(CheckpointError::Continuity(format!(
+            "checkpoint {} is missing predecessor digest",
+            checkpoint.body.checkpoint_seq
+        )));
+    };
+    let expected_previous_checkpoint_sha256 = checkpoint_body_sha256(&predecessor.body)?;
+    if previous_checkpoint_sha256 != expected_previous_checkpoint_sha256 {
+        return Err(CheckpointError::Continuity(format!(
+            "checkpoint {} does not match predecessor digest {}",
+            checkpoint.body.checkpoint_seq, expected_previous_checkpoint_sha256
+        )));
     }
 
     Ok(())
@@ -1436,6 +1440,20 @@ mod tests {
             error
                 .to_string()
                 .contains("does not match predecessor digest"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn validate_checkpoint_predecessor_rejects_missing_predecessor_digest() {
+        let kp = Keypair::generate();
+        let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("build failed");
+        let second = build_checkpoint(2, 4, 6, &make_receipt_bytes(3), &kp).expect("build failed");
+
+        let error =
+            validate_checkpoint_predecessor(&first, &second).expect_err("continuity should fail");
+        assert!(
+            error.to_string().contains("missing predecessor digest"),
             "unexpected error: {error}"
         );
     }

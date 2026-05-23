@@ -88,16 +88,21 @@ def chio_node(
             tool_name=node_name,
             parameters=parameters,
         )
-        if receipt.decision.is_denied:
+        decision = receipt.decision
+        if not receipt.is_allowed:
             raise ChioLangGraphError(
-                receipt.decision.reason or "denied by Chio kernel",
+                decision.reason
+                if decision is not None and decision.reason is not None
+                else "non-authorizing Chio receipt",
                 node_name=node_name,
                 tool_server=tool_server,
                 tool_name=node_name,
-                guard=receipt.decision.guard,
-                reason=receipt.decision.reason,
+                guard=decision.guard if decision is not None else None,
+                reason=decision.reason if decision is not None else None,
                 receipt_id=receipt.id,
-                decision=receipt.decision.model_dump(exclude_none=True),
+                decision=decision.model_dump(exclude_none=True)
+                if decision is not None
+                else None,
             )
 
         # Allow: invoke body preserving sync/async + arity.

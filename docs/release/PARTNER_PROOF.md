@@ -1,7 +1,7 @@
 # Chio Partner Proof Package
 
 **Prepared:** 2026-04-02
-**Surface:** current post-`v2.41` Chio production candidate
+**Surface:** current v1-only pre-release Chio production candidate
 **Role:** reviewer-facing evidence package, not the authoritative release-go
 record
 

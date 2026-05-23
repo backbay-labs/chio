@@ -90,7 +90,7 @@ produced:
  Quot.sound]
 'Chio.Treaty.SensorAttestation.partition_contingency_mode_iff_degraded_subset' depends on axioms: [propext]
 'Chio.Treaty.SensorAttestation.healthy_attestation_required_for_destructive_admission' depends on axioms: [propext]
-'Chio.Treaty.SensorAttestation.degraded_sensor_admission_requires_re_attestation' depends on axioms: [propext]
+'Chio.Treaty.SensorAttestation.degraded_sensor_admission_requires_re_admission_witness' depends on axioms: [propext]
 ```
 
 No `sorry` axiom appears. The three axioms (`propext`,

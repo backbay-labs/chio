@@ -81,7 +81,13 @@ fn receipt(
         tool_name: tool_name.to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({"ok": true}))
             .unwrap_or_else(|error| panic!("hash receipt parameters: {error}")),
-        decision,
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
+        decision: Some(decision),
         content_hash: "hash".to_string(),
         policy_hash: policy_hash.to_string(),
         evidence: vec![],
@@ -198,12 +204,9 @@ fn local_scorecard_renormalizes_when_incidents_are_unavailable() {
         incident_reports: None,
     };
 
-    let scorecard = compute_local_scorecard(
-        subject,
-        1_710_172_800,
-        &corpus,
-        &ReputationConfig::default(),
-    );
+    let config =
+        ReputationConfig::default().with_trusted_kernel_keys([kernel.public_key().to_hex()]);
+    let scorecard = compute_local_scorecard(subject, 1_710_172_800, &corpus, &config);
 
     assert!(matches!(
         scorecard.incident_correlation.score,
@@ -332,12 +335,9 @@ fn structural_delegation_hygiene_scores_attenuating_delegator_above_passthrough(
         incident_reports: Some(vec![]),
     };
 
-    let scorecard = compute_local_scorecard(
-        delegator,
-        1_710_172_800,
-        &corpus,
-        &ReputationConfig::default(),
-    );
+    let config =
+        ReputationConfig::default().with_trusted_kernel_keys([kernel.public_key().to_hex()]);
+    let scorecard = compute_local_scorecard(delegator, 1_710_172_800, &corpus, &config);
 
     assert_eq!(scorecard.delegation_hygiene.delegations_observed, 2);
     assert!(matches!(
@@ -573,14 +573,10 @@ fn mature_agent_scores_above_concerning_agent() {
         }]),
     };
 
-    let mature_score =
-        compute_local_scorecard(mature, now, &mature_corpus, &ReputationConfig::default());
-    let concerning_score = compute_local_scorecard(
-        concerning,
-        now,
-        &concerning_corpus,
-        &ReputationConfig::default(),
-    );
+    let config =
+        ReputationConfig::default().with_trusted_kernel_keys([kernel.public_key().to_hex()]);
+    let mature_score = compute_local_scorecard(mature, now, &mature_corpus, &config);
+    let concerning_score = compute_local_scorecard(concerning, now, &concerning_corpus, &config);
 
     let mature_value = score_value(mature_score.composite_score, "mature");
     let concerning_value = score_value(concerning_score.composite_score, "concerning");

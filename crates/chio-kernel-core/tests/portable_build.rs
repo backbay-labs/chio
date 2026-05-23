@@ -10,7 +10,8 @@
 
 use chio_core_types::capability::{
     compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-    CapabilityTokenBody, CapabilityTokenV2Body, ChioScope, Constraint, Operation, ToolGrant,
+    CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, Constraint, Operation,
+    ToolGrant,
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
@@ -58,7 +59,7 @@ fn make_capability_with_constraints(
     CapabilityToken::sign(body, issuer).unwrap()
 }
 
-fn make_v2_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
+fn make_attenuated_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
     let parent_scope = ChioScope {
         grants: vec![ToolGrant {
             server_id: "srv-a".to_string(),
@@ -93,7 +94,7 @@ fn make_v2_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
         normalized_subset_proof: compute_attenuation_witness(&parent_scope, &child_scope).unwrap(),
     };
     let body = CapabilityTokenBody {
-        id: "cap-v2-evaluate".to_string(),
+        id: "cap-attenuated-evaluate".to_string(),
         issuer: issuer.public_key(),
         subject: subject.public_key(),
         scope: child_scope,
@@ -101,8 +102,8 @@ fn make_v2_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
         expires_at: EXPIRES_AT,
         delegation_chain: vec![],
     };
-    CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body,
             caveats: vec![],
             scope_attenuations: vec![],
@@ -185,10 +186,10 @@ fn evaluate_allow_path() {
 }
 
 #[test]
-fn evaluate_rejects_v2_without_trust_root_binding() {
+fn evaluate_rejects_attenuated_capability_without_trust_root_binding() {
     let subject = Keypair::generate();
     let issuer = Keypair::generate();
-    let capability = make_v2_capability(&subject, &issuer);
+    let capability = make_attenuated_capability(&subject, &issuer);
     let request = make_request(&subject);
     let clock = FixedClock::new(ISSUED_AT + 1);
     let trusted = [issuer.public_key()];
@@ -603,7 +604,13 @@ fn sign_receipt_with_backend() {
         tool_server: "srv-a".to_string(),
         tool_name: "echo".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({"msg": "hi"})).unwrap(),
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: "0".repeat(64),
         policy_hash: "0".repeat(64),
         evidence: vec![],
@@ -629,10 +636,16 @@ fn sign_receipt_preserves_signed_body_fields() {
         tool_server: "srv-a".to_string(),
         tool_name: "echo".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({"msg": "hi"})).unwrap(),
-        decision: Decision::Deny {
+        decision: Some(Decision::Deny {
             reason: "blocked".to_string(),
             guard: "test-guard".to_string(),
-        },
+        }),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: "3".repeat(64),
         policy_hash: "4".repeat(64),
         evidence: vec![],
@@ -667,7 +680,13 @@ fn sign_receipt_rejects_kernel_key_mismatch() {
         tool_server: "srv-a".to_string(),
         tool_name: "echo".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({"msg": "hi"})).unwrap(),
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: "5".repeat(64),
         policy_hash: "6".repeat(64),
         evidence: vec![],
@@ -696,7 +715,13 @@ fn sign_receipt_signature_changes_when_economic_authorization_changes() {
         tool_server: "srv-pay".to_string(),
         tool_name: "charge".to_string(),
         action: ToolCallAction::from_parameters(json!({"invoice_id": "inv-1"})).unwrap(),
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: "1".repeat(64),
         policy_hash: "2".repeat(64),
         evidence: vec![],

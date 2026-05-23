@@ -49,7 +49,7 @@ Generated: 2026-05-18 by W4.a verification pass
   - `admission_predicate_separates_healthy_and_degraded_witnesses`
   - `partition_contingency_mode_iff_degraded_subset`
   - `healthy_attestation_required_for_destructive_admission`
-  - `degraded_sensor_admission_requires_re_attestation`
+  - `degraded_sensor_admission_requires_re_admission_witness`
 - [x] `#print axioms` reports only `propext`, `Classical.choice`, `Quot.sound` -- VERIFIED by `lake env lean PrintAxioms.lean`
 - [x] No `sorry`, no project-local `axiom` declarations anywhere in the Chio/ tree -- VERIFIED (zero matches)
 - [x] `supplementary/README.md` exists, 72 lines (well under one page) -- VERIFIED
@@ -120,7 +120,7 @@ lake build  11.40s user  4.84s system  141% cpu  11.480 total
 'Chio.Treaty.SensorAttestation.admission_predicate_separates_healthy_and_degraded_witnesses' depends on axioms: [propext, Classical.choice, Quot.sound]
 'Chio.Treaty.SensorAttestation.partition_contingency_mode_iff_degraded_subset' depends on axioms: [propext]
 'Chio.Treaty.SensorAttestation.healthy_attestation_required_for_destructive_admission' depends on axioms: [propext]
-'Chio.Treaty.SensorAttestation.degraded_sensor_admission_requires_re_attestation' depends on axioms: [propext, Quot.sound]
+'Chio.Treaty.SensorAttestation.degraded_sensor_admission_requires_re_admission_witness' depends on axioms: [propext, Quot.sound]
 ```
 
 ### TOML / JSON parse

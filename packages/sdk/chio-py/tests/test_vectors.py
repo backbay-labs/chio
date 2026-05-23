@@ -11,6 +11,7 @@ from chio.invariants import (
     parse_receipt_json,
     parse_signed_manifest_json,
     receipt_body_canonical_json,
+    receipt_signing_body_canonical_json,
     sha256_hex_utf8,
     sign_json_string_ed25519,
     sign_utf8_message_ed25519,
@@ -18,6 +19,7 @@ from chio.invariants import (
     verify_capability,
     verify_json_string_signature_ed25519,
     verify_receipt,
+    verify_receipt_with_trusted_signers,
     verify_signed_manifest,
     verify_utf8_message_ed25519,
 )
@@ -94,6 +96,46 @@ class VectorTests(unittest.TestCase):
             receipt = parse_receipt_json(json.dumps(case["receipt"]))
             self.assertEqual(receipt_body_canonical_json(receipt), case["receipt_body_canonical_json"])
             self.assertEqual(verify_receipt(receipt), case["expected"], case["id"])
+
+    def test_receipt_vectors_support_trusted_signers(self) -> None:
+        fixture = load_vector("receipt")
+        case = next(item for item in fixture["cases"] if item["id"] == "allow_receipt")
+        receipt = parse_receipt_json(json.dumps(case["receipt"]))
+        verification = verify_receipt_with_trusted_signers(receipt, [receipt["kernel_key"]])
+        self.assertTrue(verification["signer_trusted"])
+        self.assertTrue(verification["ok"])
+        self.assertTrue(verification["authorized"])
+
+    def test_receipt_semantics_ignore_legacy_metadata_payloads(self) -> None:
+        fixture = load_vector("receipt")
+        case = next(item for item in fixture["cases"] if item["id"] == "allow_receipt")
+        receipt = parse_receipt_json(json.dumps(case["receipt"]))
+        receipt["metadata"] = {
+            "receipt_semantics": {
+                "receiptKind": "trace_observation",
+                "boundaryClass": "detect_only",
+            }
+        }
+        verification = verify_receipt_with_trusted_signers(receipt, [receipt["kernel_key"]])
+        self.assertEqual(verification["receipt_kind"], "mediated_decision")
+        self.assertEqual(verification["boundary_class"], "prevent")
+        self.assertFalse(verification["receipt_id_valid"])
+        self.assertFalse(verification["signature_valid"])
+        self.assertFalse(verification["authorized"])
+
+    def test_receipt_signature_valid_fails_when_content_addressed_id_mismatches(self) -> None:
+        fixture = load_vector("receipt")
+        case = next(item for item in fixture["cases"] if item["id"] == "allow_receipt")
+        receipt = parse_receipt_json(json.dumps(case["receipt"]))
+        receipt["id"] = "0000000000000000000000000000000000000000000000000000000000000000"
+        receipt["signature"] = sign_json_string_ed25519(
+            receipt_signing_body_canonical_json(receipt),
+            fixture["signing_key_seed_hex"],
+        )["signature_hex"]
+        verification = verify_receipt(receipt)
+        self.assertFalse(verification["receipt_id_valid"])
+        self.assertFalse(verification["signature_valid"])
+        self.assertFalse(verification["ok"])
 
     def test_capability_vectors(self) -> None:
         fixture = load_vector("capability")

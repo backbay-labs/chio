@@ -1,16 +1,16 @@
 # Release Audit
 
 **Prepared:** 2026-04-19
-**Role:** authoritative repo-local release-go record for the current Chio
-production candidate
+**Role:** repo-local pre-release evidence inventory for the current v1-only
+Chio candidate, not a public release-go record
 
 ## Scope
 
-This audit tracks the current Chio production-candidate surface described in
+This audit tracks the current Chio pre-release candidate surface described in
 [RELEASE_CANDIDATE.md](RELEASE_CANDIDATE.md).
 
-It is a repo-local go/no-go record, not a substitute for observing hosted CI
-and release-qualification workflows after merge.
+It is a repo-local evidence inventory, not a substitute for observing hosted
+CI and release-qualification workflows after merge.
 
 Use the release documents this way:
 
@@ -18,7 +18,7 @@ Use the release documents this way:
   surface and support boundary
 - [QUALIFICATION.md](QUALIFICATION.md) defines the required evidence lanes and
   commands
-- this audit is the authoritative repo-local release-go or hold decision
+- this audit records local pre-release evidence and remaining release holds
 - [GA_CHECKLIST.md](GA_CHECKLIST.md) is the operator-facing pre-publication
   checklist
 - [PARTNER_PROOF.md](PARTNER_PROOF.md) and
@@ -32,22 +32,22 @@ The web3-runtime ladder now also has focused audit and reviewer material in
 ## Bounded Chio Ship Addendum
 
 This file now records one primary ship-facing decision boundary for the current
-repo state: bounded Chio. Stronger v3.16 and v3.17 claim gates still exist as
-repo-local addenda, but they are no longer the front-door release framing.
+repo state: bounded Chio. Stronger internal claim gates still exist as
+repo-local addenda, but they are milestone labels rather than Chio-owned
+protocol versions and are no longer the front-door release framing.
 
-**Local bounded-ship status:** bounded Chio qualified locally on 2026-04-19.
-The current retained decision is that Chio can ship honestly as a bounded
-governance and evidence control plane with signed receipts, explicit bounded
-hosted/auth profiles, bounded provenance semantics, and explicit local or
-leader-local operational contracts for trust-control, budgets, and review
-surfaces.
+**Local bounded-ship status:** bounded Chio evidence was collected locally on
+2026-04-19. The current retained decision is to continue pre-release
+evaluation. External release, production, and GA claims remain on hold until a
+public v1 release decision is explicitly taken.
 
 Qualified claim:
 
-- Chio ships a cryptographically signed, fail-closed governance and evidence
-  control plane with signed receipts, checkpoints, bounded delegated-authority
-  semantics, bounded hosted/auth profiles, and explicit provenance classes on
-  the current ship-facing surfaces.
+- The current pre-release v1 branch contains locally verified implementation
+  and evidence for a cryptographically signed, fail-closed governance and
+  evidence control plane with signed receipts, checkpoints, bounded
+  delegated-authority semantics, bounded hosted/auth profiles, and explicit
+  provenance classes on the current candidate surfaces.
 - Chio's supported clustered control-plane story is leader-local and bounded,
   not consensus-grade HA.
 - Chio's supported monetary budget story is single-node atomic with an explicit
@@ -92,16 +92,16 @@ Formal boundary artifacts:
 
 ## Decision
 
-**Decision:** Local go, external release hold for the current bounded Chio
-release candidate defined in
+**Decision:** Continue pre-release evaluation for the current bounded Chio
+candidate defined in
 [RELEASE_CANDIDATE.md](RELEASE_CANDIDATE.md).
 
-That current candidate includes the bounded web3 runtime realized in `v2.34`
-through `v2.39` and hardened in `v2.40` through `v2.41`, including
-concurrency-safe settlement identity, mandatory checkpoint evidence gates,
-artifact-derived contract/runtime parity, hosted qualification, reviewed-
-manifest promotion, exercised operator controls, and the generated end-to-end
-settlement proof bundle.
+Qualified local evidence includes bounded web3 runtime work from historical
+internal milestones `v2.34` through `v2.41`, including concurrency-safe
+settlement identity, mandatory checkpoint evidence gates, artifact-derived
+contract/runtime parity, hosted qualification, reviewed-manifest promotion,
+exercised operator controls, and the generated end-to-end settlement proof
+bundle. These labels are internal milestones, not public protocol versions.
 
 Meaning:
 
@@ -266,7 +266,7 @@ Primary release docs:
 | ad hoc qualification and packaging confidence | closed through one scripted release lane plus focused dashboard and SDK package checks |
 | operator deployment and upgrade tribal knowledge | closed through the runbook and repeatable smoke checks |
 | opaque production diagnostics | closed for the supported surface through trust-control and hosted-edge health/admin contracts plus operator reporting |
-| protocol doc drift | closed through a shipped `v2` protocol document aligned to repository behavior |
+| protocol doc drift | closed by aligning `spec/PROTOCOL.md` and normative companions to the current v1-only pre-release contract |
 | launch/standards ambiguity | closed through standards profiles, GA checklist, and explicit risk register |
 | economic interop legibility for IAM/finance/partner reviewers | closed for the shipped local surface through the authorization-context report, metered-billing reconciliation report, and focused interop guide |
 | enterprise IAM review still depended on Chio-specific explanation rather than machine-readable profile artifacts and end-to-end receipt trace packs | closed for the shipped local surface through authorization-profile metadata, authorization-review-pack exports, fail-closed assurance and call-chain projection validation, and focused qualification coverage |
@@ -308,7 +308,7 @@ phase 44 is allowed to rely on.
 
 ### Accepted Launch Evidence Boundary
 
-For the current production candidate, Chio claims:
+For the current v1-only pre-release candidate, Chio has local evidence for:
 
 - executable reference/spec alignment for scope attenuation semantics
 - empirical verification for fail-closed kernel and trust-control behavior
@@ -317,29 +317,28 @@ For the current production candidate, Chio claims:
 
 Chio does not currently claim:
 
-- complete theorem-prover coverage for every shipped protocol property
+- complete theorem-prover coverage for every protocol property
 - that standalone Lean proof files are part of the release gate while they
   remain outside the root import surface or contain `sorry`
 
-## Current Release Decision Contract
+## Current Pre-Release Decision Contract
 
-The release decision for the current production candidate is explicit rather
-than implied:
+The current v1-only pre-release decision is explicit rather than implied:
 
 | Gate class | Requirement | Status |
 | --- | --- | --- |
-| local qualification | `./scripts/ci-workspace.sh`, `./scripts/check-formal-proofs.sh`, `./scripts/check-portable-kernel.sh`, `./scripts/check-sdk-parity.sh`, `./scripts/check-web3-contract-parity.sh`, `./scripts/qualify-release.sh`, `./scripts/qualify-portable-browser.sh`, and `./scripts/qualify-mobile-kernel.sh` green, with the bounded web3 runtime lanes green locally | satisfied |
-| launch materials | release, partner, operational, and standards-facing docs updated to the current Chio surface | satisfied |
+| local qualification | `./scripts/ci-workspace.sh`, `./scripts/check-formal-proofs.sh`, `./scripts/check-portable-kernel.sh`, `./scripts/check-sdk-parity.sh`, `./scripts/check-web3-contract-parity.sh`, `./scripts/qualify-release.sh`, `./scripts/qualify-portable-browser.sh`, and `./scripts/qualify-mobile-kernel.sh` green, with the bounded web3 runtime lanes green locally | historical local evidence |
+| launch materials | release, partner, operational, and standards-facing docs updated to the current Chio surface | pre-release evidence |
 | hosted publication | hosted `CI` and `Release Qualification` observed green on the candidate commit, including the staged runtime, `e2e`, `ops`, and promotion bundles under `target/release-qualification/web3-runtime/` | pending external observation |
 
 The resulting decision is:
 
-- local technical go for the current Chio candidate
+- local evidence supports continued pre-release evaluation for the current Chio candidate
 - external release hold until hosted workflow evidence is observed
 
 ## Remaining Non-Goals
 
-These are intentionally not blockers for the current Chio production candidate:
+These are intentionally not blockers for the current v1-only pre-release candidate:
 
 - multi-region or consensus trust replication
 - permissionless or auto-trusting certification marketplace semantics

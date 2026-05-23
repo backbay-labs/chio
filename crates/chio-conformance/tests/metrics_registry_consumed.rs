@@ -79,6 +79,7 @@ fn metrics_kernel_with_web3_evidence(
         require_web3_evidence,
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        allow_ephemeral_receipt_log: true,
     };
     let mut kernel = chio_kernel::ChioKernel::new(config);
     kernel.register_tool_server(Box::new(MetricsToolServer));
@@ -201,7 +202,13 @@ fn sample_receipt(keypair: &Keypair) -> Result<ChioReceipt, chio_core::Error> {
         tool_server: "metrics-srv".to_string(),
         tool_name: "echo".to_string(),
         action: ToolCallAction::from_parameters(json!({"message": "hello"}))?,
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: sha256_hex(br#"{"result":"ok"}"#),
         policy_hash: "metrics-registry-test-policy".to_string(),
         evidence: vec![GuardEvidence {

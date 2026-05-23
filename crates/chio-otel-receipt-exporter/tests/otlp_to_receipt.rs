@@ -2,7 +2,7 @@ use std::error::Error;
 use std::sync::{Arc, Mutex};
 
 use chio_core::crypto::Keypair;
-use chio_core::receipt::{ChildRequestReceipt, ChioReceipt, Decision};
+use chio_core::receipt::{ChildRequestReceipt, ChioReceipt};
 use chio_kernel::otel::{
     ATTR_CHIO_AGENT_ID, ATTR_CHIO_RECEIPT_ID, ATTR_CHIO_SERVER_ID, ATTR_GEN_AI_TOOL_CALL_ID,
     ATTR_GEN_AI_TOOL_NAME,
@@ -83,13 +83,18 @@ fn otlp_trace_span_is_signed_and_appended_to_receipt_store() -> Result<(), Box<d
     let receipt = receipts
         .first()
         .ok_or_else(|| std::io::Error::other("missing appended receipt"))?;
-    assert_ne!(receipt.id, "rcpt-otel");
-    assert!(receipt.id.starts_with("otel-"));
+    assert_eq!(receipt.id.len(), 64);
+    assert!(receipt.id.chars().all(|value| value.is_ascii_hexdigit()));
     assert_eq!(receipt.capability_id, "cap-otel");
     assert_eq!(receipt.tool_server, "srv-otel");
     assert_eq!(receipt.tool_name, "search_web");
     assert_eq!(receipt.tenant_id.as_deref(), Some("tenant-authenticated"));
     assert!(receipt.verify_signature()?);
+    assert!(!receipt.is_allowed());
+
+    let semantics = receipt.semantic_fields();
+    assert_eq!(semantics.receipt_kind.as_str(), "trace_observation");
+    assert_eq!(semantics.boundary_class.as_str(), "detect_only");
 
     let metadata = receipt
         .metadata
@@ -108,6 +113,7 @@ fn otlp_trace_span_is_signed_and_appended_to_receipt_store() -> Result<(), Box<d
         .get(ATTR_GEN_AI_TOOL_CALL_ID)
         .is_none());
     assert_eq!(metadata["otel"]["attributes"]["gen_ai.system"], "openai");
+    assert_eq!(metadata["otel"]["source_verdict"], "allow");
 
     Ok(())
 }
@@ -274,7 +280,7 @@ fn unknown_or_malformed_verdict_prevents_receipt_append() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn explicit_allow_verdict_maps_to_allow_decision() -> Result<(), Box<dyn Error>> {
+fn explicit_allow_verdict_maps_to_trace_observation() -> Result<(), Box<dyn Error>> {
     let store = Arc::new(MemoryReceiptStore::default());
     let sink = ReceiptStoreSink::new(
         store.clone(),
@@ -289,10 +295,53 @@ fn explicit_allow_verdict_maps_to_allow_decision() -> Result<(), Box<dyn Error>>
 
     sink.export_traces(&OtlpGrpcTraceExport::from_spans(vec![span]))?;
     let receipts = store.receipts()?;
-    assert!(matches!(
-        receipts.first().map(|receipt| &receipt.decision),
-        Some(Decision::Allow)
-    ));
+    let receipt = receipts
+        .first()
+        .ok_or_else(|| std::io::Error::other("missing appended receipt"))?;
+    assert!(receipt.decision.is_none());
+    let semantics = receipt.semantic_fields();
+    assert_eq!(semantics.receipt_kind.as_str(), "trace_observation");
+    assert_eq!(semantics.boundary_class.as_str(), "detect_only");
+    assert!(!receipt.is_allowed());
+
+    Ok(())
+}
+
+#[test]
+fn explicit_deny_and_incomplete_verdicts_map_to_trace_observations() -> Result<(), Box<dyn Error>> {
+    for verdict in ["deny", "incomplete"] {
+        let store = Arc::new(MemoryReceiptStore::default());
+        let sink = ReceiptStoreSink::new(
+            store.clone(),
+            ReceiptStoreSinkConfig::new(Keypair::generate()),
+        );
+        let span = OtlpSpan::new(
+            "0123456789abcdef0123456789abcdef",
+            "0123456789abcdef",
+            "gen_ai.tool.call",
+        )
+        .with_attribute("chio.verdict", serde_json::json!(verdict));
+
+        sink.export_traces(&OtlpGrpcTraceExport::from_spans(vec![span]))?;
+        let receipts = store.receipts()?;
+        let receipt = receipts
+            .first()
+            .ok_or_else(|| std::io::Error::other("missing appended receipt"))?;
+        assert!(receipt.decision.is_none());
+        let semantics = receipt.semantic_fields();
+        assert_eq!(semantics.receipt_kind.as_str(), "trace_observation");
+        assert_eq!(semantics.boundary_class.as_str(), "detect_only");
+        assert!(!receipt.is_allowed());
+        assert_eq!(
+            receipt
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("otel"))
+                .and_then(|otel| otel.get("source_verdict"))
+                .and_then(serde_json::Value::as_str),
+            Some(verdict)
+        );
+    }
 
     Ok(())
 }

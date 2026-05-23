@@ -132,9 +132,18 @@ pub struct ReputationConfig {
     pub history_receipt_target: u64,
     pub history_day_target: u64,
     pub incident_penalty: f64,
+    #[serde(default)]
+    pub trusted_kernel_keys: BTreeSet<String>,
 }
 
 impl Default for ReputationConfig {
+    /// Fail-closed default. The empty `trusted_kernel_keys` set will cause
+    /// every receipt to fail integrity validation, which yields zero / unknown
+    /// scores. Callers MUST populate trusted kernel keys via
+    /// [`ReputationConfig::with_trusted_kernel_keys`] before scoring or the
+    /// caller's reputation history will be silently filtered out. A
+    /// `tracing::warn!` is emitted the first time integrity is checked with an
+    /// empty trust set to surface the misconfiguration.
     fn default() -> Self {
         Self {
             weights: ReputationWeights::default(),
@@ -144,7 +153,42 @@ impl Default for ReputationConfig {
             history_receipt_target: DEFAULT_HISTORY_RECEIPT_TARGET,
             history_day_target: DEFAULT_HISTORY_DAY_TARGET,
             incident_penalty: DEFAULT_INCIDENT_PENALTY,
+            trusted_kernel_keys: BTreeSet::new(),
         }
+    }
+}
+
+impl ReputationConfig {
+    /// Builder: replace the trusted-kernel-key set with the supplied keys.
+    /// Each item is the hex form returned by `PublicKey::to_hex()`.
+    ///
+    /// Returns `self` for chaining, e.g.
+    /// ```ignore
+    /// let config = ReputationConfig::default()
+    ///     .with_trusted_kernel_keys([kernel_pubkey.to_hex()]);
+    /// ```
+    ///
+    /// Calling this with an empty iterator preserves the fail-closed behaviour
+    /// of [`Default`]: every receipt will continue to fail integrity validation.
+    #[must_use]
+    pub fn with_trusted_kernel_keys<I, S>(mut self, trusted_kernel_keys: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.trusted_kernel_keys = trusted_kernel_keys
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        self
+    }
+
+    /// Returns true when the configuration has no trusted kernel keys and
+    /// therefore cannot validate any receipt. Callers should treat this as a
+    /// misconfiguration: scoring will return unknown / zero metrics.
+    #[must_use]
+    pub fn has_trusted_kernel_keys(&self) -> bool {
+        !self.trusted_kernel_keys.is_empty()
     }
 }
 

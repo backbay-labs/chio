@@ -69,7 +69,7 @@ references in legacy text are footnoted.)
 
 | Field | Baseline value |
 |---|---|
-| Spec MUST citation | `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 (DSSE PAE encoding) + §7 step 11-12 (signature verification) |
+| Spec MUST citation | `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 (DSSE PAE encoding) + §7 step 11-12 (signature verification) |
 | Production call site (current legacy) | `crates/chio-federation/src/bilateral.rs::CoSigningBody` (lines 41-77): signs canonical-JSON bytes that share ZERO bytes with the §6 DSSE PAE preimage; `DualSignedReceipt::verify` (line 93+) is NOT a §6-conformant artifact |
 | Production call site (target) | `crates/chio-federation/src/bilateral_dsse.rs` (NEW module per B4): produces a DSSE envelope whose Ed25519 signature is computed over DSSE PAE of the canonical-JSON in-toto Statement |
 | Existing conformance fixture file | NONE IN #620. Upstream has interim `b4_bilateral_dsse_signature_slice.rs`, which explicitly does not claim full §6 predicate conformance. |
@@ -102,7 +102,7 @@ close ticket lands four artifacts:
    exists at the cited file:line; the bypass/legacy callable is
    deleted or migrated.
 2. **Artifact B (spec MUST citation)**: PROTOCOL.md or
-   CHIODOS_BILATERAL_COSIGN_INVOCATION.md normative line range reads
+   CHIO_BILATERAL_COSIGN_INVOCATION.md normative line range reads
    MUST (B1, B3) or introduces NEW normative MUST (B2 tightening) or
    reads MUST against the DSSE PAE encoding (B4).
 3. **Artifact C (production-call-path conformance fixture)**: file exists at

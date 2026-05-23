@@ -12,6 +12,11 @@ import (
 	"time"
 )
 
+const (
+	authorizedReceiptID   = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	authorizedContentHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+)
+
 // verifyServer returns a test server whose /chio/verify endpoint replies with
 // the configured status and JSON body.
 func verifyServer(t *testing.T, status int, body any) *httptest.Server {
@@ -29,33 +34,179 @@ func verifyServer(t *testing.T, status int, body any) *httptest.Server {
 	}))
 }
 
+func verifyReceiptBody(ok bool, authorized bool) VerifyReceiptResponse {
+	return VerifyReceiptResponse{
+		SignatureValid:     ok,
+		SignerTrusted:      ok,
+		ReceiptIDValid:     ok,
+		ParameterHashValid: ok,
+		ReceiptKind:        "mediated_decision",
+		BoundaryClass:      "prevent",
+		TrustLevel:         "mediated",
+		Result:             "allow",
+		Authorized:         authorized,
+		SignerKeyHex:       "kernel",
+		OK:                 ok,
+	}
+}
+
+func authorizedTestReceipt(requestID string) HTTPReceipt {
+	return HTTPReceipt{
+		ID:             authorizedReceiptID,
+		RequestID:      requestID,
+		RoutePattern:   "/pets",
+		Method:         "GET",
+		Verdict:        Verdict{Verdict: "allow"},
+		ReceiptKind:    "mediated_decision",
+		BoundaryClass:  "prevent",
+		ToolOrigin:     "caller_executed",
+		RedactionMode:  "none",
+		TrustLevel:     "mediated",
+		ResponseStatus: http.StatusOK,
+		ContentHash:    authorizedContentHash,
+		KernelKey:      "key",
+		Signature:      "sig",
+	}
+}
+
 func TestVerifyReceipt_Success(t *testing.T) {
-	srv := verifyServer(t, http.StatusOK, map[string]bool{"valid": true})
+	srv := verifyServer(t, http.StatusOK, verifyReceiptBody(true, true))
 	defer srv.Close()
 
 	client := NewSidecarClient(srv.URL, 5)
-	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	verification, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !ok {
-		t.Fatalf("expected valid=true")
+	if !verification.OK || !verification.Authorized {
+		t.Fatalf("expected authorized verification")
 	}
 }
 
 func TestVerifyReceipt_InvalidReceiptValidFalse(t *testing.T) {
 	// Definitive "your receipt is bad" path: sidecar returned 200 with
 	// valid=false. Callers should observe ok=false and no error.
-	srv := verifyServer(t, http.StatusOK, map[string]bool{"valid": false})
+	srv := verifyServer(t, http.StatusOK, verifyReceiptBody(false, false))
 	defer srv.Close()
 
 	client := NewSidecarClient(srv.URL, 5)
-	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	verification, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if ok {
+	if verification.OK {
 		t.Fatalf("expected valid=false")
+	}
+}
+
+func TestEvaluate_VerifiesAllowReceiptBeforeReturning(t *testing.T) {
+	verifyCalls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/chio/evaluate":
+			_ = json.NewEncoder(w).Encode(EvaluateResponse{
+				Verdict:  Verdict{Verdict: "allow"},
+				Receipt:  authorizedTestReceipt("req-1"),
+				Evidence: []GuardEvidence{},
+			})
+		case "/chio/verify":
+			verifyCalls++
+			writeVerifyResponse(w, true)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewSidecarClient(srv.URL, 5)
+	result, err := client.Evaluate(context.Background(), ChioHTTPRequest{
+		RequestID:    "req-1",
+		Method:       "GET",
+		RoutePattern: "/pets",
+		Path:         "/pets",
+		Caller:       CallerIdentity{Subject: "test", AuthMethod: AuthMethod{Method: "anonymous"}},
+		Timestamp:    time.Now().Unix(),
+	}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil || !result.Receipt.IsAuthorized() {
+		t.Fatalf("expected authorized receipt, got %#v", result)
+	}
+	if verifyCalls != 1 {
+		t.Fatalf("expected one verify call, got %d", verifyCalls)
+	}
+}
+
+func TestEvaluate_RejectsUnverifiedAllowReceipt(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/chio/evaluate":
+			_ = json.NewEncoder(w).Encode(EvaluateResponse{
+				Verdict:  Verdict{Verdict: "allow"},
+				Receipt:  authorizedTestReceipt("req-1"),
+				Evidence: []GuardEvidence{},
+			})
+		case "/chio/verify":
+			writeVerifyResponse(w, false)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewSidecarClient(srv.URL, 5)
+	_, err := client.Evaluate(context.Background(), ChioHTTPRequest{
+		RequestID:    "req-1",
+		Method:       "GET",
+		RoutePattern: "/pets",
+		Path:         "/pets",
+		Caller:       CallerIdentity{Subject: "test", AuthMethod: AuthMethod{Method: "anonymous"}},
+		Timestamp:    time.Now().Unix(),
+	}, "")
+	var sErr *SidecarError
+	if !errors.As(err, &sErr) {
+		t.Fatalf("expected *SidecarError, got %T: %v", err, err)
+	}
+	if sErr.Code != ErrInvalidReceipt {
+		t.Fatalf("expected %q, got %q", ErrInvalidReceipt, sErr.Code)
+	}
+}
+
+func TestEvaluate_RejectsVerifierWithoutFullAuthorityTuple(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/chio/evaluate":
+			_ = json.NewEncoder(w).Encode(EvaluateResponse{
+				Verdict:  Verdict{Verdict: "allow"},
+				Receipt:  authorizedTestReceipt("req-1"),
+				Evidence: []GuardEvidence{},
+			})
+		case "/chio/verify":
+			body := verifyReceiptBody(true, true)
+			body.SignatureValid = false
+			_ = json.NewEncoder(w).Encode(body)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewSidecarClient(srv.URL, 5)
+	_, err := client.Evaluate(context.Background(), ChioHTTPRequest{
+		RequestID:    "req-1",
+		Method:       "GET",
+		RoutePattern: "/pets",
+		Path:         "/pets",
+		Caller:       CallerIdentity{Subject: "test", AuthMethod: AuthMethod{Method: "anonymous"}},
+		Timestamp:    time.Now().Unix(),
+	}, "")
+	var sErr *SidecarError
+	if !errors.As(err, &sErr) {
+		t.Fatalf("expected *SidecarError, got %T: %v", err, err)
+	}
+	if sErr.Code != ErrInvalidReceipt {
+		t.Fatalf("expected %q, got %q", ErrInvalidReceipt, sErr.Code)
 	}
 }
 
@@ -64,8 +215,8 @@ func TestVerifyReceipt_Non200ValidFalseClassifiedAsInvalidReceipt(t *testing.T) 
 	defer srv.Close()
 
 	client := NewSidecarClient(srv.URL, 5)
-	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
-	if ok {
+	verification, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	if verification.OK {
 		t.Fatalf("expected valid=false on definitive invalid receipt verdict")
 	}
 	var sErr *SidecarError
@@ -85,8 +236,8 @@ func TestVerifyReceipt_Non200InvalidReceiptErrorClassifiedAsInvalidReceipt(t *te
 	defer srv.Close()
 
 	client := NewSidecarClient(srv.URL, 5)
-	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
-	if ok {
+	verification, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	if verification.OK {
 		t.Fatalf("expected valid=false on definitive invalid receipt error")
 	}
 	var sErr *SidecarError
@@ -115,8 +266,8 @@ func TestVerifyReceipt_NonVerdictFourXXClassifiedAsEvaluationFailed(t *testing.T
 			defer srv.Close()
 
 			client := NewSidecarClient(srv.URL, 5)
-			ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
-			if ok {
+			verification, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+			if verification.OK {
 				t.Fatalf("expected valid=false on %d", status)
 			}
 			var sErr *SidecarError
@@ -147,8 +298,8 @@ func TestVerifyReceipt_NonVerdictUnavailableStatusesClassifiedAsSidecarUnavailab
 			defer srv.Close()
 
 			client := NewSidecarClient(srv.URL, 5)
-			ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
-			if ok {
+			verification, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+			if verification.OK {
 				t.Fatalf("expected valid=false on %d", status)
 			}
 			var sErr *SidecarError
@@ -179,8 +330,8 @@ func TestVerifyReceipt_FiveXXClassifiedAsSidecarUnavailable(t *testing.T) {
 			defer srv.Close()
 
 			client := NewSidecarClient(srv.URL, 5)
-			ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
-			if ok {
+			verification, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+			if verification.OK {
 				t.Fatalf("expected valid=false on %d", status)
 			}
 			var sErr *SidecarError
@@ -202,8 +353,8 @@ func TestVerifyReceipt_RequestTimeout408ClassifiedAsSidecarUnavailable(t *testin
 	defer srv.Close()
 
 	client := NewSidecarClient(srv.URL, 5)
-	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
-	if ok {
+	verification, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	if verification.OK {
 		t.Fatalf("expected valid=false on 408")
 	}
 	var sErr *SidecarError
@@ -222,8 +373,8 @@ func TestVerifyReceipt_TransportError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	ok, err := client.VerifyReceipt(ctx, HTTPReceipt{})
-	if ok {
+	verification, err := client.VerifyReceipt(ctx, HTTPReceipt{})
+	if verification.OK {
 		t.Fatalf("expected valid=false on transport error")
 	}
 	var sErr *SidecarError
@@ -254,9 +405,9 @@ func TestVerifyReceipt_BodyReadFailureClassifiedAsSidecarUnreachable(t *testing.
 	}()
 
 	client := NewSidecarClient("http://"+ln.Addr().String(), 5)
-	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	verification, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
 	<-done
-	if ok {
+	if verification.OK {
 		t.Fatalf("expected valid=false on body read failure")
 	}
 	var sErr *SidecarError
@@ -282,8 +433,8 @@ func TestVerifyReceipt_BodyReadTimeoutClassifiedAsSidecarUnreachable(t *testing.
 
 	client := NewSidecarClient(srv.URL, 5)
 	client.client.Timeout = 25 * time.Millisecond
-	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
-	if ok {
+	verification, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	if verification.OK {
 		t.Fatalf("expected valid=false on body read timeout")
 	}
 	var sErr *SidecarError
@@ -300,8 +451,8 @@ func TestVerifyReceipt_MissingValidFieldClassifiedAsProtocolError(t *testing.T) 
 	defer srv.Close()
 
 	client := NewSidecarClient(srv.URL, 5)
-	ok, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
-	if ok {
+	verification, err := client.VerifyReceipt(context.Background(), HTTPReceipt{})
+	if verification.OK {
 		t.Fatalf("expected valid=false on malformed verify response")
 	}
 	var sErr *SidecarError

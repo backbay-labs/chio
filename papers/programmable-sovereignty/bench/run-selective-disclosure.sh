@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
-SOURCE=${CHIO_SOURCE:-/Users/connor/.codex/worktrees/985a/arc}
+SOURCE=${CHIO_SOURCE:-$ROOT}
 if [[ ! -d "$SOURCE/crates" ]]; then
   SOURCE=$ROOT
 fi
@@ -72,7 +72,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "asset": "usd",
             "buyer": "buyer-a"
         }))?,
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: hex_fill('a'),
         policy_hash: hex_fill('b'),
         evidence: Vec::new(),
@@ -131,13 +137,13 @@ EOF
 
 if ! CARGO_TARGET_DIR="$TARGET_DIR" cargo run --manifest-path "$WORK_DIR/Cargo.toml" --offline > "$CSV" 2> "$LOG"; then
   emit_unreported
-  exit 0
+  exit 1
 fi
 
 row=$(tail -n 1 "$CSV" || true)
 if [[ -z "$row" || "$row" == "proof_bytes,p50_us,p99_us,mean_us" ]]; then
   emit_unreported
-  exit 0
+  exit 1
 fi
 
 IFS=',' read -r bytes p50 p99 mean <<< "$row"

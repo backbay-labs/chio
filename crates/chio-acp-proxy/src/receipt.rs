@@ -20,8 +20,21 @@ pub enum AcpEnforcementMode {
 pub struct AcpCapabilityAuditContext {
     pub capability_id: String,
     pub enforcement_mode: AcpEnforcementMode,
+    /// ACP tool-call id signed into the live authorization receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_tool_call_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_correlation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_operation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_resource: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_parameter_hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authorization_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_request_id: Option<String>,
 }
 
 /// Generates unsigned audit entries from ACP tool-call events.
@@ -62,6 +75,24 @@ pub struct AcpToolCallAuditEntry {
     /// The authoritative Chio receipt emitted during the live authorization check.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authorization_receipt_id: Option<String>,
+    /// Kernel request id that produced `authorization_receipt_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_request_id: Option<String>,
+    /// ACP tool-call id signed into the live authorization receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_tool_call_id: Option<String>,
+    /// Correlation id signed into the live authorization receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_correlation_id: Option<String>,
+    /// ACP operation signed into the live authorization receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_operation: Option<String>,
+    /// ACP resource signed into the live authorization receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_resource: Option<String>,
+    /// Canonical SHA-256 hash of the full authorized ACP parameters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_parameter_hash: Option<String>,
     /// Whether the event was tied to live cryptographic enforcement.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enforcement_mode: Option<AcpEnforcementMode>,
@@ -97,6 +128,12 @@ impl ReceiptLogger {
             content_hash,
             capability_id: None,
             authorization_receipt_id: None,
+            authorization_request_id: None,
+            authorization_tool_call_id: None,
+            authorization_correlation_id: None,
+            authorization_operation: None,
+            authorization_resource: None,
+            authorization_parameter_hash: None,
             enforcement_mode: Some(AcpEnforcementMode::AuditOnly),
         };
         apply_capability_context(&mut entry, capability_context);
@@ -125,6 +162,12 @@ impl ReceiptLogger {
             content_hash,
             capability_id: None,
             authorization_receipt_id: None,
+            authorization_request_id: None,
+            authorization_tool_call_id: None,
+            authorization_correlation_id: None,
+            authorization_operation: None,
+            authorization_resource: None,
+            authorization_parameter_hash: None,
             enforcement_mode: Some(AcpEnforcementMode::AuditOnly),
         };
         apply_capability_context(&mut entry, capability_context);
@@ -139,6 +182,12 @@ fn apply_capability_context(
     if let Some(context) = capability_context {
         entry.capability_id = Some(context.capability_id.clone());
         entry.authorization_receipt_id = context.authorization_receipt_id.clone();
+        entry.authorization_request_id = context.authorization_request_id.clone();
+        entry.authorization_tool_call_id = context.authorization_tool_call_id.clone();
+        entry.authorization_correlation_id = context.authorization_correlation_id.clone();
+        entry.authorization_operation = context.authorization_operation.clone();
+        entry.authorization_resource = context.authorization_resource.clone();
+        entry.authorization_parameter_hash = context.authorization_parameter_hash.clone();
         entry.enforcement_mode = Some(context.enforcement_mode);
     }
 }
@@ -152,20 +201,101 @@ fn now_unix_secs() -> String {
     format!("{secs}")
 }
 
-/// Compute a SHA-256 hex digest of a `ToolCallEvent` serialized as JSON.
+/// Build a canonical-hash input for a `ToolCallEvent`.
+///
+/// The returned JSON object contains only the explicit ACP wire fields. The
+/// `#[serde(flatten)] extra` map on `ToolCallEvent` is intentionally
+/// excluded so that previously-unknown JSON keys cannot silently change the
+/// `content_hash` of an event and break downstream `entry.content_hash`
+/// comparisons. The full event (including `extra`) is still serialized for
+/// wire fidelity by `parse_session_update` and the audit pipeline; only the
+/// hash input is restricted.
+fn tool_call_event_canonical_hash_input(event: &ToolCallEvent) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    map.insert(
+        "toolCallId".to_string(),
+        serde_json::Value::String(event.tool_call_id.clone()),
+    );
+    if let Some(title) = &event.title {
+        map.insert(
+            "title".to_string(),
+            serde_json::Value::String(title.clone()),
+        );
+    }
+    if let Some(kind) = &event.kind {
+        map.insert("kind".to_string(), serde_json::Value::String(kind.clone()));
+    }
+    if let Some(status) = &event.status {
+        map.insert(
+            "status".to_string(),
+            serde_json::Value::String(status.clone()),
+        );
+    }
+    serde_json::Value::Object(map)
+}
+
+/// Build a canonical-hash input for a `ToolCallUpdateEvent`.
+///
+/// See `tool_call_event_canonical_hash_input` for the rationale.
+fn tool_call_update_event_canonical_hash_input(
+    event: &ToolCallUpdateEvent,
+) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    map.insert(
+        "toolCallId".to_string(),
+        serde_json::Value::String(event.tool_call_id.clone()),
+    );
+    if let Some(status) = &event.status {
+        map.insert(
+            "status".to_string(),
+            serde_json::Value::String(status.clone()),
+        );
+    }
+    serde_json::Value::Object(map)
+}
+
+/// Compute a SHA-256 hex digest of a `ToolCallEvent` serialized as canonical JSON.
+///
+/// Hashes only the explicit ACP wire fields; the `extra` map captured by
+/// `#[serde(flatten)]` is excluded so unknown JSON fields cannot silently
+/// alter the content hash. See `tool_call_event_canonical_hash_input`.
+///
+/// # Wire-format compatibility note
+///
+/// This canonicalization is INTENTIONALLY not backward-compatible with the
+/// prior `serde_json::to_string(event)` digest. The Chio v1 collapse
+/// re-grounded the receipt wire format on the canonical JSON pipeline so
+/// receipts produced by independent implementations agree on a single
+/// content hash for the same logical event. Previously stored receipts
+/// computed with the v0 (non-canonical) digest will therefore not match
+/// a freshly computed v1 digest of the same event payload, and
+/// `content_hash`-based deduplication or comparability across the
+/// v0/v1 boundary is not supported by design. v0 stores must be
+/// rebuilt or migrated by re-deriving content hashes from the
+/// preserved event payload before being mixed with v1 receipts.
 fn compute_content_hash(event: &ToolCallEvent) -> String {
-    let json = serde_json::to_string(event).unwrap_or_default();
+    let canonical_input = tool_call_event_canonical_hash_input(event);
+    let json = chio_core::canonical::canonical_json_bytes(&canonical_input).unwrap_or_default();
     let mut hasher = Sha256::new();
-    hasher.update(json.as_bytes());
+    hasher.update(json.as_slice());
     let result = hasher.finalize();
     hex_encode(&result)
 }
 
-/// Compute a SHA-256 hex digest of a `ToolCallUpdateEvent` serialized as JSON.
+/// Compute a SHA-256 hex digest of a `ToolCallUpdateEvent` serialized as canonical JSON.
+///
+/// Hashes only the explicit ACP wire fields; the `extra` map captured by
+/// `#[serde(flatten)]` is excluded. See `tool_call_update_event_canonical_hash_input`.
+///
+/// See the wire-format compatibility note on `compute_content_hash`:
+/// this digest is intentionally v1-only and is not comparable with the
+/// v0 `serde_json::to_string` digest. v0/v1 cross-version comparison
+/// is not supported by design.
 fn compute_update_content_hash(event: &ToolCallUpdateEvent) -> String {
-    let json = serde_json::to_string(event).unwrap_or_default();
+    let canonical_input = tool_call_update_event_canonical_hash_input(event);
+    let json = chio_core::canonical::canonical_json_bytes(&canonical_input).unwrap_or_default();
     let mut hasher = Sha256::new();
-    hasher.update(json.as_bytes());
+    hasher.update(json.as_slice());
     let result = hasher.finalize();
     hex_encode(&result)
 }

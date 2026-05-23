@@ -1,14 +1,14 @@
 \section{Implementation}
 \label{sec:implementation-ra}
 
-The deployment instance is an endpoint enforcement engine whose
-response module dispatches twelve action variants, four of which carry
-inverse executors with content-hash-gated rollback constructors. The
+This checked-in artifact does not ship an endpoint enforcement engine.
+It specifies the implementation boundary an endpoint engine must satisfy:
+twelve action variants, four reversible variants with inverse executors,
+content-hash-gated rollback constructors, and a four-receipt grammar. The
 substrate inherits the canonical-byte signing path, ledger discipline,
-and verifier-owned trust store conventions from the parent paper. The
-implementation citations below resolve to deployment-instance file
-paths; the substrate-level claims rest on the parent paper's runtime
-admission hook and bilateral DSSE verifier.
+and verifier-owned trust store conventions from the parent paper. Claims
+about response executors and proof packages below are implementation
+obligations until their code lands in this repository.
 
 \paragraph{Action plan and execution.}
 The response plan is bound at request time:
@@ -72,13 +72,13 @@ inherited from the parent paper's
 response engine is not wired against.
 
 \paragraph{Proof bundle.}
-The proof endpoint
-(\codepath{GET /api/v1/agent/edr/response-executions/\{id\}/proof})
-returns the response-execution proof: the execution record, the
-graph slice, the provider and sensor state, and six receipt families
-(request, execution, evidence-bundle-manifest, lifecycle transitions,
-rollback, acknowledgement). The verifier replays the canonical bytes
-against the polity's pinned public keys and asserts actor continuity
-across the chain. This is the deployment-instance counterpart of the
-parent paper's buyer-closure proof package, specialized to the
-response engine.
+No checked-in proof endpoint backs this paper yet. The required proof
+bundle shape is: execution record, graph slice, provider and sensor
+state, and six receipt families (request, execution,
+evidence-bundle-manifest, lifecycle transitions, rollback,
+acknowledgement). A future endpoint
+\codepath{GET /api/v1/agent/edr/response-executions/\{id\}/proof}
+must return that bundle and let the verifier replay canonical bytes
+against the polity's pinned public keys while asserting actor continuity
+across the chain. Until then, the proof bundle is a design contract, not
+a deployed implementation claim.

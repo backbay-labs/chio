@@ -28,7 +28,9 @@ use std::path::PathBuf;
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::crypto::{sha256_hex, Keypair};
 use chio_core::merkle::MerkleTree;
-use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
+use chio_core::receipt::{
+    chio_receipt_id, ChioReceipt, ChioReceiptBody, Decision, ToolCallAction, TrustLevel,
+};
 use proptest::prelude::*;
 use proptest::test_runner::{Config as ProptestConfig, FileFailurePersistence};
 use serde_json::json;
@@ -240,19 +242,31 @@ fn replay_sequence() -> impl Strategy<Value = Vec<ReceiptTuple>> {
 /// Build a `ChioReceiptBody` from a tuple. The `nonce` is woven into the
 /// receipt id, the capability id, and the policy hash so two tuples with
 /// distinct nonces produce different canonical bytes.
+///
+/// The body's `id` is pre-computed via `chio_receipt_id` so it matches the
+/// content-addressed id that `ChioReceipt::sign` will rewrite into the
+/// receipt. That keeps the input body's canonical bytes byte-identical to
+/// the body extracted from the signed receipt, which property 1
+/// (`signing_is_a_function`) asserts via `body_bytes_a == body_bytes_direct`.
 fn body_from_tuple(tuple: &ReceiptTuple, kernel_key: &Keypair) -> ChioReceiptBody {
     let action =
         ToolCallAction::from_parameters(tuple.payload.clone()).expect("payload canonicalises");
     let content_hash = sha256_hex(action.parameter_hash.as_bytes());
     let policy_hash = sha256_hex(format!("policy:{}", tuple.nonce).as_bytes());
-    ChioReceiptBody {
+    let mut body = ChioReceiptBody {
         id: format!("rcpt-{}", tuple.nonce),
         timestamp: tuple.clock,
         capability_id: format!("cap-{}", tuple.nonce),
         tool_server: "tool.example".to_string(),
         tool_name: "echo".to_string(),
         action,
-        decision: tuple.decision.clone(),
+        decision: Some(tuple.decision.clone()),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash,
         policy_hash,
         evidence: Vec::new(),
@@ -260,7 +274,9 @@ fn body_from_tuple(tuple: &ReceiptTuple, kernel_key: &Keypair) -> ChioReceiptBod
         trust_level: TrustLevel::default(),
         tenant_id: None,
         kernel_key: kernel_key.public_key(),
-    }
+    };
+    body.id = chio_receipt_id(&body).expect("canonical receipt id computes");
+    body
 }
 
 fn sign_body(body: &ChioReceiptBody, kernel_key: &Keypair) -> ChioReceipt {

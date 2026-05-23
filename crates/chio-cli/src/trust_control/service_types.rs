@@ -6,26 +6,54 @@ use std::str::FromStr;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use axum::extract::Form;
+use axum::extract::{Path as AxumPath, Query, State};
+use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, WWW_AUTHENTICATE};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Redirect, Response};
+use axum::routing::{delete, get, post};
+use axum::{Json, Router};
 use chio_core::appraisal::{
+    RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA, RuntimeAttestationAppraisalImportReport,
+    RuntimeAttestationAppraisalImportRequest, RuntimeAttestationAppraisalReport,
+    RuntimeAttestationAppraisalRequest, RuntimeAttestationAppraisalResult,
+    RuntimeAttestationAppraisalResultExportRequest, RuntimeAttestationPolicyOutcome,
+    SignedRuntimeAttestationAppraisalReport, SignedRuntimeAttestationAppraisalResult,
     derive_runtime_attestation_appraisal, evaluate_imported_runtime_attestation_appraisal,
-    RuntimeAttestationAppraisalImportReport, RuntimeAttestationAppraisalImportRequest,
-    RuntimeAttestationAppraisalReport, RuntimeAttestationAppraisalRequest,
-    RuntimeAttestationAppraisalResult, RuntimeAttestationAppraisalResultExportRequest,
-    RuntimeAttestationPolicyOutcome, SignedRuntimeAttestationAppraisalReport,
-    SignedRuntimeAttestationAppraisalResult, RUNTIME_ATTESTATION_APPRAISAL_REPORT_SCHEMA,
 };
 use chio_core::capability::{
-    ChioScope, CapabilityToken, MonetaryAmount, RuntimeAssuranceTier, RuntimeAttestationEvidence,
+    CapabilityToken, ChioScope, MonetaryAmount, RuntimeAssuranceTier, RuntimeAttestationEvidence,
 };
 use chio_core::crypto::{Keypair, PublicKey};
 use chio_core::listing::GenericTrustAdmissionClass;
 use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, ChildRequestReceipt, Decision, ReceiptAttributionMetadata,
+    ChildRequestReceipt, ChioReceipt, ChioReceiptBody, Decision, ReceiptAttributionMetadata,
     SettlementStatus, ToolCallAction,
 };
-use chio_core::session::{ChioIdentityAssertion, EnterpriseIdentityContext, OperationTerminalState};
-use chio_core::{canonical_json_bytes, sha256_hex, Signature};
+use chio_core::session::{
+    ChioIdentityAssertion, EnterpriseIdentityContext, OperationTerminalState,
+};
+use chio_core::{Signature, canonical_json_bytes, sha256_hex};
 use chio_credentials::{
+    AgentPassport, CHIO_PASSPORT_JWT_VC_JSON_TYPE_METADATA_PATH, CHIO_PASSPORT_SD_JWT_VC_FORMAT,
+    CHIO_PASSPORT_SD_JWT_VC_TYPE, CHIO_PASSPORT_SD_JWT_VC_TYPE_METADATA_PATH,
+    EnterpriseIdentityProvenance, OID4VCI_ISSUER_METADATA_PATH, OID4VCI_JWKS_PATH,
+    OID4VCI_PASSPORT_CREDENTIAL_PATH, OID4VCI_PASSPORT_OFFERS_PATH, OID4VCI_PASSPORT_TOKEN_PATH,
+    OID4VP_CLIENT_ID_SCHEME_REDIRECT_URI, OID4VP_OPENID4VP_SCHEME,
+    OID4VP_RESPONSE_MODE_DIRECT_POST_JWT, OID4VP_RESPONSE_TYPE_VP_TOKEN,
+    OID4VP_VERIFIER_METADATA_PATH, Oid4vciCredentialIssuerMetadata, Oid4vciCredentialRequest,
+    Oid4vciCredentialResponse, Oid4vciTokenRequest, Oid4vciTokenResponse,
+    Oid4vpPresentationVerification, Oid4vpRequestObject, Oid4vpRequestedCredential,
+    Oid4vpVerifierMetadata, PassportLifecycleRecord, PassportLifecycleResolution,
+    PassportLifecycleState, PassportPresentationChallenge, PassportPresentationResponse,
+    PassportPresentationVerification, PassportStatusDistribution, PassportVerifierPolicy,
+    PassportVerifierPolicyReference, PortableJwkSet, PortableNegativeEventIssueRequest,
+    PortableReputationEvaluation, PortableReputationEvaluationRequest,
+    PortableReputationSummaryIssueRequest, PublicDiscoveryEntryKind,
+    PublicDiscoveryImportGuardrails, PublicDiscoveryTransparencyEntry,
+    SignedPassportVerifierPolicy, SignedPortableNegativeEvent, SignedPortableReputationSummary,
+    SignedPublicDiscoveryTransparency, SignedPublicIssuerDiscovery, SignedPublicVerifierDiscovery,
+    WalletExchangeDescriptor, WalletExchangeTransactionState,
     build_chio_passport_jwt_vc_json_type_metadata, build_chio_passport_sd_jwt_type_metadata,
     build_oid4vp_request_transport, build_portable_jwks, build_portable_negative_event_artifact,
     build_portable_reputation_summary_artifact, build_wallet_exchange_descriptor_for_oid4vp,
@@ -38,26 +66,6 @@ use chio_credentials::{
     verify_oid4vp_direct_post_response_with_any_issuer_key,
     verify_passport_presentation_response_with_policy,
     verify_signed_oid4vp_request_object_with_any_key, verify_signed_passport_verifier_policy,
-    AgentPassport, EnterpriseIdentityProvenance, Oid4vciCredentialIssuerMetadata,
-    Oid4vciCredentialRequest, Oid4vciCredentialResponse, Oid4vciTokenRequest, Oid4vciTokenResponse,
-    Oid4vpPresentationVerification, Oid4vpRequestObject, Oid4vpRequestedCredential,
-    Oid4vpVerifierMetadata, PassportLifecycleRecord, PassportLifecycleResolution,
-    PassportLifecycleState, PassportPresentationChallenge, PassportPresentationResponse,
-    PassportPresentationVerification, PassportStatusDistribution, PassportVerifierPolicy,
-    PassportVerifierPolicyReference, PortableJwkSet, PortableNegativeEventIssueRequest,
-    PortableReputationEvaluation, PortableReputationEvaluationRequest,
-    PortableReputationSummaryIssueRequest, PublicDiscoveryEntryKind,
-    PublicDiscoveryImportGuardrails, PublicDiscoveryTransparencyEntry,
-    SignedPassportVerifierPolicy, SignedPortableNegativeEvent, SignedPortableReputationSummary,
-    SignedPublicDiscoveryTransparency, SignedPublicIssuerDiscovery, SignedPublicVerifierDiscovery,
-    WalletExchangeDescriptor, WalletExchangeTransactionState,
-    CHIO_PASSPORT_JWT_VC_JSON_TYPE_METADATA_PATH, CHIO_PASSPORT_SD_JWT_VC_FORMAT,
-    CHIO_PASSPORT_SD_JWT_VC_TYPE, CHIO_PASSPORT_SD_JWT_VC_TYPE_METADATA_PATH,
-    OID4VCI_ISSUER_METADATA_PATH, OID4VCI_JWKS_PATH, OID4VCI_PASSPORT_CREDENTIAL_PATH,
-    OID4VCI_PASSPORT_OFFERS_PATH, OID4VCI_PASSPORT_TOKEN_PATH,
-    OID4VP_CLIENT_ID_SCHEME_REDIRECT_URI, OID4VP_OPENID4VP_SCHEME,
-    OID4VP_RESPONSE_MODE_DIRECT_POST_JWT, OID4VP_RESPONSE_TYPE_VP_TOKEN,
-    OID4VP_VERIFIER_METADATA_PATH,
 };
 use chio_did::DidChio;
 use chio_kernel::budget_store::{
@@ -67,34 +75,17 @@ use chio_kernel::budget_store::{
     BudgetReverseHoldRequest, DeniedBudgetHold,
 };
 use chio_kernel::{
-    build_generic_governance_case_artifact, build_generic_governance_charter_artifact,
-    build_generic_trust_activation_artifact, build_open_market_fee_schedule_artifact,
-    build_open_market_penalty_artifact_with_trusted_signers,
-    ensure_generic_listing_namespace_consistency, evaluate_generic_governance_case,
-    evaluate_generic_trust_activation, evaluate_open_market_penalty_with_trusted_signers,
-    normalize_namespace, GenericGovernanceCaseEvaluation, GenericGovernanceCaseEvaluationRequest,
-    GenericGovernanceCaseIssueRequest,
-    GenericGovernanceCharterIssueRequest, GenericListingActorKind, GenericListingArtifact,
-    GenericListingBoundary, GenericListingCompatibilityReference, GenericListingFreshnessWindow,
-    GenericListingQuery, GenericListingReport, GenericListingSearchPolicy, GenericListingStatus,
-    GenericListingSubject, GenericListingSummary, GenericNamespaceArtifact,
-    GenericNamespaceLifecycleState, GenericNamespaceOwnership, GenericRegistryPublisher,
-    GenericRegistryPublisherRole, GenericTrustActivationEvaluation,
-    GenericTrustActivationEvaluationRequest, GenericTrustActivationIssueRequest,
-    OpenMarketFeeScheduleIssueRequest, OpenMarketPenaltyEvaluation,
-    OpenMarketPenaltyEvaluationRequest, OpenMarketPenaltyIssueRequest, SignedGenericGovernanceCase,
-    SignedGenericGovernanceCharter, SignedGenericListing, SignedGenericNamespace,
-    SignedGenericTrustActivation, SignedOpenMarketFeeSchedule, SignedOpenMarketPenalty,
-    DEFAULT_GENERIC_LISTING_REPORT_MAX_AGE_SECS, GENERIC_LISTING_ARTIFACT_SCHEMA,
-    GENERIC_LISTING_REPORT_SCHEMA, GENERIC_NAMESPACE_ARTIFACT_SCHEMA,
-};
-use chio_kernel::{
-    ChioOAuthAuthorizationMetadataReport, ChioOAuthAuthorizationReviewPack, AuthoritySnapshot,
-    AuthorityStatus, AuthorizationContextReport, BehavioralFeedDecisionSummary,
-    BehavioralFeedPrivacyBoundary, BehavioralFeedQuery, BehavioralFeedReceiptRow,
-    BehavioralFeedReport, BudgetDimensionProfile, BudgetDimensionUsage, BudgetStore,
-    BudgetStoreError, BudgetUsageRecord, BudgetUtilizationReport, BudgetUtilizationRow,
-    BudgetUtilizationSummary, CapabilityAuthority, CapabilitySnapshot,
+    AuthoritySnapshot, AuthorityStatus, AuthorizationContextReport, BEHAVIORAL_FEED_SCHEMA,
+    BehavioralFeedDecisionSummary, BehavioralFeedPrivacyBoundary, BehavioralFeedQuery,
+    BehavioralFeedReceiptRow, BehavioralFeedReport, BudgetDimensionProfile, BudgetDimensionUsage,
+    BudgetStore, BudgetStoreError, BudgetUsageRecord, BudgetUtilizationReport,
+    BudgetUtilizationRow, BudgetUtilizationSummary, CAPITAL_ALLOCATION_DECISION_ARTIFACT_SCHEMA,
+    CAPITAL_BOOK_REPORT_SCHEMA, CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA,
+    CREDIT_BACKTEST_REPORT_SCHEMA, CREDIT_BOND_ARTIFACT_SCHEMA, CREDIT_BOND_REPORT_SCHEMA,
+    CREDIT_BONDED_EXECUTION_SIMULATION_REPORT_SCHEMA, CREDIT_FACILITY_ARTIFACT_SCHEMA,
+    CREDIT_FACILITY_REPORT_SCHEMA, CREDIT_LOSS_LIFECYCLE_ARTIFACT_SCHEMA,
+    CREDIT_LOSS_LIFECYCLE_REPORT_SCHEMA, CREDIT_PROVIDER_RISK_PACKAGE_SCHEMA,
+    CREDIT_SCORECARD_SCHEMA, CapabilityAuthority, CapabilitySnapshot,
     CapitalAllocationDecisionArtifact, CapitalAllocationDecisionFinding,
     CapitalAllocationDecisionOutcome, CapitalAllocationDecisionReasonCode,
     CapitalAllocationDecisionSupportBoundary, CapitalAllocationInstructionDraft, CapitalBookEvent,
@@ -104,7 +95,8 @@ use chio_kernel::{
     CapitalExecutionInstructionAction, CapitalExecutionInstructionArtifact,
     CapitalExecutionInstructionSupportBoundary, CapitalExecutionIntendedState,
     CapitalExecutionObservation, CapitalExecutionRail, CapitalExecutionReconciledState,
-    CapitalExecutionRole, CapitalExecutionWindow, CostAttributionQuery, CostAttributionReport,
+    CapitalExecutionRole, CapitalExecutionWindow, ChioOAuthAuthorizationMetadataReport,
+    ChioOAuthAuthorizationReviewPack, CostAttributionQuery, CostAttributionReport,
     CreditBacktestQuery, CreditBacktestReasonCode, CreditBacktestReport, CreditBacktestSummary,
     CreditBacktestWindow, CreditBondArtifact, CreditBondDisposition, CreditBondFinding,
     CreditBondLifecycleState, CreditBondListQuery, CreditBondListReport, CreditBondPrerequisites,
@@ -129,10 +121,19 @@ use chio_kernel::{
     CreditScorecardDimensionKind, CreditScorecardEvidenceKind, CreditScorecardEvidenceReference,
     CreditScorecardProbationStatus, CreditScorecardReasonCode, CreditScorecardReport,
     CreditScorecardReputationContext, CreditScorecardSummary, CreditScorecardSupportBoundary,
-    ExposureLedgerCurrencyPosition, ExposureLedgerDecisionEntry, ExposureLedgerEvidenceKind,
-    ExposureLedgerEvidenceReference, ExposureLedgerQuery, ExposureLedgerReceiptEntry,
-    ExposureLedgerReport, ExposureLedgerSummary, ExposureLedgerSupportBoundary,
-    EconomicCompletionFlowReport, EconomicReceiptProjectionReport,
+    EXPOSURE_LEDGER_SCHEMA, EconomicCompletionFlowReport, EconomicReceiptProjectionReport,
+    EvidenceExportQuery, ExposureLedgerCurrencyPosition, ExposureLedgerDecisionEntry,
+    ExposureLedgerEvidenceKind, ExposureLedgerEvidenceReference, ExposureLedgerQuery,
+    ExposureLedgerReceiptEntry, ExposureLedgerReport, ExposureLedgerSummary,
+    ExposureLedgerSupportBoundary, LIABILITY_AUTO_BIND_DECISION_ARTIFACT_SCHEMA,
+    LIABILITY_BOUND_COVERAGE_ARTIFACT_SCHEMA, LIABILITY_CLAIM_ADJUDICATION_ARTIFACT_SCHEMA,
+    LIABILITY_CLAIM_DISPUTE_ARTIFACT_SCHEMA, LIABILITY_CLAIM_PACKAGE_ARTIFACT_SCHEMA,
+    LIABILITY_CLAIM_PAYOUT_INSTRUCTION_ARTIFACT_SCHEMA,
+    LIABILITY_CLAIM_PAYOUT_RECEIPT_ARTIFACT_SCHEMA, LIABILITY_CLAIM_RESPONSE_ARTIFACT_SCHEMA,
+    LIABILITY_CLAIM_SETTLEMENT_INSTRUCTION_ARTIFACT_SCHEMA,
+    LIABILITY_CLAIM_SETTLEMENT_RECEIPT_ARTIFACT_SCHEMA, LIABILITY_PLACEMENT_ARTIFACT_SCHEMA,
+    LIABILITY_PRICING_AUTHORITY_ARTIFACT_SCHEMA, LIABILITY_PROVIDER_ARTIFACT_SCHEMA,
+    LIABILITY_QUOTE_REQUEST_ARTIFACT_SCHEMA, LIABILITY_QUOTE_RESPONSE_ARTIFACT_SCHEMA,
     LiabilityAutoBindDecisionArtifact, LiabilityAutoBindDisposition,
     LiabilityBoundCoverageArtifact, LiabilityClaimAdjudicationArtifact,
     LiabilityClaimAdjudicationOutcome, LiabilityClaimDisputeArtifact, LiabilityClaimEvidenceKind,
@@ -149,9 +150,11 @@ use chio_kernel::{
     LiabilityProviderPolicyReference, LiabilityProviderReport, LiabilityProviderResolutionQuery,
     LiabilityProviderResolutionReport, LiabilityQuoteDisposition, LiabilityQuoteRequestArtifact,
     LiabilityQuoteResponseArtifact, LiabilityQuoteTerms, LocalCapabilityAuthority,
-    MeteredBillingEvidenceRecord, MeteredBillingReconciliationReport,
-    MeteredBillingReconciliationState, OperatorReport, OperatorReportQuery, ReceiptAnalyticsQuery,
-    ReceiptAnalyticsResponse, ReceiptQuery, ReceiptStore, ReceiptStoreError, RevocationRecord,
+    MAX_CREDIT_BOND_LIST_LIMIT, MAX_CREDIT_FACILITY_LIST_LIMIT,
+    MAX_CREDIT_LOSS_LIFECYCLE_LIST_LIMIT, MeteredBillingEvidenceRecord,
+    MeteredBillingReconciliationReport, MeteredBillingReconciliationState, OperatorReport,
+    OperatorReportQuery, ReceiptAnalyticsQuery, ReceiptAnalyticsResponse, ReceiptQuery,
+    ReceiptReadBoundary, ReceiptReadContext, ReceiptStore, ReceiptStoreError, RevocationRecord,
     RevocationStore, RevocationStoreError, SettlementReconciliationReport,
     SettlementReconciliationState, SharedEvidenceQuery, SharedEvidenceReferenceReport,
     SignedBehavioralFeed, SignedCapitalAllocationDecision, SignedCapitalBookReport,
@@ -165,6 +168,7 @@ use chio_kernel::{
     SignedLiabilityPricingAuthority, SignedLiabilityProvider, SignedLiabilityQuoteRequest,
     SignedLiabilityQuoteResponse, SignedUnderwritingDecision, SignedUnderwritingPolicyInput,
     StoredCapabilitySnapshot, StoredChildReceipt, StoredToolReceipt,
+    UNDERWRITING_POLICY_INPUT_SCHEMA, UNDERWRITING_SIMULATION_REPORT_SCHEMA,
     UnderwritingAppealCreateRequest, UnderwritingAppealRecord, UnderwritingAppealResolveRequest,
     UnderwritingCertificationEvidence, UnderwritingCertificationState,
     UnderwritingDecisionListReport, UnderwritingDecisionPolicy, UnderwritingDecisionQuery,
@@ -173,38 +177,36 @@ use chio_kernel::{
     UnderwritingReceiptEvidence, UnderwritingReputationEvidence, UnderwritingRiskClass,
     UnderwritingRiskTaxonomy, UnderwritingRuntimeAssuranceEvidence, UnderwritingSignal,
     UnderwritingSimulationDelta, UnderwritingSimulationReport, UnderwritingSimulationRequest,
-    BEHAVIORAL_FEED_SCHEMA, CAPITAL_ALLOCATION_DECISION_ARTIFACT_SCHEMA,
-    CAPITAL_BOOK_REPORT_SCHEMA, CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA,
-    CREDIT_BACKTEST_REPORT_SCHEMA, CREDIT_BONDED_EXECUTION_SIMULATION_REPORT_SCHEMA,
-    CREDIT_BOND_ARTIFACT_SCHEMA, CREDIT_BOND_REPORT_SCHEMA, CREDIT_FACILITY_ARTIFACT_SCHEMA,
-    CREDIT_FACILITY_REPORT_SCHEMA, CREDIT_LOSS_LIFECYCLE_ARTIFACT_SCHEMA,
-    CREDIT_LOSS_LIFECYCLE_REPORT_SCHEMA, CREDIT_PROVIDER_RISK_PACKAGE_SCHEMA,
-    CREDIT_SCORECARD_SCHEMA, EXPOSURE_LEDGER_SCHEMA, LIABILITY_AUTO_BIND_DECISION_ARTIFACT_SCHEMA,
-    LIABILITY_BOUND_COVERAGE_ARTIFACT_SCHEMA, LIABILITY_CLAIM_ADJUDICATION_ARTIFACT_SCHEMA,
-    LIABILITY_CLAIM_DISPUTE_ARTIFACT_SCHEMA, LIABILITY_CLAIM_PACKAGE_ARTIFACT_SCHEMA,
-    LIABILITY_CLAIM_PAYOUT_INSTRUCTION_ARTIFACT_SCHEMA,
-    LIABILITY_CLAIM_PAYOUT_RECEIPT_ARTIFACT_SCHEMA, LIABILITY_CLAIM_RESPONSE_ARTIFACT_SCHEMA,
-    LIABILITY_CLAIM_SETTLEMENT_INSTRUCTION_ARTIFACT_SCHEMA,
-    LIABILITY_CLAIM_SETTLEMENT_RECEIPT_ARTIFACT_SCHEMA, LIABILITY_PLACEMENT_ARTIFACT_SCHEMA,
-    LIABILITY_PRICING_AUTHORITY_ARTIFACT_SCHEMA, LIABILITY_PROVIDER_ARTIFACT_SCHEMA,
-    LIABILITY_QUOTE_REQUEST_ARTIFACT_SCHEMA, LIABILITY_QUOTE_RESPONSE_ARTIFACT_SCHEMA,
-    MAX_CREDIT_BOND_LIST_LIMIT, MAX_CREDIT_FACILITY_LIST_LIMIT,
-    MAX_CREDIT_LOSS_LIFECYCLE_LIST_LIMIT, UNDERWRITING_POLICY_INPUT_SCHEMA,
-    UNDERWRITING_SIMULATION_REPORT_SCHEMA,
+};
+use chio_kernel::{
+    DEFAULT_GENERIC_LISTING_REPORT_MAX_AGE_SECS, GENERIC_LISTING_ARTIFACT_SCHEMA,
+    GENERIC_LISTING_REPORT_SCHEMA, GENERIC_NAMESPACE_ARTIFACT_SCHEMA,
+    GenericGovernanceCaseEvaluation, GenericGovernanceCaseEvaluationRequest,
+    GenericGovernanceCaseIssueRequest, GenericGovernanceCharterIssueRequest,
+    GenericListingActorKind, GenericListingArtifact, GenericListingBoundary,
+    GenericListingCompatibilityReference, GenericListingFreshnessWindow, GenericListingQuery,
+    GenericListingReport, GenericListingSearchPolicy, GenericListingStatus, GenericListingSubject,
+    GenericListingSummary, GenericNamespaceArtifact, GenericNamespaceLifecycleState,
+    GenericNamespaceOwnership, GenericRegistryPublisher, GenericRegistryPublisherRole,
+    GenericTrustActivationEvaluation, GenericTrustActivationEvaluationRequest,
+    GenericTrustActivationIssueRequest, OpenMarketFeeScheduleIssueRequest,
+    OpenMarketPenaltyEvaluation, OpenMarketPenaltyEvaluationRequest, OpenMarketPenaltyIssueRequest,
+    SignedGenericGovernanceCase, SignedGenericGovernanceCharter, SignedGenericListing,
+    SignedGenericNamespace, SignedGenericTrustActivation, SignedOpenMarketFeeSchedule,
+    SignedOpenMarketPenalty, build_generic_governance_case_artifact,
+    build_generic_governance_charter_artifact, build_generic_trust_activation_artifact,
+    build_open_market_fee_schedule_artifact,
+    build_open_market_penalty_artifact_with_trusted_signers,
+    ensure_generic_listing_namespace_consistency, evaluate_generic_governance_case,
+    evaluate_generic_trust_activation, evaluate_open_market_penalty_with_trusted_signers,
+    normalize_namespace,
 };
 use chio_store_sqlite::{
     SqliteBudgetStore, SqliteCapabilityAuthority, SqliteReceiptStore, SqliteRevocationStore,
 };
-use axum::extract::Form;
-use axum::extract::{Path as AxumPath, Query, State};
-use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, WWW_AUTHENTICATE};
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{delete, get, post};
-use axum::{Json, Router};
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use subtle::ConstantTimeEq;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -214,7 +216,7 @@ use url::form_urlencoded::Serializer as UrlFormSerializer;
 use url::{Host, Url};
 
 use crate::{
-    authority_public_key_from_seed_file,
+    CliError, authority_public_key_from_seed_file,
     certify::{
         CertificationConsumptionRequest, CertificationConsumptionResponse,
         CertificationDiscoveryResponse, CertificationDisputeRequest,
@@ -233,11 +235,11 @@ use crate::{
     },
     evidence_export,
     federation_policy::{
-        verify_admission_proof_of_work, verify_federation_admission_policy_record,
         FederationAdmissionEvaluationRequest, FederationAdmissionEvaluationResponse,
         FederationAdmissionPolicyDeleteResponse, FederationAdmissionPolicyListResponse,
         FederationAdmissionPolicyRecord, FederationAdmissionPolicyRegistry,
         FederationAdmissionRateLimit, FederationAdmissionRateLimitStatus,
+        verify_admission_proof_of_work, verify_federation_admission_policy_record,
     },
     issuance, load_or_create_authority_keypair,
     passport_verifier::{
@@ -247,10 +249,9 @@ use crate::{
     },
     reputation, rotate_authority_keypair,
     scim_lifecycle::{
-        build_scim_error, build_scim_user_record, ensure_scim_provider, required_chio_extension,
-        ScimLifecycleRegistry, ScimUserResource,
+        ScimLifecycleRegistry, ScimUserResource, build_scim_error, build_scim_user_record,
+        ensure_scim_provider, required_chio_extension,
     },
-    CliError,
 };
 
 // Content Security Policy applied to all responses from the dashboard/API server.
@@ -443,6 +444,7 @@ const CLUSTER_SNAPSHOT_RECORD_THRESHOLD: u64 = 8;
 pub struct TrustServiceConfig {
     pub listen: SocketAddr,
     pub service_token: String,
+    pub tenant_read_tokens: BTreeMap<String, String>,
     pub receipt_db_path: Option<PathBuf>,
     pub revocation_db_path: Option<PathBuf>,
     pub authority_seed_path: Option<PathBuf>,

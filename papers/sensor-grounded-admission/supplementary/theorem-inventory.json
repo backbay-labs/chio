@@ -26,10 +26,10 @@
       "axioms": ["propext"]
     },
     {
-      "name": "degraded_sensor_admission_requires_re_attestation",
+      "name": "degraded_sensor_admission_requires_re_admission_witness",
       "module": "Chio.Treaty.SensorGroundedAdmission",
-      "declaration": "Chio.Treaty.SensorAttestation.degraded_sensor_admission_requires_re_attestation",
-      "paper_section": "Section 4 (Formal Model), amendment re-attestation",
+      "declaration": "Chio.Treaty.SensorAttestation.degraded_sensor_admission_requires_re_admission_witness",
+      "paper_section": "Section 4 (Formal Model), amendment re-admission",
       "axioms": ["propext", "Quot.sound"]
     }
   ]

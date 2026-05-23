@@ -25,8 +25,6 @@ set_option autoImplicit false
 
 namespace Chio.Treaty.BilateralAccept
 
-open Chio.Treaty.PredicateLang
-
 /-- Opaque key identifier (sha256 fingerprint, hex, etc.). -/
 abbrev KeyId := String
 
@@ -52,8 +50,8 @@ structure KernelSig where
     short-paper model treats `receiptId` as the canonical receipt
     identifier and `scope` as the policy that gates this envelope. -/
 structure BilateralEnvelope where
-  receiptId : ReceiptId
-  scope : Predicate
+  receiptId : PredicateLang.ReceiptId
+  scope : PredicateLang.Predicate
   issuerSig : IssuerSig
   kernelSig : KernelSig
   deriving Repr, BEq, DecidableEq, Inhabited
@@ -81,7 +79,7 @@ def accept
     (store : TrustStore) (env : BilateralEnvelope) : Bool :=
   decide (env.issuerSig.keyId ∈ store.issuerKeys) &&
   decide (env.kernelSig.keyId ∈ store.kernelKeys) &&
-  denote env.scope env.receiptId
+  PredicateLang.denote env.scope env.receiptId
 
 /--
   Freestanding accept-set theorem (short-paper §4): a bilateral
@@ -95,7 +93,7 @@ theorem freestanding_accept_set_theorem
     accept store env = true ↔
     (env.issuerSig.keyId ∈ store.issuerKeys ∧
      env.kernelSig.keyId ∈ store.kernelKeys ∧
-     denote env.scope env.receiptId = true) := by
+     PredicateLang.denote env.scope env.receiptId = true) := by
   unfold accept
   simp [Bool.and_eq_true, and_assoc]
 
@@ -126,20 +124,22 @@ theorem accept_monotone_in_issuer_store
 -/
 theorem accept_conj_scope_decompose
     (store : TrustStore) (env : BilateralEnvelope)
-    (p q : Predicate)
+    (p q : PredicateLang.Predicate)
     (hScope : env.scope = .conj p q)
     (hAccept : accept store env = true) :
     accept store { env with scope := p } = true ∧
     accept store { env with scope := q } = true := by
   rw [freestanding_accept_set_theorem] at hAccept
+  have hIssuer : env.issuerSig.keyId ∈ store.issuerKeys := hAccept.1
+  have hKernel : env.kernelSig.keyId ∈ store.kernelKeys := hAccept.2.1
   rw [hScope] at hAccept
-  have hConj : denote (.conj p q) env.receiptId = true := hAccept.2.2
-  simp [denote] at hConj
+  have hConj : PredicateLang.denote (.conj p q) env.receiptId = true := hAccept.2.2
+  simp [PredicateLang.denote] at hConj
   refine ⟨?_, ?_⟩
   · rw [freestanding_accept_set_theorem]
-    exact ⟨hAccept.1, hAccept.2.1, hConj.1⟩
+    exact ⟨hIssuer, hKernel, hConj.1⟩
   · rw [freestanding_accept_set_theorem]
-    exact ⟨hAccept.1, hAccept.2.1, hConj.2⟩
+    exact ⟨hIssuer, hKernel, hConj.2⟩
 
 /--
   Corollary 3: rejection on missing issuer key. An envelope whose

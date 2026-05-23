@@ -27,7 +27,13 @@ fn make_receipt(keypair: &Keypair, id: &str, timestamp: u64) -> ChioReceipt {
             tool_server: "srv".to_string(),
             tool_name: "t".to_string(),
             action,
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "ch".to_string(),
             policy_hash: "ph".to_string(),
             evidence: Vec::new(),
@@ -49,6 +55,7 @@ impl RegulatoryReceiptSource for FixedSource {
     fn query_receipts(
         &self,
         _query: &RegulatoryReceiptsQuery,
+        _read_context: &chio_kernel::ReceiptReadContext,
     ) -> Result<RegulatoryReceiptQueryResult, RegulatoryApiError> {
         Ok(RegulatoryReceiptQueryResult {
             matching_receipts: self.receipts.len() as u64,

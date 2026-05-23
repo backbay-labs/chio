@@ -84,7 +84,13 @@ fn make_receipt(id: &str) -> ChioReceipt {
             tool_name: "bash".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({}))
                 .expect("action parameters serialize"),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: chio_core::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core::RedactionMode::None,
+            actor_chain: Vec::new(),
             content_hash: "content-hash".to_string(),
             policy_hash: "policy-hash".to_string(),
             evidence: Vec::new(),
@@ -269,6 +275,8 @@ async fn manager_cursor_advance_after_export() {
         base_backoff_ms: 0,
         dlq_capacity: 100,
         rate_limit: None,
+        trusted_kernel_keys: std::collections::BTreeSet::new(),
+        read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
     };
 
     let mut manager = ExporterManager::new(config.clone()).expect("open ExporterManager");
@@ -347,6 +355,8 @@ async fn manager_failure_isolation_dlq() {
         base_backoff_ms: 0,
         dlq_capacity: 100,
         rate_limit: None,
+        trusted_kernel_keys: std::collections::BTreeSet::new(),
+        read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
     };
 
     let mut manager = ExporterManager::new(config).expect("open ExporterManager");
@@ -406,6 +416,8 @@ async fn manager_cursor_advances_past_dlq() {
         base_backoff_ms: 0,
         dlq_capacity: 100,
         rate_limit: None,
+        trusted_kernel_keys: std::collections::BTreeSet::new(),
+        read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
     })
     .expect("open mgr1");
     mgr1.add_exporter(Box::new(FailingExporter));
@@ -438,6 +450,8 @@ async fn manager_cursor_advances_past_dlq() {
         base_backoff_ms: 0,
         dlq_capacity: 100,
         rate_limit: None,
+        trusted_kernel_keys: std::collections::BTreeSet::new(),
+        read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
     })
     .expect("open mgr2");
     mgr2.add_exporter(Box::new(counter.clone()));
@@ -483,6 +497,8 @@ async fn manager_retries_transient_failure_without_dlq() {
         base_backoff_ms: 10,
         dlq_capacity: 100,
         rate_limit: None,
+        trusted_kernel_keys: std::collections::BTreeSet::new(),
+        read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
     })
     .expect("open ExporterManager");
     manager.add_exporter(Box::new(exporter.clone()));
@@ -541,6 +557,8 @@ async fn manager_rate_limits_bursts_without_silent_drop() {
             window: Duration::from_millis(150),
             burst_factor: 1.0,
         }),
+        trusted_kernel_keys: std::collections::BTreeSet::new(),
+        read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
     })
     .expect("open ExporterManager");
     manager.add_exporter(Box::new(exporter.clone()));

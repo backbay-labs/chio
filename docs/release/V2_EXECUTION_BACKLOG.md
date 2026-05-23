@@ -1,4 +1,9 @@
-# V2 Execution Backlog
+# Historical Internal Milestone Backlog
+
+> This document is historical pre-release planning. Chio-owned protocol,
+> schema, runtime, SDK, and storage surfaces are current v1 only. Do not use
+> this backlog as active execution guidance without reconciling it with
+> `spec/PROTOCOL.md` and the accepted protocol ADRs.
 
 **Date:** 2026-03-23
 **Source:** post-v2 code review, testing pass, and roadmap gap analysis
@@ -13,10 +18,10 @@
 
 ## Recommended Order
 
-1. Close all `P0` items before calling the v2 foundation bulletproof.
-2. Finish the `P1` substrate before starting reputation or payment-rail work.
-3. Use `P2` as the active product roadmap once the foundation is stable.
-4. Keep `P3` out of the immediate execution wave unless a design partner forces it.
+1. Historical note: close all `P0` items before calling the internal milestone foundation bulletproof.
+2. Historical note: finish the `P1` substrate before starting reputation or payment-rail work.
+3. Historical note: `P2` was a candidate product roadmap after the foundation stabilized.
+4. Historical note: keep `P3` out of the immediate execution wave unless a design partner forced it.
 
 ## Verified Completed (2026-03-23)
 

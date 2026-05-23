@@ -29,7 +29,7 @@
        fact use the `destructiveAdmissionFamily` hypothesis; STATUS.md
        records this.
 
-  4. `degraded_sensor_admission_requires_re_attestation`
+  4. `degraded_sensor_admission_requires_re_admission_witness`
      - Amendment improvement: an attestation in partition contingency
        for the prior required set, admitted under the amended
        constitution, is no longer in partition contingency for the
@@ -67,6 +67,7 @@ inductive ProviderKind where
   | supplyChainGuard
   | behavioralTelemetry
   | agentApi
+  | honeyToken
   | other
   deriving Repr, BEq, DecidableEq, Inhabited
 
@@ -146,7 +147,8 @@ def providerHealthy
       && p.providerKind == entry.providerKind
       && p.installed
       && p.active
-      && p.healthy)
+      && p.healthy
+      && !p.degraded)
 
 /-- Required-set covered: every required entry has a healthy provider. -/
 def requiredSetCovered
@@ -196,8 +198,8 @@ def destructiveAdmissionFamily : ReceiptFamily -> Bool
   | .policyDecision => true
   | _ => false
 
-/-- A re-attestation witness for an amendment. -/
-structure ReAttestationWitness where
+/-- A re-admission witness for an amendment under the same attestation bytes. -/
+structure ReAdmissionWitness where
   newAttestation : SensorAttestation
   amendedRequiredSet : RequiredSetDecl
   coverage :
@@ -529,8 +531,8 @@ theorem partitionContingencyMode_false_of_covered
 
 /--
   Supporting theorem: an amendment that re-admits a receipt previously
-  admitted under partition contingency must carry a re-attestation
-  witness whose attestation is no longer in partition contingency for
+  admitted under partition contingency must carry a re-admission witness
+  whose existing attestation is no longer in partition contingency for
   the amended required set. The premise `h_prev_partition` and the
   conclusion's `prev = true / next = false` contrast together state
   that the amendment is a structural improvement: the same attestation
@@ -543,17 +545,18 @@ theorem partitionContingencyMode_false_of_covered
   hypothesis with the proof that the new mode is false on the amended
   declaration.
 -/
-theorem degraded_sensor_admission_requires_re_attestation
+theorem degraded_sensor_admission_requires_re_admission_witness
     (cprev cnext : SensorAwareConstitution)
     (r : SensorAttestedReceipt)
     (declprev : RequiredSetDecl)
-    (_h_prev_decl : lookupRequiredSet cprev r.body.family = some declprev)
+    (h_prev_decl : lookupRequiredSet cprev r.body.family = some declprev)
     (h_prev_partition :
       partitionContingencyMode declprev r.attestation = true)
     (h_amended_admits :
       admissibleUnderSensorState cnext r = true) :
-    ∃ witness : ReAttestationWitness,
-      lookupRequiredSet cnext r.body.family
+    ∃ witness : ReAdmissionWitness,
+      lookupRequiredSet cprev r.body.family = some declprev
+        ∧ lookupRequiredSet cnext r.body.family
         = some witness.amendedRequiredSet
         ∧ partitionContingencyMode declprev witness.newAttestation = true
         ∧ partitionContingencyMode witness.amendedRequiredSet
@@ -569,12 +572,12 @@ theorem degraded_sensor_admission_requires_re_attestation
     have h_conj := (Bool.and_eq_true _ _).mp h_amended_admits
     have h_left := (Bool.and_eq_true _ _).mp h_conj.1
     have h_cov : requiredSetCovered declnext r.attestation = true := h_left.2
-    let witness : ReAttestationWitness :=
+    let witness : ReAdmissionWitness :=
       { newAttestation := r.attestation
       , amendedRequiredSet := declnext
       , coverage := h_cov
       }
-    refine ⟨witness, rfl, ?_, ?_⟩
+    refine ⟨witness, h_prev_decl, rfl, ?_, ?_⟩
     · -- prior partition-contingency mode holds on `witness.newAttestation`.
       exact h_prev_partition
     · -- the amended-required mode is false on the same attestation.

@@ -29,6 +29,10 @@ def test_evaluate_allow_returns_verdict() -> None:
             json={
                 "decision": "allow",
                 "receipt_id": "rcpt-1",
+                "authorized": True,
+                "authoritative": True,
+                "receipt_kind": "mediated_decision",
+                "boundary_class": "prevent",
                 "reason": None,
                 "capability_id": "cap-1",
                 "tool_server": "srv",
@@ -46,6 +50,70 @@ def test_evaluate_allow_returns_verdict() -> None:
     assert not verdict.denied
     assert verdict.receipt_id == "rcpt-1"
     assert verdict.decision == "allow"
+    assert verdict.authorized
+    assert verdict.authoritative
+
+
+def test_evaluate_raw_allow_without_authority_denies() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "decision": "allow",
+                "receipt_id": "rcpt-raw",
+                "reason": None,
+                "capability_id": "cap-1",
+                "tool_server": "srv",
+                "tool_name": "tool",
+                "timestamp": 1_700_000_000,
+            },
+        )
+
+    with ChioLambdaClient(transport=_mock_transport(handler)) as client:
+        verdict = client.evaluate(
+            capability_id="cap-1", tool_server="srv", tool_name="tool"
+        )
+
+    assert verdict.denied
+    assert not verdict.allowed
+
+
+@pytest.mark.parametrize(
+    ("receipt_kind", "boundary_class"),
+    [
+        ("trace_observation", "detect_only"),
+        ("mediated_decision", "advisory_only"),
+    ],
+)
+def test_evaluate_allow_without_mediated_prevent_semantics_denies(
+    receipt_kind: str,
+    boundary_class: str,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "decision": "allow",
+                "receipt_id": "rcpt-observed",
+                "authorized": True,
+                "authoritative": True,
+                "receipt_kind": receipt_kind,
+                "boundary_class": boundary_class,
+                "reason": None,
+                "capability_id": "cap-1",
+                "tool_server": "srv",
+                "tool_name": "tool",
+                "timestamp": 1_700_000_000,
+            },
+        )
+
+    with ChioLambdaClient(transport=_mock_transport(handler)) as client:
+        verdict = client.evaluate(
+            capability_id="cap-1", tool_server="srv", tool_name="tool"
+        )
+
+    assert verdict.denied
+    assert not verdict.allowed
 
 
 def test_evaluate_deny_reports_reason() -> None:
@@ -82,6 +150,10 @@ def test_evaluate_forwards_scope_and_arguments() -> None:
             json={
                 "decision": "allow",
                 "receipt_id": "r",
+                "authorized": True,
+                "authoritative": True,
+                "receipt_kind": "mediated_decision",
+                "boundary_class": "prevent",
                 "reason": None,
                 "capability_id": "c",
                 "tool_server": "s",

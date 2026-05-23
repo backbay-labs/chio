@@ -1,5 +1,7 @@
 """Chio SDK for Python -- thin HTTP client to the Chio sidecar kernel."""
 
+from typing import Any
+
 from chio_sdk.models import (
     ChioHttpRequest,
     ChioPassthrough,
@@ -24,7 +26,6 @@ from chio_sdk.models import (
     ToolGrant,
     Verdict,
 )
-from chio_sdk.client import ChioClient
 from chio_sdk.errors import (
     ChioError,
     ChioConnectionError,
@@ -83,3 +84,11 @@ __all__ = [
     "ChioTimeoutError",
     "ChioValidationError",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "ChioClient":
+        from chio_sdk.client import ChioClient
+
+        return ChioClient
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

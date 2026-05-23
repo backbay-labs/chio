@@ -1,10 +1,11 @@
 // CLI handlers for `chio cert` commands.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use chio_acp_proxy::{
-    generate_compliance_certificate, verify_compliance_certificate, ComplianceCertificate,
-    ComplianceConfig, ComplianceReceiptEntry, VerificationMode,
+    ComplianceCertificate, ComplianceConfig, ComplianceReceiptEntry, VerificationMode,
+    generate_compliance_certificate, verify_compliance_certificate,
 };
 
 use crate::CliError;
@@ -26,8 +27,9 @@ pub fn cmd_cert_generate(
 
     // Open the receipt store and load receipts for the session.
     let db_path = receipt_db.to_string_lossy();
-    let conn = rusqlite::Connection::open(receipt_db)
-        .map_err(|e| CliError::cli_other_error(format!("failed to open receipt db {db_path}: {e}")))?;
+    let conn = rusqlite::Connection::open(receipt_db).map_err(|e| {
+        CliError::cli_other_error(format!("failed to open receipt db {db_path}: {e}"))
+    })?;
 
     let receipts = load_session_receipts(&conn, session_id)?;
 
@@ -35,6 +37,8 @@ pub fn cmd_cert_generate(
         budget_limit,
         required_guards: Vec::new(),
         authorized_scopes: Vec::new(),
+        expected_tenant_id: None,
+        trusted_kernel_keys: BTreeSet::from([keypair.public_key().to_hex()]),
     };
 
     let cert = generate_compliance_certificate(session_id, &receipts, &config, &keypair)
@@ -67,6 +71,7 @@ pub fn cmd_cert_verify(
     certificate_path: &Path,
     full: bool,
     receipt_db: Option<&Path>,
+    trusted_kernel_pubkey: &Path,
     json_output: bool,
 ) -> Result<(), CliError> {
     let cert_text = std::fs::read_to_string(certificate_path)
@@ -83,8 +88,9 @@ pub fn cmd_cert_verify(
 
     let receipts = if full {
         if let Some(db_path) = receipt_db {
-            let conn = rusqlite::Connection::open(db_path)
-                .map_err(|e| CliError::cli_other_error(format!("failed to open receipt db: {e}")))?;
+            let conn = rusqlite::Connection::open(db_path).map_err(|e| {
+                CliError::cli_other_error(format!("failed to open receipt db: {e}"))
+            })?;
             let entries = load_session_receipts(&conn, &cert.body.session_id)?;
             Some(entries)
         } else {
@@ -96,7 +102,19 @@ pub fn cmd_cert_verify(
         None
     };
 
-    let result = verify_compliance_certificate(&cert, mode, receipts.as_deref());
+    let trusted_kernel_key =
+        crate::load_trusted_kernel_pubkey(trusted_kernel_pubkey).map_err(|e| {
+            CliError::cli_other_error(format!("failed to load trusted kernel pubkey: {e}"))
+        })?;
+    let config = ComplianceConfig {
+        budget_limit: 0,
+        required_guards: Vec::new(),
+        authorized_scopes: Vec::new(),
+        expected_tenant_id: None,
+        trusted_kernel_keys: BTreeSet::from([trusted_kernel_key.to_hex()]),
+    };
+
+    let result = verify_compliance_certificate(&cert, mode, receipts.as_deref(), &config);
 
     if json_output {
         let result_json = serde_json::to_string_pretty(&result)
@@ -224,7 +242,8 @@ fn load_session_receipts(
 
     let mut entries = Vec::new();
     for row in rows {
-        let (seq, json_data) = row.map_err(|e| CliError::cli_other_error(format!("row read failed: {e}")))?;
+        let (seq, json_data) =
+            row.map_err(|e| CliError::cli_other_error(format!("row read failed: {e}")))?;
         let receipt: chio_core::receipt::ChioReceipt = serde_json::from_str(&json_data)
             .map_err(|e| CliError::cli_other_error(format!("receipt parse failed: {e}")))?;
         entries.push(ComplianceReceiptEntry { receipt, seq });

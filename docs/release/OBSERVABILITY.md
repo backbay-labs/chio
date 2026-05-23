@@ -1,9 +1,13 @@
 # Observability Guide
 
-Chio `v2.8` treats observability as a supported operator contract, not a
-best-effort debugging convenience. The goal is that an operator can identify
-trust, lifecycle, federation, and evidence problems without reading Rust source
-or replaying raw traffic by hand.
+Chio treats observability as a supported operator contract, not a best-effort
+debugging convenience. The goal is that an operator can identify trust,
+lifecycle, federation, and evidence problems without reading Rust source or
+replaying raw traffic by hand.
+
+> Version posture: this is a pre-release operator guide. Internal `v2.x`
+> milestone labels are historical planning labels, not Chio-owned protocol,
+> schema, SDK, or runtime versions. Current protocol posture is v1-only.
 
 ## Principles
 

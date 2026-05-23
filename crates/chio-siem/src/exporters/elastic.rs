@@ -169,9 +169,33 @@ impl Exporter for ElasticsearchExporter {
                 body.push_str(&action.to_string());
                 body.push('\n');
 
-                let doc = serde_json::to_string(&ev.receipt).map_err(|e| {
+                let mut document = serde_json::to_value(&ev.receipt).map_err(|e| {
                     ExportError::SerializationError(format!(
                         "failed to serialize receipt {}: {e}",
+                        ev.receipt.id
+                    ))
+                })?;
+                if let Some(obj) = document.as_object_mut() {
+                    obj.insert(
+                        "receipt_kind".to_string(),
+                        serde_json::Value::String(ev.receipt_kind.clone()),
+                    );
+                    obj.insert(
+                        "boundary_class".to_string(),
+                        serde_json::Value::String(ev.boundary_class.clone()),
+                    );
+                    obj.insert(
+                        "result".to_string(),
+                        serde_json::Value::String(ev.result.clone()),
+                    );
+                    obj.insert(
+                        "authorized".to_string(),
+                        serde_json::Value::Bool(ev.authorized),
+                    );
+                }
+                let doc = serde_json::to_string(&document).map_err(|e| {
+                    ExportError::SerializationError(format!(
+                        "failed to serialize receipt document {}: {e}",
                         ev.receipt.id
                     ))
                 })?;

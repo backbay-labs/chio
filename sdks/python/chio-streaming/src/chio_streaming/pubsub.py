@@ -278,7 +278,7 @@ class ChioPubSubMiddleware:
                     request_id=request_id,
                 )
             raise
-        if receipt.is_denied:
+        if not receipt.is_allowed:
             return await self._handle_deny(
                 message=message,
                 subject=subject,

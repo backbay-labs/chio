@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: d680571b15f2c519e43943d2ec4e7754e54e544f1245ac1e25d16952856342c9
+# Schema sha256: 7223531823b07d4fb9431326768d3983613ee0dfdc0d30b28876f52d7a901e0b
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -10,12 +10,10 @@
 
 from __future__ import annotations
 
-from .capabilities_schema import ChioCapabilityNegotiationV1, MaxCapabilitySchema
+from .capabilities_schema import ChioCapabilityNegotiationV1
 from .grant_schema import ChioCapabilityGrant, Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
 from .revocation_schema import ChioCapabilityRevocationEntry
-from .token_schema import Algorithm, Attenuation, ChioCapabilitytoken, ChioScope, Constraint, DelegationLink, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
-from .token_v1_schema import Algorithm, Attenuation, ChioCapabilitytokenV1, ChioScope, Constraint, DelegationLink, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
-from .token_v2_schema import Algorithm, AttenuationProof, AttenuationWitness, Caveat, ChioCapabilitytokenV2, ChioScope, Constraint, GrantKind, GrantSubsetRelation, Kind, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ScopeAttenuation, ToolGrant
+from .token_schema import Algorithm, Attenuation, AttenuationProof, AttenuationWitness, Caveat, ChioCapabilitytoken, ChioScope, Constraint, DelegationLink, GrantKind, GrantSubsetRelation, Kind, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ScopeAttenuation, Subset, ToolGrant
 
 __all__ = [
     "Algorithm",
@@ -27,19 +25,17 @@ __all__ = [
     "ChioCapabilityNegotiationV1",
     "ChioCapabilityRevocationEntry",
     "ChioCapabilitytoken",
-    "ChioCapabilitytokenV1",
-    "ChioCapabilitytokenV2",
     "ChioScope",
     "Constraint",
     "DelegationLink",
     "GrantKind",
     "GrantSubsetRelation",
     "Kind",
-    "MaxCapabilitySchema",
     "MonetaryAmount",
     "Operation",
     "PromptGrant",
     "ResourceGrant",
     "ScopeAttenuation",
+    "Subset",
     "ToolGrant",
 ]

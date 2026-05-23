@@ -1,7 +1,8 @@
+import { isAuthorizedEvaluation, nonAuthorizingReason, type ChioAuthorityFields } from "./authority.js";
 import { createDenialResponse } from "./denial.js";
 import { passThroughStreamingResponse } from "./streaming.js";
 
-export interface ChioRouteEvaluation {
+export interface ChioRouteEvaluation extends ChioAuthorityFields {
   verdict: "allow" | "deny";
   reason?: string | undefined;
   reasonCode?: string | undefined;
@@ -25,9 +26,9 @@ export function withChio(
 ): ChioRouteHandler {
   return async (request, context) => {
     const evaluation = await options.evaluate(request);
-    if (evaluation.verdict !== "allow") {
+    if (!isAuthorizedEvaluation(evaluation)) {
       return createDenialResponse({
-        reason: evaluation.reason,
+        reason: nonAuthorizingReason(evaluation.reason),
         reasonCode: evaluation.reasonCode,
         receiptId: evaluation.receiptId,
         status: options.denialStatus,

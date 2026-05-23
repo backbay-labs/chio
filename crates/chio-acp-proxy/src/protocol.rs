@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 /// A JSON-RPC 2.0 message envelope used by the ACP protocol.
 ///
 /// This is a loose representation that can hold requests, responses,
@@ -142,6 +144,22 @@ pub struct CreateTerminalParams {
     pub cwd: Option<String>,
 }
 
+/// Parameters for `terminal/kill`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KillTerminalParams {
+    pub session_id: String,
+    pub terminal_id: String,
+}
+
+/// Parameters for `terminal/release`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseTerminalParams {
+    pub session_id: String,
+    pub terminal_id: String,
+}
+
 /// A `session/update` notification payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -181,6 +199,8 @@ pub struct ToolCallEvent {
     pub kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
 /// A tool call update event observed in a session update.
@@ -190,6 +210,8 @@ pub struct ToolCallUpdateEvent {
     pub tool_call_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
 /// Attempt to parse a session update `Value` into a typed `SessionUpdate`.

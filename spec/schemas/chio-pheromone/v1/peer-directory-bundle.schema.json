@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/peer-directory-bundle.schema.json",
-  "title": "Chiodos Pheromone Peer Directory Bundle",
+  "title": "Chio Pheromone Peer Directory Bundle",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "body", "directory", "signature"],

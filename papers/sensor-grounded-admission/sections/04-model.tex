@@ -10,7 +10,7 @@ Let $\mathsf{ProviderKind}$ be a finite enumeration over a small fixed tag set. 
 \]
 with $\mathit{id} \in \mathsf{ProviderId}$, $\mathit{kind} \in \mathsf{ProviderKind}$, the four flags in $\{\bot,\top\}$, $\mathit{reasons}$ a finite list of strings, and $\mathit{drop}, \mathit{miss} \in \mathbb{N}$. A sensor attestation $A$ is a finite list of provider records, together with a clock record $(\tau, \mathit{src}, \mathit{sync}, \mathit{unc})$ as defined in Section~\ref{sec:substrate}.
 
-The predicate $\mathsf{providerHealthy}(A, \mathit{id})$ holds iff $A$ contains a record with the given identifier whose installed, active, and healthy flags are all $\top$, and is decidable on $A$.
+The predicate $\mathsf{providerHealthy}(A, \mathit{id})$ holds iff $A$ contains a record with the given identifier whose installed, active, and healthy flags are all $\top$ and whose degraded flag is $\bot$, and is decidable on $A$.
 
 \paragraph{Sensor-attested receipts.}
 A sensor-attested receipt $\hat r$ is a pair $(r, A)$ where $r$ is a canonical receipt body and $A$ is a sensor attestation. The canonical-JSON subject digest covers both fields jointly: two receipts $\hat r_1 = (r, A_1)$ and $\hat r_2 = (r, A_2)$ that share a body but differ on attestation have distinct subject digests, so the receiver cannot silently treat them as the same.
@@ -28,7 +28,7 @@ The sensor-attested admission predicate is
    &\quad \wedge\ \mathsf{dropAndMissBounded}(K, \hat r),
 \end{aligned}
 \]
-where $\mathsf{requiredSetCovered}$ holds iff every entry in $\mathsf{Req}_K$ for $\hat r$'s family corresponds to a $\mathsf{providerHealthy}$ entry in $A$, and $\mathsf{dropAndMissBounded}$ holds iff every provider in $A$ has dropped-event count below $\mathsf{Drop}_K$ and deadline-miss count below $\mathsf{Miss}_K$ for the receipt's family. Both auxiliary predicates are decidable on $A$ and $K$.
+where $\mathsf{requiredSetCovered}$ holds iff every entry in $\mathsf{Req}_K$ for $\hat r$'s family corresponds to a $\mathsf{providerHealthy}$ entry in $A$, and $\mathsf{dropAndMissBounded}$ holds iff every provider in $A$ has dropped-event count below $\mathsf{Drop}_K$ and deadline-miss count below $\mathsf{Miss}_K$ for the receipt's family. A provider marked both healthy and degraded does not satisfy $\mathsf{providerHealthy}$. Both auxiliary predicates are decidable on $A$ and $K$.
 
 \paragraph{Headline theorem.}
 For every constitution $K$ whose required set $\mathsf{Req}_K$ for the body's family is non-empty, and for every body $r$ that admits under $K$'s body predicates, there exist attestations $A_h, A_d$ such that

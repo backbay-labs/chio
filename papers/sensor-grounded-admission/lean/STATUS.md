@@ -95,7 +95,7 @@ standard kernel axioms `propext`, `Classical.choice`, `Quot.sound`.
 - Verdict: provable as stated, with the caveat that the
   destructive-class hypothesis is currently inert.
 
-## Theorem 4: `degraded_sensor_admission_requires_re_attestation`
+## Theorem 4: `degraded_sensor_admission_requires_re_admission_witness`
 
 - Compiles: yes.
 - Proof complete: yes.
@@ -104,7 +104,7 @@ standard kernel axioms `propext`, `Classical.choice`, `Quot.sound`.
   the prior constitution's lookup returns `declprev`, that the
   attestation is in partition contingency for `declprev`, and that
   the amended constitution admits the receipt, the conclusion
-  carries a `ReAttestationWitness` whose new attestation is in
+  carries a `ReAdmissionWitness` whose new attestation is in
   partition contingency mode = false for `declnext`. The premise
   `h_prev_partition` appears in the conclusion's first conjunct
   (still true on `witness.newAttestation`); the

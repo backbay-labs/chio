@@ -28,7 +28,66 @@ pub struct EvaluateResponse {
 /// Response body for receipt verification.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifyReceiptResponse {
-    pub valid: bool,
+    pub signature_valid: bool,
+    pub signer_trusted: bool,
+    pub receipt_id_valid: bool,
+    pub parameter_hash_valid: bool,
+    pub receipt_kind: String,
+    pub boundary_class: String,
+    pub trust_level: String,
+    pub result: String,
+    pub authorized: bool,
+    pub signer_key_hex: String,
+    pub ok: bool,
+}
+
+impl VerifyReceiptResponse {
+    #[must_use]
+    pub fn from_http_receipt(receipt: &HttpReceipt, signer_trusted: bool) -> Self {
+        let signature_valid = receipt.verify_signature().unwrap_or(false);
+        let receipt_id_valid = receipt.receipt_id_valid().unwrap_or(false);
+        let parameter_hash_valid = is_lower_hex_64(&receipt.content_hash);
+        let semantic_valid = receipt.receipt_kind == chio_core_types::ReceiptKind::MediatedDecision
+            && receipt.boundary_class == chio_core_types::BoundaryClass::Prevent
+            && receipt.observation_outcome.is_none()
+            && receipt.trust_level == chio_core_types::TrustLevel::Mediated;
+        let ok = signature_valid
+            && signer_trusted
+            && receipt_id_valid
+            && parameter_hash_valid
+            && semantic_valid;
+        let authorized = ok && receipt.verdict.is_allowed();
+
+        Self {
+            signature_valid,
+            signer_trusted,
+            receipt_id_valid,
+            parameter_hash_valid,
+            receipt_kind: receipt.receipt_kind.as_str().to_string(),
+            boundary_class: receipt.boundary_class.as_str().to_string(),
+            trust_level: receipt.trust_level.as_str().to_string(),
+            result: verdict_result(&receipt.verdict).to_string(),
+            authorized,
+            signer_key_hex: receipt.kernel_key.to_hex(),
+            ok,
+        }
+    }
+}
+
+fn is_lower_hex_64(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn verdict_result(verdict: &Verdict) -> &'static str {
+    match verdict {
+        Verdict::Allow => "allow",
+        Verdict::Deny { .. } => "deny",
+        Verdict::Cancel { .. } => "cancelled",
+        Verdict::Incomplete { .. } => "incomplete",
+    }
 }
 
 /// Sidecar health states.

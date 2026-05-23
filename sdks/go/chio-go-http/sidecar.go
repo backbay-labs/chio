@@ -105,15 +105,36 @@ func (c *SidecarClient) Evaluate(ctx context.Context, req ChioHTTPRequest, capab
 		}
 	}
 
+	if result.Verdict.IsAllowed() || result.Receipt.Verdict.IsAllowed() {
+		if !result.Verdict.IsAllowed() || !result.Receipt.IsAuthorized() {
+			return nil, &SidecarError{
+				Code:    ErrInvalidReceipt,
+				Message: "sidecar returned an allow-shaped response without mediated receipt authorization",
+			}
+		}
+		verification, err := c.VerifyReceipt(ctx, result.Receipt)
+		if err != nil {
+			return nil, &SidecarError{
+				Code:    ErrInvalidReceipt,
+				Message: "sidecar could not verify the returned receipt: " + err.Error(),
+			}
+		}
+		if !verification.IsAuthorizedFor(result.Receipt) {
+			return nil, &SidecarError{
+				Code:    ErrInvalidReceipt,
+				Message: "sidecar returned an unverified receipt",
+			}
+		}
+	}
+
 	return &result, nil
 }
 
-// VerifyReceipt asks the sidecar to verify a receipt signature.
-// Returns true if valid.
-func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) (bool, error) {
+// VerifyReceipt asks the sidecar to verify a receipt authority result.
+func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) (VerifyReceiptResponse, error) {
 	body, err := json.Marshal(receipt)
 	if err != nil {
-		return false, &SidecarError{
+		return VerifyReceiptResponse{}, &SidecarError{
 			Code:    ErrInvalidReceipt,
 			Message: "failed to marshal receipt: " + err.Error(),
 		}
@@ -122,7 +143,7 @@ func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) 
 	url := c.baseURL + "/chio/verify"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return false, &SidecarError{
+		return VerifyReceiptResponse{}, &SidecarError{
 			Code:    ErrSidecarUnreachable,
 			Message: "failed to create request: " + err.Error(),
 		}
@@ -131,7 +152,7 @@ func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) 
 
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
-		return false, &SidecarError{
+		return VerifyReceiptResponse{}, &SidecarError{
 			Code:    ErrSidecarUnreachable,
 			Message: "failed to reach sidecar: " + err.Error(),
 		}
@@ -142,7 +163,7 @@ func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) 
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return false, &SidecarError{
+		return VerifyReceiptResponse{}, &SidecarError{
 			Code:    ErrSidecarUnreachable,
 			Message: "failed to read verify response body: " + err.Error(),
 		}
@@ -150,29 +171,27 @@ func (c *SidecarClient) VerifyReceipt(ctx context.Context, receipt HTTPReceipt) 
 
 	if resp.StatusCode != http.StatusOK {
 		code := classifyVerifyNonOK(resp.StatusCode, respBody)
-		return false, &SidecarError{
+		return VerifyReceiptResponse{}, &SidecarError{
 			Code:       code,
 			Message:    "sidecar verify returned non-200: " + resp.Status,
 			StatusCode: resp.StatusCode,
 		}
 	}
 
-	var result struct {
-		Valid *bool `json:"valid"`
-	}
+	var result VerifyReceiptResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return false, &SidecarError{
+		return VerifyReceiptResponse{}, &SidecarError{
 			Code:    ErrEvaluationFailed,
 			Message: "failed to decode verify response: " + err.Error(),
 		}
 	}
-	if result.Valid == nil {
-		return false, &SidecarError{
+	if result.ReceiptKind == "" || result.BoundaryClass == "" || result.TrustLevel == "" {
+		return VerifyReceiptResponse{}, &SidecarError{
 			Code:    ErrEvaluationFailed,
-			Message: "sidecar verify response missing boolean `valid` field",
+			Message: "sidecar verify response missing structured authority fields",
 		}
 	}
-	return *result.Valid, nil
+	return result, nil
 }
 
 // isSidecarTransportFailure reports whether the HTTP status indicates a
@@ -197,13 +216,18 @@ func classifyVerifyNonOK(status int, body []byte) string {
 
 func hasDefinitiveInvalidReceiptVerdict(body []byte) bool {
 	var result struct {
-		Valid *bool  `json:"valid"`
-		Error string `json:"error"`
+		Valid      *bool  `json:"valid"`
+		OK         *bool  `json:"ok"`
+		Authorized *bool  `json:"authorized"`
+		Error      string `json:"error"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return false
 	}
-	return (result.Valid != nil && !*result.Valid) || result.Error == ErrInvalidReceipt
+	return (result.Valid != nil && !*result.Valid) ||
+		(result.OK != nil && !*result.OK) ||
+		(result.Authorized != nil && !*result.Authorized) ||
+		result.Error == ErrInvalidReceipt
 }
 
 // HealthCheck checks whether the sidecar is running.

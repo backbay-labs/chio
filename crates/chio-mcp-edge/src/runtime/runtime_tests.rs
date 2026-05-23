@@ -425,6 +425,7 @@ fn make_kernel() -> (ChioKernel, Keypair) {
         max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     };
@@ -449,6 +450,7 @@ fn make_web3_required_kernel() -> (ChioKernel, Keypair) {
         max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: true,
+        allow_ephemeral_receipt_log: false,
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     };
@@ -475,6 +477,7 @@ fn make_kernel_error_bridge_fixture(
         max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     };
@@ -1360,6 +1363,7 @@ fn make_url_required_edge() -> ChioMcpEdge {
         max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     };
@@ -1428,6 +1432,7 @@ fn make_event_edge(server: Arc<AsyncEventServer>) -> ChioMcpEdge {
         max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
     };

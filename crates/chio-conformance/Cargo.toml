@@ -57,7 +57,7 @@ in-repo-fixtures = []
 # SHA-256-commitment stub without any privacy-preserving cryptographic property; this is a
 # separate CI matrix entry, not the default build path.
 bbs-stub = ["chio-federation/bbs-stub"]
-chiodos-bbs = [
+chio-bbs = [
     "dep:chio-selective-disclosure",
     "dep:chio-workflow",
     "chio-selective-disclosure/bbs",
@@ -159,9 +159,6 @@ async-trait = "0.1"
 # under an attacker-held P-256 key to prove the verifier rejects it.
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem"] }
 rand = { workspace = true }
-# W2.1: kernel-mints-v2 integration test persists a v2 receipt through
-# the SqliteReceiptStore to prove the chio_receipts_v2 table is wired
-# from the production hot path.
 chio-store-sqlite = { version = "0.1.0", path = "../chio-store-sqlite" }
 rusqlite = { workspace = true }
 tempfile = { workspace = true }

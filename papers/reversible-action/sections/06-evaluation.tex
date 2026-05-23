@@ -1,8 +1,9 @@
 \section{Evaluation}
 \label{sec:evaluation-ra}
 
-The evaluation reports four measurements achievable on the deployment
-instance described in Section~\ref{sec:implementation-ra}. Absent
+The evaluation section records what a deployment evaluation must measure.
+This repository does not yet ship the response executors, proof endpoint,
+or replay corpus needed to report those measurements as results. Absent
 measurements are marked rather than estimated.
 
 The figures reported here are point measurements taken on a single
@@ -32,10 +33,10 @@ Section~\ref{sec:limitations-ra}.}
 \toprule
 Metric & Path & Status \\
 \midrule
-Forward executor latency, four reversible variants & rename, signal, policy reload & measurable \\
-Rollback executor latency, four reversible variants & inverse of the above & measurable \\
-Acknowledgement round-trip & control-plane postback & measurable \\
-Replay-corpus admission stability across the four-receipt grammar & fixture corpus & measurable \\
+Forward executor latency, four reversible variants & rename, signal, policy reload & planned; executor harness absent \\
+Rollback executor latency, four reversible variants & inverse of the above & planned; executor harness absent \\
+Acknowledgement round-trip & control-plane postback & planned; proof endpoint absent \\
+Replay-corpus admission stability across the four-receipt grammar & fixture corpus & planned; corpus absent \\
 Destructive-variant admission latency (bilateral cosignature) & treaty intersection & withheld; not wired \\
 Sensor-to-decision latency & Endpoint Security subscription & withheld; sensor stub \\
 TTL auto-expiry latency & background scheduler & withheld; scheduler absent \\
@@ -77,15 +78,16 @@ receipt families; the postback latency is dominated by network
 round-trip and the control-plane handler.
 
 \paragraph{Replay-corpus stability.}
-The replay corpus contains fixture-backed action chains exercising
-the four-receipt grammar for each reversible variant. Each fixture is
-a deterministic action chain whose admission decisions are canonical-
-byte stable across machines. The stability property is the
+The replay corpus is not shipped in this repository. The required corpus
+must contain fixture-backed action chains exercising the four-receipt
+grammar for each reversible variant. Each fixture should be a
+deterministic action chain whose admission decisions are canonical-byte
+stable across machines. The intended stability property is the
 reproducibility of canonical verdicts rather than re-execution of the
-OS-side executors. The fixture corpus distinguishes positive chains
-(request, execution, rollback, acknowledgement all admitted) and
-negative chains (rollback missing, acknowledgement missing, content-
-hash mismatch, replay attack on the execution identifier).
+OS-side executors. The corpus must distinguish positive chains (request,
+execution, rollback, acknowledgement all admitted) and negative chains
+(rollback missing, acknowledgement missing, content-hash mismatch, replay
+attack on the execution identifier) before this row can be reported.
 
 \paragraph{Destructive subclass.}
 The destructive subclass is reported as a deployment gap rather than

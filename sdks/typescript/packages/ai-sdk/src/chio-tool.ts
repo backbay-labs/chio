@@ -29,7 +29,11 @@
  * parameters and result type.
  */
 
-import { ChioClient, type ChioClientOptions, ChioClientError } from "./client.js";
+import {
+  ChioClient,
+  type ChioClientOptions,
+  ChioClientError,
+} from "./client.js";
 import { ChioToolError } from "./errors.js";
 
 /**
@@ -96,6 +100,26 @@ export interface ChioToolScope {
 export type CapabilityTokenResolver =
   (capabilityId: string) => string | Promise<string | undefined> | undefined;
 
+/** Receipt verification result accepted by `chioTool`. */
+export interface ChioReceiptAuthority {
+  receipt_kind?: "mediated_decision" | "trace_observation" | "advisory_evaluation" | undefined;
+  boundary_class?: "prevent" | "detect_only" | "advisory_only" | undefined;
+  trust_level?: "mediated" | "verified" | "advisory" | undefined;
+  result?: string | undefined;
+  authorized?: boolean | undefined;
+  ok?: boolean | undefined;
+  signer_trusted?: boolean | undefined;
+  signature_valid?: boolean | undefined;
+  receipt_id_valid?: boolean | undefined;
+  parameter_hash_valid?: boolean | undefined;
+}
+
+/** Caller-supplied receipt verifier, usually from `@chio-protocol/sdk` invariants. */
+export type ChioReceiptVerifier =
+  (receipt: Record<string, unknown>) =>
+    ChioReceiptAuthority
+    | Promise<ChioReceiptAuthority>;
+
 /**
  * Options accepted by `chioTool`. Mirrors the Vercel AI SDK `tool()` shape
  * (`description`, `parameters`/`inputSchema`, `execute`) and adds Chio
@@ -112,10 +136,8 @@ export interface ChioToolOptions<PARAMS, RESULT> extends ToolLike<PARAMS, RESULT
   /** Inline `ChioClient` options used when `client` is not provided. */
   clientOptions?: ChioClientOptions | undefined;
   /**
-   * Behaviour when the sidecar is unreachable. `"deny"` (default) throws
-   * `ChioToolError`; `"allow"` forwards to the underlying `execute` with no
-   * signed receipt (matches the fail-open contract documented in
-   * `docs/protocols/AGENT-FRAMEWORK-INTEGRATION.md`).
+   * Legacy sidecar-error option retained for source compatibility. Current
+   * v1 always throws `ChioToolError` when the sidecar is unreachable.
    */
   onSidecarError?: "deny" | "allow" | undefined;
   /**
@@ -129,6 +151,17 @@ export interface ChioToolOptions<PARAMS, RESULT> extends ToolLike<PARAMS, RESULT
    * capability token JSON that should be presented to the sidecar.
    */
   resolveCapabilityToken?: CapabilityTokenResolver | undefined;
+  /**
+   * Verifies the signed receipt before tool execution. When unset, the
+   * wrapper falls back to POSTing the receipt to the sidecar's
+   * `/chio/verify` route using the same default URL (`http://127.0.0.1:9090`
+   * unless overridden via `clientOptions.sidecarUrl` or the
+   * `CHIO_SIDECAR_URL` env var) the evaluate path uses, matching the
+   * documented default-sidecar deployment. Either an explicit verifier or
+   * a reachable sidecar `/chio/verify` is required for an allow-shaped
+   * receipt to invoke the wrapped tool.
+   */
+  verifyReceipt?: ChioReceiptVerifier | undefined;
 }
 
 /** Lazily cached shared client for callers that provide only `clientOptions`. */
@@ -172,14 +205,14 @@ export function chioTool<PARAMS, RESULT>(
     scope,
     client: _client,
     clientOptions: _clientOptions,
-    onSidecarError,
+    onSidecarError: _onSidecarError,
     debug: _debug,
     resolveCapabilityToken,
+    verifyReceipt,
     execute: originalExecute,
     ...rest
   } = options;
   const client = resolveClient(options);
-  const failClosed = (onSidecarError ?? "deny") === "deny";
 
   const wrappedExecute = async (
     params: PARAMS,
@@ -219,19 +252,6 @@ export function chioTool<PARAMS, RESULT>(
       receipt = await client.evaluateToolCall(request, clientArgs);
     } catch (error) {
       if (error instanceof ChioClientError) {
-        if (!failClosed && isFailOpenTransportError(error)) {
-          // Fail-open: forward straight to the underlying execute. We only
-          // reach this branch when the caller has explicitly accepted the
-          // risk of dispatching tool calls without a signed receipt.
-          if (originalExecute == null) {
-            throw new ChioToolError({
-              verdict: "sidecar_unreachable",
-              guard: "",
-              reason: error.message,
-            });
-          }
-          return invokeOriginal(originalExecute, params, executeOptions);
-        }
         throw new ChioToolError({
           verdict: "sidecar_unreachable",
           guard: "",
@@ -241,12 +261,41 @@ export function chioTool<PARAMS, RESULT>(
       throw error;
     }
 
-    const verdict = receipt.decision.verdict;
-    if (verdict !== "allow") {
+    const verdict = receipt.decision?.verdict;
+    const authorized =
+      receipt.receipt_kind === "mediated_decision"
+      && receipt.boundary_class === "prevent"
+      && receipt.observation_outcome == null
+      && receipt.trust_level === "mediated"
+      && verdict === "allow";
+    if (verdict == null) {
       throw new ChioToolError({
-        verdict,
-        guard: receipt.decision.guard ?? "",
-        reason: receipt.decision.reason ?? `Chio verdict: ${verdict}`,
+        verdict: "incomplete",
+        guard: "",
+        reason: `Chio receipt ${receipt.id} is non-authorizing (${String(receipt.receipt_kind ?? "unknown")})`,
+        receiptId: receipt.id,
+      });
+    }
+    if (!authorized) {
+      throw new ChioToolError({
+        verdict: verdict === "allow" ? "incomplete" : verdict,
+        guard: receipt.decision?.guard ?? "",
+        reason: receipt.decision?.reason ?? `Chio verdict: ${verdict}`,
+        receiptId: receipt.id,
+      });
+    }
+
+    const authority = verifyReceipt != null
+      ? await verifyReceipt(receipt)
+      : await verifyReceiptViaSidecar(
+        receipt,
+        client,
+      );
+    if (!receiptAuthorityAllows(authority)) {
+      throw new ChioToolError({
+        verdict: "incomplete",
+        guard: "",
+        reason: `Chio receipt ${receipt.id} did not pass trusted receipt verification`,
         receiptId: receipt.id,
       });
     }
@@ -277,15 +326,104 @@ export function chioTool<PARAMS, RESULT>(
   return wrapped;
 }
 
-function isFailOpenTransportError(error: ChioClientError): boolean {
-  if (error.statusCode != null) {
-    return false;
+/**
+ * Default receipt-authority pathway when the caller did not supply a
+ * `verifyReceipt`. Mirrors the chio-ai-sdk-middleware fallback: POST the
+ * raw receipt body to the sidecar's `/chio/verify` route at the same
+ * resolved sidecar URL the evaluate path used, and parse the response
+ * into a `ChioReceiptAuthority`. Fails closed when the sidecar response
+ * is non-OK, the body is not parseable, or fetch is unavailable.
+ *
+ * The Rust `/chio/verify` handler in
+ * `crates/chio-api-protect/src/proxy.rs::sidecar_verify_handler`
+ * deserializes the request body directly as an `HttpReceipt`, so the
+ * receipt body MUST be sent unwrapped (not as `{ receipt: ... }`).
+ */
+async function verifyReceiptViaSidecar(
+  receipt: Record<string, unknown> & { id?: string },
+  client: ChioClient,
+): Promise<ChioReceiptAuthority> {
+  try {
+    return readAuthorityFromVerifyResponse(await client.verifyReceipt(receipt));
+  } catch (error) {
+    const reason = error instanceof ChioClientError
+      ? error.message
+      : error instanceof Error
+        ? error.message
+        : String(error);
+    throw new ChioToolError({
+      verdict: "sidecar_unreachable",
+      guard: "",
+      reason,
+      receiptId: typeof receipt.id === "string" ? receipt.id : undefined,
+    });
   }
-  return (
-    error.code === "chio_sidecar_unreachable"
-    || error.code === "chio_timeout"
-    || error.code === "chio_fetch_unavailable"
-  );
+}
+
+function readAuthorityFromVerifyResponse(value: unknown): ChioReceiptAuthority {
+  if (value == null || typeof value !== "object") {
+    return {};
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    receipt_kind: receiptKindValue(stringField(record, "receipt_kind")),
+    boundary_class: boundaryClassValue(stringField(record, "boundary_class")),
+    trust_level: trustLevelValue(stringField(record, "trust_level")),
+    result: stringField(record, "result"),
+    authorized: booleanField(record, "authorized"),
+    ok: booleanField(record, "ok"),
+    signer_trusted: booleanField(record, "signer_trusted"),
+    signature_valid: booleanField(record, "signature_valid"),
+    receipt_id_valid: booleanField(record, "receipt_id_valid"),
+    parameter_hash_valid: booleanField(record, "parameter_hash_valid"),
+  };
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function booleanField(record: Record<string, unknown>, key: string): boolean | undefined {
+  const value = record[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function receiptKindValue(value: string | undefined): ChioReceiptAuthority["receipt_kind"] {
+  return value === "mediated_decision"
+    || value === "trace_observation"
+    || value === "advisory_evaluation"
+    ? value
+    : undefined;
+}
+
+function boundaryClassValue(value: string | undefined): ChioReceiptAuthority["boundary_class"] {
+  return value === "prevent" || value === "detect_only" || value === "advisory_only"
+    ? value
+    : undefined;
+}
+
+function trustLevelValue(value: string | undefined): ChioReceiptAuthority["trust_level"] {
+  return value === "mediated" || value === "verified" || value === "advisory"
+    ? value
+    : undefined;
+}
+
+function receiptAuthorityAllows(authority: ChioReceiptAuthority): boolean {
+  return authority.authorized === true
+    && authority.ok === true
+    && authority.signer_trusted === true
+    && authority.signature_valid === true
+    && authority.receipt_id_valid === true
+    && authority.parameter_hash_valid === true
+    && authority.receipt_kind === "mediated_decision"
+    && authority.boundary_class === "prevent"
+    && authority.trust_level === "mediated"
+    && (
+      authority.result === "allow"
+      || authority.result === "authorized"
+      || authority.result === "Authorized"
+    );
 }
 
 /**

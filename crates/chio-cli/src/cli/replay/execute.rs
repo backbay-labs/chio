@@ -352,7 +352,7 @@ fn recompute_decision(
             // PendingApproval is mapped to Deny so the diff renderer flags
             // it as material drift.
             let verdict = map_kernel_verdict_to_frame(response.verdict);
-            let (guard, reason) = replay_guard_reason(&response.receipt.decision);
+            let (guard, reason) = replay_guard_reason(response.receipt.decision.as_ref());
             Ok(ReplayDecision {
                 verdict,
                 guard,
@@ -373,17 +373,17 @@ fn recompute_decision(
 }
 
 fn replay_guard_reason(
-    decision: &chio_core::receipt::Decision,
+    decision: Option<&chio_core::receipt::Decision>,
 ) -> (Option<String>, Option<String>) {
     match decision {
-        chio_core::receipt::Decision::Deny { reason, guard } => {
+        Some(chio_core::receipt::Decision::Deny { reason, guard }) => {
             (Some(guard.clone()), Some(reason.clone()))
         }
-        chio_core::receipt::Decision::Cancelled { reason }
-        | chio_core::receipt::Decision::Incomplete { reason } => {
+        Some(chio_core::receipt::Decision::Cancelled { reason })
+        | Some(chio_core::receipt::Decision::Incomplete { reason }) => {
             (None, Some(reason.clone()))
         }
-        chio_core::receipt::Decision::Allow => (None, None),
+        Some(chio_core::receipt::Decision::Allow) | None => (None, None),
     }
 }
 

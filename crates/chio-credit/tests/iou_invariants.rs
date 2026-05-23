@@ -109,7 +109,13 @@ fn build_signed_receipt(scenario: &ReceiptScenario, kp: &Keypair) -> ChioReceipt
         tool_server: "srv".to_string(),
         tool_name: "tool".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({})).unwrap(),
-        decision,
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
+        decision: Some(decision),
         content_hash: sha256_hex(b"{}"),
         policy_hash: "policy".to_string(),
         evidence: vec![GuardEvidence {
@@ -138,7 +144,7 @@ proptest! {
     #[test]
     fn one_receipt_mints_zero_or_one_iou(scenario in arb_scenario()) {
         let kp = Keypair::generate();
-        let account = LocalCreditAccount::new(Ed25519Backend::new(kp.clone()));
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(Ed25519Backend::new(kp.clone()), [kp.public_key()]);
         let receipt = build_signed_receipt(&scenario, &kp);
 
         let outcome = account.evaluate(&receipt).unwrap();
@@ -170,7 +176,7 @@ proptest! {
     #[test]
     fn tampered_receipt_mints_zero_iou(scenario in arb_scenario()) {
         let kp = Keypair::generate();
-        let account = LocalCreditAccount::new(Ed25519Backend::new(kp.clone()));
+        let account = LocalCreditAccount::new_with_trusted_kernel_keys(Ed25519Backend::new(kp.clone()), [kp.public_key()]);
         let mut receipt = build_signed_receipt(&scenario, &kp);
         // Mutate a signed field to invalidate the signature.
         receipt.tool_name = format!("{}-tampered", receipt.tool_name);

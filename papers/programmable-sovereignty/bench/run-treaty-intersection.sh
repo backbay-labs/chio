@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
-SOURCE=${CHIO_SOURCE:-/Users/connor/.codex/worktrees/985a/arc}
+SOURCE=${CHIO_SOURCE:-$ROOT}
 if [[ ! -d "$SOURCE/crates" ]]; then
   SOURCE=$ROOT
 fi
@@ -33,16 +33,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-chio-chiodos-runtime = { path = "$SOURCE/crates/chio-chiodos-runtime" }
+chio-runtime-core = { path = "$SOURCE/crates/chio-runtime-core" }
 chio-core-types = { path = "$SOURCE/crates/chio-core-types" }
 EOF
 
 mkdir -p "$WORK_DIR/src"
 cat > "$WORK_DIR/src/main.rs" <<'EOF'
-use chio_chiodos_runtime::{
+use chio_runtime_core::{
     compute_ladder_intersection, governance_ladder_manifest_sha256, GovernanceLadderActionClass,
-    GovernanceLadderManifest, TreatyScope, CHIODOS_GOVERNANCE_LADDER_MANIFEST_SCHEMA,
-    CHIODOS_TREATY_SCOPE_SCHEMA,
+    GovernanceLadderManifest, TreatyScope, CHIO_GOVERNANCE_LADDER_MANIFEST_SCHEMA,
+    CHIO_TREATY_SCOPE_SCHEMA,
 };
 use chio_core_types::crypto::Keypair;
 use std::hint::black_box;
@@ -58,7 +58,7 @@ fn action_ids(n: usize) -> Vec<String> {
 
 fn manifest(kernel_id: &str, key_id: &str, n: usize, mode: &str) -> GovernanceLadderManifest {
     GovernanceLadderManifest {
-        schema: CHIODOS_GOVERNANCE_LADDER_MANIFEST_SCHEMA.to_string(),
+        schema: CHIO_GOVERNANCE_LADDER_MANIFEST_SCHEMA.to_string(),
         manifest_id: format!("manifest-{kernel_id}-{n}"),
         kernel_id: kernel_id.to_string(),
         issuer: kernel_id.to_string(),
@@ -96,7 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let left = manifest("kernel-left", "key-left", n, "receipt_backed");
         let right = manifest("kernel-right", "key-right", n, "quorum_required");
         let scope = TreatyScope {
-            schema: CHIODOS_TREATY_SCOPE_SCHEMA.to_string(),
+            schema: CHIO_TREATY_SCOPE_SCHEMA.to_string(),
             treaty_id: format!("paper-treaty-{n}"),
             participant_kernel_ids: vec!["kernel-left".to_string(), "kernel-right".to_string()],
             participant_public_keys: vec![left_key.public_key(), right_key.public_key()],
@@ -138,15 +138,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 EOF
 
-if ! CARGO_TARGET_DIR="$TARGET_DIR" cargo run --manifest-path "$WORK_DIR/Cargo.toml" --offline > "$CSV" 2> "$LOG"; then
+if ! CARGO_TARGET_DIR="$TARGET_DIR" cargo run --manifest-path "$WORK_DIR/Cargo.toml" > "$CSV" 2> "$LOG"; then
   emit_unreported
-  exit 0
+  exit 1
 fi
 
 lines=$(tail -n +2 "$CSV" | sed '/^$/d' || true)
 if [[ -z "$lines" ]]; then
   emit_unreported
-  exit 0
+  exit 1
 fi
 
 summary=$(printf '%s\n' "$lines" | awk -F, '

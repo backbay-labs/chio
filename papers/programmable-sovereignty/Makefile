@@ -53,23 +53,23 @@ all: submit-check
 
 build-acmart:
 	@echo "[build-acmart] pass 1 (pdflatex)"
-	$(LATEX) $(LATEXOPTS) paper.tex ; echo "  exit=$$?"
+	$(LATEX) $(LATEXOPTS) paper.tex && echo "  exit=0"
 	@echo "[build-acmart] pass 2 (bibtex)"
-	$(BIBTEX) paper ; echo "  exit=$$?"
+	$(BIBTEX) paper && echo "  exit=0"
 	@echo "[build-acmart] pass 3 (pdflatex)"
-	$(LATEX) $(LATEXOPTS) paper.tex ; echo "  exit=$$?"
+	$(LATEX) $(LATEXOPTS) paper.tex && echo "  exit=0"
 	@echo "[build-acmart] pass 4 (pdflatex)"
-	$(LATEX) $(LATEXOPTS) paper.tex ; echo "  exit=$$?"
+	$(LATEX) $(LATEXOPTS) paper.tex && echo "  exit=0"
 
 build-usenix:
 	@echo "[build-usenix] pass 1 (pdflatex)"
-	$(LATEX) $(LATEXOPTS) paper-usenix.tex ; echo "  exit=$$?"
+	$(LATEX) $(LATEXOPTS) paper-usenix.tex && echo "  exit=0"
 	@echo "[build-usenix] pass 2 (bibtex)"
-	$(BIBTEX) paper-usenix ; echo "  exit=$$?"
+	$(BIBTEX) paper-usenix && echo "  exit=0"
 	@echo "[build-usenix] pass 3 (pdflatex)"
-	$(LATEX) $(LATEXOPTS) paper-usenix.tex ; echo "  exit=$$?"
+	$(LATEX) $(LATEXOPTS) paper-usenix.tex && echo "  exit=0"
 	@echo "[build-usenix] pass 4 (pdflatex)"
-	$(LATEX) $(LATEXOPTS) paper-usenix.tex ; echo "  exit=$$?"
+	$(LATEX) $(LATEXOPTS) paper-usenix.tex && echo "  exit=0"
 
 # ---- Gate primitives -------------------------------------------------------
 #

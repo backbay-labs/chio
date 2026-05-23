@@ -28,7 +28,8 @@ class ChioSidecarClient
             capabilityToken: String? = null,
         ): EvaluateResponse = delegate.evaluateHttpRequest(request, capabilityToken)
 
-        fun verifyReceipt(receipt: HttpReceipt): Boolean = delegate.verifyHttpReceipt(receipt)
+        fun verifyReceipt(receipt: HttpReceipt): Boolean =
+            delegate.verifyHttpReceipt(receipt).authorizes(receipt)
 
         fun healthCheck(): Boolean = delegate.isHealthy()
 

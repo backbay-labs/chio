@@ -21,13 +21,28 @@ use chio_store_sqlite::SqliteReceiptStore;
 use serde::{Deserialize, Serialize};
 
 use crate::issuance::{self, LocalReputationInspection, ReputationScoringSource};
-use crate::{policy::load_policy, trust_control, CliError};
+use crate::{load_or_create_authority_keypair, policy::load_policy, trust_control, CliError};
 
 fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0)
+}
+
+/// Load the local authority public key from a seed file and return it as the
+/// single-element trusted-kernel-key set, or an empty vec when no seed file is
+/// configured. Plumbing this into reputation scoring keeps locally signed
+/// receipts from being silently filtered out as unsigned. See
+/// `chio_reputation::receipt_integrity_valid`.
+fn load_trusted_kernel_keys_from_authority(
+    authority_seed_file: Option<&Path>,
+) -> Result<Vec<String>, CliError> {
+    let Some(path) = authority_seed_file else {
+        return Ok(Vec::new());
+    };
+    let keypair = load_or_create_authority_keypair(path)?;
+    Ok(vec![keypair.public_key().to_hex()])
 }
 
 pub struct ReputationLocalCommand<'a> {
@@ -40,6 +55,13 @@ pub struct ReputationLocalCommand<'a> {
     pub budget_db_path: Option<&'a Path>,
     pub control_url: Option<&'a str>,
     pub control_token: Option<&'a str>,
+    /// Optional authority seed file used to derive the trusted kernel
+    /// public key. When provided, the loaded keypair's public key is added
+    /// to the scoring config's `trusted_kernel_keys` so receipts signed by
+    /// this kernel pass integrity validation. Without it, an empty trust
+    /// set silently filters every receipt as unsigned and scores collapse
+    /// to zero / unknown.
+    pub authority_seed_file: Option<&'a Path>,
 }
 
 pub fn cmd_reputation_local(command: ReputationLocalCommand<'_>) -> Result<(), CliError> {
@@ -53,6 +75,7 @@ pub fn cmd_reputation_local(command: ReputationLocalCommand<'_>) -> Result<(), C
         budget_db_path,
         control_url,
         control_token,
+        authority_seed_file,
     } = command;
 
     let mut inspection = if let Some(url) = control_url {
@@ -73,6 +96,7 @@ pub fn cmd_reputation_local(command: ReputationLocalCommand<'_>) -> Result<(), C
             .map(load_policy)
             .transpose()?
             .and_then(|loaded| loaded.issuance_policy);
+        let trusted_kernel_keys = load_trusted_kernel_keys_from_authority(authority_seed_file)?;
         issuance::inspect_local_reputation(
             subject_public_key,
             Some(receipt_db_path),
@@ -80,6 +104,7 @@ pub fn cmd_reputation_local(command: ReputationLocalCommand<'_>) -> Result<(), C
             since,
             until,
             issuance_policy.as_ref(),
+            &trusted_kernel_keys,
         )?
     };
 
@@ -173,6 +198,9 @@ pub struct ReputationCompareCommand<'a> {
     pub budget_db_path: Option<&'a Path>,
     pub control_url: Option<&'a str>,
     pub control_token: Option<&'a str>,
+    /// Optional authority seed file used to derive the trusted kernel
+    /// public key. See `ReputationLocalCommand::authority_seed_file`.
+    pub authority_seed_file: Option<&'a Path>,
 }
 
 pub fn cmd_reputation_compare(command: ReputationCompareCommand<'_>) -> Result<(), CliError> {
@@ -188,6 +216,7 @@ pub fn cmd_reputation_compare(command: ReputationCompareCommand<'_>) -> Result<(
         budget_db_path,
         control_url,
         control_token,
+        authority_seed_file,
     } = command;
 
     let passport: AgentPassport = serde_json::from_slice(&fs::read(passport_path)?)?;
@@ -218,6 +247,7 @@ pub fn cmd_reputation_compare(command: ReputationCompareCommand<'_>) -> Result<(
                 .map(load_policy)
                 .transpose()?
                 .and_then(|loaded| loaded.issuance_policy);
+            let trusted_kernel_keys = load_trusted_kernel_keys_from_authority(authority_seed_file)?;
             issuance::inspect_local_reputation(
                 subject_public_key,
                 Some(receipt_db_path),
@@ -225,6 +255,7 @@ pub fn cmd_reputation_compare(command: ReputationCompareCommand<'_>) -> Result<(
                 since,
                 until,
                 issuance_policy.as_ref(),
+                &trusted_kernel_keys,
             )?
         };
         let imported_trust = {
@@ -245,6 +276,7 @@ pub fn cmd_reputation_compare(command: ReputationCompareCommand<'_>) -> Result<(
                 agent_subject: Some(local.subject_key.clone()),
                 since: local.since,
                 until: local.until,
+                read_context: Some(chio_kernel::ReceiptReadContext::local_operator_admin_all()),
                 ..SharedEvidenceQuery::default()
             })?
         };
@@ -393,6 +425,7 @@ pub(crate) fn build_behavioral_feed_reputation_summary(
     since: Option<u64>,
     until: Option<u64>,
     now: u64,
+    trusted_kernel_keys: &[String],
 ) -> Result<BehavioralFeedReputationSummary, CliError> {
     let inspection = issuance::inspect_local_reputation(
         subject_key,
@@ -401,6 +434,7 @@ pub(crate) fn build_behavioral_feed_reputation_summary(
         since,
         until,
         None,
+        trusted_kernel_keys,
     )?;
     let imported_trust = build_imported_trust_report(
         receipt_db_path,

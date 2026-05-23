@@ -58,7 +58,7 @@ struct ReceiptProjection {
     tool_server: String,
     tool_name: String,
     parameter_hash: String,
-    decision: Decision,
+    decision: Option<Decision>,
     policy_hash: String,
     has_guard_evidence: bool,
 }
@@ -89,7 +89,7 @@ impl ReceiptProjection {
             && self.tool_server == tool_server
             && self.tool_name == tool_name
             && self.parameter_hash == parameter_hash
-            && &self.decision == decision
+            && self.decision.as_ref() == Some(decision)
             && self.policy_hash == policy_hash
             && self.has_guard_evidence
     }
@@ -163,7 +163,13 @@ fn receipt_projection_couples_decision_to_evidence_body() {
         tool_server: "srv-files".to_string(),
         tool_name: "read_file".to_string(),
         action,
-        decision: decision.clone(),
+        decision: Some(decision.clone()),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: sha256_hex(b"content"),
         policy_hash: policy_hash.clone(),
         evidence: vec![GuardEvidence {

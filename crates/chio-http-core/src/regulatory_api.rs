@@ -15,6 +15,7 @@
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::{Keypair, PublicKey};
 use chio_core_types::receipt::{ChioReceipt, SignedExportEnvelope};
+use chio_kernel::ReceiptReadContext;
 use serde::{Deserialize, Serialize};
 
 /// Stable schema identifier for regulatory receipt exports.
@@ -150,6 +151,7 @@ pub trait RegulatoryReceiptSource: Send + Sync {
     fn query_receipts(
         &self,
         query: &RegulatoryReceiptsQuery,
+        read_context: &ReceiptReadContext,
     ) -> Result<RegulatoryReceiptQueryResult, RegulatoryApiError>;
 }
 
@@ -208,7 +210,8 @@ pub fn handle_regulatory_receipts_signed(
         }
     }
 
-    let raw = source.query_receipts(query)?;
+    let read_context = ReceiptReadContext::admin_service();
+    let raw = source.query_receipts(query, &read_context)?;
 
     let body = RegulatoryReceiptExport {
         schema: REGULATORY_RECEIPT_EXPORT_SCHEMA.to_string(),
@@ -274,6 +277,7 @@ mod tests {
         fn query_receipts(
             &self,
             _query: &RegulatoryReceiptsQuery,
+            _read_context: &ReceiptReadContext,
         ) -> Result<RegulatoryReceiptQueryResult, RegulatoryApiError> {
             Ok(self.result.clone())
         }

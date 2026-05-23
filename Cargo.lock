@@ -2643,6 +2643,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-attest-buyer"
+version = "0.1.0"
+dependencies = [
+ "chio-attest-buyer-core",
+ "chio-core-types",
+ "chio-runtime-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "chio-attest-buyer-core"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-federation",
+ "chio-governance",
+ "chio-selective-disclosure",
+ "chio-workflow",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-attest-loopback"
+version = "0.1.0"
+dependencies = [
+ "chio-attest-buyer-core",
+ "chio-core-types",
+ "chio-federation",
+ "chio-federation-authority",
+ "chio-governance",
+ "chio-selective-disclosure",
+ "chio-workflow",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-attest-verify"
 version = "0.1.0"
 dependencies = [
@@ -2735,34 +2776,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chio-chiodos"
-version = "0.1.0"
-dependencies = [
- "chio-core-types",
- "chio-federation",
- "chio-governance",
- "chio-selective-disclosure",
- "chio-workflow",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "chio-chiodos-authority"
-version = "0.1.0"
-dependencies = [
- "chio-chiodos",
- "chio-core-types",
- "chio-federation",
- "chio-governance",
- "hex",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "chio-cli"
 version = "0.1.0"
 dependencies = [
@@ -2774,9 +2787,10 @@ dependencies = [
  "chio-api-protect",
  "chio-appraisal",
  "chio-arena",
+ "chio-attest-buyer",
+ "chio-attest-buyer-core",
+ "chio-attest-loopback",
  "chio-attest-verify",
- "chio-chiodos",
- "chio-chiodos-authority",
  "chio-conformance",
  "chio-control-plane",
  "chio-core",
@@ -2789,6 +2803,7 @@ dependencies = [
  "chio-errors",
  "chio-external-guards",
  "chio-federation",
+ "chio-federation-authority",
  "chio-guard-registry",
  "chio-guards",
  "chio-hosted-mcp",
@@ -2804,6 +2819,9 @@ dependencies = [
  "chio-policy",
  "chio-replay-corpus",
  "chio-reputation",
+ "chio-runtime",
+ "chio-runtime-core",
+ "chio-runtime-harness",
  "chio-settle",
  "chio-siem",
  "chio-store-sqlite",
@@ -2818,6 +2836,7 @@ dependencies = [
  "flate2",
  "hex",
  "insta",
+ "libc",
  "p256 0.13.2",
  "p384",
  "percent-encoding",
@@ -3262,6 +3281,20 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-federation-authority"
+version = "0.1.0"
+dependencies = [
+ "chio-attest-buyer-core",
+ "chio-core-types",
+ "chio-federation",
+ "chio-governance",
+ "hex",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -3874,11 +3907,12 @@ dependencies = [
 name = "chio-pheromone-runtime"
 version = "0.1.0"
 dependencies = [
- "chio-chiodos",
+ "chio-attest-buyer-core",
  "chio-core-types",
  "chio-federation",
  "chio-pheromone",
  "chio-store-sqlite",
+ "jsonschema",
  "rusqlite",
  "serde",
  "serde_json",
@@ -3981,6 +4015,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]
@@ -3996,6 +4031,53 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-runtime"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-kernel",
+ "chio-runtime-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "chio-runtime-core"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chio-attest-buyer-core",
+ "chio-attest-loopback",
+ "chio-core-types",
+ "chio-federation",
+ "chio-kernel",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-runtime-harness"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chio-attest-buyer-core",
+ "chio-attest-loopback",
+ "chio-core",
+ "chio-core-types",
+ "chio-federation",
+ "chio-kernel",
+ "chio-runtime-core",
+ "chio-store-sqlite",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
@@ -4043,6 +4125,7 @@ version = "0.1.0"
 dependencies = [
  "chio-core-types",
  "chio-egress-contract",
+ "chio-kernel",
  "chio-log-redact",
  "reqwest 0.13.2",
  "rusqlite",
@@ -4125,6 +4208,25 @@ dependencies = [
  "chio-core-types",
  "chrono",
  "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-three-vendor-example"
+version = "0.1.0"
+dependencies = [
+ "chio-attest-buyer-core",
+ "chio-attest-loopback",
+ "chio-core-types",
+ "chio-federation",
+ "chio-federation-authority",
+ "chio-governance",
+ "chio-pheromone",
+ "chio-pheromone-runtime",
+ "chio-selective-disclosure",
+ "chio-workflow",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -4314,24 +4416,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
-]
-
-[[package]]
-name = "chiodos-three-vendor-example"
-version = "0.1.0"
-dependencies = [
- "chio-chiodos",
- "chio-chiodos-authority",
- "chio-core-types",
- "chio-federation",
- "chio-governance",
- "chio-pheromone",
- "chio-pheromone-runtime",
- "chio-selective-disclosure",
- "chio-workflow",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]

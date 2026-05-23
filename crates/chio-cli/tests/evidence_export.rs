@@ -126,7 +126,26 @@ fn capability_with_id(id: &str, subject: &Keypair, issuer: &Keypair) -> Capabili
 }
 
 fn receipt_with_ts(id: &str, capability_id: &str, timestamp: u64) -> ChioReceipt {
+    receipt_with_tenant(id, capability_id, timestamp, None)
+}
+
+fn receipt_with_tenant(
+    id: &str,
+    capability_id: &str,
+    timestamp: u64,
+    tenant_id: Option<&str>,
+) -> ChioReceipt {
     let keypair = Keypair::generate();
+    receipt_with_keypair(id, capability_id, timestamp, tenant_id, &keypair)
+}
+
+fn receipt_with_keypair(
+    id: &str,
+    capability_id: &str,
+    timestamp: u64,
+    tenant_id: Option<&str>,
+    keypair: &Keypair,
+) -> ChioReceipt {
     ChioReceipt::sign(
         ChioReceiptBody {
             id: id.to_string(),
@@ -136,16 +155,22 @@ fn receipt_with_ts(id: &str, capability_id: &str, timestamp: u64) -> ChioReceipt
             tool_name: "bash".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"cmd":"echo hi"}))
                 .expect("action"),
-            decision: Decision::Allow,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
             content_hash: "content-1".to_string(),
             policy_hash: "policy-1".to_string(),
             evidence: Vec::new(),
             metadata: None,
             trust_level: chio_core::TrustLevel::default(),
-            tenant_id: None,
+            tenant_id: tenant_id.map(ToOwned::to_owned),
             kernel_key: keypair.public_key(),
         },
-        &keypair,
+        keypair,
     )
     .expect("sign receipt")
 }
@@ -178,6 +203,7 @@ fn export_fixture_package(receipt_db_path: &Path, output_dir: &Path) {
         .arg(receipt_db_path)
         .arg("evidence")
         .arg("export")
+        .arg("--admin-all")
         .arg("--output")
         .arg(output_dir)
         .output()
@@ -215,6 +241,7 @@ fn create_federation_policy(
             partner,
             "--capability",
             capability_id,
+            "--admin-all",
             "--expires-at",
             &expires_at.to_string(),
             "--require-proofs",
@@ -297,6 +324,7 @@ capabilities:
         .arg(&receipt_db_path)
         .arg("evidence")
         .arg("export")
+        .arg("--admin-all")
         .arg("--output")
         .arg(&output_dir)
         .arg("--policy-file")
@@ -391,6 +419,7 @@ fn evidence_export_require_proofs_fails_when_receipts_are_uncheckpointed() {
         .arg(&receipt_db_path)
         .arg("evidence")
         .arg("export")
+        .arg("--admin-all")
         .arg("--output")
         .arg(&output_dir)
         .arg("--require-proofs")
@@ -463,6 +492,7 @@ fn evidence_export_with_signed_federation_policy_roundtrips() {
         .arg(&receipt_db_path)
         .arg("evidence")
         .arg("export")
+        .arg("--admin-all")
         .arg("--output")
         .arg(&output_dir)
         .arg("--federation-policy")
@@ -570,6 +600,7 @@ fn evidence_import_roundtrip_surfaces_imported_trust_without_rewriting_local_his
         .arg(&source_receipt_db_path)
         .arg("evidence")
         .arg("export")
+        .arg("--admin-all")
         .arg("--output")
         .arg(&output_dir)
         .arg("--federation-policy")
@@ -689,6 +720,7 @@ fn evidence_export_rejects_scope_outside_federation_policy() {
         .arg(&receipt_db_path)
         .arg("evidence")
         .arg("export")
+        .arg("--admin-all")
         .arg("--output")
         .arg(&output_dir)
         .arg("--federation-policy")
@@ -793,6 +825,7 @@ fn evidence_export_supports_remote_trust_control_with_federation_policy() {
             service_token,
             "evidence",
             "export",
+            "--admin-all",
             "--output",
             output_dir.to_str().expect("output dir"),
             "--federation-policy",
@@ -920,6 +953,327 @@ fn evidence_verify_detects_tampered_receipt_even_if_manifest_hash_is_updated() {
         "stdout={}\nstderr={}",
         String::from_utf8_lossy(&verify.stdout),
         String::from_utf8_lossy(&verify.stderr)
+    );
+
+    let _ = fs::remove_file(receipt_db_path);
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+fn build_tenant_scoped_export_fixture(receipt_db_path: &Path, output_dir: &Path, tenant: &str) {
+    let store = SqliteReceiptStore::open(receipt_db_path).expect("open receipt store");
+    let issuer = Keypair::generate();
+    let subject = Keypair::generate();
+    let capability = capability_with_id("cap-tenant-disclosure", &subject, &issuer);
+    store
+        .record_capability_snapshot(&capability, None)
+        .expect("record capability snapshot");
+    // Two receipts for the requesting tenant interleaved with two receipts for
+    // tenant-b, so a single checkpoint covers both tenants. This is the leak
+    // vector under audit: the requesting tenant's export must not silently
+    // disclose tenant-b's receipts, but it must document that the signed
+    // checkpoint body inherently covers the cross-tenant batch range. The
+    // receipt store rejects checkpoints over mixed receipt signers, so all
+    // receipts in the batch share the issuer keypair as their kernel key.
+    let seq_a1 = store
+        .append_chio_receipt_returning_seq(&receipt_with_keypair(
+            "rcpt-a-1",
+            "cap-tenant-disclosure",
+            100,
+            Some(tenant),
+            &issuer,
+        ))
+        .expect("append receipt");
+    let _seq_b1 = store
+        .append_chio_receipt_returning_seq(&receipt_with_keypair(
+            "rcpt-b-1",
+            "cap-tenant-disclosure",
+            101,
+            Some("tenant-b"),
+            &issuer,
+        ))
+        .expect("append receipt");
+    let _seq_a2 = store
+        .append_chio_receipt_returning_seq(&receipt_with_keypair(
+            "rcpt-a-2",
+            "cap-tenant-disclosure",
+            102,
+            Some(tenant),
+            &issuer,
+        ))
+        .expect("append receipt");
+    let seq_b2 = store
+        .append_chio_receipt_returning_seq(&receipt_with_keypair(
+            "rcpt-b-2",
+            "cap-tenant-disclosure",
+            103,
+            Some("tenant-b"),
+            &issuer,
+        ))
+        .expect("append receipt");
+    let canonical = store
+        .receipts_canonical_bytes_range(seq_a1, seq_b2)
+        .expect("canonical bytes");
+    let checkpoint = build_checkpoint(
+        1,
+        seq_a1,
+        seq_b2,
+        &canonical
+            .into_iter()
+            .map(|(_, bytes)| bytes)
+            .collect::<Vec<_>>(),
+        &issuer,
+    )
+    .expect("build checkpoint");
+    store
+        .store_checkpoint(&checkpoint)
+        .expect("store checkpoint");
+
+    drop(store);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+        .current_dir(workspace_root())
+        .arg("--receipt-db")
+        .arg(receipt_db_path)
+        .arg("evidence")
+        .arg("export")
+        .arg("--tenant")
+        .arg(tenant)
+        .arg("--output")
+        .arg(output_dir)
+        .output()
+        .expect("run chio evidence export");
+
+    assert!(
+        output.status.success(),
+        "stdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn tenant_evidence_export_omits_cross_tenant_metadata() {
+    let receipt_db_path = unique_path("tenant-disclosure-omit", ".sqlite3");
+    let output_dir = unique_path("tenant-disclosure-omit-output", "");
+    build_tenant_scoped_export_fixture(&receipt_db_path, &output_dir, "tenant-a");
+
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(output_dir.join("manifest.json")).expect("read manifest"))
+            .expect("parse manifest");
+
+    // The tool receipts only include the requesting tenant's receipts.
+    assert_eq!(
+        manifest["counts"]["toolReceipts"], 2,
+        "tenant-scoped export must only include the requesting tenant's receipts"
+    );
+
+    // Narrowed cross-tenant metadata: liveDbSizeBytes must NOT leak when the
+    // export is scoped to a single tenant, because that field aggregates
+    // across every tenant in the live database.
+    let retention: serde_json::Value = serde_json::from_slice(
+        &fs::read(output_dir.join("retention.json")).expect("read retention"),
+    )
+    .expect("parse retention");
+    assert!(
+        retention
+            .get("liveDbSizeBytes")
+            .map(|value| value.is_null())
+            .unwrap_or(true),
+        "tenant-scoped retention must not disclose the cross-tenant live database size: {retention}"
+    );
+
+    // The receipts ndjson must only contain receipts tagged with tenant-a;
+    // receipts.ndjson must not surface any tenant-b records.
+    let receipts =
+        fs::read_to_string(output_dir.join("receipts.ndjson")).expect("read receipts.ndjson");
+    let tenant_a_count = receipts.matches("\"tenant_id\":\"tenant-a\"").count();
+    let tenant_b_count = receipts.matches("\"tenant_id\":\"tenant-b\"").count();
+    assert_eq!(
+        tenant_a_count, 2,
+        "exactly the two tenant-a receipts must be exported: {receipts}"
+    );
+    assert_eq!(
+        tenant_b_count, 0,
+        "receipts.ndjson must not leak any tenant-b receipt records: {receipts}"
+    );
+
+    // The verify subcommand must accept the package as legitimate.
+    let verify = Command::new(env!("CARGO_BIN_EXE_chio"))
+        .current_dir(workspace_root())
+        .arg("evidence")
+        .arg("verify")
+        .arg("--input")
+        .arg(&output_dir)
+        .output()
+        .expect("run chio evidence verify");
+    assert!(
+        verify.status.success(),
+        "stdout={}\nstderr={}",
+        String::from_utf8_lossy(&verify.stdout),
+        String::from_utf8_lossy(&verify.stderr)
+    );
+
+    let _ = fs::remove_file(receipt_db_path);
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn tenant_evidence_export_documents_metadata_disclosure() {
+    let receipt_db_path = unique_path("tenant-disclosure-notice", ".sqlite3");
+    let output_dir = unique_path("tenant-disclosure-notice-output", "");
+    build_tenant_scoped_export_fixture(&receipt_db_path, &output_dir, "tenant-a");
+
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(output_dir.join("manifest.json")).expect("read manifest"))
+            .expect("parse manifest");
+
+    let notice = manifest
+        .get("disclosureNotice")
+        .expect("tenant-scoped manifest must carry a disclosureNotice field");
+    assert_eq!(
+        notice["schema"], "chio.evidence_export_disclosure_notice.v1",
+        "disclosure notice schema must be the canonical Chio identifier"
+    );
+    assert!(
+        notice["summary"]
+            .as_str()
+            .map(|summary| summary.contains("cross-tenant")
+                || summary.contains("per-batch Merkle tree"))
+            .unwrap_or(false),
+        "disclosure summary must explain the cross-tenant disclosure: {notice}"
+    );
+
+    let body_fields = notice["disclosedCheckpointBodyFields"]
+        .as_array()
+        .expect("disclosedCheckpointBodyFields must be a JSON array");
+    let body_strings = body_fields
+        .iter()
+        .filter_map(|value| value.as_str().map(ToOwned::to_owned))
+        .collect::<Vec<_>>();
+    for required in [
+        "batch_start_seq",
+        "batch_end_seq",
+        "tree_size",
+        "merkle_root",
+    ] {
+        assert!(
+            body_strings.iter().any(|value| value == required),
+            "disclosure notice must list {required} as a disclosed checkpoint body field: {body_strings:?}"
+        );
+    }
+
+    let publication_fields = notice["disclosedPublicationFields"]
+        .as_array()
+        .expect("disclosedPublicationFields must be a JSON array");
+    let publication_strings = publication_fields
+        .iter()
+        .filter_map(|value| value.as_str().map(ToOwned::to_owned))
+        .collect::<Vec<_>>();
+    for required in ["entry_start_seq", "entry_end_seq", "log_tree_size"] {
+        assert!(
+            publication_strings.iter().any(|value| value == required),
+            "disclosure notice must list {required} as a disclosed publication field: {publication_strings:?}"
+        );
+    }
+
+    assert!(
+        notice["protocolReference"]
+            .as_str()
+            .map(|reference| !reference.is_empty())
+            .unwrap_or(false),
+        "disclosure notice must carry a non-empty protocolReference for auditors: {notice}"
+    );
+
+    // The README.txt must call out the disclosure so an operator scanning the
+    // package directory cannot miss it.
+    let readme = fs::read_to_string(output_dir.join("README.txt")).expect("read README.txt");
+    assert!(
+        readme.contains("Cross-tenant disclosure notice"),
+        "README.txt must surface the cross-tenant disclosure notice: {readme}"
+    );
+
+    let _ = fs::remove_file(receipt_db_path);
+    let _ = fs::remove_dir_all(output_dir);
+}
+
+#[test]
+fn admin_all_evidence_export_omits_tenant_disclosure_notice() {
+    let receipt_db_path = unique_path("admin-disclosure-absent", ".sqlite3");
+    let output_dir = unique_path("admin-disclosure-absent-output", "");
+
+    {
+        let store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let capability = capability_with_id("cap-admin-disclosure", &subject, &issuer);
+        store
+            .record_capability_snapshot(&capability, None)
+            .expect("record capability snapshot");
+        let seq1 = store
+            .append_chio_receipt_returning_seq(&receipt_with_keypair(
+                "rcpt-a-1",
+                "cap-admin-disclosure",
+                100,
+                Some("tenant-a"),
+                &issuer,
+            ))
+            .expect("append receipt");
+        let seq2 = store
+            .append_chio_receipt_returning_seq(&receipt_with_keypair(
+                "rcpt-b-1",
+                "cap-admin-disclosure",
+                101,
+                Some("tenant-b"),
+                &issuer,
+            ))
+            .expect("append receipt");
+        let canonical = store
+            .receipts_canonical_bytes_range(seq1, seq2)
+            .expect("canonical bytes");
+        let checkpoint = build_checkpoint(
+            1,
+            seq1,
+            seq2,
+            &canonical
+                .into_iter()
+                .map(|(_, bytes)| bytes)
+                .collect::<Vec<_>>(),
+            &issuer,
+        )
+        .expect("build checkpoint");
+        store
+            .store_checkpoint(&checkpoint)
+            .expect("store checkpoint");
+    }
+
+    let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+        .current_dir(workspace_root())
+        .arg("--receipt-db")
+        .arg(&receipt_db_path)
+        .arg("evidence")
+        .arg("export")
+        .arg("--admin-all")
+        .arg("--output")
+        .arg(&output_dir)
+        .output()
+        .expect("run chio evidence export");
+    assert!(
+        output.status.success(),
+        "stdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(output_dir.join("manifest.json")).expect("read manifest"))
+            .expect("parse manifest");
+    assert!(
+        manifest.get("disclosureNotice").is_none()
+            || manifest
+                .get("disclosureNotice")
+                .map(|value| value.is_null())
+                .unwrap_or(false),
+        "admin-all manifest must not attach a tenant-scoped disclosure notice: {manifest}"
     );
 
     let _ = fs::remove_file(receipt_db_path);

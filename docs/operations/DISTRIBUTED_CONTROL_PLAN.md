@@ -1,6 +1,9 @@
 # Distributed Control Rewrite
 
-This document captures the first shared-control rewrite. For the follow-on HA replication, shared-budget, and hosted auth-server plan that is now also shipped, see [HA_CONTROL_AUTH_PLAN.md](HA_CONTROL_AUTH_PLAN.md).
+This document captures the first shared-control rewrite. For the follow-on HA
+replication and shared-budget plan, see [HA_CONTROL_AUTH_PLAN.md](HA_CONTROL_AUTH_PLAN.md).
+Hosted OAuth AS product work remains blocked pending a dedicated ADR or
+equivalent decision note.
 
 ## Status
 

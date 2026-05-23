@@ -16,6 +16,7 @@ import (
 const (
 	envTrustedIssuerKey  = "CHIO_TRUSTED_ISSUER_KEY"
 	envTrustedIssuerKeys = "CHIO_TRUSTED_ISSUER_KEYS"
+	envRequiredScopes    = "CHIO_REQUIRED_SCOPES"
 )
 
 type capabilityValidationConfig struct {
@@ -92,6 +93,9 @@ func validateCapabilityTokenWithConfig(
 			envTrustedIssuerKey,
 			envTrustedIssuerKeys,
 		)
+	}
+	if len(requiredScopes) == 0 {
+		return fmt.Errorf("capability validation requires %s to be configured", envRequiredScopes)
 	}
 
 	token, err := parseCapabilityToken(raw)
@@ -226,6 +230,18 @@ func parseRequiredScopes(raw string) ([]string, error) {
 			return nil, fmt.Errorf("invalid empty scope in %s", AnnotationRequiredScopes)
 		}
 		scopes = append(scopes, scope)
+	}
+	return scopes, nil
+}
+
+func loadRequiredScopesFromEnv() ([]string, error) {
+	raw := os.Getenv(envRequiredScopes)
+	scopes, err := parseRequiredScopes(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid %s: %w", envRequiredScopes, err)
+	}
+	if len(scopes) == 0 {
+		return nil, fmt.Errorf("capability validation requires %s to be configured", envRequiredScopes)
 	}
 	return scopes, nil
 }

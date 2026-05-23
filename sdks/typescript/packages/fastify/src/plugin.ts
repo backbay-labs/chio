@@ -25,9 +25,12 @@ import {
   type EvaluateResponse,
   type HttpMethod,
   CHIO_ERROR_CODES,
-  isDenied,
+  isAuthoritativeVerification,
+  isAuthorizedHttpReceipt,
+  isAllowed,
   resolveConfig,
   buildChioHttpRequest,
+  type Verdict,
 } from "@chio-protocol/node-http";
 import { createHash } from "node:crypto";
 import { PassThrough } from "node:stream";
@@ -53,6 +56,14 @@ declare module "fastify" {
 const VALID_METHODS = new Set<string>([
   "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS",
 ]);
+
+function verdictStatus(verdict: Verdict): number {
+  return "http_status" in verdict ? verdict.http_status : 403;
+}
+
+function verdictReason(verdict: Verdict): string {
+  return "reason" in verdict ? verdict.reason : "request was not authorized";
+}
 
 /**
  * Internal plugin implementation (before wrapping with fastify-plugin).
@@ -170,26 +181,32 @@ const chioPlugin: FastifyPluginAsync<ChioFastifyConfig> = async (
     try {
       const result = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
 
-      // Attach receipt ID header
-      reply.header("X-Chio-Receipt-Id", result.receipt.id);
-
-      if (isDenied(result.verdict)) {
-        reply.code(result.verdict.http_status).send({
+      if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(result.receipt)) {
+        reply.code(verdictStatus(result.verdict)).send({
           error: CHIO_ERROR_CODES.ACCESS_DENIED,
-          message: result.verdict.reason,
+          message: verdictReason(result.verdict),
           receipt_id: result.receipt.id,
           suggestion: "provide a valid capability token in the X-Chio-Capability header or chio_capability query parameter",
         });
         return reply;
       }
 
+      const verification = await resolved.client.verifyReceipt(result.receipt);
+      if (!isAuthoritativeVerification(verification, result.receipt)) {
+        reply.code(502).send({
+          error: CHIO_ERROR_CODES.INVALID_RECEIPT,
+          message: "sidecar returned an unverified receipt",
+          receipt_id: result.receipt.id,
+        });
+        return reply;
+      }
+
+      // Attach receipt ID header after authorization and receipt verification.
+      reply.header("X-Chio-Receipt-Id", result.receipt.id);
+
       // Attach result for downstream handlers
       request.chioResult = result;
     } catch (error) {
-      if (resolved.onSidecarError === "allow") {
-        return;
-      }
-
       const message = error instanceof Error ? error.message : String(error);
       reply.code(502).send({
         error: CHIO_ERROR_CODES.SIDECAR_UNREACHABLE,

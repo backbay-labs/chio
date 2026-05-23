@@ -482,6 +482,10 @@ class IntentRoutingClient :
             toolName = toolName,
             action = ToolCallAction(parameters = parameters, parameterHash = hash),
             decision = decision,
+            receiptKind = "mediated_decision",
+            boundaryClass = "prevent",
+            toolOrigin = "caller_executed",
+            redactionMode = "none",
             contentHash = hash,
             policyHash = "fake-policy",
             evidence = emptyList(),
@@ -489,6 +493,8 @@ class IntentRoutingClient :
             signature = "fake-sig",
         )
     }
+
+    override fun verifyReceipt(receipt: ChioReceipt): Boolean = true
 
     companion object {
         private const val serialVersionUID: Long = 1L

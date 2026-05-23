@@ -11,6 +11,7 @@ import {
   parseReceiptJson,
   parseSignedManifestJson,
   receiptBodyCanonicalJson,
+  receiptSigningBodyCanonicalJson,
   sha256HexUtf8,
   signJsonStringEd25519,
   signUtf8MessageEd25519,
@@ -18,6 +19,7 @@ import {
   verifyCapability,
   verifyJsonStringSignatureEd25519,
   verifyReceipt,
+  verifyReceiptWithTrustedSigners,
   verifySignedManifest,
   verifyUtf8MessageEd25519,
 } from "../src/index.ts";
@@ -78,6 +80,73 @@ test("receipt vectors match the TS receipt helpers", async () => {
     assert.equal(receiptBodyCanonicalJson(receipt), vectorCase.receipt_body_canonical_json, vectorCase.id);
     assert.deepEqual(verifyReceipt(receipt), vectorCase.expected, vectorCase.id);
   }
+});
+
+test("receipt vectors support trusted signer verification in TS", async () => {
+  const fixture = await readJson("tests/bindings/vectors/receipt/v1.json") as {
+    cases: Array<{
+      id: string;
+      receipt: { kernel_key: string };
+    }>;
+  };
+  const vectorCase = fixture.cases.find((item) => item.id === "allow_receipt");
+  assert.ok(vectorCase, "allow receipt vector must exist");
+
+  const verification = verifyReceiptWithTrustedSigners(vectorCase.receipt, [vectorCase.receipt.kernel_key]);
+
+  assert.equal(verification.signer_trusted, true);
+  assert.equal(verification.ok, true);
+  assert.equal(verification.authorized, true);
+});
+
+test("TS receipt semantics ignore legacy metadata payloads", async () => {
+  const fixture = await readJson("tests/bindings/vectors/receipt/v1.json") as {
+    cases: Array<{
+      id: string;
+      receipt: unknown;
+    }>;
+  };
+  const vectorCase = fixture.cases.find((item) => item.id === "allow_receipt");
+  assert.ok(vectorCase, "allow receipt vector must exist");
+  const receipt = JSON.parse(JSON.stringify(vectorCase.receipt));
+  receipt.metadata = {
+    receipt_semantics: {
+      receiptKind: "trace_observation",
+      boundaryClass: "detect_only",
+    },
+  };
+
+  const verification = verifyReceiptWithTrustedSigners(receipt, [receipt.kernel_key]);
+
+  assert.equal(verification.receipt_kind, "mediated_decision");
+  assert.equal(verification.boundary_class, "prevent");
+  assert.equal(verification.receipt_id_valid, false);
+  assert.equal(verification.signature_valid, false);
+  assert.equal(verification.authorized, false);
+});
+
+test("TS receipt signature validity fails when the content-addressed id mismatches", async () => {
+  const fixture = await readJson("tests/bindings/vectors/receipt/v1.json") as {
+    signing_key_seed_hex: string;
+    cases: Array<{
+      id: string;
+      receipt: { id: string; kernel_key: string; signature: string };
+    }>;
+  };
+  const vectorCase = fixture.cases.find((item) => item.id === "allow_receipt");
+  assert.ok(vectorCase, "allow receipt vector must exist");
+  const receipt = JSON.parse(JSON.stringify(vectorCase.receipt));
+  receipt.id = "0000000000000000000000000000000000000000000000000000000000000000";
+  receipt.signature = signJsonStringEd25519(
+    receiptSigningBodyCanonicalJson(receipt),
+    fixture.signing_key_seed_hex,
+  ).signature_hex;
+
+  const verification = verifyReceipt(receipt);
+
+  assert.equal(verification.receipt_id_valid, false);
+  assert.equal(verification.signature_valid, false);
+  assert.equal(verification.ok, false);
 });
 
 test("signing vectors match the TS signing helpers", async () => {

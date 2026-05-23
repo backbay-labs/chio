@@ -1,11 +1,17 @@
-//! Baseline bench: receipt_sign.
-//! Body fills in once the async-kernel pivot lands.
+//! Baseline bench: canonical receipt signing.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
+#[path = "fixtures/dispatch_request_fixture.rs"]
+mod dispatch_request_fixture;
+
+use dispatch_request_fixture::DispatchAllowFixture;
+
 pub fn bench(c: &mut Criterion) {
+    let fixture = DispatchAllowFixture::new();
+
     c.bench_function("receipt_sign", |b| {
-        b.iter(|| black_box(0_u64));
+        b.iter(|| black_box(fixture.receipt_sign_once()));
     });
 }
 

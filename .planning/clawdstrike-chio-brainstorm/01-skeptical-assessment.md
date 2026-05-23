@@ -55,13 +55,13 @@ Verbatim verification of the peer-agent handoff. File paths absolute. No specula
 
 **`chio-chiodos-runtime` exists as a crate** -- TRUE ONLY ON BRANCH. `ls crates/ | grep chiodos` on `main` returns only `chio-chiodos` and `chio-chiodos-authority`. Branch `origin/codex/chiodos-7-8-live-treaty-buyer-closure` adds `chio-chiodos-runtime/`, `chio-chiodos-runtime-harness/`, and `chio-chiodos-loopback/`. Peer was honest about this caveat. On main: `chio-chiodos/src/lib.rs` is 2,963 lines, `chio-chiodos-authority/src/lib.rs` is 1,347 lines. The branch is 48 commits ahead of main.
 
-**Bilateral DSSE strict verifier is wired up** -- CONFIRMED. `chio-federation/src/bilateral_verifier.rs` is 2,502 lines and consumes `verify_dsse_envelope` (bilateral_verifier.rs:952) and `verify_chiodos_dsse_envelope` (bilateral_verifier.rs:568) from `bilateral_dsse.rs`. Public surface re-exported from `chio-federation/src/lib.rs:51-52`. This is a real, wired strict verifier, not a partial implementation.
+**Bilateral DSSE strict verifier is wired up** -- CONFIRMED. `chio-federation/src/bilateral_verifier.rs` consumes `verify_dsse_envelope` (bilateral_verifier.rs:1362) and `verify_chio_bilateral_dsse_envelope` (bilateral_verifier.rs:664 and :945) from `bilateral_dsse.rs`. Public surface is re-exported from `chio-federation/src/lib.rs`. This is a real, wired strict verifier, not a partial implementation.
 
 ## Build state (both sides)
 
-**Chio (`/Users/connor/Medica/backbay/standalone/arc`)**: `cargo check --workspace` started in background, no output produced within ~3 minutes of polling -- meaning either it's still compiling (cold cache) or no errors have appeared. The repo has 4 modified files (`formal/lean4/Chio/Chio.lean`, `formal/proof-manifest.toml`, `formal/theorem-inventory.json`, `spec/schemas/registry.json`) and ~15 untracked planning dirs, none of which would break compilation. Branch `main`. I cannot confirm pass/fail within the 3-minute cap.
+**Chio repo**: `cargo check --workspace` started in background, no output produced within ~3 minutes of polling -- meaning either it's still compiling (cold cache) or no errors have appeared. The repo has 4 modified files (`formal/lean4/Chio/Chio.lean`, `formal/proof-manifest.toml`, `formal/theorem-inventory.json`, `spec/schemas/registry.json`) and ~15 untracked planning dirs, none of which would break compilation. Branch `main`. I cannot confirm pass/fail within the 3-minute cap.
 
-**Clawdstrike (`/Users/connor/Medica/backbay/standalone/clawdstrike`)**: `cargo check --workspace` similarly running, no output within cap. With 82K LOC of uncommitted changes and a 45K-line `api_server.rs`, a cold-cache check is realistically 5-10 minutes. Cannot confirm pass/fail.
+**Clawdstrike repo**: `cargo check --workspace` similarly running, no output within cap. With 82K LOC of uncommitted changes and a 45K-line `api_server.rs`, a cold-cache check is realistically 5-10 minutes. Cannot confirm pass/fail.
 
 Bottom line on build state: NEITHER repo's compile status was verifiable within the 3-minute window. Peer was explicit they hadn't run it; I have no stronger signal.
 
@@ -84,7 +84,7 @@ So the peer's hedge was right: the buyer-closure runtime kernel is branch-only, 
 Given the verified state, here's what's *actually* available for an integration today, vs. what the peer is implicitly assuming.
 
 Available on the Chio side, on main, right now:
-- `verify_dsse_envelope` / `verify_chiodos_dsse_envelope` in `chio-federation/src/bilateral_dsse.rs` (1,786 lines) with a full strict-verifier wrapper in `bilateral_verifier.rs` (2,502 lines)
+- `verify_dsse_envelope` / `verify_chio_bilateral_dsse_envelope` in `chio-federation/src/bilateral_dsse.rs` with a full strict-verifier wrapper in `bilateral_verifier.rs`
 - Multi-lane anchoring with real Rekor SET verification, OTS Bitcoin, EVM (and a thinner Solana memo lane)
 - BBS issuer registry + projection signing in `chio-selective-disclosure` (882 lines, single file)
 - Lean theorems `treaty_admission_iff_predicate_intersection`, `amendment_admissible_iff_backward_refinement`, plus V1/V3/V4/V5 in `PredicateLang.lean`, all proven (no `sorry`)

@@ -162,6 +162,7 @@ pub enum PricingModel {
 
 /// Permissions that a tool server requires from its sandbox.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RequiredPermissions {
     /// Filesystem paths the server needs to read.
     pub read_paths: Option<Vec<String>>,
@@ -364,5 +365,22 @@ mod tests {
         let m = sample_manifest();
         let signed = sign_manifest(&m, &kp).unwrap_or_else(|e| panic!("sign: {e}"));
         verify_manifest(&signed, &kp.public_key()).unwrap_or_else(|e| panic!("verify: {e}"));
+    }
+
+    #[test]
+    fn required_permissions_reject_unknown_fields() {
+        let result = serde_json::from_value::<RequiredPermissions>(serde_json::json!({
+            "read_paths": ["/tmp"],
+            "extra_permission": true
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn event_permissions_reject_until_event_actions_land() {
+        let result = serde_json::from_value::<RequiredPermissions>(serde_json::json!({
+            "event_publish": [{"broker_kind": "kafka"}]
+        }));
+        assert!(result.is_err());
     }
 }

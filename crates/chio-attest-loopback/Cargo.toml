@@ -1,0 +1,28 @@
+[package]
+name = "chio-attest-loopback"
+description = "Deterministic Chio loopback proof package and runtime harness library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_attest_loopback"
+
+[dependencies]
+chio-attest-buyer-core = { path = "../chio-attest-buyer-core" }
+chio-federation-authority = { path = "../chio-federation-authority" }
+chio-core-types = { path = "../chio-core-types" }
+chio-federation = { path = "../chio-federation" }
+chio-governance = { path = "../chio-governance" }
+chio-selective-disclosure = { path = "../chio-selective-disclosure", features = ["bbs"] }
+chio-workflow = { path = "../chio-workflow" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

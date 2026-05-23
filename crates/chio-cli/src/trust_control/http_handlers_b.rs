@@ -1,11 +1,30 @@
+fn resolve_admin_report_read_context(
+    headers: &HeaderMap,
+    config: &TrustServiceConfig,
+    surface: &str,
+) -> Result<ReceiptReadContext, Response> {
+    match resolve_control_read_principal(headers, config)? {
+        ResolvedControlReadPrincipal::AdminService => Ok(ReceiptReadContext::admin_service()),
+        ResolvedControlReadPrincipal::TenantRead { .. } => Err(plain_http_error(
+            StatusCode::FORBIDDEN,
+            &format!("{surface} requires admin receipt read authority"),
+        )),
+    }
+}
+
 async fn handle_receipt_analytics(
     State(state): State<TrustServiceState>,
-    Query(query): Query<ReceiptAnalyticsQuery>,
+    Query(mut query): Query<ReceiptAnalyticsQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    query.read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "receipt analytics",
+    ) {
+        Ok(context) => Some(context),
+        Err(response) => return response,
+    };
     let store = match open_receipt_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
@@ -21,22 +40,31 @@ async fn handle_evidence_export(
     headers: HeaderMap,
     Json(request): Json<evidence_export::RemoteEvidenceExportRequest>,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    let principal = match resolve_control_read_principal(&headers, &state.config) {
+        Ok(principal) => principal,
+        Err(response) => return response,
+    };
     let store = match open_receipt_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
     };
+    let query = match principal.authorize_evidence_export_query(request.query) {
+        Ok(query) => query,
+        Err(response) => return response,
+    };
     let prepared = match evidence_export::prepare_evidence_export(
-        request.query,
+        query,
         request.require_proofs,
         request.federation_policy,
     ) {
         Ok(prepared) => prepared,
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
-    let bundle = match store.build_evidence_export_bundle(&prepared.query) {
+    let query = match principal.authorize_evidence_export_query(prepared.query) {
+        Ok(query) => query,
+        Err(response) => return response,
+    };
+    let bundle = match store.build_evidence_export_bundle(&query) {
         Ok(bundle) => bundle,
         Err(error) => {
             return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
@@ -95,12 +123,17 @@ async fn handle_evidence_import(
 
 async fn handle_cost_attribution_report(
     State(state): State<TrustServiceState>,
-    Query(query): Query<CostAttributionQuery>,
+    Query(mut query): Query<CostAttributionQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    query.read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "cost attribution report",
+    ) {
+        Ok(context) => Some(context),
+        Err(response) => return response,
+    };
     let store = match open_receipt_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
@@ -113,12 +146,17 @@ async fn handle_cost_attribution_report(
 
 async fn handle_shared_evidence_report(
     State(state): State<TrustServiceState>,
-    Query(query): Query<SharedEvidenceQuery>,
+    Query(mut query): Query<SharedEvidenceQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    query.read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "shared evidence report",
+    ) {
+        Ok(context) => Some(context),
+        Err(response) => return response,
+    };
     let store = match open_receipt_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
@@ -131,12 +169,17 @@ async fn handle_shared_evidence_report(
 
 async fn handle_operator_report(
     State(state): State<TrustServiceState>,
-    Query(query): Query<OperatorReportQuery>,
+    Query(mut query): Query<OperatorReportQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    query.read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "operator report",
+    ) {
+        Ok(context) => Some(context),
+        Err(response) => return response,
+    };
 
     let receipt_store = match open_receipt_store(&state.config) {
         Ok(store) => store,
@@ -155,12 +198,17 @@ async fn handle_operator_report(
 
 async fn handle_behavioral_feed_report(
     State(state): State<TrustServiceState>,
-    Query(query): Query<BehavioralFeedQuery>,
+    Query(mut query): Query<BehavioralFeedQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    query.read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "behavioral feed report",
+    ) {
+        Ok(context) => Some(context),
+        Err(response) => return response,
+    };
 
     let receipt_db_path = match state.config.receipt_db_path.as_deref() {
         Some(path) => path,
@@ -189,9 +237,11 @@ async fn handle_exposure_ledger_report(
     Query(query): Query<ExposureLedgerQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    let read_context =
+        match resolve_admin_report_read_context(&headers, &state.config, "exposure ledger report") {
+            Ok(context) => context,
+            Err(response) => return response,
+        };
 
     let receipt_store = match open_receipt_store(&state.config) {
         Ok(store) => store,
@@ -207,7 +257,7 @@ async fn handle_exposure_ledger_report(
         }
     };
 
-    match build_exposure_ledger_report(&receipt_store, &query) {
+    match build_exposure_ledger_report_with_context(&receipt_store, &query, read_context) {
         Ok(report) => match SignedExposureLedgerReport::sign(report, &keypair) {
             Ok(signed) => Json::<SignedExposureLedgerReport>(signed).into_response(),
             Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
@@ -221,9 +271,12 @@ async fn handle_credit_scorecard_report(
     Query(query): Query<ExposureLedgerQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    let read_context =
+        match resolve_admin_report_read_context(&headers, &state.config, "credit scorecard report")
+        {
+            Ok(context) => context,
+            Err(response) => return response,
+        };
 
     let receipt_db_path = match state.config.receipt_db_path.as_deref() {
         Some(path) => path,
@@ -248,12 +301,15 @@ async fn handle_credit_scorecard_report(
         }
     };
 
-    match build_credit_scorecard_report(
+    let trusted_kernel_keys = vec![keypair.public_key().to_hex()];
+    match build_credit_scorecard_report_with_context(
         &receipt_store,
         receipt_db_path,
         state.config.budget_db_path.as_deref(),
         state.config.issuance_policy.as_ref(),
         &query,
+        read_context,
+        &trusted_kernel_keys,
     ) {
         Ok(report) => match SignedCreditScorecardReport::sign(report, &keypair) {
             Ok(signed) => Json::<SignedCreditScorecardReport>(signed).into_response(),
@@ -268,7 +324,9 @@ async fn handle_capital_book_report(
     Query(query): Query<CapitalBookQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
+    if let Err(response) =
+        resolve_admin_report_read_context(&headers, &state.config, "capital book report")
+    {
         return response;
     }
 
@@ -362,7 +420,9 @@ async fn handle_credit_facility_report(
     Query(query): Query<ExposureLedgerQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
+    if let Err(response) =
+        resolve_admin_report_read_context(&headers, &state.config, "credit facility report")
+    {
         return response;
     }
 
@@ -380,6 +440,17 @@ async fn handle_credit_facility_report(
         Err(response) => return response,
     };
 
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
     match build_credit_facility_report_from_store(
         &receipt_store,
         receipt_db_path,
@@ -387,6 +458,7 @@ async fn handle_credit_facility_report(
         state.config.certification_registry_file.as_deref(),
         state.config.issuance_policy.as_ref(),
         &query,
+        &trusted_kernel_keys,
     ) {
         Ok(report) => Json::<CreditFacilityReport>(report).into_response(),
         Err(error) => error.into_response(),
@@ -432,7 +504,9 @@ async fn handle_query_credit_facilities(
     Query(query): Query<CreditFacilityListQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
+    if let Err(response) =
+        resolve_admin_report_read_context(&headers, &state.config, "credit facility listing")
+    {
         return response;
     }
 
@@ -452,7 +526,9 @@ async fn handle_credit_bond_report(
     Query(query): Query<ExposureLedgerQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
+    if let Err(response) =
+        resolve_admin_report_read_context(&headers, &state.config, "credit bond report")
+    {
         return response;
     }
 
@@ -470,6 +546,17 @@ async fn handle_credit_bond_report(
         Err(response) => return response,
     };
 
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
     match build_credit_bond_report_from_store(
         &receipt_store,
         receipt_db_path,
@@ -477,6 +564,7 @@ async fn handle_credit_bond_report(
         state.config.certification_registry_file.as_deref(),
         state.config.issuance_policy.as_ref(),
         &query,
+        &trusted_kernel_keys,
     ) {
         Ok(report) => Json::<CreditBondReport>(report).into_response(),
         Err(error) => error.into_response(),
@@ -522,7 +610,9 @@ async fn handle_query_credit_bonds(
     Query(query): Query<CreditBondListQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
+    if let Err(response) =
+        resolve_admin_report_read_context(&headers, &state.config, "credit bond listing")
+    {
         return response;
     }
 
@@ -542,7 +632,11 @@ async fn handle_credit_bonded_execution_simulation_report(
     headers: HeaderMap,
     Json(request): Json<CreditBondedExecutionSimulationRequest>,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
+    if let Err(response) = resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "credit bonded execution simulation report",
+    ) {
         return response;
     }
 
@@ -562,7 +656,9 @@ async fn handle_credit_loss_lifecycle_report(
     Query(query): Query<CreditLossLifecycleQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
+    if let Err(response) =
+        resolve_admin_report_read_context(&headers, &state.config, "credit loss lifecycle report")
+    {
         return response;
     }
 
@@ -612,7 +708,9 @@ async fn handle_query_credit_loss_lifecycle(
     Query(query): Query<CreditLossLifecycleListQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
+    if let Err(response) =
+        resolve_admin_report_read_context(&headers, &state.config, "credit loss lifecycle listing")
+    {
         return response;
     }
 
@@ -632,7 +730,9 @@ async fn handle_credit_backtest_report(
     Query(query): Query<CreditBacktestQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
+    if let Err(response) =
+        resolve_admin_report_read_context(&headers, &state.config, "credit backtest report")
+    {
         return response;
     }
 
@@ -650,6 +750,17 @@ async fn handle_credit_backtest_report(
         Err(response) => return response,
     };
 
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
     match build_credit_backtest_report_from_store(
         &receipt_store,
         receipt_db_path,
@@ -657,6 +768,7 @@ async fn handle_credit_backtest_report(
         state.config.certification_registry_file.as_deref(),
         state.config.issuance_policy.as_ref(),
         &query,
+        &trusted_kernel_keys,
     ) {
         Ok(report) => Json::<CreditBacktestReport>(report).into_response(),
         Err(error) => error.into_response(),
@@ -668,9 +780,14 @@ async fn handle_credit_provider_risk_package_report(
     Query(query): Query<CreditProviderRiskPackageQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    let read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "credit provider risk package report",
+    ) {
+        Ok(context) => context,
+        Err(response) => return response,
+    };
 
     let receipt_db_path = match state.config.receipt_db_path.as_deref() {
         Some(path) => path,
@@ -703,6 +820,7 @@ async fn handle_credit_provider_risk_package_report(
         state.config.issuance_policy.as_ref(),
         &keypair,
         &query,
+        read_context,
     ) {
         Ok(report) => match SignedCreditProviderRiskPackage::sign(report, &keypair) {
             Ok(signed) => Json::<SignedCreditProviderRiskPackage>(signed).into_response(),
@@ -1313,12 +1431,17 @@ async fn handle_runtime_attestation_appraisal_import(
 
 async fn handle_settlement_report(
     State(state): State<TrustServiceState>,
-    Query(query): Query<OperatorReportQuery>,
+    Query(mut query): Query<OperatorReportQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    query.read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "settlement reconciliation report",
+    ) {
+        Ok(context) => Some(context),
+        Err(response) => return response,
+    };
 
     let receipt_store = match open_receipt_store(&state.config) {
         Ok(store) => store,
@@ -1366,12 +1489,17 @@ async fn handle_record_settlement_reconciliation(
 
 async fn handle_metered_billing_report(
     State(state): State<TrustServiceState>,
-    Query(query): Query<OperatorReportQuery>,
+    Query(mut query): Query<OperatorReportQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    query.read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "metered billing report",
+    ) {
+        Ok(context) => Some(context),
+        Err(response) => return response,
+    };
 
     let receipt_store = match open_receipt_store(&state.config) {
         Ok(store) => store,
@@ -1386,12 +1514,17 @@ async fn handle_metered_billing_report(
 
 async fn handle_economic_receipt_report(
     State(state): State<TrustServiceState>,
-    Query(query): Query<OperatorReportQuery>,
+    Query(mut query): Query<OperatorReportQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    query.read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "economic receipt report",
+    ) {
+        Ok(context) => Some(context),
+        Err(response) => return response,
+    };
 
     let receipt_store = match open_receipt_store(&state.config) {
         Ok(store) => store,
@@ -1409,16 +1542,21 @@ async fn handle_economic_completion_flow_report(
     Query(query): Query<ExposureLedgerQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    let read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "economic completion flow report",
+    ) {
+        Ok(context) => context,
+        Err(response) => return response,
+    };
 
     let receipt_store = match open_receipt_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
     };
 
-    match build_economic_completion_flow_report(&receipt_store, &query) {
+    match build_economic_completion_flow_report(&receipt_store, &query, read_context) {
         Ok(report) => Json::<EconomicCompletionFlowReport>(report).into_response(),
         Err(error) => error.into_response(),
     }
@@ -1426,12 +1564,17 @@ async fn handle_economic_completion_flow_report(
 
 async fn handle_authorization_context_report(
     State(state): State<TrustServiceState>,
-    Query(query): Query<OperatorReportQuery>,
+    Query(mut query): Query<OperatorReportQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    query.read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "authorization context report",
+    ) {
+        Ok(context) => Some(context),
+        Err(response) => return response,
+    };
 
     let receipt_store = match open_receipt_store(&state.config) {
         Ok(store) => store,
@@ -1448,7 +1591,11 @@ async fn handle_authorization_profile_metadata_report(
     State(state): State<TrustServiceState>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
+    if let Err(response) = resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "authorization profile metadata report",
+    ) {
         return response;
     }
 
@@ -1465,12 +1612,17 @@ async fn handle_authorization_profile_metadata_report(
 
 async fn handle_authorization_review_pack_report(
     State(state): State<TrustServiceState>,
-    Query(query): Query<OperatorReportQuery>,
+    Query(mut query): Query<OperatorReportQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    query.read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "authorization review pack report",
+    ) {
+        Ok(context) => Some(context),
+        Err(response) => return response,
+    };
 
     let receipt_store = match open_receipt_store(&state.config) {
         Ok(store) => store,
@@ -1515,12 +1667,15 @@ async fn handle_underwriting_policy_input(
         }
     };
 
+    let trusted_kernel_keys = vec![keypair.public_key().to_hex()];
     match build_underwriting_policy_input(
         &receipt_store,
         receipt_db_path,
         state.config.budget_db_path.as_deref(),
         state.config.certification_registry_file.as_deref(),
         &query,
+        chio_kernel::ReceiptReadContext::admin_service(),
+        &trusted_kernel_keys,
     ) {
         Ok(report) => match SignedUnderwritingPolicyInput::sign(report, &keypair) {
             Ok(signed) => Json::<SignedUnderwritingPolicyInput>(signed).into_response(),
@@ -1535,9 +1690,12 @@ async fn handle_underwriting_decision_report(
     Query(query): Query<UnderwritingPolicyInputQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    let read_context =
+        match resolve_admin_report_read_context(&headers, &state.config, "underwriting decision report")
+        {
+            Ok(context) => context,
+            Err(response) => return response,
+        };
 
     let receipt_db_path = match state.config.receipt_db_path.as_deref() {
         Some(path) => path,
@@ -1553,12 +1711,25 @@ async fn handle_underwriting_decision_report(
         Err(response) => return response,
     };
 
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
     match build_underwriting_decision_report_from_store(
         &receipt_store,
         receipt_db_path,
         state.config.budget_db_path.as_deref(),
         state.config.certification_registry_file.as_deref(),
         &query,
+        read_context,
+        &trusted_kernel_keys,
     ) {
         Ok(report) => Json::<UnderwritingDecisionReport>(report).into_response(),
         Err(error) => error.into_response(),
@@ -1570,9 +1741,14 @@ async fn handle_underwriting_simulation_report(
     headers: HeaderMap,
     Json(request): Json<UnderwritingSimulationRequest>,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    let read_context = match resolve_admin_report_read_context(
+        &headers,
+        &state.config,
+        "underwriting simulation report",
+    ) {
+        Ok(context) => context,
+        Err(response) => return response,
+    };
 
     let receipt_db_path = match state.config.receipt_db_path.as_deref() {
         Some(path) => path,
@@ -1588,12 +1764,25 @@ async fn handle_underwriting_simulation_report(
         Err(response) => return response,
     };
 
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
     match build_underwriting_simulation_report_from_store(
         &receipt_store,
         receipt_db_path,
         state.config.budget_db_path.as_deref(),
         state.config.certification_registry_file.as_deref(),
         &request,
+        read_context,
+        &trusted_kernel_keys,
     ) {
         Ok(report) => Json::<UnderwritingSimulationReport>(report).into_response(),
         Err(error) => error.into_response(),
@@ -1647,6 +1836,7 @@ async fn handle_issue_underwriting_decision(
         state.config.certification_registry_file.as_deref(),
         &request.query,
         request.supersedes_decision_id.as_deref(),
+        chio_kernel::ReceiptReadContext::admin_service(),
     ) {
         Ok(decision) => Json::<SignedUnderwritingDecision>(decision).into_response(),
         Err(error) => error.into_response(),
@@ -1770,13 +1960,27 @@ async fn handle_local_reputation(
         );
     }
 
-    match issuance::inspect_local_reputation(
+    let read_context = ReceiptReadContext::admin_service();
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
+    match issuance::inspect_local_reputation_with_read_context(
         &subject_key,
         state.config.receipt_db_path.as_deref(),
         state.config.budget_db_path.as_deref(),
         query.since,
         query.until,
         state.config.issuance_policy.as_ref(),
+        &trusted_kernel_keys,
+        &read_context,
     ) {
         Ok(mut inspection) => {
             if let Some(receipt_db_path) = state.config.receipt_db_path.as_deref() {
@@ -1819,13 +2023,27 @@ async fn handle_reputation_compare(
         );
     }
 
-    let local = match issuance::inspect_local_reputation(
+    let read_context = ReceiptReadContext::admin_service();
+    let trusted_kernel_keys = match trusted_kernel_keys_from_service_config(&state.config) {
+        Ok(keys) => keys.unwrap_or_default(),
+        Err(error) => {
+            return plain_http_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!(
+                    "trust service authority material is configured but could not be loaded: {error}"
+                ),
+            );
+        }
+    };
+    let local = match issuance::inspect_local_reputation_with_read_context(
         &subject_key,
         state.config.receipt_db_path.as_deref(),
         state.config.budget_db_path.as_deref(),
         request.since,
         request.until,
         state.config.issuance_policy.as_ref(),
+        &trusted_kernel_keys,
+        &read_context,
     ) {
         Ok(local) => local,
         Err(error) => {
@@ -1841,6 +2059,7 @@ async fn handle_reputation_compare(
             agent_subject: Some(local.subject_key.clone()),
             since: request.since,
             until: request.until,
+            read_context: Some(chio_kernel::ReceiptReadContext::admin_service()),
             ..SharedEvidenceQuery::default()
         }) {
             Ok(report) => report,
@@ -2026,9 +2245,10 @@ async fn handle_agent_receipts(
     Query(query): Query<AgentReceiptsHttpQuery>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
-        return response;
-    }
+    let principal = match resolve_control_read_principal(&headers, &state.config) {
+        Ok(principal) => principal,
+        Err(response) => return response,
+    };
     let store = match open_receipt_store(&state.config) {
         Ok(store) => store,
         Err(response) => return response,
@@ -2037,6 +2257,7 @@ async fn handle_agent_receipts(
         agent_subject: Some(subject_key),
         cursor: query.cursor,
         limit: list_limit(query.limit),
+        read_context: Some(principal.receipt_read_context()),
         ..Default::default()
     };
     let result = match store.query_receipts(&kernel_query) {
@@ -2086,8 +2307,10 @@ async fn handle_append_child_receipt(
             &state,
             "child receipt was not visible on the leader after write",
             || {
+                let read_context = chio_kernel::ReceiptReadContext::admin_service();
                 let receipts = store
-                    .list_child_receipts(
+                    .list_child_receipts_with_context(
+                        &read_context,
                         MAX_LIST_LIMIT,
                         Some(receipt.session_id.as_str()),
                         Some(receipt.parent_request_id.as_str()),

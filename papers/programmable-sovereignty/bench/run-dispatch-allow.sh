@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
-SOURCE=${CHIO_SOURCE:-/Users/connor/.codex/worktrees/985a/arc}
+SOURCE=${CHIO_SOURCE:-$ROOT}
 if [[ ! -d "$SOURCE/crates" ]]; then
   SOURCE=$ROOT
 fi
@@ -28,13 +28,13 @@ if ! (
     --noplot
 ) > "$LOG" 2>&1; then
   emit_unreported
-  exit 0
+  exit 1
 fi
 
 line=$(grep -a -E 'time:[[:space:]]+\[' "$LOG" | head -n 1 | perl -CS -pe 's/\x{00B5}/u/g' || true)
 if [[ -z "$line" ]]; then
   emit_unreported
-  exit 0
+  exit 1
 fi
 
 summary=$(printf '%s\n' "$line" | awk '
@@ -60,6 +60,7 @@ summary=$(printf '%s\n' "$line" | awk '
 
 if [[ -z "$summary" ]]; then
   emit_unreported
+  exit 1
 else
   printf '%s\n' "$summary" > "$INLINE"
 fi

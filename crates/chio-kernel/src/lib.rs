@@ -392,10 +392,16 @@ pub use receipt_analytics::{
     AgentAnalyticsRow, AnalyticsTimeBucket, ReceiptAnalyticsMetrics, ReceiptAnalyticsQuery,
     ReceiptAnalyticsResponse, TimeAnalyticsRow, ToolAnalyticsRow, MAX_ANALYTICS_GROUP_LIMIT,
 };
-pub use receipt_query::{ReceiptQuery, ReceiptQueryResult, MAX_QUERY_LIMIT};
+pub use receipt_query::{
+    EffectiveReceiptReadScope, ReceiptQuery, ReceiptQueryResult, ReceiptReadBoundary,
+    ReceiptReadContext, ReceiptReadContextSource, MAX_QUERY_LIMIT,
+};
 pub use receipt_store::{
-    FederatedEvidenceShareImport, FederatedEvidenceShareSummary, ReceiptStore, ReceiptStoreError,
-    RetentionConfig, StoredChildReceipt, StoredToolReceipt,
+    AuthorizationReceiptConsumption, FederatedEvidenceShareImport, FederatedEvidenceShareSummary,
+    ReceiptCheckpointCreateReport, ReceiptCheckpointRange, ReceiptCheckpointStatusReport,
+    ReceiptFlushReport, ReceiptStore, ReceiptStoreError, ReceiptStoreHealthReport,
+    ReceiptWalCheckpointReport, ReceiptWriterCounters, RetentionConfig, StoredChildReceipt,
+    StoredToolReceipt,
 };
 pub use revocation_runtime::{InMemoryRevocationStore, RevocationStore};
 pub use revocation_store::{RevocationRecord, RevocationStoreError};
@@ -419,10 +425,11 @@ pub(crate) use kernel::{current_unix_timestamp, MatchingGrant, ReceiptContent};
 
 pub use kernel::{
     AgentId, CapabilityId, ChildReceiptLog, ChioKernel, Guard, GuardContext, HybridSigningConfig,
-    KernelConfig, KernelError, KernelReceiptVersion, NegotiationDowngradeReason, PromptProvider,
-    ReceiptLog, ResourceProvider, ServerId, StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE,
-    DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
-    DEFAULT_RETENTION_DAYS, EMERGENCY_STOP_DENY_REASON,
+    KernelConfig, KernelError, PromptProvider, ReceiptLog, ResourceProvider,
+    RuntimeAdmissionContext, RuntimeAdmissionDecision, RuntimeAdmissionHook, ServerId,
+    StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_SIZE_BYTES,
+    DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES, DEFAULT_RETENTION_DAYS,
+    EMERGENCY_STOP_DENY_REASON,
 };
 
 pub use kernel::evaluator::ToolEvaluator;

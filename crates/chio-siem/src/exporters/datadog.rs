@@ -17,7 +17,7 @@
 
 use std::time::Duration;
 
-use crate::alerting::{derive_severity, AlertSeverity};
+use crate::alerting::{derive_event_severity, AlertSeverity};
 use crate::event::SiemEvent;
 use crate::exporter::{ExportError, ExportFuture, Exporter};
 use crate::redaction::redact_for_operator_log;
@@ -196,15 +196,26 @@ impl DatadogExporter {
 
         for ev in events {
             let receipt = &ev.receipt;
+            let authorized = ev.is_authorized();
             let (allow, guard_label, reason) = match &receipt.decision {
-                Decision::Allow => (true, "allow", "chio.receipt".to_string()),
-                Decision::Deny { reason, guard } => (false, guard.as_str(), reason.clone()),
-                Decision::Cancelled { reason } => (false, "cancelled", reason.clone()),
-                Decision::Incomplete { reason } => (false, "incomplete", reason.clone()),
+                Some(Decision::Allow) if authorized => (true, "allow", "chio.receipt".to_string()),
+                Some(Decision::Allow) => (
+                    false,
+                    ev.receipt_kind.as_str(),
+                    format!("{} receipt", ev.receipt_kind),
+                ),
+                Some(Decision::Deny { reason, guard }) => (false, guard.as_str(), reason.clone()),
+                Some(Decision::Cancelled { reason }) => (false, "cancelled", reason.clone()),
+                Some(Decision::Incomplete { reason }) => (false, "incomplete", reason.clone()),
+                None => (
+                    false,
+                    ev.receipt_kind.as_str(),
+                    format!("{} receipt", ev.receipt_kind),
+                ),
             };
             let reason = redact_for_operator_log(reason);
 
-            let severity = derive_severity(receipt);
+            let severity = derive_event_severity(ev);
 
             let mut tags = self.config.tags.clone();
             tags.push(format!("tool:{}", sanitize_tag_value(&receipt.tool_name)));
@@ -217,7 +228,22 @@ impl DatadogExporter {
                 "severity:{}",
                 sanitize_tag_value(severity.as_tag())
             ));
-            tags.push(format!("outcome:{}", if allow { "allow" } else { "deny" }));
+            tags.push(format!(
+                "receipt_kind:{}",
+                sanitize_tag_value(&ev.receipt_kind)
+            ));
+            tags.push(format!(
+                "boundary_class:{}",
+                sanitize_tag_value(&ev.boundary_class)
+            ));
+            tags.push(format!(
+                "outcome:{}",
+                if allow {
+                    "allow"
+                } else {
+                    ev.receipt_kind.as_str()
+                }
+            ));
 
             for guard in &receipt.evidence {
                 tags.push(format!(
@@ -226,12 +252,30 @@ impl DatadogExporter {
                 ));
             }
 
-            let event_json = serde_json::to_value(receipt).map_err(|e| {
+            let mut event_json = serde_json::to_value(receipt).map_err(|e| {
                 ExportError::SerializationError(format!(
                     "failed to serialize receipt {}: {e}",
                     receipt.id
                 ))
             })?;
+            if let Some(obj) = event_json.as_object_mut() {
+                obj.insert(
+                    "receipt_kind".to_string(),
+                    serde_json::Value::String(ev.receipt_kind.clone()),
+                );
+                obj.insert(
+                    "boundary_class".to_string(),
+                    serde_json::Value::String(ev.boundary_class.clone()),
+                );
+                obj.insert(
+                    "result".to_string(),
+                    serde_json::Value::String(ev.result.clone()),
+                );
+                obj.insert(
+                    "authorized".to_string(),
+                    serde_json::Value::Bool(ev.authorized),
+                );
+            }
 
             logs.push(serde_json::json!({
                 "message": reason,
@@ -240,6 +284,10 @@ impl DatadogExporter {
                 "hostname": hostname,
                 "status": Self::datadog_status(severity, allow),
                 "ddtags": tags.join(","),
+                "receipt_kind": ev.receipt_kind.clone(),
+                "boundary_class": ev.boundary_class.clone(),
+                "result": ev.result.clone(),
+                "authorized": ev.authorized,
                 "event": event_json,
             }));
         }
@@ -315,6 +363,10 @@ fn sanitize_tag_value(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chio_core::crypto::Keypair;
+    use chio_core::receipt::{
+        ChioReceipt, ChioReceiptBody, Decision, ReceiptSemanticFields, ToolCallAction, TrustLevel,
+    };
 
     #[test]
     fn new_rejects_empty_api_key() {
@@ -349,5 +401,73 @@ mod tests {
             DatadogExporter::datadog_status(AlertSeverity::Medium, true),
             "warn"
         );
+    }
+
+    #[test]
+    fn trace_observation_allow_is_tagged_as_trace_not_allow() {
+        let exporter =
+            DatadogExporter::new_with_base_url_for_tests(DatadogConfig::default(), "http://local")
+                .expect("construct test exporter");
+        let event = SiemEvent::from_receipt(test_receipt_with_semantics(
+            Decision::Allow,
+            ReceiptSemanticFields::trace_detect_only(),
+            TrustLevel::Verified,
+        ));
+        let payload = exporter
+            .build_payload(&[event])
+            .expect("build datadog payload");
+        let tags = payload[0]["ddtags"].as_str().expect("ddtags string");
+
+        assert!(tags.contains("receipt_kind:trace_observation"));
+        assert!(tags.contains("boundary_class:detect_only"));
+        assert!(tags.contains("outcome:trace_observation"));
+        assert!(!tags.contains("outcome:allow"));
+        assert_eq!(payload[0]["receipt_kind"], "trace_observation");
+        assert_eq!(payload[0]["boundary_class"], "detect_only");
+        assert_eq!(payload[0]["authorized"], false);
+        assert_eq!(payload[0]["event"]["authorized"], false);
+    }
+
+    fn test_receipt_with_semantics(
+        decision: Decision,
+        semantics: ReceiptSemanticFields,
+        trust_level: TrustLevel,
+    ) -> ChioReceipt {
+        let kp = Keypair::generate();
+        let action = ToolCallAction::from_parameters(serde_json::json!({
+            "path": "/etc/passwd"
+        }))
+        .expect("hash test receipt parameters");
+        let decision = if semantics.receipt_kind == chio_core::ReceiptKind::MediatedDecision {
+            Some(decision)
+        } else {
+            None
+        };
+        ChioReceipt::sign(
+            ChioReceiptBody {
+                id: "trace-datadog-1".to_string(),
+                timestamp: 1_712_345_678,
+                capability_id: "cap-abc".to_string(),
+                tool_server: "srv-files".to_string(),
+                tool_name: "file_read".to_string(),
+                action,
+                decision,
+                receipt_kind: semantics.receipt_kind,
+                boundary_class: semantics.boundary_class,
+                observation_outcome: semantics.observation_outcome,
+                tool_origin: semantics.tool_origin,
+                redaction_mode: semantics.redaction_mode,
+                actor_chain: semantics.actor_chain,
+                content_hash: "content-xyz".to_string(),
+                policy_hash: "policy-xyz".to_string(),
+                evidence: Vec::new(),
+                metadata: None,
+                trust_level,
+                tenant_id: None,
+                kernel_key: kp.public_key(),
+            },
+            &kp,
+        )
+        .expect("sign test receipt")
     }
 }

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use chio_core_types::capability::{
-    CapabilityToken, ChioScope, ModelMetadata, Operation, ToolGrant, CHIO_CAPABILITY_V2_SCHEMA,
+    CapabilityToken, ChioScope, ModelMetadata, Operation, ToolGrant,
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
 use chio_core_types::receipt::GuardEvidence;
@@ -276,6 +276,7 @@ impl HttpAuthority {
             max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
             max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
+            allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
         });
@@ -494,11 +495,18 @@ impl HttpAuthority {
             caller_identity_hash: input.caller_identity_hash.to_string(),
             session_id: None,
             verdict: input.verdict,
+            receipt_kind: chio_core_types::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core_types::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core_types::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core_types::RedactionMode::None,
+            actor_chain: Vec::new(),
             evidence: Vec::new(),
             response_status,
             timestamp: chrono::Utc::now().timestamp() as u64,
             content_hash: input.content_hash.unwrap_or_default().to_string(),
             policy_hash: self.policy_hash.clone(),
+            trust_level: chio_core_types::receipt::TrustLevel::Mediated,
             capability_id: None,
             metadata: Some(http_status_metadata_final(None)),
             kernel_key: self.keypair.public_key(),
@@ -611,11 +619,18 @@ impl HttpAuthority {
             caller_identity_hash: prepared.caller_identity_hash.clone(),
             session_id: prepared.session_id.clone(),
             verdict: prepared.verdict.clone(),
+            receipt_kind: chio_core_types::ReceiptKind::MediatedDecision,
+            boundary_class: chio_core_types::BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: chio_core_types::ToolOrigin::CallerExecuted,
+            redaction_mode: chio_core_types::RedactionMode::None,
+            actor_chain: Vec::new(),
             evidence: prepared.evidence.clone(),
             response_status,
             timestamp: chrono::Utc::now().timestamp() as u64,
             content_hash: prepared.content_hash.clone(),
             policy_hash: self.policy_hash.clone(),
+            trust_level: chio_core_types::receipt::TrustLevel::Mediated,
             capability_id: prepared.capability_id.clone(),
             metadata,
             kernel_key: self.keypair.public_key(),
@@ -783,10 +798,9 @@ fn validate_capability_token(
     if !signature_valid {
         return Err("capability signature verification failed".to_string());
     }
-    if token.schema == CHIO_CAPABILITY_V2_SCHEMA {
+    if token.attenuation_proof.is_some() {
         return Err(
-            "v2 chain-binding requires a trust-root resolver on the HTTP authority path"
-                .to_string(),
+            "chain-binding requires a trust-root resolver on the HTTP authority path".to_string(),
         );
     }
     token
@@ -913,8 +927,8 @@ mod tests {
         CHIO_HTTP_STATUS_SCOPE_DECISION, CHIO_HTTP_STATUS_SCOPE_FINAL,
     };
     use chio_core_types::capability::{
-        compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityTokenBody,
-        CapabilityTokenV2Body, ChioScope, Operation, ToolGrant,
+        compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityTokenAttenuationBody,
+        CapabilityTokenBody, ChioScope, Operation, ToolGrant,
     };
 
     trait TestUnwrap<T> {
@@ -971,8 +985,8 @@ mod tests {
         let parent_hash = scope_hash(&scope).test_unwrap();
         let child_hash = scope_hash(&scope).test_unwrap();
         let witness = compute_attenuation_witness(&scope, &scope).test_unwrap();
-        let token = CapabilityToken::sign_v2(
-            CapabilityTokenV2Body {
+        let token = CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
                 body: CapabilityTokenBody {
                     id: id.to_string(),
                     issuer: issuer.public_key(),
@@ -1190,7 +1204,7 @@ mod tests {
         assert!(result.receipt.evidence[0]
             .details
             .as_deref()
-            .is_some_and(|details| details.contains("v2 chain-binding requires")));
+            .is_some_and(|details| details.contains("chain-binding requires")));
     }
 
     #[test]

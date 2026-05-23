@@ -38,7 +38,13 @@ fn fixture_body(kp: &Keypair) -> ChioReceiptBody {
         tool_name: "file_read".to_string(),
         action: ToolCallAction::from_parameters(serde_json::json!({"path": "/data/c5.txt"}))
             .unwrap(),
-        decision: Decision::Allow,
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
         content_hash: sha256_hex(b"{\"c5\":true}"),
         policy_hash: sha256_hex(b"c5-policy"),
         evidence: Vec::new(),
@@ -171,7 +177,7 @@ fn audit_view_rejects_unknown_schema_or_projection_version() {
     ));
 
     let mut bad_version: BbsAuditView = view;
-    bad_version.projection_version = "chio.bbs-projection.receipt.v2".to_string();
+    bad_version.projection_version = "chio.bbs-projection.receipt.v9".to_string();
     let res = verify_audit_view(&bad_version, &body);
     assert!(matches!(
         res,

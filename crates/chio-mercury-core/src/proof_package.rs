@@ -865,7 +865,13 @@ mod tests {
                     serde_json::json!({"release": format!("candidate-{sequence}")}),
                 )
                 .expect("action"),
-                decision: Decision::Allow,
+                decision: Some(Decision::Allow),
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
                 content_hash: format!("content-proof-{sequence}"),
                 policy_hash: format!("policy-proof-{sequence}"),
                 evidence: Vec::new(),
@@ -904,7 +910,7 @@ mod tests {
             inclusion_proofs: vec![proof],
             uncheckpointed_receipts: Vec::new(),
             retention: EvidenceRetentionMetadata {
-                live_db_size_bytes: 1_024,
+                live_db_size_bytes: Some(1_024),
                 oldest_live_receipt_timestamp: Some(1_775_137_626),
             },
         }
@@ -963,7 +969,7 @@ mod tests {
             inclusion_proofs: vec![first_proof, second_proof],
             uncheckpointed_receipts: Vec::new(),
             retention: EvidenceRetentionMetadata {
-                live_db_size_bytes: 2_048,
+                live_db_size_bytes: Some(2_048),
                 oldest_live_receipt_timestamp: Some(1_775_137_626),
             },
         };

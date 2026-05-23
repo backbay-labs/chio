@@ -20,7 +20,7 @@ from __future__ import annotations
 import enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -450,21 +450,47 @@ class ChioReceipt(BaseModel):
     tool_server: str
     tool_name: str
     action: ToolCallAction
-    decision: Decision
+    decision: Decision | None = None
+    receipt_kind: str
+    boundary_class: str
+    observation_outcome: str | None = None
+    tool_origin: str
+    redaction_mode: str
+    actor_chain: list[dict[str, Any]] = Field(default_factory=list)
     content_hash: str
     policy_hash: str
     evidence: list[GuardEvidence] = Field(default_factory=list)
     metadata: dict[str, Any] | None = None
+    trust_level: str
+    tenant_id: str | None = None
     kernel_key: str  # hex-encoded Ed25519 public key
     signature: str  # hex-encoded Ed25519 signature
 
+    @model_validator(mode="after")
+    def _validate_semantic_coherence(self) -> "ChioReceipt":
+        _validate_decision_receipt_semantics(
+            receipt_kind=self.receipt_kind,
+            boundary_class=self.boundary_class,
+            trust_level=self.trust_level,
+            observation_outcome=self.observation_outcome,
+            decision_present=self.decision is not None,
+        )
+        return self
+
     @property
     def is_allowed(self) -> bool:
-        return self.decision.is_allowed
+        return (
+            self.receipt_kind == "mediated_decision"
+            and self.boundary_class == "prevent"
+            and self.trust_level == "mediated"
+            and self.observation_outcome is None
+            and self.decision is not None
+            and self.decision.is_allowed
+        )
 
     @property
     def is_denied(self) -> bool:
-        return self.decision.is_denied
+        return self.decision is not None and self.decision.is_denied
 
 
 # ---------------------------------------------------------------------------
@@ -482,6 +508,12 @@ class HttpReceipt(BaseModel):
     caller_identity_hash: str
     session_id: str | None = None
     verdict: Verdict
+    receipt_kind: str | None = None
+    boundary_class: str | None = None
+    observation_outcome: str | None = None
+    tool_origin: str | None = None
+    redaction_mode: str | None = None
+    actor_chain: list[dict[str, Any]] = Field(default_factory=list)
     evidence: list[GuardEvidence] = Field(default_factory=list)
     response_status: int = Field(
         description=(
@@ -496,10 +528,27 @@ class HttpReceipt(BaseModel):
     metadata: dict[str, Any] | None = None
     kernel_key: str
     signature: str
+    trust_level: str
+
+    @model_validator(mode="after")
+    def _validate_semantic_coherence(self) -> "HttpReceipt":
+        _validate_observation_receipt_semantics(
+            receipt_kind=self.receipt_kind,
+            boundary_class=self.boundary_class,
+            trust_level=self.trust_level,
+            observation_outcome=self.observation_outcome,
+        )
+        return self
 
     @property
     def is_allowed(self) -> bool:
-        return self.verdict.is_allowed
+        return (
+            self.receipt_kind == "mediated_decision"
+            and self.boundary_class == "prevent"
+            and self.observation_outcome is None
+            and self.trust_level == "mediated"
+            and self.verdict.is_allowed
+        )
 
     @property
     def is_denied(self) -> bool:
@@ -535,6 +584,107 @@ class EvaluateResponse(BaseModel):
     verdict: Verdict
     receipt: HttpReceipt
     evidence: list[GuardEvidence] = Field(default_factory=list)
+
+
+class VerifyReceiptResponse(BaseModel):
+    """Structured authority result returned by /chio/verify."""
+
+    signature_valid: bool
+    signer_trusted: bool
+    receipt_id_valid: bool
+    parameter_hash_valid: bool
+    receipt_kind: str
+    boundary_class: str
+    trust_level: str
+    result: str
+    authorized: bool
+    signer_key_hex: str
+    ok: bool
+
+    def authorizes(self, receipt: ChioReceipt | HttpReceipt) -> bool:
+        if not (
+            self.ok
+            and self.authorized
+            and self.signature_valid
+            and self.signer_trusted
+            and self.receipt_id_valid
+            and self.parameter_hash_valid
+        ):
+            return False
+        return (
+            receipt.is_allowed
+            and self.receipt_kind == "mediated_decision"
+            and self.boundary_class == "prevent"
+            and self.trust_level == "mediated"
+            and self.result in {"allow", "authorized", "Authorized"}
+        )
+
+
+def _validate_decision_receipt_semantics(
+    *,
+    receipt_kind: str | None,
+    boundary_class: str | None,
+    trust_level: str | None,
+    observation_outcome: str | None,
+    decision_present: bool,
+) -> None:
+    if receipt_kind == "mediated_decision":
+        if not decision_present:
+            raise ValueError("mediated_decision receipts must include decision")
+        _validate_observation_receipt_semantics(
+            receipt_kind=receipt_kind,
+            boundary_class=boundary_class,
+            trust_level=trust_level,
+            observation_outcome=observation_outcome,
+        )
+        return
+    if receipt_kind in {"trace_observation", "advisory_evaluation"}:
+        if decision_present:
+            raise ValueError(f"{receipt_kind} receipts must omit decision")
+        _validate_observation_receipt_semantics(
+            receipt_kind=receipt_kind,
+            boundary_class=boundary_class,
+            trust_level=trust_level,
+            observation_outcome=observation_outcome,
+        )
+        return
+    raise ValueError("receipt_kind must be a current v1 receipt kind")
+
+
+def _validate_observation_receipt_semantics(
+    *,
+    receipt_kind: str | None,
+    boundary_class: str | None,
+    trust_level: str | None,
+    observation_outcome: str | None,
+) -> None:
+    if receipt_kind is None:
+        return
+    if receipt_kind == "mediated_decision":
+        if boundary_class != "prevent":
+            raise ValueError("mediated_decision receipts must use boundary_class prevent")
+        if trust_level != "mediated":
+            raise ValueError("mediated_decision receipts must use trust_level mediated")
+        if observation_outcome is not None:
+            raise ValueError("mediated_decision receipts must omit observation_outcome")
+        return
+    if receipt_kind == "trace_observation":
+        if boundary_class != "detect_only":
+            raise ValueError("trace_observation receipts must use boundary_class detect_only")
+        if trust_level != "verified":
+            raise ValueError("trace_observation receipts must use trust_level verified")
+        if observation_outcome is None:
+            raise ValueError("trace_observation receipts must include observation_outcome")
+        return
+    if receipt_kind == "advisory_evaluation":
+        if boundary_class != "advisory_only":
+            raise ValueError("advisory_evaluation receipts must use boundary_class advisory_only")
+        if trust_level != "advisory":
+            raise ValueError("advisory_evaluation receipts must use trust_level advisory")
+        if observation_outcome is None:
+            raise ValueError("advisory_evaluation receipts must include observation_outcome")
+        return
+    raise ValueError("receipt_kind must be a current v1 receipt kind")
 
 
 class ChioPassthrough(BaseModel):

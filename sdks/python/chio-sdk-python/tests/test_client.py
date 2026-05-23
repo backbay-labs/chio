@@ -66,8 +66,13 @@ def _make_receipt_dict() -> dict:
         "tool_name": "read",
         "action": {"parameters": {}, "parameter_hash": "abc"},
         "decision": {"verdict": "allow"},
+        "receipt_kind": "mediated_decision",
+        "boundary_class": "prevent",
+        "tool_origin": "caller_executed",
+        "redaction_mode": "none",
         "content_hash": "deadbeef",
         "policy_hash": "cafe",
+        "trust_level": "mediated",
         "kernel_key": "kk",
         "signature": "ss",
     }
@@ -81,12 +86,33 @@ def _make_http_receipt_dict() -> dict:
         "method": "GET",
         "caller_identity_hash": "abc",
         "verdict": {"verdict": "allow"},
+        "receipt_kind": "mediated_decision",
+        "boundary_class": "prevent",
+        "tool_origin": "caller_executed",
+        "redaction_mode": "none",
+        "trust_level": "mediated",
         "response_status": 200,
         "timestamp": 1700000000,
         "content_hash": "x",
         "policy_hash": "y",
         "kernel_key": "k",
         "signature": "s",
+    }
+
+
+def _verify_report(authorized: bool) -> dict:
+    return {
+        "signature_valid": authorized,
+        "signer_trusted": authorized,
+        "receipt_id_valid": authorized,
+        "parameter_hash_valid": authorized,
+        "receipt_kind": "mediated_decision",
+        "boundary_class": "prevent",
+        "trust_level": "mediated",
+        "result": "allow" if authorized else "deny",
+        "authorized": authorized,
+        "signer_key_hex": "d" * 64,
+        "ok": authorized,
     }
 
 
@@ -193,22 +219,33 @@ class TestVerifyReceipt:
     @respx.mock
     async def test_verify(self) -> None:
         respx.post(f"{BASE}/v1/receipts/verify").mock(
-            return_value=httpx.Response(200, json={"valid": True})
+            return_value=httpx.Response(200, json=_verify_report(True))
         )
         async with ChioClient(BASE) as client:
             receipt = ChioReceipt.model_validate(_make_receipt_dict())
             assert await client.verify_receipt(receipt) is True
+
+    @respx.mock
+    async def test_legacy_valid_true_is_not_authoritative(self) -> None:
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json={"valid": True})
+        )
+        async with ChioClient(BASE) as client:
+            receipt = ChioReceipt.model_validate(_make_receipt_dict())
+            assert await client.verify_receipt(receipt) is False
 
 
 class TestVerifyHttpReceipt:
     @respx.mock
     async def test_verify_http(self) -> None:
         respx.post(f"{BASE}/chio/verify").mock(
-            return_value=httpx.Response(200, json={"valid": True})
+            return_value=httpx.Response(200, json=_verify_report(True))
         )
         async with ChioClient(BASE) as client:
             receipt = HttpReceipt.model_validate(_make_http_receipt_dict())
-            assert await client.verify_http_receipt(receipt) is True
+            report = await client.verify_http_receipt(receipt)
+            assert report.ok is True
+            assert report.authorized is True
 
 
 class TestReceiptChain:
@@ -257,6 +294,9 @@ class TestEvaluateToolCall:
         respx.post(f"{BASE}/v1/evaluate").mock(
             return_value=httpx.Response(200, json=_make_receipt_dict())
         )
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=_verify_report(True))
+        )
         async with ChioClient(BASE) as client:
             receipt = await client.evaluate_tool_call(
                 capability_id="cap-1",
@@ -266,6 +306,24 @@ class TestEvaluateToolCall:
             )
             assert isinstance(receipt, ChioReceipt)
             assert receipt.is_allowed
+
+    @respx.mock
+    async def test_evaluate_rejects_unverified_receipt(self) -> None:
+        respx.post(f"{BASE}/v1/evaluate").mock(
+            return_value=httpx.Response(200, json=_make_receipt_dict())
+        )
+        respx.post(f"{BASE}/v1/receipts/verify").mock(
+            return_value=httpx.Response(200, json=_verify_report(False))
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioError) as exc_info:
+                await client.evaluate_tool_call(
+                    capability_id="cap-1",
+                    tool_server="srv",
+                    tool_name="read",
+                    parameters={"path": "/tmp"},
+                )
+            assert exc_info.value.code == "INVALID_RECEIPT"
 
 
 class TestEvaluateHttpRequest:
@@ -281,6 +339,9 @@ class TestEvaluateHttpRequest:
                 },
             )
         )
+        respx.post(f"{BASE}/chio/verify").mock(
+            return_value=httpx.Response(200, json=_verify_report(True))
+        )
         async with ChioClient(BASE) as client:
             result = await client.evaluate_http_request(
                 request_id="req-1",
@@ -291,6 +352,58 @@ class TestEvaluateHttpRequest:
             )
             assert isinstance(result, EvaluateResponse)
             assert result.receipt.is_allowed
+
+    @respx.mock
+    async def test_evaluate_http_rejects_unverified_allow_receipt(self) -> None:
+        respx.post(f"{BASE}/chio/evaluate").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "verdict": {"verdict": "allow"},
+                    "receipt": _make_http_receipt_dict(),
+                    "evidence": [],
+                },
+            )
+        )
+        respx.post(f"{BASE}/chio/verify").mock(
+            return_value=httpx.Response(200, json=_verify_report(False))
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioError) as exc_info:
+                await client.evaluate_http_request(
+                    request_id="req-1",
+                    method="GET",
+                    route_pattern="/pets/{petId}",
+                    path="/pets/42",
+                    caller=CallerIdentity.anonymous(),
+                )
+            assert exc_info.value.code == "INVALID_RECEIPT"
+
+    @respx.mock
+    async def test_evaluate_http_rejects_allow_without_structural_authority(self) -> None:
+        receipt = _make_http_receipt_dict()
+        receipt.pop("receipt_kind")
+        receipt.pop("boundary_class")
+        respx.post(f"{BASE}/chio/evaluate").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "verdict": {"verdict": "allow"},
+                    "receipt": receipt,
+                    "evidence": [],
+                },
+            )
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioError) as exc_info:
+                await client.evaluate_http_request(
+                    request_id="req-1",
+                    method="GET",
+                    route_pattern="/pets/{petId}",
+                    path="/pets/42",
+                    caller=CallerIdentity.anonymous(),
+                )
+            assert exc_info.value.code == "INVALID_RECEIPT"
 
 
 # ---------------------------------------------------------------------------

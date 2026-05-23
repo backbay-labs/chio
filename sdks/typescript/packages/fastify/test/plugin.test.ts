@@ -15,6 +15,11 @@ function allowResponse(): EvaluateResponse {
       method: "POST",
       caller_identity_hash: "a".repeat(64),
       verdict: { verdict: "allow" },
+      receipt_kind: "mediated_decision",
+      boundary_class: "prevent",
+      tool_origin: "caller_executed",
+      redaction_mode: "none",
+      trust_level: "mediated",
       evidence: [],
       response_status: 200,
       timestamp: 1_700_000_000,
@@ -24,6 +29,22 @@ function allowResponse(): EvaluateResponse {
       signature: "e".repeat(128),
     },
     evidence: [],
+  };
+}
+
+function verifyResponse() {
+  return {
+    signature_valid: true,
+    signer_trusted: true,
+    receipt_id_valid: true,
+    parameter_hash_valid: true,
+    receipt_kind: "mediated_decision",
+    boundary_class: "prevent",
+    trust_level: "mediated",
+    result: "allow",
+    authorized: true,
+    signer_key_hex: "d".repeat(64),
+    ok: true,
   };
 }
 
@@ -39,6 +60,12 @@ async function startMockSidecar(
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(allowResponse()));
       });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/chio/verify") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(verifyResponse()));
       return;
     }
 
@@ -128,7 +155,7 @@ describe("chio fastify plugin", () => {
     await fastify.close();
   });
 
-  it("allows requests when onSidecarError is allow", async () => {
+  it("fails closed when legacy onSidecarError is allow", async () => {
     const fastify = Fastify();
     await fastify.register(chio, {
       sidecarUrl: "http://127.0.0.1:1", // Unreachable
@@ -145,8 +172,8 @@ describe("chio fastify plugin", () => {
       url: "/test",
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({ data: "reached handler" });
+    expect(response.statusCode).toBe(502);
+    expect(JSON.parse(response.body).error).toBe("chio_sidecar_unreachable");
     await fastify.close();
   });
 

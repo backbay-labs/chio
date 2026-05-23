@@ -1,6 +1,6 @@
 # Clawdstrike Response Engine Code Review
 
-Line numbers refer to the working tree at `/Users/connor/Medica/backbay/standalone/clawdstrike/` on branch `fix/macos-es-ne-hardening`, 17 May 2026. `edr.rs` = `crates/libs/clawdstrike-policy-event/src/edr.rs` (20,413 lines). `api_server.rs` = `apps/agent/src-tauri/src/api_server.rs` (45,497 lines, not the 45,413 cited by the prior audit; both prior counts were off).
+Line numbers refer to the clawdstrike working tree on branch `fix/macos-es-ne-hardening`, 17 May 2026. `edr.rs` = `crates/libs/clawdstrike-policy-event/src/edr.rs` (20,413 lines). `api_server.rs` = `apps/agent/src-tauri/src/api_server.rs` (45,497 lines, not the 45,413 cited by the prior audit; both prior counts were off).
 
 ## Data model - what is actually there
 

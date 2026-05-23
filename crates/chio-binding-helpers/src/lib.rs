@@ -32,7 +32,7 @@ pub use manifest::{
 };
 pub use receipt::{
     parse_receipt_json, receipt_body_canonical_json, verify_receipt, verify_receipt_json,
-    ReceiptDecisionKind, ReceiptVerification,
+    verify_receipt_with_trusted_signers, ReceiptDecisionKind, ReceiptVerification,
 };
 pub use signing::{
     is_valid_public_key_hex, is_valid_signature_hex, public_key_hex_matches, sign_json_str_ed25519,

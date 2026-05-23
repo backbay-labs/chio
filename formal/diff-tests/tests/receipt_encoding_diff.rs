@@ -56,8 +56,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use chio_core::{
-    canonical_json_bytes, canonical_json_string, sha256_hex, ChioReceipt, ChioReceiptBody,
-    Decision, GuardEvidence, Keypair, ToolCallAction, TrustLevel,
+    canonical_json_bytes, canonical_json_string, sha256_hex, ActorRef, BoundaryClass, ChioReceipt,
+    ChioReceiptBody, Decision, GuardEvidence, Keypair, ReceiptKind, RedactionMode, ToolCallAction,
+    ToolOrigin, TrustLevel,
 };
 use proptest::prelude::*;
 use proptest::test_runner::Config as ProptestConfig;
@@ -291,7 +292,16 @@ fn build_receipt(scaffold: &ReceiptScaffold, keypair: &Keypair) -> ChioReceipt {
         tool_server: scaffold.tool_server.clone(),
         tool_name: scaffold.tool_name.clone(),
         action,
-        decision: scaffold.decision.clone(),
+        decision: Some(scaffold.decision.clone()),
+        receipt_kind: ReceiptKind::MediatedDecision,
+        boundary_class: BoundaryClass::Prevent,
+        observation_outcome: None,
+        tool_origin: ToolOrigin::CallerExecuted,
+        redaction_mode: RedactionMode::None,
+        actor_chain: vec![ActorRef {
+            actor_id: "agent:diff-test/encoder".to_string(),
+            actor_kind: Some("agent".to_string()),
+        }],
         content_hash: sha256_hex(scaffold.id.as_bytes()),
         policy_hash: "policy-diff-v1".to_string(),
         evidence: scaffold.evidence.clone(),
