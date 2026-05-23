@@ -71,37 +71,30 @@
         {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_completeness"},
         {"kind": "rust_test", "ref": "crates/chio-core-types/src/capability.rs::attenuation_witness_roundtrip_and_forgery_rejection"},
         {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::forged_attenuation_proof_rejected"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs::v2_token_with_inflated_parent_scope_hash_is_rejected"}
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs::attenuated_token_with_inflated_parent_scope_hash_is_rejected"}
       ]
     },
     {
       "id": "manifest.handshake.capability_negotiation",
       "claim_ref": "claim.handshake.capability_negotiation",
-      "introduced_by": "capability-negotiation-schema-ceiling",
+      "introduced_by": "capability-negotiation-feature-intersection",
       "promoted_by": "runtime-enforcement",
       "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.handshake.negotiation_safety"},
         {"kind": "rust_test", "ref": "crates/chio-core-types/src/capability.rs::capability_negotiation_intersection_rejects_malformed_feature"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::capability_v2_unknown_schema_rejected"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/verify_rejects_v2_token_when_peer_negotiated_v1_only.rs::v2_token_rejected_when_peer_negotiated_v1_only"}
+        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::capability_unknown_schema_rejected"}
       ]
     },
     {
-      "id": "manifest.receipt.body_hash_addressing",
-      "claim_ref": "claim.receipt.body_hash_addressing",
-      "introduced_by": "receipt-v2-body-hash",
-      "promoted_by": "receipt-v2-runtime-minting",
+      "id": "manifest.receipt.content_addressed_id",
+      "claim_ref": "claim.receipt.content_addressed_id",
+      "introduced_by": "receipt-content-addressed-id",
+      "promoted_by": "receipt-runtime-minting",
       "evidence": [
-        {"kind": "lean_theorem", "ref": "theorem.receipt.body_hash_input_set_pinned"},
-        {"kind": "lean_theorem", "ref": "theorem.receipt.body_hash_collision_resistance"},
-        {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_v2_body_hash_and_signature_fail_closed"},
-        {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_v2_legacy_alias_does_not_affect_replay_identity"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::receipt_v2_negative_conformance_cases"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs::kernel_default_mints_v2_receipt_alongside_v1"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs::kernel_replay_rejects_repeated_v2_body_hash_via_in_memory_set"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs::replay_set_ignores_legacy_alias_tampering"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs::body_hash_mismatch_fails_closed"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/v2_receipt_kernel_round_trip.rs::negotiation_v1_only_peer_disables_v2_minting"}
+        {"kind": "lean_theorem", "ref": "theorem.receipt.id_input_set_pinned"},
+        {"kind": "lean_theorem", "ref": "theorem.receipt.id_collision_resistance"},
+        {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_id_is_authoritative_and_content_addressed"},
+        {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_sign_and_verify"}
       ]
     },
     {
@@ -137,8 +130,7 @@
       "introduced_by": "receipt-lineage-dag-proposal",
       "evidence": [
         {"kind": "lean_theorem", "ref": "theorem.receipt.dag_acyclicity"},
-        {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_v2_dag_rejects_non_increasing_ordinal"},
-        {"kind": "conformance_test", "ref": "crates/chio-conformance/tests/protocol_primitives_t1.rs::receipt_v2_dag_cycle_shape_rejected"}
+        {"kind": "rust_test", "ref": "crates/chio-core-types/src/receipt.rs::receipt_lineage_statement_sign_and_verify"}
       ],
       "evidence_proposed": [
         {"kind": "tla_module", "ref": "formal/tla/ReceiptDagAcyclicity.tla"}

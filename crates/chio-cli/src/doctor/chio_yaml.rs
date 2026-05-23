@@ -104,7 +104,10 @@ impl ChioYamlProbe {
                         self.name(),
                         ProbeSeverity::Error,
                         "urn:chio:error:cli:doctor-chio-yaml-invalid",
-                        format!("Could not read {} after it appeared: {read_err}", path.display()),
+                        format!(
+                            "Could not read {} after it appeared: {read_err}",
+                            path.display()
+                        ),
                     ),
                 };
             }
@@ -172,10 +175,7 @@ impl ChioYamlProbe {
                     self.name(),
                     ProbeSeverity::Error,
                     "urn:chio:error:cli:doctor-chio-yaml-invalid",
-                    format!(
-                        "{} top-level value must be a mapping.",
-                        path.display()
-                    ),
+                    format!("{} top-level value must be a mapping.", path.display()),
                 )
                 .with_context("path", path.display().to_string());
             }

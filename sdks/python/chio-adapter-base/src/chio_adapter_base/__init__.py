@@ -31,8 +31,11 @@ from chio_adapter_base.receipts import (
     canonical_dumps,
 )
 from chio_adapter_base.redact import (
+    DEFAULT_TOOL_POSITIONAL_NAMES,
     RedactArgs,
     RedactionPolicy,
+    bind_and_redact,
+    build_alias_map,
     redact_args,
 )
 from chio_adapter_base.security import (
@@ -47,12 +50,13 @@ from chio_adapter_base.security import (
     sanitised_env,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "DEFAULT_RECEIPT_BUFFER_MAX",
     "DEFAULT_SHELL_TIMEOUT",
     "DEFAULT_SUBPROCESS_MAX_BYTES",
+    "DEFAULT_TOOL_POSITIONAL_NAMES",
     "BoundedSubprocess",
     "BoundedSubprocessResult",
     "ChioPathEscapeError",
@@ -61,6 +65,8 @@ __all__ = [
     "RedactionPolicy",
     "__version__",
     "append_jsonl",
+    "bind_and_redact",
+    "build_alias_map",
     "canonical_dumps",
     "filter_diff_output",
     "filter_directory_entries",

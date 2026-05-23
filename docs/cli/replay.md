@@ -218,11 +218,10 @@ maps to exit code 10 when triggered by `--expect-root` and is purely
 for triage attribution.
 
 Consumers MUST byte-match the `schema` field against
-`chio.replay.report/v1` before parsing the rest of the document. A
-future v2 schema will land alongside
-`spec/schemas/chio-replay-report/v2.schema.json` and bump the schema
-identifier; v1 consumers that gate on the schema string will refuse
-unknown documents and surface a clear error.
+`chio.replay.report/v1` before parsing the rest of the document. Any
+future schema revision must land with a distinct schema identifier; current
+consumers that gate on the schema string will refuse unknown documents and
+surface a clear error.
 
 The output is always a single line of JSON followed by `\n`, suitable
 for piping through `jq` without buffering surprises.

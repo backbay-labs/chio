@@ -240,6 +240,21 @@ pub(crate) fn write_tar_gz_file(
             out.display()
         ))
     })?;
+    let compressed_len = fs::metadata(out)
+        .map_err(|error| {
+            CliError::cli_io_error(format!(
+                "failed to inspect written {label} {}: {error}",
+                out.display()
+            ))
+        })?
+        .len();
+    if compressed_len > limits.max_compressed_bytes {
+        let _ = fs::remove_file(out);
+        return Err(CliError::cli_other_error(format!(
+            "{label} {} exceeds compressed byte limit after writing",
+            out.display()
+        )));
+    }
     Ok(())
 }
 
@@ -341,16 +356,6 @@ pub(crate) fn safe_archive_member_path(relative: &str, label: &str) -> Result<St
         }
     }
     Ok(relative.to_string())
-}
-
-pub(crate) fn safe_single_component(value: &str, label: &str) -> Result<String, CliError> {
-    let component = safe_archive_member_path(value, label)?;
-    if component.contains('/') {
-        return Err(CliError::cli_other_error(format!(
-            "{label} must be one safe path component"
-        )));
-    }
-    Ok(component)
 }
 
 fn append_regular_file<W: Write>(

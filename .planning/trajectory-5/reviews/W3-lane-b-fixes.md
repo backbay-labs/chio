@@ -124,7 +124,7 @@ See "B4 sub-lane" section below.
 
 **B4 sub-lane**:
 - **Title**: DSSE-conformant bilateral signing.
-- **Spec citation**: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 (DSSE PAE encoding) + §7 step 11-12 (signature verification).
+- **Spec citation**: `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 (DSSE PAE encoding) + §7 step 11-12 (signature verification).
 - **Effort**: L (3-6 days).
 - **Week placement**: weeks 5-6 (starts week 5 alongside B2/B3 wrap-up; lands by end of week 6). Lane C consumes B4's PAE-conformant signing surface from week 6+.
 - **Dependencies**: B0 (hard, async-trait migration); B1 (soft, single-entry verifier discipline reuse).
@@ -197,7 +197,7 @@ All remaining bare `ToolServer` matches in master/template/architecture/lane-b a
 
 5. **`releases.toml` block**: R1 finding noted the block needs a `[trajectory_5]` row. Out of my Wave 3 scope.
 
-6. **Spec edit in `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`**: B4.6 ticket assumes §6 lines 338-353 and §7 step 11-12 already contain `MUST`. If Wave 1 spec audit shows they do not, B4.6 scope expands to include the spec edit. Wave 4 verifier should confirm.
+6. **Spec edit in `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md`**: B4.6 ticket assumes §6 lines 338-353 and §7 step 11-12 already contain `MUST`. If Wave 1 spec audit shows they do not, B4.6 scope expands to include the spec edit. Wave 4 verifier should confirm.
 
 7. **B4 / Lane C release-bar.md narrative**: the existing `lane-c-demo/release-bar.md` claims the DSSE envelope conforms to §6 via the "Option A AND" framing (R4 finding 4). Lane C agent should rewrite this to "the DSSE envelope is the spec §6 conformant artifact; the legacy `DualSignedReceipt` is retained for backward compatibility but is NOT a §6 artifact" per B4.4.
 

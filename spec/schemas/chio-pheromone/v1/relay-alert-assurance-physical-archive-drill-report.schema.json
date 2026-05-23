@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-physical-archive-drill-report.schema.json",
-  "title": "Chiodos Pheromone Relay Alert Assurance Physical Archive Drill Report",
+  "title": "Chio Pheromone Relay Alert Assurance Physical Archive Drill Report",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "accepted", "code", "localKernelId", "generatedAtUnixMs", "evidenceId", "packageId", "packageReportSha256", "sampledMemberCount", "checks"],

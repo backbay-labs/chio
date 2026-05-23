@@ -1,6 +1,6 @@
 //! Kernel-side delegation step.
 //!
-//! Behind the `delegation_v2` cargo feature, the kernel consults the
+//! Behind the `delegation` cargo feature, the kernel consults the
 //! installed [`RevocationView`] on every delegated dispatch and denies
 //! the capability if any link in its delegation chain (or the leaf
 //! capability itself) appears in the revoked set.
@@ -20,7 +20,7 @@
 //! matching the existing legacy-path error taxonomy so SDK consumers do
 //! not have to learn a new error variant.
 //!
-//! The module-level `cfg(feature = "delegation_v2")` gate lives on the
+//! The module-level `cfg(feature = "delegation")` gate lives on the
 //! `mod delegation;` declaration in `kernel/mod.rs`; no inner attribute
 //! is needed here.
 

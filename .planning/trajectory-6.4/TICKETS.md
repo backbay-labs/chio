@@ -1,4 +1,4 @@
-# Chiodos 6.4 Tickets
+# Chio 6.4 Tickets
 
 ## C6.4-001 Integrator
 
@@ -16,13 +16,13 @@ Add trust bundle v3 and signed revocation checkpoint parsing.
 
 Acceptance:
 
-- Strict verification accepts only `chio.chiodos.verifier-trust-bundle.v3`.
+- Strict verification accepts only `chio.federation.verifier-trust-bundle.v1`.
 - Revocation checkpoint schema, signature, freshness window, duplicate entries, and epoch height are checked.
 - Historical trust bundle v2 remains parseable but not accepted for strict verification.
 
 ## C6.4-003 Offline Revocation
 
-Replace allow-all revocation behavior in `chio-chiodos`.
+Replace allow-all revocation behavior in `chio-attest-buyer-core`.
 
 Acceptance:
 
@@ -75,12 +75,12 @@ Extend schema validation and gate modes.
 Acceptance:
 
 - Package, trust bundle, context, report, selective proof, and negative corpus validate through `chio-spec-validate`.
-- `scripts/check-chiodos-proof-package.sh --schema-only` validates JSON artifacts.
-- `scripts/check-chiodos-proof-package.sh --negative-only` runs the negative corpus.
+- `scripts/check-chio-proof-package.sh --schema-only` validates JSON artifacts.
+- `scripts/check-chio-proof-package.sh --negative-only` runs the negative corpus.
 
 ## C6.4-009 Docs And Closeout
 
-Refresh Chiodos docs, open the PR, address all review threads, merge, and rerun the Chiodos gate on `main`.
+Refresh Chio docs, open the PR, address all review threads, merge, and rerun the Chio gate on `main`.
 
 Acceptance:
 

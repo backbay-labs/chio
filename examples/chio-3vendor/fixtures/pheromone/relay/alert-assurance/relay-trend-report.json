@@ -1,0 +1,40 @@
+{
+  "schema": "chio.pheromone.relay-trend-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "sinceUnixMs": 1765999900000,
+  "untilUnixMs": 1766000060000,
+  "sourceReportCount": 2,
+  "eventReportCount": 2,
+  "points": [
+    {
+      "code": "dead_letters_present",
+      "count": 2,
+      "firstSeenUnixMs": 1766000000500,
+      "lastSeenUnixMs": 1766000000525,
+      "severity": "critical"
+    },
+    {
+      "code": "endpoint_denied",
+      "count": 1,
+      "firstSeenUnixMs": 1766000000500,
+      "lastSeenUnixMs": 1766000000500,
+      "severity": "critical"
+    },
+    {
+      "code": "relay_nonce_replay",
+      "count": 2,
+      "firstSeenUnixMs": 1766000000500,
+      "lastSeenUnixMs": 1766000000500,
+      "severity": "critical"
+    },
+    {
+      "code": "stale_leases_present",
+      "count": 1,
+      "firstSeenUnixMs": 1766000000500,
+      "lastSeenUnixMs": 1766000000500,
+      "severity": "warning"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-runtime/v1/peer-weights.schema.json",
+  "title": "Chio Runtime Peer Weights",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "verifierId",
+        "keyId",
+        "reputationEpoch",
+        "issuedAtUnixMs",
+        "expiresAtUnixMs",
+        "weights"
+      ],
+      "properties": {
+        "schema": { "const": "chio.runtime.peer-weights.v1" },
+        "verifierId": { "type": "string", "minLength": 1 },
+        "keyId": { "type": "string", "minLength": 1 },
+        "reputationEpoch": { "type": "integer", "minimum": 0 },
+        "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+        "weights": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/weight" }
+        }
+      }
+    },
+    "signerKey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+  },
+  "$defs": {
+    "weight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["peerKernelId", "weight"],
+      "properties": {
+        "peerKernelId": { "type": "string", "minLength": 1 },
+        "weight": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

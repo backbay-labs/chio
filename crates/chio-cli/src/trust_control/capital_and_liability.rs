@@ -1025,7 +1025,7 @@ fn select_capital_allocation_receipt<'a>(
 ) -> Result<&'a BehavioralFeedReceiptRow, TrustHttpError> {
     let actionable = |row: &&BehavioralFeedReceiptRow| {
         row.action_required
-            && matches!(row.decision, Decision::Allow)
+            && row.authorized
             && row
                 .governed
                 .as_ref()

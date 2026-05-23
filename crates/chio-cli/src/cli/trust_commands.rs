@@ -2580,7 +2580,7 @@ fn explain_dual_signed_receipt(
         "org_b_kernel_id": org_b,
         "org_a_signature": org_a_sig,
         "org_b_signature": org_b_sig,
-        "non_section6_disclaimer": "DualSignedReceipt signs canonical-JSON of CoSigningBody, NOT the DSSE PAE preimage required by spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md §6. This artifact is RETAINED for backward-compat with pre-B4 federation transport callers and is explicitly NOT §6-conformant. Verifiers seeking §6 conformance MUST use the dsse_envelope section.",
+        "non_section6_disclaimer": "DualSignedReceipt signs canonical JSON of CoSigningBody, not the DSSE PAE preimage required by the treaty-bound bilateral invocation profile section 6. This artifact is retained for backward compatibility with pre-B4 federation transport callers and is explicitly not section-6 conformant. Verifiers seeking section-6 conformance must use the dsse_envelope section.",
     }))
 }
 
@@ -2628,12 +2628,12 @@ fn explain_dsse_envelope(dsse: &serde_json::Value) -> Result<serde_json::Value, 
         "payload_b64": payload_b64,
         "payload_hex": payload_hex,
         "signatures": signatures,
-        "section6_conformance_note": "This is the DSSE signature-slice API artifact. The signatures cover Ed25519(pae(payloadType, base64_decode(payload))), but the predicate is not the strict CHIODOS §6 invocation schema.",
+        "section6_conformance_note": "This is the DSSE signature-slice API artifact. The signatures cover Ed25519(pae(payloadType, base64_decode(payload))), but the predicate is not the strict treaty-bound bilateral invocation schema.",
     }))
 }
 
 /// Renamed from `explain_bilateral_seventeen_step_trace`. The previous
-/// name implied this was a §7 full-verifier trace, but most steps
+/// name implied this was a section-7 full-verifier trace, but most steps
 /// were marked `bounded` because the CLI does not have the org A / org
 /// B passport public keys in scope and cannot perform real Ed25519
 /// verification. The function now produces an INSPECTION trace
@@ -2962,7 +2962,7 @@ fn inspect_bilateral_envelope_trace(
     );
 
     Ok(serde_json::json!({
-        "spec": "spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md §7",
+        "spec": "treaty-bound bilateral invocation profile section 7",
         "trace_kind": "inspection",
         "verification_performed": false,
         "scope_note": "ok = locally verifiable structural check, not-verified = no cryptographic verification (use bilateral_dsse::verify_dsse_envelope), bounded = step deferred to kernel-resident verifier, fail = local structural check failed",
@@ -2977,7 +2977,7 @@ fn print_bilateral_human(report: &serde_json::Value, with_trace: bool) {
     println!("shape:  {}", report["shape"].as_str().unwrap_or("?"));
     println!();
 
-    println!("--- DualSignedReceipt (legacy, NON-§6-CONFORMANT) ---");
+    println!("--- DualSignedReceipt (legacy, NON-SECTION-6-CONFORMANT) ---");
     let dual = &report["dual_signed_receipt"];
     println!(
         "  receipt_id:       {}",
@@ -3196,7 +3196,7 @@ fn finish_receipt_for_explain(
         return Ok(matches.remove(0));
     }
     Err(CliError::cli_other_error(format!(
-        "receipt `{receipt_id}` not found in paginated receipt rows from {source}; persisted v2 bodyHash lookup is not implemented on this path, so use --input-file with the v2 receipt JSON"
+        "receipt `{receipt_id}` not found in paginated receipt rows from {source}"
     )))
 }
 
@@ -3205,13 +3205,9 @@ fn receipt_value_matches_id(value: &serde_json::Value, receipt_id: &str) -> bool
         ["id"].as_slice(),
         ["receipt_id"].as_slice(),
         ["receiptId"].as_slice(),
-        ["body_hash"].as_slice(),
-        ["bodyHash"].as_slice(),
         ["receipt", "id"].as_slice(),
         ["receipt", "receipt_id"].as_slice(),
         ["receipt", "receiptId"].as_slice(),
-        ["receipt", "body_hash"].as_slice(),
-        ["receipt", "bodyHash"].as_slice(),
     ];
     candidate_paths
         .iter()
@@ -3233,45 +3229,6 @@ fn explain_receipt_value(
     depth: usize,
     fanout_limit: usize,
 ) -> Result<serde_json::Value, CliError> {
-    if value.get("bodyHash").is_some() && value.get("body").is_some() {
-        let receipt: chio_core::receipt::ChioReceiptV2 = serde_json::from_value(value)?;
-        let signature_ok = receipt.verify_signature()?;
-        let decision = explain_decision_label(&receipt.body.decision);
-        let (reason, guard) = decision_details(&receipt.body.decision);
-        let parents = receipt
-            .body
-            .parent_receipt_ids
-            .iter()
-            .take(fanout_limit)
-            .cloned()
-            .collect::<Vec<_>>();
-        let batch_witness = receipt
-            .body
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.get("batch_witness"))
-            .and_then(|value| value.as_str())
-            .map(ToOwned::to_owned);
-        return Ok(serde_json::json!({
-            "schema": receipt.body.schema,
-            "receipt_id": receipt.receipt_id,
-            "identity": receipt.body_hash,
-            "requested_id": requested_id,
-            "signature_ok": signature_ok,
-            "decision": decision,
-            "reason": reason,
-            "guard": guard,
-            "policy_hash": receipt.body.policy_hash,
-            "guards": receipt.body.evidence,
-            "scope_diff": "requested scope vs granted scope is not embedded in this receipt",
-            "parents": parents,
-            "depth_limit": depth,
-            "fanout_limit": fanout_limit,
-            "batch_witness": batch_witness,
-            "repair_hint": repair_hint(&receipt.body.decision),
-        }));
-    }
-
     let receipt: chio_core::receipt::ChioReceipt = serde_json::from_value(value)?;
     let signature_ok = receipt.verify_signature()?;
     let decision = explain_decision_label(&receipt.decision);
@@ -3298,7 +3255,7 @@ fn explain_receipt_value(
     Ok(serde_json::json!({
         "schema": "chio.receipt.v1",
         "receipt_id": receipt.id,
-        "identity": "legacy_uuidv7_alias",
+        "identity": receipt.id,
         "requested_id": requested_id,
         "signature_ok": signature_ok,
         "decision": decision,
@@ -3360,21 +3317,14 @@ mod receipt_explain_tests {
             "id": "receipt-legacy",
             "decision": {"type": "allow"}
         });
-        let v2 = serde_json::json!({
-            "bodyHash": "body-hash-123",
-            "receiptId": "receipt-v2",
-            "body": {}
-        });
         let nested = serde_json::json!({
             "receipt": {
-                "body_hash": "nested-body-hash"
+                "id": "nested-receipt"
             }
         });
 
         assert!(receipt_value_matches_id(&legacy, "receipt-legacy"));
-        assert!(receipt_value_matches_id(&v2, "receipt-v2"));
-        assert!(receipt_value_matches_id(&v2, "body-hash-123"));
-        assert!(receipt_value_matches_id(&nested, "nested-body-hash"));
+        assert!(receipt_value_matches_id(&nested, "nested-receipt"));
         assert!(!receipt_value_matches_id(&legacy, "missing"));
     }
 

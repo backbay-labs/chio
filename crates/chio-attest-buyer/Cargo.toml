@@ -1,0 +1,25 @@
+[package]
+name = "chio-attest-buyer"
+description = "Chio buyer attestation verification boundary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_attest_buyer"
+
+[dependencies]
+chio-attest-buyer-core = { path = "../chio-attest-buyer-core" }
+chio-runtime-core = { path = "../chio-runtime-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+chio-core-types = { path = "../chio-core-types" }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

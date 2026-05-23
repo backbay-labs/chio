@@ -151,7 +151,7 @@ plays, and whether the demo introduces new code in it.
   Selective disclosure is deferred to v0.2 unless a future branch adds the
   implementation and fixture evidence required by the gate.
 - One new example crate (`examples/chiodome-bilateral`) including
-  an example-local minimal `chiodos-ladder` primitive (review finding 5a).
+  an example-local minimal `chio-ladder` primitive (review finding 5a).
 - One snapshot-test file in `chio-cli/tests/`.
 - A handful of doc updates and CI workflow files.
 
@@ -195,7 +195,7 @@ rebaked.
 The `bilateral_dsse.rs` module (introduced by Lane B B4; extended
 by Lane C release work-C2.x with the verifier and predicate helper) wraps
 the cross-org cosign in the in-toto Statement / DSSE envelope
-shape from `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6.
+shape from `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` section 6.
 
 The mapping:
 
@@ -212,7 +212,7 @@ The mapping:
 | `governance_receipt_ref` | the workflow receipt id (mode `receipt_backed`) |
 | `consistency_model` | `totally-ordered` |
 | `consistency_anchor` | `chio-anchor` |
-| `cross_org_visibility` | `treaty_only` (per CHIODOS_LADDER §5.2) |
+| `cross_org_visibility` | `treaty_only` (per CHIO_LADDER §5.2) |
 | `co_sign` | `bilateral_required` |
 | `timestamp_unix_ms` | Kernel B wall-clock at canonicalisation |
 
@@ -300,5 +300,5 @@ goes red. That is the forcing function.
 - No transparency-log artefact. Bounded-claim discipline.
 - No ladder-amendment in flight. Pinned at handshake.
 - No cross-trust pheromone gossip. Out of scope per Vision Strategist.
-- No new chiodos primitive beyond what the demo consumes. Synthesis
+- No new chio primitive beyond what the demo consumes. Synthesis
   forbids new normative drafts.

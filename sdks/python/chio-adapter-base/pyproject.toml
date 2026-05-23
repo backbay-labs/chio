@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chio-adapter-base"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shared security and receipt primitives for Chio Python adapters (chio-hermes, chio-langchain, chio-llamaindex, chio-crewai, chio-airflow, chio-iac, ...)"
 license = "MIT"
 requires-python = ">=3.11"
@@ -45,6 +45,7 @@ dev = [
     "pytest-cov>=5,<6",
     "mypy>=1.10",
     "ruff>=0.5",
+    "hypothesis>=6,<7",
 ]
 
 [tool.uv.sources]

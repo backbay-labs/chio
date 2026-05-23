@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-retention-handoff-evidence.schema.json",
-  "title": "Chiodos Pheromone Relay Alert Assurance Retention Handoff Evidence",
+  "title": "Chio Pheromone Relay Alert Assurance Retention Handoff Evidence",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "localKernelId", "evidenceId", "packageId", "packageReportSha256", "targetSystemAlias", "observedAtUnixMs", "claims"],

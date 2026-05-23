@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-external-retention-review-report.schema.json",
-  "title": "Chiodos Pheromone Relay Alert Assurance External Retention Review Report",
+  "title": "Chio Pheromone Relay Alert Assurance External Retention Review Report",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "accepted", "code", "localKernelId", "generatedAtUnixMs", "sinceUnixMs", "untilUnixMs", "packageCount", "readyCount", "latestPackageGeneration", "quarantineCount", "driftCount", "insufficientSampleCount", "reviews", "recommendations", "checks"],

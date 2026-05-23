@@ -73,6 +73,9 @@ pub struct AcpVerdict {
     /// The signed authorization receipt emitted by the authoritative check, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt_id: Option<String>,
+    /// Kernel request id that produced `receipt_id`, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt_request_id: Option<String>,
     /// Human-readable reason for the decision.
     pub reason: String,
 }

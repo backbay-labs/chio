@@ -2015,7 +2015,7 @@ mod tests {
             authorizing_kernel: "did:chio:buyer".to_string(),
             case_kind: GovernanceReceiptCaseKind::DestructiveAuthorization,
             authorized_lease_id: "lease:buyer:refund:001".to_string(),
-            workflow_id: "wf-chiodos-refund-001".to_string(),
+            workflow_id: "wf-chio-refund-001".to_string(),
             step_sha256: "c".repeat(64),
             issued_at_unix_ms: 1_100,
             expires_at_unix_ms: 1_900,
@@ -2026,7 +2026,7 @@ mod tests {
         assert!(verify_destructive_authorization(
             &signed,
             "lease:buyer:refund:001",
-            "wf-chiodos-refund-001",
+            "wf-chio-refund-001",
             &"c".repeat(64),
             1_500,
         )

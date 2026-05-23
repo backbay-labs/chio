@@ -1,4 +1,4 @@
-# Chiodos 6.18 Shadow
+# Chio 6.18 Shadow
 
 Candidate focus: optional archive packaging and extraction hardening after 6.17 proves report-only archive lifecycle and closeout review are useful.
 

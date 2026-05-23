@@ -1,4 +1,4 @@
-# Chiodos 6.13 Promotion Note
+# Chio 6.13 Promotion Note
 
 The 6.13 shadow target is now active as relay alert handoff readiness.
 

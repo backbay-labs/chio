@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-archive-restore-negative-fixture-corpus.schema.json",
-  "title": "Chiodos Pheromone Relay Alert Assurance Archive Restore Negative Fixture Corpus",
+  "title": "Chio Pheromone Relay Alert Assurance Archive Restore Negative Fixture Corpus",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "cases"],

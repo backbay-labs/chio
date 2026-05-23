@@ -113,6 +113,10 @@ class TestAllowPath:
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
         assert evaluate_calls[0].tool_name == "double"
+        # Wire shape preserved: positional values stay positional. The
+        # redactor still sees them as named fields internally (via
+        # bind_partial) so protected bodies get scrubbed, but the call
+        # bucket on the wire matches what the caller passed.
         assert evaluate_calls[0].parameters == {"args": [21], "kwargs": {}}
 
         pushed = dict(ti.pushed)
@@ -141,6 +145,8 @@ class TestAllowPath:
         assert result == "fetched:/tmp/data"
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
+        # Wire shape preserved: positional values stay positional. See
+        # the sync companion test for rationale.
         assert evaluate_calls[0].parameters == {
             "args": ["/tmp/data"],
             "kwargs": {},

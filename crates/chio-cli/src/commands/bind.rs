@@ -76,10 +76,7 @@ pub(crate) fn cmd_bind(
         ))
     })?;
     let card = ModelCard::from_canonical_json(&card_bytes).map_err(|e| {
-        CliError::cli_other_error(format!(
-            "model card validation failed [{}]: {e}",
-            e.urn()
-        ))
+        CliError::cli_other_error(format!("model card validation failed [{}]: {e}", e.urn()))
     })?;
 
     let cosign_status = match bundle_path {
@@ -105,9 +102,7 @@ pub(crate) fn cmd_bind(
                 certificate_oidc_issuer: oidc.to_string(),
             };
             let verifier = SigstoreVerifier::with_embedded_root().map_err(|e| {
-                CliError::cli_other_error(format!(
-                    "sigstore trust root unavailable: {e}"
-                ))
+                CliError::cli_other_error(format!("sigstore trust root unavailable: {e}"))
             })?;
             verify_model_card_bundle(&verifier, &card_bytes, &bundle, &expected, Utc::now())
                 .map_err(|e| {

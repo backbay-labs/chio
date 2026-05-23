@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/federation/bilateral-signature-slice",
   "title": "Chio bilateral DSSE signature-slice statement",
-  "description": "Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict CHIODOS bilateral cosign invocation predicate.",
+  "description": "Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict treaty-bound bilateral invocation predicate.",
   "type": "object",
   "additionalProperties": false,
   "required": ["_type", "subject", "predicateType", "predicate"],

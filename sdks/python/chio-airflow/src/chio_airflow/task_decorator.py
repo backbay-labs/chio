@@ -1,22 +1,9 @@
 """Chio-governed Airflow TaskFlow decorator.
 
-:func:`chio_task` wraps a Python function so, when Airflow's TaskFlow
-engine runs the task, the body only executes after an Chio capability
-evaluation. Deny verdicts raise
-:class:`airflow.exceptions.AirflowException` with a
-:class:`PermissionError` chained on ``__cause__`` so both the
-scheduler and the roadmap's ``except PermissionError`` idiom work.
-
-On allow, the decorator pushes the kernel receipt id into XCom under
-``chio_receipt_id`` via the running task instance, so downstream tasks
-and the DAG listener can aggregate receipts without needing the inner
-operator to opt in.
-
-The decorator is deliberately callable in two forms so it reads the
-same way as Airflow's own ``@task``:
-
-* ``@chio_task`` -- no parentheses; inherits every default.
-* ``@chio_task(scope=..., capability_id=..., ...)`` -- options form.
+``@chio_task`` evaluates each invocation through the Chio sidecar
+before running the body. Deny raises ``AirflowException`` with a
+``PermissionError`` on ``__cause__``. Allow pushes the receipt id /
+scope / capability into XCom so DAG listeners can aggregate receipts.
 """
 
 from __future__ import annotations
@@ -26,6 +13,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar, cast, overload
 
+from chio_adapter_base.redact import RedactionPolicy, bind_and_redact
 from chio_sdk.client import ChioClient
 from chio_sdk.models import ChioScope
 
@@ -58,6 +46,7 @@ def chio_task(
     tool_name: str | None = None,
     sidecar_url: str | None = None,
     chio_client: ChioClientLike | None = None,
+    redaction_policy: RedactionPolicy | None = None,
     **task_kwargs: Any,
 ) -> Callable[[F], F]: ...
 
@@ -71,64 +60,18 @@ def chio_task(
     tool_name: str | None = None,
     sidecar_url: str | None = None,
     chio_client: ChioClientLike | None = None,
+    redaction_policy: RedactionPolicy | None = None,
     **task_kwargs: Any,
 ) -> Any:
     """Decorator for Chio-governed Airflow TaskFlow tasks.
 
-    Parameters
-    ----------
-    scope:
-        Optional :class:`ChioScope` declared for the task. The kernel
-        enforces; the wrapper also publishes it to XCom so downstream
-        tasks can introspect the allowed surface.
-    capability_id:
-        Pre-minted Chio capability id for the evaluation. Required when
-        the decorator is called in options form; omitting it raises
-        :class:`ChioAirflowConfigError` at decoration time.
-    tool_server:
-        Chio tool server id. Defaults to the empty string so bare
-        decorator usage (``@chio_task``) stays legal; operators should
-        pass it in real deployments.
-    tool_name:
-        Overrides the kernel-facing tool name. Defaults to the wrapped
-        function's ``__name__``.
-    sidecar_url:
-        Sidecar URL used when ``chio_client`` is unset. Defaults to
-        :attr:`ChioClient.DEFAULT_BASE_URL`.
-    chio_client:
-        Optional :class:`chio_sdk.client.ChioClient` or
-        :class:`chio_sdk.testing.MockChioClient`.
-    **task_kwargs:
-        Forwarded verbatim to :func:`airflow.sdk.task` (e.g.
-        ``retries``, ``retry_delay``, ``task_id``, ``queue``). Airflow
-        TaskFlow options pass through untouched.
-
-    Behaviour
-    ---------
-    The decorator wraps the user function so the wrapper:
-
-    1. Resolves the live Airflow execute-context via
-       :func:`airflow.sdk.get_current_context` so it can pull the TI,
-       DAG id, and run id without the user having to thread them
-       through.
-    2. Calls the sidecar under ``capability_id`` / ``tool_server`` /
-       ``tool_name``, with the task's positional + keyword arguments
-       canonicalised under ``{"args": [...], "kwargs": {...}}``.
-    3. On deny, raises :class:`AirflowException` (``__cause__`` =
-       :class:`PermissionError`).
-    4. On allow, runs the user function, pushes the receipt id into
-       XCom on the live TI under ``chio_receipt_id``, and returns the
-       user function's value.
-
-    Async functions are supported: the wrapper runs the async body on
-    the event loop the decorator created for the sidecar call, so
-    ``@chio_task`` works with ``async def`` TaskFlow bodies in Airflow
-    3.x.
+    ``capability_id`` is required (raises :class:`ChioAirflowConfigError`
+    at decoration time when omitted). ``redaction_policy`` defaults to
+    :meth:`RedactionPolicy.chio_default`. ``**task_kwargs`` pass straight
+    through to :func:`airflow.sdk.task`. Async TaskFlow bodies are
+    supported.
     """
-    # Lazy import: the Airflow TaskFlow decorator pulls in a large
-    # configuration subsystem. Keeping it lazy means this module stays
-    # importable in a type-check-only context (e.g. mypy) without
-    # Airflow installed.
+    # Lazy import keeps this module mypy-importable without Airflow.
     from airflow.sdk import task as airflow_task
 
     def decorator(fn: F) -> F:
@@ -141,6 +84,11 @@ def chio_task(
 
         resolved_tool_name = tool_name or fn.__name__
         resolved_sidecar = sidecar_url or ChioClient.DEFAULT_BASE_URL
+        resolved_policy = (
+            redaction_policy
+            if redaction_policy is not None
+            else RedactionPolicy.chio_default()
+        )
         is_coro = inspect.iscoroutinefunction(fn)
 
         if is_coro:
@@ -156,6 +104,8 @@ def chio_task(
                     scope=scope,
                     sidecar_url=resolved_sidecar,
                     chio_client=chio_client,
+                    redaction_policy=resolved_policy,
+                    fn=fn,
                 )
                 return await cast(Callable[..., Awaitable[Any]], fn)(
                     *args, **kwargs
@@ -175,21 +125,17 @@ def chio_task(
                     scope=scope,
                     sidecar_url=resolved_sidecar,
                     chio_client=chio_client,
+                    redaction_policy=resolved_policy,
+                    fn=fn,
                 )
                 return fn(*args, **kwargs)
 
             body = sync_wrapper
 
-        # ``@task`` exposes a ``TaskDecoratorCollection``; calling it
-        # with kwargs produces the concrete decorator. When the user
-        # passed e.g. ``task_id``, respect it; otherwise Airflow uses
-        # the function name.
         decorated = airflow_task(**task_kwargs)(body) if task_kwargs else airflow_task(body)
         return cast(F, decorated)
 
     if __fn is not None:
-        # Bare ``@chio_task`` with no parens -- require capability_id to
-        # have been threaded via a higher-level wrapper (e.g. partial).
         return decorator(__fn)
     return decorator
 
@@ -204,19 +150,20 @@ def _evaluate_and_push(
     scope: ChioScope | None,
     sidecar_url: str,
     chio_client: ChioClientLike | None,
+    redaction_policy: RedactionPolicy,
+    fn: Callable[..., Any] | None = None,
 ) -> None:
-    """Sync evaluation helper used by ``def`` TaskFlow bodies.
-
-    Raises :class:`AirflowException` on deny (``__cause__`` is the
-    :class:`PermissionError` the evaluator produced). On allow the
-    receipt id is pushed via the current task instance; the push is
-    best-effort and wrapped in a try / except so XCom failures never
-    mask a successful evaluation.
-    """
+    """Sync evaluation; deny -> AirflowException; XCom push is best-effort."""
     from airflow.exceptions import AirflowException
 
     ti, dag_id, run_id = _resolve_airflow_runtime()
-    parameters = {"args": list(args), "kwargs": dict(kwargs)}
+    parameters = _build_redacted_parameters(
+        tool_name=tool_name,
+        args=args,
+        kwargs=kwargs,
+        policy=redaction_policy,
+        fn=fn,
+    )
     try:
         receipt = evaluate_sync(
             chio_client=chio_client,
@@ -250,19 +197,20 @@ async def _evaluate_and_push_async(
     scope: ChioScope | None,
     sidecar_url: str,
     chio_client: ChioClientLike | None,
+    redaction_policy: RedactionPolicy,
+    fn: Callable[..., Any] | None = None,
 ) -> None:
-    """Async evaluation helper used by ``async def`` TaskFlow bodies.
-
-    Airflow 3's TaskFlow engine drives async tasks on its own event
-    loop, so we cannot call :func:`asyncio.run` here (that would
-    collide with the running loop). The async path therefore reaches
-    past the sync wrapper and calls the coroutine :func:`_evaluate`
-    directly.
-    """
+    """Async evaluation; cannot call :func:`asyncio.run` under Airflow 3's loop."""
     from airflow.exceptions import AirflowException
 
     ti, dag_id, run_id = _resolve_airflow_runtime()
-    parameters = {"args": list(args), "kwargs": dict(kwargs)}
+    parameters = _build_redacted_parameters(
+        tool_name=tool_name,
+        args=args,
+        kwargs=kwargs,
+        policy=redaction_policy,
+        fn=fn,
+    )
     owner = _ChioClientOwner(client=chio_client, sidecar_url=sidecar_url)
     try:
         try:
@@ -296,11 +244,7 @@ def _push_receipt(
     scope: ChioScope | None,
     capability_id: str,
 ) -> None:
-    """Publish the allow-path receipt id / scope / capability to XCom.
-
-    Best-effort: a failing XCom backend must not undo a successful
-    evaluation, so all exceptions are swallowed here.
-    """
+    """Publish receipt id / scope / capability to XCom; XCom errors are swallowed."""
     if ti is None:
         return
     try:
@@ -314,13 +258,36 @@ def _push_receipt(
         pass
 
 
-def _resolve_airflow_runtime() -> tuple[Any | None, str | None, str | None]:
-    """Resolve ``(task_instance, dag_id, run_id)`` from the live Airflow context.
+def _build_redacted_parameters(
+    *,
+    tool_name: str,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    policy: RedactionPolicy,
+    fn: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    """Build the sidecar payload via the canonical ``bind_and_redact`` helper.
 
-    When the wrapper runs outside a TaskFlow execute (e.g. a unit test
-    that calls the decorated function directly), all three values are
-    ``None``. The evaluator still runs; the XCom push simply no-ops.
+    Wire shape is preserved: positional values re-emit under
+    ``parameters["args"]`` (redacted where their declared parameter
+    name matches the policy) and keyword values stay under
+    ``parameters["kwargs"]``. Behaviour for forwarding wrappers,
+    ``VAR_POSITIONAL`` extras, ``VAR_KEYWORD`` spillover, and
+    non-introspectable callables is documented on
+    :func:`chio_adapter_base.redact.bind_and_redact`.
     """
+    redacted_args, redacted_kwargs = bind_and_redact(
+        fn,
+        args,
+        kwargs,
+        tool_name=tool_name,
+        policy=policy,
+    )
+    return {"args": redacted_args, "kwargs": redacted_kwargs}
+
+
+def _resolve_airflow_runtime() -> tuple[Any | None, str | None, str | None]:
+    """Resolve ``(ti, dag_id, run_id)``; all ``None`` outside a live TaskFlow execute."""
     try:
         from airflow.sdk import get_current_context
     except Exception:  # pragma: no cover -- import guard for older airflow

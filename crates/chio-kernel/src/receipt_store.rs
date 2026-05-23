@@ -2,7 +2,6 @@ use chio_core::canonical::CanonicalBytes;
 use chio_core::capability::CapabilityToken;
 use chio_core::credit::CreditBondRow;
 use chio_core::receipt::{ChildRequestReceipt, ChioReceipt};
-use chio_core_types::receipt::ChioReceiptV2;
 
 use crate::capability_lineage::CapabilitySnapshot;
 use crate::checkpoint::KernelCheckpoint;
@@ -68,6 +67,12 @@ pub enum ReceiptStoreError {
 
 pub trait ReceiptStore: Send + Sync {
     fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError>;
+    fn load_chio_receipt(
+        &self,
+        _receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        Ok(None)
+    }
     fn append_chio_receipt_canonical(
         &self,
         receipt: &ChioReceipt,
@@ -89,42 +94,6 @@ pub trait ReceiptStore: Send + Sync {
     ) -> Result<Option<u64>, ReceiptStoreError> {
         self.append_child_receipt(receipt)?;
         Ok(None)
-    }
-
-    /// Returns true when this store durably persists v2 receipts keyed
-    /// on `body_hash` and can replay-check them through
-    /// [`ReceiptStore::contains_chio_receipt_v2_body_hash`].
-    fn supports_chio_receipt_v2(&self) -> bool {
-        false
-    }
-
-    /// Persist a v2 receipt keyed on `body_hash`.
-    ///
-    /// The replay store keys on `receipt.body_hash`. The optional
-    /// `legacy_receipt_id_alias` is the kernel's UUIDv7 tooling alias
-    /// (when one is co-minted alongside a v1 fallback receipt) and is
-    /// non-authoritative: tampering with the alias must NOT change the
-    /// replay decision. Implementations that do not support v2 storage
-    /// return `Ok(0)`. Kernels must reject v2-required dispatches unless
-    /// [`ReceiptStore::supports_chio_receipt_v2`] is true.
-    fn append_chio_receipt_v2(
-        &self,
-        _receipt: &ChioReceiptV2,
-        _legacy_receipt_id_alias: Option<&str>,
-    ) -> Result<u64, ReceiptStoreError> {
-        Ok(0)
-    }
-
-    /// Replay-detection probe for a v2 receipt body_hash. Returns `true`
-    /// when the body_hash has already been admitted to the store.
-    /// Default implementation returns `false` so non-v2 stores never
-    /// flag a replay. V2-required dispatches must not rely on this
-    /// default; they require a v2-capable store before side effects.
-    fn contains_chio_receipt_v2_body_hash(
-        &self,
-        _body_hash: &str,
-    ) -> Result<bool, ReceiptStoreError> {
-        Ok(false)
     }
 
     fn receipts_canonical_bytes_range(

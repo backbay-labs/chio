@@ -181,7 +181,7 @@ export async function fetchRelayObservabilityReport(): Promise<RelayObservabilit
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/observability', { headers })
+  const res = await fetch('/v1/chio/pheromone/observability', { headers })
   if (!res.ok) {
     throw new Error(`Relay observability request failed: ${res.status} ${res.statusText}`)
   }
@@ -196,7 +196,7 @@ export async function fetchRelayAlertReport(): Promise<RelayAlertReport> {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alerts', { headers })
+  const res = await fetch('/v1/chio/pheromone/alerts', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert request failed: ${res.status} ${res.statusText}`)
   }
@@ -211,7 +211,7 @@ export async function fetchRelayTrendReport(): Promise<RelayTrendReport> {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/trends', { headers })
+  const res = await fetch('/v1/chio/pheromone/trends', { headers })
   if (!res.ok) {
     throw new Error(`Relay trend request failed: ${res.status} ${res.statusText}`)
   }
@@ -226,7 +226,7 @@ export async function fetchRelayAlertHandoffReport(): Promise<RelayAlertHandoffR
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-handoff', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-handoff', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert handoff request failed: ${res.status} ${res.statusText}`)
   }
@@ -241,7 +241,7 @@ export async function fetchRelayAlertDeliveryReport(): Promise<RelayAlertDeliver
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-delivery', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-delivery', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert delivery request failed: ${res.status} ${res.statusText}`)
   }
@@ -256,7 +256,7 @@ export async function fetchRelayAlertAssurancePackage(): Promise<RelayAlertAssur
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-assurance', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-assurance', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert assurance request failed: ${res.status} ${res.statusText}`)
   }
@@ -271,7 +271,7 @@ export async function fetchRelayAlertAssuranceExportReport(): Promise<RelayAlert
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/export', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/export', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert assurance export request failed: ${res.status} ${res.statusText}`)
   }
@@ -286,7 +286,7 @@ export async function fetchRelayAlertAssuranceReplayReport(): Promise<RelayAlert
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/replay', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/replay', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert assurance replay request failed: ${res.status} ${res.statusText}`)
   }
@@ -301,7 +301,7 @@ export async function fetchRelayAlertAssuranceRetentionReport(): Promise<RelayAl
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/retention', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/retention', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert assurance retention request failed: ${res.status} ${res.statusText}`)
   }
@@ -316,7 +316,7 @@ export async function fetchRelayAlertAssuranceArchiveReport(): Promise<RelayAler
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/archive', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/archive', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert assurance archive request failed: ${res.status} ${res.statusText}`)
   }
@@ -331,7 +331,7 @@ export async function fetchRelayAlertAssuranceCloseoutReport(): Promise<RelayAle
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-assurance/closeout', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/closeout', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert assurance closeout request failed: ${res.status} ${res.statusText}`)
   }

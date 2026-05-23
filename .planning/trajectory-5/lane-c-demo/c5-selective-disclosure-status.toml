@@ -10,7 +10,7 @@
 status = "deferred_to_v0_2"
 deferral_target = "v0.2.0-bounded-chiodome"
 reason = "No chio-zk-receipts crate, no zk or bbs-stub selective-disclosure feature, no BBS+/AnonCreds dependency evidence, and no auditor-view proof fixtures exist in this branch."
-spec_authority = "spec/CHIODOS_SELECTIVE_DISCLOSURE.md"
+spec_authority = "spec/CHIO_SELECTIVE_DISCLOSURE.md"
 implementation_crate = "deferred"
 feature = "deferred"
 proof_path = "deferred"

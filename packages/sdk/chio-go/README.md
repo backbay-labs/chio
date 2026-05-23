@@ -17,7 +17,7 @@ Current release posture:
 
 - release-ready beta with live conformance coverage across MCP core, tasks, auth, notifications, and nested callbacks
 - module version plumbing, consumer-build smoke checks, and release qualification are in place
-- aligned to the current `v2.3` production-candidate protocol and release docs
+- aligned to the current Chio protocol and release docs
 - broader external publication through Git tags and proxy propagation remains a later 1.0 milestone
 
 Current live conformance coverage:

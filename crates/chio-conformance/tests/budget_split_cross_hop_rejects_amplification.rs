@@ -20,8 +20,8 @@
 use chio_core::capability::CapabilityCryptoFloor;
 use chio_core::capability::{
     compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-    CapabilityTokenBody, CapabilityTokenV2Body, ChioScope, DelegationLink, DelegationLinkBody,
-    Operation, ToolGrant,
+    CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, DelegationLink,
+    DelegationLinkBody, Operation, ToolGrant,
 };
 use chio_core::crypto::Keypair;
 use chio_kernel_core::{
@@ -49,7 +49,7 @@ fn scope_with(grants: Vec<ToolGrant>) -> ChioScope {
     }
 }
 
-fn sign_v2_with_chain(
+fn sign_attenuated_with_chain(
     issuer: &Keypair,
     id: &str,
     parent_scope: &ChioScope,
@@ -72,8 +72,8 @@ fn sign_v2_with_chain(
         expires_at: 200,
         delegation_chain: chain,
     };
-    CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body,
             caveats: vec![],
             scope_attenuations: vec![],
@@ -118,7 +118,7 @@ fn parent_5000_child_4000_two_grandchildren_3000_each_second_rejected() {
         &kp,
     )
     .expect("parent->child link signs");
-    let child = sign_v2_with_chain(
+    let child = sign_attenuated_with_chain(
         &kp,
         child_id,
         &parent_scope,
@@ -161,7 +161,7 @@ fn parent_5000_child_4000_two_grandchildren_3000_each_second_rejected() {
             &child_subject,
         )
         .expect("child->grandchild link signs");
-        sign_v2_with_chain(
+        sign_attenuated_with_chain(
             &kp,
             gc_id,
             &parent_scope,

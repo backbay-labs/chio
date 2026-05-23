@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-archive-extraction-report.schema.json",
-  "title": "Chiodos Pheromone Relay Alert Assurance Archive Extraction Report",
+  "title": "Chio Pheromone Relay Alert Assurance Archive Extraction Report",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "accepted", "code", "localKernelId", "generatedAtUnixMs", "packageId", "packageManifestSha256", "plannedMemberCount", "extractedMemberCount", "checks"],
