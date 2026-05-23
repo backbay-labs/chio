@@ -29,13 +29,13 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chio_appraisal::{
-    compute_marketplace_invocation_price, MarketplaceBasePrice, MarketplacePricingContext,
-    MarketplaceReputationTier,
+    MarketplaceBasePrice, MarketplacePricingContext, MarketplaceReputationTier,
+    compute_marketplace_invocation_price,
 };
 use chio_guard_registry::{GuardPrice, MARKETPLACE_BLOCK_KEY};
-use chio_reputation::{satisfies_floor, ReputationTier};
+use chio_reputation::{ReputationTier, satisfies_floor};
 use chio_underwriting::{
-    compute_marketplace_credit_limit, MarketplaceCreditLimitRequest, MarketplaceLimitTier,
+    MarketplaceCreditLimitRequest, MarketplaceLimitTier, compute_marketplace_credit_limit,
 };
 use serde::{Deserialize, Serialize};
 
@@ -134,8 +134,8 @@ pub enum MarketError {
 
 fn read_catalog(path: &Path) -> Result<Vec<MarketCatalogEntry>, MarketError> {
     let bytes = fs::read(path).map_err(|err| MarketError::CatalogIo(err.to_string()))?;
-    let entries: Vec<MarketCatalogEntry> = serde_json::from_slice(&bytes)
-        .map_err(|err| MarketError::CatalogParse(err.to_string()))?;
+    let entries: Vec<MarketCatalogEntry> =
+        serde_json::from_slice(&bytes).map_err(|err| MarketError::CatalogParse(err.to_string()))?;
     Ok(entries)
 }
 
@@ -336,8 +336,7 @@ pub fn market_install(
 
     let bytes = serde_json::to_vec_pretty(&record)
         .map_err(|err| MarketError::InstallSerialize(err.to_string()))?;
-    let mut tmp =
-        tempfile_in(bundle_dir).map_err(|err| MarketError::InstallIo(err.to_string()))?;
+    let mut tmp = tempfile_in(bundle_dir).map_err(|err| MarketError::InstallIo(err.to_string()))?;
     tmp.write_all(&bytes)
         .map_err(|err| MarketError::InstallIo(err.to_string()))?;
     if !tmp
@@ -380,9 +379,8 @@ fn install_record_path(bundle_dir: &Path, tenant_id: &str, reference: &str) -> P
     let tenant_prefix = sanitize_prefix(tenant_id, 32);
     let reference_prefix = sanitize_prefix(reference, 32);
 
-    let name = format!(
-        "{tenant_prefix}-{tenant_digest}.{reference_prefix}-{reference_digest}.json"
-    );
+    let name =
+        format!("{tenant_prefix}-{tenant_digest}.{reference_prefix}-{reference_digest}.json");
     bundle_dir.join(name)
 }
 
@@ -503,7 +501,10 @@ pub fn render_info_text(report: &MarketInfoReport) -> String {
     );
     lines.insert(
         "credit_limit",
-        format!("{} {}", report.credit_limit_units, report.credit_limit_currency),
+        format!(
+            "{} {}",
+            report.credit_limit_units, report.credit_limit_currency
+        ),
     );
     let mut output = String::new();
     for (key, value) in lines {
@@ -568,8 +569,7 @@ mod tests {
     fn list_filters_by_reputation_tier() {
         let dir = tempdir().expect("tmpdir");
         let path = write_catalog(dir.path(), &fixture_entries());
-        let report = market_list(&path, &tenant_ctx(ReputationTier::Tier0))
-            .expect("list runs");
+        let report = market_list(&path, &tenant_ctx(ReputationTier::Tier0)).expect("list runs");
         assert_eq!(report.entries.len(), 1);
         assert_eq!(report.entries[0].name, "pii-mask");
     }
@@ -578,8 +578,7 @@ mod tests {
     fn list_includes_higher_floor_for_higher_tier() {
         let dir = tempdir().expect("tmpdir");
         let path = write_catalog(dir.path(), &fixture_entries());
-        let report = market_list(&path, &tenant_ctx(ReputationTier::Tier3))
-            .expect("list runs");
+        let report = market_list(&path, &tenant_ctx(ReputationTier::Tier3)).expect("list runs");
         assert_eq!(report.entries.len(), 2);
         // Sorted lexically by reference.
         assert!(report.entries[0].reference < report.entries[1].reference);
@@ -621,17 +620,16 @@ mod tests {
         let catalog = write_catalog(dir.path(), &fixture_entries());
         let bundle = dir.path().join("bundle");
         let tenant = tenant_ctx(ReputationTier::Tier1);
-        let reference =
-            "oci://ghcr.io/chio/pii-mask@sha256:1111111111111111111111111111111111111111111111111111111111111111";
+        let reference = "oci://ghcr.io/chio/pii-mask@sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
-        let first = market_install(&catalog, &bundle, &tenant, reference, false)
-            .expect("install runs");
+        let first =
+            market_install(&catalog, &bundle, &tenant, reference, false).expect("install runs");
         assert!(!first.idempotent_replay);
         assert_eq!(first.registered_price_units, 950);
         assert_eq!(first.credit_limit_units, 50_000);
 
-        let second = market_install(&catalog, &bundle, &tenant, reference, false)
-            .expect("re-install runs");
+        let second =
+            market_install(&catalog, &bundle, &tenant, reference, false).expect("re-install runs");
         assert!(second.idempotent_replay);
         assert_eq!(second.registered_price_units, first.registered_price_units);
     }
@@ -642,17 +640,16 @@ mod tests {
         let catalog = write_catalog(dir.path(), &fixture_entries());
         let bundle = dir.path().join("bundle");
         let tenant = tenant_ctx(ReputationTier::Tier1);
-        let reference =
-            "oci://ghcr.io/chio/pii-mask@sha256:1111111111111111111111111111111111111111111111111111111111111111";
+        let reference = "oci://ghcr.io/chio/pii-mask@sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
-        let first = market_install(&catalog, &bundle, &tenant, reference, false)
-            .expect("install runs");
+        let first =
+            market_install(&catalog, &bundle, &tenant, reference, false).expect("install runs");
         assert!(!first.idempotent_replay);
         let path = install_record_path(&bundle, &tenant.tenant_id, reference);
         let original_bytes = fs::read(&path).expect("read install record");
 
-        let second = market_install(&catalog, &bundle, &tenant, reference, false)
-            .expect("re-install runs");
+        let second =
+            market_install(&catalog, &bundle, &tenant, reference, false).expect("re-install runs");
         assert!(second.idempotent_replay);
         let replay_bytes = fs::read(&path).expect("read replayed install record");
         assert_eq!(
@@ -667,8 +664,7 @@ mod tests {
         let catalog = write_catalog(dir.path(), &fixture_entries());
         let bundle = dir.path().join("bundle");
         let tenant = tenant_ctx(ReputationTier::Tier0);
-        let reference =
-            "oci://ghcr.io/chio/exfil-blocker@sha256:2222222222222222222222222222222222222222222222222222222222222222";
+        let reference = "oci://ghcr.io/chio/exfil-blocker@sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
         let result = market_install(&catalog, &bundle, &tenant, reference, false);
         assert!(matches!(result, Err(MarketError::InstallDenied(_))));
@@ -680,8 +676,7 @@ mod tests {
         let catalog = write_catalog(dir.path(), &fixture_entries());
         let bundle = dir.path().join("bundle");
         let tenant = tenant_ctx(ReputationTier::Tier3);
-        let reference =
-            "oci://ghcr.io/chio/exfil-blocker@sha256:2222222222222222222222222222222222222222222222222222222222222222";
+        let reference = "oci://ghcr.io/chio/exfil-blocker@sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
         let result = market_install(&catalog, &bundle, &tenant, reference, true);
         assert!(matches!(result, Err(MarketError::InstallDenied(_))));

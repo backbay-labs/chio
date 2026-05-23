@@ -208,7 +208,7 @@ pub struct FederationPeer {
     /// federation-level operation is accepted against it.
     pub rotation_due: u64,
     /// Peer-advertised protocol feature bitset. Missing on legacy peers
-    /// defaults to v1-only capability tokens.
+    /// defaults to current capability semantics without optional features.
     #[serde(default)]
     pub capabilities: CapabilityNegotiation,
     /// Optional signed ladder manifest reference accepted during handshake.

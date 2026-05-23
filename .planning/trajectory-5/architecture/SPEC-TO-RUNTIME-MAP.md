@@ -1,7 +1,7 @@
 # Trj5 Spec-to-Runtime Map
 
 **Status**: cross-cutting inventory. Each row identifies a normative MUST in
-`spec/PROTOCOL.md` (or a chiodos sub-spec for Lane C) and the production
+`spec/PROTOCOL.md` (or a chio sub-spec for Lane C) and the production
 call site that enforces it (or fails to enforce it). The fifth column
 records the release work ticket that closes the gap. Items not in release work scope are
 marked `DEFERRED-trj6`.
@@ -94,10 +94,10 @@ copyright rule.
 
 | Spec citation | MUST text (short) | Production call site | Status | Trj5 ticket |
 |---|---|---|---|---|
-| `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6 (TBD-from-W1: lines) | "DualSignedReceipt MUST carry both signers' attestations" | `crates/chio-federation/src/bilateral.rs::CoSigningBody` (lines 41-77), `DualSignedReceipt` (lines 91-100) | enforced (existing primitive) | release work-C1.E asserts the demo exercises this |
+| `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` section 6 (TBD-from-W1: lines) | "DualSignedReceipt MUST carry both signers' attestations" | `crates/chio-federation/src/bilateral.rs::CoSigningBody` (lines 41-77), `DualSignedReceipt` (lines 91-100) | enforced (existing primitive) | release work-C1.E asserts the demo exercises this |
 | same | "cross-org dispatch MUST not allow single-signer fast path" | TBD-from-W1 | structural-only | release work-C1.E |
-| `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 (PAE encoding) | "Ed25519 over DSSE PAE of canonical-JSON in-toto Statement carrying §5 predicate body" | NEW: `crates/chio-federation/src/bilateral_dsse.rs` (per B4); legacy `bilateral.rs::DualSignedReceipt::verify` (line 108) is structural-only with respect to §6 | structural-only on the existing `DualSignedReceipt` (its preimage shares ZERO bytes with §6 PAE preimage); B4 introduces the §6-conformant module | bilateral DSSE signing item |
-| `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §7 step 11-12 (signature verification) | "verifier MUST validate Ed25519 over DSSE PAE bytes" | B4 verifier-side hook in `bilateral_dsse.rs` | not-yet-enforced; B4 fixture is the conformance check | bilateral DSSE signing item |
+| `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 (PAE encoding) | "Ed25519 over DSSE PAE of canonical-JSON in-toto Statement carrying §5 predicate body" | NEW: `crates/chio-federation/src/bilateral_dsse.rs` (per B4); legacy `bilateral.rs::DualSignedReceipt::verify` (line 108) is structural-only with respect to §6 | structural-only on the existing `DualSignedReceipt` (its preimage shares ZERO bytes with §6 PAE preimage); B4 introduces the §6-conformant module | bilateral DSSE signing item |
+| `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §7 step 11-12 (signature verification) | "verifier MUST validate Ed25519 over DSSE PAE bytes" | B4 verifier-side hook in `bilateral_dsse.rs` | not-yet-enforced; B4 fixture is the conformance check | bilateral DSSE signing item |
 
 ---
 
@@ -121,7 +121,7 @@ copyright rule.
 
 | Spec citation | MUST text (short) | Production call site | Status | Trj5 ticket |
 |---|---|---|---|---|
-| `spec/CHIODOS_SELECTIVE_DISCLOSURE.md` section 6 (TBD-from-W1: lines) | "auditor view MUST verify without revealing private fields" | Future implementation, expected to follow the normative crate/feature shape or an explicit protocol-owner update | deferred outside current closure | no current closure row |
+| `spec/CHIO_SELECTIVE_DISCLOSURE.md` section 6 (TBD-from-W1: lines) | "auditor view MUST verify without revealing private fields" | Future implementation, expected to follow the normative crate/feature shape or an explicit protocol-owner update | deferred outside current closure | no current closure row |
 
 ---
 
@@ -155,7 +155,7 @@ explicitly NOT in the release work scope per
   (`audits/T1.1` line 19 punt). Stay punted.
 - Hardware attestation buffet (Apple Secure Enclave kernel-key, TPM 2.0,
   Azure MAA hot-binding). Customer-driven.
-- All `chiodos pheromone`, `chiodos ladder` primitives. Research drafts.
+- All `chio pheromone`, `chio ladder` primitives. Research drafts.
 
 ---
 

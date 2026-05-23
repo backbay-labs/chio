@@ -22,16 +22,22 @@ from chio_sdk.errors import (
     ChioValidationError,
 )
 from chio_sdk.models import (
+    CallerIdentity,
+    CapabilityToken,
     ChioHttpRequest,
     ChioReceipt,
     ChioScope,
-    CallerIdentity,
-    CapabilityToken,
-    Decision,
     EvaluateResponse,
     GuardEvidence,
     HttpReceipt,
-    Verdict,
+)
+from chio_sdk.models_approvals import (
+    Approval,
+    ApprovalResponse,
+    ApprovalVerdict,
+    PendingApproval,
+    PendingApprovalList,
+    SubmitApprovalResult,
 )
 
 
@@ -51,6 +57,23 @@ def _canonical_json(obj: Any) -> bytes:
 def _sha256_hex(data: bytes) -> str:
     """Compute SHA-256 hex digest."""
     return hashlib.sha256(data).hexdigest()
+
+
+def _default_tool_server(tool_name: str) -> str:
+    """Best-effort tool-server guess from a chio_* tool name.
+
+    Mirrors the routing chio-hermes uses so adapters that omit
+    ``tool_server`` still produce sensible approval entries.
+    """
+    if tool_name.startswith("chio_file_") or tool_name.startswith("file_"):
+        return "fs"
+    if tool_name.startswith("chio_shell_") or tool_name.startswith("shell_"):
+        return "shell"
+    if tool_name.startswith("chio_git_") or tool_name.startswith("git_"):
+        return "git"
+    if tool_name in {"run_command", "run"}:
+        return "shell"
+    return "unknown"
 
 
 def _capability_id_from_token(raw_token: str | None) -> str | None:
@@ -292,6 +315,149 @@ class ChioClient:
             headers=request_headers,
         )
         return EvaluateResponse.model_validate(data)
+
+    # ------------------------------------------------------------------
+    # HITL approval channel
+    # ------------------------------------------------------------------
+
+    async def list_pending_approvals(self) -> list[PendingApproval]:
+        """List pending HITL approvals (``GET /approvals/pending``).
+
+        Returns the ``approvals`` array from the sidecar response,
+        already coerced into :class:`PendingApproval`. The companion
+        ``count`` field is dropped to match the documented signature
+        from the chio-hermes integration plan.
+        """
+        data = await self._get("/approvals/pending")
+        # The sidecar response is `{"approvals": [...], "count": N}`.
+        # Tolerate a bare list response for forward compatibility.
+        payload = (
+            {"approvals": data, "count": len(data)}
+            if isinstance(data, list)
+            else data
+        )
+        listing = PendingApprovalList.model_validate(payload)
+        return list(listing.approvals)
+
+    async def get_approval(self, approval_id: str) -> Approval:
+        """Fetch a single approval by id (``GET /approvals/{id}``).
+
+        Either ``Approval.pending`` or ``Approval.resolution`` is
+        populated. Raises :class:`ChioError` (HTTP_404) when the id is
+        unknown.
+        """
+        if not approval_id:
+            raise ChioValidationError("approval_id must be a non-empty string")
+        data = await self._get(f"/approvals/{approval_id}")
+        return Approval.model_validate(data)
+
+    async def respond_approval(
+        self,
+        approval_id: str,
+        verdict: ApprovalVerdict | str,
+        reason: str | None = None,
+    ) -> ApprovalResponse:
+        """Resolve an approval via the operator-respond shortcut.
+
+        v0.2 manual flow: posts to ``POST /approvals/{id}/operator-respond``
+        which has the sidecar sign a `GovernedApprovalToken` with its
+        own keypair. Use the signed `/respond` route directly when an
+        external approver keypair is required.
+
+        Parameters
+        ----------
+        approval_id:
+            Identifier returned by :meth:`submit_for_approval` or
+            surfaced via :meth:`list_pending_approvals`.
+        verdict:
+            ``"approve"``/``"deny"`` shorthand or a
+            :class:`ApprovalVerdict` enum value.
+        reason:
+            Optional free-form note recorded with the resolution.
+        """
+        if not approval_id:
+            raise ChioValidationError("approval_id must be a non-empty string")
+        normalised = (
+            ApprovalVerdict.from_action(verdict)
+            if isinstance(verdict, str)
+            else verdict
+        )
+        body: dict[str, Any] = {"outcome": normalised.value}
+        if reason is not None:
+            body["reason"] = reason
+        data = await self._post(
+            f"/approvals/{approval_id}/operator-respond", body
+        )
+        return ApprovalResponse.model_validate(data)
+
+    async def submit_for_approval(
+        self,
+        *,
+        capability_id: str,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        tool_server: str | None = None,
+        requested_by: str | None = None,
+        ttl_seconds: int = 3600,
+        summary: str | None = None,
+        triggered_by: list[str] | None = None,
+    ) -> str:
+        """Hold a tool call in the sidecar pending human approval.
+
+        Posts to ``POST /approvals/submit`` and returns the new
+        ``approval_id``. The parameter hash is derived from the
+        canonical JSON of ``tool_args`` so a later operator-respond
+        binds the signature to the exact arguments the LLM proposed.
+
+        Parameters
+        ----------
+        capability_id:
+            Capability the agent presented for the held call.
+        tool_name:
+            Name of the tool being invoked (e.g. ``run_command``).
+        tool_args:
+            Arguments the LLM passed; used for the parameter hash and
+            optional summary text. Must be JSON-serializable.
+        tool_server:
+            Server id (e.g. ``shell``, ``git``); defaults to a best
+            guess from the tool name.
+        requested_by:
+            Hex Ed25519 public key of the agent that initiated the
+            call. When omitted the sidecar records an anonymous
+            placeholder; operator-respond will then fail because there
+            is no parseable subject binding, so set this whenever the
+            call originates from a real agent.
+        ttl_seconds:
+            Approval lifetime; clamped to 3600 by the sidecar.
+        summary:
+            Optional human-friendly summary surfaced in dashboards.
+        triggered_by:
+            Optional list of guard ids that forced the approval.
+        """
+        if not capability_id:
+            raise ChioValidationError(
+                "capability_id is required to submit an approval"
+            )
+        if not tool_name:
+            raise ChioValidationError(
+                "tool_name is required to submit an approval"
+            )
+        param_hash = _sha256_hex(_canonical_json(tool_args))
+        body: dict[str, Any] = {
+            "capability_id": capability_id,
+            "tool_server": tool_server or _default_tool_server(tool_name),
+            "tool_name": tool_name,
+            "parameter_hash": param_hash,
+            "requested_by": requested_by or "",
+            "ttl_seconds": ttl_seconds,
+        }
+        if summary is not None:
+            body["summary"] = summary
+        if triggered_by:
+            body["triggered_by"] = list(triggered_by)
+        data = await self._post("/approvals/submit", body)
+        result = SubmitApprovalResult.model_validate(data)
+        return result.approval_id
 
     # ------------------------------------------------------------------
     # Guard evidence helpers

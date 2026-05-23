@@ -1,0 +1,16 @@
+{
+  "receiver": "alertmanager-auth-watch",
+  "alertname": "endpoint_denied",
+  "severity": "critical",
+  "outcome": "accepted",
+  "observed_at_unix_ms": 1766000065000,
+  "source_handoff_report_sha256": "40c91f8742e259de9a3c507e9c6a34b7ac59341ceb5e0a24e8d5da0c501fbdd5",
+  "dedupe_key": "chio-relay:dataco:endpoint-denied",
+  "runbook_ref": "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#replay-storm",
+  "labels": {
+    "notification_route": "opsgenie-auth-watch",
+    "opsgenie": "relay-security",
+    "service": "chio-pheromone-relay",
+    "severity": "critical"
+  }
+}

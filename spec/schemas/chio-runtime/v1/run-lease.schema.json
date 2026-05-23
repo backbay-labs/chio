@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "run-lease.schema.json",
+  "title": "Chio Runtime Run Lease",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "runId", "leaseId", "ownerId", "acquiredAtUnixMs", "expiresAtUnixMs", "heartbeatAtUnixMs", "fencingToken", "state"],
+  "properties": {
+    "schema": { "const": "chio.runtime.run-lease.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "leaseId": { "type": "string", "minLength": 1 },
+    "ownerId": { "type": "string", "minLength": 1 },
+    "acquiredAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+    "heartbeatAtUnixMs": { "type": "integer", "minimum": 0 },
+    "fencingToken": { "type": "integer", "minimum": 1 },
+    "state": { "$ref": "#/$defs/code" },
+    "reasonCode": { "$ref": "#/$defs/code" }
+  },
+  "$defs": { "code": { "type": "string", "pattern": "^[a-z0-9_]+$" } }
+}

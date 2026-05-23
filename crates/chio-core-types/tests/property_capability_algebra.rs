@@ -12,12 +12,12 @@
 //!
 //! Live-API note for the recursive-delegation invariants: the
 //! `delegate` mint helper lives behind the `chio-core-types`
-//! `delegation_v2` feature flag, which is OFF by default. The
+//! `delegation` feature flag, which is OFF by default. The
 //! invariants here intentionally encode the algebraic properties using
 //! the always-on primitives (`validate_attenuation`,
 //! `validate_delegation_chain`, the `is_subset_of` algebra) plus a
 //! free-standing revocation-set predicate. That keeps the gate_check
-//! green without needing the v2 feature flipped on by default.
+//! green without needing recursive delegation enabled by default.
 //!
 //! Live-API notes:
 //! - `Scope` maps to `ChioScope` in the live crate. Method name `is_subset_of`

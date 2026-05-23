@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-federation/v1/issuance-request.schema.json",
+  "title": "Chio Federation Issuance Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "workflowId",
+    "workflowGrantId",
+    "leaseAuthorityIssuer",
+    "governanceAuthorityKernel",
+    "verificationContext",
+    "steps"
+  ],
+  "properties": {
+    "schema": { "const": "chio.federation.issuance-request.v1" },
+    "workflowId": { "type": "string", "minLength": 1 },
+    "workflowGrantId": { "type": "string", "minLength": 1 },
+    "leaseAuthorityIssuer": { "type": "string", "minLength": 1 },
+    "governanceAuthorityKernel": { "type": "string", "minLength": 1 },
+    "verificationContext": { "$ref": "verification-context.schema.json" },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "leaseId",
+        "stepIndex",
+        "toolName",
+        "peerKernelId",
+        "actionClassId",
+        "subject",
+        "actionClass",
+        "toolArgsHash",
+        "destructive",
+        "leaseIssuedAtUnixMs",
+        "leaseExpiresAtUnixMs"
+      ],
+      "properties": {
+        "leaseId": { "type": "string", "minLength": 1 },
+        "stepIndex": { "type": "integer", "minimum": 0 },
+        "toolName": { "type": "string", "minLength": 1 },
+        "peerKernelId": { "type": "string", "minLength": 1 },
+        "actionClassId": { "type": "string", "minLength": 1 },
+        "subject": { "type": "string", "minLength": 1 },
+        "actionClass": {
+          "enum": ["scoped_observation", "delegated_action", "narrow_destructive"]
+        },
+        "toolArgsHash": { "$ref": "#/$defs/sha256" },
+        "destructive": { "type": "boolean" },
+        "leaseIssuedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "leaseExpiresAtUnixMs": { "type": "integer", "minimum": 0 },
+        "governanceReceiptId": { "type": "string", "minLength": 1 },
+        "governanceIssuedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "governanceExpiresAtUnixMs": { "type": "integer", "minimum": 0 },
+        "stepSha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

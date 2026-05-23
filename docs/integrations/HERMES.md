@@ -210,6 +210,38 @@ Hermes's tool-output parser can route it consistently:
 | Configuration missing         | `{"error":"chio_not_configured","message":"set CHIO_CAPABILITY_ID before invoking Chio tools"}`                                  |
 | Generic exception             | `{"error":"chio_error","message":"<exception text>"}`                                                                           |
 | Executor I/O error after allow| `{"error":"chio_executor_error","message":"<text>","receipt_id":"rcpt-..."}`                                                    |
+| HITL approval required        | `{"status":"requires_approval","error":"chio_requires_approval","approval_id":"ap-...","command":"...","tool_name":"chio_shell_run","tool_server":"shell","hint":"Use /chio approve <id> ..."}` |
+
+### 2.5.1 HITL approval channel
+
+`chio_shell_run` and `chio_git_run` previously denied approval-required
+commands outright. As of v0.2 the plugin holds them in the sidecar's
+HITL queue and surfaces the `chio_requires_approval` envelope above so
+the model gets a structured response. Resolve the held call with one of:
+
+* `/chio approvals` -- list pending entries from the sidecar.
+* `/chio approve <approval_id> [reason]` -- POST the operator-respond
+  shortcut so the sidecar signs a `GovernedApprovalToken` with its own
+  keypair and resolves the entry.
+* `/chio deny <approval_id> [reason]` -- same path with a deny outcome.
+* `hermes chio approvals list` / `hermes chio approvals respond
+  <approval_id> --approve|--deny [--reason TEXT] [--json]` from another
+  shell.
+
+Walkthrough:
+
+1. Model calls `chio_shell_run` with `{"command":"rm -rf old_build/"}`.
+2. The plugin policy flags the command as approval-required and POSTs
+   to `POST /approvals/submit` on the sidecar; it returns a fresh
+   `approval_id`.
+3. The model receives
+   `{"status":"requires_approval","error":"chio_requires_approval","approval_id":"ap-...", ...}`
+   and stops.
+4. User types `/chio approve ap-...` (or runs `hermes chio approvals
+   respond ap-... --approve`). The slash command POSTs to
+   `POST /approvals/{id}/operator-respond`.
+5. The model retries the original tool call. Auto-resume of held calls
+   is v0.3 work; v0.2 requires the manual retry.
 
 ### 2.6 Configuration precedence
 
@@ -295,15 +327,26 @@ chio-hermes / chio-CLI scope.
 | `hermes plugins enable chio` fails                                    | `_plugin_exists` (`hermes_cli/plugins_cmd.py:684`) only matches user/bundled directory names; rejects entry-point plugin names.                        | Edit `~/.hermes/config.yaml` directly to set `plugins.enabled: ["chio"]`.                                                    |
 | `hermes setup` does not prompt for `CHIO_*` env                       | `_missing_requires_env_names` (`hermes_cli/plugins_cmd.py:194, 1336`) is only consulted by the install pipeline for git/directory plugins; pip plugins skip it. | Export `CHIO_SIDECAR_URL` and `CHIO_CAPABILITY_ID` manually, or write them to `~/.hermes/.env` (mode `0600`).                |
 | `chio_*` tools do not surface in a session even with plugin enabled   | The `chio` toolset is opt-in. Hermes's tool-router only loads toolsets in `toolsets:` config or `-t` flag.                                            | Pass `hermes -t chio,hermes-cli ...`, or add `chio` to the `toolsets:` list in `~/.hermes/config.yaml`.                      |
-| Plugin always reports `chio_sidecar_unreachable` even with sidecar up | The `chio` CLI does not currently ship a one-line sidecar entry point at `/v1/capabilities/*`. `chio api protect` mints under `/v1/capabilities/mint` but the SDK expects bare `/v1/capabilities` POST. | v0.1.0 ships in degraded-but-safe mode (every client-side guard still fires; only `status: allowed` paths require a sidecar). Tracked for a follow-up sidecar surface PR. |
+| Plugin always reports `chio_sidecar_unreachable` even with sidecar up | The `chio` CLI does not currently ship a one-line sidecar entry point at `/v1/capabilities/*`. `chio api protect` mints under `/v1/capabilities/mint` but the SDK expects bare `/v1/capabilities` POST. | Resolved in chio v0.2: run `chio start` (a zero-config alias for `chio api protect` with the SDK path aliases on). For pre-v0.2 chio binaries, the plugin still ships in degraded-but-safe mode (client-side guards keep firing). |
 
 The first three are fixable upstream by teaching
 `_discover_all_plugins` / `_plugin_exists` /
 `_missing_requires_env_names` to consult the entry-point manifest
 cache that `_scan_entry_points` already populates. The fourth is a
-docs/UX issue covered in the README quickstart. The fifth needs a
-chio-side surface decision (whether to ship `chio kernel serve` or
-align the SDK to `chio api protect`'s routes).
+docs/UX issue covered in the README quickstart. The fifth landed in
+chio v0.2: `chio start` is a friendly zero-config alias for
+`chio api protect` that mounts the SDK-shape path aliases
+(`POST /v1/capabilities`, `POST /v1/evaluate`,
+`POST /v1/capabilities/validate`, `POST /v1/receipts/verify`) plus
+the existing canonical routes. Quickstart:
+
+```bash
+chio start --listen 127.0.0.1:9090 --print-config
+# in another shell:
+export CHIO_SIDECAR_URL=http://127.0.0.1:9090
+hermes chio issue --description "default backbay capability" --json
+export CHIO_CAPABILITY_ID=<id-from-issue>
+```
 
 LLM-driven dispatch (`hermes -z "..."`) was end-to-end verified
 against Anthropic in the comprehensive dogfood pass: every advertised
@@ -352,6 +395,15 @@ async client into a host runtime:
 All adapters share the `chio-sdk-python` core client and the canonical
 JSON / signed-receipt contract, so swapping host frameworks does not
 move the trust boundary.
+
+The shared security and receipt primitives that every Chio Python
+adapter depends on (per-tool argument redaction, subprocess
+environment scrubbing, git argv hardening, bounded subprocess
+capture, receipt buffering, forbidden-path output filtering, shell
+argv escape checks) are extracted into `chio-adapter-base`. See
+[`docs/integrations/CHIO-ADAPTER-BASE.md`](CHIO-ADAPTER-BASE.md)
+for the integration overview and the chio-hermes precedent
+reconciliation (post-tool-call vs pre-evaluation redaction).
 
 ## 6. Future work
 

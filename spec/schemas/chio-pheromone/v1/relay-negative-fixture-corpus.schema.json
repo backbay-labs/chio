@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-negative-fixture-corpus.schema.json",
-  "title": "Chiodos Pheromone Relay Negative Fixture Corpus",
+  "title": "Chio Pheromone Relay Negative Fixture Corpus",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "cases"],

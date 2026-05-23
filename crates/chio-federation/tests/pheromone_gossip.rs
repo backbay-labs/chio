@@ -4,8 +4,8 @@ use chio_core_types::Keypair;
 use chio_federation::{
     verify_pheromone_gossip_batch, verify_pheromone_gossip_frame, PheromoneDepositGossip,
     PheromoneGossipBatchVerificationContext, PheromoneGossipPushQueue, PheromoneTransitChain,
-    PheromoneTransitHop, PheromoneTransitPolicy, PHEROMONE_GOSSIP_BATCH_SCHEMA,
-    PHEROMONE_GOSSIP_SCHEMA, PHEROMONE_TRANSIT_POLICY_SCHEMA,
+    PheromoneTransitHop, PheromoneTransitLadderPin, PheromoneTransitPolicy,
+    PHEROMONE_GOSSIP_BATCH_SCHEMA, PHEROMONE_GOSSIP_SCHEMA, PHEROMONE_TRANSIT_POLICY_SCHEMA,
 };
 use chio_pheromone::{
     agent_passport_jwk_thumbprint, agent_passport_key_hash, sign_deposit, PheromoneDepositBody,
@@ -55,6 +55,22 @@ fn policy() -> PheromoneTransitPolicy {
         valid_until_unix_ms: 1_800_000_000_000,
         max_hops: 2,
         required_action_class_id: "whisker.pheromone_deposit".to_string(),
+        pinned_ladder_refs: vec![
+            PheromoneTransitLadderPin {
+                ladder_manifest_id: "ladder:llamaworks:support".to_string(),
+                ladder_manifest_sha256: "a".repeat(64),
+                ladder_manifest_expires_at_unix_ms: 1_800_000_000_000,
+                ladder_intersection_id: "intersection:buyer:llamaworks".to_string(),
+                ladder_intersection_sha256: "c".repeat(64),
+            },
+            PheromoneTransitLadderPin {
+                ladder_manifest_id: "ladder:buyer:support".to_string(),
+                ladder_manifest_sha256: "b".repeat(64),
+                ladder_manifest_expires_at_unix_ms: 1_800_000_000_000,
+                ladder_intersection_id: "intersection:buyer:dataco".to_string(),
+                ladder_intersection_sha256: "d".repeat(64),
+            },
+        ],
     }
 }
 
@@ -94,6 +110,7 @@ fn pheromone_relayed_gossip_accepts_bounded_transit_chain() {
                     ladder_manifest_sha256: "a".repeat(64),
                     ladder_manifest_expires_at_unix_ms: 1_800_000_000_000,
                     ladder_intersection_id: "intersection:buyer:llamaworks".to_string(),
+                    ladder_intersection_sha256: "c".repeat(64),
                     action_class_id: "whisker.pheromone_deposit".to_string(),
                     emitted_at_unix_ms: 1_700_000_000_100,
                 },
@@ -105,6 +122,7 @@ fn pheromone_relayed_gossip_accepts_bounded_transit_chain() {
                     ladder_manifest_sha256: "b".repeat(64),
                     ladder_manifest_expires_at_unix_ms: 1_800_000_000_000,
                     ladder_intersection_id: "intersection:buyer:dataco".to_string(),
+                    ladder_intersection_sha256: "d".repeat(64),
                     action_class_id: "whisker.pheromone_deposit".to_string(),
                     emitted_at_unix_ms: 1_700_000_000_200,
                 },
@@ -114,6 +132,51 @@ fn pheromone_relayed_gossip_accepts_bounded_transit_chain() {
 
     verify_pheromone_gossip_frame(&frame, &policy(), 1_700_000_000_500)
         .expect("valid relay verifies");
+}
+
+#[test]
+fn receiver_rejects_transit_hop_with_pinned_id_but_wrong_intersection_hash() {
+    let frame = PheromoneDepositGossip {
+        schema: PHEROMONE_GOSSIP_SCHEMA.to_string(),
+        deposit: deposit(),
+        origin_kernel_id: "did:chio:llamaworks".to_string(),
+        gossiping_peer_kernel_id: "did:chio:buyer-kernel".to_string(),
+        treaty_id: "treaty:buyer-dataco:support-ops".to_string(),
+        ts_unix_ms: 1_700_000_000_500,
+        transit_chain: Some(PheromoneTransitChain {
+            hops: vec![
+                PheromoneTransitHop {
+                    from_kernel_id: "did:chio:llamaworks".to_string(),
+                    to_kernel_id: "did:chio:buyer-kernel".to_string(),
+                    treaty_id: "treaty:buyer-llamaworks:support-ops".to_string(),
+                    ladder_manifest_id: "ladder:llamaworks:support".to_string(),
+                    ladder_manifest_sha256: "a".repeat(64),
+                    ladder_manifest_expires_at_unix_ms: 1_800_000_000_000,
+                    ladder_intersection_id: "intersection:buyer:llamaworks".to_string(),
+                    ladder_intersection_sha256: "e".repeat(64),
+                    action_class_id: "whisker.pheromone_deposit".to_string(),
+                    emitted_at_unix_ms: 1_700_000_000_100,
+                },
+                PheromoneTransitHop {
+                    from_kernel_id: "did:chio:buyer-kernel".to_string(),
+                    to_kernel_id: "did:chio:dataco".to_string(),
+                    treaty_id: "treaty:buyer-dataco:support-ops".to_string(),
+                    ladder_manifest_id: "ladder:buyer:support".to_string(),
+                    ladder_manifest_sha256: "b".repeat(64),
+                    ladder_manifest_expires_at_unix_ms: 1_800_000_000_000,
+                    ladder_intersection_id: "intersection:buyer:dataco".to_string(),
+                    ladder_intersection_sha256: "d".repeat(64),
+                    action_class_id: "whisker.pheromone_deposit".to_string(),
+                    emitted_at_unix_ms: 1_700_000_000_200,
+                },
+            ],
+        }),
+    };
+
+    let err = verify_pheromone_gossip_frame(&frame, &policy(), 1_700_000_000_500)
+        .expect_err("intersection hash mismatch must reject");
+
+    assert_eq!(err.code(), "transit_policy_violation");
 }
 
 #[test]
@@ -187,6 +250,29 @@ fn pheromone_batch_verifier_accepts_scoped_direct_batch() {
         },
     )
     .expect("batch verifies");
+}
+
+#[test]
+fn pheromone_batch_verifier_rejects_empty_batch() {
+    let batch = chio_federation::PheromoneGossipBatch {
+        schema: PHEROMONE_GOSSIP_BATCH_SCHEMA.to_string(),
+        recipient_kernel_id: "did:chio:buyer-kernel".to_string(),
+        treaty_id: "treaty:buyer-llamaworks:support-ops".to_string(),
+        frames: Vec::new(),
+        flushed_at_unix_ms: 1_700_000_000_500,
+    };
+
+    let err = verify_pheromone_gossip_batch(
+        &batch,
+        &policy(),
+        &PheromoneGossipBatchVerificationContext {
+            now_unix_ms: 1_700_000_000_500,
+            recipient_kernel_id: "did:chio:buyer-kernel".to_string(),
+            authenticated_sender_kernel_id: "did:chio:llamaworks".to_string(),
+        },
+    )
+    .expect_err("empty batch fails");
+    assert_eq!(err.code(), "batch_empty");
 }
 
 #[test]

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-attest/v1/buyer-attestation-packet.schema.json",
+  "title": "Chio Buyer Attestation Packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "packetId",
+    "buyerId",
+    "capabilityId",
+    "treatyScopeSha256",
+    "ladderIntersectionSha256",
+    "crossBoundaryAdmissionReportSha256",
+    "continuationSha256",
+    "receiptLineageStatementSha256",
+    "bilateralInvocationSha256",
+    "bilateralDsseSha256",
+    "workflowReceiptSha256",
+    "proofPackageSha256",
+    "verifierReportSha256",
+    "budgetRefs",
+    "settlementClaimed"
+  ],
+  "properties": {
+    "schema": { "const": "chio.attest.buyer-attestation-packet.v1" },
+    "packetId": { "type": "string", "minLength": 1 },
+    "buyerId": { "type": "string", "minLength": 1 },
+    "capabilityId": { "type": "string", "minLength": 1 },
+    "treatyScopeSha256": { "$ref": "#/$defs/sha256" },
+    "ladderIntersectionSha256": { "$ref": "#/$defs/sha256" },
+    "crossBoundaryAdmissionReportSha256": { "$ref": "#/$defs/sha256" },
+    "continuationSha256": { "$ref": "#/$defs/sha256" },
+    "receiptLineageStatementSha256": { "$ref": "#/$defs/sha256" },
+    "bilateralInvocationSha256": { "$ref": "#/$defs/sha256" },
+    "bilateralDsseSha256": { "$ref": "#/$defs/sha256" },
+    "workflowReceiptSha256": { "$ref": "#/$defs/sha256" },
+    "proofPackageSha256": { "$ref": "#/$defs/sha256" },
+    "verifierReportSha256": { "$ref": "#/$defs/sha256" },
+    "budgetRefs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "settlementClaimed": { "type": "boolean" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-archive-report.schema.json",
+  "title": "Chio Pheromone Relay Alert Assurance Archive Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "accepted",
+    "code",
+    "localKernelId",
+    "generatedAtUnixMs",
+    "bundleCount",
+    "archiveReadyCount",
+    "archiveBlockedCount",
+    "quarantineCount",
+    "legalHoldCount",
+    "eligibleForDeleteCount",
+    "reviews",
+    "checks"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-assurance-archive-report.v1" },
+    "accepted": { "type": "boolean" },
+    "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "bundleCount": { "type": "integer", "minimum": 0 },
+    "archiveReadyCount": { "type": "integer", "minimum": 0 },
+    "archiveBlockedCount": { "type": "integer", "minimum": 0 },
+    "quarantineCount": { "type": "integer", "minimum": 0 },
+    "legalHoldCount": { "type": "integer", "minimum": 0 },
+    "eligibleForDeleteCount": { "type": "integer", "minimum": 0 },
+    "reviews": { "type": "array", "items": { "$ref": "#/$defs/review" } },
+    "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+  },
+  "$defs": {
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundleId",
+        "bundlePath",
+        "manifestSha256",
+        "sourcePackageSha256",
+        "artifactCount",
+        "state",
+        "code",
+        "detail",
+        "trustedExporterVerified",
+        "replayMatched",
+        "recoveryDrillAccepted",
+        "routeReviewPresent",
+        "retainedCount",
+        "expiringSoonCount",
+        "eligibleForDeleteCount",
+        "legalHoldCount",
+        "missingCount",
+        "quarantineCount",
+        "checks"
+      ],
+      "properties": {
+        "bundleId": { "type": "string", "minLength": 1 },
+        "bundlePath": { "type": "string", "minLength": 1 },
+        "manifestSha256": {
+          "anyOf": [
+            { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            { "type": "null" }
+          ]
+        },
+        "sourcePackageSha256": {
+          "anyOf": [
+            { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            { "type": "null" }
+          ]
+        },
+        "artifactCount": { "type": "integer", "minimum": 0 },
+        "state": { "enum": ["archive_ready", "archive_blocked", "quarantine"] },
+        "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
+        "detail": { "type": "string", "minLength": 1 },
+        "trustedExporterVerified": { "type": "boolean" },
+        "replayMatched": { "type": "boolean" },
+        "recoveryDrillAccepted": { "type": "boolean" },
+        "routeReviewPresent": { "type": "boolean" },
+        "retainedCount": { "type": "integer", "minimum": 0 },
+        "expiringSoonCount": { "type": "integer", "minimum": 0 },
+        "eligibleForDeleteCount": { "type": "integer", "minimum": 0 },
+        "legalHoldCount": { "type": "integer", "minimum": 0 },
+        "missingCount": { "type": "integer", "minimum": 0 },
+        "quarantineCount": { "type": "integer", "minimum": 0 },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "accepted", "detail"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "accepted": { "type": "boolean" },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

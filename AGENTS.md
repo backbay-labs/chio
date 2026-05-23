@@ -55,3 +55,4 @@ cargo fmt --all -- --check
 - Policy engine: `crates/chio-policy/src/lib.rs`
 - Manifest format: `crates/chio-manifest/src/lib.rs`
 - Docs index: `docs/README.md`
+- Python adapter primitives (redact, security, receipts, filters): `sdks/python/chio-adapter-base/`; integration overview at `docs/integrations/CHIO-ADAPTER-BASE.md`.

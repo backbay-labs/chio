@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evidence-manifest.schema.json",
+  "title": "Chio Runtime Evidence Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "runId",
+    "generatedAtUnixMs",
+    "workflowRunReportSha256",
+    "proofRegenerationReportSha256",
+    "entries"
+  ],
+  "properties": {
+    "schema": { "const": "chio.runtime.evidence-manifest.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "workflowRunReportSha256": { "$ref": "#/$defs/sha256" },
+    "proofRegenerationReportSha256": { "$ref": "#/$defs/sha256" },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path", "sha256", "byteCount"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?!.*//)(?!.*(^|/)\\.($|/))(?!.*(^|/)\\.\\.($|/))[A-Za-z0-9._/-]+$"
+        },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "byteCount": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -525,7 +525,7 @@ impl SqliteReceiptStore {
                     .map(|snapshot| snapshot.subject_key.clone())
             });
             let attempted_cost = financial.attempted_cost.unwrap_or(0);
-            let decision = decision_kind(&receipt.decision).to_string();
+            let decision = receipt_decision_kind(&receipt).to_string();
 
             total_cost_charged = total_cost_charged.saturating_add(financial.cost_charged);
             total_attempted_cost = total_attempted_cost.saturating_add(attempted_cost);
@@ -2698,6 +2698,7 @@ impl SqliteReceiptStore {
             reconciliation_state,
         );
         let budget_authority = receipt.financial_budget_authority_metadata();
+        let authorized = receipt.is_allowed();
 
         Ok(BehavioralFeedReceiptRow {
             receipt_id: receipt.id,
@@ -2714,6 +2715,7 @@ impl SqliteReceiptStore {
             tool_server: receipt.tool_server,
             tool_name: receipt.tool_name,
             decision: receipt.decision,
+            authorized,
             settlement_status,
             reconciliation_state,
             action_required,

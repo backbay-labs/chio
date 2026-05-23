@@ -10,7 +10,8 @@
 
 use chio_core_types::capability::{
     compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-    CapabilityTokenBody, CapabilityTokenV2Body, ChioScope, Constraint, Operation, ToolGrant,
+    CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, Constraint, Operation,
+    ToolGrant,
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
@@ -58,7 +59,7 @@ fn make_capability_with_constraints(
     CapabilityToken::sign(body, issuer).unwrap()
 }
 
-fn make_v2_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
+fn make_attenuated_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
     let parent_scope = ChioScope {
         grants: vec![ToolGrant {
             server_id: "srv-a".to_string(),
@@ -93,7 +94,7 @@ fn make_v2_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
         normalized_subset_proof: compute_attenuation_witness(&parent_scope, &child_scope).unwrap(),
     };
     let body = CapabilityTokenBody {
-        id: "cap-v2-evaluate".to_string(),
+        id: "cap-attenuated-evaluate".to_string(),
         issuer: issuer.public_key(),
         subject: subject.public_key(),
         scope: child_scope,
@@ -101,8 +102,8 @@ fn make_v2_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
         expires_at: EXPIRES_AT,
         delegation_chain: vec![],
     };
-    CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body,
             caveats: vec![],
             scope_attenuations: vec![],
@@ -185,10 +186,10 @@ fn evaluate_allow_path() {
 }
 
 #[test]
-fn evaluate_rejects_v2_without_trust_root_binding() {
+fn evaluate_rejects_attenuated_capability_without_trust_root_binding() {
     let subject = Keypair::generate();
     let issuer = Keypair::generate();
-    let capability = make_v2_capability(&subject, &issuer);
+    let capability = make_attenuated_capability(&subject, &issuer);
     let request = make_request(&subject);
     let clock = FixedClock::new(ISSUED_AT + 1);
     let trusted = [issuer.public_key()];

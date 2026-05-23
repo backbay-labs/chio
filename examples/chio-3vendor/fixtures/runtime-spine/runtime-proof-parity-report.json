@@ -1,0 +1,12 @@
+{
+  "schema": "chio.runtime.proof-parity-report.v1",
+  "runId": "runtime-loopback-1",
+  "accepted": true,
+  "generatedAtUnixMs": 1800000001000,
+  "staticProofPackageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "runtimeProofPackageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "staticVerifierReportSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "runtimeVerifierReportSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "comparedFields": ["workflow_id", "workflow_step_count"],
+  "mismatches": []
+}

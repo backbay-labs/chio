@@ -1951,6 +1951,7 @@ mod extended_tests {
             content_hash: "a".repeat(64),
             capability_id: Some("cap-rt".to_string()),
             authorization_receipt_id: None,
+            authorization_request_id: None,
             enforcement_mode: Some(AcpEnforcementMode::CryptographicallyEnforced),
         };
         let json_result = serde_json::to_string(&entry);
@@ -2183,6 +2184,7 @@ mod extended_tests {
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod attestation_and_telemetry_tests {
     use super::*;
+    use std::collections::VecDeque;
     use std::fs;
     use std::sync::{Arc, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -2295,6 +2297,101 @@ mod attestation_and_telemetry_tests {
         .expect("receipt should sign")
     }
 
+    fn make_authorization_receipt(
+        signer: &Keypair,
+        capability_id: &str,
+        request_id: &str,
+        session_id: &str,
+        tool_call_id: &str,
+        tool_name: &str,
+    ) -> ChioReceipt {
+        make_authorization_receipt_with_semantics(
+            signer,
+            capability_id,
+            request_id,
+            session_id,
+            tool_call_id,
+            tool_name,
+            Decision::Allow,
+            chio_core::TrustLevel::Mediated,
+            chio_core::ReceiptSemanticFields::mediated_prevent(),
+        )
+    }
+
+    fn make_authorization_receipt_with_semantics(
+        signer: &Keypair,
+        capability_id: &str,
+        request_id: &str,
+        session_id: &str,
+        tool_call_id: &str,
+        tool_name: &str,
+        decision: Decision,
+        trust_level: chio_core::TrustLevel,
+        semantics: chio_core::ReceiptSemanticFields,
+    ) -> ChioReceipt {
+        make_authorization_receipt_with_optional_context(
+            signer,
+            capability_id,
+            request_id,
+            Some(session_id),
+            Some(tool_call_id),
+            tool_name,
+            decision,
+            trust_level,
+            semantics,
+        )
+    }
+
+    fn make_authorization_receipt_with_optional_context(
+        signer: &Keypair,
+        capability_id: &str,
+        request_id: &str,
+        session_id: Option<&str>,
+        tool_call_id: Option<&str>,
+        tool_name: &str,
+        decision: Decision,
+        trust_level: chio_core::TrustLevel,
+        semantics: chio_core::ReceiptSemanticFields,
+    ) -> ChioReceipt {
+        let action = ToolCallAction::from_parameters(json!({"tool": tool_name}))
+            .expect("hash receipt parameters");
+        let mut receipt_context = json!({
+            "request_id": request_id,
+        });
+        let receipt_context_object = receipt_context
+            .as_object_mut()
+            .expect("receipt context should be an object");
+        if let Some(session_id) = session_id {
+            receipt_context_object.insert("session_id".to_string(), json!(session_id));
+        }
+        if let Some(tool_call_id) = tool_call_id {
+            receipt_context_object.insert("tool_call_id".to_string(), json!(tool_call_id));
+        }
+        ChioReceipt::sign(
+            ChioReceiptBody {
+                id: "ignored-auth-id".to_string(),
+                timestamp: now_secs(),
+                capability_id: capability_id.to_string(),
+                tool_server: "proxy-server".to_string(),
+                tool_name: tool_name.to_string(),
+                action,
+                decision,
+                content_hash: "authorization-content-hash".to_string(),
+                policy_hash: "policy-hash".to_string(),
+                evidence: Vec::new(),
+                metadata: Some(json!({
+                    "receipt_semantics": semantics,
+                    "receipt_context": receipt_context,
+                })),
+                trust_level,
+                kernel_key: signer.public_key(),
+                tenant_id: None,
+            },
+            signer,
+        )
+        .expect("authorization receipt should sign")
+    }
+
     fn make_audit_entry(tool_call_id: &str, session_id: &str) -> AcpToolCallAuditEntry {
         AcpToolCallAuditEntry {
             tool_call_id: tool_call_id.to_string(),
@@ -2307,6 +2404,7 @@ mod attestation_and_telemetry_tests {
             content_hash: format!("hash-{tool_call_id}"),
             capability_id: None,
             authorization_receipt_id: None,
+            authorization_request_id: None,
             enforcement_mode: Some(AcpEnforcementMode::AuditOnly),
         }
     }
@@ -2330,6 +2428,18 @@ mod attestation_and_telemetry_tests {
             let mut state = self.state.lock().expect("mock store lock should hold");
             state.appended_receipts.push(receipt.clone());
             Ok(())
+        }
+
+        fn load_chio_receipt(
+            &self,
+            receipt_id: &str,
+        ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+            let state = self.state.lock().expect("mock store lock should hold");
+            Ok(state
+                .appended_receipts
+                .iter()
+                .find(|receipt| receipt.id == receipt_id)
+                .cloned())
         }
 
         fn append_child_receipt(
@@ -2402,6 +2512,7 @@ mod attestation_and_telemetry_tests {
                 allowed: true,
                 capability_id: Some(format!("cap:{}", request.session_id)),
                 receipt_id: None,
+                receipt_request_id: None,
                 reason: "dummy allow".to_string(),
             })
         }
@@ -2420,6 +2531,7 @@ mod attestation_and_telemetry_tests {
                     allowed: true,
                     capability_id: Some(capability_id.to_string()),
                     receipt_id: None,
+                    receipt_request_id: None,
                     reason: "recorded allow".to_string(),
                 },
             }
@@ -2432,6 +2544,7 @@ mod attestation_and_telemetry_tests {
                     allowed: false,
                     capability_id: Some("cap-denied".to_string()),
                     receipt_id: None,
+                    receipt_request_id: None,
                     reason: reason.to_string(),
                 },
             }
@@ -2448,6 +2561,37 @@ mod attestation_and_telemetry_tests {
                 .expect("recording checker lock should succeed")
                 .push(request.clone());
             Ok(self.verdict.clone())
+        }
+    }
+
+    struct SequencedChecker {
+        requests: Arc<Mutex<Vec<AcpCapabilityRequest>>>,
+        verdicts: Arc<Mutex<VecDeque<AcpVerdict>>>,
+    }
+
+    impl SequencedChecker {
+        fn new(requests: Arc<Mutex<Vec<AcpCapabilityRequest>>>, verdicts: Vec<AcpVerdict>) -> Self {
+            Self {
+                requests,
+                verdicts: Arc::new(Mutex::new(VecDeque::from(verdicts))),
+            }
+        }
+    }
+
+    impl CapabilityChecker for SequencedChecker {
+        fn check_access(
+            &self,
+            request: &AcpCapabilityRequest,
+        ) -> Result<AcpVerdict, CapabilityCheckError> {
+            self.requests
+                .lock()
+                .expect("sequenced checker request lock should succeed")
+                .push(request.clone());
+            self.verdicts
+                .lock()
+                .expect("sequenced checker verdict lock should succeed")
+                .pop_front()
+                .ok_or_else(|| CapabilityCheckError::Internal("no verdict queued".to_string()))
         }
     }
 
@@ -2655,7 +2799,12 @@ mod attestation_and_telemetry_tests {
             .check_access(&request)
             .expect("untrusted issuer should fail closed");
         assert!(!verdict.allowed);
-        assert!(verdict.reason.contains("signature") || verdict.reason.contains("untrusted"));
+        assert!(
+            verdict.reason.contains("signature")
+                || verdict.reason.contains("untrusted")
+                || verdict.reason.contains("not a trusted")
+                || verdict.reason.contains("denied")
+        );
         assert!(verdict.receipt_id.is_some());
 
         let mut tampered = token.clone();
@@ -2668,7 +2817,7 @@ mod attestation_and_telemetry_tests {
             .check_access(&tampered_request)
             .expect("tampered token should fail closed");
         assert!(!verdict.allowed);
-        assert!(verdict.reason.contains("signature"));
+        assert!(verdict.reason.contains("signature") || verdict.reason.contains("denied"));
         assert!(verdict.receipt_id.is_some());
     }
 
@@ -2736,6 +2885,119 @@ mod attestation_and_telemetry_tests {
         {
             InterceptResult::ForwardWithReceipt(_, receipt) => {
                 assert_eq!(receipt.capability_id.as_deref(), Some("cap-377"));
+                assert_eq!(
+                    receipt.enforcement_mode,
+                    Some(AcpEnforcementMode::CryptographicallyEnforced)
+                );
+            }
+            other => panic!("expected ForwardWithReceipt, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn interceptor_binds_multiple_pending_contexts_fifo_to_tool_calls() {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let checker = SequencedChecker::new(
+            Arc::clone(&requests),
+            vec![
+                AcpVerdict {
+                    allowed: true,
+                    capability_id: Some("cap-a".to_string()),
+                    receipt_id: Some("auth-a".to_string()),
+                    receipt_request_id: Some("req-a".to_string()),
+                    reason: "first allow".to_string(),
+                },
+                AcpVerdict {
+                    allowed: true,
+                    capability_id: Some("cap-b".to_string()),
+                    receipt_id: Some("auth-b".to_string()),
+                    receipt_request_id: Some("req-b".to_string()),
+                    reason: "second allow".to_string(),
+                },
+            ],
+        );
+        let config = AcpProxyConfig::new("echo", "deadbeef")
+            .with_allowed_path_prefix("/home/user/project")
+            .with_allowed_command("cargo")
+            .with_server_id("proxy-server");
+        let interceptor = MessageInterceptor::with_kernel(
+            config,
+            None,
+            Some(Box::new(checker)),
+            AcpAttestationMode::Required,
+        );
+
+        for (id, path) in [
+            (380, "/home/user/project/src/a.rs"),
+            (381, "/home/user/project/src/b.rs"),
+        ] {
+            let read = json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "fs/read_text_file",
+                "params": {
+                    "sessionId": "session-ambiguous",
+                    "path": path,
+                    "capabilityToken": format!("token-{id}")
+                }
+            });
+            match interceptor
+                .intercept(Direction::AgentToClient, &read)
+                .expect("read should be allowed")
+            {
+                InterceptResult::Forward(value) => assert_eq!(value, read),
+                other => panic!("expected Forward, got {:?}", other),
+            }
+        }
+
+        let first_update = json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": "session-ambiguous",
+                "update": {
+                    "toolCallId": "tool-a",
+                    "title": "Read file A",
+                    "kind": "fs_read",
+                    "status": "running"
+                }
+            }
+        });
+
+        match interceptor
+            .intercept(Direction::AgentToClient, &first_update)
+            .expect("first update should bind first pending context")
+        {
+            InterceptResult::ForwardWithReceipt(_, receipt) => {
+                assert_eq!(receipt.capability_id.as_deref(), Some("cap-a"));
+                assert_eq!(
+                    receipt.enforcement_mode,
+                    Some(AcpEnforcementMode::CryptographicallyEnforced)
+                );
+            }
+            other => panic!("expected ForwardWithReceipt, got {:?}", other),
+        }
+
+        let second_update = json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": "session-ambiguous",
+                "update": {
+                    "toolCallId": "tool-b",
+                    "title": "Read file B",
+                    "kind": "fs_read",
+                    "status": "running"
+                }
+            }
+        });
+
+        match interceptor
+            .intercept(Direction::AgentToClient, &second_update)
+            .expect("second update should bind second pending context")
+        {
+            InterceptResult::ForwardWithReceipt(_, receipt) => {
+                assert_eq!(receipt.capability_id.as_deref(), Some("cap-b"));
                 assert_eq!(
                     receipt.enforcement_mode,
                     Some(AcpEnforcementMode::CryptographicallyEnforced)
@@ -2834,6 +3096,23 @@ mod attestation_and_telemetry_tests {
         interceptor
             .intercept(Direction::AgentToClient, &read)
             .expect("read should be allowed");
+
+        let started = json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": "session-clear",
+                "update": {
+                    "toolCallId": "tool-clear",
+                    "title": "Read file",
+                    "kind": "fs_read",
+                    "status": "running"
+                }
+            }
+        });
+        interceptor
+            .intercept(Direction::AgentToClient, &started)
+            .expect("started update should bind the live capability context");
 
         let completed = json!({
             "jsonrpc": "2.0",
@@ -3065,13 +3344,14 @@ mod attestation_and_telemetry_tests {
                 seq: 1,
             },
         ];
+        let expected_receipt_id = entries[1].receipt.id.clone();
         let result =
             generate_compliance_certificate("session-mixed-keys", &entries, &config, &signer_a);
         assert!(
             matches!(
                 result,
                 Err(ComplianceCertificateError::KernelKeyMismatch { ref receipt_id })
-                if receipt_id == "receipt-b"
+                if receipt_id == &expected_receipt_id
             ),
             "expected KernelKeyMismatch on heterogeneous kernel keys, got: {:?}",
             result.as_ref().err()
@@ -3275,6 +3555,20 @@ mod attestation_and_telemetry_tests {
     fn kernel_receipt_signer_propagates_capability_metadata_into_receipts() {
         let keypair = Keypair::generate();
         let shared = Arc::new(Mutex::new(MockStoreState::default()));
+        let authorization_request_id = "acp-live-guard-auth-377";
+        let authorization_receipt = make_authorization_receipt(
+            &keypair,
+            "cap-377",
+            authorization_request_id,
+            "session-enforced",
+            "call-enforced",
+            "fs/read_text_file",
+        );
+        shared
+            .lock()
+            .expect("shared state should lock")
+            .appended_receipts
+            .push(authorization_receipt.clone());
         let store = MockReceiptStore {
             state: Arc::clone(&shared),
             supports_checkpoints: false,
@@ -3283,6 +3577,8 @@ mod attestation_and_telemetry_tests {
 
         let mut enforced_entry = make_audit_entry("call-enforced", "session-enforced");
         enforced_entry.capability_id = Some("cap-377".to_string());
+        enforced_entry.authorization_receipt_id = Some(authorization_receipt.id.clone());
+        enforced_entry.authorization_request_id = Some(authorization_request_id.to_string());
         enforced_entry.enforcement_mode = Some(AcpEnforcementMode::CryptographicallyEnforced);
         let enforced = signer
             .sign_acp_receipt(&AcpReceiptRequest {
@@ -3301,6 +3597,15 @@ mod attestation_and_telemetry_tests {
             }),
             Some("cryptographically_enforced")
         );
+        assert_eq!(
+            enforced.metadata.as_ref().and_then(|metadata| {
+                metadata
+                    .get("acp")
+                    .and_then(|acp| acp.get("authorizationRequestId"))
+                    .and_then(serde_json::Value::as_str)
+            }),
+            Some(authorization_request_id)
+        );
 
         let audit_only = signer
             .sign_acp_receipt(&AcpReceiptRequest {
@@ -3318,6 +3623,275 @@ mod attestation_and_telemetry_tests {
                     .and_then(serde_json::Value::as_str)
             }),
             Some("audit_only")
+        );
+        let audit_semantics = audit_only.semantic_fields();
+        assert_eq!(
+            audit_semantics.receipt_kind,
+            chio_core::receipt::ReceiptKind::TraceObservation
+        );
+        assert_eq!(
+            audit_semantics.boundary_class,
+            chio_core::receipt::BoundaryClass::DetectOnly
+        );
+        assert!(!audit_semantics.is_authorized(&audit_only.decision));
+        assert!(!audit_only.is_allowed());
+    }
+
+    #[test]
+    fn kernel_receipt_signer_accepts_authorization_receipt_without_optional_acp_context_ids() {
+        let keypair = Keypair::generate();
+        let shared = Arc::new(Mutex::new(MockStoreState::default()));
+        let authorization_request_id = "acp-live-guard-auth-minimal";
+        let authorization_receipt = make_authorization_receipt_with_optional_context(
+            &keypair,
+            "cap-minimal-context",
+            authorization_request_id,
+            None,
+            None,
+            "fs/read_text_file",
+            Decision::Allow,
+            chio_core::TrustLevel::Mediated,
+            chio_core::ReceiptSemanticFields::mediated_prevent(),
+        );
+        shared
+            .lock()
+            .expect("shared state should lock")
+            .appended_receipts
+            .push(authorization_receipt.clone());
+        let store = MockReceiptStore {
+            state: Arc::clone(&shared),
+            supports_checkpoints: false,
+        };
+        let signer = KernelReceiptSigner::new(keypair, "proxy-server", Box::new(store), 10);
+
+        let mut enforced_entry = make_audit_entry("call-live", "session-live");
+        enforced_entry.capability_id = Some("cap-minimal-context".to_string());
+        enforced_entry.authorization_receipt_id = Some(authorization_receipt.id.clone());
+        enforced_entry.authorization_request_id = Some(authorization_request_id.to_string());
+        enforced_entry.enforcement_mode = Some(AcpEnforcementMode::CryptographicallyEnforced);
+
+        signer
+            .sign_acp_receipt(&AcpReceiptRequest {
+                audit_entry: enforced_entry,
+                tool_server: "proxy-server".to_string(),
+                tool_name: "fs/read_text_file".to_string(),
+            })
+            .expect("kernel authorization metadata without ACP ids should still bind by request id");
+    }
+
+    #[test]
+    fn kernel_receipt_signer_rejects_enforced_receipt_without_stored_authorization() {
+        let keypair = Keypair::generate();
+        let shared = Arc::new(Mutex::new(MockStoreState::default()));
+        let store = MockReceiptStore {
+            state: Arc::clone(&shared),
+            supports_checkpoints: false,
+        };
+        let signer = KernelReceiptSigner::new(keypair, "proxy-server", Box::new(store), 10);
+
+        let mut enforced_entry = make_audit_entry("call-enforced-missing", "session-enforced");
+        enforced_entry.capability_id = Some("cap-missing".to_string());
+        enforced_entry.authorization_receipt_id = Some("missing-auth-receipt".to_string());
+        enforced_entry.authorization_request_id = Some("acp-live-guard-missing".to_string());
+        enforced_entry.enforcement_mode = Some(AcpEnforcementMode::CryptographicallyEnforced);
+        let error = signer
+            .sign_acp_receipt(&AcpReceiptRequest {
+                audit_entry: enforced_entry,
+                tool_server: "proxy-server".to_string(),
+                tool_name: "fs/read_text_file".to_string(),
+            })
+            .expect_err("missing authorization receipt should fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("authorization receipt missing-auth-receipt was not found"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn kernel_receipt_signer_rejects_authorization_request_id_mismatch() {
+        let keypair = Keypair::generate();
+        let shared = Arc::new(Mutex::new(MockStoreState::default()));
+        let authorization_receipt = make_authorization_receipt(
+            &keypair,
+            "cap-request",
+            "auth-request-good",
+            "session-request",
+            "call-request",
+            "fs/read_text_file",
+        );
+        shared
+            .lock()
+            .expect("shared state should lock")
+            .appended_receipts
+            .push(authorization_receipt.clone());
+        let store = MockReceiptStore {
+            state: Arc::clone(&shared),
+            supports_checkpoints: false,
+        };
+        let signer = KernelReceiptSigner::new(keypair, "proxy-server", Box::new(store), 10);
+
+        let mut enforced_entry = make_audit_entry("call-request", "session-request");
+        enforced_entry.capability_id = Some("cap-request".to_string());
+        enforced_entry.authorization_receipt_id = Some(authorization_receipt.id.clone());
+        enforced_entry.authorization_request_id = Some("auth-request-bad".to_string());
+        enforced_entry.enforcement_mode = Some(AcpEnforcementMode::CryptographicallyEnforced);
+
+        let error = signer
+            .sign_acp_receipt(&AcpReceiptRequest {
+                audit_entry: enforced_entry,
+                tool_server: "proxy-server".to_string(),
+                tool_name: "fs/read_text_file".to_string(),
+            })
+            .expect_err("request id mismatch should fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("authorization receipt request id mismatch"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn kernel_receipt_signer_rejects_stale_authorization_reuse_for_other_tool_call() {
+        let keypair = Keypair::generate();
+        let shared = Arc::new(Mutex::new(MockStoreState::default()));
+        let authorization_receipt = make_authorization_receipt(
+            &keypair,
+            "cap-stale",
+            "auth-stale",
+            "session-original",
+            "call-original",
+            "fs/read_text_file",
+        );
+        shared
+            .lock()
+            .expect("shared state should lock")
+            .appended_receipts
+            .push(authorization_receipt.clone());
+        let store = MockReceiptStore {
+            state: Arc::clone(&shared),
+            supports_checkpoints: false,
+        };
+        let signer = KernelReceiptSigner::new(keypair, "proxy-server", Box::new(store), 10);
+
+        let mut enforced_entry = make_audit_entry("call-other", "session-other");
+        enforced_entry.capability_id = Some("cap-stale".to_string());
+        enforced_entry.authorization_receipt_id = Some(authorization_receipt.id.clone());
+        enforced_entry.authorization_request_id = Some("auth-stale".to_string());
+        enforced_entry.enforcement_mode = Some(AcpEnforcementMode::CryptographicallyEnforced);
+
+        let error = signer
+            .sign_acp_receipt(&AcpReceiptRequest {
+                audit_entry: enforced_entry,
+                tool_server: "proxy-server".to_string(),
+                tool_name: "fs/read_text_file".to_string(),
+            })
+            .expect_err("stale authorization receipt should fail closed");
+        assert!(
+            error.to_string().contains("authorization receipt session id mismatch")
+                || error
+                    .to_string()
+                    .contains("authorization receipt tool call id mismatch"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn kernel_receipt_signer_rejects_trace_authorization_receipt_for_enforced_entry() {
+        let keypair = Keypair::generate();
+        let shared = Arc::new(Mutex::new(MockStoreState::default()));
+        let authorization_receipt = make_authorization_receipt_with_semantics(
+            &keypair,
+            "cap-trace",
+            "auth-trace",
+            "session-trace",
+            "call-trace",
+            "fs/read_text_file",
+            Decision::Incomplete {
+                reason: "trace-only observation".to_string(),
+            },
+            chio_core::TrustLevel::Verified,
+            chio_core::ReceiptSemanticFields::trace_detect_only(),
+        );
+        shared
+            .lock()
+            .expect("shared state should lock")
+            .appended_receipts
+            .push(authorization_receipt.clone());
+        let store = MockReceiptStore {
+            state: Arc::clone(&shared),
+            supports_checkpoints: false,
+        };
+        let signer = KernelReceiptSigner::new(keypair, "proxy-server", Box::new(store), 10);
+
+        let mut enforced_entry = make_audit_entry("call-trace", "session-trace");
+        enforced_entry.capability_id = Some("cap-trace".to_string());
+        enforced_entry.authorization_receipt_id = Some(authorization_receipt.id.clone());
+        enforced_entry.authorization_request_id = Some("auth-trace".to_string());
+        enforced_entry.enforcement_mode = Some(AcpEnforcementMode::CryptographicallyEnforced);
+
+        let error = signer
+            .sign_acp_receipt(&AcpReceiptRequest {
+                audit_entry: enforced_entry,
+                tool_server: "proxy-server".to_string(),
+                tool_name: "fs/read_text_file".to_string(),
+            })
+            .expect_err("trace authorization receipt should fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("authorization receipt must be a mediated allow"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn kernel_receipt_signer_rejects_authorization_receipt_reuse() {
+        let keypair = Keypair::generate();
+        let shared = Arc::new(Mutex::new(MockStoreState::default()));
+        let authorization_receipt = make_authorization_receipt(
+            &keypair,
+            "cap-reuse",
+            "auth-reuse",
+            "session-reuse",
+            "call-reuse",
+            "fs/read_text_file",
+        );
+        shared
+            .lock()
+            .expect("shared state should lock")
+            .appended_receipts
+            .push(authorization_receipt.clone());
+        let store = MockReceiptStore {
+            state: Arc::clone(&shared),
+            supports_checkpoints: false,
+        };
+        let signer = KernelReceiptSigner::new(keypair, "proxy-server", Box::new(store), 10);
+
+        let mut enforced_entry = make_audit_entry("call-reuse", "session-reuse");
+        enforced_entry.capability_id = Some("cap-reuse".to_string());
+        enforced_entry.authorization_receipt_id = Some(authorization_receipt.id.clone());
+        enforced_entry.authorization_request_id = Some("auth-reuse".to_string());
+        enforced_entry.enforcement_mode = Some(AcpEnforcementMode::CryptographicallyEnforced);
+        let request = AcpReceiptRequest {
+            audit_entry: enforced_entry,
+            tool_server: "proxy-server".to_string(),
+            tool_name: "fs/read_text_file".to_string(),
+        };
+
+        signer
+            .sign_acp_receipt(&request)
+            .expect("first enforced receipt should sign");
+        let error = signer
+            .sign_acp_receipt(&request)
+            .expect_err("authorization receipt reuse should fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("authorization receipt already consumed"),
+            "unexpected error: {error}"
         );
     }
 

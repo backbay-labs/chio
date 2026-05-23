@@ -18,7 +18,7 @@ try:
     __version__ = _pkg_version("chio-hermes")
 except PackageNotFoundError:
     # Source-tree import has no installed dist-info; mirror pyproject.
-    __version__ = "0.1.0"
+    __version__ = "0.1.1"
 
 __all__ = [
     "ChioHermesPlugin",

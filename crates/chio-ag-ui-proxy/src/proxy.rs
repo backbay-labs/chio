@@ -51,18 +51,17 @@ pub struct AgUiProxyConfig {
     #[serde(default)]
     pub revoked_capability_ids: Vec<String>,
 
-    /// Wave 1.3 peer-negotiated capability profile. The proxy enforces
-    /// the negotiated schema ceiling on every capability token it
-    /// inspects: a v2 token presented across a v1-only-negotiated link
-    /// is rejected before any signature work. Defaults to
-    /// `CapabilityNegotiation::t1_default()`, which admits v2 tokens.
+    /// Peer-negotiated capability feature profile. The proxy validates the
+    /// advertised feature set before using it and defaults to
+    /// `CapabilityNegotiation::t1_default()`, which enables current
+    /// chain-binding semantics.
     #[serde(default = "default_proxy_peer_capabilities")]
     pub peer_capabilities: CapabilityNegotiation,
 
-    /// Wave 1.1 chain-binding trust roots, keyed by issuer public-key
-    /// hex. V2 tokens require an entry for their issuer; absent
-    /// issuers fail-closed. V1 tokens are unaffected. Operators feed
-    /// this from the kernel's trust-root registry.
+    /// Chain-binding trust roots, keyed by issuer public-key hex. Tokens with
+    /// attenuation, budget sharing, scope attenuation, or delegation require an
+    /// entry for their issuer; absent issuers fail-closed. Operators feed this
+    /// from the kernel's trust-root registry.
     #[serde(default)]
     pub capability_trust_roots: BTreeMap<String, ScopeHash>,
 
@@ -303,9 +302,8 @@ impl AgUiProxy {
         }
 
         let clock = SystemClock;
-        // Wave 1.5 hot-path wiring: route through `verify_capability_full`
-        // so the W1.3 peer schema-ceiling check and the W1.1 chain-binding
-        // rule are enforced before forwarding any AG-UI event.
+        // Route through `verify_capability_full` so feature validation and
+        // chain-binding are enforced before forwarding any AG-UI event.
         let trust_roots = &self.config.capability_trust_roots;
         let trust_resolver = |issuer: &PublicKey| -> Option<ScopeHash> {
             trust_roots.get(&issuer.to_hex()).cloned()
@@ -483,9 +481,6 @@ fn capability_error_message(error: &CapabilityError) -> &'static str {
         CapabilityError::AttenuationViolation(_) => "capability rejected by chain binding",
         CapabilityError::BudgetSplitRejected(_) => "capability rejected by sibling-sum budget",
         CapabilityError::Internal(_) => "internal verification error",
-        CapabilityError::SchemaExceedsNegotiatedCeiling { .. } => {
-            "token schema exceeds peer-negotiated ceiling"
-        }
     }
 }
 

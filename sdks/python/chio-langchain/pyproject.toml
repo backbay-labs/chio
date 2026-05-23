@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chio-langchain"
-version = "0.1.0"
+version = "0.1.1"
 description = "LangChain integration for Chio protocol tools with conformance tests"
 license = "MIT"
 requires-python = ">=3.11"
@@ -24,6 +24,7 @@ classifiers = [
 
 dependencies = [
     "chio-sdk-python>=0.1.0",
+    "chio-adapter-base>=0.1.0,<0.2",
     "langchain-core>=0.2,<1",
 ]
 
@@ -39,6 +40,7 @@ dev = [
 
 [tool.uv.sources]
 chio-sdk-python = { path = "../chio-sdk-python" }
+chio-adapter-base = { path = "../chio-adapter-base" }
 chio-fastapi = { path = "../chio-fastapi" }
 
 [tool.hatch.build.targets.wheel]

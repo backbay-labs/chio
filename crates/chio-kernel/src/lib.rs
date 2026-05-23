@@ -314,7 +314,7 @@ pub use dpop::{
 pub use evidence_export::{
     EvidenceChildReceiptRecord, EvidenceChildReceiptScope, EvidenceExportBundle,
     EvidenceExportError, EvidenceExportQuery, EvidenceRetentionMetadata, EvidenceToolReceiptRecord,
-    EvidenceUncheckpointedReceipt,
+    EvidenceUncheckpointedReceipt, ReceiptReadBoundary,
 };
 pub use execution_nonce::{
     is_supported_execution_nonce_schema, mint_execution_nonce, verify_execution_nonce,
@@ -419,10 +419,11 @@ pub(crate) use kernel::{current_unix_timestamp, MatchingGrant, ReceiptContent};
 
 pub use kernel::{
     AgentId, CapabilityId, ChildReceiptLog, ChioKernel, Guard, GuardContext, HybridSigningConfig,
-    KernelConfig, KernelError, KernelReceiptVersion, NegotiationDowngradeReason, PromptProvider,
-    ReceiptLog, ResourceProvider, ServerId, StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE,
-    DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
-    DEFAULT_RETENTION_DAYS, EMERGENCY_STOP_DENY_REASON,
+    KernelConfig, KernelError, PromptProvider, ReceiptLog, ResourceProvider,
+    RuntimeAdmissionContext, RuntimeAdmissionDecision, RuntimeAdmissionHook, ServerId,
+    StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_SIZE_BYTES,
+    DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES, DEFAULT_RETENTION_DAYS,
+    EMERGENCY_STOP_DENY_REASON,
 };
 
 pub use kernel::evaluator::ToolEvaluator;

@@ -510,6 +510,139 @@ class MockChioClient:
         )
 
     # ------------------------------------------------------------------
+    # HITL approvals (mirrors ChioClient v0.2 surface)
+    # ------------------------------------------------------------------
+
+    async def list_pending_approvals(self) -> list[Any]:
+        """Return the list of pending approvals submitted in-process."""
+        from chio_sdk.models_approvals import PendingApproval
+
+        approvals = getattr(self, "_pending_approvals", {})
+        out: list[Any] = []
+        for entry in approvals.values():
+            out.append(PendingApproval.model_validate(entry))
+        self.calls.append(RecordedCall(method="list_pending_approvals"))
+        return out
+
+    async def get_approval(self, approval_id: str) -> Any:
+        from chio_sdk.errors import ChioError
+        from chio_sdk.models_approvals import Approval, PendingApproval
+
+        approvals = getattr(self, "_pending_approvals", {})
+        resolved = getattr(self, "_resolved_approvals", {})
+        self.calls.append(
+            RecordedCall(method="get_approval", context={"approval_id": approval_id})
+        )
+        pending = approvals.get(approval_id)
+        resolution = resolved.get(approval_id)
+        if pending is None and resolution is None:
+            raise ChioError(
+                f"approval {approval_id} not found", code="HTTP_404"
+            )
+        return Approval(
+            pending=PendingApproval.model_validate(pending) if pending else None,
+            resolution=resolution,
+        )
+
+    async def respond_approval(
+        self,
+        approval_id: str,
+        verdict: Any,
+        reason: str | None = None,
+    ) -> Any:
+        from chio_sdk.errors import ChioError
+        from chio_sdk.models_approvals import (
+            ApprovalResponse,
+            ApprovalVerdict,
+            ResolvedApproval,
+        )
+
+        normalised = (
+            ApprovalVerdict.from_action(verdict)
+            if isinstance(verdict, str)
+            else verdict
+        )
+        approvals = getattr(self, "_pending_approvals", {})
+        if approval_id not in approvals:
+            raise ChioError(
+                f"approval {approval_id} not found", code="HTTP_404"
+            )
+        resolved = getattr(self, "_resolved_approvals", {})
+        if not hasattr(self, "_resolved_approvals"):
+            self._resolved_approvals: dict[str, Any] = resolved  # type: ignore[attr-defined]
+        del approvals[approval_id]
+        now = int(time.time())
+        resolved[approval_id] = ResolvedApproval(
+            approval_id=approval_id,
+            outcome=normalised,
+            resolved_at=now,
+            approver_hex="mock-approver",
+            token_id=f"mock-tok-{approval_id}",
+        )
+        self.calls.append(
+            RecordedCall(
+                method="respond_approval",
+                context={
+                    "approval_id": approval_id,
+                    "verdict": normalised.value,
+                    "reason": reason,
+                },
+            )
+        )
+        return ApprovalResponse(
+            approval_id=approval_id,
+            outcome=normalised,
+            resolved_at=now,
+        )
+
+    async def submit_for_approval(
+        self,
+        *,
+        capability_id: str,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        tool_server: str | None = None,
+        requested_by: str | None = None,
+        ttl_seconds: int = 3600,
+        summary: str | None = None,
+        triggered_by: list[str] | None = None,
+    ) -> str:
+        approvals: dict[str, Any] = getattr(
+            self, "_pending_approvals", {}
+        )
+        if not hasattr(self, "_pending_approvals"):
+            self._pending_approvals: dict[str, Any] = approvals  # type: ignore[attr-defined]
+        approval_id = f"mock-ap-{uuid.uuid4().hex[:8]}"
+        param_hash = _sha256_hex(_canonical_json(tool_args))
+        now = int(time.time())
+        approvals[approval_id] = {
+            "approval_id": approval_id,
+            "policy_id": "policy-mock",
+            "subject_id": requested_by or "mock-subject",
+            "capability_id": capability_id,
+            "tool_server": tool_server or "shell",
+            "tool_name": tool_name,
+            "action": "invoke",
+            "parameter_hash": param_hash,
+            "expires_at": now + ttl_seconds,
+            "created_at": now,
+            "summary": summary or f"{tool_server}/{tool_name}",
+            "triggered_by": list(triggered_by or []),
+        }
+        self.calls.append(
+            RecordedCall(
+                method="submit_for_approval",
+                context={
+                    "capability_id": capability_id,
+                    "tool_name": tool_name,
+                    "tool_server": tool_server,
+                    "summary": summary,
+                },
+            )
+        )
+        return approval_id
+
+    # ------------------------------------------------------------------
     # Guard evidence helpers (static, matches real client)
     # ------------------------------------------------------------------
 

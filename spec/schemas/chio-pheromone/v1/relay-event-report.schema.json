@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-event-report.schema.json",
-  "title": "Chiodos Pheromone Relay Event Report",
+  "title": "Chio Pheromone Relay Event Report",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -149,7 +149,7 @@ impl DualSignedReceipt {
     /// of [`CoSigningBody`]; the DSSE signature-slice signatures are
     /// computed over DSSE PAE bytes wrapping an in-toto
     /// Statement. The DSSE artifact is a signature-slice profile, not the
-    /// strict CHIODOS invocation predicate.
+    /// strict Chio invocation predicate.
     pub fn verify_pinned(
         &self,
         expected: ExpectedBilateralPeers<'_>,
@@ -529,7 +529,7 @@ fn co_sign_with_origin_inner(
 /// compatibility-only adapter that shares zero signed bytes with the DSSE
 /// PAE preimage and is therefore not a DSSE artifact; see
 /// `crate::bilateral_dsse` module docs. Neither artifact is a strict
-/// CHIODOS bilateral invocation predicate.
+/// Chio bilateral invocation predicate.
 #[derive(Debug, Clone)]
 pub struct BilateralCoSignArtifacts {
     /// Compatibility-only legacy artifact for callers that still consume

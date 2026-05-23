@@ -100,6 +100,7 @@ fn happy_extensions() -> BilateralPredicateExtensions {
         consistency_anchor: None,
         consistency_model: None,
         cross_org_visibility: None,
+        treaty_binding_ref: None,
     }
 }
 
@@ -655,6 +656,7 @@ fn step_8_mismatched_fingerprint_fails() {
     peer_pin_set.insert(PinnedPeer {
         kernel_id: ORG_B.to_string(),
         public_key: setup.kp_a.public_key(), // wrong key
+        ladder_manifest_ref: None,
     });
     let err = run_invocation_with(
         &setup,

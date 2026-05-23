@@ -11,9 +11,15 @@ import type {
   ReceiptAnalyticsFilters,
   ReceiptAnalyticsResponse,
   ReceiptQueryResponse,
+  RelayAlertAssuranceArchiveReport,
+  RelayAlertAssuranceCloseoutReport,
   RelayAlertReport,
   RelayAlertDeliveryReport,
+  RelayAlertAssuranceExportReport,
   RelayAlertHandoffReport,
+  RelayAlertAssurancePackage,
+  RelayAlertAssuranceReplayReport,
+  RelayAlertAssuranceRetentionReport,
   RelayObservabilityReport,
   RelayTrendReport,
 } from './types'
@@ -169,7 +175,7 @@ export async function fetchRelayObservabilityReport(): Promise<RelayObservabilit
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/observability', { headers })
+  const res = await fetch('/v1/chio/pheromone/observability', { headers })
   if (!res.ok) {
     throw new Error(`Relay observability request failed: ${res.status} ${res.statusText}`)
   }
@@ -184,7 +190,7 @@ export async function fetchRelayAlertReport(): Promise<RelayAlertReport> {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alerts', { headers })
+  const res = await fetch('/v1/chio/pheromone/alerts', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert request failed: ${res.status} ${res.statusText}`)
   }
@@ -199,7 +205,7 @@ export async function fetchRelayTrendReport(): Promise<RelayTrendReport> {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/trends', { headers })
+  const res = await fetch('/v1/chio/pheromone/trends', { headers })
   if (!res.ok) {
     throw new Error(`Relay trend request failed: ${res.status} ${res.statusText}`)
   }
@@ -214,7 +220,7 @@ export async function fetchRelayAlertHandoffReport(): Promise<RelayAlertHandoffR
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-handoff', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-handoff', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert handoff request failed: ${res.status} ${res.statusText}`)
   }
@@ -229,11 +235,101 @@ export async function fetchRelayAlertDeliveryReport(): Promise<RelayAlertDeliver
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch('/v1/chiodos/pheromone/alert-delivery', { headers })
+  const res = await fetch('/v1/chio/pheromone/alert-delivery', { headers })
   if (!res.ok) {
     throw new Error(`Relay alert delivery request failed: ${res.status} ${res.statusText}`)
   }
   return res.json() as Promise<RelayAlertDeliveryReport>
+}
+
+export async function fetchRelayAlertAssurancePackage(): Promise<RelayAlertAssurancePackage> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chio/pheromone/alert-assurance', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssurancePackage>
+}
+
+export async function fetchRelayAlertAssuranceExportReport(): Promise<RelayAlertAssuranceExportReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/export', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance export request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssuranceExportReport>
+}
+
+export async function fetchRelayAlertAssuranceReplayReport(): Promise<RelayAlertAssuranceReplayReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/replay', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance replay request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssuranceReplayReport>
+}
+
+export async function fetchRelayAlertAssuranceRetentionReport(): Promise<RelayAlertAssuranceRetentionReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/retention', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance retention request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssuranceRetentionReport>
+}
+
+export async function fetchRelayAlertAssuranceArchiveReport(): Promise<RelayAlertAssuranceArchiveReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/archive', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance archive request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssuranceArchiveReport>
+}
+
+export async function fetchRelayAlertAssuranceCloseoutReport(): Promise<RelayAlertAssuranceCloseoutReport> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch('/v1/chio/pheromone/alert-assurance/closeout', { headers })
+  if (!res.ok) {
+    throw new Error(`Relay alert assurance closeout request failed: ${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<RelayAlertAssuranceCloseoutReport>
 }
 
 /**

@@ -1,0 +1,24 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-retention-profile.v1",
+  "localKernelId": "did:chio:dataco",
+  "issuedAtUnixMs": 1765999999000,
+  "expiresAtUnixMs": 1766000900000,
+  "warningWindowMs": 30000,
+  "rules": [
+    {
+      "artifactRole": "assurance_package",
+      "retainForMs": 900000,
+      "legalHold": true
+    },
+    {
+      "artifactRole": "normalized_delivery_evidence",
+      "retainForMs": 900000,
+      "legalHold": false
+    },
+    {
+      "artifactRole": "*",
+      "retainForMs": 900000,
+      "legalHold": false
+    }
+  ]
+}

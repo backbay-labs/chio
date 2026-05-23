@@ -171,7 +171,7 @@ fn audit_view_rejects_unknown_schema_or_projection_version() {
     ));
 
     let mut bad_version: BbsAuditView = view;
-    bad_version.projection_version = "chio.bbs-projection.receipt.v2".to_string();
+    bad_version.projection_version = "chio.bbs-projection.receipt.v9".to_string();
     let res = verify_audit_view(&bad_version, &body);
     assert!(matches!(
         res,

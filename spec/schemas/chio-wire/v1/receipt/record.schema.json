@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/record/v1",
   "title": "Chio Receipt Record",
-  "description": "A signed Chio receipt: proof that a tool call was evaluated by the Kernel. Mirrors the serde shape of `ChioReceipt` in `crates/chio-core-types/src/receipt.rs`. The `signature` field covers the canonical JSON of `ChioReceiptBody` (every field below except `algorithm` and `signature`). The `algorithm` envelope field is informational (verification dispatches off the self-describing hex prefix on the signature itself) and is omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Optional fields (`evidence`, `metadata`, `trust_level`, `tenant_id`, `algorithm`) are skipped on the wire when set to their default or unset values.",
+  "description": "A signed Chio receipt: proof that a tool call was evaluated by the Kernel. The receipt id is the authoritative content-addressed SHA-256 hash over the canonical receipt body excluding id, algorithm, and signature.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -22,7 +22,8 @@
     "id": {
       "type": "string",
       "minLength": 1,
-      "description": "Unique receipt ID. UUIDv7 recommended."
+      "description": "Authoritative content-addressed receipt id.",
+      "pattern": "^[0-9a-f]{64}$"
     },
     "timestamp": {
       "type": "integer",
@@ -72,8 +73,12 @@
     },
     "trust_level": {
       "type": "string",
-      "enum": ["mediated", "verified", "advisory"],
-      "description": "Strength of kernel mediation that produced this receipt. Defaults to `mediated`. Older receipts that omit this field deserialize to `mediated` for backward compatibility."
+      "enum": [
+        "mediated",
+        "verified",
+        "advisory"
+      ],
+      "description": "Strength of kernel mediation that produced this receipt. Defaults to mediated."
     },
     "tenant_id": {
       "type": "string",
@@ -87,7 +92,11 @@
     },
     "algorithm": {
       "type": "string",
-      "enum": ["ed25519", "p256", "p384"],
+      "enum": [
+        "ed25519",
+        "p256",
+        "p384"
+      ],
       "description": "Signing algorithm envelope hint. Omitted for legacy Ed25519 receipts to preserve byte-for-byte compatibility. Verification dispatches off the signature hex prefix, not this field."
     },
     "signature": {
@@ -100,7 +109,10 @@
     "toolCallAction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["parameters", "parameter_hash"],
+      "required": [
+        "parameters",
+        "parameter_hash"
+      ],
       "description": "Describes the tool call that was evaluated. Mirrors `ToolCallAction`.",
       "properties": {
         "parameters": {
@@ -115,20 +127,28 @@
     },
     "decision": {
       "type": "object",
-      "required": ["verdict"],
+      "required": [
+        "verdict"
+      ],
       "description": "The Kernel's verdict on the tool call. Internally tagged enum mirroring `Decision` in `chio-core-types` (`#[serde(tag = \"verdict\", rename_all = \"snake_case\")]`).",
       "oneOf": [
         {
           "additionalProperties": false,
           "properties": {
-            "verdict": { "const": "allow" }
+            "verdict": {
+              "const": "allow"
+            }
           },
-          "required": ["verdict"]
+          "required": [
+            "verdict"
+          ]
         },
         {
           "additionalProperties": false,
           "properties": {
-            "verdict": { "const": "deny" },
+            "verdict": {
+              "const": "deny"
+            },
             "reason": {
               "type": "string",
               "description": "Human-readable reason for the denial."
@@ -138,36 +158,53 @@
               "description": "The guard or validation step that triggered the denial."
             }
           },
-          "required": ["verdict", "reason", "guard"]
+          "required": [
+            "verdict",
+            "reason",
+            "guard"
+          ]
         },
         {
           "additionalProperties": false,
           "properties": {
-            "verdict": { "const": "cancelled" },
+            "verdict": {
+              "const": "cancelled"
+            },
             "reason": {
               "type": "string",
               "description": "Human-readable reason for the cancellation."
             }
           },
-          "required": ["verdict", "reason"]
+          "required": [
+            "verdict",
+            "reason"
+          ]
         },
         {
           "additionalProperties": false,
           "properties": {
-            "verdict": { "const": "incomplete" },
+            "verdict": {
+              "const": "incomplete"
+            },
             "reason": {
               "type": "string",
               "description": "Human-readable reason for the incomplete terminal state."
             }
           },
-          "required": ["verdict", "reason"]
+          "required": [
+            "verdict",
+            "reason"
+          ]
         }
       ]
     },
     "guardEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["guard_name", "verdict"],
+      "required": [
+        "guard_name",
+        "verdict"
+      ],
       "description": "Evidence from a single guard's evaluation. Mirrors `GuardEvidence`.",
       "properties": {
         "guard_name": {

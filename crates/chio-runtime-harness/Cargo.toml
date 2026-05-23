@@ -1,0 +1,31 @@
+[package]
+name = "chio-runtime-harness"
+description = "Live Chio runtime loopback harness library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_runtime_harness"
+
+[dependencies]
+async-trait = { workspace = true }
+chio-attest-buyer-core = { path = "../chio-attest-buyer-core" }
+chio-attest-loopback = { path = "../chio-attest-loopback" }
+chio-runtime-core = { path = "../chio-runtime-core" }
+chio-core = { path = "../chio-core" }
+chio-core-types = { path = "../chio-core-types" }
+chio-federation = { path = "../chio-federation" }
+chio-kernel = { path = "../chio-kernel" }
+chio-store-sqlite = { path = "../chio-store-sqlite" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

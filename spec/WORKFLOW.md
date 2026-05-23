@@ -152,15 +152,11 @@ signed artifact.
 | `duration_ms` | u64 | Wall-clock duration in milliseconds |
 | `kernel_key` | PublicKey | Kernel public key |
 
-### 4.1.1 WorkflowReceipt v2
+### 4.1.1 Schema Handling
 
-`chio.workflow-receipt.v2` is backward-compatible with v1. A v1 receipt
-continues to deserialize and verify against the exact canonical body it
-signed. v2 extends the body only through optional fields and adds
-detached vendor co-signatures over the canonical workflow body.
-
-Verifiers MUST use the receipt's `schema` field to decide which optional
-fields are in scope. Unknown schema values MUST fail closed.
+`chio.workflow-receipt.v1` is the only Chio-owned workflow receipt schema
+accepted before public release. Verifiers MUST reject unknown schema values
+fail-closed.
 
 ### 4.2 WorkflowReceipt (Signed)
 
@@ -168,7 +164,7 @@ fields are in scope. Unknown schema values MUST fail closed.
 |-------|------|-------------|
 | _(all WorkflowReceiptBody fields)_ | -- | Inlined from body |
 | `signature` | Signature | Ed25519 signature over canonical JSON of the body |
-| `vendor_signatures` | VendorWorkflowSignature[] | Optional detached vendor co-signatures for `chio.workflow-receipt.v2` |
+| `vendor_signatures` | VendorWorkflowSignature[] | Optional detached vendor co-signatures for the canonical workflow body |
 
 The signature MUST be computed over `canonical_json_bytes(body)` using
 RFC 8785 canonical JSON.
@@ -208,9 +204,9 @@ ids, public-key mismatches, and invalid signatures.
 | `consistency_anchor` | string | Optional per-step consistency anchor value |
 | `destructive` | bool | Optional destructive-action marker |
 
-For `chio.workflow-receipt.v2`, destructive steps MUST be backed by a
-live capability lease and a matching governance receipt when the
-verifier's action-class policy marks the step as receipt-backed.
+Destructive steps MUST be backed by a live capability lease and a matching
+governance receipt when the verifier's action-class policy marks the step as
+receipt-backed.
 
 ### 4.5 StepOutcome
 

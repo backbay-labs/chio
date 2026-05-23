@@ -98,15 +98,24 @@ and the rest of the 12 `chio_*` tools are available. `/chio status`
 shows the configured sidecar, masked capability id, and recent
 receipts.
 
-> **Sidecar caveat (v0.1.0):** the plugin expects a Chio sidecar at
-> `CHIO_SIDECAR_URL` exposing `/v1/capabilities/*`. The current `chio`
-> CLI does not ship a one-line "start a sidecar" command; the plugin
-> handles the unreachable case cleanly (returns `chio_sidecar_unreachable`
-> envelopes), and every client-side guard (path filters, env
-> sanitization, `--no-verify`, output capping) still fires, but
-> `status: allowed` calls require an external sidecar wired up
-> separately. See [docs/integrations/HERMES.md](../../../docs/integrations/HERMES.md)
-> "Known issues" for the current state.
+> **Sidecar quickstart (chio v0.2+):** the plugin expects a Chio
+> sidecar at `CHIO_SIDECAR_URL` exposing `/v1/capabilities/*`. With
+> chio v0.2 you can run one in a single line:
+>
+> ```bash
+> chio start --listen 127.0.0.1:9090 --print-config
+> ```
+>
+> `chio start` is a friendly zero-config alias for `chio api protect`
+> with the SDK path aliases (`POST /v1/capabilities`,
+> `POST /v1/evaluate`, `POST /v1/capabilities/validate`,
+> `POST /v1/receipts/verify`) mounted. For chio < 0.2, the plugin
+> stays in degraded-but-safe mode: `chio_sidecar_unreachable` envelopes
+> surface for `status: allowed` paths, but every client-side guard
+> (path filters, env sanitization, `--no-verify` rejection, output
+> capping) still fires. See
+> [docs/integrations/HERMES.md](../../../docs/integrations/HERMES.md)
+> for the full deployment matrix.
 
 ## What the bundled default policy denies
 
@@ -120,12 +129,17 @@ The plugin reuses the `chio_code_agent` default policy unchanged:
 - **Denies outright:** `rm -rf /`, `chmod 777`, `curl | sh`, `sudo`,
   `git push --force`, `git reset --hard origin`, `mkfs.*`,
   `dd if=... of=/dev/...`.
-- **Approval-required (denied today):** `rm -rf <subdir>`, `mv`,
-  `cp -r`, `git reset --hard`, `git clean -fd`. The `chio_shell_run`
-  schema does NOT expose an `approved` field, so the model cannot
-  self-approve these. They surface as a `denied` envelope until a
-  future release adds a sidecar-mediated human-in-the-loop
-  confirmation channel.
+- **Approval-required (held in the sidecar HITL queue):** `rm -rf
+  <subdir>`, `mv`, `cp -r`, `git reset --hard`, `git clean -fd`. The
+  `chio_shell_run` schema does NOT expose an `approved` field, so the
+  model cannot self-approve. As of v0.2 the plugin POSTs the held call
+  to the sidecar (`POST /approvals/submit`) and returns a
+  `chio_requires_approval` envelope carrying an `approval_id`. Resolve
+  it with `/chio approve <id>` (or `/chio deny <id>`) inside the
+  Hermes session, or `hermes chio approvals respond <id>
+  --approve|--deny [--reason TEXT]` from another shell. After the
+  approval lands, the LLM has to retry the original tool call;
+  auto-resume of held calls is v0.3 work.
 
 Custom policies load from `CHIO_POLICY_FILE` (path to YAML); if unset
 the bundled `DEFAULT_POLICY` is used.
@@ -138,6 +152,9 @@ The plugin ships a `hermes chio` CLI subcommand:
 hermes chio issue --tool-server fs --subject 0x... --ttl 3600
 hermes chio list
 hermes chio revoke <capability-id> --reason "rotated"
+hermes chio approvals list
+hermes chio approvals respond <approval-id> --approve --reason "ok-by-operator"
+hermes chio approvals respond <approval-id> --deny
 ```
 
 `issue` calls `ChioClient.create_capability(...)` and writes the
@@ -145,9 +162,13 @@ returned capability id into a per-profile JSON cache at
 `~/.hermes/profiles/<active>/chio-capabilities.json`. `list` reads
 that cache. `revoke` shells out to `chio trust revoke
 --capability-id <id>` and marks the local cache entry revoked.
+`approvals list` and `approvals respond` drive the sidecar HITL
+channel via the operator-respond shortcut on
+`POST /approvals/{id}/operator-respond`.
 
-For an in-session view, use `/chio status`, `/chio receipts [N]`, or
-`/chio policy`.
+For an in-session view, use `/chio status`, `/chio receipts [N]`,
+`/chio policy`, `/chio approvals`, `/chio approve <id> [reason]`, or
+`/chio deny <id> [reason]`.
 
 ## Receipts caveat
 

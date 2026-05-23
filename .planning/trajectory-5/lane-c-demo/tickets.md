@@ -45,7 +45,7 @@ IDs current at W3 close.
 
 - **Scope:** New Rust example crate with `Cargo.toml`, `src/main.rs`,
   `README.md`, `smoke.sh`, `policies/`, `fixtures/.gitkeep`. Set up
-  the example-local chiodos-ladder primitive skeleton (per R4
+  the example-local chio-ladder primitive skeleton (per R4
   Finding 5a; full implementation in release work-C1.3).
 - **Files:** `examples/chiodome-bilateral/{Cargo.toml,src/main.rs,
   README.md,smoke.sh,policies/.gitkeep,fixtures/.gitkeep}`.
@@ -98,20 +98,20 @@ IDs current at W3 close.
 4. **Audit-doc evidence**: handshake fixtures captured by smoke run.
 5. **Banner update**: not applicable.
 
-### release work-C1.3 - Example-local chiodos-ladder primitive + intersection
+### release work-C1.3 - Example-local chio-ladder primitive + intersection
 
-- **Scope:** Implement a minimal example-local `chio.chiodos-ladder.v1`
+- **Scope:** Implement a minimal example-local `chio.federation.governance-ladder-manifest.v1`
   manifest type in `examples/chiodome-bilateral/src/ladder.rs` per
-  `spec/CHIODOS_LADDER.md` §2-6.1. Build the manifest for each side
+  `spec/CHIO_LADDER.md` §2-6.1. Build the manifest for each side
   (domain `financial`, one action class `refund.execute` shaped like
   `settle.rollback` from §5.2), and emit the
-  `chio.chiodos-ladder-intersection.v1` artefact per §6.1. The
+  `chio.federation.ladder-intersection.v1` artefact per §6.1. The
   `partition_fallback.blast_radius_cap.amount_minor` field is what
   enforces the demo's 25000-unit cap (per review finding 5b option a -
   the cap is ladder-driven, not policy-YAML-driven).
   **This is NEW Rust code** (review finding 5a): the codebase has no
-  prior chiodos-ladder primitive. The example-local version is
-  sufficient for v0.1; a production `chio-chiodos-ladder` crate is
+  prior chio-ladder primitive. The example-local version is
+  sufficient for v0.1; a production `chio-attest-buyer-core-ladder` crate is
   deferred to trj6.
 - **Files:** `examples/chiodome-bilateral/src/ladder.rs`;
   `examples/chiodome-bilateral/fixtures/ladder-intersection.json`.
@@ -127,9 +127,9 @@ IDs current at W3 close.
    - Enforced call site:
      `examples/chiodome-bilateral/src/ladder.rs`
 2. **Spec MUST**: "Producers MUST emit a
-   `chio.chiodos-ladder-intersection.v1` artefact when two ladders
+   `chio.federation.ladder-intersection.v1` artefact when two ladders
    are pinned at handshake".
-   - Citation: `spec/CHIODOS_LADDER.md` §6.1 (exact lines to be
+   - Citation: `spec/CHIO_LADDER.md` §6.1 (exact lines to be
      filled in by audit-doc owner).
 3. **Negative conformance test**:
    `crates/chio-conformance/tests/c_ladder_intersection_over_cap_rejected.rs`
@@ -139,7 +139,7 @@ IDs current at W3 close.
 4. **Audit-doc evidence**: `ladder-intersection.json` is captured
    by smoke run.
 5. **Banner update**: bounded-claim language in `release-bar.md`
-   notes "the chiodos-ladder primitive used in the demo is an
+   notes "the chio-ladder primitive used in the demo is an
    example-local minimal implementation; production ladder primitive
    deferred to trj6".
 
@@ -217,7 +217,7 @@ IDs current at W3 close.
   `predicate_from_kernel_state`, the helper that constructs
   `BilateralCoSignInvocationPredicate` from kernel A and kernel B
   state during demo orchestration. Validate the predicate body
-  against `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §5 JSON
+  against `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §5 JSON
   Schema (bundled as a `&str` constant, originally introduced by B4).
 - **Files:** `crates/chio-federation/src/bilateral_dsse.rs`
   (extends B4's module).
@@ -233,7 +233,7 @@ IDs current at W3 close.
      `crates/chio-federation/src/bilateral_dsse.rs::predicate_from_kernel_state`
 2. **Spec MUST**: "Verifiers MUST reject predicates whose body
    does not validate against the §5 JSON Schema".
-   - Citation: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §7
+   - Citation: `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §7
      step 5 (lines to be filled in by audit-doc owner).
 3. **Negative conformance test**:
    `crates/chio-federation/tests/bilateral_dsse_negative.rs`
@@ -264,7 +264,7 @@ IDs current at W3 close.
 2. **Spec MUST**: "predicate
    `capability_lease_ref.lease_id` MUST match a live capability
    lease at pinned_epoch".
-   - Citation: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §5
+   - Citation: `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §5
      (`capability_lease_ref` object).
 3. **Negative conformance test**:
    `crates/chio-conformance/tests/c_bilateral_lease_expired_rejected.rs`
@@ -301,7 +301,7 @@ IDs current at W3 close.
 2. **Spec MUST**: "Receivers MUST run the section 7 verification
    algorithm in order and reject on the first failing step with
    the §7.1 error code".
-   - Citation: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §7
+   - Citation: `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §7
      (steps 1-17) and §7.1 (error code table).
 3. **Negative conformance test**:
    `crates/chio-federation/tests/bilateral_dsse_negative.rs` plus
@@ -335,7 +335,7 @@ IDs current at W3 close.
    - Enforced call site: `examples/chiodome-bilateral/src/anchor.rs`
 2. **Spec MUST**: "consistency_anchor MUST be reconcilable to a
    real inclusion proof when consistency_model is totally-ordered".
-   - Citation: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §7
+   - Citation: `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §7
      step 16.
 3. **Negative conformance test**:
    `crates/chio-conformance/tests/c_anchor_inclusion_missing_witness_rejected.rs`
@@ -386,7 +386,7 @@ IDs current at W3 close.
   the canonical Chio HushSpec format (matches
   `examples/policies/canonical-hushspec.yaml` family). The amount
   cap is NOT a HushSpec primitive (per review finding 5b); it lives in
-  the example-local chiodos-ladder intersection logic and is
+  the example-local chio-ladder intersection logic and is
   enforced upstream of the kernel by release work-C1.3.
 - **Files:** `examples/chiodome-bilateral/policies/refund-policy.yaml`.
 - **Effort:** S
@@ -493,7 +493,7 @@ IDs current at W3 close.
      `examples/chiodome-bilateral/src/orchestrate.rs`
 2. **Spec MUST**: "joint_disposition MUST resolve to deny when
    either side returns a deny verdict".
-   - Citation: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §7
+   - Citation: `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §7
      step 13.
 3. **Negative conformance test**: covered by release work-C2.4 cases for
    verdict disagreement; smoke regression covered by release work-C6.2.
@@ -540,7 +540,7 @@ IDs current at W3 close.
      `crates/chio-cli/src/cli/trust_commands.rs:2629` (post-extend).
 2. **Spec MUST**: "Implementations MUST provide a structured
    explain output for cosigned chains".
-   - Citation: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §11
+   - Citation: `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §11
      (debugging, lines to be filled in by audit-doc owner).
 3. **Negative conformance test**:
    `crates/chio-cli/tests/explain_bilateral.rs` snapshot test pins

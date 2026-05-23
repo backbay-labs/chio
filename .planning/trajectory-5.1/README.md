@@ -31,7 +31,7 @@ then closes the assurance gaps that remain partial or false-positive today.
 ## Non-Goals
 
 - Cutting `v0.1.0-bounded-chiodome`.
-- Claiming full BBS+, zero-knowledge, strict CHIODOS bilateral invocation, or
+- Claiming full BBS+, zero-knowledge, strict CHIO bilateral invocation, or
   release readiness before the strict gates pass.
 - Treating hosted CI failures as blockers for the merge pass. 5.1 will record
   local and hosted evidence separately.

@@ -1,0 +1,16 @@
+{
+  "receiverId": "alertmanager-pagerduty-primary",
+  "alertCode": "dead_letters_present",
+  "severity": "critical",
+  "status": "delivered",
+  "observedAtUnixMs": 1766000065000,
+  "sourceHandoffReportSha256": "40c91f8742e259de9a3c507e9c6a34b7ac59341ceb5e0a24e8d5da0c501fbdd5",
+  "dedupeKey": "chio-relay:dataco:dead-letters",
+  "runbook": "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
+  "labels": {
+    "notification_route": "pagerduty-primary",
+    "opsgenie": "relay-oncall",
+    "service": "chio-pheromone-relay",
+    "severity": "critical"
+  }
+}

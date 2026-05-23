@@ -55,7 +55,7 @@ The async wrapper exists for caller ergonomics, then immediately delegates to `d
 | 3 | B1 | `verify_capability_signature` and `verify_capability_full_without_budget_admit` removed. All hosted callers route through `verify_capability_full`. Spec PROTOCOL.md line 408 SHOULD -> MUST. |
 | 4 | B1 + B2 | B1 negative conformance fixture and lint script land. B2 fail-closed downgrade replaces warn-and-continue at `mod.rs:1574-1591`. Spec PROTOCOL.md lines 737-741 introduce a NEW normative MUST (tightening, not promotion). |
 | 5 | B2 + B3 + B4 | B2 conformance fixture lands. B3 sync-path gating + `scripts/check-anchor-batch-async-witness.sh` (best-effort) + spec PROTOCOL.md §6.4.1 normative promotion. **B4 starts**: `crates/chio-federation/src/bilateral_dsse.rs` module skeleton; PAE encoding implementation. |
-| 6 | B3 + B4 | B3 conformance fixture lands. **B4 lands**: DSSE envelope sign/verify path; spec citation `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353; B4 negative conformance fixture asserts §6 conformance is the DSSE envelope only. |
+| 6 | B3 + B4 | B3 conformance fixture lands. **B4 lands**: DSSE envelope sign/verify path; spec citation `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353; B4 negative conformance fixture asserts §6 conformance is the DSSE envelope only. |
 | 7 | B1.E + B2.E + B3.E + B4.E | Per-primitive Evidence Gate close: each of B1, B2, B3, B4 has enforced call site + spec MUST citation + signed negative conformance test that fails when wiring is removed. |
 
 ## Out of scope for Lane B

@@ -166,10 +166,11 @@ fn compute_reliability(
     for receipt in receipts {
         let weight = decay_weight(now, receipt.timestamp, config.temporal_decay_half_life_days);
         match receipt.decision {
-            Decision::Allow => {
+            Decision::Allow if receipt.is_allowed() => {
                 allow_weight += weight;
                 observed += 1;
             }
+            Decision::Allow => {}
             Decision::Cancelled { .. } => {
                 cancelled_weight += weight;
                 observed += 1;

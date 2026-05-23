@@ -27,62 +27,12 @@ use crate::session::SessionAnchorReference;
 /// Capability-negotiation schema exchanged during federation handshakes.
 pub const CHIO_CAPABILITIES_SCHEMA: &str = "chio.capabilities.v1";
 
-/// Frozen v1 capability-token schema. Legacy tokens that omit `schema`
-/// deserialize to this value.
-pub const CHIO_CAPABILITY_V1_SCHEMA: &str = "chio.capability.v1";
-
-/// Capability-token v2 schema with typed caveats and attenuation witnesses.
-pub const CHIO_CAPABILITY_V2_SCHEMA: &str = "chio.capability.v2";
-
-/// Total ordering over the known capability-token schema versions.
-///
-/// The W1.3 schema-ceiling check needs an ordering relation (token schema
-/// must be `<=` the peer's negotiated maximum), not bare string equality.
-/// String equality fails-closed when the peer advertises a strictly newer
-/// ceiling that is still backwards-compatible with the inbound token's
-/// schema, which is the wrong direction in the lattice.
-///
-/// New schema versions append a variant; serialization uses the existing
-/// `chio.capability.v1` / `chio.capability.v2` constants so wire shapes do
-/// not change.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum CapabilitySchemaVersion {
-    /// Frozen v1 capability-token schema.
-    V1,
-    /// v2 capability-token schema with typed caveats and attenuation witnesses.
-    V2,
-}
-
-impl CapabilitySchemaVersion {
-    /// Parse a capability schema id into the ordered enum, returning
-    /// `None` for unknown identifiers. Unknown values must fail-closed
-    /// at higher layers (`CapabilityNegotiation::validate` already
-    /// rejects them on the negotiation surface).
-    #[must_use]
-    pub fn parse(schema: &str) -> Option<Self> {
-        match schema {
-            CHIO_CAPABILITY_V1_SCHEMA => Some(Self::V1),
-            CHIO_CAPABILITY_V2_SCHEMA => Some(Self::V2),
-            _ => None,
-        }
-    }
-
-    /// Return the wire-form schema identifier for this version.
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::V1 => CHIO_CAPABILITY_V1_SCHEMA,
-            Self::V2 => CHIO_CAPABILITY_V2_SCHEMA,
-        }
-    }
-}
+/// Current capability-token schema. Chio is unreleased, so pre-release
+/// attenuation and delegation-binding fields are folded into this v1 shape.
+pub const CHIO_CAPABILITY_SCHEMA: &str = "chio.capability.v1";
 
 fn default_capability_schema() -> String {
-    CHIO_CAPABILITY_V1_SCHEMA.to_string()
-}
-
-fn capability_v1_schema() -> String {
-    CHIO_CAPABILITY_V1_SCHEMA.to_string()
+    CHIO_CAPABILITY_SCHEMA.to_string()
 }
 
 fn capabilities_schema() -> String {
@@ -103,16 +53,14 @@ fn is_none_or_empty_attenuation_proof(value: &Option<AttenuationProof>) -> bool 
 
 /// Stable feature names used by `chio.capabilities.v1`.
 pub mod capability_features {
-    pub const ACCEPTS_CAPABILITY_V2: &str = "accepts_capability_v2";
-    pub const ACCEPTS_RECEIPT_V2: &str = "accepts_receipt_v2";
     pub const ACCEPTS_ANCHOR_BATCH_V1: &str = "accepts_anchor_batch_v1";
     pub const ACCEPTS_HYBRID_SIGNATURES: &str = "accepts_hybrid_signatures";
-    /// W1.1: opts the peer into the v2 delegation-chain binding rules.
+    /// Opts the peer into delegation-chain binding rules.
     /// Requires `DelegationLink.scope_hash` to be populated and
     /// `attenuation_proof.parent_scope_hash` to match the issuer's
     /// trust-root scope hash (or the last chain link's scope hash) per
     /// `validate_delegation_chain_with_trust_root`.
-    pub const DELEGATION_V2_CHAIN_BINDING: &str = "delegation_v2_chain_binding";
+    pub const DELEGATION_CHAIN_BINDING: &str = "delegation_chain_binding";
 }
 
 /// Peer-advertised protocol feature bitset.
@@ -127,8 +75,6 @@ pub struct CapabilityNegotiation {
     pub schema: String,
     #[serde(default, skip_serializing_if = "is_empty_capability_features")]
     pub features: BTreeMap<String, bool>,
-    #[serde(default = "capability_v1_schema")]
-    pub max_capability_schema: String,
 }
 
 impl Default for CapabilityNegotiation {
@@ -144,14 +90,13 @@ impl CapabilityNegotiation {
         Self {
             schema: CHIO_CAPABILITIES_SCHEMA.to_string(),
             features: BTreeMap::new(),
-            max_capability_schema: CHIO_CAPABILITY_V1_SCHEMA.to_string(),
         }
     }
 
-    /// T1 peer profile: v2 capability, receipt v2, and anchor batches.
+    /// T1 peer profile: current capability semantics and anchor batches.
     ///
     /// Wave 1.5 hardening: the
-    /// [`capability_features::DELEGATION_V2_CHAIN_BINDING`] flag is
+    /// [`capability_features::DELEGATION_CHAIN_BINDING`] flag is
     /// advertised as `true` so production peers exercise the W1.1
     /// chain-binding check by default. Peers that need to interoperate
     /// with a counterparty that has not rolled out chain-binding can
@@ -160,20 +105,17 @@ impl CapabilityNegotiation {
     #[must_use]
     pub fn t1_default() -> Self {
         let mut features = BTreeMap::new();
-        features.insert(capability_features::ACCEPTS_CAPABILITY_V2.to_string(), true);
-        features.insert(capability_features::ACCEPTS_RECEIPT_V2.to_string(), true);
         features.insert(
             capability_features::ACCEPTS_ANCHOR_BATCH_V1.to_string(),
             true,
         );
         features.insert(
-            capability_features::DELEGATION_V2_CHAIN_BINDING.to_string(),
+            capability_features::DELEGATION_CHAIN_BINDING.to_string(),
             true,
         );
         Self {
             schema: CHIO_CAPABILITIES_SCHEMA.to_string(),
             features,
-            max_capability_schema: CHIO_CAPABILITY_V2_SCHEMA.to_string(),
         }
     }
 
@@ -189,14 +131,6 @@ impl CapabilityNegotiation {
             return Err(Error::CanonicalJson(format!(
                 "unsupported capability negotiation schema: {}",
                 self.schema
-            )));
-        }
-        if self.max_capability_schema != CHIO_CAPABILITY_V1_SCHEMA
-            && self.max_capability_schema != CHIO_CAPABILITY_V2_SCHEMA
-        {
-            return Err(Error::CanonicalJson(format!(
-                "unsupported max capability schema: {}",
-                self.max_capability_schema
             )));
         }
         for feature in self.features.keys() {
@@ -226,21 +160,9 @@ impl CapabilityNegotiation {
                 _ => {}
             }
         }
-        let max_capability_schema = if self.max_capability_schema == CHIO_CAPABILITY_V2_SCHEMA
-            && remote.max_capability_schema == CHIO_CAPABILITY_V2_SCHEMA
-            && features
-                .get(capability_features::ACCEPTS_CAPABILITY_V2)
-                .copied()
-                .unwrap_or(false)
-        {
-            CHIO_CAPABILITY_V2_SCHEMA
-        } else {
-            CHIO_CAPABILITY_V1_SCHEMA
-        };
         Ok(Self {
             schema: CHIO_CAPABILITIES_SCHEMA.to_string(),
             features,
-            max_capability_schema: max_capability_schema.to_string(),
         })
     }
 }
@@ -440,17 +362,17 @@ pub struct CapabilityToken {
     /// Signing algorithm. Absent means Ed25519 for backward compatibility.
     #[serde(default, skip_serializing_if = "is_default_optional_algorithm")]
     pub algorithm: Option<SigningAlgorithm>,
-    /// Typed v2 caveats. Empty for v1 and omitted on the wire.
+    /// Typed caveats. Empty tokens omit this on the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub caveats: Vec<Caveat>,
-    /// High-level attenuation request exposed on v2 tokens. Empty for v1.
+    /// High-level attenuation request exposed on attenuated tokens.
     #[serde(default, skip_serializing_if = "is_none_or_empty")]
     pub scope_attenuations: Option<Vec<Attenuation>>,
     /// Wire witness proving child-scope attenuation.
     #[serde(default, skip_serializing_if = "is_none_or_empty_attenuation_proof")]
     pub attenuation_proof: Option<AttenuationProof>,
     /// Fixed-point sub-agent budget share in basis points. Values above
-    /// 10000 are rejected by v2 validation.
+    /// 10000 are rejected by validation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget_share_bps: Option<u16>,
     /// Signature over canonical JSON of all fields above.
@@ -492,9 +414,9 @@ pub struct CapabilityTokenSigningBody {
     pub budget_share_bps: Option<u16>,
 }
 
-/// V2 capability signing input with attenuation and caveat fields.
+/// Attenuated capability signing input with attenuation and caveat fields.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CapabilityTokenV2Body {
+pub struct CapabilityTokenAttenuationBody {
     #[serde(flatten)]
     pub body: CapabilityTokenBody,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -506,7 +428,7 @@ pub struct CapabilityTokenV2Body {
     pub budget_share_bps: Option<u16>,
 }
 
-/// First-party caveat attached to a v2 capability.
+/// First-party caveat attached to a attenuated capability.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Caveat {
@@ -590,30 +512,18 @@ impl CapabilityToken {
         }
     }
 
-    /// Reject unknown schema IDs and v2 budget amplification.
+    /// Reject unknown schema IDs and budget amplification.
     pub fn validate_schema(&self) -> Result<()> {
-        if self.schema != CHIO_CAPABILITY_V1_SCHEMA && self.schema != CHIO_CAPABILITY_V2_SCHEMA {
+        if self.schema != CHIO_CAPABILITY_SCHEMA {
             return Err(Error::CanonicalJson(format!(
                 "unsupported capability token schema: {}",
                 self.schema
             )));
         }
-        if self.schema == CHIO_CAPABILITY_V1_SCHEMA
-            && (!self.caveats.is_empty()
-                || self
-                    .scope_attenuations
-                    .as_ref()
-                    .is_some_and(|items| !items.is_empty())
-                || self.attenuation_proof.is_some()
-                || self.budget_share_bps.is_some())
-        {
-            return Err(Error::CanonicalJson(
-                "capability v1 token must not carry v2 attenuation fields".to_string(),
-            ));
-        }
-        if self.schema == CHIO_CAPABILITY_V2_SCHEMA && self.attenuation_proof.is_none() {
+        let needs_attenuation_proof = self.requires_chain_binding();
+        if needs_attenuation_proof && self.attenuation_proof.is_none() {
             return Err(Error::AttenuationViolation {
-                reason: "capability v2 token must carry attenuation_proof".to_string(),
+                reason: "attenuated capability token must carry attenuation_proof".to_string(),
             });
         }
         if let Some(share) = self.budget_share_bps {
@@ -642,11 +552,11 @@ impl CapabilityToken {
         Ok(())
     }
 
-    /// W1.1 v2 chain-binding check.
+    /// Delegation chain-binding check.
     ///
     /// Closes the P0 soundness bug where `attenuation_proof.parent_scope_hash`
     /// was unbound from the issuer's actual upstream parent capability. An
-    /// issuer with true authority `scope_X` can no longer mint a v2 token
+    /// issuer with true authority `scope_X` can no longer mint a token
     /// claiming `parent_scope = scope_BIGGER` and have the verifier accept
     /// it: this check requires `parent_scope_hash` to equal either
     ///
@@ -663,37 +573,30 @@ impl CapabilityToken {
     /// `parent_scope` and supply a "looks plausible but is unsound"
     /// witness that the verifier accepts.
     ///
-    /// This check is a no-op for v1 tokens.
-    ///
-    /// Wave 1.5 note: production callers should prefer
-    /// [`Self::validate_chain_binding_with_features`], which gates the
-    /// v2 chain-binding enforcement on the
-    /// [`capability_features::DELEGATION_V2_CHAIN_BINDING`] feature flag.
-    /// This entry point preserves the legacy "always on" semantics that
-    /// existing callers (verifier hot path, FFI shells, conformance
-    /// tests) rely on.
+    /// Direct non-attenuated tokens omit `attenuation_proof`, so this check
+    /// is a no-op for those tokens.
     pub fn validate_chain_binding(&self, trust_root_scope_hash: &ScopeHash) -> Result<()> {
-        if self.schema != CHIO_CAPABILITY_V2_SCHEMA {
-            return Ok(());
-        }
         let Some(proof) = self.attenuation_proof.as_ref() else {
-            return Err(Error::AttenuationViolation {
-                reason: "capability v2 token must carry attenuation_proof".to_string(),
-            });
+            if self.requires_chain_binding() {
+                return Err(Error::AttenuationViolation {
+                    reason: "chain-binding violation: attenuated capability token must carry attenuation_proof".to_string(),
+                });
+            }
+            return Ok(());
         };
 
         if self.delegation_chain.is_empty() {
             if &proof.parent_scope_hash != trust_root_scope_hash {
                 return Err(Error::AttenuationViolation {
                     reason: format!(
-                        "v2 chain-binding violation: attenuation_proof.parent_scope_hash {} does not match trust-root scope hash {} for direct-issue token",
+                        "chain-binding violation: attenuation_proof.parent_scope_hash {} does not match trust-root scope hash {} for direct-issue token",
                         proof.parent_scope_hash, trust_root_scope_hash
                     ),
                 });
             }
         } else {
             // Delegated token: bind parent_scope_hash to the predecessor's
-            // signed scope_hash (the v2 chain-binding field).
+            // signed scope_hash.
             let last = self
                 .delegation_chain
                 .last()
@@ -703,14 +606,14 @@ impl CapabilityToken {
             let Some(last_hash) = last.scope_hash.as_ref() else {
                 return Err(Error::AttenuationViolation {
                     reason:
-                        "v2 chain-binding violation: last delegation link omits scope_hash; chio.delegation.v2 requires every hop to bind its authorized scope"
+                        "chain-binding violation: last delegation link omits scope_hash; every hop must bind its authorized scope"
                             .to_string(),
                 });
             };
             if &proof.parent_scope_hash != last_hash {
                 return Err(Error::AttenuationViolation {
                     reason: format!(
-                        "v2 chain-binding violation: attenuation_proof.parent_scope_hash {} does not match last delegation link scope_hash {}",
+                        "chain-binding violation: attenuation_proof.parent_scope_hash {} does not match last delegation link scope_hash {}",
                         proof.parent_scope_hash, last_hash
                     ),
                 });
@@ -719,35 +622,31 @@ impl CapabilityToken {
         Ok(())
     }
 
-    /// Wave 1.5 feature-gated wrapper around [`Self::validate_chain_binding`].
-    ///
-    /// Consults `negotiated.delegation_v2_chain_binding`: if the feature
-    /// is enabled (the production default; see
-    /// [`CapabilityNegotiation::t1_default`]), the chain-binding check
-    /// runs as in the legacy entry point. If the peer has explicitly
-    /// disabled the feature in the negotiated bitset, v2 tokens fail
-    /// closed instead of skipping the binding check.
-    ///
-    /// Production callers SHOULD prefer this wrapper; legacy callers
-    /// that have not plumbed a [`CapabilityNegotiation`] through their
-    /// boundary continue to invoke [`Self::validate_chain_binding`]
-    /// directly with the same semantics.
+    /// Feature-aware wrapper around [`Self::validate_chain_binding`].
+    #[must_use]
+    pub fn requires_chain_binding(&self) -> bool {
+        self.attenuation_proof.is_some()
+            || self
+                .scope_attenuations
+                .as_ref()
+                .is_some_and(|items| !items.is_empty())
+            || self.budget_share_bps.is_some()
+            || !self.delegation_chain.is_empty()
+    }
+
     pub fn validate_chain_binding_with_features(
         &self,
         trust_root_scope_hash: &ScopeHash,
         negotiated: &CapabilityNegotiation,
     ) -> Result<()> {
-        if self.schema != CHIO_CAPABILITY_V2_SCHEMA {
-            return Ok(());
-        }
         let enabled = negotiated
             .features
-            .get(capability_features::DELEGATION_V2_CHAIN_BINDING)
+            .get(capability_features::DELEGATION_CHAIN_BINDING)
             .copied()
             .unwrap_or(true);
-        if !enabled {
+        if !enabled && self.requires_chain_binding() {
             return Err(Error::AttenuationViolation {
-                reason: "delegation_v2_chain_binding is disabled; v2 tokens are rejected"
+                reason: "delegation_chain_binding is disabled; attenuated tokens are rejected"
                     .to_string(),
             });
         }
@@ -761,7 +660,7 @@ impl CapabilityToken {
     /// `algorithm` envelope field is omitted from the serialized output.
     pub fn sign(body: CapabilityTokenBody, keypair: &Keypair) -> Result<Self> {
         let signing_body = CapabilityTokenSigningBody {
-            schema: CHIO_CAPABILITY_V1_SCHEMA.to_string(),
+            schema: CHIO_CAPABILITY_SCHEMA.to_string(),
             body: body.clone(),
             caveats: Vec::new(),
             scope_attenuations: None,
@@ -770,7 +669,7 @@ impl CapabilityToken {
         };
         let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
         Ok(Self {
-            schema: CHIO_CAPABILITY_V1_SCHEMA.to_string(),
+            schema: CHIO_CAPABILITY_SCHEMA.to_string(),
             id: body.id,
             issuer: body.issuer,
             subject: body.subject,
@@ -787,8 +686,11 @@ impl CapabilityToken {
         })
     }
 
-    /// Sign a v2 capability token with caveats and an attenuation proof.
-    pub fn sign_v2(body: CapabilityTokenV2Body, keypair: &Keypair) -> Result<Self> {
+    /// Sign an attenuated capability token with caveats and an attenuation proof.
+    pub fn sign_attenuated(
+        body: CapabilityTokenAttenuationBody,
+        keypair: &Keypair,
+    ) -> Result<Self> {
         let child_hash = scope_hash(&body.body.scope)?;
         if body.attenuation_proof.child_scope_hash != child_hash {
             return Err(Error::AttenuationViolation {
@@ -810,7 +712,7 @@ impl CapabilityToken {
             }
         }
         let signing_body = CapabilityTokenSigningBody {
-            schema: CHIO_CAPABILITY_V2_SCHEMA.to_string(),
+            schema: CHIO_CAPABILITY_SCHEMA.to_string(),
             body: body.body.clone(),
             caveats: body.caveats.clone(),
             scope_attenuations: Some(body.scope_attenuations.clone()),
@@ -819,7 +721,7 @@ impl CapabilityToken {
         };
         let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
         Ok(Self {
-            schema: CHIO_CAPABILITY_V2_SCHEMA.to_string(),
+            schema: CHIO_CAPABILITY_SCHEMA.to_string(),
             id: body.body.id,
             issuer: body.body.issuer,
             subject: body.body.subject,
@@ -850,7 +752,7 @@ impl CapabilityToken {
         backend: &dyn SigningBackend,
     ) -> Result<Self> {
         let signing_body = CapabilityTokenSigningBody {
-            schema: CHIO_CAPABILITY_V1_SCHEMA.to_string(),
+            schema: CHIO_CAPABILITY_SCHEMA.to_string(),
             body: body.clone(),
             caveats: Vec::new(),
             scope_attenuations: None,
@@ -859,7 +761,7 @@ impl CapabilityToken {
         };
         let (signature, _bytes) = sign_canonical_with_backend(backend, &signing_body)?;
         Ok(Self {
-            schema: CHIO_CAPABILITY_V1_SCHEMA.to_string(),
+            schema: CHIO_CAPABILITY_SCHEMA.to_string(),
             id: body.id,
             issuer: body.issuer,
             subject: body.subject,
@@ -890,7 +792,7 @@ impl CapabilityToken {
         {
             return Ok(true);
         }
-        if self.schema == CHIO_CAPABILITY_V1_SCHEMA
+        if self.schema == CHIO_CAPABILITY_SCHEMA
             && self.caveats.is_empty()
             && self.scope_attenuations.as_ref().is_none_or(Vec::is_empty)
             && self.attenuation_proof.is_none()
@@ -984,7 +886,7 @@ impl CapabilityToken {
         {
             return Ok(true);
         }
-        if self.schema == CHIO_CAPABILITY_V1_SCHEMA
+        if self.schema == CHIO_CAPABILITY_SCHEMA
             && self.caveats.is_empty()
             && self.scope_attenuations.as_ref().is_none_or(Vec::is_empty)
             && self.attenuation_proof.is_none()
@@ -2922,13 +2824,13 @@ impl ModelMetadata {
 /// A link in the delegation chain, recording that `delegator` granted a
 /// narrowed capability to `delegatee`.
 ///
-/// V2 chain-binding: `scope_hash` records the hash of the canonical scope
+/// Delegation chain-binding: `scope_hash` records the hash of the canonical scope
 /// that the delegator authorized at this step. When set, it ties the
-/// delegation chain to the underlying capability lineage so a v2 verifier
+/// delegation chain to the underlying capability lineage so a verifier
 /// can check `proof.parent_scope_hash == chain.last().scope_hash` and
 /// reject inflated parent-scope claims (the W1.1 P0 soundness bug).
 ///
-/// Legacy v1 links omit `scope_hash`; v2 verifiers must reject v2 tokens
+/// Links omit `scope_hash`; verifiers must reject attenuated tokens
 /// whose chain links lack this field via
 /// [`validate_delegation_chain_with_trust_root`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2944,10 +2846,10 @@ pub struct DelegationLink {
     pub attenuations: Vec<Attenuation>,
     /// Unix timestamp of the delegation.
     pub timestamp: u64,
-    /// V2 chain-binding: SHA-256 hash of the canonical scope authorized
-    /// at this hop. Required by `chio.delegation.v2`; absent on legacy
+    /// Delegation chain-binding: SHA-256 hash of the canonical scope authorized
+    /// at this hop. Required by `Chio delegation`; absent on legacy
     /// v1 links. Verifiers gated behind the
-    /// `delegation_v2_chain_binding` feature flag enforce that this
+    /// `delegation_chain_binding` feature flag enforce that this
     /// matches the parent_scope_hash carried by the next hop.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope_hash: Option<ScopeHash>,
@@ -2965,7 +2867,7 @@ pub struct DelegationLinkBody {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attenuations: Vec<Attenuation>,
     pub timestamp: u64,
-    /// V2 chain-binding: see [`DelegationLink::scope_hash`].
+    /// Delegation chain-binding: see [`DelegationLink::scope_hash`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope_hash: Option<ScopeHash>,
 }
@@ -3056,8 +2958,8 @@ pub enum Attenuation {
 /// 3. Timestamps are non-decreasing.
 /// 4. The chain length does not exceed `max_depth` (if provided).
 ///
-/// Note: this v1 entry point does NOT enforce v2 chain-binding (the
-/// `parent_scope_hash` invariant). Callers verifying `chio.capability.v2`
+/// Note: this compatibility entry point does NOT enforce chain-binding
+/// (the `parent_scope_hash` invariant). Callers verifying attenuated
 /// tokens must use [`validate_delegation_chain_with_trust_root`] to close
 /// the W1.1 P0 soundness gap.
 pub fn validate_delegation_chain(chain: &[DelegationLink], max_depth: Option<u32>) -> Result<()> {
@@ -3099,10 +3001,10 @@ pub fn validate_delegation_chain(chain: &[DelegationLink], max_depth: Option<u32
     Ok(())
 }
 
-/// Validate a delegation chain under the v2 chain-binding rule.
+/// Validate a delegation chain under the chain-binding rule.
 ///
 /// Closes the W1.1 P0 soundness gap: an issuer with true authority
-/// `scope_X` could previously mint a v2 token claiming
+/// `scope_X` could previously mint a attenuated token claiming
 /// `parent_scope = scope_BIGGER` and supply an internally-consistent
 /// `attenuation_proof` because nothing tied `parent_scope_hash` to the
 /// issuer's actual upstream parent capability. This verifier requires:
@@ -3136,7 +3038,7 @@ pub fn validate_delegation_chain_with_trust_root(
         let Some(link_hash) = link.scope_hash.as_ref() else {
             return Err(Error::DelegationChainBroken {
                 reason: format!(
-                    "v2 chain link {i} omits scope_hash; chio.delegation.v2 requires every hop to bind its authorized scope"
+                    "delegation chain link {i} omits scope_hash; Chio delegation requires every hop to bind its authorized scope"
                 ),
             });
         };
@@ -3146,12 +3048,12 @@ pub fn validate_delegation_chain_with_trust_root(
             // require equality (the first delegation typically attenuates
             // the issuer's full authority), but we do require that the
             // first link's scope_hash itself is well-formed and equal to
-            // either the trust root or to a v2 hop already chained off
+            // either the trust root or to a hop already chained off
             // it. The capability token's own attenuation_proof closes the
             // residual subset check against `chain.last().scope_hash`.
             if link_hash.is_empty() {
                 return Err(Error::DelegationChainBroken {
-                    reason: "v2 chain link 0 has empty scope_hash".to_string(),
+                    reason: "delegation chain link 0 has empty scope_hash".to_string(),
                 });
             }
             // Cheap fast-path: when the link explicitly equals the trust
@@ -3369,7 +3271,7 @@ fn scope_allows_delegation(scope: &ChioScope) -> bool {
 /// callers pass `signed_at` and `nonce` explicitly so unit tests, replay
 /// proofs, and proptest-driven invariants stay deterministic.
 ///
-/// This function is gated behind the `delegation_v2` feature flag (M04
+/// This function is gated behind the `delegation` feature flag (M04
 /// SDK breakage audit). Callers must opt in explicitly.
 pub fn delegate(
     parent: &CapabilityToken,
@@ -3426,7 +3328,7 @@ pub fn delegate(
         });
     }
 
-    // V2 chain-binding: emit the child's authorized scope_hash on the
+    // Delegation chain-binding: emit the child's authorized scope_hash on the
     // delegation link so downstream verifiers can bind subsequent hops'
     // attenuation_proof.parent_scope_hash to this hop's authorized scope.
     let child_scope_hash = scope_hash(child_scope)?;
@@ -3748,7 +3650,7 @@ mod tests {
     }
 
     #[test]
-    fn capability_v2_schema_and_budget_fail_closed() {
+    fn attenuated_capability_schema_and_budget_fail_closed() {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let parent = make_scope(vec![make_grant(
@@ -3764,7 +3666,7 @@ mod tests {
             normalized_subset_proof: witness,
         };
         let body = CapabilityTokenBody {
-            id: "cap-v2".to_string(),
+            id: "cap-attenuated".to_string(),
             issuer: issuer.public_key(),
             subject: subject.public_key(),
             scope: child,
@@ -3772,8 +3674,8 @@ mod tests {
             expires_at: 20,
             delegation_chain: vec![],
         };
-        let token = CapabilityToken::sign_v2(
-            CapabilityTokenV2Body {
+        let token = CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
                 body: body.clone(),
                 caveats: vec![Caveat {
                     kind: CaveatKind::RestrictTool,
@@ -3791,15 +3693,15 @@ mod tests {
             &issuer,
         )
         .unwrap();
-        assert_eq!(token.schema, CHIO_CAPABILITY_V2_SCHEMA);
+        assert_eq!(token.schema, CHIO_CAPABILITY_SCHEMA);
         assert!(token.verify_signature().unwrap());
 
         let mut bad_schema = token.clone();
         bad_schema.schema = "chio.capability.v999".to_string();
         assert!(bad_schema.verify_signature().is_err());
 
-        let bad_budget = CapabilityToken::sign_v2(
-            CapabilityTokenV2Body {
+        let bad_budget = CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
                 body,
                 caveats: vec![],
                 scope_attenuations: vec![],
@@ -3812,7 +3714,7 @@ mod tests {
     }
 
     #[test]
-    fn capability_v2_chain_binding_feature_disabled_fails_closed() {
+    fn attenuated_capability_chain_binding_feature_disabled_fails_closed() {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let scope = ChioScope::default();
@@ -3822,7 +3724,7 @@ mod tests {
             normalized_subset_proof: compute_attenuation_witness(&scope, &scope).unwrap(),
         };
         let body = CapabilityTokenBody {
-            id: "cap-v2-disabled-chain-binding".to_string(),
+            id: "cap-attenuated-disabled-chain-binding".to_string(),
             issuer: issuer.public_key(),
             subject: subject.public_key(),
             scope,
@@ -3830,8 +3732,8 @@ mod tests {
             expires_at: 20,
             delegation_chain: vec![],
         };
-        let token = CapabilityToken::sign_v2(
-            CapabilityTokenV2Body {
+        let token = CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
                 body,
                 caveats: vec![],
                 scope_attenuations: vec![],
@@ -3843,7 +3745,7 @@ mod tests {
         .unwrap();
         let mut negotiated = CapabilityNegotiation::t1_default();
         negotiated.features.insert(
-            capability_features::DELEGATION_V2_CHAIN_BINDING.to_string(),
+            capability_features::DELEGATION_CHAIN_BINDING.to_string(),
             false,
         );
 
@@ -3852,12 +3754,12 @@ mod tests {
                 &scope_hash(&ChioScope::default()).unwrap(),
                 &negotiated,
             )
-            .expect_err("disabled chain binding must reject v2 tokens");
+            .expect_err("disabled chain binding must reject attenuated tokens");
         assert!(matches!(err, Error::AttenuationViolation { .. }));
     }
 
     #[test]
-    fn capability_v2_requires_attenuation_proof() -> Result<()> {
+    fn attenuated_capability_requires_attenuation_proof() -> Result<()> {
         let issuer = Keypair::generate();
         let subject = Keypair::generate();
         let parent = make_scope(vec![make_grant(
@@ -3872,7 +3774,7 @@ mod tests {
             normalized_subset_proof: compute_attenuation_witness(&parent, &child)?,
         };
         let body = CapabilityTokenBody {
-            id: "cap-v2".to_string(),
+            id: "cap-attenuated".to_string(),
             issuer: issuer.public_key(),
             subject: subject.public_key(),
             scope: child,
@@ -3880,13 +3782,13 @@ mod tests {
             expires_at: 20,
             delegation_chain: vec![],
         };
-        let mut token = CapabilityToken::sign_v2(
-            CapabilityTokenV2Body {
+        let mut token = CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
                 body,
                 caveats: vec![],
                 scope_attenuations: vec![],
                 attenuation_proof: proof,
-                budget_share_bps: None,
+                budget_share_bps: Some(10_000),
             },
             &issuer,
         )?;
@@ -3912,7 +3814,7 @@ mod tests {
             normalized_subset_proof: compute_attenuation_witness(&parent, &child)?,
         };
         let body = CapabilityTokenBody {
-            id: "cap-v2-empty-child".to_string(),
+            id: "cap-empty-child".to_string(),
             issuer: issuer.public_key(),
             subject: subject.public_key(),
             scope: child,
@@ -3920,8 +3822,8 @@ mod tests {
             expires_at: 20,
             delegation_chain: vec![],
         };
-        let token = CapabilityToken::sign_v2(
-            CapabilityTokenV2Body {
+        let token = CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
                 body,
                 caveats: vec![],
                 scope_attenuations: vec![],
@@ -3963,8 +3865,7 @@ mod tests {
         let local = CapabilityNegotiation::t1_default();
         let remote = CapabilityNegotiation::v1_default();
         let negotiated = local.negotiated_with(&remote).unwrap();
-        assert_eq!(negotiated.max_capability_schema, CHIO_CAPABILITY_V1_SCHEMA);
-        assert!(!negotiated.supports(capability_features::ACCEPTS_CAPABILITY_V2));
+        assert_eq!(negotiated.schema, CHIO_CAPABILITIES_SCHEMA);
 
         let mut malformed = CapabilityNegotiation::t1_default();
         malformed.features.insert("bad feature".to_string(), true);
@@ -3976,17 +3877,17 @@ mod tests {
         let local = CapabilityNegotiation::t1_default();
         let mut remote = CapabilityNegotiation::t1_default();
         remote.features.insert(
-            capability_features::DELEGATION_V2_CHAIN_BINDING.to_string(),
+            capability_features::DELEGATION_CHAIN_BINDING.to_string(),
             false,
         );
 
         let negotiated = local.negotiated_with(&remote).unwrap();
 
-        assert_eq!(negotiated.max_capability_schema, CHIO_CAPABILITY_V2_SCHEMA);
+        assert_eq!(negotiated.schema, CHIO_CAPABILITIES_SCHEMA);
         assert_eq!(
             negotiated
                 .features
-                .get(capability_features::DELEGATION_V2_CHAIN_BINDING)
+                .get(capability_features::DELEGATION_CHAIN_BINDING)
                 .copied(),
             Some(false)
         );
@@ -4011,7 +3912,7 @@ mod tests {
         .unwrap();
         let mut negotiated = CapabilityNegotiation::t1_default();
         negotiated.features.insert(
-            capability_features::DELEGATION_V2_CHAIN_BINDING.to_string(),
+            capability_features::DELEGATION_CHAIN_BINDING.to_string(),
             false,
         );
 
@@ -5212,7 +5113,7 @@ mod tests {
 
     // ----- M04 Phase 3: `delegate` mint helper ----------------------
 
-    #[cfg(feature = "delegation_v2")]
+    #[cfg(feature = "delegation")]
     fn delegate_parent_token(
         parent_kp: &Keypair,
         subject_kp: &Keypair,
@@ -5232,7 +5133,7 @@ mod tests {
         CapabilityToken::sign(body, parent_kp).unwrap()
     }
 
-    #[cfg(feature = "delegation_v2")]
+    #[cfg(feature = "delegation")]
     #[test]
     fn delegate_mints_signed_link_for_subset_scope() {
         use crate::delegation_receipt::ScopeAttenuation;
@@ -5266,7 +5167,7 @@ mod tests {
         assert_eq!(receipt.link.delegatee, delegatee.public_key());
     }
 
-    #[cfg(feature = "delegation_v2")]
+    #[cfg(feature = "delegation")]
     #[test]
     fn delegate_rejects_widening_scope() {
         use crate::delegation_receipt::ScopeAttenuation;
@@ -5300,7 +5201,7 @@ mod tests {
         assert!(matches!(err, Error::AttenuationViolation { .. }));
     }
 
-    #[cfg(feature = "delegation_v2")]
+    #[cfg(feature = "delegation")]
     #[test]
     fn delegate_rejects_parent_without_delegate_operation() {
         use crate::delegation_receipt::ScopeAttenuation;
@@ -5324,7 +5225,7 @@ mod tests {
         assert!(matches!(err, Error::AttenuationViolation { .. }));
     }
 
-    #[cfg(feature = "delegation_v2")]
+    #[cfg(feature = "delegation")]
     #[test]
     fn delegate_rejects_extending_expiry() {
         use crate::delegation_receipt::ScopeAttenuation;
@@ -5372,7 +5273,7 @@ mod tests {
         assert!(ok.is_ok());
     }
 
-    #[cfg(feature = "delegation_v2")]
+    #[cfg(feature = "delegation")]
     #[test]
     fn delegate_rejects_wrong_delegator_key() {
         use crate::delegation_receipt::ScopeAttenuation;
@@ -5402,7 +5303,7 @@ mod tests {
         assert!(matches!(err, Error::AttenuationViolation { .. }));
     }
 
-    #[cfg(feature = "delegation_v2")]
+    #[cfg(feature = "delegation")]
     #[test]
     fn delegate_rejects_tampered_parent_signature() {
         use crate::delegation_receipt::ScopeAttenuation;
@@ -5433,7 +5334,7 @@ mod tests {
         assert!(matches!(err, Error::SignatureVerificationFailed));
     }
 
-    #[cfg(feature = "delegation_v2")]
+    #[cfg(feature = "delegation")]
     #[test]
     fn delegate_rejects_parent_before_issued_at() {
         use crate::delegation_receipt::ScopeAttenuation;
@@ -5466,7 +5367,7 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "delegation_v2")]
+    #[cfg(feature = "delegation")]
     #[test]
     fn delegate_rejects_signed_at_at_or_after_parent_expiry() {
         use crate::delegation_receipt::ScopeAttenuation;

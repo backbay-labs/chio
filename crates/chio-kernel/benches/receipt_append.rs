@@ -1,11 +1,22 @@
-//! Baseline bench: receipt_append.
-//! Body fills in once the async-kernel pivot lands.
+//! Baseline bench: append signed receipts to the in-memory receipt log.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use chio_kernel::ReceiptLog;
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
+
+#[path = "fixtures/dispatch_request_fixture.rs"]
+mod dispatch_request_fixture;
+
+use dispatch_request_fixture::DispatchAllowFixture;
 
 pub fn bench(c: &mut Criterion) {
+    let fixture = DispatchAllowFixture::new();
+
     c.bench_function("receipt_append", |b| {
-        b.iter(|| black_box(0_u64));
+        b.iter_batched(
+            ReceiptLog::new,
+            |mut log| black_box(fixture.receipt_append_once(&mut log)),
+            BatchSize::SmallInput,
+        );
     });
 }
 

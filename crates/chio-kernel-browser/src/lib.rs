@@ -118,13 +118,13 @@ pub struct EvaluateRequestJson {
     /// Optional session filesystem roots, forwarded to guards.
     #[serde(default)]
     pub session_filesystem_roots: Option<Vec<String>>,
-    /// Optional W1.3 peer-negotiated capability profile. When omitted,
+    /// Optional peer-negotiated capability feature profile. When omitted,
     /// the browser kernel evaluates against `CapabilityNegotiation::t1_default()`.
     #[serde(default)]
     pub peer_capabilities: Option<CapabilityNegotiation>,
-    /// Optional W1.1 chain-binding trust roots, keyed by issuer hex.
-    /// V2 tokens require an entry for their issuer; absent issuers
-    /// fail closed. V1 tokens ignore this field.
+    /// Optional chain-binding trust roots, keyed by issuer hex. Tokens with
+    /// attenuation, budget sharing, scope attenuation, or delegation require an
+    /// issuer entry; absent issuers fail closed.
     #[serde(default)]
     pub capability_trust_roots: BTreeMap<String, ScopeHash>,
     /// Optional parent-budget snapshots used to seed sibling-sum
@@ -224,15 +224,13 @@ pub struct VerifyCapabilityRequestJson {
     /// adapter reads `Date::now()` via [`BrowserClock`].
     #[serde(default)]
     pub clock_override_unix_secs: Option<u64>,
-    /// Optional W1.3 peer-negotiated capability profile. When omitted,
-    /// the browser kernel evaluates against `CapabilityNegotiation::t1_default()`
-    /// (local-loopback admits v2 tokens). When present, a v1-only profile
-    /// rejects v2 tokens before any signature work.
+    /// Optional peer-negotiated capability feature profile. When omitted,
+    /// the browser kernel evaluates against `CapabilityNegotiation::t1_default()`.
     #[serde(default)]
     pub peer_capabilities: Option<CapabilityNegotiation>,
-    /// Optional W1.1 chain-binding trust roots, keyed by issuer hex.
-    /// V2 tokens require an entry for their issuer; absent issuers
-    /// fail-closed. V1 tokens ignore this field.
+    /// Optional chain-binding trust roots, keyed by issuer hex. Attenuated or
+    /// delegated tokens require an entry for their issuer; absent issuers
+    /// fail-closed.
     #[serde(default)]
     pub capability_trust_roots: BTreeMap<String, ScopeHash>,
     /// Optional parent-budget snapshots used to seed sibling-sum
@@ -461,14 +459,12 @@ pub fn sign_receipt_pure(
 
 /// Pure capability-verification helper.
 ///
-/// Wave 1.5 hot-path wiring: routes through
-/// [`verify_capability_full`] so the W1.3 negotiated schema-ceiling
-/// rule and the W1.1 chain-binding rule are enforced alongside
-/// signature, floor, and time-bound checks. Callers that omit the
-/// peer profile inherit `CapabilityNegotiation::t1_default()` (the
-/// browser kernel acts as a local-loopback peer that admits v2 tokens);
-/// callers that omit `capability_trust_roots` fail-closed for v2
-/// tokens because no issuer has a registered authority hash.
+/// Hot-path wiring routes through [`verify_capability_full`] so negotiated
+/// feature validation and chain-binding checks are enforced alongside
+/// signature, floor, and time-bound checks. Callers that omit the peer profile
+/// inherit `CapabilityNegotiation::t1_default()`; callers that omit
+/// `capability_trust_roots` fail closed for attenuated or delegated tokens
+/// because no issuer has a registered authority hash.
 pub fn verify_capability_pure(
     input: VerifyCapabilityRequestJson,
     clock: &dyn chio_kernel_core::Clock,
@@ -624,16 +620,6 @@ fn capability_error_message(error: &chio_kernel_core::CapabilityError) -> String
         chio_kernel_core::CapabilityError::Internal(msg) => {
             let mut out = String::from("capability verification failed: ");
             out.push_str(msg);
-            out
-        }
-        chio_kernel_core::CapabilityError::SchemaExceedsNegotiatedCeiling {
-            token_schema,
-            peer_max,
-        } => {
-            let mut out = String::from("capability token schema ");
-            out.push_str(token_schema);
-            out.push_str(" exceeds peer-negotiated ceiling ");
-            out.push_str(peer_max);
             out
         }
     }
@@ -920,8 +906,8 @@ mod tests {
     use super::*;
     use chio_core_types::capability::{
         compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-        CapabilityTokenBody, CapabilityTokenV2Body, ChioScope, DelegationLink, DelegationLinkBody,
-        Operation, ToolGrant,
+        CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, DelegationLink,
+        DelegationLinkBody, Operation, ToolGrant,
     };
     use chio_core_types::crypto::Keypair;
     use chio_core_types::receipt::{ChioReceiptBody, Decision, ToolCallAction, TrustLevel};
@@ -1010,8 +996,8 @@ mod tests {
             normalized_subset_proof: compute_attenuation_witness(&body.scope, &body.scope)
                 .expect("attenuation witness"),
         };
-        CapabilityToken::sign_v2(
-            CapabilityTokenV2Body {
+        CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
                 body,
                 caveats: std::vec![],
                 scope_attenuations: std::vec![],

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-closeout-profile.schema.json",
+  "title": "Chio Pheromone Relay Alert Assurance Closeout Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "localKernelId",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs",
+    "requireReplayMatch",
+    "requireRecoveryDrill",
+    "blockLegalHold",
+    "blockEligibleForDelete"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-assurance-closeout-profile.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+    "requireReplayMatch": { "type": "boolean" },
+    "requireRecoveryDrill": { "type": "boolean" },
+    "blockLegalHold": { "type": "boolean" },
+    "blockEligibleForDelete": { "type": "boolean" }
+  }
+}

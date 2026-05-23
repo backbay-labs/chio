@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-tick-report.schema.json",
-  "title": "Chiodos Pheromone Relay Tick Report",
+  "title": "Chio Pheromone Relay Tick Report",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "accepted", "delivered", "retried", "deadLettered", "duplicateIdempotent", "failures"],

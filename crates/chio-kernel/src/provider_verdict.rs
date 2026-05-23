@@ -278,7 +278,7 @@ mod tests {
                 receipt_id,
             } => {
                 assert!(redactions.is_empty());
-                assert_eq!(receipt_id, ReceiptId("rcpt_allow".to_string()));
+                assert_eq!(receipt_id, ReceiptId(resp.receipt.id.clone()));
             }
             other => panic!("expected allow, got {other:?}"),
         }
@@ -291,7 +291,7 @@ mod tests {
         let v = verdict_result_from_response(&inv, &resp);
         match v {
             VerdictResult::Deny { reason, receipt_id } => {
-                assert_eq!(receipt_id, ReceiptId("rcpt_deny".to_string()));
+                assert_eq!(receipt_id, ReceiptId(resp.receipt.id.clone()));
                 match reason {
                     DenyReason::PolicyDeny { rule_id } => {
                         assert_eq!(rule_id, "budget exhausted");

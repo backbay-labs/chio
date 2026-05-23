@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "scheduler-tick-report.schema.json",
+  "title": "Chio Runtime Scheduler Tick Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "accepted", "tickId", "ownerId", "generatedAtUnixMs", "maxRuns", "claimedRunIds", "expiredRunIds", "blockedRunIds", "skippedRunCount", "checks"],
+  "allOf": [
+    {
+      "if": { "properties": { "accepted": { "const": false } }, "required": ["accepted"] },
+      "then": { "required": ["failureCode"] }
+    },
+    {
+      "if": { "properties": { "accepted": { "const": true } }, "required": ["accepted"] },
+      "then": { "not": { "required": ["failureCode"] } }
+    }
+  ],
+  "properties": {
+    "schema": { "const": "chio.runtime.scheduler-tick-report.v1" },
+    "accepted": { "type": "boolean" },
+    "failureCode": { "$ref": "#/$defs/code" },
+    "tickId": { "type": "string", "minLength": 1 },
+    "ownerId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "maxRuns": { "type": "integer", "minimum": 0 },
+    "claimedRunIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "expiredRunIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "blockedRunIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "skippedRunCount": { "type": "integer", "minimum": 0 },
+    "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+  },
+  "$defs": {
+    "code": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "check": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$" }
+  }
+}

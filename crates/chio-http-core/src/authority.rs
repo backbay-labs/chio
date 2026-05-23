@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use chio_core_types::capability::{
-    CapabilityToken, ChioScope, ModelMetadata, Operation, ToolGrant, CHIO_CAPABILITY_V2_SCHEMA,
+    CapabilityToken, ChioScope, ModelMetadata, Operation, ToolGrant,
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
 use chio_core_types::receipt::GuardEvidence;
@@ -783,10 +783,9 @@ fn validate_capability_token(
     if !signature_valid {
         return Err("capability signature verification failed".to_string());
     }
-    if token.schema == CHIO_CAPABILITY_V2_SCHEMA {
+    if token.attenuation_proof.is_some() {
         return Err(
-            "v2 chain-binding requires a trust-root resolver on the HTTP authority path"
-                .to_string(),
+            "chain-binding requires a trust-root resolver on the HTTP authority path".to_string(),
         );
     }
     token
@@ -913,8 +912,8 @@ mod tests {
         CHIO_HTTP_STATUS_SCOPE_DECISION, CHIO_HTTP_STATUS_SCOPE_FINAL,
     };
     use chio_core_types::capability::{
-        compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityTokenBody,
-        CapabilityTokenV2Body, ChioScope, Operation, ToolGrant,
+        compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityTokenAttenuationBody,
+        CapabilityTokenBody, ChioScope, Operation, ToolGrant,
     };
 
     trait TestUnwrap<T> {
@@ -971,8 +970,8 @@ mod tests {
         let parent_hash = scope_hash(&scope).test_unwrap();
         let child_hash = scope_hash(&scope).test_unwrap();
         let witness = compute_attenuation_witness(&scope, &scope).test_unwrap();
-        let token = CapabilityToken::sign_v2(
-            CapabilityTokenV2Body {
+        let token = CapabilityToken::sign_attenuated(
+            CapabilityTokenAttenuationBody {
                 body: CapabilityTokenBody {
                     id: id.to_string(),
                     issuer: issuer.public_key(),
@@ -1190,7 +1189,7 @@ mod tests {
         assert!(result.receipt.evidence[0]
             .details
             .as_deref()
-            .is_some_and(|details| details.contains("v2 chain-binding requires")));
+            .is_some_and(|details| details.contains("chain-binding requires")));
     }
 
     #[test]

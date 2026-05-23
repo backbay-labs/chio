@@ -69,6 +69,7 @@ members = [
     #
     # Supply-chain attestation
     "crates/chio-replay-corpus",
+    "crates/chio-attest-buyer",
     "crates/chio-attest-verify",
     "crates/chio-custody-hw",
     "crates/chio-weights",
@@ -80,8 +81,12 @@ members = [
     "crates/chio-did",
     "crates/chio-federation",
     "crates/chio-governance",
-    "crates/chio-chiodos",
-    "crates/chio-chiodos-authority",
+    "crates/chio-attest-buyer-core",
+    "crates/chio-federation-authority",
+    "crates/chio-attest-loopback",
+    "crates/chio-runtime-harness",
+    "crates/chio-runtime-core",
+    "crates/chio-runtime",
     "crates/chio-pheromone",
     "crates/chio-pheromone-relay",
     "crates/chio-pheromone-runtime",
@@ -131,7 +136,7 @@ members = [
     #
     # Examples
     "examples/bilateral-invocation",
-    "examples/chiodos-3vendor",
+    "examples/chio-3vendor",
     "examples/cross-provider-policy",
     "examples/chiodome-bilateral",
     "examples/guards/enriched-inspector",
