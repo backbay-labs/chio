@@ -34,7 +34,7 @@
 >
 >   This stub should land in `chio-core-types` alongside the current v1 ReceiptBody promotion. Refine in a follow-on against the IETF draft as it stabilizes.
 >
-> **Post-review status:** This document is a stress test, not the implementation spec. [18-decision-packet.md](18-decision-packet.md) is the decision packet to settle before tickets are written. It supersedes historical sketches or review notes that show `policy_digest: [u8; 32]`, redaction as a `tool_origin` variant, feature-bit-only v3 negotiation, or a decided `extensions_hash` strategy.
+> **Post-review status:** This document is a stress test, not the implementation spec. [18-decision-packet.md](18-decision-packet.md) is the decision packet to settle before tickets are written. It supersedes historical sketches or review notes that show `policy_digest: [u8; 32]`, redaction as a `tool_origin` variant, feature-bit-only v3 negotiation, optional extension integrity, or a trace/advisory receipt carrying a mediation decision.
 
 ## TL;DR
 
@@ -267,16 +267,15 @@ Justification:
    historical compatibility work. Verifiers that cannot validate current v1
    receipt-kind semantics fail closed.
 3. **Signing canonicalization stays cheap and deterministic.** Two
-   knobs:
+  rule:
    - The extensions map uses `BTreeMap<String, ExtensionPayload>`;
      RFC 8785 already sorts object keys by UTF-16 code units
      (`canonical.rs:8-9, 123`), so the BTreeMap insertion order is
      irrelevant on the wire.
-   - One candidate is to canonicalize each `ExtensionPayload`, hash the
-     extension map, and put a hex `extensions_hash` in the signed body.
-     Another is to sign the full inline body. Coordinate with X2
-     (hot-path latency) and ADR-0010 before treating
-     `extensions_hash` as decided.
+   - Canonicalize the extension map, hash it, and put a hex
+     `extensions_hash` in the signed body. Verifiers reject receipts
+     whose signed extension hash does not match the supplied
+     extensions map.
 
 ### Migration
 
@@ -311,7 +310,11 @@ pub struct ChioReceiptV3Body {
     pub tool_server: String,
     pub tool_name: String,
     pub action: ToolCallAction,
-    pub decision: Decision,
+    pub receipt_kind: ReceiptKind,           // mediated | trace | advisory
+    pub boundary_class: BoundaryClass,       // prevent | detect_only | advisory_only | cannot_see
+    pub decision: Option<Decision>,          // required for mediated, absent for trace/advisory
+    pub tool_origin: ToolOrigin,             // execution locus only
+    pub redaction_mode: RedactionMode,       // redaction policy, orthogonal to origin
     pub content_hash: String,
     pub policy_hash: String,
     pub policy_digest: String,             // hex digest
@@ -326,7 +329,7 @@ pub struct ChioReceiptV3Body {
     pub trust_level: TrustLevel,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<String>,
-    pub extensions_hash: Option<String>,   // candidate: hex H(canonical_jcs(extensions))
+    pub extensions_hash: String,             // hex H(canonical_jcs(extensions))
     pub kernel_key: PublicKey,
 }
 
@@ -366,10 +369,10 @@ pub enum ExtensionPayload {
     DirectoryTrace(DirectoryTraceExtension),
     OrchestratorRun(OrchestratorRunExtension),
     PresignedUrl(PresignedUrlExtension),
-    /// Forward-compat slot. v3 verifiers that do not understand the
-    /// kind tag preserve bytes for re-signing or relay, but refuse to
-    /// honor `must_understand = true` for them.
-    Unknown(serde_json::Value),
+    /// Forward-compat slot. v3 verifiers preserve the canonical raw
+    /// payload bytes for re-signing or relay, but refuse to honor
+    /// `must_understand = true` for unknown kinds.
+    Unknown(Box<serde_json::value::RawValue>),
 }
 ```
 
@@ -378,22 +381,23 @@ pub enum ExtensionPayload {
 1. Compute `extensions_canonical := canonical_json_bytes(extensions)`
    (RFC 8785; BTreeMap ensures stable iteration, UTF-16 key sort
    re-confirms order).
-2. If the ADR chooses hash indirection, compute `extensions_hash :=
-   sha256(extensions_canonical)` and hex-encode it into
-   `body.extensions_hash`.
-3. If the ADR chooses inline signing, leave `body.extensions_hash` absent and
-   include the extensions in the signing input.
-4. Compute `signing_input` according to the ADR-selected strategy.
-5. `signature := sign(signing_input)`.
-6. Wire: send `body`, `extensions`, `signature`.
+2. Compute `extensions_hash := sha256(extensions_canonical)` and
+   hex-encode it into `body.extensions_hash`.
+3. Compute `signing_input` over the body that contains the extension
+   hash.
+4. `signature := sign(signing_input)`.
+5. Wire: send `body`, `extensions`, `signature`.
 
 Verifier:
 
 1. Validate `body.schema == chio.receipt.v3`.
-2. If `extensions_hash` is present, recompute it from `extensions`; reject on
-   mismatch.
+2. Recompute `extensions_hash` from `extensions`; reject on mismatch
+   or absence.
 3. Verify signature over the ADR-selected canonical input.
-4. For each extension whose namespace is on the locally supported
+4. Reject any trace or advisory receipt that carries a mediation
+   `decision`; only mediated receipts may carry allow/deny/cancelled/
+   incomplete.
+5. For each extension whose namespace is on the locally supported
    list, decode payload. For each extension marked
    `must_understand = true` whose namespace is NOT supported,
    reject fail-closed.
@@ -452,9 +456,6 @@ pub struct OpenaiResponsesExtension {
     pub response_id: String,
     pub model_version: String,
     pub system_fingerprint: String,
-    pub tool_origin: ToolOrigin,              // HostExecutedUnmediated |
-                                              // HostExecutedProviderReported |
-                                              // CallerExecuted
 }
 
 pub struct BedrockAgentsExtension {
@@ -478,10 +479,9 @@ pub struct VoiceExtension {
 }
 
 pub struct AgntcyExtension {
-    pub acp_peer_id: String,
-    pub acp_message_id: String,
     pub directory_entry_hash: [u8; 32],
     pub directory_provider_id: String,
+    pub identity_issuer_hash: Option<[u8; 32]>,
 }
 
 pub struct DirectoryTraceExtension {
@@ -525,14 +525,11 @@ so bridges can evolve their shape without touching `ChioReceiptV3Body`.
    `CedarExtension.policy_digest` becomes redundant; keep it on the
    extension only when the engine emits multiple policy sets per
    decision (which Cedar can, via additive policy stores).
-4. **E1's `tool_origin` versus existing `trust_level`.** The
-   OpenAI Responses host-executed flag overlaps semantically with
-   `TrustLevel::Mediated|Verified|Advisory` (`receipt.rs:47-62`).
-   Decide whether `tool_origin` is a refinement of `trust_level` for
-   the OpenAI bridge, or an orthogonal axis. Recommend: keep
-   `trust_level` for kernel-mediation strength and put
-   `tool_origin` in the OpenAI extension as a provider-specific
-   refinement.
+4. **E1's `tool_origin` versus existing `trust_level`.** Resolved after
+   review: `tool_origin` is an orthogonal core receipt-body field.
+   `trust_level` remains kernel-mediation strength, while
+   `tool_origin` records execution locus for every provider surface.
+   OpenAI extension payloads keep provider IDs only.
 5. **E3 voice and replay.** Audio timestamps are not deterministic
    across replays. The voice extension must carry only stable handles
    (call_id, participant_id) in the signed body; raw audio refs and

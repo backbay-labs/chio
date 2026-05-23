@@ -65,7 +65,8 @@ Use two fields, not one overloaded status:
 | LiveKit function tools | `prevent` | `blocked_by_adr` | Wrapper is plausible; voice implementation waits on async receipt SLO and voice-tier guard rules. |
 | Vapi / Retell shims | `prevent` | `deferred` | Needs fresh webhook/auth contract research and durability rules. |
 | Cedar engine behind Chio guard pipeline | `prevent` | `ready_after_adr` | Cedar is a collaborator, not a replacement substrate; start with selected list/branch guards after real latency measurements. |
-| OPA / OpenFGA / Tetragon | `prevent` | `deferred` | Keep as research until Cedar pattern and latency measurements are real. |
+| OPA / OpenFGA | `prevent` | `deferred` | Keep as research until Cedar pattern and latency measurements are real. |
+| Tetragon | `detect_only` | `deferred` | Treat as observability / evidence ingestion or out-of-band enforcement. Do not model it as a synchronous Chio guard. |
 | Below-L7 mediation, DNS, TLS interception, SOCKS5, DB wire proxies | `cannot_see` | `hard_skip` | Out of this PR's scope and outside the core Chio boundary. |
 
 ## Planning Sequence

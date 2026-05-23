@@ -158,9 +158,12 @@ bundle digests of all OPA-backed guards into `policy_hash` so a verifier can
 replay.
 
 **Failure semantics.** Sidecar unreachable -> `ExternalGuardError::Transient`
--> circuit breaker opens after the configured failure threshold -> `CircuitOpenVerdict::Deny` (fail-closed default at
-`crates/chio-guards/src/external/mod.rs:136`). Embedded `regorus` panics are
-caught by the adapter and become Deny.
+-> circuit breaker opens after the configured failure threshold ->
+`CircuitOpenVerdict::Deny` (fail-closed default at
+`crates/chio-guards/src/external/mod.rs:136`). Embedded-engine panic
+handling is a requirement for the provider wrapper, not a property the
+current adapter gives for free; any unwind or worker crash must be mapped to
+`ExternalGuardError` and therefore to Deny.
 
 ---
 
@@ -372,7 +375,8 @@ Default fail-closed already applies because `ExternalGuard` is the substrate:
   -> circuit opens after threshold -> `CircuitOpenVerdict::Deny` (default at
   `crates/chio-guards/src/external/mod.rs:136`).
 - Engine returns malformed response ->
-  `ExternalGuardError::Permanent` -> `Verdict::Deny`, breaker untouched
+  `ExternalGuardError::Permanent` -> `Verdict::Deny`; the current
+  `AsyncGuardAdapter` records the failure before returning Deny
   (`crates/chio-guards/src/external/mod.rs:381-398`).
 - Engine rate-limited by Chio's own `TokenBucket` -> `RateLimitedVerdict::Deny`
   (default at `crates/chio-guards/src/external/mod.rs:155`).

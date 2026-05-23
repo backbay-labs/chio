@@ -166,10 +166,11 @@ WAL fsync, and pilot p95 receipt-write target is 100 ms).
 Recommended SLO classes:
 
 - **Voice tier** (sub-200 ms end-to-end). Hard caps: Ed25519-only, in-process
-  guards only, async receipt write to an in-mem ring with bounded-loss SLO.
-  No OpenFGA, no remote OPA, no LLM judges. Cedar OK. Bridges should call
-  `evaluate_tool_call` directly; the double-sign `HttpAuthority` path is too
-  heavy for voice.
+  guards only, WAL-backed async receipt write with fail-closed queue
+  saturation and replayable sequence gaps. No in-memory bounded-loss-only
+  audit path. No OpenFGA, no remote OPA, no LLM judges. Cedar OK. Bridges
+  should call `evaluate_tool_call` directly; the double-sign `HttpAuthority`
+  path is too heavy for voice.
 - **Standard tier** (matches `slo.md:32-36`, p50 < 75 / p95 < 250 / p99 < 1000).
   Sidecar OPA permitted, OpenFGA permitted, hybrid permitted, synchronous
   persistence permitted.

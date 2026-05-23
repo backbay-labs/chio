@@ -150,6 +150,7 @@ forbid (
     resource
 )
 when {
+    context.guard_enabled == true &&
     resource is Chio::Tool &&
     context.block_set.contains(resource.tool_name)
 };

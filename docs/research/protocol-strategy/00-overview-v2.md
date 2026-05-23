@@ -36,7 +36,7 @@ Everything else is incremental but coherent: Cedar, OpenAI Responses, Bedrock Ag
 | [11](11-n8n-threat-mapping.md) | R5 n8n threat map | Priority-1 is **partially justified**. Chio blocks Chain C (prompt-injection webhook exfil) cleanly; does NOT block Chain D (the 686% ingress-abuse spike, which is below Chio's layer). | Keep n8n in the priority list; restrict the value-prop framing to Chain C. |
 | [12](12-openai-responses-adapter.md) | E1 OpenAI Responses | New crate `chio-openai-responses-adapter`. **MVP: caller-executed `function` tools only over streaming SSE on non-reasoning models.** Refuses built-in-tool or reasoning requests. | Needs `tool_origin` execution-locus semantics plus an API refresh against official Responses docs before codegen. |
 | [13](13-bedrock-agents-bridge.md) | E2 Bedrock Agents | New crate `chio-bedrock-agents-adapter`. **MVP: RETURN_CONTROL action groups full mediation**, Lambda actions receipt-logged only (AWS trust boundary). | Trace redaction default: `summary` (salted SHA-256 hashes preserving structural metadata). Opt-in `redacted` and `full` (full gated by separate IAM scope). |
-| [14](14-voice-agent-bridges.md) | E3 Voice agents | **MVP: `chio-livekit-py` Python middleware** (`@chio_function_tool` decorator wrapping LiveKit's `@function_tool`). Pipecat FrameProcessor second; paired Vapi+Retell HTTP shim third. Signing fits the budget; **durability writes (5-50ms) are the limiter**. | Sign synchronously, write asynchronously, fail-closed bounded queue, sequence-numbered receipts. Needs current v1 async durability state (coordinate with X1). |
+| [14](14-voice-agent-bridges.md) | E3 Voice agents | **MVP: `chio-livekit-py` Python middleware** (`@chio_function_tool` decorator wrapping LiveKit's `@function_tool`). Pipecat FrameProcessor second; paired Vapi+Retell HTTP shim third. Signing fits the budget; **durability writes (5-50ms) are the limiter**. | Sign synchronously, WAL-fsync before ack, then drain asynchronously with fail-closed bounded queue and sequence-numbered receipts. Needs current v1 async durability state (coordinate with X1). |
 | [15](15-receipt-kind-v1.md) | X1 Current v1 receipt-kind semantics | **Option D (hybrid candidate), folded into unreleased v1.** Promote a small core field set and route bridge / engine / surface-specific payloads through typed extensions. | Implement through ADR-0010: separate `tool_origin` and redaction, signed extension handling, `must_understand`, and hex `String` encoding for `policy_digest`. No receipt-generation bump before release. |
 | [16](16-latency-budget-audit.md) | X2 Latency audit | Estimated median verdict latency: **~2-4ms Ed25519-only, ~6-10ms hybrid**. Voice sub-200ms is **conditional**: yes with Ed25519 + in-process guards + async receipt write + per-bridge fast paths; no with hybrid + remote guards + sync SQLite. | Land bench stub bodies (urgent: 11+ stubs, not 4). Parallelize hybrid signing (~50-100us savings). HTTP path does 3 signatures + 1 verify per request: voice fast-path should skip outer sign. |
 
@@ -44,7 +44,7 @@ Everything else is incremental but coherent: Cedar, OpenAI Responses, Bedrock Ag
 
 1. **`tool_origin` belongs on the current v1 receipt body, but redaction is orthogonal.** E1 and E2 both need execution-locus provenance. The planning default is `CallerExecuted | HostExecutedProviderReported | HostExecutedUnmediated`; Bedrock trace redaction is represented by a separate signed `redaction_mode` / `trace_redaction_mode`, not a fourth origin variant.
 
-2. **Async receipt write + sequence numbering is now load-bearing for voice.** E3 needs it; X1's extensions map can hold a `deferred_durability` flag with a bounded-loss SLO. This needs a coordinated design across X1, X2, and E3 before E3 starts.
+2. **Async receipt write + sequence numbering is now load-bearing for voice.** E3 needs it; async durability must be WAL-backed before ack, with a fail-closed bounded queue and replayable sequence gaps. Do not frame this as bounded-loss-only durability. This needs a coordinated design across X1, X2, and E3 before E3 starts.
 
 3. **Cedar looks plausible for selected guards, but latency is not proven.** R4 + X2 reconciliation estimated ~150us with entity cache, which would fit normal tiers if real workloads confirm it. The current bench stubs mean this is not yet a claim. Voice-tier planning still needs a **policy tier classification on guards**: voice-tier guards must declare in-process + async-durability.
 
@@ -107,7 +107,7 @@ or equivalent decision note is accepted.
 ### Wave C: strategic expansions
 
 - **`chio-directory`** (consume-only): `DirectoryProvider` trait + `StaticAgntcyDirectoryProvider`. Read-only AGNTCY Directory + Identity consumption, mirroring Webex's production pattern. NO `chio-bridge-agntcy` (ACP is archived). ([17](17-agntcy-revisited.md))
-- **`chio-livekit-py`**: voice mediation, paired with async receipt write + sequence numbering + bounded-loss SLO. ([14](14-voice-agent-bridges.md))
+- **`chio-livekit-py`**: voice mediation, paired with WAL-backed async receipt write, sequence numbering, fail-closed queue saturation, and replayable gap detection. ([14](14-voice-agent-bridges.md))
 - **Per-bridge fast paths + voice-tier policy classification**: voice fast-path skips outer signature; voice-tier guards declare in-process. ([14](14-voice-agent-bridges.md), [16](16-latency-budget-audit.md))
 
 ### Wave D: defer
@@ -124,7 +124,7 @@ or equivalent decision note is accepted.
 1. **Voice-tier policy classification**: should guards declare a tier (`voice` | `standard` | `batch`) and the kernel refuse to compose incompatible chains? Decide before E3 lands.
 2. **`must_understand` extension registry**: who owns it? Probably `spec/PROTOCOL.md` plus a registry doc; needs a current v1 governance answer.
 3. **AGNTCY Directory + Identity consumption details**: what's the production wire format Webex uses? Replaces the prior "zero-securitySchemes" question, which was specific to the now-dead ACP. See [17](17-agntcy-revisited.md).
-4. **Async receipt write bounded-loss SLO**: what's acceptable? 1 receipt per 10^6? Per-bridge or per-tier?
+4. **Async receipt write WAL profile**: what is the per-tier fsync and replay budget, and which queues must deny on saturation?
 5. **Bench baseline citation policy**: after the bench-stub PR lands, latency
    claims must cite the exact bench commit, feature set, and command that
    produced the numbers.

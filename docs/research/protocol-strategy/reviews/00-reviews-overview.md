@@ -122,7 +122,7 @@ the research directory for em/en dashes. ([C6](06-vision-non-goals-review.md))
 
 1. **`policy_hash` / `policy_digest` / `decision_id` is the highest-traffic identity-of-decision field group.** It surfaces in docs 04, 10, 15, plus the v2 overview, and the C3 verification revealed a real type incompatibility. This needs a one-paragraph canonical spec before any wave-A code lands.
 
-2. **The "extensions" map in doc 15 is load-bearing for half of wave 2.** Voice (`human_principal`, `deferred_durability`), Bedrock (`trace_redaction_mode`, `action_group_kind`), OpenAI (`tool_origin` if extension instead of core), directory traces, and event-actions (R3) all depend on it. The C1 finding that two docs put `human_principal` in different homes shows the design needs a clear "core vs extension" criterion before bridge work starts.
+2. **The "extensions" map in doc 15 is load-bearing for half of wave 2.** Voice (`human_principal` reference), Bedrock (`trace_redaction_mode`, `action_group_kind`), OpenAI provider IDs, directory traces, and event-actions (R3) all depend on it. Core fields now own `tool_origin`, redaction mode, receipt kind, boundary class, and extension integrity; bridge extensions carry provider-specific evidence.
 
 3. **The bench-stub finding affects every latency claim across the swarm.** Until the 11+ stubs have real bodies, no doc can cite a verified per-stage latency number. The Cedar `<150 µs` estimate, the voice `200 ms` budget, the hybrid signing `150-225 µs` figure are all extrapolations from external benchmarks.
 

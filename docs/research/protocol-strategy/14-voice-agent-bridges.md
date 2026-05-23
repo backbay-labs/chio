@@ -16,7 +16,8 @@ event distinct from the audio pipeline, which is the shape Chio already mediates
 Recommended ordering: ship a **LiveKit Python middleware** at MVP (OSS, native MCP,
 biggest 2026 momentum), then a Pipecat `FrameProcessor`, then a paired Vapi+Retell
 HTTP shim. Ed25519 signing (~25 us) and hybrid Ed25519+ML-DSA-65 (~150-225 us) both fit
-the budget; the limiter is durability, so **sign synchronously, write asynchronously**.
+the budget; the limiter is durability, so **sign synchronously, WAL-fsync before
+ack, then drain asynchronously**.
 New: a `human_principal` field on `CallerIdentity` plus voice-specific receipt fields
 (`session_id`, `participant_id`, `audio_timestamp_estimate`, `platform`).
 
