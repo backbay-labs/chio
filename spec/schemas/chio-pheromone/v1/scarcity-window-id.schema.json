@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/scarcity-window-id.schema.json",
+  "title": "Chio Pheromone Scarcity Window Id Preimage",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "reputationEpoch",
+    "windowStartUnixMs",
+    "windowEndUnixMs",
+    "treatyId",
+    "subjectClassNamespace",
+    "subjectClass"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone-scarcity-window-id.v1" },
+    "reputationEpoch": { "type": "integer", "minimum": 0 },
+    "windowStartUnixMs": { "type": "integer", "minimum": 0 },
+    "windowEndUnixMs": { "type": "integer", "minimum": 0 },
+    "treatyId": { "type": "string", "minLength": 1 },
+    "subjectClassNamespace": { "type": "string", "minLength": 1 },
+    "subjectClass": { "type": "string", "minLength": 1 }
+  }
+}

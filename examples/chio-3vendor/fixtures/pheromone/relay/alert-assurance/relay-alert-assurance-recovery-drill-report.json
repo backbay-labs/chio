@@ -1,0 +1,59 @@
+{
+  "schema": "chio.pheromone.relay-alert-assurance-recovery-drill-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000100000,
+  "drillCount": 7,
+  "drills": [
+    {
+      "caseId": "stale_normalized_evidence",
+      "accepted": true,
+      "code": "accepted",
+      "detail": "stale normalized evidence remains visible in replay outputs"
+    },
+    {
+      "caseId": "missing_delivery_evidence",
+      "accepted": true,
+      "code": "accepted",
+      "detail": "missing delivery evidence is represented as recovery attention"
+    },
+    {
+      "caseId": "missing_route_owner_review",
+      "accepted": true,
+      "code": "accepted",
+      "detail": "missing route owner review blocks retention pruning"
+    },
+    {
+      "caseId": "expired_assurance_package",
+      "accepted": true,
+      "code": "accepted",
+      "detail": "expired assurance package remains reviewable offline"
+    },
+    {
+      "caseId": "bad_export_signature",
+      "accepted": true,
+      "code": "accepted",
+      "detail": "bad export signature is rejected by trusted exporter verification"
+    },
+    {
+      "caseId": "path_traversal",
+      "accepted": true,
+      "code": "accepted",
+      "detail": "unsafe bundle paths are rejected before replay"
+    },
+    {
+      "caseId": "secret_looking_field",
+      "accepted": true,
+      "code": "accepted",
+      "detail": "secret-looking evidence fields are rejected during normalization or export"
+    }
+  ],
+  "checks": [
+    {
+      "code": "recovery_drill",
+      "accepted": true,
+      "detail": "offline export recovery cases are executable without notification dispatch"
+    }
+  ]
+}

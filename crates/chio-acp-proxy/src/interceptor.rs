@@ -200,7 +200,6 @@ impl MessageInterceptor {
             CapabilityGate::Skip => None,
             CapabilityGate::Allow(context) => Some(context),
             CapabilityGate::Block(response) => {
-                self.clear_capability_context(&read_params.session_id);
                 return Ok(InterceptResult::Block(response));
             }
         };
@@ -213,7 +212,6 @@ impl MessageInterceptor {
                 Ok(InterceptResult::Forward(message.clone()))
             }
             Err(err) => {
-                self.clear_capability_context(&read_params.session_id);
                 let id = message.get("id");
                 let error_response = json_rpc_error(id, ACP_ERROR_ACCESS_DENIED, &err.to_string());
                 tracing::warn!(path = %read_params.path, "fs read blocked");
@@ -244,7 +242,6 @@ impl MessageInterceptor {
             CapabilityGate::Skip => None,
             CapabilityGate::Allow(context) => Some(context),
             CapabilityGate::Block(response) => {
-                self.clear_capability_context(&write_params.session_id);
                 return Ok(InterceptResult::Block(response));
             }
         };
@@ -257,7 +254,6 @@ impl MessageInterceptor {
                 Ok(InterceptResult::Forward(message.clone()))
             }
             Err(err) => {
-                self.clear_capability_context(&write_params.session_id);
                 let id = message.get("id");
                 let error_response = json_rpc_error(id, ACP_ERROR_ACCESS_DENIED, &err.to_string());
                 tracing::warn!(path = %write_params.path, "fs write blocked");
@@ -286,7 +282,6 @@ impl MessageInterceptor {
             CapabilityGate::Skip => None,
             CapabilityGate::Allow(context) => Some(context),
             CapabilityGate::Block(response) => {
-                self.clear_capability_context(&term_params.session_id);
                 return Ok(InterceptResult::Block(response));
             }
         };
@@ -302,7 +297,6 @@ impl MessageInterceptor {
                 Ok(InterceptResult::Forward(message.clone()))
             }
             Err(err) => {
-                self.clear_capability_context(&term_params.session_id);
                 let id = message.get("id");
                 let error_response = json_rpc_error(id, ACP_ERROR_ACCESS_DENIED, &err.to_string());
                 tracing::warn!(command = %term_params.command, "terminal create blocked");
@@ -463,14 +457,7 @@ impl MessageInterceptor {
             return None;
         };
         let key = pending_capability_context_key(session_id);
-        let next = match contexts.get_mut(&key).map(|queue| queue.len()) {
-            Some(1) => contexts.get_mut(&key).and_then(VecDeque::pop_front),
-            Some(_) => {
-                contexts.remove(&key);
-                None
-            }
-            None => None,
-        };
+        let next = contexts.get_mut(&key).and_then(VecDeque::pop_front);
         if contexts.get(&key).is_some_and(VecDeque::is_empty) {
             contexts.remove(&key);
         }
@@ -504,14 +491,6 @@ impl MessageInterceptor {
                     .get(&tool_capability_context_key(session_id, tool_call_id))
                     .and_then(|queue| queue.front().cloned())
             })
-    }
-
-    fn clear_capability_context(&self, session_id: &str) {
-        if let Ok(mut contexts) = self.live_capability_contexts.lock() {
-            let pending_key = pending_capability_context_key(session_id);
-            let tool_prefix = format!("tool:{session_id}:");
-            contexts.retain(|key, _| key != &pending_key && !key.starts_with(&tool_prefix));
-        }
     }
 
     fn clear_tool_capability_context(&self, session_id: &str, tool_call_id: &str) {

@@ -1410,22 +1410,47 @@ for ChioAgentMessageListCapabilities {
 ///        "attenuation_proof": {
 ///          "type": "object",
 ///          "required": [
-///            "child_scope_hash",
-///            "normalized_subset_proof",
-///            "parent_scope_hash"
+///            "childScopeHash",
+///            "normalizedSubsetProof",
+///            "parentScopeHash"
 ///          ],
 ///          "properties": {
-///            "child_scope_hash": {
+///            "childScopeHash": {
 ///              "type": "string",
 ///              "pattern": "^[0-9a-f]{64}$"
 ///            },
-///            "normalized_subset_proof": {
-///              "type": "array",
-///              "items": {
-///                "type": "string"
-///              }
+///            "normalizedSubsetProof": {
+///              "type": "object",
+///              "required": [
+///                "normalizedChildScope",
+///                "normalizedParentScope"
+///              ],
+///              "properties": {
+///                "normalizedChildScope": {
+///                  "type": "string",
+///                  "minLength": 2
+///                },
+///                "normalizedParentScope": {
+///                  "type": "string",
+///                  "minLength": 2
+///                },
+///                "restrictedPredicates": {
+///                  "type": "array",
+///                  "items": {
+///                    "type": "string"
+///                  }
+///                },
+///                "subsetRelations": {
+///                  "type": "array",
+///                  "items": {
+///                    "type": "object",
+///                    "additionalProperties": true
+///                  }
+///                }
+///              },
+///              "additionalProperties": false
 ///            },
-///            "parent_scope_hash": {
+///            "parentScopeHash": {
 ///              "type": "string",
 ///              "pattern": "^[0-9a-f]{64}$"
 ///            }
@@ -1784,22 +1809,47 @@ for ChioAgentMessageToolCallRequest {
 ///    "attenuation_proof": {
 ///      "type": "object",
 ///      "required": [
-///        "child_scope_hash",
-///        "normalized_subset_proof",
-///        "parent_scope_hash"
+///        "childScopeHash",
+///        "normalizedSubsetProof",
+///        "parentScopeHash"
 ///      ],
 ///      "properties": {
-///        "child_scope_hash": {
+///        "childScopeHash": {
 ///          "type": "string",
 ///          "pattern": "^[0-9a-f]{64}$"
 ///        },
-///        "normalized_subset_proof": {
-///          "type": "array",
-///          "items": {
-///            "type": "string"
-///          }
+///        "normalizedSubsetProof": {
+///          "type": "object",
+///          "required": [
+///            "normalizedChildScope",
+///            "normalizedParentScope"
+///          ],
+///          "properties": {
+///            "normalizedChildScope": {
+///              "type": "string",
+///              "minLength": 2
+///            },
+///            "normalizedParentScope": {
+///              "type": "string",
+///              "minLength": 2
+///            },
+///            "restrictedPredicates": {
+///              "type": "array",
+///              "items": {
+///                "type": "string"
+///              }
+///            },
+///            "subsetRelations": {
+///              "type": "array",
+///              "items": {
+///                "type": "object",
+///                "additionalProperties": true
+///              }
+///            }
+///          },
+///          "additionalProperties": false
 ///        },
-///        "parent_scope_hash": {
+///        "parentScopeHash": {
 ///          "type": "string",
 ///          "pattern": "^[0-9a-f]{64}$"
 ///        }
@@ -2240,22 +2290,47 @@ for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
 ///{
 ///  "type": "object",
 ///  "required": [
-///    "child_scope_hash",
-///    "normalized_subset_proof",
-///    "parent_scope_hash"
+///    "childScopeHash",
+///    "normalizedSubsetProof",
+///    "parentScopeHash"
 ///  ],
 ///  "properties": {
-///    "child_scope_hash": {
+///    "childScopeHash": {
 ///      "type": "string",
 ///      "pattern": "^[0-9a-f]{64}$"
 ///    },
-///    "normalized_subset_proof": {
-///      "type": "array",
-///      "items": {
-///        "type": "string"
-///      }
+///    "normalizedSubsetProof": {
+///      "type": "object",
+///      "required": [
+///        "normalizedChildScope",
+///        "normalizedParentScope"
+///      ],
+///      "properties": {
+///        "normalizedChildScope": {
+///          "type": "string",
+///          "minLength": 2
+///        },
+///        "normalizedParentScope": {
+///          "type": "string",
+///          "minLength": 2
+///        },
+///        "restrictedPredicates": {
+///          "type": "array",
+///          "items": {
+///            "type": "string"
+///          }
+///        },
+///        "subsetRelations": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "additionalProperties": true
+///          }
+///        }
+///      },
+///      "additionalProperties": false
 ///    },
-///    "parent_scope_hash": {
+///    "parentScopeHash": {
 ///      "type": "string",
 ///      "pattern": "^[0-9a-f]{64}$"
 ///    }
@@ -2267,8 +2342,11 @@ for ChioAgentMessageToolCallRequestCapabilityTokenAlgorithm {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProof {
+    #[serde(rename = "childScopeHash")]
     pub child_scope_hash: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash,
-    pub normalized_subset_proof: ::std::vec::Vec<::std::string::String>,
+    #[serde(rename = "normalizedSubsetProof")]
+    pub normalized_subset_proof: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProof,
+    #[serde(rename = "parentScopeHash")]
     pub parent_scope_hash: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofParentScopeHash,
 }
 impl ::std::convert::From<
@@ -2364,6 +2442,264 @@ for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash
 }
 impl<'de> ::serde::Deserialize<'de>
 for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofChildScopeHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProof`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "normalizedChildScope",
+///    "normalizedParentScope"
+///  ],
+///  "properties": {
+///    "normalizedChildScope": {
+///      "type": "string",
+///      "minLength": 2
+///    },
+///    "normalizedParentScope": {
+///      "type": "string",
+///      "minLength": 2
+///    },
+///    "restrictedPredicates": {
+///      "type": "array",
+///      "items": {
+///        "type": "string"
+///      }
+///    },
+///    "subsetRelations": {
+///      "type": "array",
+///      "items": {
+///        "type": "object",
+///        "additionalProperties": true
+///      }
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProof {
+    #[serde(rename = "normalizedChildScope")]
+    pub normalized_child_scope: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope,
+    #[serde(rename = "normalizedParentScope")]
+    pub normalized_parent_scope: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope,
+    #[serde(
+        rename = "restrictedPredicates",
+        default,
+        skip_serializing_if = "::std::vec::Vec::is_empty"
+    )]
+    pub restricted_predicates: ::std::vec::Vec<::std::string::String>,
+    #[serde(
+        rename = "subsetRelations",
+        default,
+        skip_serializing_if = "::std::vec::Vec::is_empty"
+    )]
+    pub subset_relations: ::std::vec::Vec<
+        ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    >,
+}
+impl ::std::convert::From<
+    &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProof,
+>
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProof {
+    fn from(
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProof,
+    ) -> Self {
+        value.clone()
+    }
+}
+///`ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 2
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope(
+    ::std::string::String,
+);
+impl ::std::ops::Deref
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<
+    ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope,
+> for ::std::string::String {
+    fn from(
+        value: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope,
+    ) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<
+    &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope,
+>
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    fn from(
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope,
+    ) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 2usize {
+            return Err("shorter than 2 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 2
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope(
+    ::std::string::String,
+);
+impl ::std::ops::Deref
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<
+    ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope,
+> for ::std::string::String {
+    fn from(
+        value: ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope,
+    ) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<
+    &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope,
+>
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
+    fn from(
+        value: &ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope,
+    ) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 2usize {
+            return Err("shorter than 2 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioAgentMessageToolCallRequestCapabilityTokenAttenuationProofNormalizedSubsetProofNormalizedParentScope {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -6016,7 +6352,7 @@ for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig {
             })
     }
 }
-///Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict CHIODOS bilateral cosign invocation predicate.
+///Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict treaty-bound bilateral invocation predicate.
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -6024,7 +6360,7 @@ for ChioBilateralDsseSignatureSliceEnvelopeSignaturesItemSig {
 ///{
 ///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/federation/bilateral-signature-slice",
 ///  "title": "Chio bilateral DSSE signature-slice statement",
-///  "description": "Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict CHIODOS bilateral cosign invocation predicate.",
+///  "description": "Bounded in-toto Statement payload for Chio bilateral DSSE signature slices. This is not the strict treaty-bound bilateral invocation predicate.",
 ///  "type": "object",
 ///  "required": [
 ///    "_type",
@@ -9106,22 +9442,47 @@ impl<'de> ::serde::Deserialize<'de> for ChioJsonRpc20ResponseVariant1IdVariant1 
 ///          "attenuation_proof": {
 ///            "type": "object",
 ///            "required": [
-///              "child_scope_hash",
-///              "normalized_subset_proof",
-///              "parent_scope_hash"
+///              "childScopeHash",
+///              "normalizedSubsetProof",
+///              "parentScopeHash"
 ///            ],
 ///            "properties": {
-///              "child_scope_hash": {
+///              "childScopeHash": {
 ///                "type": "string",
 ///                "pattern": "^[0-9a-f]{64}$"
 ///              },
-///              "normalized_subset_proof": {
-///                "type": "array",
-///                "items": {
-///                  "type": "string"
-///                }
+///              "normalizedSubsetProof": {
+///                "type": "object",
+///                "required": [
+///                  "normalizedChildScope",
+///                  "normalizedParentScope"
+///                ],
+///                "properties": {
+///                  "normalizedChildScope": {
+///                    "type": "string",
+///                    "minLength": 2
+///                  },
+///                  "normalizedParentScope": {
+///                    "type": "string",
+///                    "minLength": 2
+///                  },
+///                  "restrictedPredicates": {
+///                    "type": "array",
+///                    "items": {
+///                      "type": "string"
+///                    }
+///                  },
+///                  "subsetRelations": {
+///                    "type": "array",
+///                    "items": {
+///                      "type": "object",
+///                      "additionalProperties": true
+///                    }
+///                  }
+///                },
+///                "additionalProperties": false
 ///              },
-///              "parent_scope_hash": {
+///              "parentScopeHash": {
 ///                "type": "string",
 ///                "pattern": "^[0-9a-f]{64}$"
 ///              }
@@ -9460,22 +9821,47 @@ for ChioKernelMessageCapabilityList {
 ///    "attenuation_proof": {
 ///      "type": "object",
 ///      "required": [
-///        "child_scope_hash",
-///        "normalized_subset_proof",
-///        "parent_scope_hash"
+///        "childScopeHash",
+///        "normalizedSubsetProof",
+///        "parentScopeHash"
 ///      ],
 ///      "properties": {
-///        "child_scope_hash": {
+///        "childScopeHash": {
 ///          "type": "string",
 ///          "pattern": "^[0-9a-f]{64}$"
 ///        },
-///        "normalized_subset_proof": {
-///          "type": "array",
-///          "items": {
-///            "type": "string"
-///          }
+///        "normalizedSubsetProof": {
+///          "type": "object",
+///          "required": [
+///            "normalizedChildScope",
+///            "normalizedParentScope"
+///          ],
+///          "properties": {
+///            "normalizedChildScope": {
+///              "type": "string",
+///              "minLength": 2
+///            },
+///            "normalizedParentScope": {
+///              "type": "string",
+///              "minLength": 2
+///            },
+///            "restrictedPredicates": {
+///              "type": "array",
+///              "items": {
+///                "type": "string"
+///              }
+///            },
+///            "subsetRelations": {
+///              "type": "array",
+///              "items": {
+///                "type": "object",
+///                "additionalProperties": true
+///              }
+///            }
+///          },
+///          "additionalProperties": false
 ///        },
-///        "parent_scope_hash": {
+///        "parentScopeHash": {
 ///          "type": "string",
 ///          "pattern": "^[0-9a-f]{64}$"
 ///        }
@@ -9912,22 +10298,47 @@ for ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm {
 ///{
 ///  "type": "object",
 ///  "required": [
-///    "child_scope_hash",
-///    "normalized_subset_proof",
-///    "parent_scope_hash"
+///    "childScopeHash",
+///    "normalizedSubsetProof",
+///    "parentScopeHash"
 ///  ],
 ///  "properties": {
-///    "child_scope_hash": {
+///    "childScopeHash": {
 ///      "type": "string",
 ///      "pattern": "^[0-9a-f]{64}$"
 ///    },
-///    "normalized_subset_proof": {
-///      "type": "array",
-///      "items": {
-///        "type": "string"
-///      }
+///    "normalizedSubsetProof": {
+///      "type": "object",
+///      "required": [
+///        "normalizedChildScope",
+///        "normalizedParentScope"
+///      ],
+///      "properties": {
+///        "normalizedChildScope": {
+///          "type": "string",
+///          "minLength": 2
+///        },
+///        "normalizedParentScope": {
+///          "type": "string",
+///          "minLength": 2
+///        },
+///        "restrictedPredicates": {
+///          "type": "array",
+///          "items": {
+///            "type": "string"
+///          }
+///        },
+///        "subsetRelations": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "additionalProperties": true
+///          }
+///        }
+///      },
+///      "additionalProperties": false
 ///    },
-///    "parent_scope_hash": {
+///    "parentScopeHash": {
 ///      "type": "string",
 ///      "pattern": "^[0-9a-f]{64}$"
 ///    }
@@ -9939,8 +10350,11 @@ for ChioKernelMessageCapabilityListCapabilitiesItemAlgorithm {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProof {
+    #[serde(rename = "childScopeHash")]
     pub child_scope_hash: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash,
-    pub normalized_subset_proof: ::std::vec::Vec<::std::string::String>,
+    #[serde(rename = "normalizedSubsetProof")]
+    pub normalized_subset_proof: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProof,
+    #[serde(rename = "parentScopeHash")]
     pub parent_scope_hash: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofParentScopeHash,
 }
 impl ::std::convert::From<
@@ -10036,6 +10450,264 @@ for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHas
 }
 impl<'de> ::serde::Deserialize<'de>
 for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofChildScopeHash {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProof`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "normalizedChildScope",
+///    "normalizedParentScope"
+///  ],
+///  "properties": {
+///    "normalizedChildScope": {
+///      "type": "string",
+///      "minLength": 2
+///    },
+///    "normalizedParentScope": {
+///      "type": "string",
+///      "minLength": 2
+///    },
+///    "restrictedPredicates": {
+///      "type": "array",
+///      "items": {
+///        "type": "string"
+///      }
+///    },
+///    "subsetRelations": {
+///      "type": "array",
+///      "items": {
+///        "type": "object",
+///        "additionalProperties": true
+///      }
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProof {
+    #[serde(rename = "normalizedChildScope")]
+    pub normalized_child_scope: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope,
+    #[serde(rename = "normalizedParentScope")]
+    pub normalized_parent_scope: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope,
+    #[serde(
+        rename = "restrictedPredicates",
+        default,
+        skip_serializing_if = "::std::vec::Vec::is_empty"
+    )]
+    pub restricted_predicates: ::std::vec::Vec<::std::string::String>,
+    #[serde(
+        rename = "subsetRelations",
+        default,
+        skip_serializing_if = "::std::vec::Vec::is_empty"
+    )]
+    pub subset_relations: ::std::vec::Vec<
+        ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    >,
+}
+impl ::std::convert::From<
+    &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProof,
+>
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProof {
+    fn from(
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProof,
+    ) -> Self {
+        value.clone()
+    }
+}
+///`ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 2
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope(
+    ::std::string::String,
+);
+impl ::std::ops::Deref
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<
+    ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope,
+> for ::std::string::String {
+    fn from(
+        value: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope,
+    ) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<
+    &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope,
+>
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    fn from(
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope,
+    ) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 2usize {
+            return Err("shorter than 2 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedChildScope {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 2
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope(
+    ::std::string::String,
+);
+impl ::std::ops::Deref
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<
+    ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope,
+> for ::std::string::String {
+    fn from(
+        value: ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope,
+    ) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<
+    &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope,
+>
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
+    fn from(
+        value: &ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope,
+    ) -> Self {
+        value.clone()
+    }
+}
+impl ::std::str::FromStr
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 2usize {
+            return Err("shorter than 2 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+for ChioKernelMessageCapabilityListCapabilitiesItemAttenuationProofNormalizedSubsetProofNormalizedParentScope {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,

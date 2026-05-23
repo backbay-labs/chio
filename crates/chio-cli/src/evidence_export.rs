@@ -604,6 +604,10 @@ fn merge_read_boundary(
                 "requested admin-all export exceeds tenant-scoped federation policy".to_string(),
             ))
         }
+        (
+            Some(ReceiptReadBoundary::AdminAll),
+            Some(boundary @ ReceiptReadBoundary::TenantScoped { .. }),
+        ) => Ok(Some(boundary.clone())),
         (Some(boundary), _) => Ok(Some(boundary.clone())),
         (None, Some(boundary)) => Ok(Some(boundary.clone())),
         (None, None) => Ok(None),
@@ -1546,6 +1550,8 @@ pub struct EvidenceFederationPolicyCreateArgs<'a> {
     pub agent_subject: Option<&'a str>,
     pub since: Option<u64>,
     pub until: Option<u64>,
+    pub tenant: Option<&'a str>,
+    pub admin_all: bool,
     pub expires_at: u64,
     pub require_proofs: bool,
     pub purpose: Option<&'a str>,
@@ -1569,6 +1575,22 @@ pub fn cmd_evidence_federation_policy_create(
             ));
         }
     }
+    if args.admin_all && args.tenant.is_some() {
+        return Err(CliError::attest_error(
+            "use either --tenant or --admin-all for evidence federation policy create, not both"
+                .to_string(),
+        ));
+    }
+    if !args.admin_all && args.tenant.is_none() {
+        return Err(CliError::attest_error(
+            "evidence federation policy create requires either --tenant or --admin-all".to_string(),
+        ));
+    }
+    let read_boundary = if args.admin_all {
+        Some(ReceiptReadBoundary::AdminAll)
+    } else {
+        args.tenant.map(ReceiptReadBoundary::tenant_scoped)
+    };
 
     let body = FederationPolicyBody {
         schema: FEDERATION_POLICY_SCHEMA.to_string(),
@@ -1582,8 +1604,8 @@ pub fn cmd_evidence_federation_policy_create(
             agent_subject: args.agent_subject.map(ToOwned::to_owned),
             since: args.since,
             until: args.until,
-            tenant: None,
-            read_boundary: None,
+            tenant: args.tenant.map(ToOwned::to_owned),
+            read_boundary,
         },
         require_proofs: args.require_proofs,
         purpose: args.purpose.map(ToOwned::to_owned),
@@ -2028,6 +2050,28 @@ mod tests {
         .test_unwrap_err();
 
         assert!(error.to_string().contains("tenant"));
+    }
+
+    #[test]
+    fn merge_export_query_uses_cli_tenant_when_policy_is_admin_all() {
+        let merged = merge_export_query(
+            &EvidenceExportQuery {
+                capability_id: None,
+                agent_subject: None,
+                since: None,
+                until: None,
+                tenant: None,
+                read_boundary: Some(ReceiptReadBoundary::AdminAll),
+            },
+            &EvidenceExportQuery::tenant_scoped("tenant-a"),
+        )
+        .test_unwrap();
+
+        assert_eq!(merged.tenant.as_deref(), Some("tenant-a"));
+        assert_eq!(
+            merged.read_boundary,
+            Some(ReceiptReadBoundary::tenant_scoped("tenant-a"))
+        );
     }
 
     #[test]

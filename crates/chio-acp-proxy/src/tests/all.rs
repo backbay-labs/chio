@@ -2329,8 +2329,44 @@ mod attestation_and_telemetry_tests {
         trust_level: chio_core::TrustLevel,
         semantics: chio_core::ReceiptSemanticFields,
     ) -> ChioReceipt {
+        make_authorization_receipt_with_optional_context(
+            signer,
+            capability_id,
+            request_id,
+            Some(session_id),
+            Some(tool_call_id),
+            tool_name,
+            decision,
+            trust_level,
+            semantics,
+        )
+    }
+
+    fn make_authorization_receipt_with_optional_context(
+        signer: &Keypair,
+        capability_id: &str,
+        request_id: &str,
+        session_id: Option<&str>,
+        tool_call_id: Option<&str>,
+        tool_name: &str,
+        decision: Decision,
+        trust_level: chio_core::TrustLevel,
+        semantics: chio_core::ReceiptSemanticFields,
+    ) -> ChioReceipt {
         let action = ToolCallAction::from_parameters(json!({"tool": tool_name}))
             .expect("hash receipt parameters");
+        let mut receipt_context = json!({
+            "request_id": request_id,
+        });
+        let receipt_context_object = receipt_context
+            .as_object_mut()
+            .expect("receipt context should be an object");
+        if let Some(session_id) = session_id {
+            receipt_context_object.insert("session_id".to_string(), json!(session_id));
+        }
+        if let Some(tool_call_id) = tool_call_id {
+            receipt_context_object.insert("tool_call_id".to_string(), json!(tool_call_id));
+        }
         ChioReceipt::sign(
             ChioReceiptBody {
                 id: "ignored-auth-id".to_string(),
@@ -2345,11 +2381,7 @@ mod attestation_and_telemetry_tests {
                 evidence: Vec::new(),
                 metadata: Some(json!({
                     "receipt_semantics": semantics,
-                    "receipt_context": {
-                        "request_id": request_id,
-                        "session_id": session_id,
-                        "tool_call_id": tool_call_id,
-                    }
+                    "receipt_context": receipt_context,
                 })),
                 trust_level,
                 kernel_key: signer.public_key(),
@@ -2863,7 +2895,7 @@ mod attestation_and_telemetry_tests {
     }
 
     #[test]
-    fn interceptor_does_not_bind_ambiguous_pending_contexts_to_tool_calls() {
+    fn interceptor_binds_multiple_pending_contexts_fifo_to_tool_calls() {
         let requests = Arc::new(Mutex::new(Vec::new()));
         let checker = SequencedChecker::new(
             Arc::clone(&requests),
@@ -2918,7 +2950,35 @@ mod attestation_and_telemetry_tests {
             }
         }
 
-        let update = json!({
+        let first_update = json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": "session-ambiguous",
+                "update": {
+                    "toolCallId": "tool-a",
+                    "title": "Read file A",
+                    "kind": "fs_read",
+                    "status": "running"
+                }
+            }
+        });
+
+        match interceptor
+            .intercept(Direction::AgentToClient, &first_update)
+            .expect("first update should bind first pending context")
+        {
+            InterceptResult::ForwardWithReceipt(_, receipt) => {
+                assert_eq!(receipt.capability_id.as_deref(), Some("cap-a"));
+                assert_eq!(
+                    receipt.enforcement_mode,
+                    Some(AcpEnforcementMode::CryptographicallyEnforced)
+                );
+            }
+            other => panic!("expected ForwardWithReceipt, got {:?}", other),
+        }
+
+        let second_update = json!({
             "jsonrpc": "2.0",
             "method": "session/update",
             "params": {
@@ -2933,14 +2993,14 @@ mod attestation_and_telemetry_tests {
         });
 
         match interceptor
-            .intercept(Direction::AgentToClient, &update)
-            .expect("ambiguous update should still produce an audit receipt")
+            .intercept(Direction::AgentToClient, &second_update)
+            .expect("second update should bind second pending context")
         {
             InterceptResult::ForwardWithReceipt(_, receipt) => {
-                assert_eq!(receipt.capability_id.as_deref(), None);
+                assert_eq!(receipt.capability_id.as_deref(), Some("cap-b"));
                 assert_eq!(
                     receipt.enforcement_mode,
-                    Some(AcpEnforcementMode::AuditOnly)
+                    Some(AcpEnforcementMode::CryptographicallyEnforced)
                 );
             }
             other => panic!("expected ForwardWithReceipt, got {:?}", other),
@@ -3575,6 +3635,48 @@ mod attestation_and_telemetry_tests {
         );
         assert!(!audit_semantics.is_authorized(&audit_only.decision));
         assert!(!audit_only.is_allowed());
+    }
+
+    #[test]
+    fn kernel_receipt_signer_accepts_authorization_receipt_without_optional_acp_context_ids() {
+        let keypair = Keypair::generate();
+        let shared = Arc::new(Mutex::new(MockStoreState::default()));
+        let authorization_request_id = "acp-live-guard-auth-minimal";
+        let authorization_receipt = make_authorization_receipt_with_optional_context(
+            &keypair,
+            "cap-minimal-context",
+            authorization_request_id,
+            None,
+            None,
+            "fs/read_text_file",
+            Decision::Allow,
+            chio_core::TrustLevel::Mediated,
+            chio_core::ReceiptSemanticFields::mediated_prevent(),
+        );
+        shared
+            .lock()
+            .expect("shared state should lock")
+            .appended_receipts
+            .push(authorization_receipt.clone());
+        let store = MockReceiptStore {
+            state: Arc::clone(&shared),
+            supports_checkpoints: false,
+        };
+        let signer = KernelReceiptSigner::new(keypair, "proxy-server", Box::new(store), 10);
+
+        let mut enforced_entry = make_audit_entry("call-live", "session-live");
+        enforced_entry.capability_id = Some("cap-minimal-context".to_string());
+        enforced_entry.authorization_receipt_id = Some(authorization_receipt.id.clone());
+        enforced_entry.authorization_request_id = Some(authorization_request_id.to_string());
+        enforced_entry.enforcement_mode = Some(AcpEnforcementMode::CryptographicallyEnforced);
+
+        signer
+            .sign_acp_receipt(&AcpReceiptRequest {
+                audit_entry: enforced_entry,
+                tool_server: "proxy-server".to_string(),
+                tool_name: "fs/read_text_file".to_string(),
+            })
+            .expect("kernel authorization metadata without ACP ids should still bind by request id");
     }
 
     #[test]

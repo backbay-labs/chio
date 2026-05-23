@@ -8,7 +8,7 @@ This directory contains the T1.5 SRE rule pack.
   alerts. Labels `notification_route`, `opsgenie`, and `severity` are the
   handoff contract to the existing `chio-siem` PagerDuty and OpsGenie dispatch
   path.
-- `chiodos-pheromone-relay-observability-rules.yml` defines relay operator
+- `chio-pheromone-relay-observability-rules.yml` defines relay operator
   alerts using bounded `status`, `reason`, `notification_route`, `opsgenie`,
   `service`, and `severity` labels only.
 - Relay alert handoff readiness is expressed by

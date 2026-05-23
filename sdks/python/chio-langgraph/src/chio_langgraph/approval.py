@@ -1,33 +1,11 @@
 """The :func:`chio_approval_node` wrapper.
 
-Bridges LangGraph's :func:`langgraph.types.interrupt` mechanism to Chio's
-``Verdict::PendingApproval`` path.
-
-Flow
-----
-
-1. The wrapped node is invoked. Before running the user body we evaluate
-   the node dispatch through the Chio sidecar just like :func:`chio_node`.
-2. If the verdict is ``allow`` we proceed directly to the wrapped body.
-3. If the verdict is ``pending_approval`` (the sidecar opened an
-   approval request behind the scenes), we build a payload describing
-   the pending approval and hand it to :func:`langgraph.types.interrupt`.
-   LangGraph will pause the graph at this node; the caller resumes it
-   later via ``Command(resume=<decision>)``.
-4. When the graph resumes, ``interrupt`` returns the resume value. The
-   wrapper treats it as an
-   :class:`ApprovalResolution` (either a dict with ``outcome`` or an
-   :class:`ApprovalResolution` instance). An ``approved`` outcome
-   triggers the wrapped body; a ``denied``/``rejected`` outcome raises
-   :class:`ChioLangGraphError` so the graph's error handling can react.
-5. If the verdict is ``deny`` we raise :class:`ChioLangGraphError`
-   immediately.
-
-The wrapper also accepts an ``approval_policy`` callable which lets the
-node *locally* decide whether an approval is required even in the
-absence of a sidecar PendingApproval signal. This matches the spec: the
-node itself owns the decision to request approval; the sidecar owns the
-capability/guard evaluation.
+Bridges LangGraph :func:`langgraph.types.interrupt` to Chio's
+``Verdict::PendingApproval`` path. The wrapper evaluates via the
+sidecar; on ``allow`` runs the body, on ``deny`` raises, on
+``pending_approval`` (or when ``approval_policy`` returns truthy) it
+pauses the graph through ``interrupt``. The resume value is normalised
+into an :class:`ApprovalResolution`; ``approved`` runs the body.
 """
 
 from __future__ import annotations
@@ -40,6 +18,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from chio_adapter_base.redact import RedactionPolicy, redact_args
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
 
@@ -50,9 +29,7 @@ from chio_langgraph.scoping import ChioGraphConfig, enforce_subgraph_ceiling
 logger = logging.getLogger(__name__)
 
 
-# ``langgraph.types.interrupt`` is imported lazily so that the SDK can be
-# used from tests that mock out the interrupt surface. When the function
-# is patched we want the patched version to be used.
+# Lazy import so test monkeypatches of langgraph.types.interrupt take effect.
 _InterruptFn = Callable[[Any], Any]
 
 
@@ -60,9 +37,8 @@ _InterruptFn = Callable[[Any], Any]
 class ApprovalRequestPayload:
     """Wire-shape sent to the Chio sidecar to open an approval.
 
-    The fields mirror the ``ApprovalRequest`` type in ``chio-kernel``.
-    This SDK produces the payload locally; the sidecar is the system of
-    record for approval state.
+    Mirrors the ``ApprovalRequest`` type in ``chio-kernel``; the sidecar
+    is the system of record for approval state.
     """
 
     approval_id: str
@@ -103,13 +79,7 @@ class ApprovalRequestPayload:
 
 @dataclass
 class ApprovalResolution:
-    """The human's answer, delivered back through ``interrupt``'s return.
-
-    LangGraph passes whatever you hand to ``Command(resume=...)`` back to
-    the paused node. :func:`chio_approval_node` normalises a handful of
-    common shapes (dict, ``ApprovalResolution``, plain string) into this
-    dataclass so callers can be liberal with what they feed in.
-    """
+    """The reviewer's answer, delivered back through ``interrupt``'s return."""
 
     outcome: str  # "approved" | "denied" | "rejected"
     approval_id: str | None = None
@@ -122,19 +92,13 @@ class ApprovalResolution:
         return self.outcome.lower() == "approved"
 
 
-# Optional hook a caller can install to actually send the approval
-# request to an Chio sidecar HTTP endpoint. The default (``None``) keeps
-# the approval in-memory and assumes the graph caller is responsible for
-# watching ``interrupt``'s payload and posting to the sidecar themselves.
-# This is convenient for tests and for environments where the ``interrupt``
-# payload is already surfaced through the LangGraph runtime.
+# Optional async hook to POST the approval to a sidecar HTTP endpoint.
+# When ``None`` the payload is surfaced via ``interrupt`` only.
 ApprovalDispatcher = Callable[[ApprovalRequestPayload], Awaitable[None]]
 
-# Local policy callable: ``(state, config) -> ApprovalPolicyDecision``.
-# Returning ``True`` means "require approval before running the body";
-# returning ``False`` means "skip approval and run directly". Returning
-# an :class:`ApprovalRequestPayload` lets callers override the default
-# payload fields (summary, policy_id, ...).
+# ``(state, config) -> bool | ApprovalRequestPayload``. ``True`` means
+# pause for approval; an :class:`ApprovalRequestPayload` lets the caller
+# override default payload fields.
 ApprovalPolicyDecision = bool | ApprovalRequestPayload
 ApprovalPolicy = Callable[[Any, Any], Awaitable[ApprovalPolicyDecision] | ApprovalPolicyDecision]
 
@@ -151,55 +115,31 @@ def chio_approval_node(
     approval_ttl_seconds: int = 3600,
     summary: str | None = None,
     interrupt_fn: _InterruptFn | None = None,
+    redaction_policy: RedactionPolicy | None = None,
 ) -> Callable[..., Any]:
-    """Wrap ``fn`` in an Chio-governed HITL approval node.
+    """Wrap ``fn`` in a Chio-governed HITL approval node.
 
-    Parameters
-    ----------
-    fn:
-        Underlying LangGraph node callable. Sync or async; ``(state)`` or
-        ``(state, config)``.
-    scope:
-        The :class:`ChioScope` this node operates under. Must be a subset
-        of the graph's effective ceiling.
-    config:
-        The enclosing :class:`ChioGraphConfig`.
-    approval_policy:
-        Optional callable deciding whether to require approval for this
-        dispatch. ``None`` means approval is *always* required (the most
-        conservative default for HITL). A callable returning ``False``
-        skips the approval pause and runs the body directly after the
-        sidecar allow verdict.
-    name:
-        Name under which to register the node.
-    tool_server:
-        Sidecar ``tool_server`` identifier.
-    dispatcher:
-        Optional async callable that posts the approval request to the
-        Chio sidecar's ``/approvals`` surface. When ``None`` (the default)
-        the payload is surfaced via :func:`interrupt` only; the graph
-        caller is responsible for forwarding it.
-    approval_ttl_seconds:
-        Default approval TTL if the policy does not supply one.
-    summary:
-        Human-readable default summary for the approval prompt.
-    interrupt_fn:
-        Indirection hook for :func:`langgraph.types.interrupt`. Tests
-        substitute a fake so they can drive the resume payload directly.
+    ``approval_policy=None`` defaults to "always require approval" (the
+    most conservative HITL default). A callable returning ``False``
+    skips the approval pause once the sidecar has allowed the call.
+    ``redaction_policy`` defaults to :meth:`RedactionPolicy.chio_default`.
     """
     node_name: str = name or str(getattr(fn, "__name__", "approval_node"))
     enforce_subgraph_ceiling(config, node_name, scope)
     config.node_scopes.setdefault(node_name, scope)
 
     if approval_policy is None:
-        # Default: every dispatch requires approval. Callers opt into a
-        # softer policy explicitly.
         async def _default_policy(_state: Any, _rc: Any) -> bool:
             return True
 
         approval_policy = _default_policy
 
     default_summary = summary or f"Approve execution of node '{node_name}'"
+    effective_redaction_policy: RedactionPolicy = (
+        redaction_policy
+        if redaction_policy is not None
+        else RedactionPolicy.chio_default()
+    )
 
     async def _dispatch(state: Any, runtime_config: Any) -> Any:
         cap_id = _resolve_capability_id(
@@ -217,10 +157,12 @@ def chio_approval_node(
                 reason="missing_capability",
             )
 
-        # Step 1: sidecar evaluation. Deny -> immediate raise; allow ->
-        # proceed; pending_approval -> branch to the interrupt path with
-        # the approval_id the kernel emitted.
-        parameters = _state_to_parameters(state)
+        # Sidecar evaluation: deny raises; allow runs body; pending_approval pauses.
+        parameters = redact_args(
+            node_name,
+            _state_to_parameters(state),
+            policy=effective_redaction_policy,
+        )
         try:
             receipt = await config.chio_client.evaluate_tool_call(
                 capability_id=cap_id,
@@ -256,9 +198,7 @@ def chio_approval_node(
         if receipt.decision.verdict == "pending_approval":
             sidecar_approval_id = _approval_id_from_receipt(receipt)
 
-        # Step 2: local policy decides whether an approval pause is
-        # required in addition to the sidecar verdict. When the sidecar
-        # already returned PendingApproval we always pause.
+        # Local policy may request a pause even when the sidecar allowed.
         require_approval = sidecar_approval_id is not None
         policy_payload: ApprovalRequestPayload | None = None
         if not require_approval:
@@ -274,8 +214,6 @@ def chio_approval_node(
         if not require_approval:
             return await _invoke_body(fn, state, runtime_config)
 
-        # Step 3: build the request payload, dispatch (if wired), then
-        # pause the graph via ``interrupt``.
         now = int(time.time())
         payload = policy_payload or ApprovalRequestPayload(
             approval_id=sidecar_approval_id or f"approval-{uuid.uuid4().hex[:12]}",
@@ -291,7 +229,7 @@ def chio_approval_node(
             created_at=now,
         )
         if sidecar_approval_id and payload.approval_id != sidecar_approval_id:
-            # Keep the sidecar-issued id authoritative when both are present.
+            # Sidecar id wins when both are present.
             payload.approval_id = sidecar_approval_id
 
         if dispatcher is not None:
@@ -313,7 +251,6 @@ def chio_approval_node(
                 approval_id=resolution.approval_id or payload.approval_id,
             )
 
-        # Approved -- run the wrapped body.
         return await _invoke_body(fn, state, runtime_config)
 
     if asyncio.iscoroutinefunction(fn):
@@ -342,18 +279,8 @@ def chio_approval_node(
     return sync_wrapper
 
 
-# ---------------------------------------------------------------------------
-# Internals
-# ---------------------------------------------------------------------------
-
-
 def _load_interrupt() -> _InterruptFn:
-    """Import ``langgraph.types.interrupt`` lazily.
-
-    The import is deferred so test suites that monkey-patch the symbol
-    get the patched version, and so that early import errors do not
-    prevent the SDK from being used in pure-unit-test mode.
-    """
+    """Lazy import of ``langgraph.types.interrupt`` (so monkeypatches stick)."""
     try:
         from langgraph.types import interrupt as _real_interrupt
     except ImportError as exc:  # pragma: no cover - langgraph is required
@@ -364,7 +291,7 @@ def _load_interrupt() -> _InterruptFn:
 
 
 def _approval_id_from_receipt(receipt: ChioReceipt) -> str | None:
-    """Scan guard evidence for an approval id the kernel attached."""
+    """Scan guard evidence for a kernel-attached approval id."""
     for ev in receipt.evidence:
         details = getattr(ev, "details", None)
         if isinstance(details, str) and details.startswith("approval_id="):
@@ -396,7 +323,7 @@ def _resolve_capability_id(
 def _normalise_resolution(
     resume_value: Any, approval_id: str
 ) -> ApprovalResolution:
-    """Coerce ``Command(resume=...)`` payloads into an :class:`ApprovalResolution`."""
+    """Coerce dict / str / bool / ApprovalResolution into :class:`ApprovalResolution`."""
     if isinstance(resume_value, ApprovalResolution):
         if resume_value.approval_id is None:
             resume_value.approval_id = approval_id
@@ -404,7 +331,7 @@ def _normalise_resolution(
     if isinstance(resume_value, Mapping):
         outcome = str(resume_value.get("outcome", "")).lower()
         if outcome not in {"approved", "denied", "rejected"}:
-            # Accept a friendlier ``approved: bool`` shape too.
+            # Friendlier ``approved: bool`` shape.
             if "approved" in resume_value:
                 outcome = "approved" if bool(resume_value["approved"]) else "denied"
         if outcome not in {"approved", "denied", "rejected"}:
@@ -453,7 +380,6 @@ def _as_optional_str(value: Any) -> str | None:
 async def _invoke_body(
     fn: Callable[..., Any], state: Any, runtime_config: Any
 ) -> Any:
-    """Run the wrapped node body, awaiting if it was async."""
     import inspect as _inspect
 
     sig = _inspect.signature(fn)

@@ -10,8 +10,12 @@ from __future__ import annotations
 import json
 import sys
 import time
+import warnings
 from collections.abc import Callable
 from typing import Any
+
+from chio_adapter_base.redact import RedactionPolicy
+from chio_adapter_base.redact import redact_args as _adapter_base_redact_args
 
 from chio_hermes.runtime import RuntimeHandle
 
@@ -137,37 +141,71 @@ def _truncate_receipt_result(
     return head, True
 
 
-# Tools whose `args` carry a raw body the model is about to write;
-# replace with a byte-count stub so embedded secrets do not land in
-# the receipt log. Path / message fields are preserved.
-_BODY_REDACT_FIELDS: dict[str, tuple[str, ...]] = {
-    "chio_file_write": ("content",),
-    "chio_file_edit": ("patch",),
-}
+# Backwards-compat shims for the in-tree redaction helpers. The canonical
+# implementations now live in :mod:`chio_adapter_base.redact`. Internal
+# call sites within chio-hermes use :data:`_DEFAULT_REDACTION_POLICY`
+# directly so they do not trigger the deprecation warning. External
+# consumers that imported ``chio_hermes.hooks._BODY_REDACT_FIELDS`` or
+# ``chio_hermes.hooks._redact_args`` keep working for one release; both
+# will be removed in chio-hermes 0.2.0.
+
+_DEFAULT_REDACTION_POLICY: RedactionPolicy = RedactionPolicy.chio_default()
+"""Module-private policy used by the post-tool-call hook."""
+
+
+def _deprecation_warn(symbol: str, replacement: str) -> None:
+    warnings.warn(
+        (
+            f"chio_hermes.hooks.{symbol} is deprecated; "
+            f"use {replacement}. Will be removed in chio-hermes 0.2.0."
+        ),
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+
+class _BodyRedactFieldsShim(dict):
+    """Dict subclass that warns on every external lookup.
+
+    Returning a real ``dict`` keeps ``_BODY_REDACT_FIELDS["chio_file_write"]``
+    and ``in`` checks working unchanged for any external caller that was
+    reaching into the table directly.
+    """
+
+    def _warn(self) -> None:
+        _deprecation_warn(
+            "_BODY_REDACT_FIELDS",
+            "chio_adapter_base.redact.RedactionPolicy.chio_default",
+        )
+
+    def __getitem__(self, key: str) -> tuple[str, ...]:
+        self._warn()
+        return super().__getitem__(key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        self._warn()
+        return super().get(key, default)
+
+    def __contains__(self, key: object) -> bool:
+        self._warn()
+        return super().__contains__(key)
+
+
+_BODY_REDACT_FIELDS: _BodyRedactFieldsShim = _BodyRedactFieldsShim(
+    _DEFAULT_REDACTION_POLICY.body_fields
+)
 
 
 def _redact_args(
     tool_name: str | None, args: dict[str, Any]
 ) -> dict[str, Any]:
-    fields = _BODY_REDACT_FIELDS.get(tool_name or "")
-    if not fields:
-        return dict(args)
-    redacted: dict[str, Any] = dict(args)
-    for field in fields:
-        if field not in redacted:
-            continue
-        body = redacted[field]
-        if isinstance(body, str):
-            byte_count = len(body.encode("utf-8", errors="replace"))
-        elif isinstance(body, (bytes, bytearray)):
-            byte_count = len(body)
-        else:
-            try:
-                byte_count = len(str(body).encode("utf-8", errors="replace"))
-            except Exception:  # noqa: BLE001
-                byte_count = -1
-        redacted[field] = {"omitted": True, "byte_count": byte_count}
-    return redacted
+    """Deprecated. Use ``chio_adapter_base.redact.redact_args`` instead."""
+    _deprecation_warn(
+        "_redact_args", "chio_adapter_base.redact.redact_args"
+    )
+    return _adapter_base_redact_args(
+        tool_name, args, policy=_DEFAULT_REDACTION_POLICY
+    )
 
 
 def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
@@ -187,7 +225,11 @@ def make_post_tool_call(handle: RuntimeHandle) -> PostHook:
         )
         record: dict[str, Any] = {
             "tool_name": tool_name,
-            "args": _redact_args(tool_name, dict(args or {})),
+            "args": _adapter_base_redact_args(
+                tool_name,
+                dict(args or {}),
+                policy=_DEFAULT_REDACTION_POLICY,
+            ),
             "task_id": task_id,
             "duration_ms": float(duration_ms) if duration_ms is not None else None,
             "recorded_at": time.time(),

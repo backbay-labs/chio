@@ -14,6 +14,16 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
+# Explicit dep marker for chio-adapter-base. Every broker middleware's
+# `_parameters_for` already returns metadata only (subject/topic, headers,
+# body_length, body_hash) and never forwards the message body, so no per-
+# call redaction is needed today. This import guards against the dep being
+# silently dropped if a future broker forwards bodies and needs to wire
+# `redact_args` in. See CHANGELOG [0.2.1] for the audit-table rationale.
+from chio_adapter_base.redact import (  # noqa: F401
+    RedactionPolicy,
+    redact_args,
+)
 from chio_sdk.models import ChioReceipt
 
 from chio_streaming.core import (

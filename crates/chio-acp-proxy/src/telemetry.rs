@@ -139,17 +139,14 @@ fn default_service_name() -> String {
 /// Convert an Chio receipt into an OTel-compatible span.
 pub fn receipt_to_span(receipt: &ChioReceipt, session_trace_id: &str) -> ReceiptSpan {
     let semantics = receipt.semantic_fields();
-    let verdict = if semantics.is_authorized(&receipt.decision) {
-        "allow"
-    } else if matches!(&receipt.decision, chio_core::receipt::Decision::Allow) {
-        semantics.receipt_kind.as_str()
-    } else {
-        match &receipt.decision {
-            chio_core::receipt::Decision::Allow => "allow",
-            chio_core::receipt::Decision::Deny { .. } => "deny",
-            chio_core::receipt::Decision::Cancelled { .. } => "cancelled",
-            chio_core::receipt::Decision::Incomplete { .. } => "incomplete",
+    let verdict = match &receipt.decision {
+        chio_core::receipt::Decision::Allow if semantics.is_authorized(&receipt.decision) => {
+            "allow"
         }
+        chio_core::receipt::Decision::Allow => semantics.receipt_kind.as_str(),
+        chio_core::receipt::Decision::Deny { .. } => "deny",
+        chio_core::receipt::Decision::Cancelled { .. } => "cancelled",
+        chio_core::receipt::Decision::Incomplete { .. } => "incomplete",
     };
 
     // Derive span_id from receipt ID (take first 16 hex chars or pad).

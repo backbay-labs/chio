@@ -1,10 +1,9 @@
 pub use chio_control_plane::{
-    authority_public_key_from_seed_file, build_kernel, certify, configure_budget_store,
+    CliError, authority_public_key_from_seed_file, build_kernel, certify, configure_budget_store,
     configure_capability_authority, configure_receipt_store, configure_revocation_store,
     enterprise_federation, evidence_export, federation_policy, issuance,
     issue_default_capabilities, load_or_create_authority_keypair, passport_verifier, policy,
     reputation, require_control_token, rotate_authority_keypair, scim_lifecycle, trust_control,
-    CliError,
 };
 pub use chio_mcp_remote as remote_mcp;
 
@@ -99,7 +98,12 @@ struct Cli {
     /// Bearer token used to authenticate to the shared trust-control service.
     /// Prefer `CHIO_CONTROL_TOKEN` env over the argv form so the bearer does
     /// not leak via `ps` / `/proc/<pid>/cmdline`.
-    #[arg(long, global = true, env = "CHIO_CONTROL_TOKEN", hide_env_values = true)]
+    #[arg(
+        long,
+        global = true,
+        env = "CHIO_CONTROL_TOKEN",
+        hide_env_values = true
+    )]
     control_token: Option<String>,
 }
 
@@ -235,6 +239,17 @@ mod cli_env_tests {
 
         restore_env("CHIO_GUARD_REGISTRY_PASSWORD", prior);
     }
+
+    #[test]
+    fn explain_help_text_uses_chio_named_dsse_conformance_wording() {
+        let source = include_str!("types.rs");
+        let stale_uppercase_phrase = ["strict ", "CHIO"].concat();
+
+        assert!(
+            !source.contains(&stale_uppercase_phrase),
+            "active explain help text must not describe DSSE conformance with stale uppercase legacy wording"
+        );
+    }
 }
 
 #[derive(Subcommand)]
@@ -347,10 +362,28 @@ enum Commands {
         command: ConformanceCommands,
     },
 
-    /// Verify offline Chiodos buyer and auditor proof packages.
-    Chiodos {
+    /// Produce and verify cross-kernel federation artifacts.
+    Federation {
         #[command(subcommand)]
-        command: ChiodosCommands,
+        command: ChioFederationCommands,
+    },
+
+    /// Verify offline attestation evidence and buyer proof packages.
+    Attest {
+        #[command(subcommand)]
+        command: ChioAttestCommands,
+    },
+
+    /// Evaluate local live-runtime admission artifacts.
+    Runtime {
+        #[command(subcommand)]
+        command: ChioRuntimeCommands,
+    },
+
+    /// Receive, query, and relay pheromone artifacts.
+    Pheromone {
+        #[command(subcommand)]
+        command: ChioPheromoneCommands,
     },
 
     /// Re-evaluate a captured receipt log against the current build.
@@ -464,6 +497,236 @@ enum Commands {
         /// `--bundle`.
         #[arg(long, value_name = "URL")]
         issuer_oidc: Option<String>,
+    },
+
+    /// Start the Chio sidecar with sensible zero-config defaults.
+    ///
+    /// Convenience alias for `chio api protect` aimed at SDK quickstart
+    /// and chio-hermes integration users. It runs the same axum router
+    /// (capability mint/release/validate, receipt verify, tool-call
+    /// evaluate, HITL approval endpoints) but with:
+    ///
+    /// - no upstream proxy (the catch-all `/{*path}` 502s loud);
+    /// - in-memory stores by default (no `--receipt-db`);
+    /// - a friendly startup banner that prints the bound address.
+    ///
+    /// `chio api protect` remains the canonical name for production
+    /// deployments that need `--upstream`, `--spec`, and persistent
+    /// stores.
+    Start {
+        /// Address to listen on. Defaults to `127.0.0.1:9090` to
+        /// match `chio-sdk-python`'s `ChioClient.DEFAULT_BASE_URL`.
+        /// Pass `127.0.0.1:0` to bind an ephemeral port; the bound
+        /// address is then printed in the startup banner.
+        #[arg(long, default_value = "127.0.0.1:9090")]
+        listen: String,
+
+        /// Optional SQLite receipt store path. Defaults to in-memory
+        /// so the first run leaves no on-disk artifacts.
+        #[arg(long = "receipt-store")]
+        receipt_store: Option<PathBuf>,
+
+        /// Print the chio-hermes config snippet (env vars + slash
+        /// commands) on startup so users can copy/paste into their
+        /// shell before running their agent. Off by default to keep
+        /// the banner short.
+        #[arg(long, default_value_t = false)]
+        print_config: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChioFederationCommands {
+    /// Produce local federation authority artifacts for offline verification.
+    Authority {
+        #[command(subcommand)]
+        command: ChioAuthorityCommands,
+    },
+
+    /// Verify treaty-bound cross-kernel provenance artifacts.
+    Treaty {
+        #[command(subcommand)]
+        command: ChioTreatyCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChioAttestCommands {
+    /// Package, verify, and explain buyer-facing attestation evidence.
+    Buyer {
+        #[command(subcommand)]
+        command: ChioBuyerCommands,
+    },
+
+    /// Verify Sigstore-backed supply-chain attestations.
+    SupplyChain {
+        #[command(subcommand)]
+        command: ChioSupplyChainCommands,
+    },
+
+    /// Verify runtime quote evidence.
+    RuntimeQuote {
+        #[command(subcommand)]
+        command: ChioRuntimeQuoteCommands,
+    },
+
+}
+
+#[derive(Subcommand)]
+enum ChioBuyerCommands {
+    /// Build a buyer review packet from a local runtime output directory.
+    Packet {
+        /// Runtime output directory containing buyer review artifacts.
+        #[arg(long = "run-output", value_name = "DIR")]
+        run_output: PathBuf,
+
+        /// Output path for buyer attestation review packet JSON.
+        #[arg(long, value_name = "PATH")]
+        out: PathBuf,
+    },
+
+    /// Verify a buyer review package against verifier-owned inputs.
+    Verify {
+        /// Buyer attestation review package JSON.
+        #[arg(long = "package", value_name = "PATH")]
+        package: PathBuf,
+
+        /// Verifier-owned trust bundle JSON.
+        #[arg(long = "trust-bundle", value_name = "PATH")]
+        trust_bundle: PathBuf,
+
+        /// Verifier context JSON.
+        #[arg(long, value_name = "PATH")]
+        context: PathBuf,
+
+        /// Output path for buyer attestation review report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Verify a Chio attest proof package directly.
+    VerifyProof {
+        /// Chio attest proof package JSON.
+        #[arg(long = "package", value_name = "PATH")]
+        package: PathBuf,
+
+        /// Verifier-owned trust bundle JSON.
+        #[arg(long = "trust-bundle", value_name = "PATH")]
+        trust_bundle: PathBuf,
+
+        /// Verifier context JSON.
+        #[arg(long, value_name = "PATH")]
+        context: PathBuf,
+
+        /// Output path for verifier report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Verify a hash-only buyer packet as unresolved unless full DSSE review hydrates it.
+    VerifyPacket {
+        /// Buyer attestation packet JSON.
+        #[arg(long, value_name = "PATH")]
+        packet: PathBuf,
+
+        /// Receipt lineage statement JSON.
+        #[arg(long = "lineage-statement", value_name = "PATH")]
+        lineage_statement: PathBuf,
+
+        /// Cross-kernel continuation JSON.
+        #[arg(long, value_name = "PATH")]
+        continuation: PathBuf,
+
+        /// Cross-boundary admission report JSON.
+        #[arg(long = "admission-report", value_name = "PATH")]
+        admission_report: PathBuf,
+
+        /// Bilateral invocation JSON.
+        #[arg(long = "bilateral-invocation", value_name = "PATH")]
+        bilateral_invocation: PathBuf,
+
+        /// Output path for buyer attestation verification report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+    },
+
+    /// Render a buyer review report as JSON or plain text.
+    Explain {
+        /// Buyer attestation review report JSON.
+        #[arg(long, value_name = "PATH")]
+        report: PathBuf,
+
+        /// Explanation format.
+        #[arg(long, value_parser = ["json", "text"], default_value = "text")]
+        format: String,
+
+        /// Output path for explanation.
+        #[arg(long, value_name = "PATH")]
+        out: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChioSupplyChainCommands {
+    /// Verify a Sigstore bundle against the artifact bytes and expected identity.
+    Verify {
+        /// Artifact bytes covered by the Sigstore bundle.
+        #[arg(long, value_name = "PATH")]
+        artifact: PathBuf,
+
+        /// Sigstore bundle JSON.
+        #[arg(long, value_name = "PATH")]
+        bundle: PathBuf,
+
+        /// Fulcio certificate identity SAN regex expected on the signing cert.
+        #[arg(long = "issuer-san-regex", value_name = "REGEX")]
+        issuer_san_regex: String,
+
+        /// Fulcio certificate OIDC issuer expected on the signing cert.
+        #[arg(long = "issuer-oidc", value_name = "URL")]
+        issuer_oidc: String,
+
+        /// Optional output path for a verification report. Defaults to stdout.
+        #[arg(long, value_name = "PATH")]
+        report: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChioRuntimeQuoteCommands {
+    /// Verify runtime quote evidence through chio-attest-verify.
+    Verify {
+        /// Kernel signing public key in Chio canonical text form.
+        #[arg(long = "kernel-public-key", value_name = "KEY")]
+        kernel_public_key: String,
+
+        /// Receipt root as 64 lowercase hex characters.
+        #[arg(long = "receipt-root", value_name = "HEX")]
+        receipt_root: String,
+
+        /// Optional observed runtime quote report-data bytes for diagnostic comparison.
+        #[arg(long = "report-data", value_name = "HEX")]
+        report_data: Option<String>,
+
+        /// TEE backend that produced the quote.
+        #[arg(
+            long = "tee-kind",
+            value_name = "KIND",
+            value_parser = ["intel-tdx", "amd-sev-snp", "aws-nitro"]
+        )]
+        tee_kind: Option<String>,
+
+        /// Raw quote bytes to verify.
+        #[arg(long, value_name = "PATH")]
+        quote: Option<PathBuf>,
+
+        /// Backend collateral JSON used to verify the quote.
+        #[arg(long, value_name = "PATH")]
+        collateral: Option<PathBuf>,
+
+        /// Optional output path for a verification report. Defaults to stdout.
+        #[arg(long, value_name = "PATH")]
+        report: Option<PathBuf>,
     },
 }
 
@@ -743,740 +1006,6 @@ enum ConformanceCommands {
         /// in-repo path, and the cwd in that order.
         #[arg(long)]
         lockfile: Option<PathBuf>,
-    },
-}
-
-#[derive(Subcommand)]
-enum ChiodosCommands {
-    /// Verify a buyer and auditor proof package and write a verifier report.
-    Verify {
-        /// Path to the proof package JSON.
-        #[arg(long, value_name = "PATH")]
-        package: PathBuf,
-
-        /// Path to the verifier-owned trust bundle JSON.
-        #[arg(long, value_name = "PATH")]
-        trust_bundle: PathBuf,
-
-        /// Path to the verifier context JSON.
-        #[arg(long, value_name = "PATH")]
-        context: PathBuf,
-
-        /// Path where verifier report JSON should be written.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Produce local Chiodos authority artifacts for offline verification.
-    Authority {
-        #[command(subcommand)]
-        command: ChiodosAuthorityCommands,
-    },
-
-    /// Receive and query local Chiodos pheromone artifacts.
-    Pheromone {
-        #[command(subcommand)]
-        command: ChiodosPheromoneCommands,
-    },
-}
-
-#[derive(Subcommand)]
-enum ChiodosPheromoneCommands {
-    /// Verify and store a local pheromone gossip batch.
-    Receive {
-        /// Pheromone gossip batch JSON.
-        #[arg(long, value_name = "PATH")]
-        batch: PathBuf,
-
-        /// Local transit policy JSON with receiver admission material.
-        #[arg(long, value_name = "PATH")]
-        transit_policy: PathBuf,
-
-        /// Verified Chiodos proof package JSON.
-        #[arg(long, value_name = "PATH")]
-        proof_package: PathBuf,
-
-        /// Verifier-owned Chiodos trust bundle JSON.
-        #[arg(long, value_name = "PATH")]
-        trust_bundle: PathBuf,
-
-        /// Chiodos verification context JSON.
-        #[arg(long, value_name = "PATH")]
-        context: PathBuf,
-
-        /// SQLite store path for local pheromone state.
-        #[arg(long, value_name = "PATH")]
-        store: PathBuf,
-
-        /// Receiver evaluation time in Unix milliseconds.
-        #[arg(long)]
-        now_unix_ms: Option<u64>,
-
-        /// Output path for receive report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Query local pheromone concentration from a durable store.
-    Query {
-        /// SQLite store path for local pheromone state.
-        #[arg(long, value_name = "PATH")]
-        store: PathBuf,
-
-        /// Subject class id.
-        #[arg(long, value_name = "ID")]
-        subject_class: String,
-
-        /// Subject class namespace.
-        #[arg(long, value_name = "NS")]
-        namespace: String,
-
-        /// Reputation epoch for advisory weighting.
-        #[arg(long)]
-        reputation_epoch: u64,
-
-        /// Peer weights JSON.
-        #[arg(long, value_name = "PATH")]
-        peer_weights: PathBuf,
-
-        /// Query evaluation time in Unix milliseconds.
-        #[arg(long)]
-        now_unix_ms: Option<u64>,
-
-        /// Output path for query report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Run or inspect live pheromone relay state.
-    Relay {
-        #[command(subcommand)]
-        command: ChiodosPheromoneRelayCommands,
-    },
-}
-
-#[derive(Subcommand)]
-enum ChiodosPheromoneRelayCommands {
-    /// Lint a relay peer directory against an operational profile.
-    Lint {
-        /// Raw peer directory or signed peer-directory bundle JSON.
-        #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
-        peer_directory: Option<PathBuf>,
-
-        /// Verifier-owned active peer-directory state JSON.
-        #[arg(long, value_name = "PATH")]
-        peer_directory_state: Option<PathBuf>,
-
-        /// Relay operational profile.
-        #[arg(long, value_enum)]
-        profile: RelayProfileArg,
-
-        /// Trusted peer-directory issuer config required for production bundles.
-        #[arg(long, value_name = "PATH")]
-        trusted_issuers: Option<PathBuf>,
-
-        /// Output path for lint report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Serve signed pheromone relay HTTP endpoints.
-    Serve {
-        /// Listen address for the relay HTTP service.
-        #[arg(long, value_name = "ADDR")]
-        listen: String,
-
-        /// SQLite store path for runtime and relay state.
-        #[arg(long, value_name = "PATH")]
-        store: PathBuf,
-
-        /// Verifier-owned peer directory JSON.
-        #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
-        peer_directory: Option<PathBuf>,
-
-        /// Verifier-owned active peer-directory state JSON.
-        #[arg(long, value_name = "PATH")]
-        peer_directory_state: Option<PathBuf>,
-
-        /// Relay operational profile.
-        #[arg(long, value_enum, default_value = "local-dev")]
-        profile: RelayProfileArg,
-
-        /// Trusted peer-directory issuer config for signed bundles.
-        #[arg(long, value_name = "PATH")]
-        trusted_issuers: Option<PathBuf>,
-
-        /// Local transit policy JSON with receiver admission material.
-        #[arg(long, value_name = "PATH")]
-        transit_policy: PathBuf,
-
-        /// Verified Chiodos proof package JSON.
-        #[arg(long, value_name = "PATH")]
-        proof_package: PathBuf,
-
-        /// Verifier-owned Chiodos trust bundle JSON.
-        #[arg(long, value_name = "PATH")]
-        trust_bundle: PathBuf,
-
-        /// Chiodos verification context JSON.
-        #[arg(long, value_name = "PATH")]
-        context: PathBuf,
-
-        /// Directory for per-request relay reports.
-        #[arg(long, value_name = "DIR")]
-        report_dir: PathBuf,
-
-        /// Environment variable containing the operator token for observability endpoints.
-        #[arg(long, value_name = "ENV")]
-        operator_token_env: Option<String>,
-    },
-
-    /// Queue accepted local relay work for subscribed peers.
-    Enqueue {
-        /// SQLite store path for relay state.
-        #[arg(long, value_name = "PATH")]
-        store: PathBuf,
-
-        /// Verifier-owned peer directory JSON.
-        #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
-        peer_directory: Option<PathBuf>,
-
-        /// Verifier-owned active peer-directory state JSON.
-        #[arg(long, value_name = "PATH")]
-        peer_directory_state: Option<PathBuf>,
-
-        /// Relay operational profile.
-        #[arg(long, value_enum, default_value = "local-dev")]
-        profile: RelayProfileArg,
-
-        /// Trusted peer-directory issuer config for signed bundles.
-        #[arg(long, value_name = "PATH")]
-        trusted_issuers: Option<PathBuf>,
-
-        /// Evaluation time in Unix milliseconds.
-        #[arg(long)]
-        now_unix_ms: u64,
-
-        /// Output path for enqueue report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Run one deterministic relay scheduler tick.
-    Tick {
-        /// SQLite store path for relay state.
-        #[arg(long, value_name = "PATH")]
-        store: PathBuf,
-
-        /// Verifier-owned peer directory JSON.
-        #[arg(long, value_name = "PATH", required_unless_present = "peer_directory_state")]
-        peer_directory: Option<PathBuf>,
-
-        /// Verifier-owned active peer-directory state JSON.
-        #[arg(long, value_name = "PATH")]
-        peer_directory_state: Option<PathBuf>,
-
-        /// Relay operational profile.
-        #[arg(long, value_enum, default_value = "local-dev")]
-        profile: RelayProfileArg,
-
-        /// Trusted peer-directory issuer config for signed bundles.
-        #[arg(long, value_name = "PATH")]
-        trusted_issuers: Option<PathBuf>,
-
-        /// Evaluation time in Unix milliseconds. Defaults to the local clock.
-        #[arg(long)]
-        now_unix_ms: Option<u64>,
-
-        /// Maximum batches to lease this tick.
-        #[arg(long)]
-        max_batches: usize,
-
-        /// Local relay signing key JSON for the sender kernel.
-        #[arg(long, value_name = "PATH")]
-        signing_key: PathBuf,
-
-        /// Output path for tick report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-
-        /// Directory for bounded outbound delivery event reports.
-        #[arg(long, value_name = "DIR")]
-        report_dir: Option<PathBuf>,
-    },
-
-    /// Request bounded catch-up metadata from local relay state.
-    Catchup {
-        /// SQLite store path for relay state.
-        #[arg(long, value_name = "PATH")]
-        store: PathBuf,
-
-        /// Peer kernel id requesting catch-up.
-        #[arg(long, value_name = "ID")]
-        peer: String,
-
-        /// Verifier-owned active peer-directory state JSON.
-        #[arg(long, value_name = "PATH")]
-        peer_directory_state: Option<PathBuf>,
-
-        /// Relay operational profile for state validation.
-        #[arg(long, value_enum, default_value = "local-dev")]
-        profile: RelayProfileArg,
-
-        /// Trusted peer-directory issuer config for signed active state.
-        #[arg(long, value_name = "PATH")]
-        trusted_issuers: Option<PathBuf>,
-
-        /// Evaluation time in Unix milliseconds.
-        #[arg(long)]
-        now_unix_ms: Option<u64>,
-
-        /// Treaty id for the catch-up window.
-        #[arg(long, value_name = "ID")]
-        treaty: String,
-
-        /// Cursor after which frames are requested.
-        #[arg(long, value_name = "CURSOR")]
-        after_cursor: String,
-
-        /// Maximum frames to return.
-        #[arg(long)]
-        limit: usize,
-
-        /// Output path for catch-up report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Write local relay operator status.
-    Status {
-        /// SQLite store path for relay state.
-        #[arg(long, value_name = "PATH")]
-        store: PathBuf,
-
-        /// Output path for status report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Write the relay observability report from durable local evidence.
-    Observe {
-        /// SQLite store path for relay state.
-        #[arg(long, value_name = "PATH")]
-        store: PathBuf,
-
-        /// Verifier-owned active peer-directory state JSON.
-        #[arg(long, value_name = "PATH")]
-        peer_directory_state: PathBuf,
-
-        /// Relay operational profile.
-        #[arg(long, value_enum)]
-        profile: RelayProfileArg,
-
-        /// Trusted peer-directory issuer config for signed active state.
-        #[arg(long, value_name = "PATH")]
-        trusted_issuers: PathBuf,
-
-        /// Directory containing bounded relay event reports.
-        #[arg(long, value_name = "DIR")]
-        report_dir: PathBuf,
-
-        /// Maximum recent failure codes to include.
-        #[arg(long, default_value_t = 25)]
-        limit: usize,
-
-        /// Output path for observability report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Export relay metrics from durable local state.
-    Metrics {
-        /// SQLite store path for relay state.
-        #[arg(long, value_name = "PATH")]
-        store: PathBuf,
-
-        /// Output encoding for relay metrics.
-        #[arg(
-            long = "format",
-            id = "relay_metrics_format",
-            value_enum,
-            default_value = "prometheus"
-        )]
-        format: RelayMetricsFormatArg,
-
-        /// Output path for relay metrics.
-        #[arg(long, value_name = "PATH")]
-        output: PathBuf,
-    },
-
-    /// Evaluate relay alert routing from canonical observability artifacts.
-    Alert {
-        #[command(subcommand)]
-        command: ChiodosPheromoneRelayAlertCommands,
-    },
-
-    /// Aggregate long-horizon relay operations trends from report artifacts.
-    Trend {
-        /// Directory containing relay observability reports.
-        #[arg(long, value_name = "DIR")]
-        reports_dir: PathBuf,
-
-        /// Directory containing bounded relay event reports.
-        #[arg(long, value_name = "DIR")]
-        event_dir: PathBuf,
-
-        /// Relay alert routing profile JSON.
-        #[arg(long, value_name = "PATH")]
-        routing_profile: PathBuf,
-
-        /// Lower bound in Unix milliseconds.
-        #[arg(long)]
-        since_unix_ms: u64,
-
-        /// Upper bound in Unix milliseconds.
-        #[arg(long)]
-        until_unix_ms: u64,
-
-        /// Output path for relay trend report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Inspect, promote, or reject verifier-owned relay peer-directory state.
-    Directory {
-        #[command(subcommand)]
-        command: ChiodosPheromoneRelayDirectoryCommands,
-    },
-
-    /// Validate local relay supervisor deployment profiles.
-    Supervisor {
-        #[command(subcommand)]
-        command: ChiodosPheromoneRelaySupervisorCommands,
-    },
-}
-
-#[derive(Subcommand)]
-enum ChiodosPheromoneRelayAlertCommands {
-    /// Evaluate routeable relay alerts from current observability.
-    Evaluate {
-        /// Canonical relay observability report JSON.
-        #[arg(long, value_name = "PATH")]
-        observability_report: PathBuf,
-
-        /// Directory containing bounded relay event reports.
-        #[arg(long, value_name = "DIR")]
-        event_dir: PathBuf,
-
-        /// Relay alert routing profile JSON.
-        #[arg(long, value_name = "PATH")]
-        routing_profile: PathBuf,
-
-        /// Relay alert suppression state JSON.
-        #[arg(long, value_name = "PATH")]
-        suppression_state: PathBuf,
-
-        /// Evaluation time in Unix milliseconds.
-        #[arg(long)]
-        now_unix_ms: u64,
-
-        /// Output path for relay alert report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Dry-run downstream relay alert handoff readiness.
-    Handoff {
-        /// Relay alert report JSON.
-        #[arg(long, value_name = "PATH")]
-        alert_report: PathBuf,
-
-        /// Relay trend report JSON.
-        #[arg(long, value_name = "PATH")]
-        trend_report: PathBuf,
-
-        /// Relay alert routing profile JSON.
-        #[arg(long, value_name = "PATH")]
-        routing_profile: PathBuf,
-
-        /// Relay alert handoff profile JSON.
-        #[arg(long, value_name = "PATH")]
-        handoff_profile: PathBuf,
-
-        /// Evaluation time in Unix milliseconds.
-        #[arg(long)]
-        now_unix_ms: u64,
-
-        /// Output path for relay alert handoff report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Import downstream delivery, acknowledgement, or drift evidence.
-    Delivery {
-        #[command(subcommand)]
-        command: ChiodosPheromoneRelayAlertDeliveryCommands,
-    },
-}
-
-#[derive(Subcommand)]
-enum ChiodosPheromoneRelayAlertDeliveryCommands {
-    /// Import local downstream delivery-result artifacts.
-    Import {
-        /// Relay alert handoff report JSON.
-        #[arg(long, value_name = "PATH")]
-        handoff_report: PathBuf,
-
-        /// Relay alert delivery profile JSON.
-        #[arg(long, value_name = "PATH")]
-        delivery_profile: PathBuf,
-
-        /// Directory containing local downstream delivery evidence JSON.
-        #[arg(long, value_name = "DIR")]
-        evidence_dir: PathBuf,
-
-        /// Evaluation time in Unix milliseconds.
-        #[arg(long)]
-        now_unix_ms: u64,
-
-        /// Output path for relay alert delivery report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Summarize downstream acknowledgement evidence from a delivery report.
-    Acknowledge {
-        /// Relay alert handoff report JSON.
-        #[arg(long, value_name = "PATH")]
-        handoff_report: PathBuf,
-
-        /// Relay alert delivery report JSON.
-        #[arg(long, value_name = "PATH")]
-        delivery_report: PathBuf,
-
-        /// Relay alert delivery profile JSON.
-        #[arg(long, value_name = "PATH")]
-        delivery_profile: PathBuf,
-
-        /// Evaluation time in Unix milliseconds.
-        #[arg(long)]
-        now_unix_ms: u64,
-
-        /// Output path for relay alert acknowledgement report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Compare handoff and delivery report directories for bounded drift.
-    Drift {
-        /// Directory containing relay alert handoff reports.
-        #[arg(long, value_name = "DIR")]
-        handoff_reports_dir: PathBuf,
-
-        /// Directory containing relay alert delivery reports.
-        #[arg(long, value_name = "DIR")]
-        delivery_reports_dir: PathBuf,
-
-        /// Relay alert delivery profile JSON.
-        #[arg(long, value_name = "PATH")]
-        delivery_profile: PathBuf,
-
-        /// Lower bound in Unix milliseconds.
-        #[arg(long)]
-        since_unix_ms: u64,
-
-        /// Upper bound in Unix milliseconds.
-        #[arg(long)]
-        until_unix_ms: u64,
-
-        /// Output path for relay alert handoff drift report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-}
-
-#[derive(Subcommand)]
-enum ChiodosPheromoneRelayDirectoryCommands {
-    /// Inspect active peer-directory state.
-    Inspect {
-        /// Peer-directory state JSON.
-        #[arg(long, value_name = "PATH")]
-        state: PathBuf,
-
-        /// Output path for inspection report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Promote a signed peer-directory candidate into active state.
-    Promote {
-        /// Peer-directory state JSON to update.
-        #[arg(long, value_name = "PATH")]
-        state: PathBuf,
-
-        /// Signed peer-directory bundle candidate JSON.
-        #[arg(long, value_name = "PATH")]
-        candidate: PathBuf,
-
-        /// Trusted peer-directory issuer config.
-        #[arg(long, value_name = "PATH")]
-        trusted_issuers: PathBuf,
-
-        /// Relay operational profile.
-        #[arg(long, value_enum)]
-        profile: RelayProfileArg,
-
-        /// Evaluation time in Unix milliseconds.
-        #[arg(long)]
-        now_unix_ms: Option<u64>,
-
-        /// Output path for rotation report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-
-    /// Reject a signed peer-directory candidate without changing active state.
-    Reject {
-        /// Peer-directory state JSON to update.
-        #[arg(long, value_name = "PATH")]
-        state: PathBuf,
-
-        /// Signed peer-directory bundle candidate JSON.
-        #[arg(long, value_name = "PATH")]
-        candidate: PathBuf,
-
-        /// Stable rejection reason code.
-        #[arg(long, value_name = "CODE")]
-        reason: String,
-
-        /// Evaluation time in Unix milliseconds.
-        #[arg(long)]
-        now_unix_ms: Option<u64>,
-
-        /// Output path for rotation report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-}
-
-#[derive(Subcommand)]
-enum ChiodosPheromoneRelaySupervisorCommands {
-    /// Lint a relay supervisor deployment profile.
-    Lint {
-        /// Relay supervisor profile JSON.
-        #[arg(long, value_name = "PATH")]
-        profile: PathBuf,
-
-        /// Output path for drill report JSON.
-        #[arg(long, value_name = "PATH")]
-        report: PathBuf,
-    },
-}
-
-#[derive(Clone, Copy, Debug, clap::ValueEnum)]
-enum RelayProfileArg {
-    LocalDev,
-    Production,
-}
-
-impl From<RelayProfileArg> for chio_pheromone_relay::RelayProfile {
-    fn from(value: RelayProfileArg) -> Self {
-        match value {
-            RelayProfileArg::LocalDev => Self::LocalDev,
-            RelayProfileArg::Production => Self::Production,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, clap::ValueEnum)]
-enum RelayMetricsFormatArg {
-    Prometheus,
-    Json,
-}
-
-impl From<RelayMetricsFormatArg> for chio_pheromone_relay::RelayMetricsFormat {
-    fn from(value: RelayMetricsFormatArg) -> Self {
-        match value {
-            RelayMetricsFormatArg::Prometheus => Self::Prometheus,
-            RelayMetricsFormatArg::Json => Self::Json,
-        }
-    }
-}
-
-#[derive(Subcommand)]
-enum ChiodosAuthorityCommands {
-    /// Issue capability leases, lease-scope bindings, and governance receipts.
-    Issue {
-        /// Public authority profile JSON.
-        #[arg(long, value_name = "PATH")]
-        profile: PathBuf,
-
-        /// Chiodos issuance request JSON.
-        #[arg(long, value_name = "PATH")]
-        request: PathBuf,
-
-        /// Local signing-key JSON. Keep this outside committed fixtures.
-        #[arg(long, value_name = "PATH")]
-        signing_keys: PathBuf,
-
-        /// Output directory for the issuance bundle and split artifacts.
-        #[arg(long, value_name = "DIR")]
-        out_dir: PathBuf,
-    },
-
-    /// Publish a signed revocation checkpoint from local authority state.
-    Checkpoint {
-        /// Public authority profile JSON.
-        #[arg(long, value_name = "PATH")]
-        profile: PathBuf,
-
-        /// Revocation publication request JSON.
-        #[arg(long, value_name = "PATH")]
-        revocations: PathBuf,
-
-        /// Local signing-key JSON. Keep this outside committed fixtures.
-        #[arg(long, value_name = "PATH")]
-        signing_keys: PathBuf,
-
-        /// Output path for the signed checkpoint JSON.
-        #[arg(long, value_name = "PATH")]
-        out: PathBuf,
-    },
-
-    /// Assemble verifier-owned trust inputs.
-    TrustBundle {
-        #[command(subcommand)]
-        command: ChiodosTrustBundleCommands,
-    },
-}
-
-#[derive(Subcommand)]
-enum ChiodosTrustBundleCommands {
-    /// Assemble a strict verifier trust bundle.
-    Assemble {
-        /// Public authority profile JSON.
-        #[arg(long, value_name = "PATH")]
-        profile: PathBuf,
-
-        /// Verifier-owned peer, vendor, and action-class pins JSON.
-        #[arg(long, value_name = "PATH")]
-        peer_pins: PathBuf,
-
-        /// Workflow intersection artifact JSON.
-        #[arg(long, value_name = "PATH")]
-        workflow_intersection: PathBuf,
-
-        /// Disclosure policy JSON.
-        #[arg(long, value_name = "PATH")]
-        disclosure_policy: PathBuf,
-
-        /// Signed revocation checkpoint JSON.
-        #[arg(long, value_name = "PATH")]
-        checkpoint: PathBuf,
-
-        /// Output path for the verifier trust bundle JSON.
-        #[arg(long, value_name = "PATH")]
-        out: PathBuf,
     },
 }
 
@@ -1837,7 +1366,11 @@ enum McpCommands {
         /// Client secret used when calling the token introspection endpoint.
         /// Prefer `CHIO_MCP_AUTH_INTROSPECTION_CLIENT_SECRET` env over the argv
         /// form so the secret does not leak via `ps` / `/proc/<pid>/cmdline`.
-        #[arg(long, env = "CHIO_MCP_AUTH_INTROSPECTION_CLIENT_SECRET", hide_env_values = true)]
+        #[arg(
+            long,
+            env = "CHIO_MCP_AUTH_INTROSPECTION_CLIENT_SECRET",
+            hide_env_values = true
+        )]
         auth_introspection_client_secret: Option<String>,
 
         /// Optional provider profile used for principal mapping and default OIDC discovery behavior.
@@ -3403,8 +2936,8 @@ enum ReceiptCommands {
     /// document (the federation signature-slice API emission with both a
     /// `dualSignedReceipt` and a `dsseEnvelope`), the renderer auto-detects
     /// the bilateral shape and prints both the legacy DualSignedReceipt
-    /// section (NON-§6-CONFORMANT per B4) and the DSSE signature-slice
-    /// section. It does not claim strict CHIODOS §6 predicate conformance.
+    /// section (NON-SECTION-6-CONFORMANT per B4) and the DSSE signature-slice
+    /// section. It does not claim strict Chio DSSE section 6 predicate conformance.
     ///
     /// Pass `--inspect-bilateral` to additionally emit a structural
     /// **inspection trace** of the envelope. The previous flag spelling
@@ -3523,6 +3056,12 @@ enum EvidenceFederationPolicyCommands {
         /// Optional upper timestamp bound for the allowed export window.
         #[arg(long)]
         until: Option<u64>,
+        /// Tenant read boundary for exports performed under this policy.
+        #[arg(long)]
+        tenant: Option<String>,
+        /// Explicitly allow administrative exports across all tenants under this policy.
+        #[arg(long, default_value_t = false, conflicts_with = "tenant")]
+        admin_all: bool,
         /// Expiration time for the policy document, in Unix seconds.
         #[arg(long)]
         expires_at: u64,

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-federation/v1/treaty-runtime-negative-fixture-corpus.schema.json",
+  "title": "Chio Federation Treaty Runtime Negative Fixture Corpus",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "cases"],
+  "properties": {
+    "schema": { "const": "chio.federation.treaty-runtime-negative-fixture-corpus.v1" },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["caseId", "expectedCode"],
+        "properties": {
+          "caseId": { "type": "string", "minLength": 1 },
+          "expectedCode": {
+            "type": "string",
+            "minLength": 1,
+            "not": { "pattern": "^chio(?:dos)_" }
+          }
+        }
+      }
+    }
+  }
+}

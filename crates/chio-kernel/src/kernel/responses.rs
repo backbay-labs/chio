@@ -18,6 +18,12 @@ struct PostInvocationHandling {
     evidence: Vec<chio_core::receipt::GuardEvidence>,
 }
 
+#[derive(Clone, Copy)]
+enum ReceiptRecordMode {
+    WithFederation,
+    LocalOnly,
+}
+
 impl ChioKernel {
     /// denial reason is monetary budget exhaustion.
     pub(crate) fn build_monetary_deny_response(
@@ -178,6 +184,53 @@ impl ChioKernel {
         cap: &CapabilityToken,
         extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
+        self.build_pre_execution_monetary_deny_response_with_recording(
+            request,
+            reason,
+            timestamp,
+            charge,
+            committed_cost_after_release,
+            cap,
+            extra_metadata,
+            ReceiptRecordMode::WithFederation,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn build_runtime_admission_pre_execution_monetary_deny_response_with_metadata(
+        &self,
+        request: &ToolCallRequest,
+        reason: &str,
+        timestamp: u64,
+        charge: &BudgetChargeResult,
+        committed_cost_after_release: u64,
+        cap: &CapabilityToken,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        self.build_pre_execution_monetary_deny_response_with_recording(
+            request,
+            reason,
+            timestamp,
+            charge,
+            committed_cost_after_release,
+            cap,
+            extra_metadata,
+            ReceiptRecordMode::LocalOnly,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_pre_execution_monetary_deny_response_with_recording(
+        &self,
+        request: &ToolCallRequest,
+        reason: &str,
+        timestamp: u64,
+        charge: &BudgetChargeResult,
+        committed_cost_after_release: u64,
+        cap: &CapabilityToken,
+        extra_metadata: Option<serde_json::Value>,
+        record_mode: ReceiptRecordMode,
+    ) -> Result<ToolCallResponse, KernelError> {
         let delegation_depth = cap.delegation_chain.len() as u32;
         let root_budget_holder = cap.issuer.to_hex();
         let (payment_reference, settlement_status) =
@@ -238,7 +291,7 @@ impl ChioKernel {
             tenant_id: None,
         })?;
 
-        self.record_chio_receipt_with_federation(request, &receipt)?;
+        self.record_chio_receipt_with_mode(request, &receipt, record_mode)?;
 
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
@@ -938,6 +991,43 @@ impl ChioKernel {
         matched_grant_index: Option<usize>,
         extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
+        self.build_deny_response_with_recording(
+            request,
+            reason,
+            timestamp,
+            matched_grant_index,
+            extra_metadata,
+            ReceiptRecordMode::WithFederation,
+        )
+    }
+
+    pub(crate) fn build_runtime_admission_deny_response_with_metadata(
+        &self,
+        request: &ToolCallRequest,
+        reason: &str,
+        timestamp: u64,
+        matched_grant_index: Option<usize>,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        self.build_deny_response_with_recording(
+            request,
+            reason,
+            timestamp,
+            matched_grant_index,
+            extra_metadata,
+            ReceiptRecordMode::LocalOnly,
+        )
+    }
+
+    fn build_deny_response_with_recording(
+        &self,
+        request: &ToolCallRequest,
+        reason: &str,
+        timestamp: u64,
+        matched_grant_index: Option<usize>,
+        extra_metadata: Option<serde_json::Value>,
+        record_mode: ReceiptRecordMode,
+    ) -> Result<ToolCallResponse, KernelError> {
         let cap = &request.capability;
         let receipt_content = receipt_content_for_output(None, None)?;
 
@@ -974,7 +1064,7 @@ impl ChioKernel {
             tenant_id: None,
         })?;
 
-        self.record_chio_receipt_with_federation(request, &receipt)?;
+        self.record_chio_receipt_with_mode(request, &receipt, record_mode)?;
 
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
@@ -1498,6 +1588,33 @@ impl ChioKernel {
             scoped_admission.and_then(|admission| admission.peer.as_ref()),
         )?;
         Ok(())
+    }
+
+    fn record_chio_receipt_with_mode(
+        &self,
+        request: &crate::runtime::ToolCallRequest,
+        receipt: &ChioReceipt,
+        mode: ReceiptRecordMode,
+    ) -> Result<(), KernelError> {
+        match mode {
+            ReceiptRecordMode::WithFederation => {
+                self.record_chio_receipt_with_federation(request, receipt)
+            }
+            ReceiptRecordMode::LocalOnly => {
+                self.record_chio_receipt_for_admitted_request_local_only(request, receipt)
+            }
+        }
+    }
+
+    fn record_chio_receipt_for_admitted_request_local_only(
+        &self,
+        _request: &crate::runtime::ToolCallRequest,
+        receipt: &ChioReceipt,
+    ) -> Result<(), KernelError> {
+        // Runtime-admission denies must persist locally, but they must not
+        // trigger the federation co-signature hook for a remote side effect
+        // that never ran.
+        self.record_chio_receipt(receipt)
     }
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {

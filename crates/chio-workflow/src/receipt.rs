@@ -419,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    fn v1_receipt_serialization_omits_v2_fields_when_absent() {
+    fn receipt_serialization_omits_absent_optional_linkage_fields() {
         let step = make_step_record(0, StepOutcome::Success);
         let value = serde_json::to_value(&step).unwrap();
         assert!(value.get("bilateral_dsse_sha256").is_none());
@@ -430,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn v2_step_linkage_fields_are_signed_by_kernel() {
+    fn step_linkage_fields_are_signed_by_kernel() {
         let kp = Keypair::generate();
         let mut step = make_step_record(1, StepOutcome::Success);
         step.bilateral_dsse_sha256 = Some("b".repeat(64));
@@ -440,8 +440,8 @@ mod tests {
         step.destructive = Some(true);
 
         let body = WorkflowReceiptBody {
-            id: "wf-v2".to_string(),
-            schema: WORKFLOW_RECEIPT_SCHEMA_V2.to_string(),
+            id: "wf-linkage".to_string(),
+            schema: WORKFLOW_RECEIPT_SCHEMA.to_string(),
             started_at: 1000,
             completed_at: 1001,
             skill_id: "refund-underwriting".to_string(),
@@ -469,7 +469,7 @@ mod tests {
         let vendor_b = Keypair::generate();
         let body = WorkflowReceiptBody {
             id: "wf-cosigned".to_string(),
-            schema: WORKFLOW_RECEIPT_SCHEMA_V2.to_string(),
+            schema: WORKFLOW_RECEIPT_SCHEMA.to_string(),
             started_at: 1000,
             completed_at: 1010,
             skill_id: "refund-underwriting".to_string(),

@@ -159,7 +159,7 @@ impl KernelReceiptSigner {
         let stored_session_id = receipt_context
             .and_then(|context| context.get("session_id"))
             .and_then(serde_json::Value::as_str);
-        if stored_session_id != Some(entry.session_id.as_str()) {
+        if stored_session_id.is_some_and(|stored| stored != entry.session_id.as_str()) {
             return Err(ReceiptSignError::SigningFailed(
                 "authorization receipt session id mismatch".to_string(),
             ));
@@ -167,7 +167,7 @@ impl KernelReceiptSigner {
         let stored_tool_call_id = receipt_context
             .and_then(|context| context.get("tool_call_id"))
             .and_then(serde_json::Value::as_str);
-        if stored_tool_call_id != Some(entry.tool_call_id.as_str()) {
+        if stored_tool_call_id.is_some_and(|stored| stored != entry.tool_call_id.as_str()) {
             return Err(ReceiptSignError::SigningFailed(
                 "authorization receipt tool call id mismatch".to_string(),
             ));

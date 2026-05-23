@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-federation/v1/issuance-bundle.schema.json",
+  "title": "Chio Federation Issuance Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "capabilityLeases",
+    "leaseScopeBindings",
+    "governanceReceipts",
+    "verificationContext"
+  ],
+  "properties": {
+    "schema": { "const": "chio.federation.issuance-bundle.v1" },
+    "capabilityLeases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "capability-lease.schema.json" }
+    },
+    "leaseScopeBindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "lease-scope-binding.schema.json" }
+    },
+    "governanceReceipts": {
+      "type": "array",
+      "items": { "$ref": "governance-receipt.schema.json" }
+    },
+    "verificationContext": { "$ref": "verification-context.schema.json" }
+  }
+}

@@ -277,3 +277,135 @@ def test_revoke_uses_revocation_db_when_no_control_url(
     cli.handle(args)
     assert "--revocation-db" in captured["argv"]
     assert str(db_path) in captured["argv"]
+
+
+
+# ---------------------------------------------------------------------------
+# `hermes chio approvals` subcommand
+# ---------------------------------------------------------------------------
+
+
+def test_setup_registers_approvals_subparser() -> None:
+    parser = _build_parser()
+    subparser_actions = [
+        a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
+    ]
+    assert "approvals" in subparser_actions[0].choices
+
+
+def test_approvals_respond_requires_verdict_flag() -> None:
+    parser = _build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["approvals", "respond", "ap-1"])
+
+
+def test_approvals_respond_parses_approve_flag() -> None:
+    parser = _build_parser()
+    ns = parser.parse_args(
+        ["approvals", "respond", "ap-1", "--approve", "--reason", "ok"]
+    )
+    assert ns.subcommand == "approvals"
+    assert ns.approvals_subcommand == "respond"
+    assert ns.verdict == "approve"
+    assert ns.approval_id == "ap-1"
+    assert ns.reason == "ok"
+
+
+def test_approvals_list_invokes_sdk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = MockChioClient()
+
+    # Pre-populate via the mock's submit_for_approval so the list call
+    # has something to return.
+    import asyncio
+
+    asyncio.run(
+        client.submit_for_approval(
+            capability_id="cap-x",
+            tool_name="chio_shell_run",
+            tool_args={"command": "ls"},
+            tool_server="shell",
+            summary="ls",
+        )
+    )
+
+    import chio_sdk.client as _client_mod
+
+    class _Ctor:
+        def __new__(cls, **_kw: Any) -> Any:  # type: ignore[misc]
+            return client
+
+    monkeypatch.setattr(_client_mod, "ChioClient", _Ctor)
+    monkeypatch.setattr(cli, "_approvals_client", lambda _args: client)
+
+    args = argparse.Namespace(
+        subcommand="approvals",
+        approvals_subcommand="list",
+        json=True,
+        sidecar_url=None,
+        timeout=5.0,
+    )
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cli.handle(args)
+    assert rc == 0
+    payload = json.loads(buf.getvalue())
+    assert isinstance(payload, list)
+    assert payload and payload[0]["tool_server"] == "shell"
+
+
+def test_approvals_respond_invokes_sdk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = MockChioClient()
+
+    import asyncio
+
+    approval_id = asyncio.run(
+        client.submit_for_approval(
+            capability_id="cap-x",
+            tool_name="chio_shell_run",
+            tool_args={"command": "rm -rf old"},
+            tool_server="shell",
+        )
+    )
+
+    monkeypatch.setattr(cli, "_approvals_client", lambda _args: client)
+
+    args = argparse.Namespace(
+        subcommand="approvals",
+        approvals_subcommand="respond",
+        approval_id=approval_id,
+        verdict="approve",
+        reason="ok-cli",
+        json=True,
+        sidecar_url=None,
+        timeout=5.0,
+    )
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cli.handle(args)
+    assert rc == 0
+    payload = json.loads(buf.getvalue())
+    assert payload["approval_id"] == approval_id
+    assert payload["outcome"] == "approved"
+
+    respond_calls = [
+        c for c in client.calls if c.method == "respond_approval"
+    ]
+    assert respond_calls and respond_calls[0].context["reason"] == "ok-cli"
+
+
+def test_approvals_unknown_subcommand_returns_2(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = argparse.Namespace(
+        subcommand="approvals",
+        approvals_subcommand="bogus",
+        json=False,
+        sidecar_url=None,
+        timeout=5.0,
+    )
+    rc = cli.handle(args)
+    assert rc == 2

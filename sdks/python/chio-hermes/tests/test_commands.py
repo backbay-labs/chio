@@ -133,3 +133,102 @@ async def test_chio_status_reports_actual_denial_count(
     out = await handle_slash("status")
     assert out is not None
     assert "recent denials: 1" in out
+
+
+
+# ---------------------------------------------------------------------------
+# HITL approval slash commands
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_chio_approvals_lists_pending_from_sidecar(
+    tmp_workspace: Path,
+) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+    # Pre-seed the mock sidecar with one held call.
+    approval_id = await runtime.chio_client.submit_for_approval(
+        capability_id=runtime.capability_id,
+        tool_name="chio_shell_run",
+        tool_args={"command": "rm -rf old/"},
+        tool_server="shell",
+        summary="rm -rf old/",
+    )
+
+    handle_slash = make_slash_handler(runtime)
+    out = await handle_slash("approvals")
+    assert out is not None
+    assert approval_id in out
+    assert "shell/chio_shell_run" in out
+    assert "rm -rf" in out
+
+
+@pytest.mark.asyncio
+async def test_chio_approvals_empty_message(tmp_workspace: Path) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+    handle_slash = make_slash_handler(runtime)
+    out = await handle_slash("approvals")
+    assert out == "no pending chio approvals"
+
+
+@pytest.mark.asyncio
+async def test_chio_approve_resolves_via_sidecar(tmp_workspace: Path) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+    approval_id = await runtime.chio_client.submit_for_approval(
+        capability_id=runtime.capability_id,
+        tool_name="chio_shell_run",
+        tool_args={"command": "rm -rf old/"},
+        tool_server="shell",
+    )
+
+    handle_slash = make_slash_handler(runtime)
+    out = await handle_slash(f"approve {approval_id} ok-by-operator")
+    assert out is not None
+    assert approval_id in out
+    assert "approved" in out.lower()
+
+    respond_calls = [
+        c for c in runtime.chio_client.calls if c.method == "respond_approval"
+    ]
+    assert len(respond_calls) == 1
+    assert respond_calls[0].context["verdict"] == "approved"
+    assert respond_calls[0].context["reason"] == "ok-by-operator"
+
+
+@pytest.mark.asyncio
+async def test_chio_deny_resolves_via_sidecar(tmp_workspace: Path) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+    approval_id = await runtime.chio_client.submit_for_approval(
+        capability_id=runtime.capability_id,
+        tool_name="chio_git_run",
+        tool_args={"command": "reset --hard"},
+        tool_server="git",
+    )
+
+    handle_slash = make_slash_handler(runtime)
+    out = await handle_slash(f"deny {approval_id}")
+    assert out is not None
+    assert "denied" in out.lower()
+
+
+@pytest.mark.asyncio
+async def test_chio_approve_without_id_returns_usage(tmp_workspace: Path) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+    handle_slash = make_slash_handler(runtime)
+    out = await handle_slash("approve")
+    assert out is not None
+    assert "usage" in out.lower()
+    assert "<approval_id>" in out
+
+
+@pytest.mark.asyncio
+async def test_chio_unknown_subcommand_lists_approvals_in_help(
+    tmp_workspace: Path,
+) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+    handle_slash = make_slash_handler(runtime)
+    out = await handle_slash("nonsense")
+    assert out is not None
+    assert "approvals" in out
+    assert "approve" in out
+    assert "deny" in out

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-assurance-archive-profile.schema.json",
+  "title": "Chio Pheromone Relay Alert Assurance Archive Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "localKernelId",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs",
+    "requireReplayMatch",
+    "requireRecoveryDrill"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone.relay-alert-assurance-archive-profile.v1" },
+    "localKernelId": { "type": "string", "minLength": 1 },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 0 },
+    "requireReplayMatch": { "type": "boolean" },
+    "requireRecoveryDrill": { "type": "boolean" }
+  }
+}

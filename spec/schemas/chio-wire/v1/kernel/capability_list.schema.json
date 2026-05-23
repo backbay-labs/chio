@@ -308,23 +308,48 @@
             "type": "object",
             "additionalProperties": false,
             "required": [
-              "parent_scope_hash",
-              "child_scope_hash",
-              "normalized_subset_proof"
+              "parentScopeHash",
+              "childScopeHash",
+              "normalizedSubsetProof"
             ],
             "properties": {
-              "parent_scope_hash": {
+              "parentScopeHash": {
                 "type": "string",
                 "pattern": "^[0-9a-f]{64}$"
               },
-              "child_scope_hash": {
+              "childScopeHash": {
                 "type": "string",
                 "pattern": "^[0-9a-f]{64}$"
               },
-              "normalized_subset_proof": {
-                "type": "array",
-                "items": {
-                  "type": "string"
+              "normalizedSubsetProof": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "normalizedParentScope",
+                  "normalizedChildScope"
+                ],
+                "properties": {
+                  "normalizedParentScope": {
+                    "type": "string",
+                    "minLength": 2
+                  },
+                  "normalizedChildScope": {
+                    "type": "string",
+                    "minLength": 2
+                  },
+                  "subsetRelations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "restrictedPredicates": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }

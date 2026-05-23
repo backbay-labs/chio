@@ -46,7 +46,9 @@ impl OtelProbe {
         } else {
             format!("http://{raw}")
         };
-        url::Url::parse(&normalized).map(|_| ()).map_err(|err| err.to_string())
+        url::Url::parse(&normalized)
+            .map(|_| ())
+            .map_err(|err| err.to_string())
     }
 }
 

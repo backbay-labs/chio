@@ -1,4 +1,4 @@
-# Chiodos 6.11 Tickets
+# Chio 6.11 Tickets
 
 ## C6.11-001 Integrator
 

@@ -22,15 +22,18 @@
 //! instance's.
 //!
 //! The workspace pulls `jsonschema` with `default-features = false` and
-//! only the `resolve-file` feature enabled, so `http://` and `https://`
-//! `$ref` URIs always fail with `Unknown scheme` or
-//! "feature is required" rather than reaching the network. This is
-//! verified by the `http_ref_in_schema_does_not_fetch_network` test.
+//! only the `resolve-file` feature enabled. Absolute `http://` and
+//! `https://` `$ref` URIs resolve only when they match local schema `$id`
+//! resources registered from `spec/schemas/`; unregistered network refs fail
+//! with `Unknown scheme` or "feature is required" rather than reaching the
+//! network. This is verified by the `http_ref_in_schema_does_not_fetch_network`
+//! test.
 
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use jsonschema::{Retrieve, Uri};
 use serde_json::Value;
 
 /// Errors surfaced by [`validate`] and helpers.
@@ -100,6 +103,9 @@ pub fn validate_value(
     if let Some(base_uri) = schema_base_uri(schema_path) {
         options = options.with_base_uri(base_uri);
     }
+    if let Some(schema_root) = schema_registry_root(schema_path) {
+        options = options.with_retriever(LocalSchemaRetriever { schema_root });
+    }
     let validator = options
         .build(schema)
         .map_err(|err| ValidateError::SchemaCompile(schema_path.to_path_buf(), err.to_string()))?;
@@ -145,10 +151,82 @@ fn schema_base_uri(schema_path: &Path) -> Option<String> {
     Some(format!("file://{path_str}"))
 }
 
+fn schema_registry_root(schema_path: &Path) -> Option<PathBuf> {
+    let parent = schema_path.parent()?;
+    if parent.as_os_str().is_empty() {
+        return None;
+    }
+    let mut current = parent.to_path_buf();
+    loop {
+        let is_schema_root = current.file_name().is_some_and(|name| name == "schemas")
+            && current
+                .parent()
+                .and_then(Path::file_name)
+                .is_some_and(|name| name == "spec");
+        if is_schema_root {
+            return Some(current);
+        }
+        if !current.pop() {
+            return Some(parent.to_path_buf());
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LocalSchemaRetriever {
+    schema_root: PathBuf,
+}
+
+impl Retrieve for LocalSchemaRetriever {
+    fn retrieve(
+        &self,
+        uri: &Uri<String>,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        match uri.scheme().as_str() {
+            "https" if uri.as_str().starts_with("https://chio.dev/schemas/") => {
+                let relative = uri
+                    .path()
+                    .as_str()
+                    .strip_prefix("/schemas/")
+                    .ok_or("Chio schema URI path must start with /schemas/")?;
+                let path = join_schema_path(&self.schema_root, relative)?;
+                let file = fs::File::open(&path)?;
+                Ok(serde_json::from_reader(file)?)
+            }
+            "file" => {
+                let path = PathBuf::from(uri.path().as_str());
+                let file = fs::File::open(path)?;
+                Ok(serde_json::from_reader(file)?)
+            }
+            "http" | "https" => Err("unregistered network schema reference is not resolved".into()),
+            scheme => Err(format!("Unknown scheme {scheme}").into()),
+        }
+    }
+}
+
+fn join_schema_path(
+    schema_root: &Path,
+    relative: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
+    let mut path = schema_root.to_path_buf();
+    for segment in relative.split('/') {
+        if segment.is_empty() || segment == "." {
+            continue;
+        }
+        if segment == ".." {
+            return Err("Chio schema URI must not contain parent traversal".into());
+        }
+        path.push(segment);
+    }
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::fs;
+    use std::path::PathBuf;
 
     /// Confirms the workspace `jsonschema` build does NOT pull in the
     /// `resolve-http` feature: a schema that references an `http://`
@@ -200,5 +278,61 @@ mod tests {
             matches!(result, Err(ValidateError::SchemaCompile(_, _))),
             "ftp:// $ref must be rejected at schema-compile time"
         );
+    }
+
+    #[test]
+    fn absolute_id_sibling_schema_ref_resolves_from_local_files() {
+        let root = unique_temp_dir("chio-spec-validate-sibling-ref");
+        let schema_dir = root.join("spec/schemas/test/v1");
+        fs::create_dir_all(&schema_dir)
+            .unwrap_or_else(|err| panic!("failed to create {}: {err}", schema_dir.display()));
+        let schema_path = schema_dir.join("root.schema.json");
+        let sibling_path = schema_dir.join("sibling.schema.json");
+        let doc_path = root.join("doc.json");
+        fs::write(
+            &schema_path,
+            serde_json::to_vec_pretty(&json!({
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://chio.dev/schemas/test/v1/root.schema.json",
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name"],
+                "properties": {
+                    "name": {
+                        "$ref": "sibling.schema.json#/$defs/name"
+                    }
+                }
+            }))
+            .unwrap_or_else(|err| panic!("failed to encode root schema: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("failed to write {}: {err}", schema_path.display()));
+        fs::write(
+            &sibling_path,
+            serde_json::to_vec_pretty(&json!({
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://chio.dev/schemas/test/v1/sibling.schema.json",
+                "$defs": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                }
+            }))
+            .unwrap_or_else(|err| panic!("failed to encode sibling schema: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("failed to write {}: {err}", sibling_path.display()));
+        fs::write(&doc_path, br#"{"name":"kernel-a"}"#)
+            .unwrap_or_else(|err| panic!("failed to write {}: {err}", doc_path.display()));
+
+        let result = validate(&schema_path, &doc_path);
+        fs::remove_dir_all(&root)
+            .unwrap_or_else(|err| panic!("failed to remove {}: {err}", root.display()));
+        result.unwrap_or_else(|err| panic!("absolute $id sibling ref should resolve: {err}"));
+    }
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!("{label}-{}", std::process::id()));
+        path
     }
 }

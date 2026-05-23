@@ -183,6 +183,87 @@ fn cmd_api_protect(
     })
 }
 
+/// Stub OpenAPI spec used by `chio start` so the proxy can build the
+/// route table without an upstream OpenAPI source. The catch-all
+/// `/{*path}` proxy route still mounts; it just has no upstream to
+/// forward to (pointing at `http://127.0.0.1:1`), so non-`/chio/*` and
+/// non-`/v1/*` requests will fail loud at the egress contract instead
+/// of silently succeeding. This is the intended behaviour for the
+/// sidecar-only deployment shape.
+const CHIO_START_STUB_OPENAPI_SPEC: &str = r#"openapi: 3.1.0
+info:
+  title: chio-start-sidecar
+  version: 0.0.0
+paths: {}
+"#;
+
+const CHIO_START_NO_UPSTREAM_URL: &str = "http://127.0.0.1:1";
+
+fn cmd_start(
+    listen_addr: &str,
+    receipt_store: Option<&Path>,
+    authority_seed_path: Option<&Path>,
+    print_config: bool,
+) -> Result<(), CliError> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| {
+            CliError::transport_error(format!("failed to start async runtime: {error}"))
+        })?;
+
+    runtime.block_on(async move {
+        let sidecar_control_token = std::env::var("CHIO_SIDECAR_CONTROL_TOKEN")
+            .ok()
+            .or_else(|| std::env::var("CHIO_API_PROTECT_CONTROL_TOKEN").ok())
+            .map(|token| token.trim().to_string())
+            .filter(|token| !token.is_empty());
+        let signer_seed_hex = authority_seed_path
+            .map(load_or_create_authority_keypair)
+            .transpose()?
+            .map(|keypair| keypair.seed_hex());
+        let trusted_capability_issuers = parse_trusted_capability_issuers_from_env()?;
+        let config = ProtectConfig {
+            // The chio-start shape never proxies upstream traffic; the
+            // catch-all route exists only because the underlying axum
+            // router shape is shared with `chio api protect`. Pointing
+            // at port 1 ensures any caller that hits the catch-all
+            // path gets a fast, loud failure rather than a subtle
+            // forward.
+            upstream: CHIO_START_NO_UPSTREAM_URL.to_string(),
+            spec_content: Some(CHIO_START_STUB_OPENAPI_SPEC.to_string()),
+            spec_path: None,
+            listen_addr: listen_addr.to_string(),
+            receipt_db: receipt_store.map(|path| path.display().to_string()),
+            sidecar_control_token,
+            signer_seed_hex,
+            trusted_capability_issuers,
+        };
+
+        ProtectProxy::new(config)
+            .run_with_observer(move |bound_addr| {
+                let base_url = format!("http://{bound_addr}");
+                println!("chio sidecar listening on {base_url}");
+                println!(
+                    "  routes: /chio/* (health, evaluate, verify), /v1/capabilities/{{,mint,validate,attenuate,release}}, /v1/evaluate, /v1/receipts{{,/verify}}, /approvals/*"
+                );
+                if print_config {
+                    println!();
+                    println!("# chio-hermes quickstart -- copy into your shell:");
+                    println!("export CHIO_SIDECAR_URL={base_url}");
+                    println!("# then mint a capability:");
+                    println!("#   hermes chio issue --description \"default backbay capability\" --json | jq -r .id");
+                    println!("# and export it:");
+                    println!("#   export CHIO_CAPABILITY_ID=<id-from-issue>");
+                }
+            })
+            .await
+            .map_err(|error| {
+                CliError::transport_error(format!("failed to start chio sidecar: {error}"))
+            })
+    })
+}
+
 fn parse_trusted_capability_issuers_from_env() -> Result<Vec<chio_core::PublicKey>, CliError> {
     let mut issuers = Vec::new();
 

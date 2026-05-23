@@ -216,6 +216,7 @@ fn create_federation_policy(
             partner,
             "--capability",
             capability_id,
+            "--admin-all",
             "--expires-at",
             &expires_at.to_string(),
             "--require-proofs",

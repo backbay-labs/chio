@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/catchup-response.schema.json",
-  "title": "Chiodos Pheromone Catch-up Response",
+  "title": "Chio Pheromone Catch-up Response",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "accepted", "responderKernelId", "requesterKernelId", "treatyId", "frames", "nextCursor", "code"],

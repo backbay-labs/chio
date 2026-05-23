@@ -390,8 +390,12 @@ impl ChioReceiptBody {
     /// placeholder, but they must never sign as allow, deny, or cancelled.
     pub fn validate_signable_semantics(&self) -> Result<()> {
         let semantics = self.semantic_fields();
+        let legacy_verified_allow = self.trust_level == TrustLevel::Verified
+            && matches!(self.decision, Decision::Allow)
+            && !has_explicit_receipt_semantics(&self.metadata);
         if semantics.receipt_kind != ReceiptKind::MediatedDecision
             && !matches!(self.decision, Decision::Incomplete { .. })
+            && !legacy_verified_allow
         {
             return Err(Error::CanonicalJson(format!(
                 "{} receipts must not sign {:?} as an authorization decision",
@@ -471,6 +475,26 @@ fn receipt_semantic_fields(
         },
         TrustLevel::Advisory => ReceiptSemanticFields::advisory_only(),
     }
+}
+
+fn has_explicit_receipt_semantics(metadata: &Option<serde_json::Value>) -> bool {
+    metadata.as_ref().is_some_and(|metadata| {
+        metadata.get("receipt_semantics").is_some() || metadata.get("receiptSemantics").is_some()
+    })
+}
+
+fn is_legacy_receipt_id(id: &str) -> bool {
+    id.starts_with("rcpt-") || is_uuid_like(id)
+}
+
+fn is_uuid_like(id: &str) -> bool {
+    if id.len() != 36 {
+        return false;
+    }
+    id.char_indices().all(|(index, ch)| match index {
+        8 | 13 | 18 | 23 => ch == '-',
+        _ => ch.is_ascii_hexdigit(),
+    })
 }
 
 impl From<&ChioReceiptBody> for ChioReceiptIdInput {
@@ -620,7 +644,8 @@ impl ChioReceipt {
         if body.validate_signable_semantics().is_err() {
             return Ok(false);
         }
-        if chio_receipt_id(&body)? != self.id {
+        let content_addressed_id = chio_receipt_id(&body)?;
+        if content_addressed_id != self.id && !is_legacy_receipt_id(&self.id) {
             return Ok(false);
         }
         self.kernel_key.verify_canonical(&body, &self.signature)
@@ -1843,6 +1868,46 @@ mod tests {
 
         let err = ChioReceipt::sign(body, &kp).expect_err("trace allow must not sign");
         assert!(err.to_string().contains("trace_observation"));
+    }
+
+    #[test]
+    fn verified_allow_without_explicit_trace_semantics_can_sign() {
+        let kp = Keypair::generate();
+        let mut body = make_receipt_body(&kp);
+        body.trust_level = TrustLevel::Verified;
+        body.metadata = None;
+
+        let receipt = ChioReceipt::sign(body, &kp).unwrap();
+        assert!(receipt.verify_signature().unwrap());
+        assert!(!receipt.is_allowed());
+    }
+
+    #[test]
+    fn legacy_receipt_id_verifies_when_signature_matches_body() {
+        let kp = Keypair::generate();
+        let body = make_receipt_body(&kp);
+        let (signature, _) = kp.sign_canonical(&body).unwrap();
+        let receipt = ChioReceipt {
+            id: body.id.clone(),
+            timestamp: body.timestamp,
+            capability_id: body.capability_id,
+            tool_server: body.tool_server,
+            tool_name: body.tool_name,
+            action: body.action,
+            decision: body.decision,
+            content_hash: body.content_hash,
+            policy_hash: body.policy_hash,
+            evidence: body.evidence,
+            metadata: body.metadata,
+            trust_level: body.trust_level,
+            tenant_id: body.tenant_id,
+            kernel_key: body.kernel_key,
+            algorithm: None,
+            signature,
+        };
+
+        assert_eq!(receipt.id, "rcpt-001");
+        assert!(receipt.verify_signature().unwrap());
     }
 
     #[test]

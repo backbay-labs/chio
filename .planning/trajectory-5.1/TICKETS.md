@@ -90,7 +90,7 @@ Acceptance:
 - `DualSignedReceipt` is documented and tested as compatibility-only.
 - Missing, malicious, or key-mismatched cosigner denies without persistence.
 
-### T5.1-B-005: Strict CHIODOS bilateral invocation profile
+### T5.1-B-005: Strict CHIO bilateral invocation profile
 
 Owner-class: federation owner.
 
@@ -100,7 +100,7 @@ Scope: replace the current signature-slice-only conformance with a strict
 Acceptance:
 
 - Full schema validation exists for required predicate fields.
-- Negative tests reject signature-slice artifacts as strict CHIODOS
+- Negative tests reject signature-slice artifacts as strict CHIO
   conformance.
 - `scripts/check-bounded-ship-bar.sh --diagnostic` no longer reports B4 as
   interim-only.

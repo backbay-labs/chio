@@ -37,7 +37,7 @@ The in-scope catalog is normative in `debate/00-SYNTHESIS.md` and re-stated here
 | Single-entry verifier: `verify_capability_full` becomes the only production path. Delete `verify_capability_full_without_budget_admit`; legacy `verify_capability_signature` callers migrate. PROTOCOL.md sections 408-418 SHOULD -> MUST. | protocol | release work-B1 | TRJ4-100..104 + T1.0.E |
 | Receipt v2 fail-closed under negotiated v2: replace warn-and-downgrade in `kernel_receipt_version_for_remote` at `chio-kernel/src/kernel/mod.rs:1574-1591` with hard reject. PROTOCOL.md section 6 lines 737-741 are rewritten to introduce a NEW normative MUST (current prose "falls back" is descriptive; this is a tightening, not a SHOULD->MUST promotion). | protocol | release work-B2 | TRJ4-120..131 + T1.2.E |
 | Anchor-batch async-only when public witness required: gate `crates/chio-anchor/src/batch.rs:227-235` sync wrapper at runtime (the load-bearing defense); add `scripts/check-anchor-batch-async-witness.sh` as best-effort fast-feedback documentation. | protocol | release work-B3 | TRJ4-140..147 + T1.3.E |
-| **DSSE-conformant bilateral signing (B4 sub-lane added per R4 BLOCKER 1)**: introduce Ed25519-over-DSSE-PAE-of-in-toto-Statement signing as the production §6-conformant artifact. Adds new module `crates/chio-federation/src/bilateral_dsse.rs`. Existing `crates/chio-federation/src/bilateral.rs::DualSignedReceipt::verify` (line 108) is NOT replaced; it coexists with explicit non-§6 disclaimer (single-version transition or cohabitation, choice in `lane-b-wiring/dsse-bilateral-signing.md`). Spec citation: `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 + §7 step 11-12. The R4 finding observed that the legacy `CoSigningBody` preimage (lines 41-77) shares zero bytes with the §6 DSSE PAE preimage; Lane C's prior "Option A two-signature" framing was insufficient. | protocol / federation | release work-B4 | (R4 BLOCKER 1 promotion) |
+| **DSSE-conformant bilateral signing (B4 sub-lane added per R4 BLOCKER 1)**: introduce Ed25519-over-DSSE-PAE-of-in-toto-Statement signing as the production §6-conformant artifact. Adds new module `crates/chio-federation/src/bilateral_dsse.rs`. Existing `crates/chio-federation/src/bilateral.rs::DualSignedReceipt::verify` (line 108) is NOT replaced; it coexists with explicit non-§6 disclaimer (single-version transition or cohabitation, choice in `lane-b-wiring/dsse-bilateral-signing.md`). Spec citation: `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 + §7 step 11-12. The R4 finding observed that the legacy `CoSigningBody` preimage (lines 41-77) shares zero bytes with the §6 DSSE PAE preimage; Lane C's prior "Option A two-signature" framing was insufficient. | protocol / federation | release work-B4 | (R4 BLOCKER 1 promotion) |
 
 Each primitive closes with: enforced call site, spec MUST citation, and a
 production-call-path conformance test that fails when wiring is removed. No
@@ -84,13 +84,13 @@ The following items are **explicitly deferred**. Each entry lifts the synthesis 
 
 **WHY deferred**: dependency hygiene with no forcing function. Conditional caveat: if a Lane A or Lane B ticket discovers a hard blocker (a security advisory, a Lane B primitive that cannot ship without the unified reqwest, etc.), the orchestrator may pull the relevant slice into release work. Otherwise it ships in trj6.
 
-### New chiodos primitives beyond what Lane C consumes
+### New chio primitives beyond what Lane C consumes
 
-> Verbatim: "New chiodos primitives beyond what Lane C consumes; no new normative drafts."
+> Verbatim: "New chio primitives beyond what Lane C consumes; no new normative drafts."
 
 **Target trajectory**: post-trj6.
 
-**WHY deferred**: release work deliberately does not ratify new chiodos normative drafts. Lane C consumes existing drafts (`spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`, `spec/CHIODOS_SELECTIVE_DISCLOSURE.md`) under their as-drafted shape. Adding new primitives during release work would re-create the trj4 pattern of structural framing without runtime wiring. New primitives wait until the existing ones have been forced through end-to-end.
+**WHY deferred**: release work deliberately does not ratify new chio normative drafts. Lane C consumes existing drafts (`spec/CHIO_BILATERAL_COSIGN_INVOCATION.md`, `spec/CHIO_SELECTIVE_DISCLOSURE.md`) under their as-drafted shape. Adding new primitives during release work would re-create the trj4 pattern of structural framing without runtime wiring. New primitives wait until the existing ones have been forced through end-to-end.
 
 ### `v2.71` Web3 live activation
 

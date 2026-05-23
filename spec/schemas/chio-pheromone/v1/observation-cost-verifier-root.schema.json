@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/observation-cost-verifier-root.schema.json",
+  "title": "Chio Pheromone Observation Cost Verifier Root",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "verifierId",
+    "verifierKeyId",
+    "publicKey",
+    "signatureAlgorithm",
+    "validFromUnixMs",
+    "validUntilUnixMs",
+    "allowedTreaties",
+    "allowedSubjectClassNamespaces",
+    "allowedSubjectClasses",
+    "runtimePolicySha256",
+    "issuerKernelId",
+    "issuerSignature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.pheromone-observation-cost-verifier-root.v1" },
+    "verifierId": { "type": "string", "minLength": 1 },
+    "verifierKeyId": { "type": "string", "minLength": 1 },
+    "publicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]+$",
+      "minLength": 64
+    },
+    "signatureAlgorithm": { "enum": ["ed25519", "p256", "p384", "hybrid"] },
+    "validFromUnixMs": { "type": "integer", "minimum": 0 },
+    "validUntilUnixMs": { "type": "integer", "minimum": 0 },
+    "allowedTreaties": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "allowedSubjectClassNamespaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "allowedSubjectClasses": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "runtimePolicySha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "issuerKernelId": { "type": "string", "minLength": 1 },
+    "issuerSignature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:.+)$"
+    }
+  }
+}

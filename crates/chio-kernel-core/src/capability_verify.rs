@@ -350,10 +350,10 @@ pub fn verify_capability_full(
             .features
             .get(chio_core_types::capability::capability_features::DELEGATION_CHAIN_BINDING)
             .copied()
-            .unwrap_or(true);
+            .unwrap_or(false);
         if !chain_binding_enabled {
             return Err(CapabilityError::AttenuationViolation(
-                "chain-binding: peer disabled delegation_chain_binding; attenuated tokens are rejected".to_string(),
+                "chain-binding: peer did not explicitly enable delegation_chain_binding; attenuated tokens are rejected".to_string(),
             ));
         }
         let issuer_root = trust_root
@@ -512,6 +512,42 @@ mod tests {
             &mut budgets,
         )
         .expect_err("attenuated token must fail when chain binding is disabled");
+
+        assert!(matches!(err, CapabilityError::AttenuationViolation(_)));
+    }
+
+    #[test]
+    fn full_verifier_rejects_attenuated_token_when_chain_binding_feature_is_missing() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let token =
+            make_attenuated_token("cap-attenuated-missing-chain-binding", &issuer, &subject);
+        let clock = crate::FixedClock::new(150);
+        let mut peer = CapabilityNegotiation::t1_default();
+        peer.features
+            .remove(capability_features::DELEGATION_CHAIN_BINDING);
+        let trust_root_hash = scope_hash(&ChioScope::default()).expect("trust root hash");
+        let issuer_public = issuer.public_key();
+        let resolver_issuer = issuer_public.clone();
+        let trust_roots = move |candidate: &PublicKey| {
+            if candidate == &resolver_issuer {
+                Some(trust_root_hash.clone())
+            } else {
+                None
+            }
+        };
+        let mut budgets = NoopBudgetRegistry;
+
+        let err = verify_capability_full(
+            &token,
+            &[issuer_public],
+            &clock,
+            CapabilityCryptoFloor::AllowClassical,
+            &peer,
+            &trust_roots,
+            &mut budgets,
+        )
+        .expect_err("attenuated token must fail when chain binding is not negotiated");
 
         assert!(matches!(err, CapabilityError::AttenuationViolation(_)));
     }
