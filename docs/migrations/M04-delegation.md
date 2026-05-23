@@ -1,21 +1,21 @@
-# M04 delegation_v2 Migration
+# M04 delegation Migration
 
-M04 phase 5 flips `delegation_v2` to default-on in
+M04 phase 5 flips `delegation` to default-on in
 `crates/chio-kernel/Cargo.toml`. The kernel now consults the installed
 `RevocationView` snapshot on every delegated dispatch and denies the
 capability if any link in its delegation chain (or the leaf capability
 itself) appears in the revoked set. This is the trust-boundary's
-fail-closed step that has shipped behind the `delegation_v2` feature
+fail-closed step that has shipped behind the `delegation` feature
 gate since M04 phase 3.
 
 ## What changed
 
 - `crates/chio-kernel/Cargo.toml`'s `default` feature set now contains
-  both `legacy-sync` and `delegation_v2`. A standard
+  both `legacy-sync` and `delegation`. A standard
   `chio-kernel = { version = "..." }` dependency picks both up
   transparently, with no Cargo.toml edits required by consumers.
-- `chio-kernel`'s `delegation_v2` feature still cascades to
-  `chio-core-types/delegation_v2`, which in turn enables
+- `chio-kernel`'s `delegation` feature still cascades to
+  `chio-core-types/delegation`, which in turn enables
   `chio_core_types::delegate(...)`,
   `chio_core_types::DelegationReceipt`, and
   `chio_core_types::ScopeAttenuation`. With the kernel default flipped,
@@ -31,7 +31,7 @@ gate since M04 phase 3.
 
 ### Default kernel users
 
-No action required. The kernel boots with `delegation_v2` on, but the
+No action required. The kernel boots with `delegation` on, but the
 kernel-side oracle consultation is dormant until a `RevocationView` is
 installed. Default deployments (no view installed) keep the legacy
 `RevocationStore`-only revocation surface and behave identically.
@@ -77,12 +77,12 @@ of the two to compile its dispatch path.
 
 ### chio-core-types stays opt-in
 
-`chio-core-types` keeps its own `delegation_v2` feature default-OFF.
+`chio-core-types` keeps its own `delegation` feature default-OFF.
 Direct consumers of `chio-core-types` (without `chio-kernel`) that
 want the new mint helper must still opt in explicitly:
 
 ```toml
-chio-core-types = { workspace = true, features = ["delegation_v2"] }
+chio-core-types = { workspace = true, features = ["delegation"] }
 ```
 
 This avoids a transitive surface flip for SDK consumers that depend on
@@ -111,7 +111,7 @@ explicitly per the M04 plan.
 After upgrading:
 
 1. `cargo build` of any crate that depends on `chio-kernel` should
-   pick up `delegation_v2` automatically with no Cargo.toml change.
+   pick up `delegation` automatically with no Cargo.toml change.
 2. The kernel's revocation behaviour is unchanged when no
    `RevocationView` is installed (tested by
    `crates/chio-kernel/src/kernel/delegation.rs::tests::no_view_installed_returns_ok`).

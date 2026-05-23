@@ -10,7 +10,7 @@ use std::thread;
 use chio_core::capability::{
     compute_attenuation_witness, scope_hash, AttenuationProof, CallChainContinuationAudience,
     CallChainContinuationToken, CallChainContinuationTokenBody, CapabilityToken,
-    CapabilityTokenBody, CapabilityTokenV2Body, ChioScope, Constraint, DelegationLink,
+    CapabilityTokenBody, CapabilityTokenAttenuationBody, ChioScope, Constraint, DelegationLink,
     DelegationLinkBody, GovernedApprovalDecision, GovernedApprovalToken,
     GovernedApprovalTokenBody, GovernedAutonomyContext, GovernedAutonomyTier,
     GovernedCallChainContext, GovernedTransactionIntent, GovernedUpstreamCallChainProof,
@@ -25,9 +25,7 @@ use chio_core::credit::{
     CREDIT_BOND_ARTIFACT_SCHEMA, CREDIT_BOND_REPORT_SCHEMA,
 };
 use chio_core::crypto::{Keypair, PublicKey};
-use chio_core::receipt::{
-    ChioReceipt, ChioReceiptBody, ChioReceiptV2, Decision, ToolCallAction,
-};
+use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
 use chio_core::session::{
     CompleteOperation, CompletionArgument, CompletionReference, CreateMessageOperation,
     GetPromptOperation, OperationContext, RequestId, SamplingMessage, SamplingTool,
@@ -79,13 +77,6 @@ impl SqliteReceiptStore {
                     terminal_state TEXT NOT NULL,
                     policy_hash TEXT NOT NULL,
                     outcome_hash TEXT NOT NULL,
-                    raw_json TEXT NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS chio_receipts_v2 (
-                    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-                    body_hash TEXT NOT NULL UNIQUE,
-                    legacy_receipt_id_alias TEXT,
                     raw_json TEXT NOT NULL
                 );
 
@@ -268,51 +259,6 @@ impl ReceiptStore for SqliteReceiptStore {
     fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
         self.append_chio_receipt_returning_seq(receipt)?;
         Ok(())
-    }
-
-    fn supports_chio_receipt_v2(&self) -> bool {
-        true
-    }
-
-    fn append_chio_receipt_v2(
-        &self,
-        receipt: &ChioReceiptV2,
-        legacy_receipt_id_alias: Option<&str>,
-    ) -> Result<u64, ReceiptStoreError> {
-        let raw_json = serde_json::to_string(receipt)?;
-        let connection = self.connection()?;
-        let rows = connection.execute(
-            r#"
-                INSERT INTO chio_receipts_v2 (
-                    body_hash,
-                    legacy_receipt_id_alias,
-                    raw_json
-                ) VALUES (?1, ?2, ?3)
-                ON CONFLICT(body_hash) DO NOTHING
-                "#,
-            params![receipt.body_hash.as_str(), legacy_receipt_id_alias, raw_json],
-        )?;
-        if rows > 0 {
-            Ok(connection.last_insert_rowid().max(0) as u64)
-        } else {
-            Ok(0)
-        }
-    }
-
-    fn contains_chio_receipt_v2_body_hash(
-        &self,
-        body_hash: &str,
-    ) -> Result<bool, ReceiptStoreError> {
-        let found = self
-            .connection()?
-            .query_row(
-                "SELECT 1 FROM chio_receipts_v2 WHERE body_hash = ?1",
-                params![body_hash],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some();
-        Ok(found)
     }
 
     fn supports_kernel_signed_checkpoints(&self) -> bool {
@@ -707,9 +653,7 @@ fn make_config() -> KernelConfig {
 }
 
 fn make_kernel(config: KernelConfig) -> ChioKernel {
-    let kernel = ChioKernel::new(config);
-    kernel.set_receipt_v2_default(false);
-    kernel
+    ChioKernel::new(config)
 }
 
 fn make_signed_receipt(kp: &Keypair, id: &str) -> ChioReceipt {
@@ -717,7 +661,7 @@ fn make_signed_receipt(kp: &Keypair, id: &str) -> ChioReceipt {
         ChioReceiptBody {
             id: id.to_string(),
             timestamp: 1_700_000_100,
-            capability_id: "cap-receipt-v2".to_string(),
+            capability_id: "cap-receipt".to_string(),
             tool_server: "srv".to_string(),
             tool_name: "echo".to_string(),
             action: ToolCallAction::from_parameters(serde_json::json!({"message": "hello"}))
@@ -768,7 +712,7 @@ fn kernel_rejects_classical_capability_under_pq_required_floor() {
 }
 
 #[test]
-fn production_evaluate_rejects_direct_v2_without_trust_root_resolver() {
+fn production_evaluate_rejects_direct_attenuated_without_trust_root_resolver() {
     let issuer = make_keypair();
     let subject = make_keypair();
     let mut config = make_config();
@@ -776,32 +720,31 @@ fn production_evaluate_rejects_direct_v2_without_trust_root_resolver() {
     let mut kernel = make_kernel(config);
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
 
-    let capability = make_direct_v2_capability(
+    let capability = make_direct_attenuated_capability(
         &issuer,
         &subject.public_key(),
         make_scope(vec![make_grant("srv-a", "read_file")]),
     );
     let response = kernel
         .evaluate_tool_call_blocking(&make_request(
-            "req-direct-v2",
+            "req-direct-attenuated",
             &capability,
             "read_file",
             "srv-a",
         ))
-        .expect("v2 rejection should produce a deny receipt");
+        .expect("attenuated rejection should produce a deny receipt");
 
     assert_eq!(response.verdict, Verdict::Deny);
     let reason = response.reason.unwrap_or_default();
     assert!(
-        reason.contains("v2 chain-binding") && reason.contains("trust-root"),
-        "expected v2 chain-binding deny, got: {reason}"
+        reason.contains("chain-binding") && reason.contains("trust-root"),
+        "expected chain-binding deny, got: {reason}"
     );
 }
 
 #[test]
-fn local_default_receipt_v2_without_store_uses_v1_and_invokes_tool() {
+fn local_default_without_store_invokes_tool() {
     let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_v2_default(true);
     let invocations = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(SideEffectServer::new(
         "srv-a",
@@ -823,119 +766,15 @@ fn local_default_receipt_v2_without_store_uses_v1_and_invokes_tool() {
             "read_file",
             "srv-a",
         ))
-        .expect("local default without a v2 store should fall back to v1");
+        .expect("local default without a receipt store should invoke the tool");
 
     assert_eq!(response.verdict, Verdict::Allow);
     assert_eq!(
         invocations.load(Ordering::SeqCst),
         1,
-        "ordinary local dispatch must not require a v2 receipt store"
+        "ordinary local dispatch must not require a receipt store"
     );
     assert_eq!(kernel.receipt_log().len(), 1);
-}
-
-#[test]
-fn receipt_v2_replay_set_rolls_back_when_persistence_fails() {
-    let keypair = make_keypair();
-    let mut config = make_config();
-    config.keypair = keypair.clone();
-    let mut kernel = make_kernel(config);
-    kernel.set_receipt_store(Box::new(FailingV2ReceiptStore));
-    let receipt = make_signed_receipt(&keypair, "rcpt-v2-rollback");
-    let v2 = kernel
-        .mint_chio_receipt_v2_from_v1_for_test(&receipt)
-        .expect("mint v2 receipt");
-
-    let err = kernel
-        .record_chio_receipt_v2(&v2, Some(receipt.id.as_str()))
-        .expect_err("v2 persistence failure must surface");
-    assert!(
-        format!("{err}").contains("v2 receipt persistence failed"),
-        "unexpected error: {err}"
-    );
-    assert!(
-        !kernel.contains_chio_receipt_v2_body_hash(&v2.body_hash),
-        "failed persistence must not poison the in-memory replay set"
-    );
-}
-
-#[test]
-fn record_receipt_v2_without_store_fails_before_replay_insert() {
-    let keypair = make_keypair();
-    let mut config = make_config();
-    config.keypair = keypair.clone();
-    let kernel = make_kernel(config);
-    let receipt = make_signed_receipt(&keypair, "rcpt-v2-no-store");
-    let v2 = kernel
-        .mint_chio_receipt_v2_from_v1_for_test(&receipt)
-        .expect("mint v2 receipt");
-
-    let err = kernel
-        .record_chio_receipt_v2(&v2, Some(receipt.id.as_str()))
-        .expect_err("v2 record without durable store must fail");
-    assert!(
-        format!("{err}").contains("no durable v2-capable receipt store configured"),
-        "unexpected error: {err}"
-    );
-    assert!(
-        !kernel.contains_chio_receipt_v2_body_hash(&v2.body_hash),
-        "missing persistence must not insert into the in-memory replay set"
-    );
-}
-
-#[test]
-fn receipt_v2_zero_seq_replay_conflict_rolls_back() {
-    let keypair = make_keypair();
-    let mut config = make_config();
-    config.keypair = keypair.clone();
-    let mut kernel = make_kernel(config);
-    kernel.set_receipt_store(Box::new(ZeroSeqV2ReceiptStore));
-    let receipt = make_signed_receipt(&keypair, "rcpt-v2-zero-seq");
-    let v2 = kernel
-        .mint_chio_receipt_v2_from_v1_for_test(&receipt)
-        .expect("mint v2 receipt");
-
-    let err = kernel
-        .record_chio_receipt_v2(&v2, Some(receipt.id.as_str()))
-        .expect_err("zero seq means durable replay conflict");
-    assert!(
-        format!("{err}").contains("already exists"),
-        "unexpected error: {err}"
-    );
-    assert!(
-        !kernel.contains_chio_receipt_v2_body_hash(&v2.body_hash),
-        "durable replay conflict must not poison the in-memory replay set"
-    );
-}
-
-#[test]
-fn receipt_v2_failure_prevents_v1_persistence() {
-    let keypair = make_keypair();
-    let mut config = make_config();
-    config.keypair = keypair.clone();
-    let mut kernel = make_kernel(config);
-    kernel.set_receipt_v2_default(true);
-    let v1_called = std::sync::Arc::new(AtomicBool::new(false));
-    kernel.set_receipt_store(Box::new(V2FailsBeforeV1Store {
-        v1_called: std::sync::Arc::clone(&v1_called),
-    }));
-    let subject = Keypair::generate();
-    let capability = make_capability(&kernel, &subject, ChioScope::default(), 60);
-    let request = make_request("req-v2-before-v1", &capability, "echo", "srv");
-    let receipt = make_signed_receipt(&keypair, "rcpt-v2-before-v1");
-
-    let err = kernel
-        .record_chio_receipt_with_federation(&request, &receipt)
-        .expect_err("v2 persistence failure must abort before v1 append");
-
-    assert!(
-        format!("{err}").contains("v2 receipt persistence failed"),
-        "unexpected error: {err}"
-    );
-    assert!(
-        !v1_called.load(Ordering::SeqCst),
-        "v1 receipt append must not happen after v2 persistence fails"
-    );
 }
 
 fn unique_receipt_db_path(prefix: &str) -> std::path::PathBuf {
@@ -988,7 +827,7 @@ fn make_capability(
         .unwrap()
 }
 
-fn make_direct_v2_capability(
+fn make_direct_attenuated_capability(
     issuer: &Keypair,
     subject: &PublicKey,
     scope: ChioScope,
@@ -997,10 +836,10 @@ fn make_direct_v2_capability(
     let parent_hash = scope_hash(&scope).expect("hash parent scope");
     let child_hash = scope_hash(&scope).expect("hash child scope");
     let witness = compute_attenuation_witness(&scope, &scope).expect("compute attenuation witness");
-    CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body: CapabilityTokenBody {
-                id: "cap-direct-v2".to_string(),
+                id: "cap-direct-attenuated".to_string(),
                 issuer: issuer.public_key(),
                 subject: subject.clone(),
                 scope,
@@ -1019,7 +858,7 @@ fn make_direct_v2_capability(
         },
         issuer,
     )
-    .expect("sign v2 capability")
+    .expect("sign attenuated capability")
 }
 
 fn make_request(
@@ -1151,6 +990,15 @@ fn tool_call_stream_output(output: Option<ToolCallOutput>) -> Option<ToolCallStr
     }
 }
 
+fn assert_content_addressed_receipt_id(id: &str) {
+    assert_eq!(id.len(), 64, "receipt id should be a SHA-256 hex digest");
+    assert!(
+        id.chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
+        "receipt id should be lowercase hex"
+    );
+}
+
 fn make_delegation_link(
     capability_id: &str,
     delegator_kp: &Keypair,
@@ -1171,7 +1019,7 @@ fn make_delegation_link(
     .unwrap()
 }
 
-struct V2DelegatedChildInput<'a> {
+struct AttenuatedDelegatedChildInput<'a> {
     kernel: &'a ChioKernel,
     parent: &'a CapabilityToken,
     parent_kp: &'a Keypair,
@@ -1182,7 +1030,7 @@ struct V2DelegatedChildInput<'a> {
     share_bps: u16,
 }
 
-fn make_v2_delegated_child(input: V2DelegatedChildInput<'_>) -> CapabilityToken {
+fn make_attenuated_delegated_child(input: AttenuatedDelegatedChildInput<'_>) -> CapabilityToken {
     let parent_scope_hash = scope_hash(input.parent_scope).unwrap();
     let child_scope_hash = scope_hash(&input.child_scope).unwrap();
     let issued_at = current_unix_timestamp();
@@ -1209,8 +1057,8 @@ fn make_v2_delegated_child(input: V2DelegatedChildInput<'_>) -> CapabilityToken 
     )
     .unwrap();
 
-    CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body: CapabilityTokenBody {
                 id: input.id.to_string(),
                 issuer: input.kernel.config.keypair.public_key(),
@@ -1992,96 +1840,6 @@ impl ReceiptStore for FailingRequestLineageReceiptStore {
     }
 }
 
-#[derive(Default)]
-struct FailingV2ReceiptStore;
-
-impl ReceiptStore for FailingV2ReceiptStore {
-    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
-        Ok(())
-    }
-
-    fn supports_chio_receipt_v2(&self) -> bool {
-        true
-    }
-
-    fn append_child_receipt(
-        &self,
-        _receipt: &ChildRequestReceipt,
-    ) -> Result<(), ReceiptStoreError> {
-        Ok(())
-    }
-
-    fn append_chio_receipt_v2(
-        &self,
-        _receipt: &ChioReceiptV2,
-        _legacy_receipt_id_alias: Option<&str>,
-    ) -> Result<u64, ReceiptStoreError> {
-        Err(ReceiptStoreError::Conflict(
-            "v2 receipt write failed".to_string(),
-        ))
-    }
-}
-
-#[derive(Default)]
-struct ZeroSeqV2ReceiptStore;
-
-impl ReceiptStore for ZeroSeqV2ReceiptStore {
-    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
-        Ok(())
-    }
-
-    fn supports_chio_receipt_v2(&self) -> bool {
-        true
-    }
-
-    fn append_child_receipt(
-        &self,
-        _receipt: &ChildRequestReceipt,
-    ) -> Result<(), ReceiptStoreError> {
-        Ok(())
-    }
-
-    fn append_chio_receipt_v2(
-        &self,
-        _receipt: &ChioReceiptV2,
-        _legacy_receipt_id_alias: Option<&str>,
-    ) -> Result<u64, ReceiptStoreError> {
-        Ok(0)
-    }
-}
-
-struct V2FailsBeforeV1Store {
-    v1_called: std::sync::Arc<AtomicBool>,
-}
-
-impl ReceiptStore for V2FailsBeforeV1Store {
-    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
-        self.v1_called.store(true, Ordering::SeqCst);
-        Ok(())
-    }
-
-    fn supports_chio_receipt_v2(&self) -> bool {
-        true
-    }
-
-    fn append_child_receipt(
-        &self,
-        _receipt: &ChildRequestReceipt,
-    ) -> Result<(), ReceiptStoreError> {
-        Ok(())
-    }
-
-    fn append_chio_receipt_v2(
-        &self,
-        _receipt: &ChioReceiptV2,
-        _legacy_receipt_id_alias: Option<&str>,
-    ) -> Result<u64, ReceiptStoreError> {
-        Err(ReceiptStoreError::Conflict(
-            "v2 receipt write failed".to_string(),
-        ))
-    }
-}
-
 impl ResourceProvider for FilesystemResourceProvider {
     fn list_resources(&self) -> Vec<ResourceDefinition> {
         vec![
@@ -2266,7 +2024,7 @@ fn kernel_persists_tool_receipts_to_sqlite_store() {
     assert_eq!(count, 1);
     assert_eq!(distinct_count, 1);
     assert_eq!(child_count, 0);
-    assert!(receipt_id.starts_with("rcpt-"));
+    assert_content_addressed_receipt_id(&receipt_id);
 
     drop(connection);
     let _ = std::fs::remove_file(path);
@@ -5755,7 +5513,7 @@ fn make_sibling_sum_monetary_fixture(prefix: &str) -> SiblingSumMonetaryFixture 
     );
 
     let child_a_id = format!("cap-{prefix}-child-a");
-    let child_a = make_v2_delegated_child(V2DelegatedChildInput {
+    let child_a = make_attenuated_delegated_child(AttenuatedDelegatedChildInput {
         kernel: &kernel,
         parent: &parent,
         parent_kp: &parent_kp,
@@ -5766,7 +5524,7 @@ fn make_sibling_sum_monetary_fixture(prefix: &str) -> SiblingSumMonetaryFixture 
         share_bps: 4_000,
     });
     let child_b_id = format!("cap-{prefix}-child-b");
-    let child_b = make_v2_delegated_child(V2DelegatedChildInput {
+    let child_b = make_attenuated_delegated_child(AttenuatedDelegatedChildInput {
         kernel: &kernel,
         parent: &parent,
         parent_kp: &parent_kp,
@@ -10428,10 +10186,7 @@ fn velocity_guard_denial_produces_signed_deny_receipt_no_panic() {
         "counting guard should deny 3rd invocation"
     );
     // Verify it's a properly signed deny receipt (not a panic/unwrap).
-    assert!(
-        r3.receipt.id.starts_with("rcpt-"),
-        "receipt should have valid id"
-    );
+    assert_content_addressed_receipt_id(&r3.receipt.id);
     assert!(r3.reason.is_some(), "denial should have a reason");
 }
 

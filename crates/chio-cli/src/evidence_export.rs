@@ -20,7 +20,7 @@ use chio_kernel::{
     is_supported_checkpoint_schema, verify_checkpoint_signature, CapabilitySnapshot,
     EvidenceChildReceiptRecord, EvidenceChildReceiptScope, EvidenceExportBundle,
     EvidenceExportQuery, EvidenceRetentionMetadata, EvidenceToolReceiptRecord,
-    EvidenceUncheckpointedReceipt, KernelCheckpoint, ReceiptInclusionProof,
+    EvidenceUncheckpointedReceipt, KernelCheckpoint, ReceiptInclusionProof, ReceiptReadBoundary,
 };
 use chio_store_sqlite::SqliteReceiptStore;
 
@@ -527,6 +527,10 @@ pub(crate) fn merge_export_query(
         cli_query.tenant.as_deref(),
         "tenant",
     )?;
+    let read_boundary = merge_read_boundary(
+        policy_query.read_boundary.as_ref(),
+        cli_query.read_boundary.as_ref(),
+    )?;
     let since = match (policy_query.since, cli_query.since) {
         (Some(policy), Some(cli)) => Some(max(policy, cli)),
         (Some(policy), None) => Some(policy),
@@ -546,13 +550,27 @@ pub(crate) fn merge_export_query(
             ));
         }
     }
-    Ok(EvidenceExportQuery {
+    let mut merged = EvidenceExportQuery {
         capability_id,
         agent_subject,
         since,
         until,
         tenant,
-    })
+        read_boundary,
+    };
+    if let Some(ReceiptReadBoundary::TenantScoped { tenant }) = &merged.read_boundary {
+        if merged
+            .tenant
+            .as_deref()
+            .is_some_and(|query_tenant| query_tenant != tenant)
+        {
+            return Err(CliError::attest_error(
+                "evidence package read boundary tenant conflicts with query tenant".to_string(),
+            ));
+        }
+        merged.tenant = Some(tenant.clone());
+    }
+    Ok(merged)
 }
 
 fn merge_exact_scope(
@@ -566,6 +584,32 @@ fn merge_exact_scope(
         ))),
         (Some(policy), _) => Ok(Some(policy.to_string())),
         (None, Some(cli)) => Ok(Some(cli.to_string())),
+        (None, None) => Ok(None),
+    }
+}
+
+fn merge_read_boundary(
+    policy_value: Option<&ReceiptReadBoundary>,
+    cli_value: Option<&ReceiptReadBoundary>,
+) -> Result<Option<ReceiptReadBoundary>, CliError> {
+    match (policy_value, cli_value) {
+        (
+            Some(ReceiptReadBoundary::TenantScoped { tenant: policy }),
+            Some(ReceiptReadBoundary::TenantScoped { tenant: cli }),
+        ) if policy != cli => Err(CliError::attest_error(
+            "requested export read boundary falls outside the signed federation policy".to_string(),
+        )),
+        (Some(ReceiptReadBoundary::TenantScoped { .. }), Some(ReceiptReadBoundary::AdminAll)) => {
+            Err(CliError::attest_error(
+                "requested admin-all export exceeds tenant-scoped federation policy".to_string(),
+            ))
+        }
+        (
+            Some(ReceiptReadBoundary::AdminAll),
+            Some(boundary @ ReceiptReadBoundary::TenantScoped { .. }),
+        ) => Ok(Some(boundary.clone())),
+        (Some(boundary), _) => Ok(Some(boundary.clone())),
+        (None, Some(boundary)) => Ok(Some(boundary.clone())),
         (None, None) => Ok(None),
     }
 }
@@ -623,6 +667,9 @@ pub(crate) fn prepare_evidence_export(
     } else {
         query
     };
+    query
+        .validate_read_boundary()
+        .map_err(|error| CliError::attest_error(error.to_string()))?;
     let require_proofs = require_proofs
         || federation_policy
             .as_ref()
@@ -1503,6 +1550,8 @@ pub struct EvidenceFederationPolicyCreateArgs<'a> {
     pub agent_subject: Option<&'a str>,
     pub since: Option<u64>,
     pub until: Option<u64>,
+    pub tenant: Option<&'a str>,
+    pub admin_all: bool,
     pub expires_at: u64,
     pub require_proofs: bool,
     pub purpose: Option<&'a str>,
@@ -1526,6 +1575,22 @@ pub fn cmd_evidence_federation_policy_create(
             ));
         }
     }
+    if args.admin_all && args.tenant.is_some() {
+        return Err(CliError::attest_error(
+            "use either --tenant or --admin-all for evidence federation policy create, not both"
+                .to_string(),
+        ));
+    }
+    if !args.admin_all && args.tenant.is_none() {
+        return Err(CliError::attest_error(
+            "evidence federation policy create requires either --tenant or --admin-all".to_string(),
+        ));
+    }
+    let read_boundary = if args.admin_all {
+        Some(ReceiptReadBoundary::AdminAll)
+    } else {
+        args.tenant.map(ReceiptReadBoundary::tenant_scoped)
+    };
 
     let body = FederationPolicyBody {
         schema: FEDERATION_POLICY_SCHEMA.to_string(),
@@ -1539,7 +1604,8 @@ pub fn cmd_evidence_federation_policy_create(
             agent_subject: args.agent_subject.map(ToOwned::to_owned),
             since: args.since,
             until: args.until,
-            tenant: None,
+            tenant: args.tenant.map(ToOwned::to_owned),
+            read_boundary,
         },
         require_proofs: args.require_proofs,
         purpose: args.purpose.map(ToOwned::to_owned),
@@ -1572,6 +1638,8 @@ pub fn cmd_evidence_export(
     agent_subject: Option<&str>,
     since: Option<u64>,
     until: Option<u64>,
+    tenant: Option<&str>,
+    admin_all: bool,
     policy_file: Option<&Path>,
     federation_policy_file: Option<&Path>,
     require_proofs: bool,
@@ -1579,13 +1647,24 @@ pub fn cmd_evidence_export(
     control_url: Option<&str>,
     control_token: Option<&str>,
 ) -> Result<(), CliError> {
+    if admin_all && tenant.is_some() {
+        return Err(CliError::attest_error(
+            "use either --tenant or --admin-all for evidence export, not both".to_string(),
+        ));
+    }
+    let read_boundary = if admin_all {
+        Some(ReceiptReadBoundary::AdminAll)
+    } else {
+        tenant.map(ReceiptReadBoundary::tenant_scoped)
+    };
     let prepared = prepare_evidence_export(
         EvidenceExportQuery {
             capability_id: capability_id.map(ToOwned::to_owned),
             agent_subject: agent_subject.map(ToOwned::to_owned),
             since,
             until,
-            tenant: None,
+            tenant: tenant.map(ToOwned::to_owned),
+            read_boundary,
         },
         require_proofs,
         federation_policy_file
@@ -1930,6 +2009,7 @@ mod tests {
                 since: None,
                 until: None,
                 tenant: Some("tenant-a".to_string()),
+                read_boundary: Some(ReceiptReadBoundary::tenant_scoped("tenant-a")),
             },
             &EvidenceExportQuery {
                 capability_id: None,
@@ -1937,6 +2017,7 @@ mod tests {
                 since: None,
                 until: None,
                 tenant: None,
+                read_boundary: None,
             },
         )
         .test_unwrap();
@@ -1955,6 +2036,7 @@ mod tests {
                 since: None,
                 until: None,
                 tenant: Some("tenant-a".to_string()),
+                read_boundary: Some(ReceiptReadBoundary::tenant_scoped("tenant-a")),
             },
             &EvidenceExportQuery {
                 capability_id: None,
@@ -1962,11 +2044,34 @@ mod tests {
                 since: None,
                 until: None,
                 tenant: Some("tenant-b".to_string()),
+                read_boundary: Some(ReceiptReadBoundary::tenant_scoped("tenant-b")),
             },
         )
         .test_unwrap_err();
 
         assert!(error.to_string().contains("tenant"));
+    }
+
+    #[test]
+    fn merge_export_query_uses_cli_tenant_when_policy_is_admin_all() {
+        let merged = merge_export_query(
+            &EvidenceExportQuery {
+                capability_id: None,
+                agent_subject: None,
+                since: None,
+                until: None,
+                tenant: None,
+                read_boundary: Some(ReceiptReadBoundary::AdminAll),
+            },
+            &EvidenceExportQuery::tenant_scoped("tenant-a"),
+        )
+        .test_unwrap();
+
+        assert_eq!(merged.tenant.as_deref(), Some("tenant-a"));
+        assert_eq!(
+            merged.read_boundary,
+            Some(ReceiptReadBoundary::tenant_scoped("tenant-a"))
+        );
     }
 
     #[test]
@@ -1978,6 +2083,7 @@ mod tests {
                 since: None,
                 until: None,
                 tenant: Some("tenant-a".to_string()),
+                read_boundary: Some(ReceiptReadBoundary::tenant_scoped("tenant-a")),
             },
             &EvidenceExportQuery {
                 capability_id: None,
@@ -1985,6 +2091,7 @@ mod tests {
                 since: None,
                 until: None,
                 tenant: Some("tenant-b".to_string()),
+                read_boundary: Some(ReceiptReadBoundary::tenant_scoped("tenant-b")),
             },
         )
         .test_unwrap_err();

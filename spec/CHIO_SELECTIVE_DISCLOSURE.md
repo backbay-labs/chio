@@ -271,13 +271,11 @@ padded to scalar):
 | 7 | `cost` | H |
 | 8 | `output_hash` | Opt<S> |
 
-Chio workflow v2 adds optional `StepRecord` fields for bilateral
-DSSE linkage, governance receipt id, parent receipt hash, consistency
-anchor, and destructive-step status. Those fields are verified by the
-offline Chio package verifier. They are not part of
-`chio.bbs-projection.step.v1`; adding them to the BBS projection would
-require a future projection version such as
-`chio.bbs-projection.step.v2`:
+Chio workflow receipts include optional `StepRecord` fields for bilateral
+DSSE linkage, governance receipt id, parent receipt hash, consistency anchor,
+and destructive-step status. Those fields are verified by the offline Chio
+package verifier. They are not part of `chio.bbs-projection.step.v1`; adding
+them to the BBS projection would require a future projection profile:
 
 | Idx | Field (v0.2 gated) | Enc. |
 |---|---|---|

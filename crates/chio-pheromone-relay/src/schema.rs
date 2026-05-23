@@ -45,8 +45,8 @@ pub const PHEROMONE_RELAY_ALERT_NORMALIZATION_PROFILE_SCHEMA: &str =
     "chio.pheromone.relay-alert-normalization-profile.v1";
 pub const PHEROMONE_RELAY_ALERT_NORMALIZATION_REPORT_SCHEMA: &str =
     "chio.pheromone.relay-alert-normalization-report.v1";
-pub const PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA: &str =
-    "chio.pheromone.relay-alert-delivery-drift-report.v2";
+pub const PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_SCHEMA: &str =
+    "chio.pheromone.relay-alert-delivery-drift-report.v1";
 pub const PHEROMONE_RELAY_ALERT_ROUTE_OWNER_PROFILE_SCHEMA: &str =
     "chio.pheromone.relay-alert-route-owner-profile.v1";
 pub const PHEROMONE_RELAY_ALERT_ROUTE_REVIEW_PACKET_SCHEMA: &str =

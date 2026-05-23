@@ -53,7 +53,7 @@
       "schemaFile": "spec/schemas/chio-attest/v1/selective-disclosure-proof.schema.json"
     },
     {
-      "schema": "chio.attest.verifier-report.v2",
+      "schema": "chio.attest.verifier-report.v1",
       "artifactKind": "chio_attest_verifier_report",
       "introducedBy": "chio-final-architecture/v1",
       "schemaFile": "spec/schemas/chio-attest/v1/verifier-report.schema.json"
@@ -407,10 +407,10 @@
       "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-assurance-trusted-exporters.schema.json"
     },
     {
-      "schema": "chio.pheromone.relay-alert-delivery-drift-report.v2",
-      "artifactKind": "chio_pheromone_relay_alert_delivery_drift_report_v2",
+      "schema": "chio.pheromone.relay-alert-delivery-drift-report.v1",
+      "artifactKind": "chio_pheromone_relay_alert_delivery_drift_report",
       "introducedBy": "chio-pheromone-relay-alert-assurance/v1",
-      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-delivery-drift-report-v2.schema.json"
+      "schemaFile": "spec/schemas/chio-pheromone/v1/relay-alert-delivery-drift-report.schema.json"
     },
     {
       "schema": "chio.pheromone.relay-alert-delivery-evidence.v1",
@@ -842,13 +842,7 @@
       "schema": "chio.capability.v1",
       "artifactKind": "capability_token",
       "introducedBy": "schema-registry/v1/capability-token-v1",
-      "schemaFile": "spec/schemas/chio-wire/v1/capability/token.v1.schema.json"
-    },
-    {
-      "schema": "chio.capability.v2",
-      "artifactKind": "capability_token",
-      "introducedBy": "schema-registry/v1/capability-token-v2",
-      "schemaFile": "spec/schemas/chio-wire/v1/capability/token.v2.schema.json"
+      "schemaFile": "spec/schemas/chio-wire/v1/capability/token.schema.json"
     },
     {
       "schema": "chio.bilateral-signature-slice.v1",
@@ -856,12 +850,6 @@
       "introducedBy": "federation-dsse-slice",
       "schemaFile": "spec/schemas/chio-wire/v1/federation/bilateral-signature-slice-envelope.schema.json",
       "payloadSchemaFile": "spec/schemas/chio-wire/v1/federation/bilateral-signature-slice.schema.json"
-    },
-    {
-      "schema": "chio.receipt_lineage_statement.v2",
-      "artifactKind": "receipt_lineage",
-      "introducedBy": "schema-registry/v1/receipt-lineage-v2",
-      "schemaFile": "spec/schemas/chio-wire/v1/receipt/lineage_statement.v2.schema.json"
     },
     {
       "schema": "chio.receipt.v1",
@@ -873,13 +861,7 @@
       "schema": "chio.receipt_lineage_statement.v1",
       "artifactKind": "receipt_lineage",
       "introducedBy": "schema-registry/v1/receipt-lineage-v1",
-      "schemaFile": "spec/schemas/chio-wire/v1/receipt/record.schema.json"
-    },
-    {
-      "schema": "chio.receipt.v2",
-      "artifactKind": "receipt",
-      "introducedBy": "schema-registry/v1/receipt-v2-body-hash",
-      "schemaFile": "spec/schemas/chio-wire/v1/receipt/v2.schema.json"
+      "schemaFile": "spec/schemas/chio-wire/v1/receipt/lineage_statement.schema.json"
     }
   ]
 }

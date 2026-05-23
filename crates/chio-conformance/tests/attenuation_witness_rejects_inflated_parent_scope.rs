@@ -1,10 +1,10 @@
-//! W1.1 negative conformance test: v2 chain-binding rejects inflated
+//! W1.1 negative conformance test: chain-binding rejects inflated
 //! `attenuation_proof.parent_scope_hash`.
 //!
-//! Threat: an issuer with true authority `scope_X` mints a v2 token whose
+//! Threat: an issuer with true authority `scope_X` mints a token whose
 //! `attenuation_proof.parent_scope_hash` claims `H(scope_BIGGER)` and
 //! whose witness internally proves `child <= scope_BIGGER`. Without the
-//! v2 chain-binding rule, the witness verifies in isolation and the
+//! chain-binding rule, the witness verifies in isolation and the
 //! verifier accepts the token even though the issuer never had authority
 //! over `scope_BIGGER`.
 //!
@@ -19,7 +19,7 @@
 use chio_core::capability::CapabilityCryptoFloor;
 use chio_core::capability::{
     compute_attenuation_witness, scope_hash, AttenuationProof, CapabilityToken,
-    CapabilityTokenBody, CapabilityTokenV2Body, ChioScope, Operation, ToolGrant,
+    CapabilityTokenAttenuationBody, CapabilityTokenBody, ChioScope, Operation, ToolGrant,
 };
 use chio_core::crypto::Keypair;
 use chio_kernel_core::{verify_capability_with_floor_and_trust_root, CapabilityError, FixedClock};
@@ -65,7 +65,7 @@ fn three_scopes() -> (ChioScope, ChioScope, ChioScope) {
 }
 
 #[test]
-fn v2_token_with_inflated_parent_scope_hash_is_rejected() {
+fn attenuated_token_with_inflated_parent_scope_hash_is_rejected() {
     let (scope_x, scope_bigger, scope_child) = three_scopes();
 
     // Honest witness: child <= scope_BIGGER. This is the witness the
@@ -81,7 +81,7 @@ fn v2_token_with_inflated_parent_scope_hash_is_rejected() {
     let issuer = Keypair::generate();
     let subject = Keypair::generate();
     let body = CapabilityTokenBody {
-        id: "cap-v2-inflated-parent".to_string(),
+        id: "cap-attenuated-inflated-parent".to_string(),
         issuer: issuer.public_key(),
         subject: subject.public_key(),
         scope: scope_child,
@@ -91,8 +91,8 @@ fn v2_token_with_inflated_parent_scope_hash_is_rejected() {
         // therefore requires parent_scope_hash == trust_root_scope_hash.
         delegation_chain: vec![],
     };
-    let token = CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    let token = CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body,
             caveats: vec![],
             scope_attenuations: vec![],
@@ -114,7 +114,7 @@ fn v2_token_with_inflated_parent_scope_hash_is_rejected() {
         CapabilityCryptoFloor::AllowClassical,
         &trust_root,
     )
-    .expect_err("v2 chain-binding must reject inflated parent_scope_hash");
+    .expect_err("chain-binding must reject inflated parent_scope_hash");
 
     match err {
         CapabilityError::AttenuationViolation(reason) => {
@@ -130,7 +130,7 @@ fn v2_token_with_inflated_parent_scope_hash_is_rejected() {
 }
 
 #[test]
-fn v2_token_with_honest_trust_root_parent_scope_hash_verifies() {
+fn attenuated_token_with_honest_trust_root_parent_scope_hash_verifies() {
     // Positive control: the honest token has parent_scope_hash bound to
     // the issuer's trust-root authority. Witness proves child <= scope_X
     // and the verifier accepts.
@@ -147,7 +147,7 @@ fn v2_token_with_honest_trust_root_parent_scope_hash_verifies() {
     let issuer = Keypair::generate();
     let subject = Keypair::generate();
     let body = CapabilityTokenBody {
-        id: "cap-v2-honest".to_string(),
+        id: "cap-attenuated-honest".to_string(),
         issuer: issuer.public_key(),
         subject: subject.public_key(),
         scope: scope_child,
@@ -155,8 +155,8 @@ fn v2_token_with_honest_trust_root_parent_scope_hash_verifies() {
         expires_at: 200,
         delegation_chain: vec![],
     };
-    let token = CapabilityToken::sign_v2(
-        CapabilityTokenV2Body {
+    let token = CapabilityToken::sign_attenuated(
+        CapabilityTokenAttenuationBody {
             body,
             caveats: vec![],
             scope_attenuations: vec![],
@@ -165,7 +165,7 @@ fn v2_token_with_honest_trust_root_parent_scope_hash_verifies() {
         },
         &issuer,
     )
-    .expect("honest v2 token signs");
+    .expect("honest attenuated token signs");
 
     let trust_root = scope_hash(&scope_x).unwrap();
     let clock = FixedClock::new(150);
@@ -177,7 +177,7 @@ fn v2_token_with_honest_trust_root_parent_scope_hash_verifies() {
         CapabilityCryptoFloor::AllowClassical,
         &trust_root,
     )
-    .expect("honest v2 token must verify under the trust-root binding");
+    .expect("honest attenuated token must verify under the trust-root binding");
 
-    assert_eq!(verified.id, "cap-v2-honest");
+    assert_eq!(verified.id, "cap-attenuated-honest");
 }

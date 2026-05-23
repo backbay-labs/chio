@@ -224,8 +224,7 @@ fn compute_least_privilege(
         let used_tools: BTreeSet<(&str, &str)> = receipts
             .iter()
             .filter(|receipt| {
-                receipt.capability_id == capability.capability_id
-                    && matches!(receipt.decision, Decision::Allow)
+                receipt.capability_id == capability.capability_id && receipt.is_allowed()
             })
             .map(|receipt| (receipt.tool_server.as_str(), receipt.tool_name.as_str()))
             .collect();

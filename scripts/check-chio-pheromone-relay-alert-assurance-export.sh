@@ -134,7 +134,7 @@ cargo run -p chio-cli -- pheromone relay alert assurance export \
   --normalization-report "$ASSURANCE_DIR/relay-alert-normalization-report.json" \
   --delivery-report "$ASSURANCE_DIR/relay-alert-delivery-report.json" \
   --acknowledgement-report "$ASSURANCE_DIR/relay-alert-acknowledgement-report.json" \
-  --drift-report "$ASSURANCE_DIR/relay-alert-delivery-drift-report-v2.json" \
+  --drift-report "$ASSURANCE_DIR/relay-alert-delivery-drift-report.json" \
   --review-packet "$ASSURANCE_DIR/relay-alert-route-review-packet.json" \
   --retention-profile "$ASSURANCE_DIR/relay-alert-assurance-retention-profile.json" \
   --signing-key "$ASSURANCE_DIR/relay-alert-assurance-export-signing-key.json" \

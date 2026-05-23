@@ -112,8 +112,8 @@ done
 
 # Bar 2 fixtures: current upstream fixture names + evidence markers.
 mkdir -p "$WORK/crates/chio-conformance/tests"
-for f in b1_capability_v2_single_entry_no_bypass.rs \
-         b2_receipt_v2_failclosed_pre_dispatch.rs \
+for f in attenuation_witness_rejects_inflated_parent_scope.rs \
+         protocol_primitives_t1.rs \
          b3_anchor_batch_sync_path_rejected_under_public_witness.rs; do
     printf '// Spec MUST fixture with reverts-to-fail proof\nfn main() {}\n' \
         > "$WORK/crates/chio-conformance/tests/$f"
@@ -203,8 +203,8 @@ manifest = {
         },
     ],
     "fixture_hashes": [
-        digest("crates/chio-conformance/tests/b1_capability_v2_single_entry_no_bypass.rs"),
-        digest("crates/chio-conformance/tests/b2_receipt_v2_failclosed_pre_dispatch.rs"),
+        digest("crates/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs"),
+        digest("crates/chio-conformance/tests/protocol_primitives_t1.rs"),
         digest("crates/chio-conformance/tests/b3_anchor_batch_sync_path_rejected_under_public_witness.rs"),
         digest("crates/chio-conformance/tests/b4_bilateral_dsse_signature_slice.rs"),
         digest("examples/chiodome-bilateral/fixtures/v0.1.0-bounded-chiodome/receipt.json"),

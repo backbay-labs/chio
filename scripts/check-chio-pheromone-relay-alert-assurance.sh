@@ -65,7 +65,7 @@ for path in sorted(fixture_dir.rglob("*.json")):
 expected = {
     "chio.pheromone.relay-alert-normalization-profile.v1": "relay-alert-normalization-profile.schema.json",
     "chio.pheromone.relay-alert-normalization-report.v1": "relay-alert-normalization-report.schema.json",
-    "chio.pheromone.relay-alert-delivery-drift-report.v2": "relay-alert-delivery-drift-report-v2.schema.json",
+    "chio.pheromone.relay-alert-delivery-drift-report.v1": "relay-alert-delivery-drift-report.schema.json",
     "chio.pheromone.relay-alert-route-owner-profile.v1": "relay-alert-route-owner-profile.schema.json",
     "chio.pheromone.relay-alert-route-review-packet.v1": "relay-alert-route-review-packet.schema.json",
     "chio.pheromone.relay-alert-assurance-package.v1": "relay-alert-assurance-package.schema.json",
@@ -139,7 +139,7 @@ validate_schema() {
 
 validate_schema "$SCHEMA_DIR/relay-alert-normalization-profile.schema.json" "$ASSURANCE_DIR/relay-alert-normalization-profile.json"
 validate_schema "$SCHEMA_DIR/relay-alert-normalization-report.schema.json" "$ASSURANCE_DIR/relay-alert-normalization-report.json"
-validate_schema "$SCHEMA_DIR/relay-alert-delivery-drift-report-v2.schema.json" "$ASSURANCE_DIR/relay-alert-delivery-drift-report-v2.json"
+validate_schema "$SCHEMA_DIR/relay-alert-delivery-drift-report.schema.json" "$ASSURANCE_DIR/relay-alert-delivery-drift-report.json"
 validate_schema "$SCHEMA_DIR/relay-alert-route-owner-profile.schema.json" "$ASSURANCE_DIR/relay-alert-route-owner-profile.json"
 validate_schema "$SCHEMA_DIR/relay-alert-route-review-packet.schema.json" "$ASSURANCE_DIR/relay-alert-route-review-packet.json"
 validate_schema "$SCHEMA_DIR/relay-alert-assurance-package.schema.json" "$ASSURANCE_DIR/relay-alert-assurance-package.json"
@@ -216,14 +216,14 @@ cargo run -p chio-cli -- pheromone relay alert delivery drift-window \
   --delivery-profile "$ASSURANCE_DIR/relay-alert-delivery-profile.json" \
   --since-unix-ms "$SINCE_UNIX_MS" \
   --until-unix-ms "$NOW_UNIX_MS" \
-  --report "$GENERATED_DIR/relay-alert-delivery-drift-report-v2.json"
-validate_schema "$SCHEMA_DIR/relay-alert-delivery-drift-report-v2.schema.json" "$GENERATED_DIR/relay-alert-delivery-drift-report-v2.json"
+  --report "$GENERATED_DIR/relay-alert-delivery-drift-report.json"
+validate_schema "$SCHEMA_DIR/relay-alert-delivery-drift-report.schema.json" "$GENERATED_DIR/relay-alert-delivery-drift-report.json"
 
 cargo run -p chio-cli -- pheromone relay alert review \
   --handoff-report "$GENERATED_DIR/relay-alert-handoff-report.json" \
   --delivery-report "$GENERATED_DIR/relay-alert-delivery-report.json" \
   --acknowledgement-report "$GENERATED_DIR/relay-alert-acknowledgement-report.json" \
-  --drift-report "$GENERATED_DIR/relay-alert-delivery-drift-report-v2.json" \
+  --drift-report "$GENERATED_DIR/relay-alert-delivery-drift-report.json" \
   --route-owner-profile "$ASSURANCE_DIR/relay-alert-route-owner-profile.json" \
   --now-unix-ms "$NOW_UNIX_MS" \
   --report "$GENERATED_DIR/relay-alert-route-review-packet.json"
@@ -236,7 +236,7 @@ cargo run -p chio-cli -- pheromone relay alert assurance package \
   --normalization-report "$GENERATED_DIR/relay-alert-normalization-report.json" \
   --delivery-report "$GENERATED_DIR/relay-alert-delivery-report.json" \
   --acknowledgement-report "$GENERATED_DIR/relay-alert-acknowledgement-report.json" \
-  --drift-report "$GENERATED_DIR/relay-alert-delivery-drift-report-v2.json" \
+  --drift-report "$GENERATED_DIR/relay-alert-delivery-drift-report.json" \
   --review-packet "$GENERATED_DIR/relay-alert-route-review-packet.json" \
   --now-unix-ms "$NOW_UNIX_MS" \
   --report "$GENERATED_DIR/relay-alert-assurance-package.json"
@@ -251,7 +251,7 @@ generated_dir = pathlib.Path(sys.argv[1])
 normalization = json.loads((generated_dir / "relay-alert-normalization-report.json").read_text(encoding="utf-8"))
 if normalization.get("accepted") is not True or normalization.get("normalizedCount") != 3:
     raise SystemExit("generated normalization report must normalize all downstream drops")
-drift = json.loads((generated_dir / "relay-alert-delivery-drift-report-v2.json").read_text(encoding="utf-8"))
+drift = json.loads((generated_dir / "relay-alert-delivery-drift-report.json").read_text(encoding="utf-8"))
 if drift.get("accepted") is not True or drift.get("driftCount") != 0:
     raise SystemExit("generated source-bound delivery drift report must be accepted")
 assurance = json.loads((generated_dir / "relay-alert-assurance-package.json").read_text(encoding="utf-8"))

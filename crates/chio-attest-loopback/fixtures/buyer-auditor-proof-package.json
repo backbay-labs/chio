@@ -149,7 +149,7 @@
   ],
   "workflowReceipt": {
     "id": "wf-chio-refund-001",
-    "schema": "chio.workflow-receipt.v2",
+    "schema": "chio.workflow-receipt.v1",
     "started_at": 1766000000,
     "completed_at": 1766000042,
     "skill_id": "refund-underwriting",

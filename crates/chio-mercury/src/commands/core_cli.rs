@@ -447,6 +447,8 @@ fn export_mercury_run(
         None,
         None,
         None,
+        true,
+        None,
         None,
         true,
         Some(&receipt_db),

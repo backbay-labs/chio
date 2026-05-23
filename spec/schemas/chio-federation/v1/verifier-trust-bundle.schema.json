@@ -18,31 +18,43 @@
     "revocation"
   ],
   "properties": {
-    "schema": { "const": "chio.federation.verifier-trust-bundle.v1" },
+    "schema": {
+      "const": "chio.federation.verifier-trust-bundle.v1"
+    },
     "trustedBbsIssuers": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/trustedBbsIssuer" }
+      "items": {
+        "$ref": "#/$defs/trustedBbsIssuer"
+      }
     },
     "peers": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/peerLadderBinding" }
+      "items": {
+        "$ref": "#/$defs/peerLadderBinding"
+      }
     },
     "vendors": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/vendorKeyBinding" }
+      "items": {
+        "$ref": "#/$defs/vendorKeyBinding"
+      }
     },
     "actionClasses": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/actionClass" }
+      "items": {
+        "$ref": "#/$defs/actionClass"
+      }
     },
     "workflowIntersections": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/workflowIntersectionTrust" }
+      "items": {
+        "$ref": "#/$defs/workflowIntersectionTrust"
+      }
     },
     "runtimePolicyIssuerPublicKeys": {
       "type": "array",
@@ -53,75 +65,154 @@
     "leaseAuthorities": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/leaseAuthority" }
+      "items": {
+        "$ref": "#/$defs/leaseAuthority"
+      }
     },
     "governanceAuthorities": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/governanceAuthority" }
+      "items": {
+        "$ref": "#/$defs/governanceAuthority"
+      }
     },
-    "disclosurePolicy": { "$ref": "#/$defs/disclosurePolicy" },
-    "revocation": { "$ref": "#/$defs/signedRevocationCheckpoint" }
+    "disclosurePolicy": {
+      "$ref": "#/$defs/disclosurePolicy"
+    },
+    "revocation": {
+      "$ref": "#/$defs/signedRevocationCheckpoint"
+    }
   },
   "$defs": {
-    "hex": { "type": "string", "pattern": "^[0-9a-f]+$" },
-    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]+$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
     "trustedBbsIssuer": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["issuerFingerprint", "publicKeyHex"],
+      "required": [
+        "issuerFingerprint",
+        "publicKeyHex"
+      ],
       "properties": {
-        "issuerFingerprint": { "$ref": "#/$defs/sha256" },
-        "publicKeyHex": { "$ref": "#/$defs/hex" }
+        "issuerFingerprint": {
+          "$ref": "#/$defs/sha256"
+        },
+        "publicKeyHex": {
+          "$ref": "#/$defs/hex"
+        }
       }
     },
     "ladderManifestRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["manifestId", "sha256", "issuedAtUnixMs", "expiresAtUnixMs"],
+      "required": [
+        "manifestId",
+        "sha256",
+        "issuedAtUnixMs",
+        "expiresAtUnixMs"
+      ],
       "properties": {
-        "manifestId": { "type": "string", "minLength": 1 },
-        "sha256": { "$ref": "#/$defs/sha256" },
-        "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
-        "expiresAtUnixMs": { "type": "integer", "minimum": 0 }
+        "manifestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "issuedAtUnixMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expiresAtUnixMs": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "peerLadderBinding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kernelId", "publicKey", "ladderManifestRef"],
+      "required": [
+        "kernelId",
+        "publicKey",
+        "ladderManifestRef"
+      ],
       "properties": {
-        "kernelId": { "type": "string", "minLength": 1 },
-        "publicKey": { "$ref": "#/$defs/hex" },
-        "ladderManifestRef": { "$ref": "#/$defs/ladderManifestRef" }
+        "kernelId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publicKey": {
+          "$ref": "#/$defs/hex"
+        },
+        "ladderManifestRef": {
+          "$ref": "#/$defs/ladderManifestRef"
+        }
       }
     },
     "vendorKeyBinding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["vendorId", "publicKey"],
+      "required": [
+        "vendorId",
+        "publicKey"
+      ],
       "properties": {
-        "vendorId": { "type": "string", "minLength": 1 },
-        "publicKey": { "$ref": "#/$defs/hex" }
+        "vendorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publicKey": {
+          "$ref": "#/$defs/hex"
+        }
       }
     },
     "actionClass": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["actionClassId", "toolName", "kind"],
+      "required": [
+        "actionClassId",
+        "toolName",
+        "kind"
+      ],
       "properties": {
-        "actionClassId": { "type": "string", "minLength": 1 },
-        "toolName": { "type": "string", "minLength": 1 },
-        "kind": { "enum": ["routine", "receipt_backed"] }
+        "actionClassId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toolName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "routine",
+            "receipt_backed"
+          ]
+        }
       }
     },
     "workflowIntersectionTrust": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["intersectionId", "sha256"],
+      "required": [
+        "intersectionId",
+        "sha256"
+      ],
       "properties": {
-        "intersectionId": { "type": "string", "minLength": 1 },
-        "sha256": { "$ref": "#/$defs/sha256" }
+        "intersectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
       }
     },
     "leaseAuthority": {
@@ -137,17 +228,36 @@
         "allowedActionClasses"
       ],
       "properties": {
-        "issuer": { "type": "string", "minLength": 1 },
-        "keyId": { "$ref": "#/$defs/sha256" },
-        "publicKey": { "$ref": "#/$defs/hex" },
-        "validFromUnixMs": { "type": "integer", "minimum": 0 },
-        "validUntilUnixMs": { "type": "integer", "minimum": 0 },
-        "status": { "const": "active" },
+        "issuer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "keyId": {
+          "$ref": "#/$defs/sha256"
+        },
+        "publicKey": {
+          "$ref": "#/$defs/hex"
+        },
+        "validFromUnixMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "validUntilUnixMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "const": "active"
+        },
         "allowedActionClasses": {
           "type": "array",
           "minItems": 1,
           "items": {
-            "enum": ["scoped_observation", "delegated_action", "narrow_destructive"]
+            "enum": [
+              "scoped_observation",
+              "delegated_action",
+              "narrow_destructive"
+            ]
           }
         }
       }
@@ -165,16 +275,33 @@
         "allowedCaseKinds"
       ],
       "properties": {
-        "authorizingKernel": { "type": "string", "minLength": 1 },
-        "keyId": { "$ref": "#/$defs/sha256" },
-        "publicKey": { "$ref": "#/$defs/hex" },
-        "validFromUnixMs": { "type": "integer", "minimum": 0 },
-        "validUntilUnixMs": { "type": "integer", "minimum": 0 },
-        "status": { "const": "active" },
+        "authorizingKernel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "keyId": {
+          "$ref": "#/$defs/sha256"
+        },
+        "publicKey": {
+          "$ref": "#/$defs/hex"
+        },
+        "validFromUnixMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "validUntilUnixMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "const": "active"
+        },
         "allowedCaseKinds": {
           "type": "array",
           "minItems": 1,
-          "items": { "const": "destructive_authorization" }
+          "items": {
+            "const": "destructive_authorization"
+          }
         }
       }
     },
@@ -189,31 +316,54 @@
         "requiredDisclosedFields"
       ],
       "properties": {
-        "projectionVersion": { "const": "chio.bbs-projection.workflow.v1" },
-        "ciphersuite": { "const": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_" },
-        "messageCount": { "type": "integer", "minimum": 1 },
+        "projectionVersion": {
+          "const": "chio.bbs-projection.workflow.v1"
+        },
+        "ciphersuite": {
+          "const": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_"
+        },
+        "messageCount": {
+          "type": "integer",
+          "minimum": 1
+        },
         "requiredDisclosedIndices": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "type": "integer", "minimum": 0 }
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
         },
         "requiredDisclosedFields": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
     "signedRevocationCheckpoint": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["body", "signerKey", "signature"],
+      "required": [
+        "body",
+        "signerKey",
+        "signature"
+      ],
       "properties": {
-        "body": { "$ref": "revocation-checkpoint.schema.json" },
-        "signerKey": { "$ref": "#/$defs/hex" },
-        "signature": { "$ref": "#/$defs/hex" }
+        "body": {
+          "$ref": "revocation-checkpoint.schema.json"
+        },
+        "signerKey": {
+          "$ref": "#/$defs/hex"
+        },
+        "signature": {
+          "$ref": "#/$defs/hex"
+        }
       }
     }
   }

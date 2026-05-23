@@ -49,7 +49,7 @@ use chio_selective_disclosure::{
 };
 use chio_workflow::receipt::{
     StepOutcome, StepRecord, WorkflowOutcome, WorkflowReceipt, WorkflowReceiptBody,
-    WORKFLOW_RECEIPT_SCHEMA_V2,
+    WORKFLOW_RECEIPT_SCHEMA,
 };
 use serde::Serialize;
 
@@ -1170,7 +1170,7 @@ fn build_proof_package_unchecked(
 
     let workflow_body = WorkflowReceiptBody {
         id: WORKFLOW_ID.to_string(),
-        schema: WORKFLOW_RECEIPT_SCHEMA_V2.to_string(),
+        schema: WORKFLOW_RECEIPT_SCHEMA.to_string(),
         started_at: GENERATED_AT_UNIX_MS / 1000,
         completed_at: (GENERATED_AT_UNIX_MS / 1000) + 42,
         skill_id: "refund-underwriting".to_string(),

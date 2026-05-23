@@ -85,7 +85,7 @@ Use the Chio runtime schema directories as the only active registry paths.
 
 - [x] **Step 3: Preserve historical proof verifier schema**
 
-Do not rename `chio.attest.verifier-report.v2` inside generated verifier-report fixtures in this pass. That is historical verifier evidence, not a mutable active Chio runtime corpus.
+Generated verifier-report fixtures now use `chio.attest.verifier-report.v1`; historical verifier evidence must not reintroduce active Chio-owned pre-release schema IDs.
 
 ### Task 4: Verify
 

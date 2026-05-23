@@ -130,7 +130,7 @@ if trust_bundle.get("schema") != "chio.federation.verifier-trust-bundle.v1":
     raise SystemExit("Chio verifier trust bundle uses the wrong schema")
 if context.get("schema") != "chio.federation.verification-context.v1":
     raise SystemExit("Chio verification context uses the wrong schema")
-if report.get("schema") != "chio.attest.verifier-report.v2":
+if report.get("schema") != "chio.attest.verifier-report.v1":
     raise SystemExit("Chio verifier report uses the wrong legacy report schema")
 if not report.get("accepted"):
     raise SystemExit("Chio verifier report is not accepted")
@@ -263,7 +263,7 @@ if len(negative_cases.get("cases", [])) < 14:
 expected_schemas = {
     pathlib.Path(attest_proof_schema_dir): {
         "proof-package.schema.json": "chio.attest.proof-package.v1",
-        "verifier-report.schema.json": "chio.attest.verifier-report.v2",
+        "verifier-report.schema.json": "chio.attest.verifier-report.v1",
         "workflow-intersection.schema.json": "chio.attest.workflow-intersection.v1",
         "selective-disclosure-proof.schema.json": "chio.attest.selective-disclosure-proof.v1",
     },

@@ -182,7 +182,7 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, sort_keys=False) + "\n", encoding="utf-8")
 
 verifier_report = {
-    "schema": "chio.attest.verifier-report.v2",
+    "schema": "chio.attest.verifier-report.v1",
     "packageSha256": canonical_hash(json.loads(proof_package_bytes.decode("utf-8"))),
     "accepted": verifier_state == "accepted",
     "checks": [

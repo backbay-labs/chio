@@ -62,7 +62,7 @@
     {
       "bundleId": "relay-alert-assurance-export",
       "artifactRole": "drift_report",
-      "path": "reports/relay-alert-delivery-drift-report-v2.json",
+      "path": "reports/relay-alert-delivery-drift-report.json",
       "state": "retain",
       "retainUntilUnixMs": 1766001000000,
       "detail": "artifact remains within retention window"

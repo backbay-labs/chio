@@ -1,8 +1,6 @@
 pub const CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA: &str = "chio.runtime.admission-profile.v1";
 pub const CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA: &str = "chio.runtime.admission-bundle.v1";
 pub const CHIO_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA: &str = "chio.runtime.verifier-trust-bundle.v1";
-pub const CHIO_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA_V4: &str =
-    CHIO_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA;
 pub const CHIO_RUNTIME_ADMISSION_REPORT_SCHEMA: &str = "chio.runtime.admission-report.v1";
 pub const CHIO_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA: &str = "chio.runtime.workflow-run-report.v1";
 pub const CHIO_RUNTIME_STEP_EVIDENCE_SCHEMA: &str = "chio.runtime.step-evidence.v1";

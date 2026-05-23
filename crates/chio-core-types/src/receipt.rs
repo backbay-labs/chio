@@ -3,7 +3,6 @@
 //! Every tool invocation -- whether allowed or denied -- produces a receipt.
 //! Receipts are the immutable audit trail of the Chio protocol.
 
-use alloc::collections::BTreeSet;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -26,15 +25,8 @@ use crate::session::{
     OperationKind, OperationTerminalState, RequestId, SessionAnchorReference, SessionId,
 };
 
-/// Signed receipt v2 schema with content-addressed identity.
-pub const CHIO_RECEIPT_V2_SCHEMA: &str = "chio.receipt.v2";
-
-/// Multi-parent receipt-lineage statement schema.
-pub const CHIO_RECEIPT_LINEAGE_STATEMENT_V2_SCHEMA: &str = "chio.receipt_lineage_statement.v2";
-
-fn receipt_v2_schema() -> String {
-    CHIO_RECEIPT_V2_SCHEMA.to_string()
-}
+/// Current signed receipt schema.
+pub const CHIO_RECEIPT_SCHEMA: &str = "chio.receipt.v1";
 
 /// Trust level of a receipt's authorization, recording HOW the Kernel
 /// participated in the evaluation. Captured per-receipt so downstream
@@ -75,6 +67,209 @@ impl TrustLevel {
 
 fn is_default_trust_level(level: &TrustLevel) -> bool {
     matches!(level, TrustLevel::Mediated)
+}
+
+/// Semantic class of a signed receipt in the current v1 pre-release model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReceiptKind {
+    MediatedDecision,
+    TraceObservation,
+    AdvisoryEvaluation,
+}
+
+impl ReceiptKind {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::MediatedDecision => "mediated_decision",
+            Self::TraceObservation => "trace_observation",
+            Self::AdvisoryEvaluation => "advisory_evaluation",
+        }
+    }
+}
+
+/// Runtime boundary class for what Chio can enforce on this receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BoundaryClass {
+    Prevent,
+    DetectOnly,
+    AdvisoryOnly,
+    CannotSee,
+}
+
+impl BoundaryClass {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Prevent => "prevent",
+            Self::DetectOnly => "detect_only",
+            Self::AdvisoryOnly => "advisory_only",
+            Self::CannotSee => "cannot_see",
+        }
+    }
+}
+
+/// Outcome for non-mediated observations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservationOutcome {
+    Observed,
+    Evaluated,
+    Dropped,
+}
+
+impl ObservationOutcome {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Observed => "observed",
+            Self::Evaluated => "evaluated",
+            Self::Dropped => "dropped",
+        }
+    }
+}
+
+/// Where the tool effect was executed relative to Chio.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolOrigin {
+    CallerExecuted,
+    HostExecutedProviderReported,
+    HostExecutedUnmediated,
+}
+
+impl ToolOrigin {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CallerExecuted => "caller_executed",
+            Self::HostExecutedProviderReported => "host_executed_provider_reported",
+            Self::HostExecutedUnmediated => "host_executed_unmediated",
+        }
+    }
+}
+
+/// Redaction mode applied to signed or exported receipt details.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RedactionMode {
+    None,
+    Summary,
+    Redacted,
+}
+
+impl RedactionMode {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Summary => "summary",
+            Self::Redacted => "redacted",
+        }
+    }
+}
+
+/// Actor reference carried by semantic receipt metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActorRef {
+    pub actor_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_kind: Option<String>,
+}
+
+/// Derived v1 semantic fields used by UI, SIEM, and bridge admission.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptSemanticFields {
+    pub receipt_kind: ReceiptKind,
+    pub boundary_class: BoundaryClass,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_outcome: Option<ObservationOutcome>,
+    pub tool_origin: ToolOrigin,
+    pub redaction_mode: RedactionMode,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actor_chain: Vec<ActorRef>,
+}
+
+impl ReceiptSemanticFields {
+    #[must_use]
+    pub fn mediated_prevent() -> Self {
+        Self {
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn trace_detect_only() -> Self {
+        Self {
+            receipt_kind: ReceiptKind::TraceObservation,
+            boundary_class: BoundaryClass::DetectOnly,
+            observation_outcome: Some(ObservationOutcome::Observed),
+            tool_origin: ToolOrigin::HostExecutedProviderReported,
+            redaction_mode: RedactionMode::Summary,
+            actor_chain: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn advisory_only() -> Self {
+        Self {
+            receipt_kind: ReceiptKind::AdvisoryEvaluation,
+            boundary_class: BoundaryClass::AdvisoryOnly,
+            observation_outcome: Some(ObservationOutcome::Evaluated),
+            tool_origin: ToolOrigin::HostExecutedUnmediated,
+            redaction_mode: RedactionMode::Redacted,
+            actor_chain: Vec::new(),
+        }
+    }
+
+    /// Strict decision compatibility check for v1 semantic metadata.
+    ///
+    /// The current Rust receipt object still carries a decision for legacy
+    /// call sites. This validator defines the pre-release v1 wire rule:
+    /// trace and advisory semantics must not be interpreted as decisions.
+    pub fn validate_decision(&self, decision: &Decision) -> Result<()> {
+        if self.receipt_kind != ReceiptKind::MediatedDecision {
+            return Err(Error::CanonicalJson(format!(
+                "{} receipts must not carry {:?} as an authorization decision",
+                self.receipt_kind.as_str(),
+                decision
+            )));
+        }
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn is_authorized(&self, decision: &Decision) -> bool {
+        self.receipt_kind == ReceiptKind::MediatedDecision
+            && self.boundary_class == BoundaryClass::Prevent
+            && matches!(decision, Decision::Allow)
+    }
+
+    #[must_use]
+    pub fn result_label(&self, decision: &Decision) -> &'static str {
+        if self.is_authorized(decision) {
+            return "Authorized";
+        }
+        match self.receipt_kind {
+            ReceiptKind::TraceObservation => "Observed",
+            ReceiptKind::AdvisoryEvaluation => "Advisory",
+            ReceiptKind::MediatedDecision => match decision {
+                Decision::Allow => "Allowed",
+                Decision::Deny { .. } => "Denied",
+                Decision::Cancelled { .. } => "Cancelled",
+                Decision::Incomplete { .. } => "Incomplete",
+            },
+        }
+    }
 }
 
 /// Explicit model-routing context attached to a receipt.
@@ -180,6 +375,155 @@ pub struct ChioReceiptBody {
     pub kernel_key: PublicKey,
 }
 
+impl ChioReceiptBody {
+    /// Derive v1 receipt semantics for this signing body.
+    #[must_use]
+    pub fn semantic_fields(&self) -> ReceiptSemanticFields {
+        receipt_semantic_fields(&self.metadata, self.trust_level)
+    }
+
+    /// Validate the current non-optional Rust decision slot before signing.
+    ///
+    /// The pre-release wire target is an optional decision for non-mediated
+    /// receipts. Until that shape is fully collapsed through all call sites,
+    /// non-mediated receipts may carry `Incomplete` as a non-authorizing
+    /// placeholder, but they must never sign as allow, deny, or cancelled.
+    pub fn validate_signable_semantics(&self) -> Result<()> {
+        let semantics = self.semantic_fields();
+        let legacy_verified_allow = self.trust_level == TrustLevel::Verified
+            && matches!(self.decision, Decision::Allow)
+            && !has_explicit_receipt_semantics(&self.metadata);
+        if semantics.receipt_kind != ReceiptKind::MediatedDecision
+            && !matches!(self.decision, Decision::Incomplete { .. })
+            && !legacy_verified_allow
+        {
+            return Err(Error::CanonicalJson(format!(
+                "{} receipts must not sign {:?} as an authorization decision",
+                semantics.receipt_kind.as_str(),
+                self.decision
+            )));
+        }
+        Ok(())
+    }
+}
+
+/// Receipt fields that define the authoritative receipt id.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChioReceiptIdInput {
+    pub timestamp: u64,
+    pub capability_id: String,
+    pub tool_server: String,
+    pub tool_name: String,
+    pub action: ToolCallAction,
+    pub decision: Decision,
+    pub content_hash: String,
+    pub policy_hash: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<GuardEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "is_default_trust_level")]
+    pub trust_level: TrustLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
+    pub kernel_key: PublicKey,
+}
+
+fn typed_metadata_from<T>(metadata: &Option<serde_json::Value>, key: &str) -> Option<T>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get(key))
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok())
+}
+
+fn receipt_semantic_fields(
+    metadata: &Option<serde_json::Value>,
+    trust_level: TrustLevel,
+) -> ReceiptSemanticFields {
+    if let Some(semantics) =
+        typed_metadata_from::<ReceiptSemanticFields>(metadata, "receipt_semantics")
+    {
+        return semantics;
+    }
+    if let Some(semantics) =
+        typed_metadata_from::<ReceiptSemanticFields>(metadata, "receiptSemantics")
+    {
+        return semantics;
+    }
+    if let Some(acp) = metadata.as_ref().and_then(|metadata| metadata.get("acp")) {
+        if acp
+            .get("enforcementMode")
+            .and_then(serde_json::Value::as_str)
+            == Some("audit_only")
+        {
+            return ReceiptSemanticFields::trace_detect_only();
+        }
+    }
+    match trust_level {
+        TrustLevel::Mediated => ReceiptSemanticFields::mediated_prevent(),
+        TrustLevel::Verified => ReceiptSemanticFields {
+            receipt_kind: ReceiptKind::TraceObservation,
+            boundary_class: BoundaryClass::DetectOnly,
+            observation_outcome: Some(ObservationOutcome::Observed),
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::Summary,
+            actor_chain: Vec::new(),
+        },
+        TrustLevel::Advisory => ReceiptSemanticFields::advisory_only(),
+    }
+}
+
+fn has_explicit_receipt_semantics(metadata: &Option<serde_json::Value>) -> bool {
+    metadata.as_ref().is_some_and(|metadata| {
+        metadata.get("receipt_semantics").is_some() || metadata.get("receiptSemantics").is_some()
+    })
+}
+
+fn is_legacy_receipt_id(id: &str) -> bool {
+    id.starts_with("rcpt-") || is_uuid_like(id)
+}
+
+fn is_uuid_like(id: &str) -> bool {
+    if id.len() != 36 {
+        return false;
+    }
+    id.char_indices().all(|(index, ch)| match index {
+        8 | 13 | 18 | 23 => ch == '-',
+        _ => ch.is_ascii_hexdigit(),
+    })
+}
+
+impl From<&ChioReceiptBody> for ChioReceiptIdInput {
+    fn from(body: &ChioReceiptBody) -> Self {
+        Self {
+            timestamp: body.timestamp,
+            capability_id: body.capability_id.clone(),
+            tool_server: body.tool_server.clone(),
+            tool_name: body.tool_name.clone(),
+            action: body.action.clone(),
+            decision: body.decision.clone(),
+            content_hash: body.content_hash.clone(),
+            policy_hash: body.policy_hash.clone(),
+            evidence: body.evidence.clone(),
+            metadata: body.metadata.clone(),
+            trust_level: body.trust_level,
+            tenant_id: body.tenant_id.clone(),
+            kernel_key: body.kernel_key.clone(),
+        }
+    }
+}
+
+/// Compute the authoritative receipt id from canonical receipt body fields.
+pub fn chio_receipt_id(body: &ChioReceiptBody) -> Result<String> {
+    let input = ChioReceiptIdInput::from(body);
+    let canonical = canonical_json_bytes(&input)?;
+    Ok(sha256_hex(&canonical))
+}
+
 /// Signed audit record for a nested child request handled under a parent tool call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChildRequestReceipt {
@@ -221,6 +565,9 @@ pub struct ChildRequestReceiptBody {
 impl ChioReceipt {
     /// Sign a receipt body with the Kernel's Ed25519 keypair.
     pub fn sign(body: ChioReceiptBody, keypair: &Keypair) -> Result<Self> {
+        let mut body = body;
+        body.validate_signable_semantics()?;
+        body.id = chio_receipt_id(&body)?;
         let (signature, _bytes) = keypair.sign_canonical(&body)?;
         Ok(Self {
             id: body.id,
@@ -246,6 +593,9 @@ impl ChioReceipt {
     ///
     /// The `body.kernel_key` must equal `backend.public_key()`.
     pub fn sign_with_backend(body: ChioReceiptBody, backend: &dyn SigningBackend) -> Result<Self> {
+        let mut body = body;
+        body.validate_signable_semantics()?;
+        body.id = chio_receipt_id(&body)?;
         let (signature, _bytes) = sign_canonical_with_backend(backend, &body)?;
         Ok(Self {
             id: body.id,
@@ -291,13 +641,26 @@ impl ChioReceipt {
     /// Verify the receipt signature against the embedded kernel key.
     pub fn verify_signature(&self) -> Result<bool> {
         let body = self.body();
+        if body.validate_signable_semantics().is_err() {
+            return Ok(false);
+        }
+        let content_addressed_id = chio_receipt_id(&body)?;
+        if content_addressed_id != self.id && !is_legacy_receipt_id(&self.id) {
+            return Ok(false);
+        }
         self.kernel_key.verify_canonical(&body, &self.signature)
+    }
+
+    /// Derive v1 receipt semantics for display, SIEM, and bridge gates.
+    #[must_use]
+    pub fn semantic_fields(&self) -> ReceiptSemanticFields {
+        receipt_semantic_fields(&self.metadata, self.trust_level)
     }
 
     /// Whether this receipt records an allow decision.
     #[must_use]
     pub fn is_allowed(&self) -> bool {
-        matches!(self.decision, Decision::Allow)
+        self.semantic_fields().is_authorized(&self.decision)
     }
 
     /// Whether this receipt records a deny decision.
@@ -344,7 +707,7 @@ impl ChioReceipt {
     }
 }
 
-/// Hybrid logical clock carried by v2 receipts for cross-kernel ordering.
+/// Hybrid logical clock carried by receipts for cross-kernel ordering.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReceiptHybridLogicalClock {
@@ -374,310 +737,13 @@ impl ReceiptHybridLogicalClock {
     }
 }
 
-/// The exact v2 receipt body fields that contribute to `body_hash`.
-///
-/// This struct intentionally excludes `body_hash`, `signature`, and the
-/// legacy UUIDv7 `receipt_id` alias. `body_hash` is the SHA-256 digest of
-/// this struct's RFC 8785 canonical JSON.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ReceiptV2BodyHashInput {
-    #[serde(default = "receipt_v2_schema")]
-    pub schema: String,
-    pub timestamp: u64,
-    pub capability_id: String,
-    pub tool_server: String,
-    pub tool_name: String,
-    pub action: ToolCallAction,
-    pub decision: Decision,
-    pub content_hash: String,
-    pub policy_hash: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub evidence: Vec<GuardEvidence>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "is_default_trust_level")]
-    pub trust_level: TrustLevel,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tenant_id: Option<String>,
-    pub chain_id: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub parent_receipt_ids: Vec<String>,
-    pub parent_set_hash: String,
-    pub dag_ordinal: u64,
-    pub hlc: ReceiptHybridLogicalClock,
-    pub kernel_key: PublicKey,
-}
-
-/// Typed v2 signing input. Verifiers reconstruct this shape exactly.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ReceiptV2SigningBody {
-    pub body_hash: String,
-    pub body: ReceiptV2BodyHashInput,
-}
-
-/// Signed v2 receipt. `receipt_id` is a non-authoritative tooling alias.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ChioReceiptV2 {
-    pub receipt_id: String,
-    pub body_hash: String,
-    pub body: ReceiptV2BodyHashInput,
-    #[serde(default, skip_serializing_if = "is_default_optional_algorithm")]
-    pub algorithm: Option<SigningAlgorithm>,
-    pub signature: Signature,
-}
-
-/// Minimal parent descriptor needed to check v2 DAG ordering.
+/// Minimal parent descriptor needed to check receipt DAG ordering.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReceiptDagParent {
-    pub body_hash: String,
+    pub receipt_id: String,
     pub chain_id: String,
     pub dag_ordinal: u64,
-}
-
-/// V2 lineage statement over a canonical sorted parent set.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ReceiptLineageStatementV2Body {
-    pub schema: String,
-    pub id: String,
-    pub child_body_hash: String,
-    pub chain_id: String,
-    pub parent_receipt_ids: Vec<String>,
-    pub parent_set_hash: String,
-    pub issued_at: u64,
-    pub kernel_key: PublicKey,
-}
-
-/// Signed v2 lineage statement.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ReceiptLineageStatementV2 {
-    pub schema: String,
-    pub id: String,
-    pub child_body_hash: String,
-    pub chain_id: String,
-    pub parent_receipt_ids: Vec<String>,
-    pub parent_set_hash: String,
-    pub issued_at: u64,
-    pub kernel_key: PublicKey,
-    pub signature: Signature,
-}
-
-/// Replay set keyed exclusively by v2 `body_hash`.
-#[derive(Debug, Clone, Default)]
-pub struct ReceiptV2ReplaySet {
-    body_hashes: BTreeSet<String>,
-}
-
-impl ReceiptV2BodyHashInput {
-    /// Build from a v1 receipt body plus DAG fields.
-    #[must_use]
-    pub fn from_v1_body(
-        body: ChioReceiptBody,
-        chain_id: impl Into<String>,
-        parent_receipt_ids: Vec<String>,
-        dag_ordinal: u64,
-        hlc: ReceiptHybridLogicalClock,
-    ) -> Self {
-        let normalized_parents = canonical_parent_receipt_ids(parent_receipt_ids);
-        let parent_set_hash = parent_set_hash_for_normalized(&normalized_parents)
-            .unwrap_or_else(|_| sha256_hex(b"[]"));
-        Self {
-            schema: CHIO_RECEIPT_V2_SCHEMA.to_string(),
-            timestamp: body.timestamp,
-            capability_id: body.capability_id,
-            tool_server: body.tool_server,
-            tool_name: body.tool_name,
-            action: body.action,
-            decision: body.decision,
-            content_hash: body.content_hash,
-            policy_hash: body.policy_hash,
-            evidence: body.evidence,
-            metadata: body.metadata,
-            trust_level: body.trust_level,
-            tenant_id: body.tenant_id,
-            chain_id: chain_id.into(),
-            parent_receipt_ids: normalized_parents,
-            parent_set_hash,
-            dag_ordinal,
-            hlc,
-            kernel_key: body.kernel_key,
-        }
-    }
-
-    pub fn validate(&self) -> Result<()> {
-        if self.schema != CHIO_RECEIPT_V2_SCHEMA {
-            return Err(Error::CanonicalJson(format!(
-                "unsupported receipt v2 schema: {}",
-                self.schema
-            )));
-        }
-        let normalized = canonical_parent_receipt_ids(self.parent_receipt_ids.clone());
-        if normalized != self.parent_receipt_ids {
-            return Err(Error::CanonicalJson(
-                "receipt v2 parent_receipt_ids must be sorted and deduplicated".to_string(),
-            ));
-        }
-        let expected = parent_set_hash_for_normalized(&self.parent_receipt_ids)?;
-        if expected != self.parent_set_hash {
-            return Err(Error::CanonicalJson(
-                "receipt v2 parent_set_hash mismatch".to_string(),
-            ));
-        }
-        Ok(())
-    }
-}
-
-impl ChioReceiptV2 {
-    pub fn sign(
-        receipt_id: impl Into<String>,
-        body: ReceiptV2BodyHashInput,
-        keypair: &Keypair,
-    ) -> Result<Self> {
-        body.validate()?;
-        let body_hash = receipt_v2_body_hash(&body)?;
-        let signing_body = ReceiptV2SigningBody {
-            body_hash: body_hash.clone(),
-            body: body.clone(),
-        };
-        let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
-        Ok(Self {
-            receipt_id: receipt_id.into(),
-            body_hash,
-            body,
-            algorithm: None,
-            signature,
-        })
-    }
-
-    pub fn verify_signature(&self) -> Result<bool> {
-        self.body.validate()?;
-        let expected_body_hash = receipt_v2_body_hash(&self.body)?;
-        if expected_body_hash != self.body_hash {
-            return Ok(false);
-        }
-        let signing_body = ReceiptV2SigningBody {
-            body_hash: self.body_hash.clone(),
-            body: self.body.clone(),
-        };
-        self.body
-            .kernel_key
-            .verify_canonical(&signing_body, &self.signature)
-    }
-
-    /// Alias lookups are best-effort. Replay identity is only `body_hash`.
-    #[must_use]
-    pub fn authoritative_receipt_id(&self) -> &str {
-        &self.body_hash
-    }
-}
-
-impl ReceiptLineageStatementV2Body {
-    pub fn new(
-        id: impl Into<String>,
-        child_body_hash: impl Into<String>,
-        chain_id: impl Into<String>,
-        parent_receipt_ids: Vec<String>,
-        issued_at: u64,
-        kernel_key: PublicKey,
-    ) -> Result<Self> {
-        let parent_receipt_ids = canonical_parent_receipt_ids(parent_receipt_ids);
-        let parent_set_hash = parent_set_hash_for_normalized(&parent_receipt_ids)?;
-        Ok(Self {
-            schema: CHIO_RECEIPT_LINEAGE_STATEMENT_V2_SCHEMA.to_string(),
-            id: id.into(),
-            child_body_hash: child_body_hash.into(),
-            chain_id: chain_id.into(),
-            parent_receipt_ids,
-            parent_set_hash,
-            issued_at,
-            kernel_key,
-        })
-    }
-}
-
-impl ReceiptLineageStatementV2 {
-    pub fn sign(body: ReceiptLineageStatementV2Body, keypair: &Keypair) -> Result<Self> {
-        let normalized = canonical_parent_receipt_ids(body.parent_receipt_ids.clone());
-        if normalized != body.parent_receipt_ids {
-            return Err(Error::CanonicalJson(
-                "receipt lineage v2 parent_receipt_ids must be sorted and deduplicated".to_string(),
-            ));
-        }
-        let expected = parent_set_hash_for_normalized(&body.parent_receipt_ids)?;
-        if expected != body.parent_set_hash {
-            return Err(Error::CanonicalJson(
-                "receipt lineage v2 parent_set_hash mismatch".to_string(),
-            ));
-        }
-        let (signature, _bytes) = keypair.sign_canonical(&body)?;
-        Ok(Self {
-            schema: body.schema,
-            id: body.id,
-            child_body_hash: body.child_body_hash,
-            chain_id: body.chain_id,
-            parent_receipt_ids: body.parent_receipt_ids,
-            parent_set_hash: body.parent_set_hash,
-            issued_at: body.issued_at,
-            kernel_key: body.kernel_key,
-            signature,
-        })
-    }
-
-    #[must_use]
-    pub fn body(&self) -> ReceiptLineageStatementV2Body {
-        ReceiptLineageStatementV2Body {
-            schema: self.schema.clone(),
-            id: self.id.clone(),
-            child_body_hash: self.child_body_hash.clone(),
-            chain_id: self.chain_id.clone(),
-            parent_receipt_ids: self.parent_receipt_ids.clone(),
-            parent_set_hash: self.parent_set_hash.clone(),
-            issued_at: self.issued_at,
-            kernel_key: self.kernel_key.clone(),
-        }
-    }
-
-    pub fn verify_signature(&self) -> Result<bool> {
-        if self.schema != CHIO_RECEIPT_LINEAGE_STATEMENT_V2_SCHEMA {
-            return Err(Error::CanonicalJson(format!(
-                "unsupported receipt lineage v2 schema: {}",
-                self.schema
-            )));
-        }
-        let normalized = canonical_parent_receipt_ids(self.parent_receipt_ids.clone());
-        if normalized != self.parent_receipt_ids {
-            return Ok(false);
-        }
-        let expected = parent_set_hash_for_normalized(&self.parent_receipt_ids)?;
-        if expected != self.parent_set_hash {
-            return Ok(false);
-        }
-        self.kernel_key
-            .verify_canonical(&self.body(), &self.signature)
-    }
-}
-
-impl ReceiptV2ReplaySet {
-    pub fn insert(&mut self, receipt: &ChioReceiptV2) -> Result<bool> {
-        if !receipt.verify_signature()? {
-            return Err(Error::SignatureVerificationFailed);
-        }
-        Ok(self.body_hashes.insert(receipt.body_hash.clone()))
-    }
-
-    pub fn remove_body_hash(&mut self, body_hash: &str) -> bool {
-        self.body_hashes.remove(body_hash)
-    }
-
-    #[must_use]
-    pub fn contains_body_hash(&self, body_hash: &str) -> bool {
-        self.body_hashes.contains(body_hash)
-    }
 }
 
 /// Canonical sort and dedupe parent receipt IDs before signing.
@@ -697,98 +763,6 @@ pub fn parent_set_hash(parent_receipt_ids: &[String]) -> Result<String> {
 fn parent_set_hash_for_normalized(parent_receipt_ids: &[String]) -> Result<String> {
     let canonical = canonical_json_bytes(&parent_receipt_ids)?;
     Ok(sha256_hex(&canonical))
-}
-
-/// Compute `body_hash := H(canonical_jcs(ReceiptV2BodyHashInput))`.
-pub fn receipt_v2_body_hash(body: &ReceiptV2BodyHashInput) -> Result<String> {
-    body.validate()?;
-    let canonical = canonical_json_bytes(body)?;
-    Ok(sha256_hex(&canonical))
-}
-
-/// W2.1 Step 1 helper: build a signed [`ChioReceiptV2`] from a v1
-/// [`ChioReceiptBody`] plus DAG fields, addressed by `body_hash`.
-///
-/// `legacy_receipt_id_alias` is preserved on the wire as a tooling
-/// alias only; replay identity is exclusively `body_hash`. The kernel
-/// hot path passes the same UUIDv7 it would have used as the v1
-/// receipt id so external readers can correlate without granting the
-/// alias any authority.
-pub fn signed_receipt_v2(
-    legacy_receipt_id_alias: impl Into<String>,
-    v1_body: ChioReceiptBody,
-    chain_id: impl Into<String>,
-    parent_receipt_ids: Vec<String>,
-    dag_ordinal: u64,
-    hlc: ReceiptHybridLogicalClock,
-    keypair: &Keypair,
-) -> Result<ChioReceiptV2> {
-    let v2_body = ReceiptV2BodyHashInput::from_v1_body(
-        v1_body,
-        chain_id,
-        parent_receipt_ids,
-        dag_ordinal,
-        hlc,
-    );
-    ChioReceiptV2::sign(legacy_receipt_id_alias, v2_body, keypair)
-}
-
-/// Verify DAG acyclicity and common-chain constraints for a v2 receipt.
-pub fn verify_receipt_v2_dag(receipt: &ChioReceiptV2, parents: &[ChioReceiptV2]) -> Result<()> {
-    if !receipt.verify_signature()? {
-        return Err(Error::SignatureVerificationFailed);
-    }
-    let expected_parent_set = canonical_parent_receipt_ids(
-        parents
-            .iter()
-            .map(|parent| parent.body_hash.clone())
-            .collect(),
-    );
-    if expected_parent_set != receipt.body.parent_receipt_ids {
-        return Err(Error::CanonicalJson(
-            "receipt v2 parent descriptors do not match signed parent set".to_string(),
-        ));
-    }
-    let max_parent_ordinal = parents
-        .iter()
-        .map(|parent| {
-            if parent.body_hash == receipt.body_hash {
-                return Err(Error::CanonicalJson(
-                    "receipt v2 must not list itself as a parent".to_string(),
-                ));
-            }
-            if !parent.verify_signature()? {
-                return Err(Error::SignatureVerificationFailed);
-            }
-            if parent.body.chain_id != receipt.body.chain_id {
-                return Err(Error::CanonicalJson(
-                    "receipt v2 parent does not share child chain_id".to_string(),
-                ));
-            }
-            if !receipt_hlc_exceeds_parent(&receipt.body.hlc, &parent.body.hlc) {
-                return Err(Error::CanonicalJson(
-                    "receipt v2 HLC must exceed every parent HLC".to_string(),
-                ));
-            }
-            Ok(parent.body.dag_ordinal)
-        })
-        .try_fold(0_u64, |max_seen, item| {
-            item.map(|value| max_seen.max(value))
-        })?;
-    if !parents.is_empty() && receipt.body.dag_ordinal <= max_parent_ordinal {
-        return Err(Error::CanonicalJson(
-            "receipt v2 dag_ordinal must exceed every parent ordinal".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn receipt_hlc_exceeds_parent(
-    child: &ReceiptHybridLogicalClock,
-    parent: &ReceiptHybridLogicalClock,
-) -> bool {
-    child.wall_seconds > parent.wall_seconds
-        || (child.wall_seconds == parent.wall_seconds && child.logical > parent.logical)
 }
 
 impl ChildRequestReceipt {
@@ -1741,21 +1715,6 @@ mod tests {
         }
     }
 
-    fn make_receipt_v2(kp: &Keypair, id: &str, ordinal: u64) -> ChioReceiptV2 {
-        let body = ReceiptV2BodyHashInput::from_v1_body(
-            make_receipt_body(kp),
-            "chain-1",
-            vec![],
-            ordinal,
-            ReceiptHybridLogicalClock {
-                wall_seconds: 1710000000,
-                logical: ordinal,
-                kernel_id: "kernel-a".to_string(),
-            },
-        );
-        ChioReceiptV2::sign(id, body, kp).unwrap()
-    }
-
     fn make_economic_authorization_receipt_metadata() -> EconomicAuthorizationReceiptMetadata {
         EconomicAuthorizationReceiptMetadata {
             version: EconomicAuthorizationReceiptMetadataVersion::V1,
@@ -1830,101 +1789,125 @@ mod tests {
     }
 
     #[test]
-    fn receipt_v2_body_hash_and_signature_fail_closed() {
-        let kp = Keypair::generate();
-        let receipt = make_receipt_v2(&kp, "rcpt_legacy", 0);
-        assert!(receipt.verify_signature().unwrap());
-
-        let mut bad_hash = receipt.clone();
-        bad_hash.body_hash = "00".repeat(32);
-        assert!(!bad_hash.verify_signature().unwrap());
-
-        let mut bad_signature_input = receipt.clone();
-        bad_signature_input.body.policy_hash = "tampered".to_string();
-        assert!(!bad_signature_input.verify_signature().unwrap());
-    }
-
-    #[test]
-    fn receipt_v2_legacy_alias_does_not_affect_replay_identity() {
-        let kp = Keypair::generate();
-        let receipt = make_receipt_v2(&kp, "rcpt_original", 0);
-        let mut replay = ReceiptV2ReplaySet::default();
-        assert!(replay.insert(&receipt).unwrap());
-
-        let mut alias_tampered = receipt.clone();
-        alias_tampered.receipt_id = "rcpt_tampered_alias".to_string();
-        assert!(alias_tampered.verify_signature().unwrap());
-        assert!(!replay.insert(&alias_tampered).unwrap());
-        assert!(replay.contains_body_hash(&receipt.body_hash));
-    }
-
-    #[test]
-    fn receipt_v2_dag_rejects_non_increasing_ordinal() {
-        let kp = Keypair::generate();
-        let parent = make_receipt_v2(&kp, "rcpt_parent", 1);
-        let mut child_body = ReceiptV2BodyHashInput::from_v1_body(
-            make_receipt_body(&kp),
-            parent.body.chain_id.clone(),
-            vec![parent.body_hash.clone()],
-            1,
-            ReceiptHybridLogicalClock {
-                wall_seconds: 1710000001,
-                logical: 0,
-                kernel_id: "kernel-b".to_string(),
-            },
-        );
-        child_body.capability_id = "cap-child".to_string();
-        let child = ChioReceiptV2::sign("rcpt_child", child_body, &kp).unwrap();
-
-        assert!(verify_receipt_v2_dag(&child, &[parent]).is_err());
-    }
-
-    #[test]
-    fn receipt_v2_dag_rederives_parent_ordinal_from_signed_body() {
-        let kp = Keypair::generate();
-        let parent = make_receipt_v2(&kp, "rcpt_parent", 10);
-        let mut child_body = ReceiptV2BodyHashInput::from_v1_body(
-            make_receipt_body(&kp),
-            parent.body.chain_id.clone(),
-            vec![parent.body_hash.clone()],
-            1,
-            ReceiptHybridLogicalClock {
-                wall_seconds: 1710000011,
-                logical: 0,
-                kernel_id: "kernel-b".to_string(),
-            },
-        );
-        child_body.capability_id = "cap-child".to_string();
-        let child = ChioReceiptV2::sign("rcpt_child", child_body, &kp).unwrap();
-
-        assert!(verify_receipt_v2_dag(&child, &[parent]).is_err());
-    }
-
-    #[test]
-    fn receipt_v2_dag_rejects_non_monotone_hlc() {
-        let kp = Keypair::generate();
-        let parent = make_receipt_v2(&kp, "rcpt_parent", 1);
-        let mut child_body = ReceiptV2BodyHashInput::from_v1_body(
-            make_receipt_body(&kp),
-            parent.body.chain_id.clone(),
-            vec![parent.body_hash.clone()],
-            2,
-            parent.body.hlc.clone(),
-        );
-        child_body.capability_id = "cap-child".to_string();
-        let child = ChioReceiptV2::sign("rcpt_child", child_body, &kp).unwrap();
-
-        assert!(verify_receipt_v2_dag(&child, &[parent]).is_err());
-    }
-
-    #[test]
     fn receipt_sign_and_verify() {
         let kp = Keypair::generate();
         let body = make_receipt_body(&kp);
+        let expected_id = chio_receipt_id(&body).unwrap();
         let receipt = ChioReceipt::sign(body, &kp).unwrap();
+        assert_eq!(receipt.id, expected_id);
         assert!(receipt.verify_signature().unwrap());
         assert!(receipt.is_allowed());
         assert!(!receipt.is_denied());
+    }
+
+    #[test]
+    fn receipt_id_is_authoritative_and_content_addressed() {
+        let kp = Keypair::generate();
+        let mut body = make_receipt_body(&kp);
+        body.id = "caller-supplied-id-is-ignored".to_string();
+        let receipt = ChioReceipt::sign(body, &kp).unwrap();
+        assert_ne!(receipt.id, "caller-supplied-id-is-ignored");
+
+        let mut tampered = receipt.clone();
+        tampered.id = "not-the-content-address".to_string();
+        assert!(!tampered.verify_signature().unwrap());
+    }
+
+    #[test]
+    fn receipt_semantics_authorized_only_for_mediated_prevent_allow() {
+        let kp = Keypair::generate();
+        let receipt = ChioReceipt::sign(make_receipt_body(&kp), &kp).unwrap();
+
+        let semantics = receipt.semantic_fields();
+
+        assert_eq!(semantics.receipt_kind, ReceiptKind::MediatedDecision);
+        assert_eq!(semantics.boundary_class, BoundaryClass::Prevent);
+        assert_eq!(semantics.result_label(&receipt.decision), "Authorized");
+        assert!(semantics.is_authorized(&receipt.decision));
+    }
+
+    #[test]
+    fn trace_and_advisory_semantics_cannot_authorize() {
+        let trace = ReceiptSemanticFields {
+            receipt_kind: ReceiptKind::TraceObservation,
+            boundary_class: BoundaryClass::DetectOnly,
+            observation_outcome: Some(ObservationOutcome::Observed),
+            tool_origin: ToolOrigin::HostExecutedProviderReported,
+            redaction_mode: RedactionMode::Summary,
+            actor_chain: Vec::new(),
+        };
+        let advisory = ReceiptSemanticFields {
+            receipt_kind: ReceiptKind::AdvisoryEvaluation,
+            boundary_class: BoundaryClass::AdvisoryOnly,
+            observation_outcome: Some(ObservationOutcome::Evaluated),
+            tool_origin: ToolOrigin::HostExecutedUnmediated,
+            redaction_mode: RedactionMode::Redacted,
+            actor_chain: Vec::new(),
+        };
+
+        assert!(trace.validate_decision(&Decision::Allow).is_err());
+        assert!(advisory
+            .validate_decision(&Decision::Deny {
+                reason: "advisory finding".to_string(),
+                guard: "AdvisoryGuard".to_string(),
+            })
+            .is_err());
+        assert!(!trace.is_authorized(&Decision::Allow));
+        assert_eq!(trace.result_label(&Decision::Allow), "Observed");
+        assert_eq!(advisory.result_label(&Decision::Allow), "Advisory");
+    }
+
+    #[test]
+    fn trace_receipt_cannot_sign_allow_decision() {
+        let kp = Keypair::generate();
+        let mut body = make_receipt_body(&kp);
+        body.trust_level = TrustLevel::Verified;
+        body.metadata = Some(serde_json::json!({
+            "receipt_semantics": ReceiptSemanticFields::trace_detect_only(),
+        }));
+
+        let err = ChioReceipt::sign(body, &kp).expect_err("trace allow must not sign");
+        assert!(err.to_string().contains("trace_observation"));
+    }
+
+    #[test]
+    fn verified_allow_without_explicit_trace_semantics_can_sign() {
+        let kp = Keypair::generate();
+        let mut body = make_receipt_body(&kp);
+        body.trust_level = TrustLevel::Verified;
+        body.metadata = None;
+
+        let receipt = ChioReceipt::sign(body, &kp).unwrap();
+        assert!(receipt.verify_signature().unwrap());
+        assert!(!receipt.is_allowed());
+    }
+
+    #[test]
+    fn legacy_receipt_id_verifies_when_signature_matches_body() {
+        let kp = Keypair::generate();
+        let body = make_receipt_body(&kp);
+        let (signature, _) = kp.sign_canonical(&body).unwrap();
+        let receipt = ChioReceipt {
+            id: body.id.clone(),
+            timestamp: body.timestamp,
+            capability_id: body.capability_id,
+            tool_server: body.tool_server,
+            tool_name: body.tool_name,
+            action: body.action,
+            decision: body.decision,
+            content_hash: body.content_hash,
+            policy_hash: body.policy_hash,
+            evidence: body.evidence,
+            metadata: body.metadata,
+            trust_level: body.trust_level,
+            tenant_id: body.tenant_id,
+            kernel_key: body.kernel_key,
+            algorithm: None,
+            signature,
+        };
+
+        assert_eq!(receipt.id, "rcpt-001");
+        assert!(receipt.verify_signature().unwrap());
     }
 
     #[test]
@@ -2500,54 +2483,6 @@ mod tests {
             decoded.continuation_token_id.as_deref(),
             Some("continuation-1")
         );
-    }
-
-    #[test]
-    fn receipt_lineage_v2_sign_rejects_uncanonical_parent_order() -> Result<()> {
-        let kp = Keypair::generate();
-        let parent_receipt_ids = vec![
-            "receipt-parent-b".to_string(),
-            "receipt-parent-a".to_string(),
-        ];
-        let body = ReceiptLineageStatementV2Body {
-            schema: CHIO_RECEIPT_LINEAGE_STATEMENT_V2_SCHEMA.to_string(),
-            id: "statement-v2-1".to_string(),
-            child_body_hash: "child-body-hash".to_string(),
-            chain_id: "chain-1".to_string(),
-            parent_set_hash: parent_set_hash_for_normalized(&parent_receipt_ids)?,
-            parent_receipt_ids,
-            issued_at: 1_710_000_000,
-            kernel_key: kp.public_key(),
-        };
-
-        assert!(ReceiptLineageStatementV2::sign(body, &kp).is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn receipt_lineage_v2_verify_rejects_uncanonical_parent_order() -> Result<()> {
-        let kp = Keypair::generate();
-        let body = ReceiptLineageStatementV2Body::new(
-            "statement-v2-1",
-            "child-body-hash",
-            "chain-1",
-            vec![
-                "receipt-parent-a".to_string(),
-                "receipt-parent-b".to_string(),
-            ],
-            1_710_000_000,
-            kp.public_key(),
-        )?;
-        let mut statement = ReceiptLineageStatementV2::sign(body, &kp)?;
-
-        statement.parent_receipt_ids = vec![
-            "receipt-parent-b".to_string(),
-            "receipt-parent-a".to_string(),
-        ];
-        statement.parent_set_hash = parent_set_hash_for_normalized(&statement.parent_receipt_ids)?;
-
-        assert!(!statement.verify_signature()?);
-        Ok(())
     }
 
     #[test]

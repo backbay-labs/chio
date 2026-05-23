@@ -144,8 +144,8 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_delivery_drift_window(
     })?;
     let handoff_reports = read_relay_alert_handoff_reports(handoff_reports_dir)?;
     let delivery_reports = read_relay_alert_delivery_reports(delivery_reports_dir)?;
-    let drift_report = chio_pheromone_relay::generate_relay_alert_delivery_drift_report_v2(
-        chio_pheromone_relay::RelayAlertDeliveryDriftInputV2 {
+    let drift_report = chio_pheromone_relay::generate_relay_alert_delivery_drift_report(
+        chio_pheromone_relay::RelayAlertDeliveryDriftInput {
             handoff_reports: &handoff_reports,
             delivery_reports: &delivery_reports,
             delivery_profile: &delivery_profile,

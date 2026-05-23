@@ -62,20 +62,19 @@ pub(crate) use assurance::{validate_export_path, validate_retention_profile};
 pub use client::PheromoneRelayClient;
 pub use delivery::{
     evaluate_relay_alert_acknowledgement, evaluate_relay_alert_delivery,
-    generate_relay_alert_delivery_drift_report_v2, generate_relay_alert_handoff_drift_report,
+    generate_relay_alert_delivery_drift_report, generate_relay_alert_handoff_drift_report,
     generate_relay_alert_route_review_packet, normalize_relay_alert_delivery_evidence,
     relay_alert_delivery_evidence_from_json, relay_alert_delivery_profile_from_json,
     relay_alert_handoff_profile_from_json, relay_alert_routing_profile_from_json,
     relay_alert_suppression_state_from_json, RelayAlertAcknowledgement,
-    RelayAlertAcknowledgementInput, RelayAlertAcknowledgementReport,
-    RelayAlertDeliveryDriftInputV2, RelayAlertDeliveryDriftReportV2, RelayAlertDeliveryDriftV2,
-    RelayAlertDeliveryEvidence, RelayAlertDeliveryInput, RelayAlertDeliveryProfileDocument,
-    RelayAlertDeliveryReceiver, RelayAlertDeliveryReport, RelayAlertDeliveryResult,
-    RelayAlertDeliveryStatus, RelayAlertHandoffDrift, RelayAlertHandoffDriftInput,
-    RelayAlertHandoffDriftReport, RelayAlertNormalizationInput,
-    RelayAlertNormalizationProfileDocument, RelayAlertNormalizationReport, RelayAlertRouteOwner,
-    RelayAlertRouteOwnerProfileDocument, RelayAlertRouteReview, RelayAlertRouteReviewInput,
-    RelayAlertRouteReviewPacket,
+    RelayAlertAcknowledgementInput, RelayAlertAcknowledgementReport, RelayAlertDeliveryDrift,
+    RelayAlertDeliveryDriftInput, RelayAlertDeliveryDriftReport, RelayAlertDeliveryEvidence,
+    RelayAlertDeliveryInput, RelayAlertDeliveryProfileDocument, RelayAlertDeliveryReceiver,
+    RelayAlertDeliveryReport, RelayAlertDeliveryResult, RelayAlertDeliveryStatus,
+    RelayAlertHandoffDrift, RelayAlertHandoffDriftInput, RelayAlertHandoffDriftReport,
+    RelayAlertNormalizationInput, RelayAlertNormalizationProfileDocument,
+    RelayAlertNormalizationReport, RelayAlertRouteOwner, RelayAlertRouteOwnerProfileDocument,
+    RelayAlertRouteReview, RelayAlertRouteReviewInput, RelayAlertRouteReviewPacket,
 };
 pub(crate) use delivery::{reject_downstream_source_secrets, validate_delivery_evidence_shape};
 pub use directory::{
@@ -124,7 +123,7 @@ pub use schema::{
     PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_PROFILE_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_RETENTION_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_TRUSTED_EXPORTERS_SCHEMA,
-    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA,
+    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_EVIDENCE_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_NEGATIVE_CORPUS_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_PROFILE_SCHEMA, PHEROMONE_RELAY_ALERT_DELIVERY_REPORT_SCHEMA,

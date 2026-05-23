@@ -59,8 +59,8 @@
       },
       {
         "role": "drift_report",
-        "schema": "chio.pheromone.relay-alert-delivery-drift-report.v2",
-        "path": "reports/relay-alert-delivery-drift-report-v2.json",
+        "schema": "chio.pheromone.relay-alert-delivery-drift-report.v1",
+        "path": "reports/relay-alert-delivery-drift-report.json",
         "sha256": "b76063cb46ad9129de05931f097a60f1c62d03ffa0828a2532abc2edca7b0727",
         "byteCount": 442,
         "retentionClass": "incident_evidence"

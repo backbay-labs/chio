@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/lineage_statement/v1",
+  "title": "Chio receipt lineage statement",
+  "description": "Signed pairwise receipt lineage statement. Multi-parent lineage views are derived aggregates over these signed parent-child statements.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "parentReceiptId",
+    "childReceiptId",
+    "parentRequestId",
+    "childRequestId",
+    "parentSessionAnchor",
+    "childSessionAnchor",
+    "relationKind",
+    "evidenceClass",
+    "issuedAt",
+    "kernelKey",
+    "signature"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "chio.receipt_lineage_statement.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentReceiptId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "childReceiptId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentRequestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "childRequestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentSessionAnchor": {
+      "$ref": "#/$defs/sessionAnchorReference"
+    },
+    "childSessionAnchor": {
+      "$ref": "#/$defs/sessionAnchorReference"
+    },
+    "relationKind": {
+      "type": "string",
+      "enum": ["local_child", "continued"]
+    },
+    "evidenceClass": {
+      "type": "string",
+      "enum": ["asserted", "observed", "verified"],
+      "default": "verified"
+    },
+    "continuationTokenId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issuedAt": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "kernelKey": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
+    }
+  },
+  "$defs": {
+    "sessionAnchorReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionAnchorId", "sessionAnchorHash"],
+      "properties": {
+        "sessionAnchorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionAnchorHash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

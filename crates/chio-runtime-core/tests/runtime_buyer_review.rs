@@ -652,7 +652,7 @@ fn proof_package_with_peer_keys(
     dsse: &StrictDsseFixture,
 ) -> serde_json::Value {
     let workflow_receipt = serde_json::json!({
-        "schema": "chio.workflow-receipt.v2",
+        "schema": "chio.workflow-receipt.v1",
         "workflowId": "workflow-live-1",
         "workflowStepSha256": "e".repeat(64)
     });
@@ -779,7 +779,7 @@ fn buyer_review_sources_with_strict_dsse_and_verifier(
         .cloned()
         .unwrap_or_else(|| {
             serde_json::json!({
-                "schema": "chio.workflow-receipt.v2",
+                "schema": "chio.workflow-receipt.v1",
                 "workflowId": "workflow-live-1",
                 "workflowStepSha256": "e".repeat(64)
             })
@@ -838,7 +838,7 @@ fn buyer_review_sources_with_strict_dsse_and_verifier(
                 &chio_core_types::crypto::canonical_json_bytes(&verifier_trust_bundle)?,
             );
             let verifier_report = serde_json::json!({
-                "schema": "chio.attest.verifier-report.v2",
+                "schema": "chio.attest.verifier-report.v1",
                 "accepted": true,
                 "trustBundleSha256": verifier_trust_bundle_sha256,
                 "failure": null
@@ -1398,7 +1398,7 @@ fn buyer_review_package_hydrates_required_artifacts_by_role(
         .find(|source| source.role == "verifier_report")
         .ok_or_else(|| io::Error::other("missing verifier_report source"))?;
     verifier_source.bytes = serde_json::to_vec(&serde_json::json!({
-        "schema": "chio.attest.verifier-report.v2",
+        "schema": "chio.attest.verifier-report.v1",
         "accepted": false
     }))?;
     let denied = verify_review_for_test(&package, &tampered_sources, &verifier_trust_bundle)?;

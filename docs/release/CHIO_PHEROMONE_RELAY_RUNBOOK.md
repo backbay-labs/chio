@@ -138,13 +138,13 @@ chio pheromone relay alert delivery drift-window \
   --delivery-profile relay-alert-delivery-profile.json \
   --since-unix-ms <since-unix-ms> \
   --until-unix-ms <until-unix-ms> \
-  --report relay-alert-delivery-drift-report-v2.json
+  --report relay-alert-delivery-drift-report.json
 
 chio pheromone relay alert review \
   --handoff-report relay-alert-handoff-report.json \
   --delivery-report relay-alert-delivery-report.json \
   --acknowledgement-report relay-alert-acknowledgement-report.json \
-  --drift-report relay-alert-delivery-drift-report-v2.json \
+  --drift-report relay-alert-delivery-drift-report.json \
   --route-owner-profile relay-alert-route-owner-profile.json \
   --now-unix-ms <now-unix-ms> \
   --report relay-alert-route-review-packet.json
@@ -156,7 +156,7 @@ chio pheromone relay alert assurance package \
   --normalization-report relay-alert-normalization-report.json \
   --delivery-report relay-alert-delivery-report.json \
   --acknowledgement-report relay-alert-acknowledgement-report.json \
-  --drift-report relay-alert-delivery-drift-report-v2.json \
+  --drift-report relay-alert-delivery-drift-report.json \
   --review-packet relay-alert-route-review-packet.json \
   --now-unix-ms <now-unix-ms> \
   --report relay-alert-assurance-package.json
@@ -192,7 +192,7 @@ Production observability and metrics endpoints require `Authorization: Bearer <t
 5. Run `relay alert normalize` against local Alertmanager or SIEM-style drops and read `relay-alert-normalization-report.v1`.
 6. Run `relay alert delivery import` and read `relay-alert-delivery-report.v1` to confirm downstream systems produced bounded delivery, rejection, duplicate, delayed, or unknown evidence.
 7. Run `relay alert delivery acknowledge` and read `relay-alert-acknowledgement-report.v1`.
-8. Run `relay alert delivery drift-window` and read `relay-alert-delivery-drift-report.v2`.
+8. Run `relay alert delivery drift-window` and read `relay-alert-delivery-drift-report.v1`.
 9. Run `relay alert review` and read `relay-alert-route-review-packet.v1`.
 10. Run `relay alert assurance package` and read `relay-alert-assurance-package.v1`.
 11. Run `relay alert assurance export`, then `verify`, `replay`, `retention plan`, `recovery-drill`, `archive plan`, and `closeout review` to close the local incident bundle without deleting retained evidence.

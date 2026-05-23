@@ -1,5 +1,5 @@
 {
-  "schema": "chio.attest.verifier-report.v2",
+  "schema": "chio.attest.verifier-report.v1",
   "packageSha256": "8905cfbc5cabdbac390461598436347b24654c0d705d30c9ca012c7e2791f202",
   "trustBundleSha256": "68042fde3fb78a90a3db5bef7d3457bf097338bf309c7abd56f45695851d0284",
   "contextSha256": "4758a93f2dbc16256105ce6d47a4efdd39d477733dcb2a5e80075a3e1aaddcce",

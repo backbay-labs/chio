@@ -1,17 +1,17 @@
 use super::common::{
     canonical_hash, delivery_evidence, delivery_evidence_set, delivery_negative_code,
     delivery_profile, evaluate_relay_alert_acknowledgement, evaluate_relay_alert_delivery, fs,
-    generate_relay_alert_assurance_package, generate_relay_alert_delivery_drift_report_v2,
+    generate_relay_alert_assurance_package, generate_relay_alert_delivery_drift_report,
     generate_relay_alert_handoff_drift_report, generate_relay_alert_route_review_packet,
     generated_alert_trend_handoff, generated_handoff_report, json, normalization_profile,
     normalize_relay_alert_delivery_evidence, relay_alert_delivery_evidence_from_json,
     relay_alert_delivery_profile_from_json, route_owner_profile, NegativeCorpus,
-    RelayAlertAcknowledgementInput, RelayAlertAssuranceInput, RelayAlertDeliveryDriftInputV2,
+    RelayAlertAcknowledgementInput, RelayAlertAssuranceInput, RelayAlertDeliveryDriftInput,
     RelayAlertDeliveryInput, RelayAlertDeliveryStatus, RelayAlertHandoffDriftInput,
     RelayAlertNormalizationInput, RelayAlertRouteReviewInput, RelayAlertSeverity, NOW,
     PHEROMONE_RELAY_ALERT_ACKNOWLEDGEMENT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_ASSURANCE_PACKAGE_SCHEMA,
-    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA,
+    PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_DELIVERY_EVIDENCE_SCHEMA, PHEROMONE_RELAY_ALERT_DELIVERY_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_HANDOFF_DRIFT_REPORT_SCHEMA,
     PHEROMONE_RELAY_ALERT_NORMALIZATION_REPORT_SCHEMA,
@@ -426,7 +426,7 @@ fn relay_alert_assurance_source_bound_drift_rejects_cross_handoff_masking() {
     })
     .unwrap();
 
-    let drift = generate_relay_alert_delivery_drift_report_v2(RelayAlertDeliveryDriftInputV2 {
+    let drift = generate_relay_alert_delivery_drift_report(RelayAlertDeliveryDriftInput {
         handoff_reports: &[old_handoff, newer_handoff],
         delivery_reports: &[newer_delivery],
         delivery_profile: &profile,
@@ -437,7 +437,7 @@ fn relay_alert_assurance_source_bound_drift_rejects_cross_handoff_masking() {
 
     assert_eq!(
         drift.schema,
-        PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_V2_SCHEMA
+        PHEROMONE_RELAY_ALERT_DELIVERY_DRIFT_REPORT_SCHEMA
     );
     assert!(!drift.accepted);
     assert!(drift
@@ -479,7 +479,7 @@ fn relay_alert_assurance_package_binds_full_operator_chain() {
         now_unix_ms: NOW + 80_000,
     })
     .unwrap();
-    let drift = generate_relay_alert_delivery_drift_report_v2(RelayAlertDeliveryDriftInputV2 {
+    let drift = generate_relay_alert_delivery_drift_report(RelayAlertDeliveryDriftInput {
         handoff_reports: std::slice::from_ref(&handoff_report),
         delivery_reports: std::slice::from_ref(&delivery_report),
         delivery_profile: &delivery_profile,

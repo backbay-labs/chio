@@ -24,9 +24,7 @@ use chio_workflow::receipt::{VendorSignatureRequirement, WorkflowReceipt};
 use serde::{Deserialize, Serialize};
 
 pub const PROOF_PACKAGE_SCHEMA: &str = "chio.attest.proof-package.v1";
-pub const VERIFIER_REPORT_SCHEMA_V1: &str = "chio.attest.verifier-report.v1";
-pub const VERIFIER_REPORT_SCHEMA_V2: &str = "chio.attest.verifier-report.v2";
-pub const VERIFIER_REPORT_SCHEMA: &str = VERIFIER_REPORT_SCHEMA_V2;
+pub const VERIFIER_REPORT_SCHEMA: &str = "chio.attest.verifier-report.v1";
 pub const TRUSTED_ISSUER_REGISTRY_SCHEMA: &str = "chio.attest.trusted-issuer-registry.v1";
 pub const CHIO_FEDERATION_VERIFIER_TRUST_BUNDLE_SCHEMA: &str =
     "chio.federation.verifier-trust-bundle.v1";

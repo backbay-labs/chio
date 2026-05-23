@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-delivery-drift-report-v2.schema.json",
-  "title": "Chio Pheromone Relay Alert Delivery Drift Report V2",
+  "$id": "https://chio.dev/schemas/chio-pheromone/v1/relay-alert-delivery-drift-report.schema.json",
+  "title": "Chio Pheromone Relay Alert Delivery Drift Report",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +19,7 @@
     "checks"
   ],
   "properties": {
-    "schema": { "const": "chio.pheromone.relay-alert-delivery-drift-report.v2" },
+    "schema": { "const": "chio.pheromone.relay-alert-delivery-drift-report.v1" },
     "accepted": { "type": "boolean" },
     "code": { "type": "string", "pattern": "^[a-z0-9_.-]{1,96}$" },
     "localKernelId": { "type": "string", "minLength": 1 },

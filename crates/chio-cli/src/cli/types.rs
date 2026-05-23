@@ -2950,14 +2950,11 @@ enum ReceiptCommands {
     /// legacy spelling `--explain-bilateral` is retained as a
     /// deprecated alias.
     Explain {
-        /// Legacy receipt ID (`rcpt_...`). v2 bodyHash explanation is
-        /// supported only when the v2 receipt JSON is supplied through
-        /// `--input-file`; persisted DB/control-plane bodyHash lookup is
-        /// not implemented on this CLI path. Use a sentinel (e.g.
-        /// `bilateral`) when reading a bilateral artifact via
-        /// `--input-file`; the receipt_id is informational for that path.
+        /// Receipt ID. Use a sentinel (e.g. `bilateral`) when reading a
+        /// bilateral artifact via `--input-file`; the receipt_id is
+        /// informational for that path.
         receipt_id: String,
-        /// Optional JSON file containing one v1 or v2 receipt, or a
+        /// Optional JSON file containing one receipt, or a
         /// `BilateralCoSignArtifacts` document.
         #[arg(long)]
         input_file: Option<PathBuf>,
@@ -2996,6 +2993,12 @@ enum EvidenceCommands {
         /// Include tool receipts with timestamp <= this Unix seconds value.
         #[arg(long)]
         until: Option<u64>,
+        /// Tenant read boundary for the export. Derived from operator auth in service paths.
+        #[arg(long)]
+        tenant: Option<String>,
+        /// Explicitly export across all tenants as an administrative operation.
+        #[arg(long, default_value_t = false, conflicts_with = "tenant")]
+        admin_all: bool,
         /// Optional policy file to attach to the export package.
         #[arg(long)]
         policy_file: Option<PathBuf>,
@@ -3053,6 +3056,12 @@ enum EvidenceFederationPolicyCommands {
         /// Optional upper timestamp bound for the allowed export window.
         #[arg(long)]
         until: Option<u64>,
+        /// Tenant read boundary for exports performed under this policy.
+        #[arg(long)]
+        tenant: Option<String>,
+        /// Explicitly allow administrative exports across all tenants under this policy.
+        #[arg(long, default_value_t = false, conflicts_with = "tenant")]
+        admin_all: bool,
         /// Expiration time for the policy document, in Unix seconds.
         #[arg(long)]
         expires_at: u64,

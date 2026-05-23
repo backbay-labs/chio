@@ -81,9 +81,7 @@ impl SettlementObserverStatus {
 /// external receipts that pre-date the kernel canonical shape.
 #[must_use]
 pub fn build_observation(receipt: &ChioReceipt) -> Option<SettlementObservation> {
-    use chio_core::receipt::Decision;
-
-    if !matches!(receipt.decision, Decision::Allow) {
+    if !receipt.is_allowed() {
         return None;
     }
 
@@ -264,7 +262,7 @@ mod tests {
             Decision::Allow,
         );
         let observation = build_observation(&receipt).expect("priced receipt yields observation");
-        assert_eq!(observation.receipt_id, "rcpt-test");
+        assert_eq!(observation.receipt_id, receipt.id);
         assert_eq!(observation.finalized_at, 100);
         assert_eq!(
             observation.amount,
@@ -301,7 +299,7 @@ mod tests {
         match status {
             SettlementObserverStatus::Observed {
                 outcome: SettlementOutcome::Accepted { transcript_id, .. },
-            } => assert_eq!(transcript_id, "ts-rcpt-test"),
+            } => assert_eq!(transcript_id, format!("ts-{}", receipt.id)),
             other => panic!("expected accepted outcome, got {other:?}"),
         }
     }

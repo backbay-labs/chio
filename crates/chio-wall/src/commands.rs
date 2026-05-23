@@ -416,6 +416,8 @@ fn write_chio_evidence_package(
         None,
         None,
         None,
+        true,
+        None,
         None,
         false,
         Some(&receipt_db_path),
