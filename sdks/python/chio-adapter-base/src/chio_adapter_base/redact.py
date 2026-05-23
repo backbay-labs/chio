@@ -560,7 +560,7 @@ def bind_and_redact(
             #       is a protected canonical so the secret redacts.
             #
             # Closes PR #679 P2 3230753453 and 3230753454.
-            kwonly_protected_slots: list[str] = []
+            kwonly_protected_slots: list[tuple[str, str]] = []
             kwonly_protected_set: set[str] = set()
             for p in sig.parameters.values():
                 if p.kind is not inspect.Parameter.KEYWORD_ONLY:
@@ -573,7 +573,7 @@ def bind_and_redact(
                     p.name in protected_fields_for_tool_pre
                     or p.name in table.get(tool_name, ())
                 ):
-                    kwonly_protected_slots.append(p.name)
+                    kwonly_protected_slots.append((p.name, p.name))
                     kwonly_protected_set.add(p.name)
                     continue
                 # Wrapper alias for a protected canonical - route by
@@ -588,21 +588,39 @@ def bind_and_redact(
                     None,
                 )
                 if nxt is not None:
-                    kwonly_protected_slots.append(p.name)
+                    kwonly_protected_slots.append((p.name, nxt))
                     kwonly_protected_set.add(p.name)
 
             var_positional_protected_slot: str | None = None
             for p in sig.parameters.values():
-                if p.kind is inspect.Parameter.VAR_POSITIONAL and (
-                    p.name in protected_fields_for_tool_pre
-                    or p.name in table.get(tool_name, ())
+                if (
+                    p.kind is inspect.Parameter.VAR_POSITIONAL
+                    and p.name in protected_fields_for_tool_pre
                 ):
                     var_positional_protected_slot = p.name
                     break
 
-            extended_positional_names = sig_positional_names + tuple(
-                kwonly_protected_slots
-            )
+            extended_positional_list = list(sig_positional_names)
+            table_slots_for_tool_pre = tuple(table.get(tool_name, ()))
+            for kwonly_name, canonical_name in kwonly_protected_slots:
+                # If a keyword-only protected alias is being used as the
+                # overflow target, preserve any earlier canonical table
+                # slots before appending the kwonly name. This keeps
+                # kwonly-only wrappers such as ``def write_file(*, body)``
+                # aligned as ``path, body`` rather than ``body`` so an
+                # invalid positional call redacts only the body-like slot.
+                if canonical_name in table_slots_for_tool_pre:
+                    canonical_idx = table_slots_for_tool_pre.index(
+                        canonical_name
+                    )
+                    while len(extended_positional_list) < canonical_idx:
+                        extended_positional_list.append(
+                            table_slots_for_tool_pre[
+                                len(extended_positional_list)
+                            ]
+                        )
+                extended_positional_list.append(kwonly_name)
+            extended_positional_names = tuple(extended_positional_list)
             if var_positional_protected_slot is not None:
                 # Pad the slot list with the variadic name so each overflow
                 # positional past sig_positional_names redacts under it.

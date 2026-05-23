@@ -510,13 +510,12 @@ def _legacy_envelope(
                     protected_for_tool
                     and len(redacted_arg_list) > fixed_positional_arity
                 ):
-                    # Redact each overflow position under every protected
-                    # canonical so a value that would have matched any
-                    # protected slot fails closed. The first canonical
-                    # that yields a redaction wins; if none redact (the
-                    # value is genuinely non-secret and overflow is just
-                    # the caller's mistake) the raw value still rides
-                    # along.
+                    # Redact each overflow position under the first
+                    # protected canonical so arity-invalid calls fail
+                    # closed. The exact field identity is unknowable
+                    # once the caller supplied too many positional
+                    # values, but a redacted audit marker is strictly
+                    # safer than forwarding the raw overflow value.
                     for overflow_idx in range(
                         fixed_positional_arity, len(redacted_arg_list)
                     ):
@@ -548,16 +547,13 @@ def _legacy_envelope(
                             )
                         ):
                             continue
-                        for canonical in protected_for_tool:
-                            single = redact_args(
-                                tool_name,
-                                {canonical: overflow_value},
-                                policy=policy,
-                            )
-                            redacted_one = single[canonical]
-                            if redacted_one is not overflow_value:
-                                redacted_arg_list[overflow_idx] = redacted_one
-                                break
+                        canonical = protected_for_tool[0]
+                        single = redact_args(
+                            tool_name,
+                            {canonical: overflow_value},
+                            policy=policy,
+                        )
+                        redacted_arg_list[overflow_idx] = single[canonical]
     redacted_args = tuple(redacted_arg_list)
     # Detect the positional-only-spillover collision: the fn signature
     # has a positional-only param whose name appears as a kwarg AND

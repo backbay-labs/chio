@@ -1782,6 +1782,61 @@ def test_signature_path_var_positional_named_after_unprotected_table_slot() -> N
     }
 
 
+def test_typeerror_fallback_kwonly_only_preserves_default_prefix() -> None:
+    """Regression for PR #679 P2 3231314237.
+
+    A kwonly-only wrapper has no fixed positional signature slots, but
+    the chio default wire table still says position 0 is ``path`` and
+    position 1 is ``content``. When an invalid caller supplies two
+    positionals, the TypeError fallback must preserve that prefix so
+    the path-like first value stays raw and the body-like second value
+    redacts under the kwonly alias.
+    """
+
+    def write_file(*, body: str) -> None:
+        del body
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("/tmp/x", "PROD_SECRET_KWONLY_ONLY"),
+        {},
+        tool_name="chio_file_write",
+    )
+    assert kwargs == {}
+    assert args[0] == "/tmp/x"
+    assert args[1] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET_KWONLY_ONLY"),
+    }
+
+
+def test_typeerror_fallback_unprotected_var_positional_keeps_table_prefix() -> None:
+    """Regression for PR #679 P2 3231314239 + Cursor Low 3231359832.
+
+    ``def write_file(*path, body)`` has a VAR_POSITIONAL named after an
+    unprotected table slot. An invalid ``path=`` kwarg drives the
+    TypeError fallback. That fallback must not treat ``*path`` as a
+    protected variadic body; it should preserve the normal table prefix
+    and map the second positional to the kwonly body alias.
+    """
+
+    def write_file(*path: str, body: str) -> None:
+        del path, body
+
+    args, kwargs = bind_and_redact(
+        write_file,
+        ("/tmp/x", "PROD_SECRET_FROM_SECOND_POSITION"),
+        {"path": "/tmp/from-kw"},
+        tool_name="chio_file_write",
+    )
+    assert args[0] == "/tmp/x"
+    assert args[1] == {
+        "omitted": True,
+        "byte_count": len(b"PROD_SECRET_FROM_SECOND_POSITION"),
+    }
+    assert kwargs == {"path": "/tmp/from-kw"}
+
+
 def test_signature_path_swap_detected_ambiguous_fixed_aliases_redact_all() -> None:
     """Regression for PR #679 P2 3231057188.
 
