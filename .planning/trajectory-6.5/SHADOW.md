@@ -1,4 +1,4 @@
-# Chiodos 6.5 Shadow Closeout
+# Chio 6.5 Shadow Closeout
 
 This shadow note has graduated into the active 6.5 lane. The active scope,
 tickets, and gate checklist now live in `README.md` and `TICKETS.md`.

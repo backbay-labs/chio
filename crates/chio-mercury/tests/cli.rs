@@ -105,6 +105,8 @@ fn export_fixture_package(receipt_db_path: &Path, output_dir: &Path) {
         None,
         None,
         None,
+        true,
+        None,
         None,
         false,
         Some(receipt_db_path),

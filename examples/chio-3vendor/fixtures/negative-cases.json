@@ -1,0 +1,202 @@
+{
+  "schema": "chio.attest.buyer-proof-negative-fixture-corpus.v1",
+  "cases": [
+    {
+      "id": "unsupported-zkvm-claim",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["claims", "zkvm"],
+        "value": true
+      },
+      "expectedFailureCode": "package.claim"
+    },
+    {
+      "id": "legacy-stub-proof-schema",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["selectiveDisclosureProof", "schema"],
+        "value": "chio.selective-disclosure-proof.stub"
+      },
+      "expectedFailureCode": "bbs"
+    },
+    {
+      "id": "wrong-verifier-context-challenge",
+      "target": "context",
+      "mutation": {
+        "op": "set",
+        "path": ["challenge"],
+        "value": "wrong-challenge"
+      },
+      "expectedFailureCode": "bbs.context_nonce"
+    },
+    {
+      "id": "expired-verifier-context",
+      "target": "context",
+      "mutation": {
+        "op": "set",
+        "path": ["expiresAtUnixMs"],
+        "value": 1766000000000
+      },
+      "expectedFailureCode": "verification.context"
+    },
+    {
+      "id": "unsupported-bbs-ciphersuite",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["selectiveDisclosureProof", "ciphersuite"],
+        "value": "unsupported"
+      },
+      "expectedFailureCode": "bbs"
+    },
+    {
+      "id": "duplicate-disclosed-index",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["selectiveDisclosureProof", "disclosed_indices"],
+        "value": [4, 4, 8, 9, 10]
+      },
+      "expectedFailureCode": "bbs"
+    },
+    {
+      "id": "missing-destructive-governance",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["governanceReceipts"],
+        "value": []
+      },
+      "expectedFailureCode": "governance"
+    },
+    {
+      "id": "workflow-intersection-hash-mismatch",
+      "target": "trustBundle",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowIntersections", 0, "sha256"],
+        "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "expectedFailureCode": "workflow.intersection"
+    },
+    {
+      "id": "missing-trusted-peer",
+      "target": "trustBundle",
+      "mutation": {
+        "op": "removeWhere",
+        "path": ["peers"],
+        "field": "kernelId",
+        "value": "did:chio:vendor-a"
+      },
+      "expectedFailureCode": "trust.bundle"
+    },
+    {
+      "id": "missing-action-class",
+      "target": "trustBundle",
+      "mutation": {
+        "op": "removeWhere",
+        "path": ["actionClasses"],
+        "field": "toolName",
+        "value": "stage_refund"
+      },
+      "expectedFailureCode": "workflow.intersection"
+    },
+    {
+      "id": "untrusted-lease-authority",
+      "target": "trustBundle",
+      "mutation": {
+        "op": "set",
+        "path": ["leaseAuthorities", 0, "issuer"],
+        "value": "did:chio:other-lease-authority"
+      },
+      "expectedFailureCode": "governance"
+    },
+    {
+      "id": "untrusted-governance-authority",
+      "target": "trustBundle",
+      "mutation": {
+        "op": "set",
+        "path": ["governanceAuthorities", 0, "authorizingKernel"],
+        "value": "did:chio:other-governance"
+      },
+      "expectedFailureCode": "governance"
+    },
+    {
+      "id": "wrong-scope-binding-tool-args",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["leaseScopeBindings", 0, "toolArgsHash"],
+        "value": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expectedFailureCode": "lease.scope_binding"
+    },
+    {
+      "id": "wrong-scope-binding-digest",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["capabilityLeases", 0, "body", "scopeDigest"],
+        "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "expectedFailureCode": "lease.scope_binding"
+    },
+    {
+      "id": "step-parent-hash-mismatch",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowReceipt", "steps", 1, "parent_receipt_sha256"],
+        "value": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expectedFailureCode": "workflow",
+      "requiresSignedMutation": true
+    },
+    {
+      "id": "step-tool-receipt-mismatch",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowReceipt", "steps", 0, "tool_receipt_id"],
+        "value": "rcpt-vendor-b"
+      },
+      "expectedFailureCode": "workflow",
+      "requiresSignedMutation": true
+    },
+    {
+      "id": "step-output-hash-mismatch",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowReceipt", "steps", 0, "output_hash"],
+        "value": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expectedFailureCode": "workflow",
+      "requiresSignedMutation": true
+    },
+    {
+      "id": "step-dsse-hash-mismatch",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowReceipt", "steps", 0, "bilateral_dsse_sha256"],
+        "value": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expectedFailureCode": "workflow",
+      "requiresSignedMutation": true
+    },
+    {
+      "id": "step-consistency-anchor-mismatch",
+      "target": "package",
+      "mutation": {
+        "op": "set",
+        "path": ["workflowReceipt", "steps", 0, "consistency_anchor"],
+        "value": "chio:consistency:wf-chio-refund-001:wrong"
+      },
+      "expectedFailureCode": "workflow",
+      "requiresSignedMutation": true
+    }
+  ]
+}

@@ -1,10 +1,10 @@
-# Chiodos 6.1 Tickets
+# Chio 6.1 Tickets
 
 ## C6.1-001: Integrator
 
 Acceptance:
 
-- Create `codex/chiodos-6-1-strict-verifier` from current `main`.
+- Create `codex/chio-6-1-strict-verifier` from current `main`.
 - Pin the baseline SHA in the lane README.
 - Keep planning metadata out of production code and public artifacts.
 
@@ -12,12 +12,12 @@ Acceptance:
 
 Acceptance:
 
-- Emit and verify the strict Chiodos bilateral predicate profile.
+- Emit and verify the strict Chio bilateral predicate profile.
 - Include required `tool_args_hash`.
-- Keep signature-slice compatibility separate from strict Chiodos conformance.
+- Keep signature-slice compatibility separate from strict Chio conformance.
 - Preserve fail-closed error mapping for malformed DSSE and statements.
 
-## C6.1-003: Chiodos Library
+## C6.1-003: Chio Library
 
 Acceptance:
 
@@ -29,7 +29,7 @@ Acceptance:
 
 Acceptance:
 
-- Add `chio chiodos verify --package <path> --trusted-issuers <path> --report <path>`.
+- Add `chio attest buyer verify-proof --package <path> --trusted-issuers <path> --report <path>`.
 - Exit successfully only for accepted packages.
 - Write verifier report JSON.
 
@@ -45,7 +45,7 @@ Acceptance:
 
 Acceptance:
 
-- Extend `scripts/check-chiodos-proof-package.sh`.
+- Extend `scripts/check-chio-proof-package.sh`.
 - Add negative checks for legacy stub schemas, unsupported claims, and
   signature-slice substitution in strict mode.
 - Update docs to remove stale partial-verifier claims only where closed.
@@ -54,6 +54,6 @@ Acceptance:
 
 Acceptance:
 
-- Run the targeted Cargo tests, Chiodos gate, bounded gates, threat mutants,
+- Run the targeted Cargo tests, Chio gate, bounded gates, threat mutants,
   format check, and targeted clippy.
 - Open PRs, address review threads, and merge to `main`.

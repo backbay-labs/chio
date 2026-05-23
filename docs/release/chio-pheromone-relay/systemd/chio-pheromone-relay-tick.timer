@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Chio pheromone relay scheduler ticks
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=5s
+Unit=chio-pheromone-relay-tick.service
+
+[Install]
+WantedBy=timers.target

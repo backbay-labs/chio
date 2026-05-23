@@ -126,8 +126,8 @@ owner_globs = [
   "crates/chio-cli/src/receipt/**",
   "examples/chiodome-bilateral/**",
   "ops/knowledge-base/**",
-  "spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md",
-  "spec/CHIODOS_SELECTIVE_DISCLOSURE.md",
+  "spec/CHIO_BILATERAL_COSIGN_INVOCATION.md",
+  "spec/CHIO_SELECTIVE_DISCLOSURE.md",
 ]
 reviewer = "release owner"
 review_x2 = true

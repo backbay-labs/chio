@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-attest/v1/buyer-attestation-review-package.schema.json",
+  "title": "Chio Buyer Attestation Review Package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "packageId", "packetId", "buyerId", "generatedAtUnixMs", "artifacts"],
+  "properties": {
+    "schema": { "const": "chio.attest.buyer-attestation-review-package.v1" },
+    "packageId": { "type": "string", "minLength": 1 },
+    "packetId": { "type": "string", "minLength": 1 },
+    "buyerId": { "type": "string", "minLength": 1 },
+    "generatedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/artifactRef" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "relativePath", "artifactSha256", "byteCount"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "relativePath": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._/-]+$"
+        },
+        "artifactSha256": { "$ref": "#/$defs/sha256" },
+        "byteCount": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

@@ -564,7 +564,7 @@ Do not restore strong provenance claims until the release gate includes:
 
 - narrow public docs immediately
 - define provenance evidence classes
-- freeze v2 schema shapes for session anchor, continuation token, and
+- freeze current schema shapes for session anchor, continuation token, and
   receipt-lineage statement
 
 ### M2. Local Lineage Foundation

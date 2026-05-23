@@ -32,7 +32,7 @@
 //! that still carries `class_uid = 3002` so downstream consumers can reason
 //! about the failure. Mapping never panics.
 
-use chio_core::receipt::{ChioReceipt, Decision, GuardEvidence, TrustLevel};
+use chio_core::receipt::{ChioReceipt, Decision, GuardEvidence, ReceiptSemanticFields, TrustLevel};
 use serde_json::{json, Map, Value};
 
 use crate::redaction::redact_for_operator_log;
@@ -67,9 +67,10 @@ pub const OCSF_PRODUCT_VENDOR: &str = "Backbay Industries";
 /// failure. It never panics.
 #[must_use]
 pub fn receipt_to_ocsf(receipt: &ChioReceipt) -> Value {
-    let (activity_id, activity_name) = activity_for(&receipt.decision);
-    let (status_id, status_name) = status_for(&receipt.decision);
-    let (severity_id, severity_name) = severity_for(&receipt.decision);
+    let semantics = receipt.semantic_fields();
+    let (activity_id, activity_name) = activity_for(receipt, &semantics);
+    let (status_id, status_name) = status_for(receipt, &semantics);
+    let (severity_id, severity_name) = severity_for(receipt, &semantics);
     let type_uid = OCSF_CLASS_UID * 100 + activity_id;
 
     let mut event = Map::new();
@@ -140,7 +141,7 @@ pub fn receipt_to_ocsf(receipt: &ChioReceipt) -> Value {
                     "policy": {
                         "uid": receipt.policy_hash,
                     },
-                    "decision": activity_name,
+                    "decision": semantics.result_label(&receipt.decision),
                 }
             ],
         }),
@@ -181,8 +182,11 @@ pub fn receipt_to_ocsf(receipt: &ChioReceipt) -> Value {
     Value::Object(event)
 }
 
-fn activity_for(decision: &Decision) -> (u32, &'static str) {
-    match decision {
+fn activity_for(receipt: &ChioReceipt, semantics: &ReceiptSemanticFields) -> (u32, &'static str) {
+    if matches!(&receipt.decision, Decision::Allow) && !semantics.is_authorized(&receipt.decision) {
+        return (99, "Other");
+    }
+    match &receipt.decision {
         // OCSF Authorization activity_id enum:
         //   0 Unknown, 1 Grant, 2 Revoke, 99 Other.
         // Chio Allow maps to Grant; Deny maps to a refused grant, which OCSF
@@ -196,8 +200,11 @@ fn activity_for(decision: &Decision) -> (u32, &'static str) {
     }
 }
 
-fn status_for(decision: &Decision) -> (u32, &'static str) {
-    match decision {
+fn status_for(receipt: &ChioReceipt, semantics: &ReceiptSemanticFields) -> (u32, &'static str) {
+    if matches!(&receipt.decision, Decision::Allow) && !semantics.is_authorized(&receipt.decision) {
+        return (99, "Other");
+    }
+    match &receipt.decision {
         // OCSF status_id enum: 0 Unknown, 1 Success, 2 Failure, 99 Other.
         Decision::Allow => (1, "Success"),
         Decision::Deny { .. } => (2, "Failure"),
@@ -206,8 +213,11 @@ fn status_for(decision: &Decision) -> (u32, &'static str) {
     }
 }
 
-fn severity_for(decision: &Decision) -> (u32, &'static str) {
-    match decision {
+fn severity_for(receipt: &ChioReceipt, semantics: &ReceiptSemanticFields) -> (u32, &'static str) {
+    if matches!(&receipt.decision, Decision::Allow) && !semantics.is_authorized(&receipt.decision) {
+        return (1, "Informational");
+    }
+    match &receipt.decision {
         // OCSF severity_id enum:
         //   0 Unknown, 1 Informational, 2 Low, 3 Medium, 4 High,
         //   5 Critical, 6 Fatal, 99 Other.
@@ -277,6 +287,7 @@ fn build_observables(receipt: &ChioReceipt) -> Value {
 
 fn build_enrichments(receipt: &ChioReceipt) -> Value {
     let mut enrichments = Vec::new();
+    let semantics = receipt.semantic_fields();
 
     enrichments.push(json!({
         "name": "chio.trust_level",
@@ -284,6 +295,17 @@ fn build_enrichments(receipt: &ChioReceipt) -> Value {
         "value": trust_level_str(receipt.trust_level),
         "data": {
             "trust_level": trust_level_str(receipt.trust_level),
+        },
+    }));
+
+    enrichments.push(json!({
+        "name": "chio.receipt_semantics",
+        "type": "dict",
+        "value": semantics.receipt_kind.as_str(),
+        "data": {
+            "receipt_kind": semantics.receipt_kind.as_str(),
+            "boundary_class": semantics.boundary_class.as_str(),
+            "result": semantics.result_label(&receipt.decision),
         },
     }));
 
@@ -323,6 +345,7 @@ fn guard_evidence_enrichment(index: usize, evidence: &GuardEvidence) -> Value {
 fn build_unmapped(receipt: &ChioReceipt) -> Value {
     // The OCSF `unmapped` attribute holds a key/value object for fields that
     // are meaningful to the producer but are not represented in the class.
+    let semantics = receipt.semantic_fields();
     let mut chio_map = Map::new();
     chio_map.insert("receipt.id".into(), json!(receipt.id));
     chio_map.insert("capability.id".into(), json!(receipt.capability_id));
@@ -338,10 +361,28 @@ fn build_unmapped(receipt: &ChioReceipt) -> Value {
         "trust_level".into(),
         json!(trust_level_str(receipt.trust_level)),
     );
+    chio_map.insert(
+        "receipt_kind".into(),
+        json!(semantics.receipt_kind.as_str()),
+    );
+    chio_map.insert(
+        "boundary_class".into(),
+        json!(semantics.boundary_class.as_str()),
+    );
+    chio_map.insert(
+        "result".into(),
+        json!(semantics.result_label(&receipt.decision)),
+    );
 
     match &receipt.decision {
-        Decision::Allow => {
+        Decision::Allow if semantics.is_authorized(&receipt.decision) => {
             chio_map.insert("decision.verdict".into(), json!("allow"));
+        }
+        Decision::Allow => {
+            chio_map.insert(
+                "decision.verdict".into(),
+                json!(semantics.receipt_kind.as_str()),
+            );
         }
         Decision::Deny { reason, guard } => {
             chio_map.insert("decision.verdict".into(), json!("deny"));
@@ -377,9 +418,20 @@ fn trust_level_str(level: TrustLevel) -> &'static str {
 mod tests {
     use super::*;
     use chio_core::crypto::Keypair;
-    use chio_core::receipt::{ChioReceipt, ChioReceiptBody, Decision, ToolCallAction};
+    use chio_core::receipt::{
+        ChioReceipt, ChioReceiptBody, Decision, ReceiptSemanticFields, ToolCallAction, TrustLevel,
+    };
 
     fn test_receipt(id: &str, decision: Decision) -> ChioReceipt {
+        test_receipt_with_semantics(id, decision, None, TrustLevel::Mediated)
+    }
+
+    fn test_receipt_with_semantics(
+        id: &str,
+        decision: Decision,
+        semantics: Option<ReceiptSemanticFields>,
+        trust_level: TrustLevel,
+    ) -> ChioReceipt {
         let kp = Keypair::generate();
         let action = match ToolCallAction::from_parameters(serde_json::json!({
             "path": "/etc/passwd"
@@ -404,7 +456,14 @@ mod tests {
             kernel_key: kp.public_key(),
         };
         #[allow(clippy::unwrap_used)]
-        ChioReceipt::sign(body, &kp).unwrap()
+        let mut receipt = ChioReceipt::sign(body, &kp).unwrap();
+        if let Some(semantics) = semantics {
+            receipt.metadata = Some(serde_json::json!({
+                "receipt_semantics": semantics,
+            }));
+            receipt.trust_level = trust_level;
+        }
+        receipt
     }
 
     #[test]
@@ -416,5 +475,21 @@ mod tests {
         assert_eq!(ev["status_id"], 1);
         assert_eq!(ev["severity_id"], 1);
         assert_eq!(ev["type_uid"], 300_201);
+    }
+
+    #[test]
+    fn trace_observation_allow_never_maps_to_authorization_grant() {
+        let receipt = test_receipt_with_semantics(
+            "trace-1",
+            Decision::Allow,
+            Some(ReceiptSemanticFields::trace_detect_only()),
+            TrustLevel::Verified,
+        );
+        let ev = receipt_to_ocsf(&receipt);
+
+        assert_ne!(ev["activity_name"], "Grant");
+        assert_ne!(ev["status"], "Success");
+        assert_eq!(ev["unmapped"]["chio"]["receipt_kind"], "trace_observation");
+        assert_eq!(ev["unmapped"]["chio"]["boundary_class"], "detect_only");
     }
 }

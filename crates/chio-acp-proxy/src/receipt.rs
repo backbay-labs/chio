@@ -22,6 +22,8 @@ pub struct AcpCapabilityAuditContext {
     pub enforcement_mode: AcpEnforcementMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authorization_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_request_id: Option<String>,
 }
 
 /// Generates unsigned audit entries from ACP tool-call events.
@@ -62,6 +64,9 @@ pub struct AcpToolCallAuditEntry {
     /// The authoritative Chio receipt emitted during the live authorization check.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authorization_receipt_id: Option<String>,
+    /// Kernel request id that produced `authorization_receipt_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_request_id: Option<String>,
     /// Whether the event was tied to live cryptographic enforcement.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enforcement_mode: Option<AcpEnforcementMode>,
@@ -97,6 +102,7 @@ impl ReceiptLogger {
             content_hash,
             capability_id: None,
             authorization_receipt_id: None,
+            authorization_request_id: None,
             enforcement_mode: Some(AcpEnforcementMode::AuditOnly),
         };
         apply_capability_context(&mut entry, capability_context);
@@ -125,6 +131,7 @@ impl ReceiptLogger {
             content_hash,
             capability_id: None,
             authorization_receipt_id: None,
+            authorization_request_id: None,
             enforcement_mode: Some(AcpEnforcementMode::AuditOnly),
         };
         apply_capability_context(&mut entry, capability_context);
@@ -139,6 +146,7 @@ fn apply_capability_context(
     if let Some(context) = capability_context {
         entry.capability_id = Some(context.capability_id.clone());
         entry.authorization_receipt_id = context.authorization_receipt_id.clone();
+        entry.authorization_request_id = context.authorization_request_id.clone();
         entry.enforcement_mode = Some(context.enforcement_mode);
     }
 }

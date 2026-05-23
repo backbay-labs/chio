@@ -1,3 +1,5 @@
+//go:build chio_guard_generated
+
 // Example guard: tool-name-based allow/deny.
 //
 // Mirrors the Rust tool-gate example (examples/guards/tool-gate/src/lib.rs)

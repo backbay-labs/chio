@@ -173,7 +173,7 @@ impl SumoLogicExporter {
     }
 
     fn format_event(&self, event: &SiemEvent) -> Result<String, ExportError> {
-        let reason = redact_for_operator_log(decision_reason(&event.receipt.decision));
+        let reason = redact_for_operator_log(decision_reason(event));
         match self.config.format {
             SumoLogicFormat::Json => serde_json::to_string(event).map_err(|e| {
                 ExportError::SerializationError(format!(
@@ -182,22 +182,27 @@ impl SumoLogicExporter {
                 ))
             }),
             SumoLogicFormat::Text => Ok(format!(
-                "ts={} id={} tool={} tool_server={} decision={} reason={}",
+                "ts={} id={} tool={} tool_server={} receipt_kind={} boundary_class={} decision={} reason={}",
                 event.receipt.timestamp,
                 event.receipt.id,
                 event.receipt.tool_name,
                 event.receipt.tool_server,
-                decision_label(&event.receipt.decision),
+                event.receipt_kind.as_str(),
+                event.boundary_class.as_str(),
+                decision_label(event),
                 reason.replace('\n', " "),
             )),
             SumoLogicFormat::KeyValue => Ok(format!(
-                "receipt_id={} timestamp={} tool={} tool_server={} capability={} decision={} reason=\"{}\"",
+                "receipt_id={} timestamp={} tool={} tool_server={} capability={} receipt_kind={} boundary_class={} decision={} result=\"{}\" reason=\"{}\"",
                 event.receipt.id,
                 event.receipt.timestamp,
                 event.receipt.tool_name,
                 event.receipt.tool_server,
                 event.receipt.capability_id,
-                decision_label(&event.receipt.decision),
+                event.receipt_kind.as_str(),
+                event.boundary_class.as_str(),
+                decision_label(event),
+                event.result.replace('"', "'"),
                 reason.replace('"', "'"),
             )),
         }
@@ -280,8 +285,11 @@ impl Exporter for SumoLogicExporter {
     }
 }
 
-fn decision_label(decision: &Decision) -> &'static str {
-    match decision {
+fn decision_label(event: &SiemEvent) -> &str {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+        return event.receipt_kind.as_str();
+    }
+    match &event.receipt.decision {
         Decision::Allow => "allow",
         Decision::Deny { .. } => "deny",
         Decision::Cancelled { .. } => "cancelled",
@@ -289,8 +297,11 @@ fn decision_label(decision: &Decision) -> &'static str {
     }
 }
 
-fn decision_reason(decision: &Decision) -> String {
-    match decision {
+fn decision_reason(event: &SiemEvent) -> String {
+    if !event.is_authorized() && matches!(&event.receipt.decision, Decision::Allow) {
+        return event.result.clone();
+    }
+    match &event.receipt.decision {
         Decision::Allow => "allowed".to_string(),
         Decision::Deny { reason, guard } => format!("{guard}: {reason}"),
         Decision::Cancelled { reason } => reason.clone(),

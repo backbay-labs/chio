@@ -1,0 +1,14 @@
+{
+  "schema": "chio.runtime.peer-weights.v1",
+  "verifierId": "did:chio:buyer-verifier",
+  "keyId": "verifier-key-1",
+  "reputationEpoch": 7,
+  "issuedAtUnixMs": 1800000000000,
+  "expiresAtUnixMs": 1800003600000,
+  "weights": [
+    {
+      "peerKernelId": "kernel.vendor-b",
+      "weight": 1.0
+    }
+  ]
+}

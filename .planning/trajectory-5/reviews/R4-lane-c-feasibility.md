@@ -27,7 +27,7 @@ surface is NOT the spec section 6 PAE-over-Statement signing surface,
 and the proposed "Option A: ship two co-existing signatures" satisfies
 neither §6 nor the §7 17-step verifier semantics in any strict reading.
 That is the central BLOCKER. Several MAJOR findings cluster around it
-(KB MCP transport mismatch, missing chiodos-ladder Rust primitives, CLI
+(KB MCP transport mismatch, missing chio-ladder Rust primitives, CLI
 extension scope inflation, BBS+ dependency tree absence, four-week
 timeline assuming zero Lane B slip).
 
@@ -57,7 +57,7 @@ verifies Ed25519 signatures over `canonical_bytes(CoSigningBody)`, i.e.
 canonical JSON of the four-field body. **That message preimage is not
 in any sense "the DSSE PAE over a canonical-JSON in-toto Statement".**
 
-`spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 is
+`spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 is
 explicit: signing is Ed25519 over
 
 ```
@@ -168,7 +168,7 @@ Two options, in order of preference:
      rejected by the federation verifier (i.e. receiver-side
      enforcement).
    - B4.3: Spec MUST citation:
-     `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353
+     `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353
      (PAE) and §7 step 11-12 (signature verification).
 
    Effort: L (3-6 days). Lane B's budget is 6 weeks; B4 fits.
@@ -185,10 +185,10 @@ Two options, in order of preference:
    > - A legacy `DualSignedReceipt`
    >   (`crates/chio-federation/src/bilateral.rs:93`) carrying two
    >   Ed25519 signatures over the four-field `CoSigningBody`. This
-   >   artifact predates `CHIODOS_BILATERAL_COSIGN_INVOCATION.md`
+   >   artifact predates `CHIO_BILATERAL_COSIGN_INVOCATION.md`
    >   v0.1 and is NOT a spec §6 conformant envelope.
    > - A new spec-§6 conformant DSSE envelope per
-   >   `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6, signed by
+   >   `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6, signed by
    >   the same passport keypairs over different message bytes
    >   (DSSE PAE over the canonical-JSON in-toto Statement
    >   carrying the §5 predicate body).
@@ -422,7 +422,7 @@ See Finding 1 for the underlying issue. The specific overclaim:
 > A cross-kernel `refund.execute` invocation produces a
 > `DualSignedReceipt` (`crates/chio-federation/src/bilateral.rs:93`)
 > AND a DSSE envelope conforming to
-> `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6 (under the
+> `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` section 6 (under the
 > chio-namespaced predicateType `chio.bilateral-cosign-invocation.v1`,
 > per spec section 3 lines 97-103 mandate).
 
@@ -458,34 +458,34 @@ per Finding 1's recommended text.
 
 ---
 
-### Finding 5 [MAJOR]: KB MCP integration realism - missing chiodos-ladder Rust primitive, policy YAML format mismatch
+### Finding 5 [MAJOR]: KB MCP integration realism - missing chio-ladder Rust primitive, policy YAML format mismatch
 
-#### Sub-finding 5a: chiodos-ladder is not a Rust primitive
+#### Sub-finding 5a: chio-ladder is not a Rust primitive
 
 `PLAN.md` C1.3 says:
 
-> Build the minimal `chio.chiodos-ladder.v1` manifest for each side
+> Build the minimal `chio.federation.governance-ladder-manifest.v1` manifest for each side
 > (domain `financial`, one action class `refund.execute` shaped like
-> `settle.rollback` from `spec/CHIODOS_LADDER.md` section 5.2), and
-> emit the `chio.chiodos-ladder-intersection.v1` artefact per
-> `spec/CHIODOS_LADDER.md` section 6.1. **No new spec text.**
+> `settle.rollback` from `spec/CHIO_LADDER.md` section 5.2), and
+> emit the `chio.federation.ladder-intersection.v1` artefact per
+> `spec/CHIO_LADDER.md` section 6.1. **No new spec text.**
 
-I searched for any Rust implementation of chiodos-ladder primitives:
+I searched for any Rust implementation of chio-ladder primitives:
 
 ```
-$ grep -rln "chiodos" crates/
+$ grep -rln "chio" crates/
 (no output)
-$ grep -rln "ladder\|chiodos.ladder" crates/ | grep -v test | grep -v examples
+$ grep -rln "ladder\|chio.ladder" crates/ | grep -v test | grep -v examples
 (no output)
 ```
 
 There is no Rust code that constructs, validates, signs, or
-intersects a `chio.chiodos-ladder.v1` manifest. The spec exists at
-`spec/CHIODOS_LADDER.md` (verified). The codebase has zero
+intersects a `chio.federation.governance-ladder-manifest.v1` manifest. The spec exists at
+`spec/CHIO_LADDER.md` (verified). The codebase has zero
 implementation. The plan's "no new spec text" framing hides "all-new
 implementation".
 
-This is a non-trivial scope. Re-reading `spec/CHIODOS_LADDER.md`
+This is a non-trivial scope. Re-reading `spec/CHIO_LADDER.md`
 section 2-6.1 (which I did not load fully in this review pass), the
 ladder includes domain manifests, action class declarations,
 intersection rules, signed pinning, etc. Even the minimal version is
@@ -501,22 +501,22 @@ does not exist in code today, even a minimal implementation closer to
   that this is NEW Rust code (in `architecture.md` "Crates touched"
   table the row should change from "No - consumes existing schema"
   to "Yes - new minimal ladder primitive in `examples/chiodome-bilateral`
-  or a new tiny crate `chio-chiodos-ladder-min`").
+  or a new tiny crate `chio-attest-buyer-core-ladder-min`").
 
 - planning docs release work-C1.3: split into release work-C1.3a (manifest types and
   schema) and release work-C1.3b (intersection emit + signing).
 
-- Consider whether Lane C should depend on a Lane B item "B5: chiodos
+- Consider whether Lane C should depend on a Lane B item "B5: chio
   ladder minimal Rust primitive" or whether the demo accepts an
   example-local implementation. The latter is fine for v0.1
   bounded-chiodome, but bounded-claim text should say so:
 
-  > The chiodos-ladder primitive used in the demo is an
+  > The chio-ladder primitive used in the demo is an
   > example-local minimal implementation
   > (`examples/chiodome-bilateral/src/ladder.rs`). It is sufficient
   > for the demo's pinned-intersection use case but is NOT a
   > production-grade ladder primitive. A production
-  > `chio-chiodos-ladder` crate is deferred to trj6.
+  > `chio-attest-buyer-core-ladder` crate is deferred to trj6.
 
 #### Sub-finding 5b: Policy YAML format does not match HushSpec
 
@@ -574,9 +574,9 @@ reason).
   policy YAML, because HushSpec does not have an amount cap primitive.
 
 - This forces a real choice: either (a) the demo's amount cap is
-  enforced by the chiodos-ladder intersection logic (where the
+  enforced by the chio-ladder intersection logic (where the
   `partition_fallback.blast_radius_cap.amount_minor` lives in
-  `spec/CHIODOS_LADDER.md` §5.2), in which case the demo's deny path
+  `spec/CHIO_LADDER.md` §5.2), in which case the demo's deny path
   is "ladder-driven"; or (b) the cap is enforced by a custom guard
   registered for the demo, in which case the demo grows a small
   WASM guard. Option (a) is cleaner; option (b) requires guard
@@ -584,7 +584,7 @@ reason).
 
 This is a real, schedule-affecting decision the W1 plan does not make.
 The reviewer's recommendation: option (a), because it forces the demo
-to actually exercise the chiodos-ladder primitive that the bounded
+to actually exercise the chio-ladder primitive that the bounded
 claim promises (and Sub-finding 5a's effort estimate already accounts
 for some of this work).
 
@@ -600,7 +600,7 @@ default = []
 zk = ["dep:bbs", "dep:bls12_381", "dep:anoncreds-rs"]
 ```
 
-Spec §3 (`spec/CHIODOS_SELECTIVE_DISCLOSURE.md` lines 79-95) pins:
+Spec §3 (`spec/CHIO_SELECTIVE_DISCLOSURE.md` lines 79-95) pins:
 - `bbs-2023` cryptosuite (W3C CR Draft, not Recommendation)
 - `draft-irtf-cfrg-bbs-signatures-10` over BLS12-381
 - AnonCreds v2 `RangeStatement` for `cmp` proofs
@@ -1037,7 +1037,7 @@ review; flagging for the Lane B reviewer.)
 | 2 | KB MCP transport mismatch (stdio vs HTTP) | BLOCKER |
 | 3 | Cross-lane depends-on aliases not anchored to Lane B IDs | MAJOR |
 | 4 | release-bar.md `AND` overclaims spec §6 conformance | MAJOR |
-| 5 | chiodos-ladder Rust primitive missing; policy YAML format mismatch | MAJOR |
+| 5 | chio-ladder Rust primitive missing; policy YAML format mismatch | MAJOR |
 | 6 | BBS+ feature dep tree absent; R6 mitigation soft | MAJOR |
 | 7 | End-to-end composition gaps not captured as tickets | MAJOR |
 | 8 | 17-step verifier cross-crate calls (steps 7, 14) unresolved | MAJOR |
@@ -1109,13 +1109,13 @@ from being REAL as currently scoped:
    HTTP MCP servers; the plan implicitly requires that, OR a stdio
    bridge that the plan doesn't specify.
 
-3. The chiodos-ladder primitive (Finding 5) is described as
+3. The chio-ladder primitive (Finding 5) is described as
    "consume existing" but does not exist in code. The demo cannot
    compose what isn't there.
 
 If the W1 author addresses Findings 1-2 by W3 of Lane C with the
 recommended patches (option 1 promotion to B4, mcp-remote bridge,
-HushSpec-shaped policy YAML, explicit chiodos-ladder example-local
+HushSpec-shaped policy YAML, explicit chio-ladder example-local
 implementation), the demo is shippable in 4 weeks (with possible
 1-week release work ship-date slip from B4 promotion).
 

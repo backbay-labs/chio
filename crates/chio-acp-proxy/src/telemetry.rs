@@ -24,7 +24,8 @@ pub struct ReceiptSpan {
     pub parent_span_id: String,
     /// The tool name that was invoked.
     pub tool_name: String,
-    /// The verdict: "allow", "deny", "cancelled", or "incomplete".
+    /// The semantic verdict, such as "allow", "deny", "trace_observation",
+    /// or "advisory_evaluation".
     pub verdict: String,
     /// The capability ID that authorized the invocation.
     pub capability_id: String,
@@ -137,8 +138,12 @@ fn default_service_name() -> String {
 
 /// Convert an Chio receipt into an OTel-compatible span.
 pub fn receipt_to_span(receipt: &ChioReceipt, session_trace_id: &str) -> ReceiptSpan {
+    let semantics = receipt.semantic_fields();
     let verdict = match &receipt.decision {
-        chio_core::receipt::Decision::Allow => "allow",
+        chio_core::receipt::Decision::Allow if semantics.is_authorized(&receipt.decision) => {
+            "allow"
+        }
+        chio_core::receipt::Decision::Allow => semantics.receipt_kind.as_str(),
         chio_core::receipt::Decision::Deny { .. } => "deny",
         chio_core::receipt::Decision::Cancelled { .. } => "cancelled",
         chio_core::receipt::Decision::Incomplete { .. } => "incomplete",
@@ -162,6 +167,14 @@ pub fn receipt_to_span(receipt: &ChioReceipt, session_trace_id: &str) -> Receipt
         SpanAttribute {
             key: "chio.verdict".to_string(),
             value: verdict.to_string(),
+        },
+        SpanAttribute {
+            key: "chio.receipt_kind".to_string(),
+            value: semantics.receipt_kind.as_str().to_string(),
+        },
+        SpanAttribute {
+            key: "chio.boundary_class".to_string(),
+            value: semantics.boundary_class.as_str().to_string(),
         },
         SpanAttribute {
             key: "chio.capability_id".to_string(),

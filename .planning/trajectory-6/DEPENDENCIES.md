@@ -18,11 +18,11 @@ Trajectory 6 became active after Trajectory 5.2 exited.
 
 ## Inputs From Existing Specs
 
-- `docs/research/CHIODOS_3VENDOR_FIXTURE.md`
-- `spec/CHIODOS_LADDER.md`
-- `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`
-- `spec/CHIODOS_SELECTIVE_DISCLOSURE.md`
-- `spec/CHIODOS_PHEROMONE.md`
+- `docs/research/CHIO_3VENDOR_FIXTURE.md`
+- `spec/CHIO_LADDER.md`
+- `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md`
+- `spec/CHIO_SELECTIVE_DISCLOSURE.md`
+- `spec/CHIO_PHEROMONE.md`
 
 These inputs remain draft sources except where T6 tickets promote a specific
 interface with tests.

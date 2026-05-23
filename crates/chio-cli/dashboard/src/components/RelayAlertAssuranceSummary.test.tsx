@@ -260,7 +260,7 @@ describe('RelayAlertAssuranceSummary', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (url === '/v1/chiodos/pheromone/alert-assurance') {
+        if (url === '/v1/chio/pheromone/alert-assurance') {
           return Promise.resolve({ ok: true, json: async () => assurancePackage() })
         }
         return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' })

@@ -166,7 +166,7 @@ These bullets are descriptive prose today. The spec edit promotes them to a norm
 
 ### Scope
 
-Wave-2 review R4 found that the existing `crates/chio-federation/src/bilateral.rs::CoSigningBody` (lines 41-77) signs canonical-JSON bytes that share **zero bytes** with the `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 DSSE PAE preimage. The spec §6 envelope shape is `Ed25519` over `"DSSEv1" SP LEN(payload-type) SP payload-type SP LEN(payload) SP payload`, where `payload` is the canonical-JSON in-toto Statement carrying the §5 predicate body. The legacy `DualSignedReceipt::verify` at `bilateral.rs:108` is therefore **structural-only** with respect to §6: it verifies the legacy preimage but is not a §6-conformant verifier.
+Wave-2 review R4 found that the existing `crates/chio-federation/src/bilateral.rs::CoSigningBody` (lines 41-77) signs canonical-JSON bytes that share **zero bytes** with the `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 DSSE PAE preimage. The spec §6 envelope shape is `Ed25519` over `"DSSEv1" SP LEN(payload-type) SP payload-type SP LEN(payload) SP payload`, where `payload` is the canonical-JSON in-toto Statement carrying the §5 predicate body. The legacy `DualSignedReceipt::verify` at `bilateral.rs:108` is therefore **structural-only** with respect to §6: it verifies the legacy preimage but is not a §6-conformant verifier.
 
 The previously-proposed Lane C "Option A two-signature" (the same passport keypair signs BOTH preimages) was rejected by R4 because it is a structural-framing-without-wiring anti-pattern: it bolts a §6-conformant DSSE envelope alongside a non-conformant `DualSignedReceipt` rather than making §6 conformance load-bearing. R4 BLOCKER 1 promoted DSSE-conformant signing to a Lane B fourth primitive.
 
@@ -181,7 +181,7 @@ The legacy `DualSignedReceipt::verify` at `bilateral.rs:108` is **NOT** changed 
 
 ### Spec citation
 
-`spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 (DSSE PAE encoding) and §7 step 11-12 (signature verification). The spec text is already in MUST shape (the §6 envelope is normatively defined; the open question is whether the runtime emits a §6-conformant artifact). B4 wires the runtime to the existing spec MUST.
+`spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 (DSSE PAE encoding) and §7 step 11-12 (signature verification). The spec text is already in MUST shape (the §6 envelope is normatively defined; the open question is whether the runtime emits a §6-conformant artifact). B4 wires the runtime to the existing spec MUST.
 
 ### Affected call sites
 
@@ -200,7 +200,7 @@ The legacy `DualSignedReceipt::verify` at `bilateral.rs:108` is **NOT** changed 
 ### Evidence required
 
 - The negative conformance fixture at `crates/chio-conformance/tests/b4_bilateral_dsse_pae_only_is_conformant.rs` (per R4 finding 1, recommendation 1, ticket B4.2). The fixture: (a) builds a real `DualSignedReceipt` via the legacy path, (b) builds a real DSSE envelope via the new `sign_dsse_envelope`, (c) asserts the two preimages share ZERO bytes (the R4 finding), (d) the §6-conformant verifier accepts the DSSE envelope, (e) tampered PAE bytes are rejected. Pattern detail in [`dsse-bilateral-signing.md`](./dsse-bilateral-signing.md) and [`conformance-fixture-spec.md`](./conformance-fixture-spec.md) §8a.
-- PR description quotes `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 verbatim (the PAE encoding) and §7 step 11-12 (signature verification).
+- PR description quotes `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` §6 lines 338-353 verbatim (the PAE encoding) and §7 step 11-12 (signature verification).
 - Reverse-test: revert B4.2 on a draft branch; the fixture FAILS because the §6-conformant envelope is not produced and the demo's §6 conformance claim is contradicted.
 
 ---
@@ -218,5 +218,5 @@ Lane B explicitly excludes (per synthesis lines 134-144):
 - `chio-cli` trust-control extraction.
 - Gravity-well surgery on `chio-core` / `chio-kernel`.
 - Mobile attestation production-hardening.
-- New chiodos primitives.
+- New chio primitives.
 - `&mut self` setter migration on `ChioKernel` (B0 only collapses the async-wrapper lie; setter migration defers to trj6).

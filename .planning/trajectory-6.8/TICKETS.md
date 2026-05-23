@@ -1,4 +1,4 @@
-# Chiodos 6.8 Ticket Closeout
+# Chio 6.8 Ticket Closeout
 
 | Ticket | Owner | Status | Notes |
 | --- | --- | --- | --- |

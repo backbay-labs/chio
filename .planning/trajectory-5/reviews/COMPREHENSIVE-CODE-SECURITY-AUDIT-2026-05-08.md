@@ -76,7 +76,7 @@ Recommended release posture: keep #618 blocked until foundational PRs are merged
 - PR: #615
 - Files: `crates/chio-federation/src/bilateral_dsse.rs`, `crates/chio-federation/src/bilateral_verifier.rs`
 - Evidence: the predicate lacks or rejects required fields such as `tool_args_hash`, signs internal non-schema fields, uses the wrong receipt digest shape, and maps parseable-base64 malformed Statement JSON to `dsse.malformed` rather than `statement.malformed`.
-- Impact: the verifier advertises CHIODOS step coverage while rejecting or accepting artifacts under a profile that is not the actual schema.
+- Impact: the verifier advertises CHIO step coverage while rejecting or accepting artifacts under a profile that is not the actual schema.
 - Fix: implement the complete predicate schema before calling it a 17-step verifier, or downgrade the claim to a partial local verifier.
 
 ### T5-AUDIT-P0-008 - Receipt explain emits a verifier trace without cryptographic verification

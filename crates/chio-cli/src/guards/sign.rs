@@ -8,18 +8,18 @@
 //! trusted `signer_public_key`; otherwise the sidecar's embedded public key is
 //! trusted on its own (useful for operators who only have a `.sig` file).
 
-use std::fs;
 #[cfg(test)]
 use std::fmt::Display;
+use std::fs;
 use std::path::Path;
 #[cfg(test)]
 use std::path::PathBuf;
 
-use chio_wasm_guards::manifest::{
-    load_manifest, load_signature_sidecar, signed_module_message, verify_signed_module,
-    write_signature_sidecar, SignedWasmModule,
-};
 use chio_wasm_guards::WasmGuardError;
+use chio_wasm_guards::manifest::{
+    SignedWasmModule, load_manifest, load_signature_sidecar, signed_module_message,
+    verify_signed_module, write_signature_sidecar,
+};
 use ed25519_dalek::{Signer, SigningKey};
 use sha2::{Digest, Sha256};
 
@@ -61,8 +61,8 @@ pub fn cmd_guard_sign(
     };
 
     let wasm_path_str = wasm_path_to_str(wasm_path)?;
-    let sidecar_path =
-        write_signature_sidecar(wasm_path_str, &signed).map_err(map_signature_sidecar_write_error)?;
+    let sidecar_path = write_signature_sidecar(wasm_path_str, &signed)
+        .map_err(map_signature_sidecar_write_error)?;
 
     println!("signed {}", wasm_path.display());
     println!("  sidecar:   {}", sidecar_path.display());
@@ -173,10 +173,7 @@ pub fn cmd_guard_verify(wasm_path: &Path) -> Result<(), CliError> {
 
 fn wasm_path_to_str(path: &Path) -> Result<&str, CliError> {
     path.to_str().ok_or_else(|| {
-        CliError::manifest_schema_error(format!(
-            "wasm path is not valid UTF-8: {}",
-            path.display()
-        ))
+        CliError::manifest_schema_error(format!("wasm path is not valid UTF-8: {}", path.display()))
     })
 }
 
@@ -185,9 +182,9 @@ fn map_signature_sidecar_write_error(error: WasmGuardError) -> CliError {
         WasmGuardError::ManifestLoad { .. } => {
             CliError::cli_io_error(format!("failed to write signature sidecar: {error}"))
         }
-        other => {
-            CliError::manifest_signature_error(format!("failed to write signature sidecar: {other}"))
-        }
+        other => CliError::manifest_signature_error(format!(
+            "failed to write signature sidecar: {other}"
+        )),
     }
 }
 
@@ -243,10 +240,7 @@ fn write_random_seed(path: &Path) -> Result<SigningKey, CliError> {
     let sk = SigningKey::generate(&mut OsRng);
     let hex_seed = hex::encode(sk.to_bytes());
     fs::write(path, hex_seed).map_err(|e| {
-        CliError::cli_io_error(format!(
-            "failed to write seed file {}: {e}",
-            path.display()
-        ))
+        CliError::cli_io_error(format!("failed to write seed file {}: {e}", path.display()))
     })?;
     Ok(sk)
 }
@@ -316,7 +310,10 @@ mod tests {
             signed.signer_public_key,
             hex::encode(sk.verifying_key().to_bytes())
         );
-        assert_eq!(signed.module_hash, hex::encode(Sha256::digest(MINIMAL_WASM)));
+        assert_eq!(
+            signed.module_hash,
+            hex::encode(Sha256::digest(MINIMAL_WASM))
+        );
     }
 
     #[test]

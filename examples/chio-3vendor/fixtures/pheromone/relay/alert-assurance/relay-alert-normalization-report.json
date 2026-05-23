@@ -1,0 +1,101 @@
+{
+  "schema": "chio.pheromone.relay-alert-normalization-report.v1",
+  "accepted": true,
+  "code": "accepted",
+  "localKernelId": "did:chio:dataco",
+  "generatedAtUnixMs": 1766000070000,
+  "sourceCount": 3,
+  "normalizedCount": 3,
+  "evidenceHashes": [
+    "4e915bfe9b4b0292df860bcc964139707aedf1a4f655d2478ba3424a24e150a5",
+    "b7d3357715413a9915aa7eb952e8407f6eb076bd1af0de4a1d9d3ae404753710",
+    "a5fc32c09dda89884b0d787fa354faea1e31918a5a0695886af983e19c001997"
+  ],
+  "evidence": [
+    {
+      "schema": "chio.pheromone.relay-alert-delivery-evidence.v1",
+      "localKernelId": "did:chio:dataco",
+      "observedAtUnixMs": 1766000065000,
+      "resultId": "normalized:alertmanager-auth-watch:endpoint_denied",
+      "receiverId": "alertmanager-auth-watch",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:relay-auth-watch",
+      "notificationRoute": "opsgenie-auth-watch",
+      "opsgenie": "relay-security",
+      "alertCode": "endpoint_denied",
+      "dedupeKey": "chio-relay:dataco:endpoint-denied",
+      "severity": "critical",
+      "runbook": "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#replay-storm",
+      "status": "accepted",
+      "sourceHandoffReportSha256": "40c91f8742e259de9a3c507e9c6a34b7ac59341ceb5e0a24e8d5da0c501fbdd5",
+      "downstreamEvidenceSha256": "e450fd112138b569a3717eb78c081aa4d57c51f23c6af1553812742d978b2913",
+      "labels": {
+        "notification_route": "opsgenie-auth-watch",
+        "opsgenie": "relay-security",
+        "receiver": "alertmanager-auth-watch",
+        "service": "chio-pheromone-relay",
+        "severity": "critical",
+        "status": "accepted"
+      }
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-delivery-evidence.v1",
+      "localKernelId": "did:chio:dataco",
+      "observedAtUnixMs": 1766000065000,
+      "resultId": "normalized:alertmanager-auth-watch:relay_nonce_replay",
+      "receiverId": "alertmanager-auth-watch",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:relay-auth-watch",
+      "notificationRoute": "opsgenie-auth-watch",
+      "opsgenie": "relay-security",
+      "alertCode": "relay_nonce_replay",
+      "dedupeKey": "chio-relay:dataco:relay-nonce-replay",
+      "severity": "critical",
+      "runbook": "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#replay-storm",
+      "status": "delivered",
+      "sourceHandoffReportSha256": "40c91f8742e259de9a3c507e9c6a34b7ac59341ceb5e0a24e8d5da0c501fbdd5",
+      "downstreamEvidenceSha256": "d79c69a038b17a1bbe66030d84bc2f9ab9a57e24d42b28f7eeba8258bcf06afe",
+      "labels": {
+        "notification_route": "opsgenie-auth-watch",
+        "opsgenie": "relay-security",
+        "receiver": "alertmanager-auth-watch",
+        "service": "chio-pheromone-relay",
+        "severity": "critical",
+        "status": "delivered"
+      }
+    },
+    {
+      "schema": "chio.pheromone.relay-alert-delivery-evidence.v1",
+      "localKernelId": "did:chio:dataco",
+      "observedAtUnixMs": 1766000065000,
+      "resultId": "normalized:alertmanager-pagerduty-primary:dead_letters_present",
+      "receiverId": "alertmanager-pagerduty-primary",
+      "kind": "alertmanager",
+      "targetRef": "alertmanager:pagerduty-primary",
+      "notificationRoute": "pagerduty-primary",
+      "opsgenie": "relay-oncall",
+      "alertCode": "dead_letters_present",
+      "dedupeKey": "chio-relay:dataco:dead-letters",
+      "severity": "critical",
+      "runbook": "docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md#dead-letter-triage",
+      "status": "delivered",
+      "sourceHandoffReportSha256": "40c91f8742e259de9a3c507e9c6a34b7ac59341ceb5e0a24e8d5da0c501fbdd5",
+      "downstreamEvidenceSha256": "d156501d40895e96d2ec637d3fec1a9fc5f5dfd14c433ea0e5afdf6b185fe0bb",
+      "labels": {
+        "notification_route": "pagerduty-primary",
+        "opsgenie": "relay-oncall",
+        "receiver": "alertmanager-pagerduty-primary",
+        "service": "chio-pheromone-relay",
+        "severity": "critical",
+        "status": "delivered"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "code": "normalization",
+      "accepted": true,
+      "detail": "local downstream exports normalized into Chio delivery evidence"
+    }
+  ]
+}

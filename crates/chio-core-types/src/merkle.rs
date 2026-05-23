@@ -183,7 +183,7 @@ impl MerkleTree {
 }
 
 /// Merkle inclusion proof.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MerkleProof {
     /// Total number of leaves in the tree.
     pub tree_size: usize,

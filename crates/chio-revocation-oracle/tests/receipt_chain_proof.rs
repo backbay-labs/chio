@@ -10,7 +10,7 @@
 //!
 //! The test runs the swarm fixture in-process (so the gate command
 //! `cargo test -p chio-revocation-oracle --test receipt_chain_proof
-//! --features delegation_v2` is self-contained); it does not depend
+//! --features delegation` is self-contained); it does not depend
 //! on the T1 test having run first. The fixture writes to a
 //! per-test-run temp file so two parallel `cargo test` invocations
 //! cannot race on a shared path.

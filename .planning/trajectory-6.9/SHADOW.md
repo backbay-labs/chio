@@ -1,4 +1,4 @@
-# Chiodos 6.9 Shadow
+# Chio 6.9 Shadow
 
 6.9 should harden production relay operations after 6.8 exits. Candidate work:
 

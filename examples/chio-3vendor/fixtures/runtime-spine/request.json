@@ -1,0 +1,9 @@
+{
+  "requestId": "req-live-destructive",
+  "capabilityId": "cap-live-1",
+  "serverId": "vendor-ledger",
+  "toolName": "close_account",
+  "toolArgsSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "originKernelId": "kernel.buyer",
+  "hostKernelId": "kernel.vendor-b"
+}

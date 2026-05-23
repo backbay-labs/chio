@@ -4,6 +4,7 @@
 // then stores them in the kernel's ReceiptStore and triggers Merkle
 // checkpoints at the configured batch size.
 
+use std::collections::BTreeSet;
 use std::sync::Mutex;
 
 use chio_core::crypto::Keypair;
@@ -27,6 +28,7 @@ pub struct KernelReceiptSigner {
     checkpoint_seq: Mutex<u64>,
     batch_start_seq: Mutex<u64>,
     current_seq: Mutex<u64>,
+    consumed_authorization_receipts: Mutex<BTreeSet<String>>,
 }
 
 impl KernelReceiptSigner {
@@ -45,7 +47,140 @@ impl KernelReceiptSigner {
             checkpoint_seq: Mutex::new(0),
             batch_start_seq: Mutex::new(0),
             current_seq: Mutex::new(0),
+            consumed_authorization_receipts: Mutex::new(BTreeSet::new()),
         }
+    }
+
+    fn verify_live_authorization_receipt(
+        &self,
+        request: &AcpReceiptRequest,
+    ) -> Result<(), ReceiptSignError> {
+        let entry = &request.audit_entry;
+        let capability_id = entry.capability_id.as_deref().ok_or_else(|| {
+            ReceiptSignError::SigningFailed(
+                "cryptographically enforced ACP audit entries must carry the live capability id"
+                    .to_string(),
+            )
+        })?;
+        if capability_id.is_empty() {
+            return Err(ReceiptSignError::SigningFailed(
+                "cryptographically enforced ACP audit entries must carry the live capability id"
+                    .to_string(),
+            ));
+        }
+        let authorization_receipt_id =
+            entry.authorization_receipt_id.as_deref().ok_or_else(|| {
+                ReceiptSignError::SigningFailed(
+                    "cryptographically enforced ACP audit entries must reference an authorization receipt"
+                        .to_string(),
+                )
+            })?;
+        if authorization_receipt_id.is_empty() {
+            return Err(ReceiptSignError::SigningFailed(
+                "cryptographically enforced ACP audit entries must reference an authorization receipt"
+                    .to_string(),
+            ));
+        }
+        let authorization_request_id =
+            entry.authorization_request_id.as_deref().ok_or_else(|| {
+                ReceiptSignError::SigningFailed(
+                    "cryptographically enforced ACP audit entries must reference the authorization request id"
+                        .to_string(),
+                )
+            })?;
+        if authorization_request_id.is_empty() {
+            return Err(ReceiptSignError::SigningFailed(
+                "cryptographically enforced ACP audit entries must reference the authorization request id"
+                    .to_string(),
+            ));
+        }
+        if entry.session_id.is_empty() || entry.tool_call_id.is_empty() {
+            return Err(ReceiptSignError::SigningFailed(
+                "cryptographically enforced ACP audit entries must bind session and tool call ids"
+                    .to_string(),
+            ));
+        }
+
+        let authorization_receipt = {
+            let store = self.store.lock().map_err(|e| {
+                ReceiptSignError::SigningFailed(format!("store lock poisoned: {e}"))
+            })?;
+            store
+                .load_chio_receipt(authorization_receipt_id)
+                .map_err(|e| {
+                    ReceiptSignError::SigningFailed(format!(
+                        "failed to load ACP authorization receipt: {e}"
+                    ))
+                })?
+                .ok_or_else(|| {
+                    ReceiptSignError::SigningFailed(format!(
+                        "authorization receipt {authorization_receipt_id} was not found"
+                    ))
+                })?
+        };
+
+        if authorization_receipt.id != authorization_receipt_id {
+            return Err(ReceiptSignError::SigningFailed(
+                "authorization receipt id mismatch".to_string(),
+            ));
+        }
+        if authorization_receipt.capability_id != capability_id {
+            return Err(ReceiptSignError::SigningFailed(
+                "authorization receipt capability mismatch".to_string(),
+            ));
+        }
+        if authorization_receipt.tool_server != request.tool_server
+            || authorization_receipt.tool_name != request.tool_name
+        {
+            return Err(ReceiptSignError::SigningFailed(
+                "authorization receipt tool target mismatch".to_string(),
+            ));
+        }
+        if !authorization_receipt.is_allowed() {
+            return Err(ReceiptSignError::SigningFailed(
+                "authorization receipt must be a mediated allow".to_string(),
+            ));
+        }
+        let stored_request_id = authorization_receipt
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("receipt_context"))
+            .and_then(|context| context.get("request_id"))
+            .and_then(serde_json::Value::as_str);
+        if stored_request_id != Some(authorization_request_id) {
+            return Err(ReceiptSignError::SigningFailed(
+                "authorization receipt request id mismatch".to_string(),
+            ));
+        }
+        let receipt_context = authorization_receipt
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("receipt_context"));
+        let stored_session_id = receipt_context
+            .and_then(|context| context.get("session_id"))
+            .and_then(serde_json::Value::as_str);
+        if stored_session_id.is_some_and(|stored| stored != entry.session_id.as_str()) {
+            return Err(ReceiptSignError::SigningFailed(
+                "authorization receipt session id mismatch".to_string(),
+            ));
+        }
+        let stored_tool_call_id = receipt_context
+            .and_then(|context| context.get("tool_call_id"))
+            .and_then(serde_json::Value::as_str);
+        if stored_tool_call_id.is_some_and(|stored| stored != entry.tool_call_id.as_str()) {
+            return Err(ReceiptSignError::SigningFailed(
+                "authorization receipt tool call id mismatch".to_string(),
+            ));
+        }
+        let mut consumed = self.consumed_authorization_receipts.lock().map_err(|e| {
+            ReceiptSignError::SigningFailed(format!("authorization consumption lock poisoned: {e}"))
+        })?;
+        if !consumed.insert(authorization_receipt_id.to_string()) {
+            return Err(ReceiptSignError::SigningFailed(
+                "authorization receipt already consumed".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     /// Attempt a Merkle checkpoint if the batch threshold has been reached.
@@ -154,6 +289,24 @@ impl ReceiptSigner for KernelReceiptSigner {
                 .unwrap_or_default()
                 .as_secs()
         });
+        let enforcement_mode = entry.enforcement_mode.unwrap_or(AcpEnforcementMode::AuditOnly);
+        if enforcement_mode == AcpEnforcementMode::CryptographicallyEnforced {
+            self.verify_live_authorization_receipt(request)?;
+        }
+        let (decision, trust_level, semantics) = match enforcement_mode {
+            AcpEnforcementMode::AuditOnly => (
+                Decision::Incomplete {
+                    reason: "ACP audit-only observation is trace-only".to_string(),
+                },
+                chio_core::TrustLevel::Verified,
+                chio_core::ReceiptSemanticFields::trace_detect_only(),
+            ),
+            AcpEnforcementMode::CryptographicallyEnforced => (
+                Decision::Allow,
+                chio_core::TrustLevel::Mediated,
+                chio_core::ReceiptSemanticFields::mediated_prevent(),
+            ),
+        };
 
         let body = ChioReceiptBody {
             id: format!("acp-{}", entry.tool_call_id),
@@ -165,17 +318,22 @@ impl ReceiptSigner for KernelReceiptSigner {
             tool_server: request.tool_server.clone(),
             tool_name: request.tool_name.clone(),
             action,
-            decision: Decision::Allow,
+            decision,
             content_hash: entry.content_hash.clone(),
             policy_hash: String::new(),
             evidence: Vec::new(),
             metadata: Some(serde_json::json!({
+                "receipt_semantics": semantics,
                 "acp": {
                     "sessionId": entry.session_id,
-                    "enforcementMode": entry.enforcement_mode,
+                    "toolCallId": entry.tool_call_id,
+                    "capabilityId": entry.capability_id,
+                    "authorizationReceiptId": entry.authorization_receipt_id,
+                    "authorizationRequestId": entry.authorization_request_id,
+                    "enforcementMode": enforcement_mode,
                 }
             })),
-            trust_level: chio_core::TrustLevel::default(),
+            trust_level,
             tenant_id: None,
             kernel_key: self.keypair.public_key(),
         };

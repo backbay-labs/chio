@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.dev/schemas/chio-federation/v1/peer-pins.schema.json",
+  "title": "Chio Federation Peer Pins",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "peers", "vendors", "actionClasses"],
+  "properties": {
+    "schema": { "const": "chio.federation.peer-pins.v1" },
+    "peers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "verifier-trust-bundle.schema.json#/$defs/peerLadderBinding" }
+    },
+    "vendors": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "verifier-trust-bundle.schema.json#/$defs/vendorKeyBinding" }
+    },
+    "actionClasses": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "verifier-trust-bundle.schema.json#/$defs/actionClass" }
+    }
+  }
+}

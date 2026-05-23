@@ -8,7 +8,7 @@ that already exist in the tree into one cross-org transaction. From
 
 > Two-kernel cross-org bilateral cosigned invocation using existing
 > `crates/chio-federation/src/bilateral.rs` (`CoSigningBody`,
-> `DualSignedReceipt`). Per `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`
+> `DualSignedReceipt`). Per `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md`
 > section 6. ... Output: a `v0.1.0-bounded-chiodome` honest release tag
 > under v3.18 bounded-claim discipline.
 
@@ -37,7 +37,7 @@ enforcement is actually wired:
 
 1. **Capability v2 single-entry verifier** - the bilateral invocation
    carries a `capability_lease_ref`
-   (`spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 5,
+   (`spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` section 5,
    `capability_lease_ref` object). If `verify_capability_full` is not
    the only path on the kernel hot path, the demo cannot rely on
    `capability.lease_expired_or_unknown` failing closed when the lease
@@ -92,7 +92,7 @@ walk-through. For the same refund the planned example emits, in order:
 2. The local kernel B receipt (v2)
 3. The `DualSignedReceipt` (`crates/chio-federation/src/bilateral.rs:93`)
 4. The `chio.bilateral-cosign-invocation.v1` DSSE Statement
-   (`spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md` section 6)
+   (`spec/CHIO_BILATERAL_COSIGN_INVOCATION.md` section 6)
 5. The `Web3CheckpointStatement` from `chio-anchor` plus inclusion proof
 
 C5 selective disclosure is not part of the current canary artifact set. It is
@@ -111,15 +111,15 @@ gateway at `:8111/mcp/`.
 
 - New normative spec drafts. The DSSE adapter wraps existing
   `CoSigningBody` semantics; spec text already exists in
-  `spec/CHIODOS_BILATERAL_COSIGN_INVOCATION.md`.
+  `spec/CHIO_BILATERAL_COSIGN_INVOCATION.md`.
 - Web3 live activation. Demo runs against the
   `LocalDevnetDeployment` plus mock RPC
   (`crates/chio-settle/src/config.rs:393`). The bounded label says so.
-- Three-vendor walk-through. That is `docs/research/CHIODOS_3VENDOR_FIXTURE.md`
+- Three-vendor walk-through. That is `docs/research/CHIO_3VENDOR_FIXTURE.md`
   research; Lane C is two kernels.
 - Pheromone deposits. Out of scope per
   `debate/06-vision-strategist-chiodome.md` section 5.
-- Ladder amendment lifecycle (`spec/CHIODOS_LADDER.md` section 8).
+- Ladder amendment lifecycle (`spec/CHIO_LADDER.md` section 8).
   Handshake-pinned manifest only.
 - Mock receipts. Receipts MUST be produced by the production kernel
   through its real call sites; fixtures are captured outputs, not
@@ -156,9 +156,9 @@ If Lane B slips beyond W4, Lane C slips with it.
 
 | Week | Sub-lane | Deliverable | Forcing function |
 |---|---|---|---|
-| W3 | C1 (architecture, scaffolding) | Demo flow doc + scenario script + fixture skeleton in `examples/chiodome-bilateral/`; trust-establishment handshake between two in-process kernels; example-local chiodos-ladder primitive; refund tool registration | Picks up Lane B's `verify_capability_full` signature and `ToolServerConnection` async migration; if either changes, C1 surfaces it immediately |
+| W3 | C1 (architecture, scaffolding) | Demo flow doc + scenario script + fixture skeleton in `examples/chiodome-bilateral/`; trust-establishment handshake between two in-process kernels; example-local chio-ladder primitive; refund tool registration | Picks up Lane B's `verify_capability_full` signature and `ToolServerConnection` async migration; if either changes, C1 surfaces it immediately |
 | W4 | C2 (cosign verifier) | Consume Lane B B4's `bilateral_dsse.rs` envelope; ship the §7 partial local verifier subset with the 16-case negative fixture set; capability lease binding via `chio-credit`; anchor inclusion proof emission; orchestrator wiring | Lane B B4's signing surface is exercised end-to-end; lease-expiration enforcement (B1) gets exercised under both happy and deny path; receipt-v2 fail-closed (B2) drives subject digest validity; anchor-batch async-only (B3) drives §7 step 16 |
-| W4 | C3 (KB MCP) | `chio mcp serve --policy ... -- npx -y mcp-remote http://localhost:8111/mcp/` wraps the HTTP KB MCP via the stdio bridge; HushSpec policy YAML; receipts written to `examples/chiodome-bilateral/fixtures/` per call; cross-org refund + over-cap deny scenario | Validates Lane B's receipt-v2-on-the-hot-path enforcement (B2.5); validates the chiodos-ladder cap (over-cap deny) |
+| W4 | C3 (KB MCP) | `chio mcp serve --policy ... -- npx -y mcp-remote http://localhost:8111/mcp/` wraps the HTTP KB MCP via the stdio bridge; HushSpec policy YAML; receipts written to `examples/chiodome-bilateral/fixtures/` per call; cross-org refund + over-cap deny scenario | Validates Lane B's receipt-v2-on-the-hot-path enforcement (B2.5); validates the chio-ladder cap (over-cap deny) |
 | W4 | C4 (receipt explain) | `chio receipt explain` walks the bilateral chain (parent -> step -> dual-signed -> envelope -> anchor); doc page; snapshot tests | T1.6 (`audits/T1.6-chio-explain.md`) reopened row in trj4 closes |
 | W5 | C5 selective-disclosure boundary | Deferred to v0.2 outside current closure. Future work must follow `c5-selective-disclosure-status.toml` and the normative spec before any auditor-view proof claim. | Prevents product, zk, BBS+, BBS, or proof claims without evidence |
 | W5 | C6 packaging boundary | #620 records release-truth boundaries only. Tagging, release notes, tarballs, and required checks belong to a later packaging owner after merged-source evidence exists. | Prevents planning docs from becoming release claims |

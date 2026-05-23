@@ -15,7 +15,8 @@ pub mod bilateral_verifier;
 pub mod metrics;
 pub mod pheromone_gossip;
 pub mod revocation_gossip;
-// spec/CHIODOS_SELECTIVE_DISCLOSURE.md §6 BBS+ projection. Default-off
+pub mod treaty;
+// Chio selective-disclosure section 6 BBS+ projection. Default-off
 // behind the honestly-named `bbs-stub` feature: the implementation is a
 // STUB BBS+ that captures the deterministic projection and
 // disclose/withhold semantics but offers no privacy-preserving cryptographic property.
@@ -31,10 +32,12 @@ pub use metrics::{
     HOP_RESULT_OK,
 };
 pub use pheromone_gossip::{
-    verify_pheromone_gossip_batch, verify_pheromone_gossip_frame, PheromoneDepositGossip,
+    verify_pheromone_gossip_batch, verify_pheromone_gossip_batch_envelope,
+    verify_pheromone_gossip_frame, verify_pheromone_gossip_frame_for_batch, PheromoneDepositGossip,
     PheromoneGossipBatch, PheromoneGossipBatchVerificationContext, PheromoneGossipError,
-    PheromoneGossipPushQueue, PheromoneTransitChain, PheromoneTransitHop, PheromoneTransitPolicy,
-    PHEROMONE_GOSSIP_BATCH_SCHEMA, PHEROMONE_GOSSIP_SCHEMA, PHEROMONE_TRANSIT_POLICY_SCHEMA,
+    PheromoneGossipPushQueue, PheromoneTransitChain, PheromoneTransitHop,
+    PheromoneTransitLadderPin, PheromoneTransitPolicy, PHEROMONE_GOSSIP_BATCH_SCHEMA,
+    PHEROMONE_GOSSIP_SCHEMA, PHEROMONE_TRANSIT_POLICY_SCHEMA,
 };
 
 pub use bilateral::{
@@ -46,22 +49,25 @@ pub use bilateral::{
     BILATERAL_COSIGNING_SCHEMA, BILATERAL_DSSE_COSIGNING_SCHEMA, BILATERAL_DUAL_RECEIPT_SCHEMA,
 };
 pub use bilateral_dsse::{
-    build_chiodos_predicate, build_chiodos_statement, build_predicate, build_predicate_full,
-    build_statement, pae, receipt_subject_name, sign_chiodos_dsse_envelope, sign_dsse_envelope,
-    sign_dsse_envelope_full, sign_dsse_envelope_with_cosigner, verify_chiodos_dsse_envelope,
-    verify_dsse_envelope, BilateralPredicate, BilateralPredicateExtensions, CapabilityLeaseRef,
-    DsseEnvelope, DsseSignature, DsseStatement, GovernanceReceiptRef, HashRecord, KernelIdentity,
-    Keyid, PolicyEvaluationSummary, PolicyVerdict, StatementSubject, SubjectDigest,
+    build_chio_bilateral_invocation_predicate, build_chio_bilateral_invocation_statement,
+    build_predicate, build_predicate_full, build_statement, pae, receipt_subject_name,
+    sign_chio_bilateral_dsse_envelope, sign_chio_bilateral_dsse_envelope_with_cosigner,
+    sign_dsse_envelope, sign_dsse_envelope_full, sign_dsse_envelope_with_cosigner,
+    validate_policy_evaluation_summary, verify_chio_bilateral_dsse_envelope, verify_dsse_envelope,
+    BilateralPredicate, BilateralPredicateExtensions, CapabilityLeaseRef, DsseEnvelope,
+    DsseSignature, DsseStatement, GovernanceReceiptRef, HashRecord, KernelIdentity, Keyid,
+    PolicyEvaluationSummary, PolicyVerdict, StatementSubject, SubjectDigest, TreatyBindingRef,
     BILATERAL_DSSE_ENVELOPE_SCHEMA, DEFAULT_CONSISTENCY_MODEL, DEFAULT_COSIGN_MODE,
     DEFAULT_CROSS_ORG_VISIBILITY, PAYLOAD_TYPE_IN_TOTO, PREDICATE_BODY_SCHEMA,
-    PREDICATE_TYPE_BILATERAL, PREDICATE_TYPE_CHIODOS_BILATERAL, STATEMENT_TYPE_V1,
+    PREDICATE_TYPE_BILATERAL, PREDICATE_TYPE_CHIO_BILATERAL_INVOCATION, STATEMENT_TYPE_V1,
 };
 pub use bilateral_verifier::{
-    verify_bilateral_cosign_invocation, verify_chiodos_bilateral_invocation, ActionClassKind,
-    CapabilityLeaseRegistry, DemoAllowAllRevocationOracle, DenyListRevocationOracle,
+    verify_bilateral_cosign_invocation, verify_chio_bilateral_invocation,
+    verify_treaty_bound_chio_bilateral_invocation, ActionClassKind, CapabilityLeaseRegistry,
+    ChioBilateralVerifierConfig, DemoAllowAllRevocationOracle, DenyListRevocationOracle,
     GovernanceReceiptStore, InMemoryGovernanceReceiptStore, InMemoryLeaseRegistry,
     InMemoryReceiptStore, PeerPinSet, PinnedEpoch, PinnedPeer, ReceiptStore,
-    ResolvedGovernanceReceipt, ResolvedLease, RevocationOracle, StrictChiodosVerifierConfig,
+    ResolvedGovernanceReceipt, ResolvedLease, RevocationOracle, TreatyBoundBilateralDsseReview,
     UnknownActionClassPolicy, VerifiedBilateralCoSignInvocation, VerifierConfig, VerifierError,
 };
 pub use revocation_gossip::{
@@ -76,6 +82,20 @@ pub use selective_disclosure::{
     project_audit_view, verify_audit_view, BbsAuditView, BbsMessage, DisclosedFields,
     DisclosedMessage, DisclosureSet, SelectiveDisclosureError, AUDIT_VIEW_SCHEMA_STUB,
     PROJECTION_VERSION_RECEIPT_V1,
+};
+pub use treaty::{
+    compute_ladder_intersection, cross_boundary_admission_report_json,
+    evaluate_cross_boundary_admission, governance_ladder_manifest_from_json,
+    governance_ladder_manifest_sha256, ladder_intersection_from_json, ladder_intersection_json,
+    ladder_intersection_sha256, treaty_scope_from_json, treaty_scope_sha256,
+    validate_cross_boundary_admission_report, validate_governance_ladder_manifest,
+    validate_ladder_intersection, validate_treaty_scope, CrossBoundaryAdmissionInput,
+    CrossBoundaryAdmissionReport, CrossBoundaryEvidenceRef, FederationTreatyError,
+    GovernanceLadderActionClass, GovernanceLadderManifest, LadderIntersection,
+    LadderIntersectionActionClass, TreatyScope,
+    CHIO_FEDERATION_CROSS_BOUNDARY_ADMISSION_REPORT_SCHEMA,
+    CHIO_FEDERATION_GOVERNANCE_LADDER_MANIFEST_SCHEMA, CHIO_FEDERATION_LADDER_INTERSECTION_SCHEMA,
+    CHIO_FEDERATION_TREATY_SCOPE_SCHEMA,
 };
 pub use trust_establishment::{
     ConformanceEvidence, ConformanceTier, FederationPeer, FederationPeerStore, HandshakeChallenge,

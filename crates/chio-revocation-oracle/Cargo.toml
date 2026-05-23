@@ -26,7 +26,7 @@ default = []
 # The feature is dev-only (no library-side surface changes); it gates
 # the integration test target itself so the workspace default build
 # stays untouched.
-delegation_v2 = []
+delegation = []
 
 [dev-dependencies]
 criterion = { workspace = true }
@@ -39,11 +39,11 @@ name = "oracle_throughput"
 harness = false
 
 # M04.P5.T1 swarm acceptance test target. Runs only with
-# `--features delegation_v2` so the trust-boundary surface stays gated.
+# `--features delegation` so the trust-boundary surface stays gated.
 [[test]]
 name = "swarm_revocation_e2e"
 path = "tests/swarm_revocation_e2e.rs"
-required-features = ["delegation_v2"]
+required-features = ["delegation"]
 
 # M04.P5.T2 receipt-chain proof target. Walks the JSONL receipt log
 # emitted by an in-process re-run of the swarm fixture and asserts
@@ -52,7 +52,7 @@ required-features = ["delegation_v2"]
 [[test]]
 name = "receipt_chain_proof"
 path = "tests/receipt_chain_proof.rs"
-required-features = ["delegation_v2"]
+required-features = ["delegation"]
 
 [lints.clippy]
 unwrap_used = "deny"

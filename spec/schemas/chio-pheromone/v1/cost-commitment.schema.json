@@ -1,21 +1,121 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio.dev/schemas/chio-pheromone/v1/cost-commitment.schema.json",
-  "title": "Chiodos Pheromone Cost Commitment",
+  "title": "Chio Pheromone Cost Commitment",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schema",
-    "telemetry_chain_root",
-    "chain_position",
-    "chain_position_proof",
-    "observed_at_unix_ms"
-  ],
+  "required": ["schema", "statement", "signature"],
   "properties": {
     "schema": { "const": "chio.pheromone-cost-commitment.v1" },
-    "telemetry_chain_root": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "chain_position": { "type": "integer", "minimum": 0 },
-    "chain_position_proof": {},
-    "observed_at_unix_ms": { "type": "integer", "minimum": 0 }
+    "statement": { "$ref": "#/$defs/statement" },
+    "signature": { "$ref": "#/$defs/signature" }
+  },
+  "$defs": {
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:.+)$"
+    },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "amount"],
+      "properties": {
+        "unit": { "const": "chio.observation.microunit.v1" },
+        "amount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "telemetryRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "algorithm",
+        "rootHash",
+        "treeSize",
+        "verifierId",
+        "verifierKeyId",
+        "closedAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.pheromone-observation-cost-telemetry-root.v1" },
+        "algorithm": { "const": "rfc6962-sha256-v1" },
+        "rootHash": { "$ref": "#/$defs/hash" },
+        "treeSize": { "type": "integer", "minimum": 1 },
+        "verifierId": { "type": "string", "minLength": 1 },
+        "verifierKeyId": { "type": "string", "minLength": 1 },
+        "closedAtUnixMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "inclusionProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tree_size", "leaf_index", "audit_path"],
+      "properties": {
+        "tree_size": { "type": "integer", "minimum": 1 },
+        "leaf_index": { "type": "integer", "minimum": 0 },
+        "audit_path": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hash" }
+        }
+      }
+    },
+    "statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "commitmentId",
+        "verifierId",
+        "verifierKeyId",
+        "runtimePolicySha256",
+        "scarcityPolicySha256",
+        "depositBodySha256",
+        "depositSignatureSha256",
+        "kernelId",
+        "agentPassportKeyHash",
+        "treatyId",
+        "subjectClassNamespace",
+        "subjectClass",
+        "observationWindowStartUnixMs",
+        "observationWindowEndUnixMs",
+        "observedAtUnixMs",
+        "eventDigestSha256",
+        "cost",
+        "telemetry",
+        "inclusionProof",
+        "leafPreimageSha256"
+      ],
+      "properties": {
+        "schema": { "const": "chio.pheromone-observation-cost-statement.v1" },
+        "commitmentId": { "type": "string", "minLength": 1 },
+        "verifierId": { "type": "string", "minLength": 1 },
+        "verifierKeyId": { "type": "string", "minLength": 1 },
+        "runtimePolicySha256": { "$ref": "#/$defs/hex64" },
+        "scarcityPolicySha256": { "$ref": "#/$defs/hex64" },
+        "depositBodySha256": { "$ref": "#/$defs/hex64" },
+        "depositSignatureSha256": { "$ref": "#/$defs/hex64" },
+        "kernelId": { "type": "string", "minLength": 1 },
+        "agentPassportKeyHash": { "$ref": "#/$defs/hex64" },
+        "treatyId": { "type": "string", "minLength": 1 },
+        "subjectClassNamespace": { "type": "string", "minLength": 1 },
+        "subjectClass": { "type": "string", "minLength": 1 },
+        "observationWindowStartUnixMs": { "type": "integer", "minimum": 0 },
+        "observationWindowEndUnixMs": { "type": "integer", "minimum": 0 },
+        "observedAtUnixMs": { "type": "integer", "minimum": 0 },
+        "eventDigestSha256": { "$ref": "#/$defs/hex64" },
+        "cost": { "$ref": "#/$defs/cost" },
+        "telemetry": { "$ref": "#/$defs/telemetryRoot" },
+        "inclusionProof": { "$ref": "#/$defs/inclusionProof" },
+        "leafPreimageSha256": { "$ref": "#/$defs/hex64" }
+      }
+    }
   }
 }
